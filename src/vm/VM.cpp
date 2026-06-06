@@ -1378,6 +1378,40 @@ namespace jc {
                     break;
                 }
 
+                case OpCode::OP_DICT_REST: {
+                    uint16_t count = readShort();
+                    std::unordered_set<std::string> excludeKeys;
+                    for (int i = 0; i < count; ++i) {
+                        excludeKeys.insert(pop().asString());
+                    }
+                    Value obj = pop();
+                    ObjDict* restDict = GcHeap::get().allocate<ObjDict>();
+
+                    if (obj.isObjType(ObjType::DICT)) {
+                        auto d = static_cast<ObjDict*>(obj.asObj());
+                        for (const auto& [k, v] : d->elements) {
+                            if (k.isString() && excludeKeys.count(k.asString())) continue;
+                            restDict->set(k, v);
+                        }
+                    } else if (obj.isInstance()) {
+                        auto inst = obj.asInstance();
+                        if (inst->fields) {
+                            for (const auto& [k, v] : inst->fields->elements) {
+                                if (k.isString() && excludeKeys.count(k.asString())) continue;
+                                restDict->set(k, v);
+                            }
+                        }
+                    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                        for (const auto& [k, field] : ns->fields) {
+                            if (excludeKeys.count(k)) continue;
+                            restDict->set(Value(k), *(field.upval->location));
+                        }
+                    }
+                    push(Value(restDict));
+                    break;
+                }
+
                 case OpCode::OP_DUP: {
                     push(peek(0));
                     break;
@@ -2118,43 +2152,13 @@ namespace jc {
                             }
                         }
                         if (!found) {
-                            ObjClosure* rawMethod = nullptr;
-                            ObjClass* ownerClass = nullptr;
-                            auto c = inst->classDef;
-                            while (c) {
-                                auto it = c->methods.find(field);
-                                if (it != c->methods.end()) {
-                                    rawMethod = it->second;
-                                    ownerClass = c;
-                                    break;
-                                }
-                                c = c->parent;
-                            }
-                            if (rawMethod) {
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{},
-                                    field, nullptr
-                                );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                bound->capturedEnv = rawMethod->capturedEnv;
-                                bound->nativeFn = rawMethod->nativeFn;
-                                bound->boundSelf = Value(inst);
-                                bound->boundClass = Value(ownerClass);
-                                result = Value(bound);
-                                found = true;
-                            } else {
-                                auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
-                                if (getattrMethod) {
-                                    try {
-                                        result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
-                                        found = true;
-                                    } catch (...) {
-                                        found = false;
-                                    }
+                            auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
+                            if (getattrMethod) {
+                                try {
+                                    result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                                    found = true;
+                                } catch (...) {
+                                    found = false;
                                 }
                             }
                         }

@@ -107,6 +107,7 @@ namespace jc {
 
         // 字典
         OP_BUILD_DICT,      // [count:16bit] 从 2N 个值构建字典
+        OP_DICT_REST,       // [count:16bit] ★ 新增
         OP_BUILD_NAMESPACE, // [name_idx:16bit, count:16bit] ★ 新增
 
         // 格式化字符串
@@ -207,6 +208,7 @@ namespace jc {
         case OpCode::OP_TRY_END: return "OP_TRY_END";
         case OpCode::OP_THROW: return "OP_THROW";
         case OpCode::OP_BUILD_DICT: return "OP_BUILD_DICT";
+        case OpCode::OP_DICT_REST: return "OP_DICT_REST";
         case OpCode::OP_BUILD_NAMESPACE: return "OP_BUILD_NAMESPACE";
         case OpCode::OP_FORMAT_STRING: return "OP_FORMAT_STRING";
         case OpCode::OP_LIST_INIT: return "OP_LIST_INIT";
@@ -440,7 +442,8 @@ namespace jc {
             }
             case OpCode::OP_BUILD_LIST:
             case OpCode::OP_CONCAT_STRINGS:
-            case OpCode::OP_BUILD_DICT: {
+            case OpCode::OP_BUILD_DICT:
+            case OpCode::OP_DICT_REST: {
                 uint16_t count = read16(offset + 1);
                 std::cout << count << " items" << std::endl;
                 return offset + 3;

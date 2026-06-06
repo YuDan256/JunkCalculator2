@@ -2795,8 +2795,12 @@ namespace jc {
                         
                         emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                         emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("instance"), lastLine);
-                        
                         emit(OpCode::OP_BIT_OR, lastLine);
+
+                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                        emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("namespace"), lastLine);
+                        emit(OpCode::OP_BIT_OR, lastLine);
+                        
                         failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
                         emit(OpCode::OP_POP, lastLine);
 
@@ -2817,21 +2821,16 @@ namespace jc {
                         }
 
                         if (dp->rest && dp->rest->name.lexeme != "_") {
-                            emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(identifierConstant("clone"), lastLine);
                             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            emit(OpCode::OP_CALL, lastLine); emit(1, lastLine);
+                            for (auto& entry : dp->entries) {
+                                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
+                            }
+                            emit(OpCode::OP_DICT_REST, lastLine);
+                            emit16(static_cast<uint16_t>(dp->entries.size()), lastLine);
                             
                             int restSlot = resolveLocal(dp->rest->name.lexeme);
                             emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(restSlot), lastLine);
                             emit(OpCode::OP_POP, lastLine);
-
-                            for (auto& entry : dp->entries) {
-                                emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(identifierConstant("remove"), lastLine);
-                                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(restSlot), lastLine);
-                                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
-                                emit(OpCode::OP_CALL, lastLine); emit(2, lastLine);
-                                emit(OpCode::OP_POP, lastLine);
-                            }
                         }
                     }
                 };

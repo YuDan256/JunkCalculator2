@@ -4356,6 +4356,16 @@ namespace jc {
                     }
                     c = c->parent;
                 }
+                auto getattrMethod = findDunder(haystack, DUNDER_GETATTR);
+                if (getattrMethod) {
+                    try {
+                        callDunder(haystack, DUNDER_GETATTR, { needle });
+                        push(Value(true));
+                        return;
+                    } catch (...) {
+                        // Fall through to false
+                    }
+                }
             }
             push(Value(false));
             return;

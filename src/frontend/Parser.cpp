@@ -1290,14 +1290,22 @@ namespace jc {
             std::unique_ptr<RestPattern> rest = nullptr;
 
             for (auto& entry : dict->entries) {
-                auto* litKey = dynamic_cast<Literal*>(entry.first.get());
-                if (!litKey || !litKey->isString) throw std::runtime_error("Parser Error: Dict pattern keys must be strings.");
-                
-                auto pat = exprToPattern(std::move(entry.second));
-                if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
-                    if (rest) throw std::runtime_error("Parser Error: Multiple rest patterns in dict.");
-                    rest = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
+                if (!entry.first) {
+                    auto pat = exprToPattern(std::move(entry.second));
+                    if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
+                        if (rest) throw std::runtime_error("Parser Error: Multiple rest patterns in dict.");
+                        rest = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
+                    } else {
+                        throw std::runtime_error("Parser Error: Invalid rest pattern in dict.");
+                    }
                 } else {
+                    auto* litKey = dynamic_cast<Literal*>(entry.first.get());
+                    if (!litKey || !litKey->isString) throw std::runtime_error("Parser Error: Dict pattern keys must be strings.");
+                    
+                    auto pat = exprToPattern(std::move(entry.second));
+                    if (dynamic_cast<RestPattern*>(pat.get())) {
+                        throw std::runtime_error("Parser Error: Rest pattern must not have a key.");
+                    }
                     entries.push_back({ litKey->value, std::move(pat) });
                 }
             }
@@ -1348,34 +1356,44 @@ namespace jc {
                     currentRow.clear();
                     continue;
                 }
-                if (match({TokenType::ELLIPSIS})) {
-                    Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+                if (check(TokenType::ELLIPSIS) || check(TokenType::LOCAL) || check(TokenType::REF) || check(TokenType::STATE)) {
+                    int savedPos = current;
+                    ScopeModifier elemMod = ScopeModifier::None;
+                    if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
+                    else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
+                    else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
                     
-                    bool hasRest = false;
-                    for (const auto& pat : currentRow) {
-                        if (dynamic_cast<RestPattern*>(pat.get())) {
-                            hasRest = true;
-                            break;
+                    if (match({TokenType::ELLIPSIS})) {
+                        Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+                        
+                        bool hasRest = false;
+                        for (const auto& pat : currentRow) {
+                            if (dynamic_cast<RestPattern*>(pat.get())) {
+                                hasRest = true;
+                                break;
+                            }
                         }
-                    }
-                    if (hasRest) {
-                        throw std::runtime_error("Parser Error: Multiple rest patterns ('...') are not allowed in a single row.");
-                    }
+                        if (hasRest) {
+                            throw std::runtime_error("Parser Error: Multiple rest patterns ('...') are not allowed in a single row.");
+                        }
 
-                    if (check(TokenType::SEMICOLON) || check(TokenType::RBRACKET)) {
-                        if (check(TokenType::RBRACKET) && currentRow.empty() && !rows.empty()) {
-                            restRow = std::make_unique<RestPattern>(name);
-                            isMatrix = true;
+                        if (check(TokenType::SEMICOLON) || check(TokenType::RBRACKET)) {
+                            if (check(TokenType::RBRACKET) && currentRow.empty() && !rows.empty()) {
+                                restRow = std::make_unique<RestPattern>(name, elemMod);
+                                isMatrix = true;
+                            } else {
+                                restCol = std::make_unique<RestPattern>(name, elemMod);
+                            }
+                            continue;
                         } else {
-                            restCol = std::make_unique<RestPattern>(name);
+                            currentRow.push_back(std::make_unique<RestPattern>(name, elemMod));
+                            if (!match({TokenType::COMMA})) {
+                                throw std::runtime_error("Parser Error: Expect ',' after pattern.");
+                            }
+                            continue;
                         }
-                        continue;
                     } else {
-                        currentRow.push_back(std::make_unique<RestPattern>(name));
-                        if (!match({TokenType::COMMA})) {
-                            throw std::runtime_error("Parser Error: Expect ',' after pattern.");
-                        }
-                        continue;
+                        current = savedPos;
                     }
                 }
                 
@@ -1413,10 +1431,20 @@ namespace jc {
                 while (match({TokenType::NEWLINE})) {}
                 if (check(TokenType::RBRACE)) break;
 
-                if (match({TokenType::ELLIPSIS})) {
-                    Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
-                    rest = std::make_unique<RestPattern>(name);
-                    break; // Rest must be last
+                if (check(TokenType::ELLIPSIS) || check(TokenType::LOCAL) || check(TokenType::REF) || check(TokenType::STATE)) {
+                    int savedPos = current;
+                    ScopeModifier elemMod = ScopeModifier::None;
+                    if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
+                    else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
+                    else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
+                    
+                    if (match({TokenType::ELLIPSIS})) {
+                        Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+                        rest = std::make_unique<RestPattern>(name, elemMod);
+                        break; // Rest must be last
+                    } else {
+                        current = savedPos; // Not a rest pattern, backtrack
+                    }
                 }
                 
                 std::string keyStr;
@@ -1762,28 +1790,38 @@ namespace jc {
             int savedPos = current;
             bool isSimpleId = check(TokenType::IDENTIFIER);
             Token maybeIdTok = peek(); // 暂存这个可能的名字
-
-            if (isSimpleId) {
-                advance(); // 吞掉这个标识符
-                int tempPos = current;
-                while (tempPos < static_cast<int>(tokens.size()) && tokens[tempPos].type == TokenType::NEWLINE) tempPos++;
-                if (tempPos < static_cast<int>(tokens.size()) && 
-                    (tokens[tempPos].type == TokenType::COLON || tokens[tempPos].type == TokenType::COMMA || tokens[tempPos].type == TokenType::RBRACE)) {
-                    // 确实是简写或普通标识符 key
-                } else {
-                    isSimpleId = false;
-                    current = savedPos; // 回退
-                }
-            }
             
-            if (!isSimpleId) {
-                key = ternary(); // 它不是简单的标识符，按常规表达式读取
+            bool isRest = false;
+            if (match({TokenType::ELLIPSIS})) {
+                isRest = true;
+                key = nullptr;
+                value = std::make_unique<Unary>(previous(), assignment());
+            } else {
+                if (isSimpleId) {
+                    advance(); // 吞掉这个标识符
+                    int tempPos = current;
+                    while (tempPos < static_cast<int>(tokens.size()) && tokens[tempPos].type == TokenType::NEWLINE) tempPos++;
+                    if (tempPos < static_cast<int>(tokens.size()) && 
+                        (tokens[tempPos].type == TokenType::COLON || tokens[tempPos].type == TokenType::COMMA || tokens[tempPos].type == TokenType::RBRACE)) {
+                        // 确实是简写或普通标识符 key
+                    } else {
+                        isSimpleId = false;
+                        current = savedPos; // 回退
+                    }
+                }
+                
+                if (!isSimpleId) {
+                    key = ternary(); // 它不是简单的标识符，按常规表达式读取
+                }
             }
 
             // 2. 核心分发：看看接下来是不是冒号
             while (match({ TokenType::NEWLINE })) {} // 跳过中间可能的换行
 
-            if (match({ TokenType::COLON })) {
+            if (isRest) {
+                // 已经处理好了
+            }
+            else if (match({ TokenType::COLON })) {
                 // ★ 它是标准的 "key: value" 模式
                 if (isSimpleId) {
                     // 把刚才吞掉的标识符转为字符串常数作为 key

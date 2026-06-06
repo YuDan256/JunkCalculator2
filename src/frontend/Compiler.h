@@ -77,6 +77,8 @@ namespace jc {
         int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false);
         void emitStoreTarget(Expr* target);
         std::optional<Value> tryFoldConstant(Expr* expr);
+        void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps);
+        void collectPatternVars(Pattern* pat, std::vector<std::pair<std::string, ScopeModifier>>& boundVars);
 
     public:
         Chunk compile(Expr* ast, const std::string& sourceFile = "");
@@ -128,7 +130,6 @@ namespace jc {
         std::any visitListCompExpr(ListCompExpr*) override;
         std::any visitDictLiteral(DictLiteral*) override;
         std::any visitSliceExpr(SliceExpr*) override;
-        std::any visitDictDestructAssign(DictDestructAssign*) override;
         std::any visitSequenceExpr(SequenceExpr* expr) override;
         std::any visitMatchExpr(MatchExpr* expr) override;
     };

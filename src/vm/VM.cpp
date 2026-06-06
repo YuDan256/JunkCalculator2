@@ -795,29 +795,36 @@ namespace jc {
                     
                     bool exactRows = (exactMask & 1) != 0;
                     bool exactCols = (exactMask & 2) != 0;
+                    bool is1DPattern = (exactMask & 4) != 0;
 
                     if (val.isObjType(ObjType::LIST)) {
-                        int len = static_cast<int>(static_cast<ObjList*>(val.asObj())->vec.size());
-                        if (rows == 1) {
+                        if (is1DPattern) {
+                            int len = static_cast<int>(static_cast<ObjList*>(val.asObj())->vec.size());
                             matched = exactCols ? (len == cols) : (len >= cols);
-                        } else if (cols == 1) {
-                            matched = exactRows ? (len == rows) : (len >= rows);
+                        }
+                    } else if (val.isString()) {
+                        if (is1DPattern) {
+                            int len = static_cast<int>(val.asString().size());
+                            matched = exactCols ? (len == cols) : (len >= cols);
                         }
                     } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                         bool rMatch = exactRows ? (m.getRows() == rows) : (m.getRows() >= rows);
                         bool cMatch = exactCols ? (m.getCols() == cols) : (m.getCols() >= cols);
-                        matched = rMatch && cMatch;
+                        if (rows == 1 && cols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+                        else matched = rMatch && cMatch;
                     } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
                         bool rMatch = exactRows ? (m.getRows() == rows) : (m.getRows() >= rows);
                         bool cMatch = exactCols ? (m.getCols() == cols) : (m.getCols() >= cols);
-                        matched = rMatch && cMatch;
+                        if (rows == 1 && cols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+                        else matched = rMatch && cMatch;
                     } else if (val.isObjType(ObjType::STRING_MATRIX)) {
                         const auto& m = static_cast<ObjStringMatrix*>(val.asObj())->mat;
                         bool rMatch = exactRows ? (m.getRows() == rows) : (m.getRows() >= rows);
                         bool cMatch = exactCols ? (m.getCols() == cols) : (m.getCols() >= cols);
-                        matched = rMatch && cMatch;
+                        if (rows == 1 && cols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+                        else matched = rMatch && cMatch;
                     }
                     
                     push(Value(matched));
@@ -1278,45 +1285,6 @@ namespace jc {
                 case OpCode::OP_SLICE_GET: {
                     uint8_t dims = readByte();
                     execSliceGet(dims);
-                    break;
-                }
-
-                case OpCode::OP_DESTRUCT: {
-                    uint8_t count = readByte();
-                    Value& rhs = peek(0);   // ★ 提取它的引用！不要剥夺它的栈地位！
-
-                    std::vector<Value> elements;
-                    if (rhs.isObjType(ObjType::REAL_MATRIX)) {
-                        for (double d : static_cast<ObjRealMatrix*>(rhs.asObj())->mat.rawData())
-                            elements.push_back(Value(d));
-                    }
-                    else if (rhs.isObjType(ObjType::COMPLEX_MATRIX)) {
-                        for (const auto& c : static_cast<ObjComplexMatrix*>(rhs.asObj())->mat.rawData())
-                            elements.push_back(Value(c));
-                    }
-                    else if (rhs.isObjType(ObjType::LIST)) {
-                        for (const auto& e : static_cast<ObjList*>(rhs.asObj())->vec)
-                            elements.push_back(e);
-                    }
-                    else if (rhs.isObjType(ObjType::STRING_MATRIX)) {
-                        for (const auto& s : static_cast<ObjStringMatrix*>(rhs.asObj())->mat.rawData())
-                            elements.push_back(Value(s));
-                    }
-                    else if (rhs.isString()) {
-                        for (char c : rhs.asString())
-                            elements.push_back(Value(std::string(1, c)));
-                    }
-                    else {
-                        throw std::runtime_error("VM Error: Cannot destructure this type.");
-                    }
-
-                    if (static_cast<int>(elements.size()) != count)
-                        throw std::runtime_error("VM Error: Destructuring size mismatch.");
-
-                    // ★ 将拆解出的元素依次压在原主体的上面！
-                    for (int j = 0; j < count; ++j) {
-                        push(elements[j]);
-                    }
                     break;
                 }
 

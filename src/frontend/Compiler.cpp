@@ -192,30 +192,40 @@ namespace jc {
         int loopStart = static_cast<int>(chunk()->code.size());
         int exitJump = chunk()->emitJump(OpCode::OP_ITER_NEXT, lastLine);
 
+        int skipMatchJump = -1;
         if (clause.isDestruct()) {
-            int n = static_cast<int>(clause.destructNames.size());
-            emit(OpCode::OP_DESTRUCT, lastLine);
-            emit(static_cast<uint8_t>(n), lastLine);
-            for (int j = n - 1; j >= 0; --j) {
-                const std::string& name = clause.destructNames[j].lexeme;
-                if (name == "_") { emit(OpCode::OP_POP, lastLine); continue; }
+            addLocal("<comp_val>", current().scopeDepth);
+            int valSlot = static_cast<int>(current().locals.size()) - 1;
+            emit(OpCode::OP_SET_LOCAL, lastLine);
+            emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_POP, lastLine);
 
+            std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+            collectPatternVars(clause.pattern.get(), boundVars);
+            for (const auto& varPair : boundVars) {
+                const std::string& name = varPair.first;
+                if (name == "_") continue;
                 int slot = resolveLocal(name);
-                // ★ 强制推导式变量为严格块级局部变量，防止污染外部作用域
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
                     addLocal(name, current().scopeDepth);
-                    slot = resolveLocal(name);
                 }
-                emit(OpCode::OP_SET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(slot), lastLine);
-                emit(OpCode::OP_POP, lastLine);
             }
-            emit(OpCode::OP_POP, lastLine);
+
+            std::vector<int> failJumps;
+            compilePatternMatch(clause.pattern.get(), valSlot, failJumps);
+
+            if (!failJumps.empty()) {
+                int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                for (int fj : failJumps) chunk()->patchJump(fj);
+                emit(OpCode::OP_POP, lastLine); // pop boolean
+                skipMatchJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                chunk()->patchJump(successJump);
+            }
+            current().locals.pop_back(); // untrack <comp_val>
         }
         else {
             const std::string& varName = clause.varName.lexeme;
             int slot = resolveLocal(varName);
-            // ★ 强制推导式变量为严格块级局部变量，防止污染外部作用域
             if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
                 addLocal(varName, current().scopeDepth);
                 slot = resolveLocal(varName);
@@ -226,6 +236,10 @@ namespace jc {
         }
 
         compileCompClause(expr, clauseIdx + 1);
+
+        if (skipMatchJump != -1) {
+            chunk()->patchJump(skipMatchJump);
+        }
 
         chunk()->emitLoop(loopStart, lastLine);
         chunk()->patchJump(exitJump);
@@ -1387,39 +1401,71 @@ namespace jc {
         int exitJump = chunk()->emitJump(OpCode::OP_ITER_NEXT, lastLine);
 
         if (expr->isDestruct()) {
-            int n = static_cast<int>(expr->destructNames.size());
-            emit(OpCode::OP_DESTRUCT, lastLine);
-            emit(static_cast<uint8_t>(n), lastLine);
-            for (int j = n - 1; j >= 0; --j) {
-                const std::string& name = expr->destructNames[j].lexeme;
-                if (name == "_") { emit(OpCode::OP_POP, lastLine); continue; }
-                if (current().constNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+            addLocal("<forin_val>", current().scopeDepth);
+            int valSlot = static_cast<int>(current().locals.size()) - 1;
+            emit(OpCode::OP_SET_LOCAL, lastLine);
+            emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_POP, lastLine);
+
+            std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+            collectPatternVars(expr->pattern.get(), boundVars);
+
+            std::vector<std::string> tempStateNames;
+            for (auto& varPair : boundVars) {
+                const std::string& name = varPair.first;
+                ScopeModifier& mod = varPair.second;
+                if (name == "_") continue;
                 
+                if (mod == ScopeModifier::None && expr->isLocal) mod = ScopeModifier::Local;
+
+                if (mod == ScopeModifier::Local) {
+                    if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+                } else if (mod == ScopeModifier::Ref) {
+                    if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    current().refNames.insert(name);
+                } else if (mod == ScopeModifier::State) {
+                    if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    tempStateNames.push_back(name);
+                }
+            }
+
+            for (const auto& name : tempStateNames) {
+                current().stateNames.insert(name);
+                current().explicitStateNames.insert(name);
+            }
+
+            for (const auto& varPair : boundVars) {
+                const std::string& name = varPair.first;
+                ScopeModifier mod = varPair.second;
+                if (name == "_") continue;
+                
+                if (current().constNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                 if (stateStack.size() == 1) knownGlobals.insert(name);
 
                 int slot = resolveLocal(name);
-                if (expr->isLocal) {
+                if (mod == ScopeModifier::Local) {
                     if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(name, current().scopeDepth); slot = resolveLocal(name);
+                        addLocal(name, current().scopeDepth);
                     }
-                } else {
+                } else if (mod == ScopeModifier::None) {
                     if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                        addLocal(name, 0); slot = resolveLocal(name);
+                        addLocal(name, 0);
                     }
                 }
-                if (slot != -1) { emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); }
-                else { 
-                    uint16_t idx = identifierConstant(name); 
-                    if (current().refNames.count(name) > 0) {
-                        emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
-                    } else {
-                        emit(OpCode::OP_SET_GLOBAL, lastLine); 
-                    }
-                    emit16(idx, lastLine); 
-                }
-                emit(OpCode::OP_POP, lastLine);
             }
-            emit(OpCode::OP_POP, lastLine);
+
+            std::vector<int> failJumps;
+            compilePatternMatch(expr->pattern.get(), valSlot, failJumps);
+
+            if (!failJumps.empty()) {
+                int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                for (int fj : failJumps) chunk()->patchJump(fj);
+                emit(OpCode::OP_POP, lastLine); // pop boolean
+                emit(OpCode::OP_NONE, lastLine); // push dummy body result for the loop end POP
+                loopStack.back().continueJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
+                chunk()->patchJump(successJump);
+            }
+            current().locals.pop_back(); // untrack <forin_val>
         }
         else {
             const std::string& varName = expr->varName.lexeme;
@@ -1794,115 +1840,42 @@ namespace jc {
         return {};
     }
 
-    std::any Compiler::visitDestructAssign(DestructAssign* expr) {
-        int n = static_cast<int>(expr->targets.size());
-
-        // ★ Pre-register ref names BEFORE compiling RHS so reads resolve to upvalues
-        std::vector<std::string> tempStateNames;
-        for (int i = 0; i < n; ++i) {
-            Expr* targetExpr = expr->targets[i].get();
-            std::string name;
-            bool isLocal = false, isRef = false, isState = false;
-
-            if (auto* var = dynamic_cast<Variable*>(targetExpr)) {
-                name = var->name.lexeme;
+    void Compiler::collectPatternVars(Pattern* pat, std::vector<std::pair<std::string, ScopeModifier>>& boundVars) {
+        if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+            if (vp->name.lexeme != "_") boundVars.push_back({vp->name.lexeme, vp->modifier});
+        } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
+            if (rp->name.lexeme != "_") boundVars.push_back({rp->name.lexeme, rp->modifier});
+        } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
+            for (auto& e : lp->elements) collectPatternVars(e.get(), boundVars);
+            if (lp->rest) collectPatternVars(lp->rest.get(), boundVars);
+        } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
+            for (auto& row : mp->rows) {
+                for (auto& e : row) collectPatternVars(e.get(), boundVars);
             }
-            else if (auto* loc = dynamic_cast<LocalDecl*>(targetExpr)) {
-                name = loc->name.lexeme; isLocal = true;
-            }
-            else if (auto* ref = dynamic_cast<RefDecl*>(targetExpr)) {
-                name = ref->name.lexeme; isRef = true;
-            }
-            else if (auto* st = dynamic_cast<StateDecl*>(targetExpr)) {
-                name = st->name.lexeme; isState = true;
-            }
-
-            if (!name.empty() && name != "_") {
-                if (isLocal) {
-                    if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw
-                        std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
-                }
-                else if (isRef) {
-                    if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                        current().refNames.insert(name);
-                }
-                else if (isState) {
-                    if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                        // Defer state registration so RHS can read outer variables
-                        tempStateNames.push_back(name);
-                }
-            }
+            if (mp->restRow) collectPatternVars(mp->restRow.get(), boundVars);
+        } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
+            for (auto& e : dp->entries) collectPatternVars(e.second.get(), boundVars);
+            if (dp->rest) collectPatternVars(dp->rest.get(), boundVars);
         }
+    }
 
-        compileNode(expr->value.get());
-
-        for (const auto& name : tempStateNames) {
-            current().stateNames.insert(name);
-            current().explicitStateNames.insert(name);
-        }
-        emit(OpCode::OP_DESTRUCT, lastLine);
-        emit(static_cast<uint8_t>(n), lastLine);
-
-        // ★ 引入临时变量机制，将栈顶的 N 个解构值依次存入临时变量
-        std::vector<int> tmpSlots(n);
-        for (int i = n - 1; i >= 0; --i) {
-            addLocal("", current().scopeDepth);
-            tmpSlots[i] = static_cast<int>(current().locals.size()) - 1;
-            emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(tmpSlots[i]), lastLine);
+    void Compiler::compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps) {
+        if (auto* lit = dynamic_cast<LiteralPattern*>(p)) {
+            compileNode(lit->literal.get());
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_EQUAL, lastLine);
+            failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
-        }
-
-        // ★ 依次将临时变量的值赋给目标
-        for (int i = 0; i < n; ++i) {
-            Expr* targetExpr = expr->targets[i].get();
-            
-            std::string name;
-            bool isLocal = false, isRef = false, isState = false;
-            
-            if (auto* var = dynamic_cast<Variable*>(targetExpr)) {
-                name = var->name.lexeme;
-            } else if (auto* loc = dynamic_cast<LocalDecl*>(targetExpr)) {
-                name = loc->name.lexeme; isLocal = true;
-            } else if (auto* ref = dynamic_cast<RefDecl*>(targetExpr)) {
-                name = ref->name.lexeme; isRef = true;
-            } else if (auto* st = dynamic_cast<StateDecl*>(targetExpr)) {
-                name = st->name.lexeme; isState = true;
-            }
-
-            if (!name.empty()) {
-                if (name == "_") continue;
-                if (current().constNames.count(name) > 0) {
-                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
-                }
-                if (stateStack.size() == 1) knownGlobals.insert(name);
-
-                int slot = resolveLocal(name);
-                if (isLocal) {
-                    if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(name, current().scopeDepth);
-                    }
-                } else if (!isRef && !isState) {
-                    if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                        addLocal(name, 0);
-                    }
-                }
-            }
-
-            // 将临时变量的值压入栈顶
-            emit(OpCode::OP_GET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(tmpSlots[i]), lastLine);
-
-            // 赋值
-            if (!name.empty()) {
-                Variable v(Token(TokenType::IDENTIFIER, name, 0));
-                if (isState) {
-                    int upvalue = resolveUpvalue(name);
+        } else if (auto* var = dynamic_cast<VariablePattern*>(p)) {
+            if (var->name.lexeme != "_") {
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                
+                if (var->modifier == ScopeModifier::State) {
+                    int upvalue = resolveUpvalue(var->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
                         emit16(static_cast<uint16_t>(upvalue), lastLine);
                         emit(OpCode::OP_IS_UNINIT, lastLine);
-                        
                         int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                         emit(OpCode::OP_POP, lastLine); // pop boolean
                         
@@ -1910,28 +1883,423 @@ namespace jc {
                         emit16(static_cast<uint16_t>(upvalue), lastLine);
                         
                         int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                        
                         chunk()->patchJump(skipJump);
                         emit(OpCode::OP_POP, lastLine); // pop boolean
-                        
                         chunk()->patchJump(endJump);
                     }
                 } else {
+                    Variable v(var->name);
                     emitStoreTarget(&v);
                 }
-            } else {
-                // IndexAccess, DotAccess
-                emitStoreTarget(targetExpr);
+                emit(OpCode::OP_POP, lastLine);
+            }
+        } else if (auto* exprPat = dynamic_cast<ExprPattern*>(p)) {
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emitStoreTarget(exprPat->expr.get());
+            emit(OpCode::OP_POP, lastLine);
+        } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
+            int minCols = 0;
+            bool hasRest = lp->rest != nullptr;
+            for (auto& e : lp->elements) {
+                if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
+                else minCols++;
+            }
+            uint8_t exactMask = hasRest ? 0 : 3; // 3 means both exact
+            exactMask |= 4; // ★ 标记为 1D 模式 (ListPattern)
+
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_MATCH_SHAPE, lastLine);
+            emit16(1, lastLine);
+            emit16(static_cast<uint16_t>(minCols), lastLine);
+            emit(exactMask, lastLine);
+            failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+            emit(OpCode::OP_POP, lastLine);
+
+            int c_idx = 0;
+            bool afterRest = false;
+            int rightOffset = 0;
+            for (size_t i = 0; i < lp->elements.size(); ++i) {
+                if (dynamic_cast<RestPattern*>(lp->elements[i].get())) afterRest = true;
+                else if (afterRest) rightOffset++;
             }
             
-            // 弹出赋值后留在栈顶的值
+            afterRest = false;
+            int currentRightOffset = rightOffset;
+
+            for (size_t i = 0; i < lp->elements.size(); ++i) {
+                if (auto* restPat = dynamic_cast<RestPattern*>(lp->elements[i].get())) {
+                    afterRest = true;
+                    if (restPat->name.lexeme != "_") {
+                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
+                        if (rightOffset > 0) {
+                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-rightOffset))), lastLine);
+                        } else {
+                            emit(OpCode::OP_NONE, lastLine);
+                        }
+                        emit(OpCode::OP_NONE, lastLine);
+                        emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
+                        
+                        if (restPat->modifier == ScopeModifier::State) {
+                            int upvalue = resolveUpvalue(restPat->name.lexeme);
+                            if (upvalue != -1) {
+                                emit(OpCode::OP_GET_UPVALUE, lastLine);
+                                emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                emit(OpCode::OP_IS_UNINIT, lastLine);
+                                int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                                emit(OpCode::OP_POP, lastLine);
+                                emit(OpCode::OP_SET_UPVALUE, lastLine);
+                                emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                                chunk()->patchJump(skipJump);
+                                emit(OpCode::OP_POP, lastLine);
+                                chunk()->patchJump(endJump);
+                            }
+                        } else {
+                            Variable v(restPat->name);
+                            emitStoreTarget(&v);
+                        }
+                        emit(OpCode::OP_POP, lastLine);
+                    }
+                } else {
+                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                    if (afterRest) {
+                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-currentRightOffset))), lastLine);
+                        currentRightOffset--;
+                    } else {
+                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
+                        c_idx++;
+                    }
+                    emit(OpCode::OP_INDEX_GET, lastLine); emit(1, lastLine);
+                    
+                    addLocal("<pat_tmp>", current().scopeDepth);
+                    int tmpSlot = static_cast<int>(current().locals.size()) - 1;
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                    emit(OpCode::OP_POP, lastLine);
+                    
+                    compilePatternMatch(lp->elements[i].get(), tmpSlot, failJumps);
+                    current().locals.pop_back();
+                }
+            }
+
+            if (lp->rest && lp->rest->name.lexeme != "_") {
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
+                emit(OpCode::OP_NONE, lastLine);
+                emit(OpCode::OP_NONE, lastLine);
+                emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
+                
+                if (lp->rest->modifier == ScopeModifier::State) {
+                    int upvalue = resolveUpvalue(lp->rest->name.lexeme);
+                    if (upvalue != -1) {
+                        emit(OpCode::OP_GET_UPVALUE, lastLine);
+                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit(OpCode::OP_IS_UNINIT, lastLine);
+                        int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                        emit(OpCode::OP_POP, lastLine);
+                        emit(OpCode::OP_SET_UPVALUE, lastLine);
+                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                        chunk()->patchJump(skipJump);
+                        emit(OpCode::OP_POP, lastLine);
+                        chunk()->patchJump(endJump);
+                    }
+                } else {
+                    Variable v(lp->rest->name);
+                    emitStoreTarget(&v);
+                }
+                emit(OpCode::OP_POP, lastLine);
+            }
+        } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
+            int rows = static_cast<int>(mp->rows.size());
+            int minCols = 0;
+            bool exactCols = false;
+            bool anyRowNoRest = false;
+            for (const auto& row : mp->rows) {
+                bool hasRest = false;
+                int fixed = 0;
+                for (const auto& e : row) {
+                    if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
+                    else fixed++;
+                }
+                if (fixed > minCols) minCols = fixed;
+                if (!hasRest) anyRowNoRest = true;
+            }
+            if (anyRowNoRest) exactCols = true;
+            if (mp->rows.empty() && !mp->restRow) exactCols = true;
+
+            uint8_t exactMask = 0;
+            if (!mp->restRow) exactMask |= 1; // exactRows
+            if (exactCols) exactMask |= 2;    // exactCols
+            
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_MATCH_SHAPE, lastLine);
+            emit16(static_cast<uint16_t>(rows), lastLine);
+            emit16(static_cast<uint16_t>(minCols), lastLine);
+            emit(exactMask, lastLine);
+            failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
+
+            for (int r = 0; r < rows; ++r) {
+                int c_idx = 0;
+                bool afterRest = false;
+                int rightOffset = 0;
+                for (size_t i = 0; i < mp->rows[r].size(); ++i) {
+                    if (dynamic_cast<RestPattern*>(mp->rows[r][i].get())) afterRest = true;
+                    else if (afterRest) rightOffset++;
+                }
+                
+                afterRest = false;
+                int currentRightOffset = rightOffset;
+
+                for (size_t i = 0; i < mp->rows[r].size(); ++i) {
+                    auto& e = mp->rows[r][i];
+                    if (auto* restPat = dynamic_cast<RestPattern*>(e.get())) {
+                        afterRest = true;
+                        if (restPat->name.lexeme != "_") {
+                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r))), lastLine);
+                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r + 1))), lastLine);
+                            emit(OpCode::OP_NONE, lastLine);
+                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
+                            if (rightOffset > 0) {
+                                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-rightOffset))), lastLine);
+                            } else {
+                                emit(OpCode::OP_NONE, lastLine);
+                            }
+                            emit(OpCode::OP_NONE, lastLine);
+                            emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
+                            
+                            if (restPat->modifier == ScopeModifier::State) {
+                                int upvalue = resolveUpvalue(restPat->name.lexeme);
+                                if (upvalue != -1) {
+                                    emit(OpCode::OP_GET_UPVALUE, lastLine);
+                                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                    emit(OpCode::OP_IS_UNINIT, lastLine);
+                                    int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                                    emit(OpCode::OP_POP, lastLine);
+                                    emit(OpCode::OP_SET_UPVALUE, lastLine);
+                                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                    int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                                    chunk()->patchJump(skipJump);
+                                    emit(OpCode::OP_POP, lastLine);
+                                    chunk()->patchJump(endJump);
+                                }
+                            } else {
+                                Variable v(restPat->name);
+                                emitStoreTarget(&v);
+                            }
+                            emit(OpCode::OP_POP, lastLine);
+                        }
+                    } else {
+                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r))), lastLine);
+                        if (afterRest) {
+                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-currentRightOffset))), lastLine);
+                            currentRightOffset--;
+                        } else {
+                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
+                            c_idx++;
+                        }
+                        emit(OpCode::OP_INDEX_GET, lastLine); emit(2, lastLine);
+                        
+                        addLocal("<pat_tmp>", current().scopeDepth);
+                        int tmpSlot = static_cast<int>(current().locals.size()) - 1;
+                        emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                        emit(OpCode::OP_POP, lastLine);
+                        
+                        compilePatternMatch(e.get(), tmpSlot, failJumps);
+                        current().locals.pop_back();
+                    }
+                }
+            }
+
+            if (mp->restRow && mp->restRow->name.lexeme != "_") {
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(rows))), lastLine);
+                emit(OpCode::OP_NONE, lastLine);
+                emit(OpCode::OP_NONE, lastLine);
+                emit(OpCode::OP_NONE, lastLine);
+                emit(OpCode::OP_NONE, lastLine);
+                emit(OpCode::OP_NONE, lastLine);
+                emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
+                
+                if (mp->restRow->modifier == ScopeModifier::State) {
+                    int upvalue = resolveUpvalue(mp->restRow->name.lexeme);
+                    if (upvalue != -1) {
+                        emit(OpCode::OP_GET_UPVALUE, lastLine);
+                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit(OpCode::OP_IS_UNINIT, lastLine);
+                        int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                        emit(OpCode::OP_POP, lastLine);
+                        emit(OpCode::OP_SET_UPVALUE, lastLine);
+                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                        chunk()->patchJump(skipJump);
+                        emit(OpCode::OP_POP, lastLine);
+                        chunk()->patchJump(endJump);
+                    }
+                } else {
+                    Variable v(mp->restRow->name);
+                    emitStoreTarget(&v);
+                }
+                emit(OpCode::OP_POP, lastLine);
+            }
+        } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("dict"), lastLine);
+            
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("instance"), lastLine);
+            emit(OpCode::OP_BIT_OR, lastLine);
+
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("namespace"), lastLine);
+            emit(OpCode::OP_BIT_OR, lastLine);
+            
+            failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+            emit(OpCode::OP_POP, lastLine);
+
+            for (auto& entry : dp->entries) {
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_TRY_GET_PROPERTY, lastLine); emit16(identifierConstant(entry.first), lastLine);
+                
+                int failJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                
+                // Success path:
+                emit(OpCode::OP_POP, lastLine); // pop true
+                addLocal("<pat_tmp>", current().scopeDepth);
+                int tmpSlot = static_cast<int>(current().locals.size()) - 1;
+                emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                emit(OpCode::OP_POP, lastLine); // pop the value
+                
+                compilePatternMatch(entry.second.get(), tmpSlot, failJumps);
+                current().locals.pop_back();
+                
+                int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                
+                // Fail path:
+                chunk()->patchJump(failJump);
+                emit(OpCode::OP_POP, lastLine); // pop false
+                emit(OpCode::OP_POP, lastLine); // pop none
+                emit(OpCode::OP_FALSE, lastLine); // push false for the outer failJumps handler
+                failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
+                
+                chunk()->patchJump(endJump);
+            }
+
+            if (dp->rest && dp->rest->name.lexeme != "_") {
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                for (auto& entry : dp->entries) {
+                    emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
+                }
+                emit(OpCode::OP_DICT_REST, lastLine);
+                emit16(static_cast<uint16_t>(dp->entries.size()), lastLine);
+                
+                if (dp->rest->modifier == ScopeModifier::State) {
+                    int upvalue = resolveUpvalue(dp->rest->name.lexeme);
+                    if (upvalue != -1) {
+                        emit(OpCode::OP_GET_UPVALUE, lastLine);
+                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit(OpCode::OP_IS_UNINIT, lastLine);
+                        int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                        emit(OpCode::OP_POP, lastLine);
+                        emit(OpCode::OP_SET_UPVALUE, lastLine);
+                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                        chunk()->patchJump(skipJump);
+                        emit(OpCode::OP_POP, lastLine);
+                        chunk()->patchJump(endJump);
+                    }
+                } else {
+                    Variable v(dp->rest->name);
+                    emitStoreTarget(&v);
+                }
+                emit(OpCode::OP_POP, lastLine);
+            }
+        }
+    }
+
+    std::any Compiler::visitDestructAssign(DestructAssign* expr) {
+        // 1. Pre-register ref/state names
+        std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+        collectPatternVars(expr->pattern.get(), boundVars);
+
+        std::vector<std::string> tempStateNames;
+        for (const auto& varPair : boundVars) {
+            const std::string& name = varPair.first;
+            ScopeModifier mod = varPair.second;
+            
+            if (mod == ScopeModifier::Local) {
+                if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+            } else if (mod == ScopeModifier::Ref) {
+                if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().refNames.insert(name);
+            } else if (mod == ScopeModifier::State) {
+                if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                tempStateNames.push_back(name);
+            }
         }
 
-        // ★ 释放临时变量
-        for (int i = 0; i < n; ++i) {
-            current().locals.pop_back();
+        // 2. Compile RHS
+        compileNode(expr->value.get());
+
+        for (const auto& name : tempStateNames) {
+            current().stateNames.insert(name);
+            current().explicitStateNames.insert(name);
         }
+
+        // 3. Save RHS to a temporary local variable
+        addLocal("<destruct_val>", current().scopeDepth);
+        int valSlot = static_cast<int>(current().locals.size()) - 1;
+        emit(OpCode::OP_SET_LOCAL, lastLine);
+        emit16(static_cast<uint16_t>(valSlot), lastLine);
+        emit(OpCode::OP_POP, lastLine);
+
+        // 4. Register locals for bound variables
+        for (const auto& varPair : boundVars) {
+            const std::string& name = varPair.first;
+            ScopeModifier mod = varPair.second;
+            
+            if (current().constNames.count(name) > 0) {
+                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+            }
+            if (stateStack.size() == 1) knownGlobals.insert(name);
+
+            int slot = resolveLocal(name);
+            if (mod == ScopeModifier::Local) {
+                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                    addLocal(name, current().scopeDepth);
+                }
+            } else if (mod == ScopeModifier::None) {
+                if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+                    addLocal(name, 0);
+                }
+            }
+        }
+
+        // 5. Compile pattern match
+        std::vector<int> failJumps;
+        compilePatternMatch(expr->pattern.get(), valSlot, failJumps);
+
+        // 6. Handle match failure
+        if (!failJumps.empty()) {
+            int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+            for (int fj : failJumps) {
+                chunk()->patchJump(fj);
+            }
+            emit(OpCode::OP_POP, lastLine); // pop the boolean from match failure
+            uint16_t msgIdx = identifierConstant("TypeError: Destructuring pattern match failed.");
+            emit(OpCode::OP_CONSTANT, lastLine);
+            emit16(msgIdx, lastLine);
+            emit(OpCode::OP_THROW, lastLine);
+            chunk()->patchJump(successJump);
+        }
+
+        // 7. Restore RHS value to stack top and clean up temp local
+        emit(OpCode::OP_GET_LOCAL, lastLine);
+        emit16(static_cast<uint16_t>(valSlot), lastLine);
+        current().locals.pop_back();
 
         return {};
     }
@@ -2451,145 +2819,6 @@ namespace jc {
         throw std::runtime_error("Compiler Error: Slice expression should be handled by visitIndexAccess.");
     }
 
-    std::any Compiler::visitDictDestructAssign(DictDestructAssign* expr) {
-        lastLine = 0;
-
-        // ★ Pre-register ref names BEFORE compiling RHS so reads resolve to upvalues
-        std::vector<std::string> tempStateNames;
-        for (auto& target : expr->targets) {
-            Expr* targetExpr = target.second.get();
-            std::string name;
-            bool isLocal = false, isRef = false, isState = false;
-            
-            if (auto* var = dynamic_cast<Variable*>(targetExpr)) {
-                name = var->name.lexeme;
-                lastLine = var->name.line;
-            } else if (auto* loc = dynamic_cast<LocalDecl*>(targetExpr)) {
-                name = loc->name.lexeme; isLocal = true;
-                lastLine = loc->name.line;
-            } else if (auto* ref = dynamic_cast<RefDecl*>(targetExpr)) {
-                name = ref->name.lexeme; isRef = true;
-                lastLine = ref->name.line;
-            } else if (auto* st = dynamic_cast<StateDecl*>(targetExpr)) {
-                name = st->name.lexeme; isState = true;
-                lastLine = st->name.line;
-            }
-            
-            if (!name.empty() && name != "_") {
-                if (isLocal) {
-                    if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
-                } else if (isRef) {
-                    if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().refNames.insert(name);
-                } else if (isState) {
-                    if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    // Defer state registration so RHS can read outer variables
-                    tempStateNames.push_back(name);
-                }
-            }
-        }
-
-        // 1. 将右侧要解构的数据源（Dict 或 Instance）解析并压入栈顶
-        compileNode(expr->value.get());
-
-        for (const auto& name : tempStateNames) {
-            current().stateNames.insert(name);
-            current().explicitStateNames.insert(name);
-        }
-
-        // 2. 依次扒取属性并分配
-        for (auto& target : expr->targets) {
-            const std::string& fieldName = target.first;
-            Expr* targetExpr = target.second.get();
-
-            std::string name;
-            bool isLocal = false, isRef = false, isState = false;
-
-            if (auto* var = dynamic_cast<Variable*>(targetExpr)) {
-                name = var->name.lexeme;
-            }
-            else if (auto* loc = dynamic_cast<LocalDecl*>(targetExpr)) {
-                name = loc->name.lexeme; isLocal = true;
-            }
-            else if (auto* ref = dynamic_cast<RefDecl*>(targetExpr)) {
-                name = ref->name.lexeme; isRef = true;
-            }
-            else if (auto* st = dynamic_cast<StateDecl*>(targetExpr)) {
-                name = st->name.lexeme; isState = true;
-            }
-
-            // 将数据源 DUP 复制一份到栈顶，用来提取属性（因为 GET_PROPERTY 会吃掉原对象）
-            emit(OpCode::OP_DUP, lastLine);
-
-            // 执行 obj.fieldName 提取操作
-            uint16_t nameIdx = identifierConstant(fieldName);
-            emit(OpCode::OP_GET_PROPERTY, lastLine);
-            emit16(nameIdx, lastLine);
-
-            if (!name.empty()) {
-                if (name == "_") {
-                    emit(OpCode::OP_POP, lastLine);
-                    continue;
-                }
-                if (current().constNames.count(name) > 0) {
-                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
-                }
-                if (stateStack.size() == 1) knownGlobals.insert(name);
-
-                int slot = resolveLocal(name);
-                if (isLocal) {
-                    if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(name, current().scopeDepth);
-                    }
-                }
-                else if (!isRef && !isState) {
-                    if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 &&
-                        current().stateNames.count(name) == 0) {
-                        addLocal(name, 0);
-                    }
-                }
-            }
-
-            // 此时提取到的数值在栈顶，准备塞入目标中
-            if (!name.empty()) {
-                Variable v(Token(TokenType::IDENTIFIER, name, 0));
-                if (isState) {
-                    int upvalue = resolveUpvalue(name);
-                    if (upvalue != -1) {
-                        emit(OpCode::OP_GET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
-                        emit(OpCode::OP_IS_UNINIT, lastLine);
-
-                        int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
-                        emit(OpCode::OP_POP, lastLine); // pop boolean
-
-                        emit(OpCode::OP_SET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
-
-                        int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-
-                        chunk()->patchJump(skipJump);
-                        emit(OpCode::OP_POP, lastLine); // pop boolean
-
-                        chunk()->patchJump(endJump);
-                    }
-                }
-                else {
-                    emitStoreTarget(&v);
-                }
-            }
-            else {
-                // IndexAccess, DotAccess
-                emitStoreTarget(targetExpr);
-            }
-
-            // 将刚刚存进去的值弹栈丢弃，进入下一个 key 的解构
-            emit(OpCode::OP_POP, lastLine);
-        }
-
-        return {};
-    }
-
     std::any Compiler::visitSequenceExpr(SequenceExpr* expr) {
         for (size_t i = 0; i < expr->expressions.size(); ++i) {
             compileNode(expr->expressions[i].get());
@@ -2617,31 +2846,33 @@ namespace jc {
         for (auto& branch : expr->branches) {
             beginScope();
 
-            std::vector<std::string> boundVars;
-            std::function<void(Pattern*)> collectVars = [&](Pattern* pat) {
-                if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
-                    if (vp->name.lexeme != "_") boundVars.push_back(vp->name.lexeme);
-                } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
-                    if (rp->name.lexeme != "_") boundVars.push_back(rp->name.lexeme);
-                } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
-                    for (auto& e : lp->elements) collectVars(e.get());
-                    if (lp->rest) collectVars(lp->rest.get());
-                } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
-                    for (auto& row : mp->rows) {
-                        for (auto& e : row) collectVars(e.get());
-                    }
-                    if (mp->restRow) collectVars(mp->restRow.get());
-                } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
-                    for (auto& e : dp->entries) collectVars(e.second.get());
-                    if (dp->rest) collectVars(dp->rest.get());
-                }
-            };
-            for (auto& pat : branch.patterns) collectVars(pat.get());
+            std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+            for (auto& pat : branch.patterns) collectPatternVars(pat.get(), boundVars);
 
-            for (const auto& var : boundVars) {
+            for (const auto& varPair : boundVars) {
+                const std::string& var = varPair.first;
+                ScopeModifier mod = varPair.second;
+                
+                if (mod == ScopeModifier::Local) {
+                    if (current().stateNames.count(var) > 0 || current().refNames.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+                } else if (mod == ScopeModifier::Ref) {
+                    if (current().stateNames.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    current().refNames.insert(var);
+                } else if (mod == ScopeModifier::State) {
+                    if (current().refNames.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    current().stateNames.insert(var);
+                    current().explicitStateNames.insert(var);
+                }
+
                 int slot = resolveLocal(var);
-                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                    addLocal(var, current().scopeDepth);
+                if (mod == ScopeModifier::Local) {
+                    if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                        addLocal(var, current().scopeDepth);
+                    }
+                } else if (mod == ScopeModifier::None) {
+                    if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                        addLocal(var, current().scopeDepth);
+                    }
                 }
             }
 
@@ -2652,246 +2883,7 @@ namespace jc {
                 auto& pat = branch.patterns[pi];
                 std::vector<int> failJumps;
 
-                std::function<void(Pattern*, int)> compilePat = [&](Pattern* p, int valSlot) {
-                    if (auto* lit = dynamic_cast<LiteralPattern*>(p)) {
-                        compileNode(lit->literal.get());
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                        emit(OpCode::OP_EQUAL, lastLine);
-                        failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
-                        emit(OpCode::OP_POP, lastLine);
-                    } else if (auto* var = dynamic_cast<VariablePattern*>(p)) {
-                        if (var->name.lexeme != "_") {
-                            int slot = resolveLocal(var->name.lexeme);
-                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine);
-                            emit(OpCode::OP_POP, lastLine);
-                        }
-                    } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
-                        int minCols = 0;
-                        bool hasRest = lp->rest != nullptr;
-                        for (auto& e : lp->elements) {
-                            if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                            else minCols++;
-                        }
-                        uint8_t exactMask = hasRest ? 0 : 3; // 3 means both exact
-
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                        emit(OpCode::OP_MATCH_SHAPE, lastLine);
-                        emit16(1, lastLine);
-                        emit16(static_cast<uint16_t>(minCols), lastLine);
-                        emit(exactMask, lastLine);
-                        failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
-                        emit(OpCode::OP_POP, lastLine);
-
-                        int c_idx = 0;
-                        bool afterRest = false;
-                        int rightOffset = 0;
-                        for (size_t i = 0; i < lp->elements.size(); ++i) {
-                            if (dynamic_cast<RestPattern*>(lp->elements[i].get())) afterRest = true;
-                            else if (afterRest) rightOffset++;
-                        }
-                        
-                        afterRest = false;
-                        int currentRightOffset = rightOffset;
-
-                        for (size_t i = 0; i < lp->elements.size(); ++i) {
-                            if (auto* restPat = dynamic_cast<RestPattern*>(lp->elements[i].get())) {
-                                afterRest = true;
-                                if (restPat->name.lexeme != "_") {
-                                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                                    emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
-                                    if (rightOffset > 0) {
-                                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-rightOffset))), lastLine);
-                                    } else {
-                                        emit(OpCode::OP_NONE, lastLine);
-                                    }
-                                    emit(OpCode::OP_NONE, lastLine);
-                                    emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
-                                    
-                                    int slot = resolveLocal(restPat->name.lexeme);
-                                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine);
-                                    emit(OpCode::OP_POP, lastLine);
-                                }
-                            } else {
-                                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                                if (afterRest) {
-                                    emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-currentRightOffset))), lastLine);
-                                    currentRightOffset--;
-                                } else {
-                                    emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
-                                    c_idx++;
-                                }
-                                emit(OpCode::OP_INDEX_GET, lastLine); emit(1, lastLine);
-                                
-                                addLocal("<pat_tmp>", current().scopeDepth);
-                                int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                                emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
-                                emit(OpCode::OP_POP, lastLine);
-                                
-                                compilePat(lp->elements[i].get(), tmpSlot);
-                                current().locals.pop_back();
-                            }
-                        }
-
-                        if (lp->rest && lp->rest->name.lexeme != "_") {
-                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
-                            emit(OpCode::OP_NONE, lastLine);
-                            emit(OpCode::OP_NONE, lastLine);
-                            emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
-                            
-                            int slot = resolveLocal(lp->rest->name.lexeme);
-                            emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine);
-                            emit(OpCode::OP_POP, lastLine);
-                        }
-                    } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
-                        int rows = static_cast<int>(mp->rows.size());
-                        int minCols = 0;
-                        bool exactCols = false;
-                        bool anyRowNoRest = false;
-                        for (const auto& row : mp->rows) {
-                            bool hasRest = false;
-                            int fixed = 0;
-                            for (const auto& e : row) {
-                                if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                                else fixed++;
-                            }
-                            if (fixed > minCols) minCols = fixed;
-                            if (!hasRest) anyRowNoRest = true;
-                        }
-                        if (anyRowNoRest) exactCols = true;
-                        if (mp->rows.empty() && !mp->restRow) exactCols = true;
-
-                        uint8_t exactMask = 0;
-                        if (!mp->restRow) exactMask |= 1; // exactRows
-                        if (exactCols) exactMask |= 2;    // exactCols
-                        
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                        emit(OpCode::OP_MATCH_SHAPE, lastLine);
-                        emit16(static_cast<uint16_t>(rows), lastLine);
-                        emit16(static_cast<uint16_t>(minCols), lastLine);
-                        emit(exactMask, lastLine);
-                        failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
-                        emit(OpCode::OP_POP, lastLine);
-
-                        for (int r = 0; r < rows; ++r) {
-                            int c_idx = 0;
-                            bool afterRest = false;
-                            int rightOffset = 0;
-                            for (size_t i = 0; i < mp->rows[r].size(); ++i) {
-                                if (dynamic_cast<RestPattern*>(mp->rows[r][i].get())) afterRest = true;
-                                else if (afterRest) rightOffset++;
-                            }
-                            
-                            afterRest = false;
-                            int currentRightOffset = rightOffset;
-
-                            for (size_t i = 0; i < mp->rows[r].size(); ++i) {
-                                auto& e = mp->rows[r][i];
-                                if (auto* restPat = dynamic_cast<RestPattern*>(e.get())) {
-                                    afterRest = true;
-                                    if (restPat->name.lexeme != "_") {
-                                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r))), lastLine);
-                                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r + 1))), lastLine);
-                                        emit(OpCode::OP_NONE, lastLine);
-                                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
-                                        if (rightOffset > 0) {
-                                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-rightOffset))), lastLine);
-                                        } else {
-                                            emit(OpCode::OP_NONE, lastLine);
-                                        }
-                                        emit(OpCode::OP_NONE, lastLine);
-                                        emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
-                                        
-                                        int slot = resolveLocal(restPat->name.lexeme);
-                                        emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine);
-                                        emit(OpCode::OP_POP, lastLine);
-                                    }
-                                } else {
-                                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                                    emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r))), lastLine);
-                                    if (afterRest) {
-                                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-currentRightOffset))), lastLine);
-                                        currentRightOffset--;
-                                    } else {
-                                        emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
-                                        c_idx++;
-                                    }
-                                    emit(OpCode::OP_INDEX_GET, lastLine); emit(2, lastLine);
-                                    
-                                    addLocal("<pat_tmp>", current().scopeDepth);
-                                    int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
-                                    emit(OpCode::OP_POP, lastLine);
-                                    
-                                    compilePat(e.get(), tmpSlot);
-                                    current().locals.pop_back();
-                                }
-                            }
-                        }
-
-                        if (mp->restRow && mp->restRow->name.lexeme != "_") {
-                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(rows))), lastLine);
-                            emit(OpCode::OP_NONE, lastLine);
-                            emit(OpCode::OP_NONE, lastLine);
-                            emit(OpCode::OP_NONE, lastLine);
-                            emit(OpCode::OP_NONE, lastLine);
-                            emit(OpCode::OP_NONE, lastLine);
-                            emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
-                            
-                            int slot = resolveLocal(mp->restRow->name.lexeme);
-                            emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine);
-                            emit(OpCode::OP_POP, lastLine);
-                        }
-                    } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                        emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("dict"), lastLine);
-                        
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                        emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("instance"), lastLine);
-                        emit(OpCode::OP_BIT_OR, lastLine);
-
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                        emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("namespace"), lastLine);
-                        emit(OpCode::OP_BIT_OR, lastLine);
-                        
-                        failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
-                        emit(OpCode::OP_POP, lastLine);
-
-                        for (auto& entry : dp->entries) {
-                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            emit(OpCode::OP_TRY_GET_PROPERTY, lastLine); emit16(identifierConstant(entry.first), lastLine);
-                            
-                            failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
-                            emit(OpCode::OP_POP, lastLine); // pop the boolean
-                            
-                            addLocal("<pat_tmp>", current().scopeDepth);
-                            int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                            emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
-                            emit(OpCode::OP_POP, lastLine); // pop the value
-                            
-                            compilePat(entry.second.get(), tmpSlot);
-                            current().locals.pop_back();
-                        }
-
-                        if (dp->rest && dp->rest->name.lexeme != "_") {
-                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            for (auto& entry : dp->entries) {
-                                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
-                            }
-                            emit(OpCode::OP_DICT_REST, lastLine);
-                            emit16(static_cast<uint16_t>(dp->entries.size()), lastLine);
-                            
-                            int restSlot = resolveLocal(dp->rest->name.lexeme);
-                            emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(restSlot), lastLine);
-                            emit(OpCode::OP_POP, lastLine);
-                        }
-                    }
-                };
-
-                compilePat(pat.get(), subjectSlot);
+                compilePatternMatch(pat.get(), subjectSlot, failJumps);
 
                 bodyJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
 

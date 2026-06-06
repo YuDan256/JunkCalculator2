@@ -97,9 +97,6 @@ namespace jc {
         OP_STRINGIFY,       // 将栈顶转为字符串
         OP_CONCAT_STRINGS,  // [count:16bit] 拼接 N 个字符串
 
-        // 解构
-        OP_DESTRUCT,        // [count:8bit] 解构栈顶为 N 个值
-
         // 异常处理
         OP_TRY_BEGIN,       // [catch_offset:16bit] 设置异常处理器
         OP_TRY_END,         // 移除异常处理器
@@ -203,7 +200,6 @@ namespace jc {
         case OpCode::OP_IN: return "OP_IN";
         case OpCode::OP_STRINGIFY: return "OP_STRINGIFY";
         case OpCode::OP_CONCAT_STRINGS: return "OP_CONCAT_STRINGS";
-        case OpCode::OP_DESTRUCT: return "OP_DESTRUCT";
         case OpCode::OP_TRY_BEGIN: return "OP_TRY_BEGIN";
         case OpCode::OP_TRY_END: return "OP_TRY_END";
         case OpCode::OP_THROW: return "OP_THROW";
@@ -376,11 +372,6 @@ namespace jc {
             case OpCode::OP_SLICE_SET: {
                 uint8_t dims = code[offset + 1];
                 std::cout << static_cast<int>(dims) << " dims" << std::endl;
-                return offset + 2;
-            }
-            case OpCode::OP_DESTRUCT: {
-                uint8_t count = code[offset + 1];
-                std::cout << static_cast<int>(count) << " vars" << std::endl;
                 return offset + 2;
             }
             case OpCode::OP_ITER_INIT: {

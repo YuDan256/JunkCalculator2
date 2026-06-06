@@ -55,7 +55,6 @@ namespace jc {
     struct ListCompExpr;       // ★
     struct DictLiteral;        // ★
     struct SliceExpr;        // ★ 新增
-    struct DictDestructAssign;
     struct SequenceExpr;
     struct MatchExpr;
 
@@ -63,19 +62,30 @@ namespace jc {
         virtual ~Pattern() = default;
     };
 
+    enum class ScopeModifier { None, Local, Ref, State };
+
     struct LiteralPattern : public Pattern {
         std::unique_ptr<Expr> literal;
         explicit LiteralPattern(std::unique_ptr<Expr> literal) : literal(std::move(literal)) {}
     };
 
+    struct ExprPattern : public Pattern {
+        std::unique_ptr<Expr> expr;
+        explicit ExprPattern(std::unique_ptr<Expr> expr) : expr(std::move(expr)) {}
+    };
+
     struct VariablePattern : public Pattern {
         Token name;
-        explicit VariablePattern(Token name) : name(std::move(name)) {}
+        ScopeModifier modifier;
+        explicit VariablePattern(Token name, ScopeModifier modifier = ScopeModifier::None) 
+            : name(std::move(name)), modifier(modifier) {}
     };
 
     struct RestPattern : public Pattern {
         Token name;
-        explicit RestPattern(Token name) : name(std::move(name)) {}
+        ScopeModifier modifier;
+        explicit RestPattern(Token name, ScopeModifier modifier = ScopeModifier::None) 
+            : name(std::move(name)), modifier(modifier) {}
     };
 
     struct ListPattern : public Pattern {
@@ -150,7 +160,6 @@ namespace jc {
         virtual std::any visitListCompExpr(ListCompExpr* expr) = 0;  // ★
         virtual std::any visitDictLiteral(DictLiteral* expr) = 0;  // ★
         virtual std::any visitSliceExpr(SliceExpr* expr) = 0;  // ★ 新增
-        virtual std::any visitDictDestructAssign(DictDestructAssign* expr) = 0;
         virtual std::any visitSequenceExpr(SequenceExpr* expr) = 0;
         virtual std::any visitMatchExpr(MatchExpr* expr) = 0;
     };
@@ -413,23 +422,23 @@ namespace jc {
 
     struct ForInExpr : public Expr {
         Token varName;
-        std::vector<Token> destructNames;  // ★ non-empty = destructured [a, b, ...]
+        std::unique_ptr<Pattern> pattern;  // ★ non-null = destructured
         std::unique_ptr<Expr> iterable;
         std::unique_ptr<Expr> body;
         bool isLocal; // ★ 新增
 
-        bool isDestruct() const { return !destructNames.empty(); }
+        bool isDestruct() const { return pattern != nullptr; }
 
         // Single variable: for (x in ...)
         ForInExpr(Token varName, std::unique_ptr<Expr> iterable, std::unique_ptr<Expr> body, bool isLocal = false)
-            : varName(std::move(varName)), iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal) {
+            : varName(std::move(varName)), pattern(nullptr), iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal) {
         }
 
         // ★ Destructured: for ([a, b] in ...)
-        ForInExpr(std::vector<Token> destructNames, std::unique_ptr<Expr> iterable,
+        ForInExpr(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> iterable,
             std::unique_ptr<Expr> body, bool isLocal = false)
             : varName(Token(TokenType::IDENTIFIER, "", 0)),
-            destructNames(std::move(destructNames)),
+            pattern(std::move(pattern)),
             iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal) {
         }
 
@@ -557,10 +566,10 @@ namespace jc {
 
     // ★ [a, b, c] = expr
     struct DestructAssign : public Expr {
-        std::vector<std::unique_ptr<Expr>> targets;
+        std::unique_ptr<Pattern> pattern;
         std::unique_ptr<Expr> value;
-        DestructAssign(std::vector<std::unique_ptr<Expr>> targets, std::unique_ptr<Expr> value)
-            : targets(std::move(targets)), value(std::move(value)) {
+        DestructAssign(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> value)
+            : pattern(std::move(pattern)), value(std::move(value)) {
         }
         std::any accept(ExprVisitor& visitor) override { return visitor.visitDestructAssign(this); }
     };
@@ -584,15 +593,15 @@ namespace jc {
     struct ListCompExpr : public Expr {
         struct CompClause {
             Token varName;
-            std::vector<Token> destructNames;
+            std::unique_ptr<Pattern> pattern;
             std::shared_ptr<Expr> iterable;
-            bool isDestruct() const { return !destructNames.empty(); }
+            bool isDestruct() const { return pattern != nullptr; }
             CompClause(Token var, std::shared_ptr<Expr> iter)
-                : varName(std::move(var)), iterable(std::move(iter)) {
+                : varName(std::move(var)), pattern(nullptr), iterable(std::move(iter)) {
             }
-            CompClause(std::vector<Token> destruct, std::shared_ptr<Expr> iter)
+            CompClause(std::unique_ptr<Pattern> pat, std::shared_ptr<Expr> iter)
                 : varName(Token(TokenType::IDENTIFIER, "", 0)),
-                destructNames(std::move(destruct)), iterable(std::move(iter)) {
+                pattern(std::move(pat)), iterable(std::move(iter)) {
             }
         };
 
@@ -628,15 +637,6 @@ namespace jc {
             : start(std::move(start)), end(std::move(end)), step(std::move(step)) {
         }
         std::any accept(ExprVisitor& visitor) override { return visitor.visitSliceExpr(this); }
-    };
-
-    struct DictDestructAssign : public Expr {
-        std::vector<std::pair<std::string, std::unique_ptr<Expr>>> targets;
-        std::unique_ptr<Expr> value;
-        DictDestructAssign(std::vector<std::pair<std::string, std::unique_ptr<Expr>>> targets, std::unique_ptr<Expr> value)
-            : targets(std::move(targets)), value(std::move(value)) {
-        }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitDictDestructAssign(this); }
     };
 
     // ★ 逗号表达式序列 (expr1, expr2, expr3) -> 返回 expr3 的值

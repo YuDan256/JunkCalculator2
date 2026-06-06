@@ -204,16 +204,8 @@ namespace jc {
                                 paramTypes.push_back("dict"); // ★ 自动加上硬性字典类型约束！
                                 defaultExprs.push_back(nullptr);
 
-                                auto* dl = dynamic_cast<DictLiteral*>(dictNode.get());
-                                std::vector<std::pair<std::string, std::unique_ptr<Expr>>> targets;
-                                for (auto& entry : dl->entries) {
-                                    auto* litKey = dynamic_cast<Literal*>(entry.first.get());
-                                    auto* varVal = dynamic_cast<Variable*>(entry.second.get());
-                                    if (litKey && varVal) targets.push_back({ litKey->value, std::move(entry.second) });
-                                    else throw std::runtime_error("Invalid dict destructuring format.");
-                                }
                                 auto rhs = std::make_unique<Variable>(phTok);
-                                destructStmts.push_back(std::make_unique<DictDestructAssign>(std::move(targets), std::move(rhs)));
+                                destructStmts.push_back(std::make_unique<DestructAssign>(exprToPattern(std::move(dictNode)), std::move(rhs)));
                                 continue;
                             }
 
@@ -346,59 +338,9 @@ namespace jc {
                 }
             }
 
-            if (auto* matNode = dynamic_cast<MatrixNode*>(expr.get())) {
+            if (dynamic_cast<MatrixNode*>(expr.get()) || dynamic_cast<DictLiteral*>(expr.get())) {
                 if (isRef || isState || isConst) throw std::runtime_error("Parser Error: 'ref', 'state', or 'const' cannot be applied to destructuring.");
-                std::vector<std::unique_ptr<Expr>> targets;
-                bool validDestruct = true;
-
-                for (auto& row : matNode->elements) {
-                    for (auto& elem : row) {
-                        if (dynamic_cast<Variable*>(elem.get()) ||
-                            dynamic_cast<RefDecl*>(elem.get()) ||
-                            dynamic_cast<StateDecl*>(elem.get()) ||
-                            dynamic_cast<LocalDecl*>(elem.get()) ||
-                            dynamic_cast<IndexAccess*>(elem.get()) ||
-                            dynamic_cast<DotAccess*>(elem.get())) {
-                            targets.push_back(std::move(elem));
-                        } else {
-                            validDestruct = false; break;
-                        }
-                    }
-                    if (!validDestruct) break;
-                }
-
-                if (validDestruct && !targets.empty()) {
-                    return std::make_unique<DestructAssign>(std::move(targets), std::move(value));
-                }
-            }
-
-            if (auto* dictNode = dynamic_cast<DictLiteral*>(expr.get())) {
-                if (isRef || isState || isConst) throw std::runtime_error("Parser Error: 'ref', 'state', or 'const' cannot be applied to destructuring.");
-                std::vector<std::pair<std::string, std::unique_ptr<Expr>>> targets;
-                bool validDestruct = true;
-                for (auto& entry : dictNode->entries) {
-                    auto* litKey = dynamic_cast<Literal*>(entry.first.get());
-                    if (litKey && litKey->isString) {
-                        if (dynamic_cast<Variable*>(entry.second.get()) ||
-                            dynamic_cast<RefDecl*>(entry.second.get()) ||
-                            dynamic_cast<StateDecl*>(entry.second.get()) ||
-                            dynamic_cast<LocalDecl*>(entry.second.get()) ||
-                            dynamic_cast<IndexAccess*>(entry.second.get()) ||
-                            dynamic_cast<DotAccess*>(entry.second.get())) {
-                            targets.push_back({ litKey->value, std::move(entry.second) });
-                        } else {
-                            validDestruct = false; break;
-                        }
-                    } else {
-                        validDestruct = false; break;
-                    }
-                }
-                if (validDestruct && !targets.empty()) {
-                    return std::make_unique<DictDestructAssign>(std::move(targets), std::move(value));
-                }
-                else {
-                    throw std::runtime_error("Parser Error: Invalid dictionary destructuring target.");
-                }
+                return std::make_unique<DestructAssign>(exprToPattern(std::move(expr)), std::move(value));
             }
 
             if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {
@@ -838,34 +780,22 @@ namespace jc {
         int savedPos = current;
         bool isLocal = match({ TokenType::LOCAL });
 
-        // ★ 解构 for-in: for ([a, b, ...] in iterable)
-        if (check(TokenType::LBRACKET)) {
-            advance(); // consume [
-            std::vector<Token> names;
-            bool valid = true;
-
-            if (check(TokenType::IDENTIFIER)) {
-                names.push_back(advance());
-                while (match({ TokenType::COMMA })) {
-                    if (!check(TokenType::IDENTIFIER)) { valid = false; break; }
-                    names.push_back(advance());
-                }
-            }
-            else {
-                valid = false;
-            }
-
-            if (valid && !names.empty() && match({ TokenType::RBRACKET })) {
+        // ★ 解构 for-in: for ([a, b, ...] in iterable) or for ({a, b} in iterable)
+        if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
+            int savedPos2 = current;
+            try {
+                auto pat = parsePattern();
                 if (check(TokenType::IN)) {
                     advance(); // consume 'in'
                     auto iterable = expression();
-                    consume(TokenType::RPAREN,
-                        "Parser Error: Expect ')' after for-in iterable.");
+                    consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
                     auto body = parseStatementOrBlock();
-                    return std::make_unique<ForInExpr>(
-                        std::move(names), std::move(iterable), std::move(body), isLocal);
+                    return std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal);
                 }
+            } catch (...) {
+                // Fall through to normal for loop parsing
             }
+            current = savedPos2;
         }
 
         // ★ 推测性检查：for (IDENTIFIER in ...) 还是 for (init; cond; update)
@@ -1292,14 +1222,116 @@ namespace jc {
         return std::make_unique<SwitchExpr>(std::move(subject), std::move(cases), std::move(defaultBody));
     }
 
+    std::unique_ptr<Pattern> Parser::exprToPattern(std::unique_ptr<Expr> expr) {
+        if (auto* var = dynamic_cast<Variable*>(expr.get())) {
+            return std::make_unique<VariablePattern>(var->name);
+        }
+        if (auto* loc = dynamic_cast<LocalDecl*>(expr.get())) {
+            return std::make_unique<VariablePattern>(loc->name, ScopeModifier::Local);
+        }
+        if (auto* ref = dynamic_cast<RefDecl*>(expr.get())) {
+            return std::make_unique<VariablePattern>(ref->name, ScopeModifier::Ref);
+        }
+        if (auto* st = dynamic_cast<StateDecl*>(expr.get())) {
+            return std::make_unique<VariablePattern>(st->name, ScopeModifier::State);
+        }
+        if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
+            return std::make_unique<ExprPattern>(std::move(expr));
+        }
+        if (auto* un = dynamic_cast<Unary*>(expr.get())) {
+            if (un->op.type == TokenType::ELLIPSIS) {
+                if (auto* var = dynamic_cast<Variable*>(un->right.get())) {
+                    return std::make_unique<RestPattern>(var->name);
+                }
+                if (auto* loc = dynamic_cast<LocalDecl*>(un->right.get())) {
+                    return std::make_unique<RestPattern>(loc->name, ScopeModifier::Local);
+                }
+                if (auto* ref = dynamic_cast<RefDecl*>(un->right.get())) {
+                    return std::make_unique<RestPattern>(ref->name, ScopeModifier::Ref);
+                }
+                if (auto* st = dynamic_cast<StateDecl*>(un->right.get())) {
+                    return std::make_unique<RestPattern>(st->name, ScopeModifier::State);
+                }
+                throw std::runtime_error("Parser Error: Invalid rest pattern target.");
+            }
+        }
+        if (auto* mat = dynamic_cast<MatrixNode*>(expr.get())) {
+            std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
+            std::unique_ptr<RestPattern> restRow = nullptr;
+            bool isMatrix = mat->elements.size() > 1;
+
+            for (size_t i = 0; i < mat->elements.size(); ++i) {
+                std::vector<std::unique_ptr<Pattern>> currentRow;
+                std::unique_ptr<RestPattern> restCol = nullptr;
+
+                for (size_t j = 0; j < mat->elements[i].size(); ++j) {
+                    auto pat = exprToPattern(std::move(mat->elements[i][j]));
+                    if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
+                        if (isMatrix && i == mat->elements.size() - 1 && mat->elements[i].size() == 1) {
+                            restRow = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
+                        } else {
+                            if (restCol) throw std::runtime_error("Parser Error: Multiple rest patterns in a single row.");
+                            restCol = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
+                        }
+                    } else {
+                        currentRow.push_back(std::move(pat));
+                    }
+                }
+                if (restRow) break;
+                
+                if (isMatrix && restCol) {
+                    currentRow.push_back(std::move(restCol));
+                    restCol = nullptr;
+                }
+                
+                if (!isMatrix) {
+                    return std::make_unique<ListPattern>(std::move(currentRow), std::move(restCol));
+                }
+                rows.push_back(std::move(currentRow));
+            }
+            return std::make_unique<MatrixPattern>(std::move(rows), std::move(restRow));
+        }
+        if (auto* dict = dynamic_cast<DictLiteral*>(expr.get())) {
+            std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries;
+            std::unique_ptr<RestPattern> rest = nullptr;
+
+            for (auto& entry : dict->entries) {
+                auto* litKey = dynamic_cast<Literal*>(entry.first.get());
+                if (!litKey || !litKey->isString) throw std::runtime_error("Parser Error: Dict pattern keys must be strings.");
+                
+                auto pat = exprToPattern(std::move(entry.second));
+                if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
+                    if (rest) throw std::runtime_error("Parser Error: Multiple rest patterns in dict.");
+                    rest = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
+                } else {
+                    entries.push_back({ litKey->value, std::move(pat) });
+                }
+            }
+            return std::make_unique<DictPattern>(std::move(entries), std::move(rest));
+        }
+        return std::make_unique<LiteralPattern>(std::move(expr));
+    }
+
     std::unique_ptr<Pattern> Parser::parsePattern() {
+        ScopeModifier mod = ScopeModifier::None;
+        bool hasMod = false;
+        if (match({TokenType::LOCAL})) { mod = ScopeModifier::Local; hasMod = true; }
+        else if (match({TokenType::REF})) { mod = ScopeModifier::Ref; hasMod = true; }
+        else if (match({TokenType::STATE})) { mod = ScopeModifier::State; hasMod = true; }
+
         if (match({TokenType::ELLIPSIS})) {
             Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
-            return std::make_unique<RestPattern>(name);
+            return std::make_unique<RestPattern>(name, mod);
         }
+        
+        if (hasMod) {
+            Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after modifier.");
+            return std::make_unique<VariablePattern>(name, mod);
+        }
+
         if (check(TokenType::IDENTIFIER)) {
             Token name = advance();
-            return std::make_unique<VariablePattern>(name);
+            return std::make_unique<VariablePattern>(name, mod);
         }
         if (match({TokenType::LBRACKET})) {
             std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
@@ -1690,24 +1722,12 @@ namespace jc {
         while (match({ TokenType::FOR })) {
             match({ TokenType::LOCAL }); // ★ 允许并忽略可选的 local 关键字（推导式变量默认就是 local 的）
 
-            // ★ 解构模式：for [a, b] in ...
-            if (check(TokenType::LBRACKET)) {
-                advance(); // consume [
-                std::vector<Token> names;
-                names.push_back(consume(TokenType::IDENTIFIER,
-                    "Parser Error: Expect variable name in comprehension destructuring."));
-                while (match({ TokenType::COMMA })) {
-                    names.push_back(consume(TokenType::IDENTIFIER,
-                        "Parser Error: Expect variable name after ',' in destructuring."));
-                }
-                while (match({ TokenType::NEWLINE })) {}  // ★
-                consume(TokenType::RBRACKET,
-                    "Parser Error: Expect ']' after destructuring variables.");
-                consume(TokenType::IN,
-                    "Parser Error: Expect 'in' after variable in list comprehension.");
+            // ★ 解构模式：for [a, b] in ... or for {a, b} in ...
+            if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
+                auto pat = parsePattern();
+                consume(TokenType::IN, "Parser Error: Expect 'in' after pattern in list comprehension.");
                 auto iterable = expression();
-                clauses.emplace_back(std::move(names),
-                    std::shared_ptr<Expr>(iterable.release()));
+                clauses.emplace_back(std::move(pat), std::shared_ptr<Expr>(iterable.release()));
             }
             // ★ 单变量模式：for x in ...
             else {

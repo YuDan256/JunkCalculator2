@@ -1246,11 +1246,9 @@ namespace jc {
                 if (auto* st = dynamic_cast<StateDecl*>(un->right.get())) {
                     return std::make_unique<RestPattern>(st->name, ScopeModifier::State);
                 }
-                std::string rightType = un->right ? typeid(*un->right).name() : "null";
-                throw std::runtime_error("Parser Error: Invalid rest pattern target. rightType=" + rightType);
+                throw std::runtime_error("Parser Error: Invalid rest pattern target.");
             } else {
-                std::string opTypeStr = std::to_string(static_cast<int>(un->op.type));
-                throw std::runtime_error("Parser Error: Unary op is not ELLIPSIS. op.type=" + opTypeStr + ", lexeme=" + un->op.lexeme);
+                throw std::runtime_error("Parser Error: Invalid unary operator in pattern.");
             }
         }
         if (auto* mat = dynamic_cast<MatrixNode*>(expr.get())) {
@@ -1267,9 +1265,20 @@ namespace jc {
                     if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
                         if (isMatrix && i == mat->elements.size() - 1 && mat->elements[i].size() == 1) {
                             restRow = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
-                        } else {
-                            if (restCol) throw std::runtime_error("Parser Error: Multiple rest patterns in a single row.");
+                        } else if (j == mat->elements[i].size() - 1) {
+                            bool hasRest = false;
+                            for (const auto& p : currentRow) {
+                                if (dynamic_cast<RestPattern*>(p.get())) hasRest = true;
+                            }
+                            if (hasRest || restCol) throw std::runtime_error("Parser Error: Multiple rest patterns in a single row.");
                             restCol = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
+                        } else {
+                            bool hasRest = false;
+                            for (const auto& p : currentRow) {
+                                if (dynamic_cast<RestPattern*>(p.get())) hasRest = true;
+                            }
+                            if (hasRest) throw std::runtime_error("Parser Error: Multiple rest patterns in a single row.");
+                            currentRow.push_back(std::move(pat));
                         }
                     } else {
                         currentRow.push_back(std::move(pat));
@@ -1295,15 +1304,13 @@ namespace jc {
 
             for (auto& entry : dict->entries) {
                 if (!entry.first) {
-                    std::string exprType = entry.second ? typeid(*entry.second).name() : "null";
                     auto pat = exprToPattern(std::move(entry.second));
                     if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
                         if (rest) throw std::runtime_error("Parser Error: Multiple rest patterns in dict.");
                         pat.release(); // 放弃所有权
                         rest = std::unique_ptr<RestPattern>(rp); // 直接接管已经 cast 好的指针
                     } else {
-                        std::string patType = pat ? typeid(*pat).name() : "null";
-                        throw std::runtime_error("Parser Error: Invalid rest pattern in dict. exprType=" + exprType + ", patType=" + patType);
+                        throw std::runtime_error("Parser Error: Invalid rest pattern in dict.");
                     }
                 } else {
                     auto* litKey = dynamic_cast<Literal*>(entry.first.get());

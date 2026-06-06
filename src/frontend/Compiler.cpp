@@ -2801,19 +2801,16 @@ namespace jc {
                         emit(OpCode::OP_POP, lastLine);
 
                         for (auto& entry : dp->entries) {
-                            emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
                             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            emit(OpCode::OP_IN, lastLine);
+                            emit(OpCode::OP_TRY_GET_PROPERTY, lastLine); emit16(identifierConstant(entry.first), lastLine);
+                            
                             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
-                            emit(OpCode::OP_POP, lastLine);
-
-                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                            emit(OpCode::OP_GET_PROPERTY, lastLine); emit16(identifierConstant(entry.first), lastLine);
+                            emit(OpCode::OP_POP, lastLine); // pop the boolean
                             
                             addLocal("<pat_tmp>", current().scopeDepth);
                             int tmpSlot = static_cast<int>(current().locals.size()) - 1;
                             emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
-                            emit(OpCode::OP_POP, lastLine);
+                            emit(OpCode::OP_POP, lastLine); // pop the value
                             
                             compilePat(entry.second.get(), tmpSlot);
                             current().locals.pop_back();

@@ -1487,7 +1487,23 @@ namespace jc {
                             push(Value::none()); // 使用 none 作为自定义迭代器的索引标记
                             break;
                         }
-                        throw std::runtime_error("VM Error: Instance is not iterable (missing __iter__).");
+                        auto inst = iterable.asInstance();
+                        if (inst->fields) {
+                            if (destructFlag) {
+                                for (const auto& [key, val] : inst->fields->elements) {
+                                    ObjList* pair = GcHeap::get().allocate<ObjList>();
+                                    pair->vec.push_back(key);
+                                    pair->vec.push_back(val);
+                                    pair->is_frozen = true;
+                                    elements->vec.push_back(Value(pair));
+                                }
+                            }
+                            else {
+                                for (const auto& [key, val] : inst->fields->elements) {
+                                    elements->vec.push_back(key);
+                                }
+                            }
+                        }
                     }
                     else {
                         throw std::runtime_error("VM Error: Cannot iterate over this type.");
@@ -2082,6 +2098,91 @@ namespace jc {
                         throw std::runtime_error("VM Error: Cannot access property '" + field + "' on this type.");
                     }
                     push(result);
+                    break;
+                }
+
+                case OpCode::OP_TRY_GET_PROPERTY: {
+                    uint16_t nameIdx = readShort();
+                    const std::string& field = chunk->constants[nameIdx].asString();
+                    Value obj = pop();
+                    bool found = false;
+                    Value result;
+
+                    if (obj.isInstance()) {
+                        auto inst = obj.asInstance();
+                        if (inst->fields) {
+                            auto it = inst->fields->keyMap.find(Value(field));
+                            if (it != inst->fields->keyMap.end()) {
+                                result = inst->fields->elements[it->second].second;
+                                found = true;
+                            }
+                        }
+                        if (!found) {
+                            ObjClosure* rawMethod = nullptr;
+                            ObjClass* ownerClass = nullptr;
+                            auto c = inst->classDef;
+                            while (c) {
+                                auto it = c->methods.find(field);
+                                if (it != c->methods.end()) {
+                                    rawMethod = it->second;
+                                    ownerClass = c;
+                                    break;
+                                }
+                                c = c->parent;
+                            }
+                            if (rawMethod) {
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{},
+                                    field, nullptr
+                                );
+                                bound->paramNames = rawMethod->paramNames;
+                                bound->isRef = rawMethod->isRef;
+                                bound->defaultValues = rawMethod->defaultValues;
+                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                bound->capturedEnv = rawMethod->capturedEnv;
+                                bound->nativeFn = rawMethod->nativeFn;
+                                bound->boundSelf = Value(inst);
+                                bound->boundClass = Value(ownerClass);
+                                result = Value(bound);
+                                found = true;
+                            } else {
+                                auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
+                                if (getattrMethod) {
+                                    try {
+                                        result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                                        found = true;
+                                    } catch (...) {
+                                        found = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (obj.isObjType(ObjType::DICT)) {
+                        auto d = static_cast<ObjDict*>(obj.asObj());
+                        auto it = d->keyMap.find(Value(field));
+                        if (it != d->keyMap.end()) {
+                            result = d->elements[it->second].second;
+                            found = true;
+                        }
+                    }
+                    else if (obj.isObjType(ObjType::NAMESPACE)) {
+                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                        auto it = ns->fields.find(field);
+                        if (it != ns->fields.end()) {
+                            result = *(it->second.upval->location);
+                            found = true;
+                        }
+                    }
+
+                    if (found) {
+                        push(result);
+                        push(Value(true));
+                    } else {
+                        push(Value::none());
+                        push(Value(false));
+                    }
                     break;
                 }
 

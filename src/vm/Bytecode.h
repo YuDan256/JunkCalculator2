@@ -126,6 +126,7 @@ namespace jc {
         OP_METHOD,          // [name_idx:16bit] 添加方法到类
         OP_INHERIT,         // 继承
         OP_GET_PROPERTY,    // [name_idx:16bit]
+        OP_TRY_GET_PROPERTY,// [name_idx:16bit] ★ 新增
         OP_SET_PROPERTY,    // [name_idx:16bit]
         OP_INVOKE,          // [name_idx:16bit, argc:8bit]
         OP_GET_SUPER,       // [name_idx:16bit]
@@ -217,6 +218,7 @@ namespace jc {
         case OpCode::OP_METHOD: return "OP_METHOD";
         case OpCode::OP_INHERIT: return "OP_INHERIT";
         case OpCode::OP_GET_PROPERTY: return "OP_GET_PROPERTY";
+        case OpCode::OP_TRY_GET_PROPERTY: return "OP_TRY_GET_PROPERTY";
         case OpCode::OP_SET_PROPERTY: return "OP_SET_PROPERTY";
         case OpCode::OP_INVOKE: return "OP_INVOKE";
         case OpCode::OP_GET_SUPER: return "OP_GET_SUPER";
@@ -396,6 +398,7 @@ namespace jc {
             case OpCode::OP_CLASS:
             case OpCode::OP_METHOD:
             case OpCode::OP_GET_PROPERTY:
+            case OpCode::OP_TRY_GET_PROPERTY:
             case OpCode::OP_SET_PROPERTY:
             case OpCode::OP_GET_SUPER: 
             case OpCode::OP_ASSERT_RETURN_TYPE:

@@ -2442,6 +2442,7 @@
       "",
       "    Iteration & Callable:",
       "      __iter__()                   Returns an iterator object (usually `self`) for `for-in` loops.",
+      "                                   (If not defined, 'for-in' iterates over instance fields like a Dict)",
       "      __next__()                   Returns the next value in iteration, or `none` to stop.",
       "      __call__(...)                Allows the instance to be called like a function: obj(args)",
       "",

@@ -1016,6 +1016,9 @@ namespace jc {
         int upvalueInEnclosing = resolveUpvalueAt(enclosingLevel, name, enclosingIsRef, enclosingIsState);
         if (upvalueInEnclosing != -1) {
             if (upvalueInEnclosing == -2) {
+                if (enclosingLevel == 0) {
+                    return -2;
+                }
                 // ★ 核心修复：如果外层是全局捕获，必须在外层添加 isGlobal=true 的 Upvalue，
                 // 然后当前层添加一个普通的 Upvalue 指向外层！保证内外层物理内存共享！
                 int enclosingUv = addUpvalue(enclosingLevel, name, false, -1, enclosingIsRef, true);

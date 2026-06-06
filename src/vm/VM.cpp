@@ -969,7 +969,11 @@ namespace jc {
                                         captures->push_back((*currentFrame->upvalues)[uv.index]);
                                     else {
                                         auto dummy = std::make_shared<UpVal>();
-                                        dummy->closed = Value::none();
+                                        if (uv.isGlobal) {
+                                            dummy->closed = Value::uninit();
+                                        } else {
+                                            dummy->closed = Value::none();
+                                        }
                                         dummy->location = &dummy->closed;
                                         captures->push_back(dummy);
                                     }
@@ -978,9 +982,7 @@ namespace jc {
                                 // ★ 默认按值捕获 (立即 Closed Upvalue)
                                 auto dummy = std::make_shared<UpVal>();
                                 if (uv.isGlobal) {
-                                    auto it = globals.find(uv.name);
-                                    if (it != globals.end()) dummy->closed = it->second;
-                                    else dummy->closed = Value::uninit();
+                                    dummy->closed = Value::uninit();
                                 } else if (uv.isLocal) {
                                     int captureIdx = currentFrame->stackBase + uv.index;
                                     dummy->closed = stack[captureIdx];

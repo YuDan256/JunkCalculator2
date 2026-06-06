@@ -126,16 +126,16 @@ class Prop {
         header = ""
         for (v in varList) { header += " " + str(v) + "  " }
         header += " | " + formula
-        print(sep); print(header); print(sep)
+        println(sep); println(header); println(sep)
         
         data = self.table()
         for (row in data) {
             env = row.env; rowStr = ""
             for (v in varList) { rowStr += " " + str(env[v]) + "  " }
             rowStr += " | " + str(row.result)
-            print(rowStr)
+            println(rowStr)
         }
-        print(sep)
+        println(sep)
     }
 
     __str__() -> string = {
@@ -638,21 +638,21 @@ truthTable(n: int, fn: func) -> list = {
 
 printTruthTable(n: int, fn: func) = {
     total = 2 ^ n
-    print(f"\nTruth Table ({n} variables):")
-    print("-" * (n * 7 + 10))
+    println(f"\nTruth Table ({n} variables):")
+    println("-" * (n * 7 + 10))
     header = ""
     for (i in range(n)) { header += f"V{i}     " }
     header += "|   Out"
-    print(header); print("-" * (n * 7 + 10))
+    println(header); println("-" * (n * 7 + 10))
     for (i in range(total)) {
         vars = zeros(1, n)
         for (j in range(n)) { vars[j] = int(i / (2^(n - 1 - j))) % 2 }
         rowStr = ""
         for (v in vars) { rowStr += f" {v}     " }
         rowStr += f"|    {vars.apply(fn) ? 1 : 0}"
-        print(rowStr)
+        println(rowStr)
     }
-    print("-" * (n * 7 + 10))
+    println("-" * (n * 7 + 10))
 }
 
 // ┌────────────────────────────────────────────────────────┐

@@ -148,6 +148,6 @@ if (isfunction(__register_help)) {
   ──────────────────────
     import http
     response = http.http_get("http://httpbin.org/get")
-    print(response.status)
+    println(response.status)
 )DOC")
 }

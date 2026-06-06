@@ -366,6 +366,7 @@
       "",
       "    in                Membership / containment test (returns true or false)",
       "                        3 in [1,2,3]          → true",
+      "                        \"x\" in Point(1, 2)    → true (checks fields/methods)",
       "",
       "  Logical Operators (short-circuit, return true or false)",
       "  ──────────────────────",
@@ -2430,6 +2431,7 @@
       "",
       "    Membership:",
       "      __contains__(x)   Called by:  x in obj",
+      "                        (If not defined, 'in' checks fields and methods by default)",
       "",
       "    Indexing & Dynamic Attributes:",
       "      __getitem__(i)               Called by:  obj[i]",
@@ -6434,14 +6436,16 @@
         "",
         "2. Membership test (operator): Returns true if the value exists",
         "   in the container, false otherwise.",
-        "   Supported: arrays, lists, strings, dicts (checks keys), sets.",
+        "   Supported: arrays, lists, strings, dicts (checks keys), sets,",
+        "   and instances (checks __contains__, then fields and methods).",
         "See also: /help for, /help control"
       ],
       "examples": [
         "for (x in range(10)) print(x)",
         "3 in [1, 2, 3]          // → true",
         "\"key\" in {key: 42}      // → true",
-        "\"h\" in \"hello\"          // → true"
+        "\"h\" in \"hello\"          // → true",
+        "\"dist\" in Point(0,0)    // → true"
       ]
     },
     "break": {

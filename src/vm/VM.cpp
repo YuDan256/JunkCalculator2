@@ -4236,6 +4236,24 @@ namespace jc {
                 push(Value(callDunder(haystack, DUNDER_CONTAINS, { needle }).truthy()));
                 return;
             }
+            auto inst = haystack.asInstance();
+            if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
+                push(Value(true));
+                return;
+            }
+            if (needle.isString()) {
+                auto c = inst->classDef;
+                std::string key = needle.asString();
+                while (c) {
+                    if (c->methods.find(key) != c->methods.end()) {
+                        push(Value(true));
+                        return;
+                    }
+                    c = c->parent;
+                }
+            }
+            push(Value(false));
+            return;
         }
         throw std::runtime_error(
             "VM Error: 'in' requires an array, vector, matrix, string, list, dict, or instance.");

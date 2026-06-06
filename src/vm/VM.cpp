@@ -982,7 +982,21 @@ namespace jc {
                                 // ★ 默认按值捕获 (立即 Closed Upvalue)
                                 auto dummy = std::make_shared<UpVal>();
                                 if (uv.isGlobal) {
-                                    dummy->closed = Value::uninit();
+                                    if (!uv.isExplicitState) {
+                                        auto it = globals.find(uv.name);
+                                        if (it != globals.end()) {
+                                            dummy->closed = it->second;
+                                        } else {
+                                            Value builtinVal = getBuiltinClosure(uv.name);
+                                            if (!builtinVal.isNone()) {
+                                                dummy->closed = builtinVal;
+                                            } else {
+                                                dummy->closed = Value::uninit();
+                                            }
+                                        }
+                                    } else {
+                                        dummy->closed = Value::uninit();
+                                    }
                                 } else if (uv.isLocal) {
                                     int captureIdx = currentFrame->stackBase + uv.index;
                                     dummy->closed = stack[captureIdx];

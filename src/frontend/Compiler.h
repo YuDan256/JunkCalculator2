@@ -27,6 +27,7 @@ namespace jc {
             int maxLocals = 0;                  // ★ 新增：跟踪该函数所使用的最大局部变量数
             std::unordered_set<std::string> refNames;     // ★ 新增：跟踪当前作用域显式 ref 的外部变量
             std::unordered_set<std::string> stateNames;   // ★ 新增：跟踪当前作用域显式 state 的外部变量
+            std::unordered_set<std::string> explicitStateNames; // ★ 新增：跟踪显式初始化的 state 变量
             std::unordered_set<std::string> constNames;   // ★ 新增：跟踪当前作用域的局部常量
             int tryDepth = 0;
             std::string expectedReturnType = "";
@@ -73,7 +74,7 @@ namespace jc {
         void emitDefaultPreamble(const std::vector<std::shared_ptr<Expr>>& defaultExprs, int paramCount);
         int resolveUpvalue(const std::string& name);
         int resolveUpvalueAt(int level, const std::string& name, bool isRef, bool isState);
-        int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false);
+        int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false);
         void emitStoreTarget(Expr* target);
         std::optional<Value> tryFoldConstant(Expr* expr);
 

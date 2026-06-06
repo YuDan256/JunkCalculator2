@@ -555,6 +555,7 @@ namespace jc {
             int index;      // 对应的 slot 或 upvalue index
             bool isRef = false; // ★ 新增：是否按引用捕获
             bool isGlobal = false; // ★ 新增：是否来自全局变量
+            bool isExplicitState = false; // ★ 新增：是否是显式初始化的 state
         };
         std::vector<UpvalueInfo> upvalues;
         std::vector<bool> paramIsRef;

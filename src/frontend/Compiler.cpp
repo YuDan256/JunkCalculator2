@@ -383,6 +383,7 @@ namespace jc {
         } else if (expr->isState) {
             if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
             current().stateNames.insert(name);
+            current().explicitStateNames.insert(name);
         }
 
         // ★ Pre-declare local variable if RHS is a Lambda, to support local recursion
@@ -980,16 +981,17 @@ namespace jc {
     }
 
     int Compiler::addUpvalue(int level, const std::string& name,
-        bool isLocal, int index, bool isRef, bool isGlobal) {
+        bool isLocal, int index, bool isRef, bool isGlobal, bool isExplicitState) {
         auto* fn = stateStack[level].function;
         for (int j = 0; j < static_cast<int>(fn->upvalues.size()); ++j) {
             if (fn->upvalues[j].name == name) {
                 if (isRef) fn->upvalues[j].isRef = true; // ★ 升级为引用捕获
                 if (isGlobal) fn->upvalues[j].isGlobal = true;
+                if (isExplicitState) fn->upvalues[j].isExplicitState = true;
                 return j;
             }
         }
-        fn->upvalues.push_back({ name, isLocal, index, isRef, isGlobal });
+        fn->upvalues.push_back({ name, isLocal, index, isRef, isGlobal, isExplicitState });
         return static_cast<int>(fn->upvalues.size()) - 1;
     }
 
@@ -1014,7 +1016,10 @@ namespace jc {
         int upvalueInEnclosing = resolveUpvalueAt(enclosingLevel, name, enclosingIsRef, enclosingIsState);
         if (upvalueInEnclosing != -1) {
             if (upvalueInEnclosing == -2) {
-                return addUpvalue(level, name, false, -1, isRef, true);
+                // ★ 核心修复：如果外层是全局捕获，必须在外层添加 isGlobal=true 的 Upvalue，
+                // 然后当前层添加一个普通的 Upvalue 指向外层！保证内外层物理内存共享！
+                int enclosingUv = addUpvalue(enclosingLevel, name, false, -1, enclosingIsRef, true);
+                return addUpvalue(level, name, false, enclosingUv, isRef, false);
             }
             return addUpvalue(level, name, false, upvalueInEnclosing, isRef, false);
         }
@@ -1026,6 +1031,7 @@ namespace jc {
         int currentLevel = static_cast<int>(stateStack.size()) - 1;
         bool isRef = stateStack[currentLevel].refNames.count(name) > 0;
         bool isState = stateStack[currentLevel].stateNames.count(name) > 0;
+        bool isExplicitState = stateStack[currentLevel].explicitStateNames.count(name) > 0;
         
         // ★ 规避副作用：仅在闭包捕获自身函数名时，临时强制按引用捕获。
         // 这样既支持了递归，又不会污染 refNames 导致无法创建同名局部变量。
@@ -1033,8 +1039,19 @@ namespace jc {
             isRef = true;
         }
         
+        if (isState && isExplicitState) {
+            // 显式初始化的 state，直接在当前层添加一个 isGlobal=true 的 upvalue，不往外找！
+            // 这样它在 OP_CLOSURE 时必定被初始化为 uninit
+            return addUpvalue(currentLevel, name, false, -1, isRef, true, true);
+        }
+        
         int uv = resolveUpvalueAt(currentLevel, name, isRef, isState);
-        if (uv == -2) return -1;
+        if (uv == -2) {
+            if (isState) {
+                return addUpvalue(currentLevel, name, false, -1, isRef, true, false);
+            }
+            return -1;
+        }
         return uv;
     }
 
@@ -1121,6 +1138,7 @@ namespace jc {
             } else if (expr->isState) {
                 if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                 current().stateNames.insert(name);
+                current().explicitStateNames.insert(name);
                 upvalue = resolveUpvalue(name);
             }
 
@@ -1789,6 +1807,7 @@ namespace jc {
                 else if (isState) {
                     if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                         current().stateNames.insert(name);
+                        current().explicitStateNames.insert(name);
                 }
             }
         }
@@ -2437,6 +2456,7 @@ namespace jc {
                 } else if (isState) {
                     if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                     current().stateNames.insert(name);
+                    current().explicitStateNames.insert(name);
                 }
             }
         }

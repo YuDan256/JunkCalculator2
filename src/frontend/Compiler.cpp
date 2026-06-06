@@ -1008,7 +1008,10 @@ namespace jc {
             }
         }
 
-        int upvalueInEnclosing = resolveUpvalueAt(enclosingLevel, name, isRef, isState);
+        bool enclosingIsState = isState || (enclosing.stateNames.count(name) > 0);
+        bool enclosingIsRef = isRef || (enclosing.refNames.count(name) > 0);
+
+        int upvalueInEnclosing = resolveUpvalueAt(enclosingLevel, name, enclosingIsRef, enclosingIsState);
         if (upvalueInEnclosing != -1) {
             if (upvalueInEnclosing == -2) {
                 return addUpvalue(level, name, false, -1, isRef, true);
@@ -1993,8 +1996,8 @@ namespace jc {
         if (current().stateNames.count(name) > 0) {
             throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
         }
-        int upvalue = resolveUpvalue(name);
         current().refNames.insert(name);
+        int upvalue = resolveUpvalue(name);
         
         if (upvalue != -1) {
             emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2013,8 +2016,8 @@ namespace jc {
         if (current().refNames.count(name) > 0) {
             throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
         }
-        int upvalue = resolveUpvalue(name);
         current().stateNames.insert(name);
+        int upvalue = resolveUpvalue(name);
         
         if (upvalue != -1) {
             emit(OpCode::OP_GET_UPVALUE, lastLine);

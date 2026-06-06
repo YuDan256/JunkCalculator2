@@ -1018,8 +1018,17 @@ namespace jc {
             }
         }
 
-        bool enclosingIsState = isState || (enclosing.stateNames.count(name) > 0);
-        bool enclosingIsRef = isRef || (enclosing.refNames.count(name) > 0);
+        bool isStateVar = enclosing.stateNames.count(name) > 0;
+        bool isRefVar = enclosing.refNames.count(name) > 0;
+        bool isExplicitStateVar = enclosing.explicitStateNames.count(name) > 0;
+
+        if (isExplicitStateVar) {
+            int enclosingUv = addUpvalue(enclosingLevel, name, false, -1, isRefVar, true, true);
+            return addUpvalue(level, name, false, enclosingUv, isRef, false, false);
+        }
+
+        bool enclosingIsState = isState || isStateVar;
+        bool enclosingIsRef = isRef || isRefVar;
 
         int upvalueInEnclosing = resolveUpvalueAt(enclosingLevel, name, enclosingIsRef, enclosingIsState);
         if (upvalueInEnclosing != -1) {
@@ -1029,10 +1038,11 @@ namespace jc {
                 }
                 // ★ 核心修复：如果外层是全局捕获，必须在外层添加 isGlobal=true 的 Upvalue，
                 // 然后当前层添加一个普通的 Upvalue 指向外层！保证内外层物理内存共享！
-                int enclosingUv = addUpvalue(enclosingLevel, name, false, -1, enclosingIsRef, true);
-                return addUpvalue(level, name, false, enclosingUv, isRef, false);
+                int enclosingUv = addUpvalue(enclosingLevel, name, false, -1, enclosingIsRef, true, false);
+                return addUpvalue(level, name, false, enclosingUv, isRef, false, false);
             }
-            return addUpvalue(level, name, false, upvalueInEnclosing, isRef, false);
+            
+            return addUpvalue(level, name, false, upvalueInEnclosing, isRef, false, false);
         }
 
         return -1;

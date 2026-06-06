@@ -15,6 +15,7 @@
       "    /d on | off            Enable/disable real-time bytecode disassembly",
       "    /debug on | off        Enable/disable global step-debugger",
       "    /profile on | off      Enable/disable execution profiler",
+      "    /show_none on | off    Enable/disable printing 'none' at the top level",
       "    gcinfo()               Show current Garbage Collector tracking status",
       "    gc()                   Force a Mark-and-Sweep garbage collection cycle",
       "",
@@ -467,8 +468,8 @@
       "",
       "  Formatting & I/O",
       "  ──────────────────────",
-      "    print(...)          Print arguments separated by space",
-      "    println(...)        Alias for print",
+      "    print(...)          Print arguments separated by space (no newline)",
+      "    println(...)        Print arguments separated by space with a newline",
       "    format(fmt, ...)    Python-style string formatting",
       "                          format(\"{:>10.2f}\", PI)",
       "    input()             Read a line from stdin",
@@ -4526,10 +4527,16 @@
     },
     "print": {
       "signature": "print(...)",
-      "desc": "Prints arguments to the console, separated by spaces.",
-      "aliases": ["println"],
+      "desc": "Prints arguments to the console, separated by spaces, without a trailing newline.",
       "examples": [
         "print(\"Hello\", 42)"
+      ]
+    },
+    "println": {
+      "signature": "println(...)",
+      "desc": "Prints arguments to the console, separated by spaces, with a trailing newline.",
+      "examples": [
+        "println(\"Hello\", 42)"
       ]
     },
     "readFile": {

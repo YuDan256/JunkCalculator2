@@ -118,6 +118,7 @@ bool g_showDisasm = false;  // ★ 新增：字节码反汇编开关
 bool g_autoDebug = false;
 bool g_profile = false;
 bool g_quiet = false;
+bool g_showNone = false;
 
 // ★ 执行一段任意多行/单行代码的统一接口
 jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool isFile = false) {
@@ -558,6 +559,16 @@ int main(int argc, char* argv[]) {
                 std::cout << "Profiler disabled.\n";
                 continue;
             }
+            if (input == "/show_none on") {
+                g_showNone = true;
+                std::cout << "Show 'none' enabled.\n";
+                continue;
+            }
+            if (input == "/show_none off") {
+                g_showNone = false;
+                std::cout << "Show 'none' disabled.\n";
+                continue;
+            }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
             if (input == "/version") { std::cout << "Junk Calculator 2.4.1.0\n"; continue; }
@@ -608,8 +619,8 @@ int main(int argc, char* argv[]) {
 
         try {
             jc::Value result = evalCode(input, "REPL", false);
-            if (!result.isNone()) {
-                vm.setGlobal("ANS", result);
+            if (!result.isNone() || g_showNone) {
+                if (!result.isNone()) vm.setGlobal("ANS", result);
                 std::string typeColor;
                 bool isTopLevelMatrix = false;
                 
@@ -636,6 +647,8 @@ int main(int argc, char* argv[]) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_CYAN);
                 } else if (result.isObjType(jc::ObjType::DICT) || result.isObjType(jc::ObjType::LIST) || result.isObjType(jc::ObjType::SET)) {
                     typeColor = jc::col(jc::Ansi::CYAN);
+                } else if (result.isNone()) {
+                    typeColor = jc::col(jc::Ansi::GRAY);
                 } else {
                     typeColor = jc::col(jc::Ansi::WHITE); // SymExpr 等
                 }

@@ -2146,7 +2146,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_PRINT: {
-                    std::cout << pop() << std::endl;
+                    std::cout << pop() << std::flush;
                     push(Value::none());
                     break;
                 }

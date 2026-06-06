@@ -1822,7 +1822,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         else os << v;
     };
 
-    if (val.isNone()) return os;
+    if (val.isNone()) { os << "none"; return os; }
     if (val.isUninit()) { os << "<uninit>"; return os; }
     if (val.isBool()) { os << (val.asBool() ? "true" : "false"); return os; }
     if (val.isInt32()) { os << val.asInt32(); return os; }

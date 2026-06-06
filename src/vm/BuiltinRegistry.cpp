@@ -1871,9 +1871,21 @@ void BuiltinRegistry::registerControlFlow() {
             }
             std::cout << args[i];
         }
+        std::cout << std::flush; return Value::none();
+        });
+    reg("println", {}, [](const std::vector<Value>& args) -> Value {
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (i > 0) std::cout << " ";
+            // ★ Dunder 钩子: __str__
+            if (args[i].isInstance()) {
+                auto inst = args[i].asInstance();
+                auto [found, result] = tryCallDunder(inst, "__str__");
+                if (found) { std::cout << result; continue; }
+            }
+            std::cout << args[i];
+        }
         std::cout << std::endl; return Value::none();
         });
-    reg("println", builtinArity["print"], builtins["print"]);
     reg("bool", { 1 }, [](const std::vector<Value>& args) -> Value {
         // ★ Dunder 钩子: __bool__
         if (args[0].isInstance()) {

@@ -1,7 +1,7 @@
 {
     "name": "jc2-language",
     "displayName": "JC2 Language Support",
-    "description": "Syntax highlighting and script runner for Junk Calculator 2.4.1 [VM Edition]",
+    "description": "Syntax highlighting and script runner for Junk Calculator 2.4.1.1",
     "version": "2.4.1",
     "publisher": "yuliangyang",
     "repository": {

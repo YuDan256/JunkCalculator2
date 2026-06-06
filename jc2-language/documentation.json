@@ -513,6 +513,9 @@
     "print": {
       "signature": "print(...)"
     },
+    "println": {
+      "signature": "println(...)"
+    },
     "readFile": {
       "signature": "readFile(path)"
     },
@@ -1556,9 +1559,6 @@
     },
     "hasField": {
       "signature": "hasField(d, key)"
-    },
-    "println": {
-      "signature": "println(...)"
     },
     "stringify": {
       "signature": "stringify(val)"

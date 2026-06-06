@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.4.1.0
+# Junk Calculator 2.4.1.1
 
-![Version](https://img.shields.io/badge/Version-v2.4.1.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.1.1-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -25,7 +25,7 @@
 - **虚拟机 (Virtual Machine)**：基于栈的字节码解释器。实现了函数调用的延迟绑定 (Late-binding)、带行号回溯的异常处理、交互式步进调试器、执行性能分析器 (Profiler) 以及动态运算符分发。
 
 ### 语言语义
-- **类型系统与内存管理**：由 `std::variant` 驱动的动态类型系统，内部包含 17 种数据类型。
+- **类型系统与内存管理**：由 NaN-boxing (NaN 装箱) 驱动的动态类型系统，内部包含 20 余种数据类型（含隐藏类型）。
   - *值类型*：标量（双精度浮点数、大整数、复数）与矩阵（实数矩阵、复数矩阵、字符串矩阵）采用连续内存，遵循“值传递 (pass-by-value)”语义。
   - *引用类型*：容器 (`List`, `Dict`, `Set`) 与面向对象 `Instance` 采用“引用传递”语义（底层基于 PIMPL 架构和 `std::shared_ptr`）。
 - **渐进式类型 (Gradual Typing)**：支持对函数参数和返回值进行运行时类型契约校验（例如 `func(a: double, b: matrix) -> bool = ...`）。涵盖基础类型、容器类型及类的继承校验。
@@ -68,29 +68,24 @@
 
 ---
 
-## v2.4.1.0 版本更新说明
+## v2.4.1.1 版本更新说明
 
-v2.4.1.0 版本引入了强大的模式匹配 (Pattern Matching) 机制，新增了零依赖的 FFI (外部函数接口) 支持，并对数学引擎、虚拟机性能及内存管理进行了多项优化与修复。
+v2.4.1.1 版本重点修复了闭包状态捕获机制，优化了面向对象与解构的语义一致性，并对标准输出和 REPL 体验进行了改进。
 
-### 核心语法与前端
-- **模式匹配 (Match Expression)**：新增了强大的 `match` 表达式，支持深度解构、模式守卫 (guards)，以及在列表/矩阵解构中使用中间剩余模式 (`...`)。
-- **进制字面量**：新增对十六进制 (`0x`)、二进制 (`0b`) 和八进制 (`0o`) 整数型字面量的支持。
-- **语法严谨性**：在解析器中强制要求语句终止符，以防止产生歧义解析。
+### 核心机制与编译器
+- **闭包状态捕获**：彻底修复了闭包中 `ref`/`state` 变量的捕获与初始化逻辑，修正了向上查找 upvalue 的顺序，解决了作用域解析错误和全局变量污染问题。
 
-### 数学与运算符
-- **左除与位移**：新增左除运算符 `\` 及其复合赋值形式 `\=`；实现按位左移 `<<` 和右移 `>>` 运算符，并支持单次求值的复合赋值。
-- **数学函数优化**：通过幂运算重构了 `sqrtD`、`cbrtD` 和 `rootD` 的实现，并将其转换为 double/complex 类型。
+### 对象与解构优化
+- **实例解构**：明确了实例 (Instance) 解构只包含物理字段和动态属性 (`__getattr__`)，不再错误地提取类方法。
+- **字典解构增强**：新增 `OP_DICT_REST` 字节码指令，通过创建新字典提升 `...rest` 语法性能且不破坏原对象；同时放开了编译器拦截，允许命名空间 (Namespace) 参与字典解构。
 
-### 虚拟机与内存管理
-- **性能优化**：在 VM 调度循环中缓存当前的 frame、chunk 和 code 指针，提升执行性能。
-- **GC 与内存安全**：引入 RAII 机制的临时根保护 (temporary root guards) 以增强 GC 安全性；及时清理已弹出的栈槽位，防止残留引用影响写时复制 (COW) 机制。
-- **哈希与类型**：拒绝为非冻结 (non-frozen) 的容器计算哈希值；在数值上下文中将 `true`/`false` 视为 `1.0`/`0.0`；修复 `in` 运算符使其返回布尔值。
+### 操作符与迭代增强
+- **默认迭代器**：为未实现 `__iter__` 的实例添加了默认的字段迭代支持（支持普通 `for...in` 和解构 `for...in`）。
+- **`in` 运算符回退**：修复了 `in` 运算符在实例未定义 `__contains__` 时的行为，现在会正确回退检查物理字段 (fields) 和动态属性 (`__getattr__`)。
 
-### 模块、FFI 与工具链
-- **FFI 增强**：添加了零依赖的 FFI 支持（不包含 f32），支持 ByteBuffer 指针自动解包和 64 位内存访问。
-- **LaTeX 解析器**：升级 LaTeX 解析器，新增对符号计算和多行矩阵的支持。
-- **反汇编与调试**：增强了反汇编功能以包含所有函数，并新增了 `disassemble()` 内置函数。
-- **VS Code 插件**：为 `match` 关键字添加了语法高亮、代码补全和代码片段。
+### 基础库与 REPL
+- **打印函数分离**：拆分了打印函数，`print` 不再自动追加换行符，新增 `println` 用于带换行的输出，并同步重构了标准库。
+- **REPL 净化**：新增 `/show_none on|off` 命令，用于控制是否在 REPL 中输出表达式的 `none` 结果（默认为 off）。
 
 ---
 

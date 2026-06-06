@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.1.0
+# Junk Calculator 2.4.1.1
 
-![Version](https://img.shields.io/badge/Version-v2.4.1.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.1.1-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -25,7 +25,7 @@ Developed by Yu Liangyang, Tsinghua University.
 - **Virtual Machine**: Stack-based bytecode interpreter. Implements late-binding for function calls, exception handling with line-number unwinding, an interactive step-debugger, execution profiling, and dynamic operator dispatching.
 
 ### Language Semantics
-- **Type System & Memory Management**: `std::variant`-backed dynamic typing supporting 17 internal types. 
+- **Type System & Memory Management**: NaN-boxing backed dynamic typing supporting 20+ internal types (including hidden types). 
   - *Value Types*: Scalars (double, BigInt, Complex) and Matrices (Real, Complex, String) use contiguous memory and pass-by-value semantics.
   - *Reference Types*: Containers (`List`, `Dict`, `Set`) and OOP `Instance`s use pass-by-reference semantics (backed by PIMPL architecture and `std::shared_ptr`).
 - **Gradual Typing**: Optional runtime type contracts for function parameters and return values (e.g., `func(a: double, b: matrix) -> bool = ...`). Supports base types, containers, and class inheritance definitions.
@@ -68,29 +68,24 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.1.0
+## What's New in v2.4.1.1
 
-Version 2.4.1.0 introduces a powerful pattern matching mechanism, adds zero-dependency FFI (Foreign Function Interface) support, and brings various optimizations and fixes to the math engine, virtual machine performance, and memory management.
+Version 2.4.1.1 focuses on fixing closure state capture mechanisms, optimizing OOP and destructuring semantic consistency, and improving standard output and the REPL experience.
 
-### Core Syntax & Frontend
-- **Pattern Matching**: Introduced a powerful `match` expression supporting deep destructuring, pattern guards, and middle rest patterns (`...`) in list/matrix destructuring.
-- **Radix Literals**: Added support for hexadecimal (`0x`), binary (`0b`), and octal (`0o`) integer literals.
-- **Syntax Strictness**: Enforced statement terminators in the parser to prevent ambiguous parsing.
+### Core Mechanisms & Compiler
+- **Closure State Capture**: Completely fixed the capture and initialization logic of `ref`/`state` variables in closures, corrected the upvalue lookup order, and resolved scope resolution errors and global variable pollution.
 
-### Math & Operators
-- **Left Division & Bitwise Shift**: Added the left division operator `\` and its compound assignment `\=`; implemented bitwise left shift `<<` and right shift `>>` operators with single-evaluation compound assignment.
-- **Math Functions**: Refactored `sqrtD`, `cbrtD`, and `rootD` implementations via power operations, casting results to double/complex types.
+### Object & Destructuring Optimization
+- **Instance Destructuring**: Clarified that Instance destructuring only includes physical fields and dynamic attributes (`__getattr__`), no longer incorrectly extracting class methods.
+- **Dictionary Destructuring Enhancements**: Added the `OP_DICT_REST` bytecode instruction to improve `...rest` syntax performance by creating a new dictionary without mutating the original object; allowed Namespaces to participate in dictionary destructuring.
 
-### Virtual Machine & Memory Management
-- **Performance**: Cached current frame, chunk, and code pointers in the VM dispatch loop to boost execution performance.
-- **GC & Memory Safety**: Introduced RAII temporary root guards for enhanced GC protection; cleared popped stack slots to prevent lingering references from affecting Copy-On-Write (COW).
-- **Hashing & Types**: Rejected hash computation for non-frozen containers; treated `true`/`false` as `1.0`/`0.0` in numeric contexts; fixed the `in` operator to return boolean values.
+### Operators & Iteration Enhancements
+- **Default Iterator**: Added default field iteration support for instances without an `__iter__` method (supports both standard `for...in` and destructuring `for...in`).
+- **`in` Operator Fallback**: Fixed the `in` operator's behavior when an instance lacks `__contains__`; it now correctly falls back to checking physical fields and dynamic attributes (`__getattr__`).
 
-### Modules, FFI & Toolchain
-- **FFI Enhancements**: Added zero-dependency FFI support (excluding f32) with ByteBuffer pointer auto-unpacking and 64-bit memory access.
-- **LaTeX Parser**: Upgraded the LaTeX parser with symbolic computation and multi-row matrix support.
-- **Disassembly & Debugging**: Enhanced disassembly to include all functions and added the `disassemble()` built-in function.
-- **VS Code Extension**: Added syntax highlighting, completion, and snippets for the `match` keyword.
+### Standard Library & REPL
+- **Print Function Split**: Split the print functions: `print` no longer automatically appends a newline, while the new `println` is used for output with a newline. The standard library has been refactored accordingly.
+- **REPL Output Control**: Added the `/show_none on|off` command to control whether `none` results are printed in the REPL (defaults to off).
 
 ---
 

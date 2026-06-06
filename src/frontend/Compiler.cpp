@@ -1525,6 +1525,9 @@ namespace jc {
         }
         int cols = static_cast<int>(expr->elements[0].size());
         for (int i = 0; i < rows; ++i) {
+            if (static_cast<int>(expr->elements[i].size()) != cols) {
+                throw std::runtime_error("Compiler Error: Matrix rows must have the same number of columns.");
+            }
             for (int j = 0; j < cols; ++j) {
                 compileNode(expr->elements[i][j].get());
             }

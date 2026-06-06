@@ -1152,12 +1152,6 @@ namespace jc {
 
             while (match({ TokenType::NEWLINE })) {}
             consume(TokenType::RBRACKET, "Parser Error: Expect ']' after matrix structure.");
-            if (!matrixElements.empty()) {
-                size_t cols = matrixElements[0].size();
-                for (const auto& row : matrixElements)
-                    if (row.size() != cols)
-                        throw std::runtime_error("Parser Error: Matrix rows must have the same number of columns.");
-            }
             return std::make_unique<MatrixNode>(std::move(matrixElements));
         }
         throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");

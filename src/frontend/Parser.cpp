@@ -1246,7 +1246,11 @@ namespace jc {
                 if (auto* st = dynamic_cast<StateDecl*>(un->right.get())) {
                     return std::make_unique<RestPattern>(st->name, ScopeModifier::State);
                 }
-                throw std::runtime_error("Parser Error: Invalid rest pattern target.");
+                std::string rightType = un->right ? typeid(*un->right).name() : "null";
+                throw std::runtime_error("Parser Error: Invalid rest pattern target. rightType=" + rightType);
+            } else {
+                std::string opTypeStr = std::to_string(static_cast<int>(un->op.type));
+                throw std::runtime_error("Parser Error: Unary op is not ELLIPSIS. op.type=" + opTypeStr + ", lexeme=" + un->op.lexeme);
             }
         }
         if (auto* mat = dynamic_cast<MatrixNode*>(expr.get())) {
@@ -1291,12 +1295,15 @@ namespace jc {
 
             for (auto& entry : dict->entries) {
                 if (!entry.first) {
+                    std::string exprType = entry.second ? typeid(*entry.second).name() : "null";
                     auto pat = exprToPattern(std::move(entry.second));
                     if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
                         if (rest) throw std::runtime_error("Parser Error: Multiple rest patterns in dict.");
-                        rest = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
+                        pat.release(); // 放弃所有权
+                        rest = std::unique_ptr<RestPattern>(rp); // 直接接管已经 cast 好的指针
                     } else {
-                        throw std::runtime_error("Parser Error: Invalid rest pattern in dict.");
+                        std::string patType = pat ? typeid(*pat).name() : "null";
+                        throw std::runtime_error("Parser Error: Invalid rest pattern in dict. exprType=" + exprType + ", patType=" + patType);
                     }
                 } else {
                     auto* litKey = dynamic_cast<Literal*>(entry.first.get());
@@ -1795,7 +1802,8 @@ namespace jc {
             if (match({TokenType::ELLIPSIS})) {
                 isRest = true;
                 key = nullptr;
-                value = std::make_unique<Unary>(previous(), assignment());
+                Token opTok = previous();
+                value = std::make_unique<Unary>(opTok, assignment());
             } else {
                 if (isSimpleId) {
                     advance(); // 吞掉这个标识符

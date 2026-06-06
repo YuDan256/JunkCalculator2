@@ -221,7 +221,6 @@ namespace jc {
                 skipMatchJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                 chunk()->patchJump(successJump);
             }
-            current().locals.pop_back(); // untrack <comp_val>
         }
         else {
             const std::string& varName = clause.varName.lexeme;
@@ -1465,7 +1464,6 @@ namespace jc {
                 loopStack.back().continueJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
                 chunk()->patchJump(successJump);
             }
-            current().locals.pop_back(); // untrack <forin_val>
         }
         else {
             const std::string& varName = expr->varName.lexeme;
@@ -2299,10 +2297,9 @@ namespace jc {
             chunk()->patchJump(successJump);
         }
 
-        // 7. Restore RHS value to stack top and clean up temp local
+        // 7. Restore RHS value to stack top
         emit(OpCode::OP_GET_LOCAL, lastLine);
         emit16(static_cast<uint16_t>(valSlot), lastLine);
-        current().locals.pop_back();
 
         return {};
     }
@@ -2935,8 +2932,6 @@ namespace jc {
         for (int ej : endJumps) {
             chunk()->patchJump(ej);
         }
-
-        current().locals.pop_back();
 
         return {};
     }

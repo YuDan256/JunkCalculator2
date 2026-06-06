@@ -1,0 +1,21 @@
+cache = dict()
+
+make_calc(f) = {
+    state cache = cache
+    return (x) => {
+        key = freeze([f,x])
+        if(key in cache) return cache[key]
+        println(f"Calculating for {x}")
+        res = f(x)
+        cache[key] = res
+        return res
+    }
+}
+
+calcA = make_calc(cos)
+calcB = make_calc(sin)
+calcC = make_calc(sin)
+
+println(calcA(PI))
+println(calcB(PI))
+println(calcC(PI))

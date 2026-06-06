@@ -1,0 +1,108 @@
+println("=== Testing State Keyword ===")
+
+// 1. Explicit Init (Exactly-Once)
+println("\n--- 1. Explicit Init ---")
+counterA() = {
+    state n = 0
+    n += 1
+    return n
+}
+assert(counterA() == 1, "counterA 1")
+assert(counterA() == 2, "counterA 2")
+assert(counterA() == 3, "counterA 3")
+println("counterA passed.")
+
+// 1b. Explicit Init capturing outer variable (state x = x)
+x_val = 100
+counterB() = {
+    state x_val = x_val
+    x_val += 10
+    return x_val
+}
+assert(counterB() == 110, "counterB 1")
+assert(counterB() == 120, "counterB 2")
+assert(x_val == 100, "counterB outer untouched") // Outer untouched
+println("counterB passed.")
+
+// 2. Compound Assignment (Evaluates every time, captures outer as initial)
+println("\n--- 2. Compound Assignment ---")
+base_val = 50
+counterC() = {
+    state base_val += 5
+    return base_val
+}
+assert(counterC() == 55, "counterC 1")
+assert(counterC() == 60, "counterC 2")
+assert(base_val == 50, "counterC outer untouched") // Outer untouched
+println("counterC passed.")
+
+// 3. Standalone Declaration (Captures outer as initial state)
+println("\n--- 3. Standalone Declaration ---")
+start_val = 1000
+counterD() = {
+    state start_val
+    start_val += 1
+    return start_val
+}
+assert(counterD() == 1001, "counterD 1")
+assert(counterD() == 1002, "counterD 2")
+assert(start_val == 1000, "counterD outer untouched")
+println("counterD passed.")
+
+// 4. Nested Closures & Memory Sharing
+println("\n--- 4. Nested Closures ---")
+make_shared() = {
+    state shared = 0
+    inc() = {
+        ref shared += 1
+        return shared
+    }
+    dec() = {
+        ref shared -= 1
+        return shared
+    }
+    return [inc, dec]
+}
+[f_inc, f_dec] = make_shared()
+assert(f_inc() == 1, "shared inc 1")
+assert(f_inc() == 2, "shared inc 2")
+assert(f_dec() == 1, "shared dec 1")
+assert(f_inc() == 2, "shared inc 3")
+println("Nested sharing passed.")
+
+// 5. Destructuring with State
+println("\n--- 5. Destructuring ---")
+destruct_test() = {
+    [state a, state b] = [10, 20]
+    a += 1
+    b += 2
+    return [a, b]
+}
+assert(destruct_test() == [11, 22], "destruct 1")
+assert(destruct_test() == [12, 24], "destruct 2")
+println("Destructuring passed.")
+
+// 6. Memoization Decorator (Independent Caches)
+println("\n--- 6. Memoization ---")
+make_memo(f) = {
+    return (x) => {
+        state cache = dict()
+        if (x in cache) {
+            return cache[x]
+        }
+        res = f(x)
+        cache[x] = res
+        return res
+    }
+}
+
+memo_sin = make_memo(sin)
+memo_cos = make_memo(cos)
+
+assert(memo_sin(PI/2) == 1.0, "memo sin 1")
+assert(memo_sin(PI/2) == 1.0, "memo sin 2 (cached)") 
+assert(memo_cos(0) == 1.0, "memo cos 1")
+assert(memo_cos(0) == 1.0, "memo cos 2 (cached)")    
+println("Memoization passed.")
+
+println("\nAll state tests passed successfully!")

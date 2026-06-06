@@ -1,0 +1,111 @@
+// ==========================================
+// JC2 Match 自动化终极测试套件 (Auto-Test Suite)
+// ==========================================
+
+// 自动化验证函数 (断言)
+check(name, actual, expected) = {
+    // 强制转换为字符串进行严格对比
+    if (str(actual) == str(expected)) {
+        println("✅ [PASS] " + name)
+    } else {
+        println("❌ [FAIL] " + name)
+        println("    -> 期望值 (Expected): " + str(expected))
+        println("    -> 实际值 (Actual):   " + str(actual))
+    }
+}
+
+// ------------------------------------------
+// 1. 字面量、多路 OR 与兜底
+// ------------------------------------------
+test_literal(code) = match(code) {
+    200, 201 => "OK",
+    404 => "Not Found",
+    _ => "Unknown"
+}
+
+// ------------------------------------------
+// 2. 类型守卫与变量绑定 (Type Guards)
+// ------------------------------------------
+test_guard(val) = match(val) {
+    n if (isint(n)) => "Int: " + str(n),
+    s if (isstring(s)) => "Str: " + s,
+    _ => "Other"
+}
+
+// ------------------------------------------
+// 3. 数组/矩阵中间残差提取 (Middle Rest)
+// ------------------------------------------
+test_middle(arr) = match(arr) {
+    // 提取首、尾，把中间所有内容打包
+    [first, ...mid, last] => str(first) + " | " + str(mid) + " | " + str(last),
+    _ => "Fail"
+}
+
+// ------------------------------------------
+// 4. 二维矩阵降维打击 (2D Matrix Slicing)
+// ------------------------------------------
+test_matrix_slice(m) = match(m) {
+    // 肢解：左上角元素，第一行剩余列，剩余所有子矩阵
+    [topleft, ...rest_col; ...rest_rows] => str(topleft) + " & " + str(rest_col) + " & " + str(rest_rows),
+    _ => "Fail"
+}
+
+// ------------------------------------------
+// 5. 尾随分号严格维度控制 (Trailing Semicolon)
+// ------------------------------------------
+test_strict_rows(m) = match(m) {
+    // 严格限制：必须且只能有 2 行
+    [...r1; ...r2;] => "Exactly 2 rows",
+    _ => "Other"
+}
+
+// ------------------------------------------
+// 6. 字典简写与克隆剔除 (Dict Shorthand & Rest)
+// ------------------------------------------
+test_dict(d) = match(d) {
+    // 简写提取 name，并将剩余字段存入 extras
+    {name, ...extras} => name + " & " + str(extras),
+    {} => "Empty",
+    _ => "Fail"
+}
+
+// ------------------------------------------
+// 7. 极致深度嵌套解构 (Deep Nesting)
+// ------------------------------------------
+test_deep(data) = match(data) {
+    // 穿透提取第一位 user 的 id 和 name，并忽略后面的 users
+    {"users": [{id, name}, ..._]} => str(id) + " : " + name,
+    _ => "Fail"
+}
+
+
+// ==========================================
+// 🚀 启动自动化测试 (Run Tests)
+// ==========================================
+println("\n====== JC2 Match 自动化测试启动 ======")
+
+check("1.1 Literal: 匹配多路 OR", test_literal(201), "OK")
+check("1.2 Literal: 匹配兜底分支", test_literal(500), "Unknown")
+
+check("2.1 Guard: 识别整数", test_guard(42), "Int: 42")
+check("2.2 Guard: 识别字符串", test_guard("JC2"), "Str: JC2")
+
+check("3.1 Middle: 正常提取中间段", test_middle([1, 2, 3, 4]), "1 | [2, 3] | 4")
+check("3.2 Middle: 中间为空时提取", test_middle([9, 8]), "9 | [] | 8")
+
+// 物理矩阵:
+// 1 2 3
+// 4 5 6
+// 7 8 9
+mat3x3 = [1, 2, 3; 4, 5, 6; 7, 8, 9]
+check("4.1 Matrix: 左上标量+列残差+行残差", test_matrix_slice(mat3x3), "1 & [2, 3] & [4, 5, 6; 7, 8, 9]")
+
+check("5.1 Strict: 完美匹配2行矩阵", test_strict_rows([1, 2; 3, 4]), "Exactly 2 rows")
+check("5.2 Strict: 阻击3行矩阵越界", test_strict_rows(mat3x3), "Other")
+
+check("6.1 Dict: Shorthand 提取与残差剥离", test_dict({"name": "JC2", "ver": 2, "fast": true}), "JC2 & {ver: 2, fast: true}")
+
+payload = {"users": [{"id": 101, "name": "Admin"}, {"id": 102, "name": "Guest"}]}
+check("7.1 Deep: JSON 深度穿透解构", test_deep(payload), "101 : Admin")
+
+println("======================================\n")

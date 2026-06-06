@@ -407,7 +407,16 @@ namespace jc {
                 int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, expr->name.line);
                 emit(OpCode::OP_POP, expr->name.line); // pop boolean
                 
+                // ★ Temporarily unregister so RHS can capture the outer variable if it references the same name
+                current().stateNames.erase(name);
+                current().explicitStateNames.erase(name);
+                
                 compileNode(expr->value.get());
+                
+                // ★ Re-register
+                current().stateNames.insert(name);
+                current().explicitStateNames.insert(name);
+
                 emit(OpCode::OP_SET_UPVALUE, expr->name.line);
                 emit16(static_cast<uint16_t>(upvalue), expr->name.line);
                 
@@ -984,10 +993,9 @@ namespace jc {
         bool isLocal, int index, bool isRef, bool isGlobal, bool isExplicitState) {
         auto* fn = stateStack[level].function;
         for (int j = 0; j < static_cast<int>(fn->upvalues.size()); ++j) {
-            if (fn->upvalues[j].name == name) {
+            if (fn->upvalues[j].name == name && fn->upvalues[j].isExplicitState == isExplicitState) {
                 if (isRef) fn->upvalues[j].isRef = true; // ★ 升级为引用捕获
                 if (isGlobal) fn->upvalues[j].isGlobal = true;
-                if (isExplicitState) fn->upvalues[j].isExplicitState = true;
                 return j;
             }
         }
@@ -1141,7 +1149,7 @@ namespace jc {
             } else if (expr->isState) {
                 if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                 current().stateNames.insert(name);
-                current().explicitStateNames.insert(name);
+                // DO NOT insert into explicitStateNames for compound assignment!
                 upvalue = resolveUpvalue(name);
             }
 
@@ -1779,7 +1787,8 @@ namespace jc {
     std::any Compiler::visitDestructAssign(DestructAssign* expr) {
         int n = static_cast<int>(expr->targets.size());
 
-        // ★ Pre-register ref/state names BEFORE compiling RHS so reads resolve to upvalues
+        // ★ Pre-register ref names BEFORE compiling RHS so reads resolve to upvalues
+        std::vector<std::string> tempStateNames;
         for (int i = 0; i < n; ++i) {
             Expr* targetExpr = expr->targets[i].get();
             std::string name;
@@ -1809,13 +1818,18 @@ namespace jc {
                 }
                 else if (isState) {
                     if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                        current().stateNames.insert(name);
-                        current().explicitStateNames.insert(name);
+                        // Defer state registration so RHS can read outer variables
+                        tempStateNames.push_back(name);
                 }
             }
         }
 
         compileNode(expr->value.get());
+
+        for (const auto& name : tempStateNames) {
+            current().stateNames.insert(name);
+            current().explicitStateNames.insert(name);
+        }
         emit(OpCode::OP_DESTRUCT, lastLine);
         emit(static_cast<uint8_t>(n), lastLine);
 
@@ -2430,7 +2444,8 @@ namespace jc {
     std::any Compiler::visitDictDestructAssign(DictDestructAssign* expr) {
         lastLine = 0;
 
-        // ★ Pre-register ref/state names BEFORE compiling RHS so reads resolve to upvalues
+        // ★ Pre-register ref names BEFORE compiling RHS so reads resolve to upvalues
+        std::vector<std::string> tempStateNames;
         for (auto& target : expr->targets) {
             Expr* targetExpr = target.second.get();
             std::string name;
@@ -2458,14 +2473,19 @@ namespace jc {
                     current().refNames.insert(name);
                 } else if (isState) {
                     if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().stateNames.insert(name);
-                    current().explicitStateNames.insert(name);
+                    // Defer state registration so RHS can read outer variables
+                    tempStateNames.push_back(name);
                 }
             }
         }
 
         // 1. 将右侧要解构的数据源（Dict 或 Instance）解析并压入栈顶
         compileNode(expr->value.get());
+
+        for (const auto& name : tempStateNames) {
+            current().stateNames.insert(name);
+            current().explicitStateNames.insert(name);
+        }
 
         // 2. 依次扒取属性并分配
         for (auto& target : expr->targets) {

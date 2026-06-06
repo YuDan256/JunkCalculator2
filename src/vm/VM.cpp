@@ -89,6 +89,7 @@ namespace jc {
     }
 
     std::string VM::getTypeName(const Value& val) {
+        if (val.isUninit()) return "Uninitialized";
         return val.typeName();
     }
 
@@ -1246,7 +1247,8 @@ namespace jc {
                         }
                         else {
                             std::ostringstream oss;
-                            oss << v;
+                            if (v.isUninit()) oss << "Uninitialized";
+                            else oss << v;
                             push(Value(oss.str()));
                         }
                     }
@@ -1262,7 +1264,9 @@ namespace jc {
                         if (v.isString())
                             parts[j] = v.asString();
                         else {
-                            std::ostringstream oss; oss << v;
+                            std::ostringstream oss;
+                            if (v.isUninit()) oss << "Uninitialized";
+                            else oss << v;
                             parts[j] = oss.str();
                         }
                     }
@@ -1341,7 +1345,9 @@ namespace jc {
                     if (errVal.isString())
                         msg = errVal.asString();
                     else {
-                        std::ostringstream oss; oss << errVal;
+                        std::ostringstream oss;
+                        if (errVal.isUninit()) oss << "Uninitialized";
+                        else oss << errVal;
                         msg = oss.str();
                     }
                     throw ErrorSignal(msg);
@@ -1809,7 +1815,12 @@ namespace jc {
                         for (int ii = 0; ii < total; ++ii) {
                             const Value& v = l->vec[ii];
                             if (v.isString()) flat[ii] = v.asString();
-                            else { std::ostringstream oss; oss << v; flat[ii] = oss.str(); }
+                            else {
+                                std::ostringstream oss;
+                                if (v.isUninit()) oss << "Uninitialized";
+                                else oss << v;
+                                flat[ii] = oss.str();
+                            }
                         }
                         push(Value(StringMatrix(1, total, flat)));
                     }
@@ -3041,7 +3052,9 @@ namespace jc {
             if (calleeVal.isString())
                 desc = calleeVal.asString();
             else {
-                std::ostringstream oss; oss << calleeVal;
+                std::ostringstream oss;
+                if (calleeVal.isUninit()) oss << "Uninitialized";
+                else oss << calleeVal;
                 desc = oss.str();
             }
             throw std::runtime_error("VM Error: '" + desc + "' is not callable.");
@@ -3059,7 +3072,12 @@ namespace jc {
                 if (it == dict->keyMap.end()) {
                     std::string keyStr;
                     if (idx.isString()) keyStr = idx.asString();
-                    else { std::ostringstream oss; oss << idx; keyStr = oss.str(); }
+                    else {
+                        std::ostringstream oss;
+                        if (idx.isUninit()) oss << "Uninitialized";
+                        else oss << idx;
+                        keyStr = oss.str();
+                    }
                     throw std::runtime_error("VM Error: Key '" + keyStr + "' not found.");
                 }
                 push(dict->elements[it->second].second);
@@ -3527,7 +3545,9 @@ namespace jc {
                 if (val.isString())
                     m(r, c) = val.asString();
                 else {
-                    std::ostringstream oss; oss << val;
+                    std::ostringstream oss;
+                    if (val.isUninit()) oss << "Uninitialized";
+                    else oss << val;
                     m(r, c) = oss.str();
                 }
             }
@@ -3690,7 +3710,7 @@ namespace jc {
                 return;
             }
 
-            throw std::runtime_error("VM Error: Cannot slice this type.");
+            throw std::runtime_error("VM Error: Cannot slice a value of type '" + getTypeName(obj) + "'.");
         }
         else if (dims == 2) {
             auto cStep = readOptionalInt();
@@ -3725,7 +3745,7 @@ namespace jc {
                 processMatSlice(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
             }
             else {
-                throw std::runtime_error("VM Error: 2D slicing requires a matrix.");
+                throw std::runtime_error("VM Error: 2D slicing requires a matrix, got '" + getTypeName(obj) + "'.");
             }
         }
         else {
@@ -3944,7 +3964,12 @@ namespace jc {
                 else {
                     std::string sv;
                     if (val.isString()) sv = val.asString();
-                    else { std::ostringstream oss; oss << val; sv = oss.str(); }
+                    else {
+                        std::ostringstream oss;
+                        if (val.isUninit()) oss << "Uninitialized";
+                        else oss << val;
+                        sv = oss.str();
+                    }
 
                     if (m.getRows() == 1) {
                         for (int id : ids) m(0, id) = sv;
@@ -3959,7 +3984,7 @@ namespace jc {
                 }
             }
             else {
-                throw std::runtime_error("VM Error: Cannot slice-assign this type.");
+                throw std::runtime_error("VM Error: Cannot slice-assign a value of type '" + getTypeName(obj) + "'.");
             }
             push(val);
             push(obj);
@@ -4047,7 +4072,10 @@ namespace jc {
                         if (val.isString())
                             scalarVal = val.asString();
                         else {
-                            std::ostringstream oss; oss << val; scalarVal = oss.str();
+                            std::ostringstream oss;
+                            if (val.isUninit()) oss << "Uninitialized";
+                            else oss << val;
+                            scalarVal = oss.str();
                         }
                     }
 
@@ -4070,7 +4098,7 @@ namespace jc {
                 processMatSliceSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
             }
             else {
-                throw std::runtime_error("VM Error: 2D slice assignment requires a matrix.");
+                throw std::runtime_error("VM Error: 2D slice assignment requires a matrix, got '" + getTypeName(obj) + "'.");
             }
             push(val);
             push(obj);
@@ -4238,7 +4266,9 @@ namespace jc {
                     if (v.isString())
                         flat[ii] = v.asString();
                     else {
-                        std::ostringstream oss; oss << v;
+                        std::ostringstream oss;
+                        if (v.isUninit()) oss << "Uninitialized";
+                        else oss << v;
                         flat[ii] = oss.str();
                     }
                 }
@@ -4387,7 +4417,7 @@ namespace jc {
             return;
         }
         throw std::runtime_error(
-            "VM Error: 'in' requires an array, vector, matrix, string, list, dict, or instance.");
+            "VM Error: 'in' requires an array, vector, matrix, string, list, dict, or instance, got '" + getTypeName(haystack) + "'.");
     }
 
     // VM.cpp 中的实现：

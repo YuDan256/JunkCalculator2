@@ -2013,9 +2013,10 @@ namespace jc {
             }
         } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
             int rows = static_cast<int>(mp->rows.size());
-            int minCols = 0;
+            int minCols = -1;
             bool exactCols = false;
             bool anyRowNoRest = false;
+            
             for (const auto& row : mp->rows) {
                 bool hasRest = false;
                 int fixed = 0;
@@ -2023,9 +2024,38 @@ namespace jc {
                     if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
                     else fixed++;
                 }
-                if (fixed > minCols) minCols = fixed;
-                if (!hasRest) anyRowNoRest = true;
+                if (!hasRest) {
+                    anyRowNoRest = true;
+                    if (minCols == -1) minCols = fixed;
+                    else if (minCols != fixed) {
+                        throw std::runtime_error("Compiler Error: Matrix pattern rows without '...' must have the same number of columns.");
+                    }
+                }
             }
+            
+            if (anyRowNoRest) {
+                for (const auto& row : mp->rows) {
+                    bool hasRest = false;
+                    int fixed = 0;
+                    for (const auto& e : row) {
+                        if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
+                        else fixed++;
+                    }
+                    if (hasRest && fixed > minCols) {
+                        throw std::runtime_error("Compiler Error: Matrix pattern row with '...' has more fixed elements than the exact column count.");
+                    }
+                }
+            } else {
+                minCols = 0;
+                for (const auto& row : mp->rows) {
+                    int fixed = 0;
+                    for (const auto& e : row) {
+                        if (!dynamic_cast<RestPattern*>(e.get())) fixed++;
+                    }
+                    if (fixed > minCols) minCols = fixed;
+                }
+            }
+            
             if (anyRowNoRest) exactCols = true;
             if (mp->rows.empty() && !mp->restRow) exactCols = true;
 

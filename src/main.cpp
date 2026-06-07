@@ -585,20 +585,24 @@ int main(int argc, char* argv[]) {
             }
             if (input.substr(0, 6) == "/save ") { saveWorkspace(input.substr(6)); continue; }
             if (input.substr(0, 6) == "/load ") { loadWorkspace(input.substr(6)); continue; }
-            if (input == "/scorivm") {
+            if (input == "/about") {
                 std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "===========================================================\n"
                           << jc::col(jc::Ansi::BOLD) << jc::col(jc::Ansi::BRIGHT_YELLOW) 
-                          << "                       S C O R I V M                       \n"
+                          << "                     Junk Calculator 2                     \n"
                           << jc::col(jc::Ansi::RESET) << jc::col(jc::Ansi::BRIGHT_CYAN) 
                           << "===========================================================\n"
-                          << jc::col(jc::Ansi::BRIGHT_MAGENTA) 
-                          << "      \"Ex parvis, firmitas. Ex simplicitate, aevum.\"       \n\n"
-                          << jc::col(jc::Ansi::BRIGHT_GREEN) 
-                          << "  ✦ Zero-dependency compiled language\n"
-                          << "  ✦ Pure Latin keyword design\n"
-                          << "  ✦ From AST to machine code, 100% hand-crafted\n\n"
+                          << jc::col(jc::Ansi::WHITE) 
+                          << "  Developed by: Yu Liangyang, Tsinghua University\n\n"
+                          << "  A high-performance, zero-dependency mathematical scripting\n"
+                          << "  language and virtual machine, built entirely from scratch.\n"
                           << jc::col(jc::Ansi::BRIGHT_CYAN) 
-                          << "  GitHub: " << jc::col(jc::Ansi::BRIGHT_BLUE) << "https://github.com/YuDan256/Scorivm\n"
+                          << "-----------------------------------------------------------\n"
+                          << jc::col(jc::Ansi::WHITE) 
+                          << "  Sister Project:\n"
+                          << jc::col(jc::Ansi::BRIGHT_GREEN) 
+                          << "  ✦ SCORIVM - A compiled language with pure Latin keywords.\n"
+                          << jc::col(jc::Ansi::WHITE) 
+                          << "    GitHub: " << jc::col(jc::Ansi::BRIGHT_BLUE) << "https://github.com/YuDan256/Scorivm\n"
                           << jc::col(jc::Ansi::BRIGHT_CYAN) 
                           << "===========================================================\n"
                           << jc::col(jc::Ansi::RESET);

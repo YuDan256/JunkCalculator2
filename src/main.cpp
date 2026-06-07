@@ -585,6 +585,25 @@ int main(int argc, char* argv[]) {
             }
             if (input.substr(0, 6) == "/save ") { saveWorkspace(input.substr(6)); continue; }
             if (input.substr(0, 6) == "/load ") { loadWorkspace(input.substr(6)); continue; }
+            if (input == "/scorivm") {
+                std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "===========================================================\n"
+                          << jc::col(jc::Ansi::BOLD) << jc::col(jc::Ansi::BRIGHT_YELLOW) 
+                          << "                       S C O R I V M                       \n"
+                          << jc::col(jc::Ansi::RESET) << jc::col(jc::Ansi::BRIGHT_CYAN) 
+                          << "===========================================================\n"
+                          << jc::col(jc::Ansi::BRIGHT_MAGENTA) 
+                          << "      \"Ex parvis, firmitas. Ex simplicitate, aevum.\"       \n\n"
+                          << jc::col(jc::Ansi::BRIGHT_GREEN) 
+                          << "  ✦ Zero-dependency compiled language\n"
+                          << "  ✦ Pure Latin keyword design\n"
+                          << "  ✦ From AST to machine code, 100% hand-crafted\n\n"
+                          << jc::col(jc::Ansi::BRIGHT_CYAN) 
+                          << "  GitHub: " << jc::col(jc::Ansi::BRIGHT_BLUE) << "https://github.com/YuDan256/Scorivm\n"
+                          << jc::col(jc::Ansi::BRIGHT_CYAN) 
+                          << "===========================================================\n"
+                          << jc::col(jc::Ansi::RESET);
+                continue;
+            }
             if (input == "\x2f\x65\x67\x67") {
                 static constexpr std::array<std::string_view, 10> e = {
                     "V nz n Whax Pnyphyngbe. Jung qvq lbh rkcrpg, negvsvpvny vagryyvtrapr?",

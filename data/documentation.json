@@ -11,6 +11,7 @@
       "    /cls                   Clear the console screen and reprint banner",
       "    /exit | /quit          Leave the calculator",
       "    /version               Show current version",
+      "    /scorivm               Discover the SCORIVM project",
       "    /color on | off        Enable/disable REPL syntax highlighting",
       "    /d on | off            Enable/disable real-time bytecode disassembly",
       "    /debug on | off        Enable/disable global step-debugger",

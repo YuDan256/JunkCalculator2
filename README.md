@@ -80,6 +80,7 @@ Version 2.4.2.0 focuses on unifying pattern matching and destructuring, overhaul
 ### Frontend & Parser
 - **Dict Rest Patterns**: Eliminated the magic `"<rest>"` string hack for dictionary rest patterns, replacing it with `nullptr` keys for robust AST representation. Fixed unspecified evaluation order bugs in dictionary parsing.
 - **Matrix & Destructuring Fixes**: Deferred matrix column count validation from the parser to the compiler, and implemented strict column count consistency checks for matrix patterns during compilation to prevent malformed destructuring. Fixed middle `...rest` pattern extraction in destructuring.
+- **Match Expression Parsing**: Fixed a parsing bug where dictionary literals (e.g., `{a:b}`) in `match` expression bodies were misidentified as block statements.
 
 ### Testing & REPL
 - **Test Suite**: Introduced a public `tests/` directory with comprehensive unit tests for `match`, `closure`, and `state` semantics.

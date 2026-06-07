@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.1.1
+# Junk Calculator 2.4.2.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.1.1-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.2.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,24 +68,22 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.1.1
+## What's New in v2.4.2.0
 
-Version 2.4.1.1 focuses on fixing closure state capture mechanisms, optimizing OOP and destructuring semantic consistency, and improving standard output and the REPL experience.
+Version 2.4.2.0 focuses on unifying pattern matching and destructuring, overhauling `state` variable capture semantics, and improving frontend parsing stability.
 
 ### Core Mechanisms & Compiler
-- **Closure State Capture**: Completely fixed the capture and initialization logic of `ref`/`state` variables in closures, corrected the upvalue lookup order, and resolved scope resolution errors and global variable pollution.
+- **Unified Pattern Matching**: Destructuring assignments and `match` expressions now share the same underlying bytecode logic. Removed the legacy `OP_DESTRUCT` instruction and enhanced `OP_MATCH_SHAPE` to support strict shape validation for matrices and lists.
+- **State Variable Fixes**: Fixed `state` variable capture semantics. Resolved bugs with standalone declarations, nested closures, and global scope propagation. Properly supported `state x = x` and `state x += 1` by separating upvalue slots for initialization and external capture.
+- **Explicit Ref Restoration**: Fixed a regression where inner closures automatically upgraded upvalues to `ref`. Restored the original design where inner closures default to pass-by-value capture of outer `state` variables (capturing an uninitialized variable at closure creation time), and mutating outer state requires explicit `ref` binding.
 
-### Object & Destructuring Optimization
-- **Instance Destructuring**: Clarified that Instance destructuring only includes physical fields and dynamic attributes (`__getattr__`), no longer incorrectly extracting class methods.
-- **Dictionary Destructuring Enhancements**: Added the `OP_DICT_REST` bytecode instruction to improve `...rest` syntax performance by creating a new dictionary without mutating the original object; allowed Namespaces to participate in dictionary destructuring.
+### Frontend & Parser
+- **Dict Rest Patterns**: Eliminated the magic `"<rest>"` string hack for dictionary rest patterns, replacing it with `nullptr` keys for robust AST representation. Fixed unspecified evaluation order bugs in dictionary parsing.
+- **Matrix & Destructuring Fixes**: Deferred matrix column count validation from the parser to the compiler to support valid pattern matrices. Fixed middle `...rest` pattern extraction in destructuring.
 
-### Operators & Iteration Enhancements
-- **Default Iterator**: Added default field iteration support for instances without an `__iter__` method (supports both standard `for...in` and destructuring `for...in`).
-- **`in` Operator Fallback**: Fixed the `in` operator's behavior when an instance lacks `__contains__`; it now correctly falls back to checking physical fields and dynamic attributes (`__getattr__`).
-
-### Standard Library & REPL
-- **Print Function Split**: Split the print functions: `print` no longer automatically appends a newline, while the new `println` is used for output with a newline. The standard library has been refactored accordingly.
-- **REPL Output Control**: Added the `/show_none on|off` command to control whether `none` results are printed in the REPL (defaults to off).
+### Testing & REPL
+- **Test Suite**: Introduced a public `tests/` directory with comprehensive unit tests for `match`, `closure`, and `state` semantics.
+- **REPL Commands**: Added the `/about` command to display JC2 project information and naturally introduce its sister project, SCORIVM.
 
 ---
 

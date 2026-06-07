@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.4.1.1
+# Junk Calculator 2.4.2.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.1.1-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.2.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,24 +68,22 @@
 
 ---
 
-## v2.4.1.1 版本更新说明
+## v2.4.2.0 版本更新说明
 
-v2.4.1.1 版本重点修复了闭包状态捕获机制，优化了面向对象与解构的语义一致性，并对标准输出和 REPL 体验进行了改进。
+v2.4.2.0 版本重点统一了模式匹配与解构赋值的底层逻辑，重构了 `state` 状态变量的捕获语义，并提升了前端解析器的稳定性。
 
 ### 核心机制与编译器
-- **闭包状态捕获**：彻底修复了闭包中 `ref`/`state` 变量的捕获与初始化逻辑，修正了向上查找 upvalue 的顺序，解决了作用域解析错误和全局变量污染问题。
+- **统一模式匹配**：解构赋值与 `match` 表达式现已共享同一套底层字节码逻辑。移除了陈旧的 `OP_DESTRUCT` 指令，并强化了 `OP_MATCH_SHAPE` 以支持对矩阵和列表的严格形状校验。
+- **State 变量语义修复**：彻底修复了 `state` 变量在独立声明、嵌套闭包及全局作用域穿透时的捕获缺陷。通过分离初始化与外部捕获的 Upvalue 物理槽位，正确支持了 `state x = x` 与 `state x += 1` 语法。
+- **显式 Ref 捕获回归**：修复了内层闭包错误地将外部 `state` 变量自动升级为 `ref` 的回归问题。恢复了原有的设计语义：内层闭包默认按值捕获外部 `state` 变量（在创建闭包时捕获的是未初始化变量），跨层修改必须显式使用 `ref` 关键字。
 
-### 对象与解构优化
-- **实例解构**：明确了实例 (Instance) 解构只包含物理字段和动态属性 (`__getattr__`)，不再错误地提取类方法。
-- **字典解构增强**：新增 `OP_DICT_REST` 字节码指令，通过创建新字典提升 `...rest` 语法性能且不破坏原对象；同时放开了编译器拦截，允许命名空间 (Namespace) 参与字典解构。
+### 前端与解析器
+- **字典 Rest 模式**：消除了字典解构中 `"<rest>"` 魔法字符串的 Hack 实现，改用 `nullptr` 键名以提供更健壮的 AST 隔离。修复了字典解析中未指定求值顺序导致的潜在崩溃。
+- **矩阵与解构修复**：将矩阵列数相等的严格校验从解析期推迟到编译期，以支持合法的模式矩阵。修复了解构赋值中对中间 `...rest` 模式的错误提取。
 
-### 操作符与迭代增强
-- **默认迭代器**：为未实现 `__iter__` 的实例添加了默认的字段迭代支持（支持普通 `for...in` 和解构 `for...in`）。
-- **`in` 运算符回退**：修复了 `in` 运算符在实例未定义 `__contains__` 时的行为，现在会正确回退检查物理字段 (fields) 和动态属性 (`__getattr__`)。
-
-### 基础库与 REPL
-- **打印函数分离**：拆分了打印函数，`print` 不再自动追加换行符，新增 `println` 用于带换行的输出，并同步重构了标准库。
-- **REPL 净化**：新增 `/show_none on|off` 命令，用于控制是否在 REPL 中输出表达式的 `none` 结果（默认为 off）。
+### 测试与 REPL
+- **测试套件**：新增公开的 `tests/` 目录，包含针对 `match`、`closure` 和 `state` 核心语义的完善单元测试。
+- **REPL 命令**：新增 `/about` 命令，用于展示 JC2 项目核心信息，并自然引出姊妹项目 SCORIVM。
 
 ---
 

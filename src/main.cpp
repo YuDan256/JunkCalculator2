@@ -587,17 +587,13 @@ int main(int argc, char* argv[]) {
             if (input.substr(0, 6) == "/load ") { loadWorkspace(input.substr(6)); continue; }
             if (input == "/about") {
                 std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "===========================================================\n"
-                          << jc::col(jc::Ansi::BOLD) << jc::col(jc::Ansi::BRIGHT_YELLOW) 
-                          << "                     Junk Calculator 2                     \n"
+                          << jc::col(jc::Ansi::BOLD) << jc::col(jc::Ansi::WHITE) 
+                          << "  About Junk Calculator 2\n"
                           << jc::col(jc::Ansi::RESET) << jc::col(jc::Ansi::BRIGHT_CYAN) 
-                          << "===========================================================\n"
-                          << jc::col(jc::Ansi::WHITE) 
-                          << "  Developed by: Yu Liangyang, Tsinghua University\n\n"
-                          << "  A high-performance, zero-dependency mathematical scripting\n"
-                          << "  language and virtual machine, built entirely from scratch.\n"
-                          << jc::col(jc::Ansi::BRIGHT_CYAN) 
                           << "-----------------------------------------------------------\n"
                           << jc::col(jc::Ansi::WHITE) 
+                          << "  A high-performance, zero-dependency mathematical scripting\n"
+                          << "  language and virtual machine, built entirely from scratch.\n\n"
                           << "  Sister Project:\n"
                           << jc::col(jc::Ansi::BRIGHT_GREEN) 
                           << "  ✦ SCORIVM - A compiled language with pure Latin keywords.\n"

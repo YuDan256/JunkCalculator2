@@ -1494,7 +1494,66 @@ namespace jc {
     std::unique_ptr<Expr> Parser::parseMatchBody() {
         while (match({TokenType::NEWLINE})) {}
         if (check(TokenType::LBRACE)) {
-            return parseBlock();
+            int peekPos = current + 1;
+            while (peekPos < static_cast<int>(tokens.size()) &&
+                tokens[peekPos].type == TokenType::NEWLINE) {
+                peekPos++;
+            }
+
+            bool isDict = false;
+            int depth = 0;
+            int ternaryDepth = 0;
+            int scanPos = peekPos;
+            bool foundColon = false;
+            bool foundSemicolon = false;
+
+            while (scanPos < static_cast<int>(tokens.size())) {
+                TokenType t = tokens[scanPos].type;
+                if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
+                    depth++;
+                } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
+                    if (depth == 0) break;
+                    depth--;
+                } else if (depth == 0) {
+                    if (t == TokenType::QUESTION) {
+                        ternaryDepth++;
+                    } else if (t == TokenType::COLON) {
+                        if (ternaryDepth > 0) {
+                            ternaryDepth--;
+                        } else {
+                            foundColon = true;
+                            break;
+                        }
+                    } else if (t == TokenType::SEMICOLON) {
+                        foundSemicolon = true;
+                        break;
+                    }
+                }
+                scanPos++;
+            }
+
+            if (foundColon) {
+                isDict = true;
+            } else if (foundSemicolon) {
+                isDict = false;
+            } else {
+                if (peekPos < static_cast<int>(tokens.size())) {
+                    if (tokens[peekPos].type == TokenType::RBRACE) {
+                        isDict = true;
+                    } else if (tokens[peekPos].type == TokenType::IDENTIFIER) {
+                        int afterId = peekPos + 1;
+                        while (afterId < static_cast<int>(tokens.size()) && tokens[afterId].type == TokenType::NEWLINE) afterId++;
+                        if (afterId < static_cast<int>(tokens.size()) && 
+                            (tokens[afterId].type == TokenType::RBRACE || tokens[afterId].type == TokenType::COMMA)) {
+                            isDict = true;
+                        }
+                    }
+                }
+            }
+
+            if (!isDict) {
+                return parseBlock();
+            }
         }
         auto expr = assignment();
         std::vector<std::unique_ptr<Expr>> stmts;

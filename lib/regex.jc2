@@ -5,26 +5,20 @@
 
 const _RE_SHORTHANDS = set("d", "D", "w", "W", "s", "S")
 
-_re_shorthand(kind: string, c: string) -> bool = {
-    if (kind == "d") return c.isdigit()
-    if (kind == "D") return !c.isdigit()
-    if (kind == "w") return c.isalnum() || c == "_"
-    if (kind == "W") return !(c.isalnum() || c == "_")
-    if (kind == "s") return c.isspace()
-    if (kind == "S") return !c.isspace()
-    return false
-}
-
-_to_int(s: string) -> int = {
-    res = 0
-    for (i in range(s.len())) { res = res * 10 + (s[i].ord() - 48) }
-    return res
+_re_shorthand(kind: string, c: string) -> bool = match (kind) {
+    "d" => c.isdigit(),
+    "D" => !c.isdigit(),
+    "w" => c.isalnum() || c == "_",
+    "W" => !(c.isalnum() || c == "_"),
+    "s" => c.isspace(),
+    "S" => !c.isspace(),
+    _ => false
 }
 
 // ─── Match Object ─────────────────────────────────────────────
 
 class ReMatch {
-    init(matched: string, start: int, end: int, groups: list) = {
+    init(matched: string, start: whole, end: whole, groups: list) = {
         self.matched = matched
         self.start = start
         self.end = end
@@ -39,7 +33,7 @@ class _RePS {
     init(pat: string) = {
         self.s = pat; self.p = 0; self.n = pat.len(); self.gc = 0
     }
-    pk() -> string = return self.p < self.n ? self.s[self.p] : ""
+    pk() -> string = self.p < self.n ? self.s[self.p] : ""
     
     nx() -> string = { 
         c = self.pk()
@@ -47,7 +41,7 @@ class _RePS {
         return c 
     }
     
-    ok() -> bool = return self.p < self.n
+    ok() -> bool = self.p < self.n
 
     parse() = {
         nodes = self.alt()
@@ -75,35 +69,37 @@ class _RePS {
     quant() = {
         node = self.atom()
         if (self.ok()) {
-            c = self.pk()
-            if (c == "*") { self.nx(); return {type: "star", inner: node} }
-            if (c == "+") { self.nx(); return {type: "plus", inner: node} }
-            if (c == "?") { self.nx(); return {type: "opt", inner: node} }
-            if (c == "{") {
-                saved_p = self.p; self.nx() 
-                min_str = ""
-                while (self.ok() && self.pk().isdigit()) { min_str += self.nx() }
-                
-                has_comma = false
-                max_str = ""
-                if (self.ok() && self.pk() == ",") {
-                    has_comma = true; self.nx() 
-                    while (self.ok() && self.pk().isdigit()) { max_str += self.nx() }
-                }
-                
-                if (self.ok() && self.pk() == "}") {
-                    self.nx()
-                    min_val = min_str.len() > 0 ? _to_int(min_str) : 0
-                    max_val = -1
-                    if (has_comma) { 
-                        if (max_str.len() > 0) max_val = _to_int(max_str)
-                    } else { 
-                        max_val = min_str.len() > 0 ? min_val : 0 
+            match (self.pk()) {
+                "*" => { self.nx(); return {type: "star", inner: node} },
+                "+" => { self.nx(); return {type: "plus", inner: node} },
+                "?" => { self.nx(); return {type: "opt", inner: node} },
+                "{" => {
+                    saved_p = self.p; self.nx() 
+                    min_str = ""
+                    while (self.ok() && self.pk().isdigit()) { min_str += self.nx() }
+                    
+                    has_comma = false
+                    max_str = ""
+                    if (self.ok() && self.pk() == ",") {
+                        has_comma = true; self.nx() 
+                        while (self.ok() && self.pk().isdigit()) { max_str += self.nx() }
                     }
-                    return {type: "bound", inner: node, min: min_val, max: max_val}
-                } else { 
-                    self.p = saved_p 
-                }
+                    
+                    if (self.ok() && self.pk() == "}") {
+                        self.nx()
+                        min_val = min_str.len() > 0 ? int(min_str) : 0
+                        max_val = -1
+                        if (has_comma) { 
+                            if (max_str.len() > 0) max_val = int(max_str)
+                        } else { 
+                            max_val = min_str.len() > 0 ? min_val : 0 
+                        }
+                        return {type: "bound", inner: node, min: min_val, max: max_val}
+                    } else { 
+                        self.p = saved_p 
+                    }
+                },
+                _ => {}
             }
         }
         return node
@@ -112,29 +108,33 @@ class _RePS {
     atom() = {
         if (!self.ok()) throw "Regex Error: Unexpected end of pattern"
         c = self.pk()
-        if (c == "(") {
-            self.nx()
-            self.gc += 1
-            idx = self.gc
-            inner = self.alt()
-            if (!self.ok() || self.pk() != ")") throw "Regex Error: Unmatched '('"
-            self.nx()
-            return {type: "group", inner: inner, idx: idx}
+        match (c) {
+            "(" => {
+                self.nx()
+                self.gc += 1
+                idx = self.gc
+                inner = self.alt()
+                if (!self.ok() || self.pk() != ")") throw "Regex Error: Unmatched '('"
+                self.nx()
+                return {type: "group", inner: inner, idx: idx}
+            },
+            "[" => return self.cls(),
+            "." => { self.nx(); return {type: "dot"} },
+            "^" => { self.nx(); return {type: "start"} },
+            "$" => { self.nx(); return {type: "end"} },
+            "\\" => {
+                self.nx()
+                if (!self.ok()) throw "Regex Error: Trailing backslash"
+                e = self.nx()
+                if (e in _RE_SHORTHANDS) return {type: "esc", kind: e}
+                return {type: "lit", ch: e}
+            },
+            _ => {
+                if (c in ")*+?") throw f"Regex Error: Unexpected '{c}' at pos {self.p}"
+                self.nx()
+                return {type: "lit", ch: c}
+            }
         }
-        if (c == "[") return self.cls()
-        if (c == ".") { self.nx(); return {type: "dot"} }
-        if (c == "^") { self.nx(); return {type: "start"} }
-        if (c == "$") { self.nx(); return {type: "end"} }
-        if (c == "\\") {
-            self.nx()
-            if (!self.ok()) throw "Regex Error: Trailing backslash"
-            e = self.nx()
-            if (e in _RE_SHORTHANDS) return {type: "esc", kind: e}
-            return {type: "lit", ch: e}
-        }
-        if (c in ")*+?") throw f"Regex Error: Unexpected '{c}' at pos {self.p}"
-        self.nx()
-        return {type: "lit", ch: c}
     }
 
     cls() = {
@@ -163,105 +163,106 @@ class _RePS {
 }
 
 class _ReCaps {
-    init(numGroups: int) = { 
-        self.data = list() 
-        for (_ in range(numGroups + 1)) { self.data.push([-1, -1]) } 
+    init(numGroups: whole) = { 
+        self.data = [[-1, -1] for _ in range(numGroups + 1)] |> toList
     }
-    set(idx: int, s: int, e: int) = { self.data[idx] = [s, e] }
-    getStart(idx: int) -> int = return self.data[idx][0]
-    getEnd(idx: int) -> int   = return self.data[idx][1]
+    set(idx: whole, s: whole, e: whole) = { self.data[idx] = [s, e] }
+    getStart(idx: whole) -> whole = self.data[idx][0]
+    getEnd(idx: whole) -> whole   = self.data[idx][1]
 }
 
 _re_in_class(node: dict, ch: string) -> bool = {
-    found = false
-    for (spec in node.specs) {
-        if (spec.t == "c" && ch == spec.v) { found = true; break }
-        if (spec.t == "r" && ch.ord() >= spec.lo.ord() && ch.ord() <= spec.hi.ord()) { found = true; break }
-        if (spec.t == "sh" && _re_shorthand(spec.v, ch)) { found = true; break }
-    }
+    found = node.specs.any((spec) => match (spec) {
+        {t: "c", v} => ch == v,
+        {t: "r", lo, hi} => ch.ord() >= lo.ord() && ch.ord() <= hi.ord(),
+        {t: "sh", v} => _re_shorthand(v, ch),
+        _ => false
+    })
     return node.neg ? !found : found
 }
 
-_rm_one(node: dict, text: string, pos: int, tl: int) -> int = {
-    tp = node.type
-    if (tp == "lit") return (pos < tl && text[pos] == node.ch) ? pos + 1 : -1
-    if (tp == "dot") return (pos < tl && text[pos] != "\n") ? pos + 1 : -1
-    if (tp == "esc") return (pos < tl && _re_shorthand(node.kind, text[pos])) ? pos + 1 : -1
-    if (tp == "class") return (pos < tl && _re_in_class(node, text[pos])) ? pos + 1 : -1
-    return -1
+_rm_one(node: dict, text: string, pos: whole, tl: whole) -> whole = {
+    if (pos >= tl) return -1
+    c = text[pos]
+    match (node) {
+        {type: "lit", ch} => return ch == c ? pos + 1 : -1,
+        {type: "dot"} => return c != "\n" ? pos + 1 : -1,
+        {type: "esc", kind} => return _re_shorthand(kind, c) ? pos + 1 : -1,
+        {type: "class"} => return _re_in_class(node, c) ? pos + 1 : -1,
+        _ => return -1
+    }
 }
 
-_rm_single(node: dict, text: string, pos: int, tl: int, caps: _ReCaps) -> int = {
-    tp = node.type
-    if (tp == "lit" || tp == "dot" || tp == "esc" || tp == "class") return _rm_one(node, text, pos, tl)
-    if (tp == "group") {
-        r = _rm(node.inner, 0, text, pos, tl, caps)
-        if (r >= 0) caps.set(node.idx, pos, r)
+_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = match (node) {
+    {type: "group", inner, idx} => {
+        r = _rm(inner, 0, text, pos, tl, caps)
+        if (r >= 0) caps.set(idx, pos, r)
         return r
-    }
-    if (tp == "alt") {
-        ra = _rm(node.a, 0, text, pos, tl, caps)
+    },
+    {type: "alt", a, b} => {
+        ra = _rm(a, 0, text, pos, tl, caps)
         if (ra >= 0) return ra
-        return _rm(node.b, 0, text, pos, tl, caps)
-    }
-    return _rm_one(node, text, pos, tl)
+        return _rm(b, 0, text, pos, tl, caps)
+    },
+    _ => _rm_one(node, text, pos, tl)
 }
 
-_rm(nodes: list, idx: int, text: string, pos: int, tl: int, caps: _ReCaps) -> int = {
+_rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = {
     if (idx >= nodes.len()) return pos
     node = nodes[idx]
-    tp = node.type
+    
+    match (node) {
+        {type: "_cs", idx: cidx} => {
+            caps.set(cidx, pos, -1)
+            return _rm(nodes, idx + 1, text, pos, tl, caps)
+        },
+        {type: "_ce", idx: cidx} => {
+            caps.set(cidx, caps.getStart(cidx), pos)
+            return _rm(nodes, idx + 1, text, pos, tl, caps)
+        },
+        {type: "start"} => return pos == 0 ? _rm(nodes, idx + 1, text, pos, tl, caps) : -1,
+        {type: "end"} => return pos == tl ? _rm(nodes, idx + 1, text, pos, tl, caps) : -1,
+        {type: "group", inner, idx: gidx} => {
+            comb = list({type: "_cs", idx: gidx})
+            for (n in inner) comb.push(n)
+            comb.push({type: "_ce", idx: gidx})
+            for (k in range(idx + 1, nodes.len())) comb.push(nodes[k])
+            return _rm(comb, 0, text, pos, tl, caps)
+        },
+        {type: "alt", a, b} => {
+            ra = _rm(a, 0, text, pos, tl, caps)
+            if (ra >= 0) {
+                rest = _rm(nodes, idx + 1, text, ra, tl, caps)
+                if (rest >= 0) return rest
+            }
+            rb = _rm(b, 0, text, pos, tl, caps)
+            return (rb >= 0) ? _rm(nodes, idx + 1, text, rb, tl, caps) : -1
+        },
+        {type: "bound", inner, min, max} => return _rm_quant(nodes, idx, text, pos, tl, caps, inner, min, max),
+        {type: "star", inner} => return _rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, -1),
+        {type: "plus", inner} => return _rm_quant(nodes, idx, text, pos, tl, caps, inner, 1, -1),
+        {type: "opt", inner} => return _rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, 1),
+        _ => {
+            np = _rm_one(node, text, pos, tl)
+            return (np >= 0) ? _rm(nodes, idx + 1, text, np, tl, caps) : -1
+        }
+    }
+}
 
-    if (tp == "_cs") { caps.set(node.idx, pos, -1); return _rm(nodes, idx + 1, text, pos, tl, caps) }
-    if (tp == "_ce") { caps.set(node.idx, caps.getStart(node.idx), pos); return _rm(nodes, idx + 1, text, pos, tl, caps) }
-    
-    if (tp == "lit" || tp == "dot" || tp == "esc" || tp == "class") {
-        np = _rm_one(node, text, pos, tl)
-        return (np >= 0) ? _rm(nodes, idx + 1, text, np, tl, caps) : -1
+_rm_quant(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps, inner: dict, min_v: whole, max_v: whole) -> whole = {
+    positions = list(pos); cur = pos; count = 0
+    while (max_v < 0 || count < max_v) {
+        np = _rm_single(inner, text, cur, tl, caps)
+        if (np < 0 || np == cur) break
+        positions.push(np)
+        cur = np
+        count += 1
     }
-    
-    if (tp == "start") return pos == 0 ? _rm(nodes, idx + 1, text, pos, tl, caps) : -1
-    if (tp == "end") return pos == tl ? _rm(nodes, idx + 1, text, pos, tl, caps) : -1
-    
-    if (tp == "group") {
-        comb = list({type: "_cs", idx: node.idx})
-        for (n in node.inner) comb.push(n)
-        comb.push({type: "_ce", idx: node.idx})
-        for (k in range(idx + 1, nodes.len())) comb.push(nodes[k])
-        return _rm(comb, 0, text, pos, tl, caps)
+    for (k in range(positions.len() - 1, min_v - 1, -1)) {
+        rest = _rm(nodes, idx + 1, text, positions[k], tl, caps)
+        if (rest >= 0) return rest
     }
-    
-    if (tp == "alt") {
-        ra = _rm(node.a, 0, text, pos, tl, caps)
-        if (ra >= 0) {
-            rest = _rm(nodes, idx + 1, text, ra, tl, caps)
-            if (rest >= 0) return rest
-        }
-        rb = _rm(node.b, 0, text, pos, tl, caps)
-        return (rb >= 0) ? _rm(nodes, idx + 1, text, rb, tl, caps) : -1
-    }
-    
-    if (tp == "bound" || tp == "star" || tp == "plus" || tp == "opt") {
-        min_v = 0; max_v = -1
-        if (tp == "bound") { min_v = node.min; max_v = node.max }
-        if (tp == "plus")  { min_v = 1 }
-        if (tp == "opt")   { max_v = 1 }
-        
-        positions = list(pos); cur = pos; count = 0
-        while (max_v < 0 || count < max_v) {
-            np = _rm_single(node.inner, text, cur, tl, caps)
-            if (np < 0 || np == cur) break
-            positions.push(np)
-            cur = np
-            count += 1
-        }
-        for (k in range(positions.len() - 1, min_v - 1, -1)) {
-            rest = _rm(nodes, idx + 1, text, positions[k], tl, caps)
-            if (rest >= 0) return rest
-        }
-        return -1
-    }
-    throw f"Regex Error: Unknown node type '{tp}'"
+    return -1
 }
 
 // ─── Regex Object (Compiled Pattern) ──────────────────────────
@@ -274,35 +275,29 @@ class Regex {
         self.groups = st.gc
     }
 
-    _run(text: string, startPos: int) = {
+    _run(text: string, startPos: whole) = {
         tl = text.len()
         caps = _ReCaps(self.groups)
         endPos = _rm(self.nodes, 0, text, startPos, tl, caps)
         if (endPos < 0) return 0
         
         matched = text[startPos : endPos]
-        groups = list()
-        for (gi in range(1, self.groups + 1)) {
-            gs = caps.getStart(gi)
-            ge = caps.getEnd(gi)
-            groups.push((gs >= 0 && ge >= 0) ? text[gs : ge] : "")
-        }
+        groups = [
+            caps.getStart(gi) >= 0 && caps.getEnd(gi) >= 0 
+                ? text[caps.getStart(gi) : caps.getEnd(gi)] 
+                : "" 
+            for gi in range(1, self.groups + 1)
+        ] |> toList
+        
         return ReMatch(matched, startPos, endPos, groups)
     }
 
-    test(text: string) -> bool = {
-        tl = text.len()
-        for (i in range(tl + 1)) { 
-            if (_rm(self.nodes, 0, text, i, tl, _ReCaps(self.groups)) >= 0) return true 
-        }
-        return false
-    }
+    test(text: string) -> bool = range(text.len() + 1).any((i) => _rm(self.nodes, 0, text, i, text.len(), _ReCaps(self.groups)) >= 0)
 
-    match(text: string)  = return self._run(text, 0)
+    matchStart(text: string) = self._run(text, 0)
     
     search(text: string) = {
-        tl = text.len()
-        for (i in range(tl + 1)) { 
+        for (i in range(text.len() + 1)) { 
             r = self._run(text, i)
             if (r != 0) return r 
         }
@@ -312,16 +307,16 @@ class Regex {
     findall(text: string) -> list = {
         tl = text.len(); res = list(); i = 0
         while (i <= tl) {
-            r = self._run(text, i)
-            if (r != 0) {
-                res.push(r.matched)
-                i = r.end == r.start ? r.end + 1 : r.end
+            m = self._run(text, i)
+            if (m != 0) {
+                res.push(m.matched)
+                i = m.end == m.start ? m.end + 1 : m.end
             } else { i += 1 }
         }
         return res
     }
 
-    replace(text: string, repl: string) -> string = {
+    subst(text: string, repl: string) -> string = {
         tl = text.len(); res = ""; i = 0
         while (i <= tl) {
             m = self._run(text, i)
@@ -332,7 +327,7 @@ class Regex {
                     if (ch == "$" && j + 1 < rl) {
                         nc = repl[j + 1]
                         if (nc.isdigit()) {
-                            gi = nc.ord() - 48
+                            gi = int(nc)
                             if (gi >= 1 && gi <= m.groups.len()) { r += m.groups[gi - 1] }
                             j += 2; continue
                         }
@@ -351,7 +346,7 @@ class Regex {
         return res
     }
 
-    split(text: string) -> list = {
+    splitBy(text: string) -> list = {
         tl = text.len(); res = list(); lastEnd = 0; i = 0
         while (i <= tl) {
             m = self._run(text, i)
@@ -365,22 +360,22 @@ class Regex {
         return res
     }
 
-    __call__(text: string) = return self.search(text)
+    __call__(text: string) = self.search(text)
 
     __str__() = f"Regex(r\"{self.pattern}\")"
 }
 
-// ─── Legacy Global API (Auto-Compiles or uses cached Regex) ───
+// ─── Global API (Auto-Compiles or uses cached Regex) ───
 
-re_compile(pat: string) -> Regex                  = return Regex(pat)
-_re_ensure(pat: any) -> Regex                     = return pat.isinstance(Regex) ? pat : Regex(pat.str())
+compile(pat: string) -> Regex                     = Regex(pat)
+_ensure(pat: any) -> Regex                        = isinstance(pat, Regex) ? pat : Regex(str(pat))
 
-re_test(pat: any, text: string) -> bool           = return _re_ensure(pat).test(text)
-re_match(pat: any, text: string)                  = return _re_ensure(pat).match(text)
-re_search(pat: any, text: string)                 = return _re_ensure(pat).search(text)
-re_findall(pat: any, text: string) -> list        = return _re_ensure(pat).findall(text)
-re_replace(pat: any, text: string, rep: string) -> string = return _re_ensure(pat).replace(text, rep)
-re_split(pat: any, text: string) -> list          = return _re_ensure(pat).split(text)
+test(pat: any, text: string) -> bool              = _ensure(pat).test(text)
+matchStart(pat: any, text: string)                = _ensure(pat).matchStart(text)
+search(pat: any, text: string)                    = _ensure(pat).search(text)
+findall(pat: any, text: string) -> list           = _ensure(pat).findall(text)
+subst(pat: any, text: string, rep: string) -> string = _ensure(pat).subst(text, rep)
+splitBy(pat: any, text: string) -> list           = _ensure(pat).splitBy(text)
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 
@@ -407,18 +402,18 @@ if (isfunction(__register_help)) {
     m.start, m.end                 // → Matching span indices
     
     r.findall("A 1 B 2")           // → ["A 1", "B 2"]
-    r.replace("A 1", "$2-$1")      // → "1-A"
-    r.split("A 1, B 2")            // Splits by match
+    r.subst("A 1", "$2-$1")        // → "1-A"
+    r.splitBy("A 1, B 2")          // Splits by match
 
-  Global Functional API
+  Global Functional API (via namespace)
   ──────────────────────
-    re_compile(pat)            Returns a Regex object.
-    re_test(pat, text)         Returns true if pattern matches anywhere, else false.
-    re_match(pat, text)        Matches exactly at the start of text.
-    re_search(pat, text)       Searches for first match anywhere. Returns ReMatch or 0.
-    re_findall(pat, text)      Returns a List of all matched substrings.
-    re_split(pat, text)        Splits text by pattern, returns a List.
-    re_replace(pat, text, rep) Replaces matches with `rep` (supports $1, $2, &).
+    regex.compile(pat)            Returns a Regex object.
+    regex.test(pat, text)         Returns true if pattern matches anywhere, else false.
+    regex.matchStart(pat, text)   Matches exactly at the start of text.
+    regex.search(pat, text)       Searches for first match anywhere. Returns ReMatch or 0.
+    regex.findall(pat, text)      Returns a List of all matched substrings.
+    regex.splitBy(pat, text)      Splits text by pattern, returns a List.
+    regex.subst(pat, text, rep)   Replaces matches with `rep` (supports $1, $2, &).
 
   Supported Syntax
   ──────────────────────

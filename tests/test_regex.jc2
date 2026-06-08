@@ -1,0 +1,60 @@
+import regex
+
+println("Running Regex Tests...")
+
+// 1. Basic Compilation & Object API
+r1 = regex.compile(r"RE((\w+) (\d+))RE")
+assert(r1.test("Alice 30") == true, "test() failed")
+assert(r1.test("Bob") == false, "test() failed on negative")
+
+m1 = r1.search("Name: Bob 25 years old")
+assert(m1 != 0, "search() failed")
+assert(m1.matched == "Bob 25", "search() matched string failed")
+assert(m1.groups[0] == "Bob", "search() group 1 failed")
+assert(m1.groups[1] == "25", "search() group 2 failed")
+
+// 2. matchStart (Anchored at start)
+m2 = r1.matchStart("Alice 30")
+assert(m2 != 0, "matchStart() failed")
+assert(m2.matched == "Alice 30", "matchStart() matched string failed")
+
+m3 = r1.matchStart("Name: Alice 30")
+assert(m3 == 0, "matchStart() should fail if not at start")
+
+// 3. findall
+r2 = regex.compile(r"RE(\d+)RE")
+res = r2.findall("A 1 B 22 C 333")
+assert(res.len() == 3, "findall() length failed")
+assert(res[0] == "1" && res[1] == "22" && res[2] == "333", "findall() content failed")
+
+// 4. subst (Replace)
+r3 = regex.compile(r"RE((\w+) (\d+))RE")
+sub_res = r3.subst("Alice 30, Bob 25", "$2-$1")
+assert(sub_res == "30-Alice, 25-Bob", "subst() failed")
+
+// 5. splitBy
+r4 = regex.compile(r"RE(\s*,\s*)RE")
+split_res = r4.splitBy("apple, banana , cherry")
+assert(split_res.len() == 3, "splitBy() length failed")
+assert(split_res[0] == "apple" && split_res[1] == "banana" && split_res[2] == "cherry", "splitBy() content failed")
+
+// 6. Global API
+assert(regex.test(r"RE(^\d+$)RE", "12345") == true, "Global test() failed")
+assert(regex.test(r"RE(^\d+$)RE", "123a5") == false, "Global test() failed")
+
+m4 = regex.search(r"RE(a(b+)c)RE", "xabbbcy")
+assert(m4 != 0 && m4.groups[0] == "bbb", "Global search() failed")
+
+assert(regex.findall(r"RE([A-Z])RE", "aBcDeF").len() == 3, "Global findall() failed")
+assert(regex.subst("a", "banana", "o") == "bonono", "Global subst() failed")
+assert(regex.splitBy("-", "x-y-z").len() == 3, "Global splitBy() failed")
+
+// 7. Complex Patterns & Edge Cases
+email_re = regex.compile(r"RE(^[\w\.-]+@[\w\.-]+\.\w+$)RE")
+assert(email_re.test("test.user@example.com") == true, "Email regex failed")
+assert(email_re.test("invalid-email@.com") == false, "Email regex negative failed")
+
+// Callable syntax sugar
+assert(r1("Name: Bob 25") != 0, "Callable syntax sugar failed")
+
+println("All Regex tests passed successfully!")

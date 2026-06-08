@@ -167,6 +167,19 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
         }
     }
 
+    // ★ 核心修复：执行完毕后，将顶层 evalFn 从 VM 的函数列表中移除，避免 REPL 历史堆积导致内存泄漏
+    struct EvalFnCleanup {
+        jc::VM& vmRef;
+        std::shared_ptr<jc::CompiledFunction> fn;
+        ~EvalFnCleanup() {
+            auto currFns = vmRef.getCompiledFunctions();
+            if (!currFns.empty() && currFns.back() == fn) {
+                currFns.pop_back();
+                vmRef.setCompiledFunctions(currFns);
+            }
+        }
+    } cleanup{vm, evalFn};
+
     return vm.callVMFunction(evalIdx, {});
 }
 

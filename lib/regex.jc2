@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // regex.jc2 — Regular Expression Standard Library
-// Pure JC2 2.2.2 Implementation (Backtracking NFA)
+// Pure JC2 2.4.2.0 Implementation (Backtracking NFA)
 // ═══════════════════════════════════════════════════════════════
 
 const _RE_SHORTHANDS = set("d", "D", "w", "W", "s", "S")
@@ -177,12 +177,19 @@ class _ReCaps {
 }
 
 _re_in_class(node: dict, ch: string) -> bool = {
-    found = node.specs.any((spec) => match (spec) {
-        {t: "c", v} => ch == v,
-        {t: "r", lo, hi} => ch.ord() >= lo.ord() && ch.ord() <= hi.ord(),
-        {t: "sh", v} => _re_shorthand(v, ch),
-        _ => false
-    })
+    found = false
+    for (spec in node.specs) {
+        res = match (spec) {
+            {t: "c", v} => ch == v,
+            {t: "r", lo, hi} => ch.ord() >= lo.ord() && ch.ord() <= hi.ord(),
+            {t: "sh", v} => _re_shorthand(v, ch),
+            _ => false
+        }
+        if (res) {
+            found = true
+            break
+        }
+    }
     return node.neg ? !found : found
 }
 

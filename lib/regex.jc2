@@ -293,7 +293,13 @@ class Regex {
         return ReMatch(matched, startPos, endPos, groups)
     }
 
-    test(text: string) -> bool = range(text.len() + 1).any((i) => _rm(self.nodes, 0, text, i, text.len(), _ReCaps(self.groups)) >= 0)
+    test(text: string) -> bool = {
+        tl = text.len()
+        for (i in range(tl + 1)) {
+            if (_rm(self.nodes, 0, text, i, tl, _ReCaps(self.groups)) >= 0) return true
+        }
+        return false
+    }
 
     matchStart(text: string) = self._run(text, 0)
     

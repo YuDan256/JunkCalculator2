@@ -41,7 +41,40 @@ namespace jc {
     // 跨模块 Dunder 调用桥梁
     // =================================================================
     std::pair<bool, Value> invokeDunder(ObjInstance* inst, const char* methodName, const std::vector<Value>& args) {
-        return helpers::tryCallDunder(inst, methodName, args);
+        ObjClosure* method = nullptr;
+        ObjClass* c = inst->classDef;
+        while (c) {
+            auto it = c->methods.find(methodName);
+            if (it != c->methods.end()) {
+                method = it->second;
+                break;
+            }
+            c = c->parent;
+        }
+        if (!method) return {false, Value::none()};
+
+        if (method->isNative() && !method->isBytecode()) {
+            helpers::nativeSelfStack.push_back(Value(inst));
+            helpers::nativeClassStack.push_back(Value(inst->classDef));
+            Value result;
+            try {
+                auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
+                result = fn(args);
+            }
+            catch (...) {
+                helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
+                throw;
+            }
+            helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
+            return {true, result};
+        }
+        else if (method->isBytecode()) {
+            std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> captures = nullptr;
+            if (method->hasCaptures())
+                captures = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
+            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, captures, Value(inst), Value(inst->classDef))};
+        }
+        return {false, Value::none()};
     }
 
     // =================================================================
@@ -93,7 +126,7 @@ namespace jc {
         }
         else if (v.isInstance()) {
             auto inst = v.asInstance();
-            auto [found, res] = helpers::tryCallDunder(inst, "__hash__");
+            auto [found, res] = invokeDunder(inst, "__hash__", {});
             if (found) {
                 oss << res.toString();
             } else {
@@ -702,7 +735,7 @@ void BuiltinRegistry::registerMath() {
         // ★ Dunder 钩子: __abs__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = tryCallDunder(inst, "__abs__");
+            auto [found, result] = invokeDunder(inst, "__abs__", {});
             if (found) return result;
         }
         if (args[0].isObjType(ObjType::BIGINT)) return Value(static_cast<ObjBigInt*>(args[0].asObj())->num.abs());
@@ -1866,7 +1899,7 @@ void BuiltinRegistry::registerControlFlow() {
             // ★ Dunder 钩子: __str__
             if (args[i].isInstance()) {
                 auto inst = args[i].asInstance();
-                auto [found, result] = tryCallDunder(inst, "__str__");
+                auto [found, result] = invokeDunder(inst, "__str__", {});
                 if (found) { std::cout << result; continue; }
             }
             std::cout << args[i];
@@ -1879,7 +1912,7 @@ void BuiltinRegistry::registerControlFlow() {
             // ★ Dunder 钩子: __str__
             if (args[i].isInstance()) {
                 auto inst = args[i].asInstance();
-                auto [found, result] = tryCallDunder(inst, "__str__");
+                auto [found, result] = invokeDunder(inst, "__str__", {});
                 if (found) { std::cout << result; continue; }
             }
             std::cout << args[i];
@@ -1890,7 +1923,7 @@ void BuiltinRegistry::registerControlFlow() {
         // ★ Dunder 钩子: __bool__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = tryCallDunder(inst, "__bool__");
+            auto [found, result] = invokeDunder(inst, "__bool__", {});
             if (found) return Value(result.truthy());
         }
         return Value(args[0].truthy());
@@ -2089,7 +2122,7 @@ void BuiltinRegistry::registerStringFunctions() {
         // ★ Dunder 钩子: __str__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = tryCallDunder(inst, "__str__");
+            auto [found, result] = invokeDunder(inst, "__str__", {});
             if (found) return result;
         }
         if (args[0].isString()) return args[0];
@@ -2101,7 +2134,7 @@ void BuiltinRegistry::registerStringFunctions() {
         // ★ Dunder 钩子: __len__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = tryCallDunder(inst, "__len__");
+            auto [found, result] = invokeDunder(inst, "__len__", {});
             if (found) return result;
             return Value(static_cast<double>(inst->fields->elements.size()));
         }
@@ -3193,7 +3226,7 @@ void BuiltinRegistry::registerFormatType() {
         for (size_t i = 1; i < paList->vec.size(); ++i) {
             if (paList->vec[i].isInstance()) {
                 auto inst = paList->vec[i].asInstance();
-                auto [found, result] = tryCallDunder(inst, "__str__");
+                auto [found, result] = invokeDunder(inst, "__str__", {});
                 if (found) paList->vec[i] = result;
             }
         }

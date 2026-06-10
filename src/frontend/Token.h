@@ -39,6 +39,7 @@ namespace jc {
         QUESTION,            // ★ ?
         COLON,               // ★ :
         DOT, ELLIPSIS,
+        AT,                  // ★ 新增：@
 
         // --- 控制流关键字 ---     // ★ 新增
         IF, ELSE, WHILE, FOR, IN,
@@ -142,6 +143,7 @@ namespace jc {
         case TokenType::COLON:         return "COLON(:)";
         case TokenType::DOT:           return "DOT(.)";
         case TokenType::ELLIPSIS:      return "ELLIPSIS(...)";
+        case TokenType::AT:            return "AT(@)";
         case TokenType::CLASS:         return "CLASS";
         case TokenType::NAMESPACE:     return "NAMESPACE";
         case TokenType::SUPER:         return "SUPER";

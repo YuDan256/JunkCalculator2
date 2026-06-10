@@ -128,6 +128,7 @@ namespace jc {
         case ';': addToken(TokenType::SEMICOLON); break;
         case '?': addToken(TokenType::QUESTION); break;    // ★
         case ':': addToken(TokenType::COLON); break;       // ★
+        case '@': addToken(TokenType::AT); break;          // ★
         case '.':
             if (match('.') && match('.')) {
                 addToken(TokenType::ELLIPSIS);

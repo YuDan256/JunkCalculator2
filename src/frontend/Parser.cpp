@@ -1108,6 +1108,14 @@ namespace jc {
         }
 
         // ★ 矩阵 [...] 或列表推导式 [expr for x in ...]
+        bool forceList = false;
+        if (match({ TokenType::AT })) {
+            if (!check(TokenType::LBRACKET)) {
+                throw std::runtime_error("Parser Error: Expect '[' after '@'.");
+            }
+            forceList = true;
+        }
+
         if (match({ TokenType::LBRACKET })) {
             std::vector<std::vector<std::unique_ptr<Expr>>> matrixElements;
             std::vector<std::unique_ptr<Expr>> currentRow;
@@ -1119,7 +1127,9 @@ namespace jc {
                 // ★ 检测列表推导式：[expr for x in ...]
                 if (check(TokenType::FOR)) {
                     auto valueExpr = std::move(currentRow[0]);
-                    return parseListComp(std::move(valueExpr));
+                    auto comp = parseListComp(std::move(valueExpr));
+                    static_cast<ListCompExpr*>(comp.get())->forceList = forceList;
+                    return comp;
                 }
 
                 // ★ 非推导式 → 继续解析矩阵
@@ -1152,7 +1162,7 @@ namespace jc {
 
             while (match({ TokenType::NEWLINE })) {}
             consume(TokenType::RBRACKET, "Parser Error: Expect ']' after matrix structure.");
-            return std::make_unique<MatrixNode>(std::move(matrixElements));
+            return std::make_unique<MatrixNode>(std::move(matrixElements), forceList);
         }
         throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");
     }

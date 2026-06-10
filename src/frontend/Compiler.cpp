@@ -1518,9 +1518,37 @@ namespace jc {
     std::any Compiler::visitMatrixNode(MatrixNode* expr) {
         int rows = static_cast<int>(expr->elements.size());
         if (rows == 0) {
-            chunk()->emitConstant(Value(RealMatrix(0, 0)), lastLine);
+            if (expr->forceList) {
+                emit(OpCode::OP_LIST_INIT, lastLine);
+            } else {
+                chunk()->emitConstant(Value(RealMatrix(0, 0)), lastLine);
+            }
             return {};
         }
+        
+        if (expr->forceList) {
+            if (rows == 1) {
+                int cols = static_cast<int>(expr->elements[0].size());
+                for (int j = 0; j < cols; ++j) {
+                    compileNode(expr->elements[0][j].get());
+                }
+                emit(OpCode::OP_BUILD_LIST, lastLine);
+                emit16(static_cast<uint16_t>(cols), lastLine);
+            } else {
+                for (int i = 0; i < rows; ++i) {
+                    int cols = static_cast<int>(expr->elements[i].size());
+                    for (int j = 0; j < cols; ++j) {
+                        compileNode(expr->elements[i][j].get());
+                    }
+                    emit(OpCode::OP_BUILD_LIST, lastLine);
+                    emit16(static_cast<uint16_t>(cols), lastLine);
+                }
+                emit(OpCode::OP_BUILD_LIST, lastLine);
+                emit16(static_cast<uint16_t>(rows), lastLine);
+            }
+            return {};
+        }
+
         int cols = static_cast<int>(expr->elements[0].size());
         for (int i = 0; i < rows; ++i) {
             if (static_cast<int>(expr->elements[i].size()) != cols) {
@@ -2567,7 +2595,9 @@ namespace jc {
         beginScope(); // ★ 列表推导式自带块级作用域
         emit(OpCode::OP_LIST_INIT, lastLine);
         compileCompClause(expr, 0);
-        emit(OpCode::OP_LIST_COMP_END, lastLine); // ★ 底层指令降维
+        if (!expr->forceList) {
+            emit(OpCode::OP_LIST_COMP_END, lastLine); // ★ 底层指令降维
+        }
         endScope();
         return {};
     }

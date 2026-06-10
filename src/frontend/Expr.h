@@ -236,8 +236,9 @@ namespace jc {
 
     struct MatrixNode : public Expr {
         std::vector<std::vector<std::unique_ptr<Expr>>> elements;
-        explicit MatrixNode(std::vector<std::vector<std::unique_ptr<Expr>>> elements)
-            : elements(std::move(elements)) {
+        bool forceList;
+        explicit MatrixNode(std::vector<std::vector<std::unique_ptr<Expr>>> elements, bool forceList = false)
+            : elements(std::move(elements)), forceList(forceList) {
         }
         std::any accept(ExprVisitor& visitor) override { return visitor.visitMatrixNode(this); }
     };
@@ -608,9 +609,10 @@ namespace jc {
 
         std::unique_ptr<Expr> valueExpr;
         std::vector<CompClause> clauses;
+        bool forceList;
 
-        ListCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses)
-            : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)) {
+        ListCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses, bool forceList = false)
+            : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)), forceList(forceList) {
         }
         std::any accept(ExprVisitor& visitor) override { return visitor.visitListCompExpr(this); }
     };

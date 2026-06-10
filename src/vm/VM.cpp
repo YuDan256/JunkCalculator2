@@ -1387,6 +1387,20 @@ namespace jc {
                     break;
                 }
 
+                case OpCode::OP_BUILD_SET: {
+                    uint16_t count = readShort();
+                    ObjSet* s = GcHeap::get().allocate<ObjSet>();
+                    std::vector<Value> items(count);
+                    for (int j = count - 1; j >= 0; --j) {
+                        items[j] = pop();
+                    }
+                    for (auto& v : items) {
+                        s->elements.insert(v);
+                    }
+                    push(Value(s));
+                    break;
+                }
+
                 case OpCode::OP_DICT_REST: {
                     uint16_t count = readShort();
                     std::unordered_set<std::string> excludeKeys;

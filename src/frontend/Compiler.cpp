@@ -2466,6 +2466,15 @@ namespace jc {
         return {};
     }
 
+    std::any Compiler::visitSetLiteral(SetLiteral* expr) {
+        for (auto& elemExpr : expr->elements) {
+            compileNode(elemExpr.get());
+        }
+        emit(OpCode::OP_BUILD_SET, lastLine);
+        emit16(static_cast<uint16_t>(expr->elements.size()), lastLine);
+        return {};
+    }
+
     std::any Compiler::visitRefDecl(RefDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;

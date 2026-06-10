@@ -54,6 +54,7 @@ namespace jc {
     struct FStringExpr;
     struct ListCompExpr;       // ★
     struct DictLiteral;        // ★
+    struct SetLiteral;         // ★ 新增
     struct SliceExpr;        // ★ 新增
     struct SequenceExpr;
     struct MatchExpr;
@@ -159,6 +160,7 @@ namespace jc {
         virtual std::any visitFStringExpr(FStringExpr* expr) = 0;  // ★
         virtual std::any visitListCompExpr(ListCompExpr* expr) = 0;  // ★
         virtual std::any visitDictLiteral(DictLiteral* expr) = 0;  // ★
+        virtual std::any visitSetLiteral(SetLiteral* expr) = 0;  // ★ 新增
         virtual std::any visitSliceExpr(SliceExpr* expr) = 0;  // ★ 新增
         virtual std::any visitSequenceExpr(SequenceExpr* expr) = 0;
         virtual std::any visitMatchExpr(MatchExpr* expr) = 0;
@@ -615,6 +617,15 @@ namespace jc {
             : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)), forceList(forceList) {
         }
         std::any accept(ExprVisitor& visitor) override { return visitor.visitListCompExpr(this); }
+    };
+
+    // ★ @{val1, val2, ...}
+    struct SetLiteral : public Expr {
+        std::vector<std::unique_ptr<Expr>> elements;
+        explicit SetLiteral(std::vector<std::unique_ptr<Expr>> elements)
+            : elements(std::move(elements)) {
+        }
+        std::any accept(ExprVisitor& visitor) override { return visitor.visitSetLiteral(this); }
     };
 
     // ★ {key: value, key: value, ...}

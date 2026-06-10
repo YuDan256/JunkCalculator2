@@ -49,6 +49,7 @@ namespace jc {
         std::unique_ptr<Expr> parseListComp(std::unique_ptr<Expr> valueExpr);  // ★
         std::unique_ptr<Expr> pipe();
         std::unique_ptr<Expr> parseDictLiteral();  // ★
+        std::unique_ptr<Expr> parseSetLiteral();   // ★ 新增
         std::unique_ptr<Pattern> exprToPattern(std::unique_ptr<Expr> expr); // ★ 新增
 
         // --- 游标工具 ---

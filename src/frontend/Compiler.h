@@ -129,6 +129,7 @@ namespace jc {
         std::any visitFStringExpr(FStringExpr*) override;
         std::any visitListCompExpr(ListCompExpr*) override;
         std::any visitDictLiteral(DictLiteral*) override;
+        std::any visitSetLiteral(SetLiteral*) override;
         std::any visitSliceExpr(SliceExpr*) override;
         std::any visitSequenceExpr(SequenceExpr* expr) override;
         std::any visitMatchExpr(MatchExpr* expr) override;

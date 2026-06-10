@@ -1110,8 +1110,11 @@ namespace jc {
         // ★ 矩阵 [...] 或列表推导式 [expr for x in ...]
         bool forceList = false;
         if (match({ TokenType::AT })) {
+            if (check(TokenType::LBRACE)) {
+                return parseSetLiteral();
+            }
             if (!check(TokenType::LBRACKET)) {
-                throw std::runtime_error("Parser Error: Expect '[' after '@'.");
+                throw std::runtime_error("Parser Error: Expect '[' or '{' after '@'.");
             }
             forceList = true;
         }
@@ -1860,6 +1863,30 @@ namespace jc {
 
         return std::make_unique<ListCompExpr>(
             std::move(valueExpr), std::move(clauses));
+    }
+
+    std::unique_ptr<Expr> Parser::parseSetLiteral() {
+        consume(TokenType::LBRACE, "Parser Error: Expect '{' after '@'.");
+
+        std::vector<std::unique_ptr<Expr>> elements;
+
+        while (!check(TokenType::RBRACE) && !isAtEnd()) {
+            while (match({ TokenType::NEWLINE })) {}  // ★ 跳过前导换行
+            if (check(TokenType::RBRACE)) break;
+
+            elements.push_back(assignment());
+
+            if (!match({ TokenType::COMMA })) {
+                while (match({ TokenType::NEWLINE })) {}
+                break;
+            }
+            while (match({ TokenType::NEWLINE })) {}
+            if (check(TokenType::RBRACE)) break; // 允许尾随逗号
+        }
+
+        while (match({ TokenType::NEWLINE })) {}
+        consume(TokenType::RBRACE, "Parser Error: Expect '}' after set literal.");
+        return std::make_unique<SetLiteral>(std::move(elements));
     }
 
     std::unique_ptr<Expr> Parser::parseDictLiteral() {

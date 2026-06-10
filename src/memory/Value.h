@@ -358,20 +358,6 @@ namespace jc {
             return static_cast<ObjInstance*>(asObj());
         }
 
-        static Value negativePow(double base, int64_t p, int64_t q) {
-            double absBase = std::abs(base);
-            if (q % 2 != 0) {
-                double magnitude = std::pow(absBase, static_cast<double>(std::abs(p)) / static_cast<double>(q));
-                if (p < 0) magnitude = 1.0 / magnitude;
-                bool negResult = (std::abs(p) % 2 != 0);
-                double res = negResult ? -magnitude : magnitude;
-                return Value(res);
-            }
-            else {
-                return Value(Complex(base, 0.0) ^ Complex(static_cast<double>(p) / static_cast<double>(q), 0.0));
-            }
-        }
-
         bool isSuperProxy() const { return isObjType(ObjType::SUPER_PROXY); }
         ObjSuper* asSuperProxy() const {
             if (!isSuperProxy()) throw std::runtime_error("Type Error: Expected super proxy.");
@@ -884,15 +870,6 @@ namespace jc {
 
             double a = lhs.asDouble(), b = rhs.asDouble();
             if (a < 0 && std::floor(b) != b) {
-                for (int q = 2; q <= 1000; ++q) {
-                    double p = b * q;
-                    double rounded = std::round(p);
-                    if (Tol::isEq(p, rounded, 1e5)) {
-                        int64_t pInt = static_cast<int64_t>(rounded);
-                        int64_t g = std::gcd(std::abs(pInt), static_cast<int64_t>(q));
-                        return Value::negativePow(a, pInt / g, q / g);
-                    }
-                }
                 return Value(Complex(a, 0.0) ^ Complex(b, 0.0));
             }
             double res = std::pow(a, b);

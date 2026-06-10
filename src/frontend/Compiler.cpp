@@ -162,25 +162,9 @@ namespace jc {
         if (clauseIdx >= expr->clauses.size()) {
             uint16_t depth = static_cast<uint16_t>(2 * expr->clauses.size());
 
-            if (expr->condition) {
-                compileNode(expr->condition.get());
-                int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
-                emit(OpCode::OP_POP, lastLine);
-
-                compileNode(expr->valueExpr.get());
-                emit(OpCode::OP_LIST_APPEND, lastLine);
-                emit16(depth, lastLine);
-
-                int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                chunk()->patchJump(skipJump);
-                emit(OpCode::OP_POP, lastLine);
-                chunk()->patchJump(endJump);
-            }
-            else {
-                compileNode(expr->valueExpr.get());
-                emit(OpCode::OP_LIST_APPEND, lastLine);
-                emit16(depth, lastLine);
-            }
+            compileNode(expr->valueExpr.get());
+            emit(OpCode::OP_LIST_APPEND, lastLine);
+            emit16(depth, lastLine);
             return;
         }
 
@@ -234,7 +218,23 @@ namespace jc {
             emit(OpCode::OP_POP, lastLine);
         }
 
+        std::vector<int> condJumps;
+        for (auto& cond : clause.conditions) {
+            compileNode(cond.get());
+            condJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+            emit(OpCode::OP_POP, lastLine); // pop true boolean
+        }
+
         compileCompClause(expr, clauseIdx + 1);
+
+        if (!condJumps.empty()) {
+            int successSkip = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+            for (int cj : condJumps) {
+                chunk()->patchJump(cj);
+            }
+            emit(OpCode::OP_POP, lastLine); // pop false boolean
+            chunk()->patchJump(successSkip);
+        }
 
         if (skipMatchJump != -1) {
             chunk()->patchJump(skipMatchJump);

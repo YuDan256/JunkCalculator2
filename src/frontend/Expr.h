@@ -589,12 +589,13 @@ namespace jc {
         std::any accept(ExprVisitor& visitor) override { return visitor.visitFStringExpr(this); }
     };
 
-    // ★ [expr for var in iterable if condition]
+    // ★ [expr for (var in iterable) if (condition)]
     struct ListCompExpr : public Expr {
         struct CompClause {
             Token varName;
             std::unique_ptr<Pattern> pattern;
             std::shared_ptr<Expr> iterable;
+            std::vector<std::shared_ptr<Expr>> conditions;
             bool isDestruct() const { return pattern != nullptr; }
             CompClause(Token var, std::shared_ptr<Expr> iter)
                 : varName(std::move(var)), pattern(nullptr), iterable(std::move(iter)) {
@@ -607,12 +608,9 @@ namespace jc {
 
         std::unique_ptr<Expr> valueExpr;
         std::vector<CompClause> clauses;
-        std::unique_ptr<Expr> condition;  // nullptr = no filter
 
-        ListCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses,
-            std::unique_ptr<Expr> condition)
-            : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)),
-            condition(std::move(condition)) {
+        ListCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses)
+            : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)) {
         }
         std::any accept(ExprVisitor& visitor) override { return visitor.visitListCompExpr(this); }
     };

@@ -1812,19 +1812,19 @@ namespace jc {
     std::unique_ptr<Expr> Parser::parseListComp(std::unique_ptr<Expr> valueExpr) {
         // 进入时：当前 token 指向 FOR，valueExpr 已被提取
         std::vector<ListCompExpr::CompClause> clauses;
-        std::unique_ptr<Expr> condition;
 
         while (match({ TokenType::FOR })) {
+            consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'for' in list comprehension.");
             match({ TokenType::LOCAL }); // ★ 允许并忽略可选的 local 关键字（推导式变量默认就是 local 的）
 
-            // ★ 解构模式：for [a, b] in ... or for {a, b} in ...
+            // ★ 解构模式：for ([a, b] in ...) or for ({a, b} in ...)
             if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
                 auto pat = parsePattern();
                 consume(TokenType::IN, "Parser Error: Expect 'in' after pattern in list comprehension.");
                 auto iterable = expression();
                 clauses.emplace_back(std::move(pat), std::shared_ptr<Expr>(iterable.release()));
             }
-            // ★ 单变量模式：for x in ...
+            // ★ 单变量模式：for (x in ...)
             else {
                 Token varName = consume(TokenType::IDENTIFIER,
                     "Parser Error: Expect variable name after 'for' in list comprehension.");
@@ -1834,18 +1834,22 @@ namespace jc {
                 clauses.emplace_back(varName,
                     std::shared_ptr<Expr>(iterable.release()));
             }
-        }
+            consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable in list comprehension.");
 
-        // ★ 可选的 if 过滤条件
-        if (match({ TokenType::IF })) {
-            condition = expression();
+            // ★ 可选的 if 过滤条件 (可以有多个)
+            while (match({ TokenType::IF })) {
+                consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'if' in list comprehension.");
+                auto cond = expression();
+                consume(TokenType::RPAREN, "Parser Error: Expect ')' after if condition in list comprehension.");
+                clauses.back().conditions.push_back(std::shared_ptr<Expr>(cond.release()));
+            }
         }
 
         consume(TokenType::RBRACKET,
             "Parser Error: Expect ']' after list comprehension.");
 
         return std::make_unique<ListCompExpr>(
-            std::move(valueExpr), std::move(clauses), std::move(condition));
+            std::move(valueExpr), std::move(clauses));
     }
 
     std::unique_ptr<Expr> Parser::parseDictLiteral() {

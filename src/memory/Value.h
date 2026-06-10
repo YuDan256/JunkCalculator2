@@ -614,14 +614,16 @@ namespace jc {
             auto it = keys.find(val);
             if (it == keys.end()) throw std::runtime_error("Runtime Error: Element not found in Set.");
             keys.erase(it);
-            elements.erase(std::remove_if(elements.begin(), elements.end(), [&](const Value& v) { return Value::equals(v, val); }), elements.end());
+            auto eIt = std::find_if(elements.begin(), elements.end(), [&val](const Value& v) { return Value::equals(v, val); });
+            if (eIt != elements.end()) elements.erase(eIt);
         }
         void discard(const Value& val) {
             checkModify();
             auto it = keys.find(val);
             if (it != keys.end()) {
                 keys.erase(it);
-                elements.erase(std::remove_if(elements.begin(), elements.end(), [&](const Value& v) { return Value::equals(v, val); }), elements.end());
+                auto eIt = std::find_if(elements.begin(), elements.end(), [&val](const Value& v) { return Value::equals(v, val); });
+                if (eIt != elements.end()) elements.erase(eIt);
             }
         }
         Value pop() {
@@ -694,10 +696,7 @@ namespace jc {
                         pair->is_frozen = true;
                         pair->is_hashable_cached = true;
                         Value pairVal(pair);
-                        if (res->keys.find(pairVal) == res->keys.end()) {
-                            res->keys.insert(pairVal);
-                            res->elements.push_back(pairVal);
-                        }
+                        res->add(pairVal);
                     }
                 }
                 return Value(res);
@@ -964,8 +963,7 @@ namespace jc {
             ObjSet* res = GcHeap::get().allocate<ObjSet>();
             for (const auto& val : s1->elements) {
                 if (s2->keys.find(val) != s2->keys.end()) {
-                    res->keys.insert(val);
-                    res->elements.push_back(val);
+                    res->add(val);
                 }
             }
             return Value(res);
@@ -1040,13 +1038,8 @@ namespace jc {
             ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
             ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
             ObjSet* res = GcHeap::get().allocate<ObjSet>();
-            for (const auto& val : s1->elements) { res->keys.insert(val); res->elements.push_back(val); }
-            for (const auto& val : s2->elements) {
-                if (res->keys.find(val) == res->keys.end()) {
-                    res->keys.insert(val);
-                    res->elements.push_back(val);
-                }
-            }
+            for (const auto& val : s1->elements) { res->add(val); }
+            for (const auto& val : s2->elements) { res->add(val); }
             return Value(res);
         }
         if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitOr(static_cast<ObjBaseNum*>(rhs.asObj())->base));
@@ -1787,8 +1780,7 @@ namespace jc {
                 ObjSet* res = GcHeap::get().allocate<ObjSet>();
                 for (const auto& val : s1->elements) {
                     if (s2->keys.find(val) == s2->keys.end()) {
-                        res->keys.insert(val);
-                        res->elements.push_back(val);
+                        res->add(val);
                     }
                 }
                 return Value(res);

@@ -1395,7 +1395,7 @@ namespace jc {
                         items[j] = pop();
                     }
                     for (auto& v : items) {
-                        s->elements.insert(v);
+                        s->add(v);
                     }
                     push(Value(s));
                     break;

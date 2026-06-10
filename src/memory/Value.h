@@ -1851,8 +1851,8 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         case ObjType::LIST: {
             ObjList* list = static_cast<ObjList*>(obj);
             RecursionGuard guard(visited, list);
-            if (guard.isCycle) { os << "[...]"; break; }
-            os << "[";
+            if (guard.isCycle) { os << "@[...]"; break; }
+            os << "@[";
             for (size_t i = 0; i < list->vec.size(); ++i) {
                 try { printNested(list->vec[i]); } catch (...) { os << "?"; }
                 if (i < list->vec.size() - 1) os << ", ";
@@ -1877,8 +1877,8 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         case ObjType::SET: {
             ObjSet* set = static_cast<ObjSet*>(obj);
             RecursionGuard guard(visited, set);
-            if (guard.isCycle) { os << "Set{...}"; break; }
-            os << "Set{";
+            if (guard.isCycle) { os << "@{...}"; break; }
+            os << "@{";
             for (size_t i = 0; i < set->elements.size(); ++i) {
                 try { printNested(set->elements[i]); } catch (...) { os << "?"; }
                 if (i < set->elements.size() - 1) os << ", ";

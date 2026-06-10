@@ -96,31 +96,28 @@ endif()
 file(GENERATE OUTPUT "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" CONTENT "@echo off\n\"%~dp0JunkCalculator2.exe\" %*\n")
 file(GENERATE OUTPUT "$<TARGET_FILE_DIR:JunkCalculator2>/jc" CONTENT "#!/bin/sh\nexec \"$(dirname \"$0\")/JunkCalculator2\" \"$@\"\n")
 
+# ★ Use a custom target (ALL) to ensure directories are synced on EVERY build,
+# even if the C++ executable itself didn't need to be recompiled.
+add_custom_target(SyncResources ALL
+    COMMENT "Syncing resource directories (data, lib, examples) to build output..."
+)
+add_dependencies(SyncResources JunkCalculator2)
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
-    add_custom_command(TARGET JunkCalculator2 POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/data"
-        "$<TARGET_FILE_DIR:JunkCalculator2>/data"
-        COMMENT "Copying data/ to build output directory"
+    add_custom_command(TARGET SyncResources POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/data" "$<TARGET_FILE_DIR:JunkCalculator2>/data"
     )
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib")
-    add_custom_command(TARGET JunkCalculator2 POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/lib"
-        "$<TARGET_FILE_DIR:JunkCalculator2>/lib"
-        COMMENT "Copying lib/ to build output directory"
+    add_custom_command(TARGET SyncResources POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/lib" "$<TARGET_FILE_DIR:JunkCalculator2>/lib"
     )
 endif()
 
-# ★ Added auto-copy for the showcase examples!
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
-    add_custom_command(TARGET JunkCalculator2 POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/examples"
-        "$<TARGET_FILE_DIR:JunkCalculator2>/examples"
-        COMMENT "Copying examples/ to build output directory"
+    add_custom_command(TARGET SyncResources POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/examples" "$<TARGET_FILE_DIR:JunkCalculator2>/examples"
     )
 endif()
 

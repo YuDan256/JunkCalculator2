@@ -420,6 +420,10 @@ namespace jc {
         auto savedRefWritebacks = pendingRefWritebacks;
         pendingRefWritebacks.clear();
 
+        // ★ 临时保护 boundSelf 和 boundClass，防止在打包变长参数触发 GC 时被回收
+        helpers::nativeSelfStack.push_back(boundSelf);
+        helpers::nativeClassStack.push_back(boundClass);
+
         for (const auto& arg : args)
             push(arg);
 
@@ -469,8 +473,15 @@ namespace jc {
         // ★ 清爽下发！寄存器已就位：
         newFrame.selfContext = boundSelf;
         newFrame.classContext = boundClass;
-        if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+        if (frameCount >= MAX_FRAMES) {
+            helpers::nativeSelfStack.pop_back();
+            helpers::nativeClassStack.pop_back();
+            throw std::runtime_error("VM Error: CallFrame stack overflow.");
+        }
         frames[frameCount++] = newFrame;
+
+        helpers::nativeSelfStack.pop_back();
+        helpers::nativeClassStack.pop_back();
 
         int boundary = frameCount - 1;
 
@@ -2636,12 +2647,13 @@ namespace jc {
                 if (static_cast<int>(argc) < fn->arity || static_cast<int>(argc) > fn->maxArity)
                     throw std::runtime_error("VM Error: '" + fn->name + "' expects args mismatch.");
                 
-                eraseStack(argc); // ★ FIX: 先安全移除 callee
-                
                 int padCount = fn->maxArity - static_cast<int>(argc);
                 for (int j = 0; j < padCount; ++j) push(Value::none());
                 int reserveCount = fn->localCount - fn->maxArity;
                 for (int j = 0; j < reserveCount; ++j) push(Value::none());
+                
+                eraseStack(fn->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
+                
                 CallFrame newFrame; newFrame.function = fn.get(); newFrame.ip = 0;
                 newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
@@ -2722,13 +2734,13 @@ namespace jc {
                     newFrame.classContext = Value(initOwner);
 
                     auto& fnDef = compiledFunctions[initMethod->compiledFnIndex];
-                    
-                    eraseStack(argc); // ★ FIX: 先安全移除 callee
 
                     int padCount = fnDef->maxArity - static_cast<int>(argc);
                     for (int j = 0; j < padCount; ++j) push(Value::none());
                     int reserveCount = fnDef->localCount - fnDef->maxArity;
                     for (int j = 0; j < reserveCount; ++j) push(Value::none());
+
+                    eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
 
                     newFrame.function = fnDef.get();
                     newFrame.ip = 0;
@@ -2790,8 +2802,6 @@ namespace jc {
             if (closure->isBytecode()) {
                 auto& fnDef = compiledFunctions[closure->compiledFnIndex];
 
-                eraseStack(argc); // ★ FIX: 先安全移除 callee
-
                 if (closure->isUFCS) {
                     // ★ UFCS 绑定闭包：将 boundSelf 插入到参数列表的最前面
                     if (static_cast<int>(getStackSize()) >= MAX_STACK) throw std::runtime_error("VM Error: Stack overflow.");
@@ -2831,6 +2841,8 @@ namespace jc {
 
                 int reserveCount = fnDef->localCount - fnDef->maxArity;
                 for (int j = 0; j < reserveCount; ++j) push(Value::none());
+
+                eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
 
                 CallFrame newFrame;
                 newFrame.function = fnDef.get();
@@ -2976,8 +2988,6 @@ namespace jc {
             if (method) {
                 if (method->isBytecode()) {
                     auto& fnDef = compiledFunctions[method->compiledFnIndex];
-                    
-                    eraseStack(argc); // ★ FIX: 先安全移除 callee
 
                     if (fnDef->hasRestParam) {
                         int fixedMax = fnDef->maxArity - 1;
@@ -3004,6 +3014,8 @@ namespace jc {
 
                     int reserveCount = fnDef->localCount - fnDef->maxArity;
                     for (int j = 0; j < reserveCount; ++j) push(Value::none());
+
+                    eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
 
                     CallFrame newFrame;
                     newFrame.function = fnDef.get();
@@ -3105,12 +3117,12 @@ namespace jc {
                     if (getitemMethod->isBytecode()) {
                         auto& fnDef = compiledFunctions[getitemMethod->compiledFnIndex];
                         
-                        eraseStack(1); // removes `obj`, `idx` shifts to peek(0)
-                        
                         int padCount = fnDef->maxArity - 1;
                         for (int j = 0; j < padCount; ++j) push(Value::none());
                         int reserveCount = fnDef->localCount - fnDef->maxArity;
                         for (int j = 0; j < reserveCount; ++j) push(Value::none());
+
+                        eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 obj，保护其在可能触发的 GC 中存活
 
                         CallFrame newFrame;
                         newFrame.function = fnDef.get();
@@ -4657,8 +4669,6 @@ namespace jc {
             newFrame.classContext = owningClass ? Value(owningClass) : Value::none();
             auto& fnDef = compiledFunctions[method->compiledFnIndex];
 
-            eraseStack(argc); // ★ FIX: 先安全移除 obj
-
             if (fnDef->hasRestParam) {
                 int fixedMax = fnDef->maxArity - 1;
                 if (static_cast<int>(argc) < fnDef->arity) {
@@ -4687,6 +4697,9 @@ namespace jc {
 
             int reserveCount = fnDef->localCount - fnDef->maxArity;
             for (int j = 0; j < reserveCount; ++j) push(Value::none());
+            
+            eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 obj，保护其在可能触发的 GC 中存活
+            
             newFrame.function = fnDef.get();
             newFrame.ip = 0;
             newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
@@ -4705,8 +4718,6 @@ namespace jc {
                 if (tag.size() >= 5 && tag.substr(0, 5) == "__fn:") {
                     int fnIdx = std::stoi(tag.substr(5));
                     auto& fnDef = compiledFunctions[fnIdx];
-
-                    eraseStack(argc); // 移除 obj
 
                     if (fnDef->hasRestParam) {
                         int fixedMax = fnDef->maxArity - 1;
@@ -4734,6 +4745,8 @@ namespace jc {
 
                     int reserveCount = fnDef->localCount - fnDef->maxArity;
                     for (int j = 0; j < reserveCount; ++j) push(Value::none());
+
+                    eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 obj，保护其在可能触发的 GC 中存活
 
                     CallFrame newFrame;
                     newFrame.function = fnDef.get();
@@ -4835,8 +4848,6 @@ namespace jc {
 
             auto& fnDef = compiledFunctions[method->compiledFnIndex];
 
-            eraseStack(argc); // ★ FIX: 先安全移除 selfVal
-
             // =============================================================
             // ★ 核心变长参数打包引擎 (OOP SuperInvoke 端)
             // =============================================================
@@ -4872,6 +4883,8 @@ namespace jc {
 
             int reserveCount = fnDef->localCount - fnDef->maxArity;
             for (int j = 0; j < reserveCount; ++j) push(Value::none());
+
+            eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 selfVal，保护其在可能触发的 GC 中存活
 
             newFrame.function = fnDef.get();
             newFrame.ip = 0;

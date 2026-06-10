@@ -1140,7 +1140,7 @@ namespace jc {
                     uint16_t nameIdx = readShort();
                     const std::string& field = chunk->constants[nameIdx].asString();
 
-                    Value selfVal = pop();
+                    Value selfVal = peek(0);
 
                     if (!selfVal.isInstance())
                         throw std::runtime_error("VM Error: 'super' requires an instance context.");
@@ -1189,6 +1189,7 @@ namespace jc {
                     bound->boundSelf = Value(inst);
                     bound->boundClass = Value(ownerClass);
 
+                    pop();
                     push(Value(bound));
                     break;
                 }
@@ -1247,19 +1248,22 @@ namespace jc {
                 }
 
                 case OpCode::OP_STRINGIFY: {
-                    Value v = pop();
+                    Value v = peek(0);
                     if (v.isString()) {
-                        push(v);
+                        // do nothing, already on stack
                     }
                     else {
                         auto d = findDunder(v, DUNDER_STR);
                         if (d) {
-                            push(callDunder(v, DUNDER_STR, {}));
+                            Value res = callDunder(v, DUNDER_STR, {});
+                            pop();
+                            push(res);
                         }
                         else {
                             std::ostringstream oss;
                             if (v.isUninit()) oss << "Uninitialized";
                             else oss << v;
+                            pop();
                             push(Value(oss.str()));
                         }
                     }
@@ -1378,7 +1382,7 @@ namespace jc {
                     for (int i = 0; i < count; ++i) {
                         excludeKeys.insert(pop().asString());
                     }
-                    Value obj = pop();
+                    Value obj = peek(0);
                     ObjDict* restDict = GcHeap::get().allocate<ObjDict>();
 
                     if (obj.isObjType(ObjType::DICT)) {
@@ -1402,6 +1406,7 @@ namespace jc {
                             restDict->set(Value(k), *(field.upval->location));
                         }
                     }
+                    pop();
                     push(Value(restDict));
                     break;
                 }
@@ -1413,7 +1418,7 @@ namespace jc {
 
                 case OpCode::OP_ITER_INIT: {
                     uint8_t destructFlag = readByte();
-                    Value iterable = pop();
+                    Value iterable = peek(0);
                     ObjList* elements = GcHeap::get().allocate<ObjList>();
                     if (iterable.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(iterable.asObj())->mat;
@@ -1511,6 +1516,7 @@ namespace jc {
                         auto method = findDunder(iterable, DUNDER_ITER);
                         if (method) {
                             Value iterObj = callDunder(iterable, DUNDER_ITER, {});
+                            pop();
                             push(iterObj);
                             push(Value::none()); // 使用 none 作为自定义迭代器的索引标记
                             break;
@@ -1536,6 +1542,7 @@ namespace jc {
                     else {
                         throw std::runtime_error("VM Error: Cannot iterate over this type.");
                     }
+                    pop();
                     push(Value(elements));
                     push(Value(0.0));
                     break;
@@ -1671,13 +1678,13 @@ namespace jc {
                 }
 
                 case OpCode::OP_LIST_COMP_END: {
-                    Value arg = pop();
+                    Value arg = peek(0);
                     if (!arg.isObjType(ObjType::LIST)) {
-                        push(arg);
                         break;
                     }
                     auto l = static_cast<ObjList*>(arg.asObj());
                     if (l->vec.empty()) {
+                        pop();
                         push(Value(RealMatrix(1, 0)));
                         break;
                     }
@@ -1707,7 +1714,6 @@ namespace jc {
                     }
 
                     if (hasOther) {
-                        push(arg); // 保持为 List
                         break;
                     }
 
@@ -1776,6 +1782,7 @@ namespace jc {
                                             .integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
                                 }
                             }
+                            pop();
                             push(rowResult);
                         }
                         catch (...) {
@@ -1794,16 +1801,19 @@ namespace jc {
                                 flat[ii] = oss.str();
                             }
                         }
+                        pop();
                         push(Value(StringMatrix(1, total, flat)));
                     }
                     else if (hasComplex) {
                         std::vector<Complex> flat(total);
                         for (int ii = 0; ii < total; ++ii) flat[ii] = l->vec[ii].asComplex();
+                        pop();
                         push(Value(ComplexMatrix(1, total, flat)));
                     }
                     else {
                         std::vector<double> flat(total);
                         for (int ii = 0; ii < total; ++ii) flat[ii] = l->vec[ii].asDouble();
+                        pop();
                         push(Value(RealMatrix(1, total, flat)));
                     }
                     break;
@@ -1927,8 +1937,8 @@ namespace jc {
                 case OpCode::OP_METHOD: {
                     uint16_t nameIdx = readShort();
                     const std::string& methodName = chunk->constants[nameIdx].asString();
-                    Value closureVal = pop();
-                    Value& classVal = peek(0);
+                    Value closureVal = peek(0);
+                    Value& classVal = peek(1);
 
                     if (!classVal.isClass())
                         throw std::runtime_error("VM Error: OP_METHOD requires a class on stack.");
@@ -1938,6 +1948,7 @@ namespace jc {
                     if (closureVal.isFunctionClosure()) {
                         auto fc = closureVal.asFunction();
                         cls->methods[methodName] = fc;
+                        pop();
                         break;
                     }
 
@@ -1951,6 +1962,7 @@ namespace jc {
                         );
                         fc->nativeFn = std::make_any<std::string>(tag);
                         cls->methods[methodName] = fc;
+                        pop();
                         break;
                     }
 
@@ -1977,7 +1989,7 @@ namespace jc {
                 case OpCode::OP_GET_PROPERTY: {
                     uint16_t nameIdx = readShort();
                     const std::string& field = chunk->constants[nameIdx].asString();
-                    Value obj = pop();
+                    Value obj = peek(0);
                     bool found = false;
                     Value result;
 
@@ -2130,6 +2142,7 @@ namespace jc {
                         if (obj.isObjType(ObjType::NAMESPACE)) throw std::runtime_error("VM Error: Field '" + field + "' not found in namespace.");
                         throw std::runtime_error("VM Error: Cannot access property '" + field + "' on this type.");
                     }
+                    pop();
                     push(result);
                     break;
                 }
@@ -2137,7 +2150,7 @@ namespace jc {
                 case OpCode::OP_TRY_GET_PROPERTY: {
                     uint16_t nameIdx = readShort();
                     const std::string& field = chunk->constants[nameIdx].asString();
-                    Value obj = pop();
+                    Value obj = peek(0);
                     bool found = false;
                     Value result;
 
@@ -2179,6 +2192,7 @@ namespace jc {
                         }
                     }
 
+                    pop();
                     if (found) {
                         push(result);
                         push(Value(true));
@@ -2192,8 +2206,8 @@ namespace jc {
                 case OpCode::OP_SET_PROPERTY: {
                     uint16_t nameIdx = readShort();
                     const std::string& field = chunk->constants[nameIdx].asString();
-                    Value val = pop();
-                    Value obj = pop();
+                    Value val = peek(0);
+                    Value obj = peek(1);
 
                     if (obj.isInstance()) {
                         auto inst = obj.asInstance();
@@ -2201,6 +2215,7 @@ namespace jc {
                         auto setattrMethod = findDunder(obj, DUNDER_SETATTR);
                         if (setattrMethod) {
                             callDunder(obj, DUNDER_SETATTR, { Value(field), val });
+                            pop(); pop();
                             push(val);
                             break;
                         }
@@ -2213,11 +2228,13 @@ namespace jc {
                             inst->fields->keyMap[key] = inst->fields->elements.size();
                             inst->fields->elements.push_back({key, val});
                         }
+                        pop(); pop();
                         push(val);
                     }
                     else if (obj.isObjType(ObjType::DICT)) {
                         auto d = static_cast<ObjDict*>(obj.asObj());
                         d->set(Value(field), val);
+                        pop(); pop();
                         push(val);
                     }
                     else if (obj.isObjType(ObjType::NAMESPACE)) {
@@ -2233,11 +2250,14 @@ namespace jc {
                             uv->location = &uv->closed;
                             ns->fields[field] = { uv, false };
                         }
+                        pop(); pop();
                         push(val);
                     }
                     else {
                         throw std::runtime_error("VM Error: Cannot set property on this type.");
                     }
+                    pop(); pop();
+                    push(val);
                     break;
                 }
 
@@ -2625,9 +2645,10 @@ namespace jc {
             }
             if (tag.size() >= 10 && tag.substr(0, 10) == "__builtin:") {
                 std::string fnName = tag.substr(10); std::vector<Value> args(argc);
-                for (int j = argc - 1; j >= 0; --j) args[j] = pop();
-                pop(); 
-                push(nativeBuiltins.find(fnName)->second(args)); return;
+                for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
+                Value result = nativeBuiltins.find(fnName)->second(args);
+                for (int j = 0; j <= argc; ++j) pop();
+                push(result); return;
             }
             auto nIt = nativeBuiltins.find(tag);
             if (nIt != nativeBuiltins.end()) {
@@ -2642,9 +2663,10 @@ namespace jc {
 
                 if (arityMatched) {
                     std::vector<Value> args(argc);
-                    for (int j = argc - 1; j >= 0; --j) args[j] = pop();
-                    pop();
-                    push(nIt->second(args));
+                    for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
+                    Value result = nIt->second(args);
+                    for (int j = 0; j <= argc; ++j) pop();
+                    push(result);
                     return;
                 }
             }
@@ -2721,8 +2743,7 @@ namespace jc {
                     helpers::nativeClassStack.push_back(Value(initOwner));
 
                     std::vector<Value> args(argc);
-                    for (int j = argc - 1; j >= 0; --j) args[j] = pop();
-                    pop();
+                    for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
 
                     try {
                         auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
@@ -2736,6 +2757,7 @@ namespace jc {
                     helpers::nativeSelfStack.pop_back();
                     helpers::nativeClassStack.pop_back();
 
+                    for (int j = 0; j <= argc; ++j) pop();
                     push(Value(instance));
                 }
             }
@@ -2846,8 +2868,7 @@ namespace jc {
                 }
 
                 std::vector<Value> args(argc);
-                for (int j = argc - 1; j >= 0; --j) args[j] = pop();
-                pop();
+                for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
 
                 // ★ NEW：C++ 原生闭包也进隔离池
                 helpers::nativeSelfStack.push_back(closure->boundSelf);
@@ -2862,6 +2883,7 @@ namespace jc {
                 }
                 helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
 
+                for (int j = 0; j <= argc; ++j) pop();
                 push(result);
                 return;
             }
@@ -2919,13 +2941,14 @@ namespace jc {
 
             if (tag.size() >= 10 && tag.substr(0, 10) == "__builtin:") {
                 std::string fnName = tag.substr(10);
-                std::vector<Value> args(argc);
-                for (int j = argc - 1; j >= 0; --j) args[j] = pop();
-                pop();
+                std::vector<Value> argsVec(argc);
+                for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
                 auto nit = nativeBuiltins.find(fnName);
                 if (nit == nativeBuiltins.end())
                     throw std::runtime_error("VM Error: Unknown builtin '" + fnName + "'.");
-                push(nit->second(args));
+                Value result = nit->second(argsVec);
+                for (int j = 0; j <= argc; ++j) pop();
+                push(result);
                 return;
             }
         } // 结束 if (fallback string tag)
@@ -2995,8 +3018,7 @@ namespace jc {
                     return;
                 } else if (method->isNative()) {
                     std::vector<Value> argsVec(argc);
-                    for (int j = argc - 1; j >= 0; --j) argsVec[j] = pop();
-                    pop(); // pop callee
+                    for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
 
                     helpers::nativeSelfStack.push_back(callee);
                     helpers::nativeClassStack.push_back(Value(owningClass));
@@ -3010,6 +3032,7 @@ namespace jc {
                     }
                     helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
 
+                    for (int j = 0; j <= argc; ++j) pop();
                     push(result);
                     return;
                 }
@@ -4266,11 +4289,12 @@ namespace jc {
     }
 
     void VM::execIn() {
-        Value haystack = pop();
-        Value needle = pop();
+        Value haystack = peek(0);
+        Value needle = peek(1);
 
         if (needle.isString() && haystack.isString()) {
             bool found = haystack.asString().find(needle.asString()) != std::string::npos;
+            pop(); pop();
             push(Value(found));
             return;
         }
@@ -4283,10 +4307,11 @@ namespace jc {
             const auto& m = static_cast<ObjRealMatrix*>(haystack.asObj())->mat;
             double target;
             try { target = needle.asDouble(); }
-            catch (...) { push(Value(false)); return; }
+            catch (...) { pop(); pop(); push(Value(false)); return; }
             for (const auto& v : m.rawData()) {
-                if (v == target) { push(Value(true)); return; }
+                if (v == target) { pop(); pop(); push(Value(true)); return; }
             }
+            pop(); pop();
             push(Value(false));
             return;
         }
@@ -4295,10 +4320,11 @@ namespace jc {
             const auto& m = static_cast<ObjComplexMatrix*>(haystack.asObj())->mat;
             Complex target;
             try { target = needle.asComplex(); }
-            catch (...) { push(Value(false)); return; }
+            catch (...) { pop(); pop(); push(Value(false)); return; }
             for (const auto& v : m.rawData()) {
-                if (v == target) { push(Value(true)); return; }
+                if (v == target) { pop(); pop(); push(Value(true)); return; }
             }
+            pop(); pop();
             push(Value(false));
             return;
         }
@@ -4310,8 +4336,9 @@ namespace jc {
             const auto& m = static_cast<ObjStringMatrix*>(haystack.asObj())->mat;
             const auto& target = needle.asString();
             for (const auto& v : m.rawData()) {
-                if (v == target) { push(Value(true)); return; }
+                if (v == target) { pop(); pop(); push(Value(true)); return; }
             }
+            pop(); pop();
             push(Value(false));
             return;
         }
@@ -4321,46 +4348,58 @@ namespace jc {
             for (const auto& e : L) {
                 try {
                     if (Value::equals(needle, e)) {
+                        pop(); pop();
                         push(Value(true));
                         return;
                     }
                 }
                 catch (...) {}
             }
+            pop(); pop();
             push(Value(false));
             return;
         }
 
         if (haystack.isObjType(ObjType::DICT)) {
             auto d = static_cast<ObjDict*>(haystack.asObj());
-            push(Value(d->keyMap.find(needle) != d->keyMap.end()));
+            bool found = d->keyMap.find(needle) != d->keyMap.end();
+            pop(); pop();
+            push(Value(found));
             return;
         }
 
         if (haystack.isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(haystack.asObj());
             if (!needle.isString()) {
+                pop(); pop();
                 push(Value(false));
                 return;
             }
-            push(Value(ns->fields.find(needle.asString()) != ns->fields.end()));
+            bool found = ns->fields.find(needle.asString()) != ns->fields.end();
+            pop(); pop();
+            push(Value(found));
             return;
         }
 
         if (haystack.isObjType(ObjType::SET)) {
             auto s = static_cast<ObjSet*>(haystack.asObj());
-            push(Value(s->keys.find(needle) != s->keys.end()));
+            bool found = s->keys.find(needle) != s->keys.end();
+            pop(); pop();
+            push(Value(found));
             return;
         }
 
         if (haystack.isInstance()) {
             auto method = findDunder(haystack, DUNDER_CONTAINS);
             if (method) {
-                push(Value(callDunder(haystack, DUNDER_CONTAINS, { needle }).truthy()));
+                Value res = Value(callDunder(haystack, DUNDER_CONTAINS, { needle }).truthy());
+                pop(); pop();
+                push(res);
                 return;
             }
             auto inst = haystack.asInstance();
             if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
+                pop(); pop();
                 push(Value(true));
                 return;
             }
@@ -4369,6 +4408,7 @@ namespace jc {
                 std::string key = needle.asString();
                 while (c) {
                     if (c->methods.find(key) != c->methods.end()) {
+                        pop(); pop();
                         push(Value(true));
                         return;
                     }
@@ -4378,6 +4418,7 @@ namespace jc {
                 if (getattrMethod) {
                     try {
                         callDunder(haystack, DUNDER_GETATTR, { needle });
+                        pop(); pop();
                         push(Value(true));
                         return;
                     } catch (...) {
@@ -4385,6 +4426,7 @@ namespace jc {
                     }
                 }
             }
+            pop(); pop();
             push(Value(false));
             return;
         }
@@ -4569,9 +4611,11 @@ namespace jc {
                 }
 
                 std::vector<Value> argsVec(totalArgs);
-                for (int j = argc - 1; j >= 0; --j) argsVec[j + 1] = pop();
-                argsVec[0] = pop(); // obj
-                push(nIt->second(argsVec));
+                for (int j = 0; j < argc; ++j) argsVec[j + 1] = peek(argc - 1 - j);
+                argsVec[0] = peek(argc); // obj
+                Value result = nIt->second(argsVec);
+                for (int j = 0; j <= argc; ++j) pop();
+                push(result);
                 return;
             }
             auto gIt = globals.find(methodName);
@@ -4690,11 +4734,12 @@ namespace jc {
                 if (tag.size() >= 10 && tag.substr(0, 10) == "__builtin:") {
                     std::string fnName = tag.substr(10);
                     std::vector<Value> argsVec(argc);
-                    for (int j = argc - 1; j >= 0; --j) argsVec[j] = pop();
-                    pop(); // pop obj
+                    for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
                     auto nit = nativeBuiltins.find(fnName);
                     if (nit == nativeBuiltins.end()) throw std::runtime_error("VM Error: Unknown builtin '" + fnName + "'.");
-                    push(nit->second(argsVec));
+                    Value result = nit->second(argsVec);
+                    for (int j = 0; j <= argc; ++j) pop();
+                    push(result);
                     return;
                 }
                 throw std::runtime_error("VM Error: Invalid string tag in method.");
@@ -4715,8 +4760,7 @@ namespace jc {
             helpers::nativeClassStack.push_back(owningClass ? Value(owningClass) : Value::none());
 
             std::vector<Value> args(argc);
-            for (int j = argc - 1; j >= 0; --j) args[j] = pop();
-            pop();
+            for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
             Value result;
             try {
                 auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
@@ -4727,6 +4771,7 @@ namespace jc {
                 throw;
             }
             helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
+            for (int j = 0; j <= argc; ++j) pop();
             push(result);
             return;
         }
@@ -4841,8 +4886,7 @@ namespace jc {
             helpers::nativeClassStack.push_back(Value(owningClass));
 
             std::vector<Value> args(argc);
-            for (int j = argc - 1; j >= 0; --j) args[j] = pop();
-            pop();
+            for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
             Value result;
             try {
                 auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
@@ -4853,6 +4897,7 @@ namespace jc {
                 throw;
             }
             helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
+            for (int j = 0; j <= argc; ++j) pop();
             push(result);
             return;
         }

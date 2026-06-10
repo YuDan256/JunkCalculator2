@@ -159,7 +159,7 @@ namespace jc {
         void execIndexSet(uint8_t dims);
         void execSliceGet(uint8_t dims);
         void execSliceSet(uint8_t dims);
-        void execBuildMatrix(uint16_t rows, uint16_t cols);
+        void execBuildMatrix(uint16_t rows, const std::vector<uint16_t>& rowCols);
         void execIn();
         Value execReturn(bool& shouldExit);
         void execInvoke(uint16_t nameIdx, uint8_t argc);

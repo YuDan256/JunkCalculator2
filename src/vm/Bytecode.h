@@ -75,7 +75,7 @@ namespace jc {
 
         // 字符串/矩阵
         OP_BUILD_LIST,      // [count:16bit]
-        OP_BUILD_MATRIX,    // [rows:16bit, cols:16bit]
+        OP_BUILD_MATRIX,    // [rows:16bit, cols_1:16bit, ..., cols_n:16bit]
 
         // 函数（扩展）
         OP_CLOSURE,         // 创建闭包: [func_idx:16bit]
@@ -473,12 +473,6 @@ namespace jc {
             // ============================================
             // 格式 5: 定长双短参数 (5 字节)
             // ============================================
-            case OpCode::OP_BUILD_MATRIX: {
-                uint16_t r = read16(offset + 1);
-                uint16_t c = read16(offset + 3);
-                std::cout << r << "x" << c << std::endl;
-                return offset + 5;
-            }
             case OpCode::OP_TRY_BEGIN: {
                 uint16_t jump = read16(offset + 1);
                 uint16_t nameIdx = read16(offset + 3);
@@ -505,6 +499,17 @@ namespace jc {
             // ============================================
             // 格式 6: 变长复合参数
             // ============================================
+            case OpCode::OP_BUILD_MATRIX: {
+                uint16_t r = read16(offset + 1);
+                std::cout << r << " rows: ";
+                int pos = offset + 3;
+                for (int i = 0; i < r; ++i) {
+                    std::cout << read16(pos) << " ";
+                    pos += 2;
+                }
+                std::cout << std::endl;
+                return pos;
+            }
             case OpCode::OP_REF_WRITEBACK: {
                 uint8_t count = code[offset + 1];
                 std::cout << static_cast<int>(count) << " source(s)" << std::endl;

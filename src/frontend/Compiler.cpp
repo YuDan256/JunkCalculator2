@@ -1549,18 +1549,19 @@ namespace jc {
             return {};
         }
 
-        int cols = static_cast<int>(expr->elements[0].size());
+        std::vector<int> rowCols;
         for (int i = 0; i < rows; ++i) {
-            if (static_cast<int>(expr->elements[i].size()) != cols) {
-                throw std::runtime_error("Compiler Error: Matrix rows must have the same number of columns.");
-            }
+            int cols = static_cast<int>(expr->elements[i].size());
+            rowCols.push_back(cols);
             for (int j = 0; j < cols; ++j) {
                 compileNode(expr->elements[i][j].get());
             }
         }
         emit(OpCode::OP_BUILD_MATRIX, lastLine);
         emit16(static_cast<uint16_t>(rows), lastLine);
-        emit16(static_cast<uint16_t>(cols), lastLine);
+        for (int c : rowCols) {
+            emit16(static_cast<uint16_t>(c), lastLine);
+        }
         return {};
     }
 

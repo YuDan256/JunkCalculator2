@@ -1583,8 +1583,9 @@ namespace jc {
 
                 case OpCode::OP_BUILD_MATRIX: {
                     uint16_t rows = readShort();
-                    uint16_t cols = readShort();
-                    execBuildMatrix(rows, cols);
+                    std::vector<uint16_t> rowCols(rows);
+                    for (int i = 0; i < rows; ++i) rowCols[i] = readShort();
+                    execBuildMatrix(rows, rowCols);
                     break;
                 }
 
@@ -4104,8 +4105,9 @@ namespace jc {
         return;
     }
 
-    void VM::execBuildMatrix(uint16_t rows, uint16_t cols) {
-        int total = rows * cols;
+    void VM::execBuildMatrix(uint16_t rows, const std::vector<uint16_t>& rowCols) {
+        int total = 0;
+        for (uint16_t c : rowCols) total += c;
 
         bool hasComplex = false;
         bool hasString = false;
@@ -4146,10 +4148,12 @@ namespace jc {
             }
             else {
                 ObjList* outer = GcHeap::get().allocate<ObjList>();
+                int idx = 0;
                 for (int i = 0; i < rows; ++i) {
                     ObjList* inner = GcHeap::get().allocate<ObjList>();
+                    int cols = rowCols[i];
                     for (int j = 0; j < cols; ++j)
-                        inner->vec.push_back(stack[getStackSize() - total + i * cols + j]);
+                        inner->vec.push_back(stack[getStackSize() - total + idx++]);
                     inner->is_frozen = true;
                     outer->vec.push_back(Value(inner));
                 }
@@ -4214,6 +4218,7 @@ namespace jc {
                     Value matResult = Value::none();
                     for (int i = 0; i < rows; ++i) {
                         Value rowResult = Value::none();
+                        int cols = rowCols[i];
                         for (int j = 0; j < cols; ++j) {
                             Value cell = stack[getStackSize() - total + idx++];
                             extractCell(cell);
@@ -4254,32 +4259,46 @@ namespace jc {
                         "VM Error: Dimension mismatch during block matrix concatenation.");
                 }
             }
-            else if (hasString) {
-                std::vector<std::string> flat(total);
-                for (int ii = 0; ii < total; ++ii) {
-                    const Value& v = stack[getStackSize() - total + ii];
-                    if (v.isString())
-                        flat[ii] = v.asString();
-                    else {
-                        std::ostringstream oss;
-                        if (v.isUninit()) oss << "Uninitialized";
-                        else oss << v;
-                        flat[ii] = oss.str();
+            else {
+                int expectedCols = rows > 0 ? rowCols[0] : 0;
+                bool uniformCols = true;
+                for (int i = 1; i < rows; ++i) {
+                    if (rowCols[i] != expectedCols) {
+                        uniformCols = false;
+                        break;
                     }
                 }
-                result = Value(StringMatrix(rows, cols, flat));
-            }
-            else if (hasComplex) {
-                std::vector<Complex> flat(total);
-                for (int ii = 0; ii < total; ++ii)
-                    flat[ii] = stack[getStackSize() - total + ii].asComplex();
-                result = Value(ComplexMatrix(rows, cols, flat));
-            }
-            else {
-                std::vector<double> flat(total);
-                for (int ii = 0; ii < total; ++ii)
-                    flat[ii] = stack[getStackSize() - total + ii].asDouble();
-                result = Value(RealMatrix(rows, cols, flat));
+                if (!uniformCols) {
+                    throw std::runtime_error("VM Error: Matrix rows must have the same number of columns.");
+                }
+
+                if (hasString) {
+                    std::vector<std::string> flat(total);
+                    for (int ii = 0; ii < total; ++ii) {
+                        const Value& v = stack[getStackSize() - total + ii];
+                        if (v.isString())
+                            flat[ii] = v.asString();
+                        else {
+                            std::ostringstream oss;
+                            if (v.isUninit()) oss << "Uninitialized";
+                            else oss << v;
+                            flat[ii] = oss.str();
+                        }
+                    }
+                    result = Value(StringMatrix(rows, expectedCols, flat));
+                }
+                else if (hasComplex) {
+                    std::vector<Complex> flat(total);
+                    for (int ii = 0; ii < total; ++ii)
+                        flat[ii] = stack[getStackSize() - total + ii].asComplex();
+                    result = Value(ComplexMatrix(rows, expectedCols, flat));
+                }
+                else {
+                    std::vector<double> flat(total);
+                    for (int ii = 0; ii < total; ++ii)
+                        flat[ii] = stack[getStackSize() - total + ii].asDouble();
+                    result = Value(RealMatrix(rows, expectedCols, flat));
+                }
             }
         }
 

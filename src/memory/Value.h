@@ -139,7 +139,8 @@ namespace jc {
         mutable size_t cached_hash = 0;
         ObjInstance() { type = ObjType::INSTANCE; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Instance."); }
-        void clear() override { nativeData.reset(); }
+        void clear() override { checkModify(); clearTotal(); }
+        void clearTotal() override { nativeData.reset(); }
     };
     struct ObjSuper : public Obj {
         ObjInstance* instance = nullptr;
@@ -529,7 +530,8 @@ namespace jc {
         bool is_frozen = false;
         ObjNamespace() { type = ObjType::NAMESPACE; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Namespace."); }
-        void clear() override { fields.clear(); }
+        void clear() override { checkModify(); clearTotal(); }
+        void clearTotal() override { fields.clear(); }
     };
 
     struct ObjList : public Obj {
@@ -541,7 +543,8 @@ namespace jc {
         ObjList() { type = ObjType::LIST; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen List."); }
         std::vector<Value>& mut() { checkModify(); return vec; }
-        void clear() override { vec.clear(); }
+        void clear() override { checkModify(); clearTotal(); }
+        void clearTotal() override { vec.clear(); }
     };
     struct ObjDict : public Obj {
         std::vector<std::pair<Value, Value>> elements;
@@ -552,7 +555,8 @@ namespace jc {
         mutable size_t cached_hash = 0;
         ObjDict() { type = ObjType::DICT; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Dict."); }
-        void clear() override { elements.clear(); keyMap.clear(); }
+        void clear() override { checkModify(); clearTotal(); }
+        void clearTotal() override { elements.clear(); keyMap.clear(); }
         void set(const Value& key, const Value& val) {
             checkModify();
             auto it = keyMap.find(key);
@@ -596,7 +600,8 @@ namespace jc {
         mutable size_t cached_hash = 0;
         ObjSet() { type = ObjType::SET; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Set."); }
-        void clear() override { elements.clear(); keys.clear(); }
+        void clear() override { checkModify(); clearTotal(); }
+        void clearTotal() override { elements.clear(); keys.clear(); }
         void add(const Value& val) {
             checkModify();
             if (keys.find(val) == keys.end()) {

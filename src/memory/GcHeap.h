@@ -27,6 +27,7 @@ namespace jc {
         Obj* next;
         virtual ~Obj() = default;
         virtual void clear() {} // ★ 新增：在真正 delete 前清理内部引用的 Value，防止循环引用导致的 Use-After-Free
+        virtual void clearTotal() { clear(); } // 供 GC 调用，无视冻结状态
     };
 
     class GcHeap {
@@ -67,10 +68,10 @@ namespace jc {
                 }
             }
 
-            // ★ 核心修复：先统一触发 clear() 断开所有 Value 引用，防止 A->B->A 循环引用时，
+            // ★ 核心修复：先统一触发 clearTotal() 断开所有 Value 引用，防止 A->B->A 循环引用时，
             // A 被 delete 后，B 的析构函数再去减 A 的 refCount 导致 Use-After-Free 崩溃！
             for (Obj* unreached : garbage) {
-                unreached->clear();
+                unreached->clearTotal();
             }
 
             for (Obj* unreached : garbage) {

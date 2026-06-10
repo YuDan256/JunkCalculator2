@@ -42,15 +42,6 @@ namespace jc {
                 // 按模长规模清洗实部和虚部
                 r.imag = Tol::clean(r.imag, mag);
                 r.real = Tol::clean(r.real, mag);
-                // 整数吸附 (放宽一点 ULP，比如 1e4，为了更舒服的输出)
-                if (r.imag == 0.0) {
-                    double rounded = std::round(r.real);
-                    if (Tol::isEq(r.real, rounded, 1e4)) r.real = rounded;
-                }
-                if (r.real == 0.0) {
-                    double rounded = std::round(r.imag);
-                    if (Tol::isEq(r.imag, rounded, 1e4)) r.imag = rounded;
-                }
             }
         }
         // --- 单个复数清洗机制 ---
@@ -61,14 +52,6 @@ namespace jc {
             if (mag != 0.0) {
                 im = Tol::clean(im, mag);
                 re = Tol::clean(re, mag);
-            }
-            if (re != 0.0) {
-                double rounded = std::round(re);
-                if (Tol::isEq(re, rounded, 1e4)) re = rounded;
-            }
-            if (im != 0.0) {
-                double rounded = std::round(im);
-                if (Tol::isEq(im, rounded, 1e4)) im = rounded;
             }
             return { re, im };
         }
@@ -208,13 +191,23 @@ namespace jc {
             bool reZero = (std::abs(v.real) == 0.0);
             bool imZero = (std::abs(v.imag) == 0.0);
 
-            if (reZero && imZero) return os << "0";
-            if (!reZero) os << v.real;
+            auto formatDouble = [](double d) {
+                std::ostringstream temp;
+                temp << d;
+                std::string s = temp.str();
+                if (std::isfinite(d) && s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+                    s += ".0";
+                }
+                return s;
+            };
+
+            if (reZero && imZero) return os << "0.0";
+            if (!reZero) os << formatDouble(v.real);
             if (!imZero) {
                 if (v.imag > 0 && !reZero) os << "+";
-                if (Tol::isEq(v.imag, 1.0)) os << "i";
-                else if (Tol::isEq(v.imag, -1.0)) os << "-i";
-                else os << v.imag << "i";
+                if (v.imag == 1.0) os << "i";
+                else if (v.imag == -1.0) os << "-i";
+                else os << formatDouble(v.imag) << "i";
             }
             return os;
         }

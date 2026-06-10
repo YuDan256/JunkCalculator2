@@ -1052,9 +1052,16 @@ namespace jc {
             case ObjType::FRACTION: return static_cast<ObjFraction*>(obj)->frac.toString();
             case ObjType::BASENUM: return "base(" + static_cast<ObjBaseNum*>(obj)->base.getValue().toString() + ", " + std::to_string(static_cast<ObjBaseNum*>(obj)->base.getRadix()) + ")";
             case ObjType::COMPLEX: {
-                std::ostringstream oss;
-                oss << "(" << std::setprecision(16) << static_cast<ObjComplex*>(obj)->comp.real << ") + (" << static_cast<ObjComplex*>(obj)->comp.imag << ")*i";
-                return oss.str();
+                auto formatDouble = [](double v) {
+                    std::ostringstream temp;
+                    temp << std::setprecision(16) << v;
+                    std::string s = temp.str();
+                    if (std::isfinite(v) && s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+                        s += ".0";
+                    }
+                    return s;
+                };
+                return "(" + formatDouble(static_cast<ObjComplex*>(obj)->comp.real) + ") + (" + formatDouble(static_cast<ObjComplex*>(obj)->comp.imag) + ")*i";
             }
             case ObjType::REAL_MATRIX: {
                 const auto& mat = static_cast<ObjRealMatrix*>(obj)->mat;

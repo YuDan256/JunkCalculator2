@@ -1581,6 +1581,17 @@ namespace jc {
                     break;
                 }
 
+                case OpCode::OP_BUILD_LIST: {
+                    uint16_t count = readShort();
+                    ObjList* list = GcHeap::get().allocate<ObjList>();
+                    list->vec.resize(count);
+                    for (int i = count - 1; i >= 0; --i) {
+                        list->vec[i] = pop();
+                    }
+                    push(Value(list));
+                    break;
+                }
+
                 case OpCode::OP_BUILD_MATRIX: {
                     uint16_t rows = readShort();
                     std::vector<uint16_t> rowCols(rows);

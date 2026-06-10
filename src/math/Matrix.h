@@ -159,38 +159,24 @@ namespace jc {
                     T val = m(i, j);
 
                     if constexpr (std::is_same_v<T, double>) {
-                        // ★ 把本行的规模传给清洗引擎
+                        // ★ 把本行的规模传给清洗引擎，消除浮点噪音
                         val = Tol::clean(val, rowScale[i]);
 
-                        if (val == 0.0) {
-                            oss << 0;
+                        std::ostringstream temp;
+                        temp << val;
+                        std::string s = temp.str();
+                        if (std::isfinite(val) && s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+                            s += ".0";
                         }
-                        else {
-                            // 整数吸附
-                            double rounded = std::round(val);
-                            if (rounded != 0.0
-                                && Tol::isEq(val, rounded, 1e5)
-                                && std::abs(rounded) < 1e15
-                                && rounded == std::trunc(rounded)) {
-                                oss << static_cast<int64_t>(rounded);
-                            }
-                            else {
-                                oss << val;
-                            }
-                        }
+                        oss << s;
                     }
                     else if constexpr (std::is_same_v<T, Complex>) {
                         Complex cv = Complex::cleaned(val);
-                        // 对于复数，传它的模长进清洗引擎
+                        // 对于复数，传它的模长进清洗引擎，消除浮点噪音
                         cv.real = Tol::clean(cv.real, rowScale[i]);
                         cv.imag = Tol::clean(cv.imag, rowScale[i]);
 
-                        if (cv.real == 0.0 && cv.imag == 0.0) {
-                            oss << 0;
-                        }
-                        else {
-                            oss << cv;
-                        }
+                        oss << cv; // Complex 的 operator<< 已经处理了 .0 的逻辑
                     }
                     else {
                         if (isEssentiallyZero(val)) oss << 0;

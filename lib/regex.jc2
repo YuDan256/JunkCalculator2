@@ -294,12 +294,12 @@ class Regex {
         if (endPos < 0) return 0
         
         matched = text[startPos : endPos]
-        groups = [
+        groups = @[
             caps.getStart(gi) >= 0 && caps.getEnd(gi) >= 0 
                 ? text[caps.getStart(gi) : caps.getEnd(gi)] 
                 : "" 
-            for gi in range(1, self.groups + 1)
-        ] |> toList
+            for (gi in range(1, self.groups + 1))
+        ]
         
         return ReMatch(matched, startPos, endPos, groups)
     }

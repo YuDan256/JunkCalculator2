@@ -3062,8 +3062,9 @@ namespace jc {
 
     void VM::execIndexGet(uint8_t dims) {
         if (dims == 1) {
-            Value idx = pop();
-            Value obj = pop();
+            Value idx = peek(0);
+            Value obj = peek(1);
+            Value result;
 
             if (obj.isObjType(ObjType::DICT)) {
                 auto dict = static_cast<ObjDict*>(obj.asObj());
@@ -3079,21 +3080,16 @@ namespace jc {
                     }
                     throw std::runtime_error("VM Error: Key '" + keyStr + "' not found.");
                 }
-                push(dict->elements[it->second].second);
-                return;
+                result = dict->elements[it->second].second;
             }
-
-            if (obj.isObjType(ObjType::NAMESPACE)) {
+            else if (obj.isObjType(ObjType::NAMESPACE)) {
                 auto ns = static_cast<ObjNamespace*>(obj.asObj());
                 if (!idx.isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
                 auto it = ns->fields.find(idx.asString());
                 if (it == ns->fields.end()) throw std::runtime_error("VM Error: Field '" + idx.asString() + "' not found in namespace.");
-                push(*(it->second.upval->location));
-                return;
+                result = *(it->second.upval->location);
             }
-
-            // ── Instance (__getitem__) ──
-            if (obj.isInstance()) {
+            else if (obj.isInstance()) {
                 auto inst = obj.asInstance();
                 auto c = inst->classDef;
                 ObjClosure* getitemMethod = nullptr;
@@ -3108,7 +3104,9 @@ namespace jc {
                 if (getitemMethod) {
                     if (getitemMethod->isBytecode()) {
                         auto& fnDef = compiledFunctions[getitemMethod->compiledFnIndex];
-                        push(idx);
+                        
+                        eraseStack(1); // removes `obj`, `idx` shifts to peek(0)
+                        
                         int padCount = fnDef->maxArity - 1;
                         for (int j = 0; j < padCount; ++j) push(Value::none());
                         int reserveCount = fnDef->localCount - fnDef->maxArity;
@@ -3131,7 +3129,6 @@ namespace jc {
                     else if (getitemMethod->isNative()) {
                         helpers::nativeSelfStack.push_back(Value(inst));
                         helpers::nativeClassStack.push_back(Value(inst->classDef));
-                        Value result;
                         try {
                             auto& fn = std::any_cast<NativeCallable&>(getitemMethod->nativeFn);
                             result = fn({ idx });
@@ -3141,8 +3138,6 @@ namespace jc {
                             throw;
                         }
                         helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
-                        push(result);
-                        return; // ★ 绝对返回防线
                     }
                     else {
                         throw std::runtime_error("VM Error: __getitem__ has no callable implementation.");
@@ -3152,90 +3147,96 @@ namespace jc {
                     throw std::runtime_error("VM Error: Cannot index this instance (no __getitem__).");
                 }
             }
+            else {
+                // ==========================================================
+                // ★ 高级容器阻断防线 (放在 Instance 检查下面！)
+                // ==========================================================
+                if (!obj.isObjType(ObjType::REAL_MATRIX) &&
+                    !obj.isObjType(ObjType::COMPLEX_MATRIX) &&
+                    !obj.isObjType(ObjType::STRING_MATRIX) &&
+                    !obj.isObjType(ObjType::LIST) &&
+                    !obj.isString()) {
+                    throw std::runtime_error("TypeError: Cannot index into a value of type '" + getTypeName(obj) + "'.");
+                }
 
-            // ==========================================================
-            // ★ 高级容器阻断防线 (放在 Instance 检查下面！)
-            // ==========================================================
-            if (!obj.isObjType(ObjType::REAL_MATRIX) &&
-                !obj.isObjType(ObjType::COMPLEX_MATRIX) &&
-                !obj.isObjType(ObjType::STRING_MATRIX) &&
-                !obj.isObjType(ObjType::LIST) &&
-                !obj.isString()) {
-                throw std::runtime_error("TypeError: Cannot index into a value of type '" + getTypeName(obj) + "'.");
+                int i = 0;
+                try {
+                    i = static_cast<int>(std::round(idx.asDouble()));
+                }
+                catch (...) {
+                    throw std::runtime_error("TypeError: Array or List index must be a number, got '" + getTypeName(idx) + "'.");
+                }
+
+                if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                    const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
+                    if (m.getRows() == 1) {
+                        if (i < 0) i = m.getCols() + i;
+                        result = Value(m(0, i));
+                    }
+                    else if (m.getCols() == 1) {
+                        if (i < 0) i = m.getRows() + i;
+                        result = Value(m(i, 0));
+                    }
+                    else {
+                        if (i < 0) i = m.getRows() + i;
+                        result = Value(m.getRow(i));
+                    }
+                }
+                else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                    const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
+                    if (m.getRows() == 1) {
+                        if (i < 0) i = m.getCols() + i;
+                        result = Value(m(0, i));
+                    }
+                    else if (m.getCols() == 1) {
+                        if (i < 0) i = m.getRows() + i;
+                        result = Value(m(i, 0));
+                    }
+                    else {
+                        if (i < 0) i = m.getRows() + i;
+                        result = Value(m.getRow(i));
+                    }
+                }
+                else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                    const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
+                    if (m.getRows() == 1) {
+                        if (i < 0) i = m.getCols() + i;
+                        result = Value(m(0, i));
+                    }
+                    else if (m.getCols() == 1) {
+                        if (i < 0) i = m.getRows() + i;
+                        result = Value(m(i, 0));
+                    }
+                    else {
+                        if (i < 0) i = m.getRows() + i;
+                        result = Value(m.getRow(i));
+                    }
+                }
+                else if (obj.isObjType(ObjType::LIST)) {
+                    auto list = static_cast<ObjList*>(obj.asObj());
+                    int n = static_cast<int>(list->vec.size());
+                    if (i < 0) i = n + i;
+                    if (i < 0 || i >= n) throw std::out_of_range("List Error: Index out of bounds.");
+                    result = list->vec[i];
+                }
+                else if (obj.isString()) {
+                    const auto& s = obj.asString();
+                    if (i < 0) i = static_cast<int>(s.size()) + i;
+                    if (i < 0 || i >= static_cast<int>(s.size()))
+                        throw std::runtime_error("VM Error: String index out of bounds.");
+                    result = Value(std::string(1, s[i]));
+                }
             }
 
-            int i = 0;
-            try {
-                i = static_cast<int>(std::round(idx.asDouble()));
-            }
-            catch (...) {
-                throw std::runtime_error("TypeError: Array or List index must be a number, got '" + getTypeName(idx) + "'.");
-            }
-
-            if (obj.isObjType(ObjType::REAL_MATRIX)) {
-                const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
-                if (m.getRows() == 1) {
-                    if (i < 0) i = m.getCols() + i;
-                    push(Value(m(0, i)));
-                }
-                else if (m.getCols() == 1) {
-                    if (i < 0) i = m.getRows() + i;
-                    push(Value(m(i, 0)));
-                }
-                else {
-                    if (i < 0) i = m.getRows() + i;
-                    push(Value(m.getRow(i)));
-                }
-            }
-            else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-                const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
-                if (m.getRows() == 1) {
-                    if (i < 0) i = m.getCols() + i;
-                    push(Value(m(0, i)));
-                }
-                else if (m.getCols() == 1) {
-                    if (i < 0) i = m.getRows() + i;
-                    push(Value(m(i, 0)));
-                }
-                else {
-                    if (i < 0) i = m.getRows() + i;
-                    push(Value(m.getRow(i)));
-                }
-            }
-            else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
-                if (m.getRows() == 1) {
-                    if (i < 0) i = m.getCols() + i;
-                    push(Value(m(0, i)));
-                }
-                else if (m.getCols() == 1) {
-                    if (i < 0) i = m.getRows() + i;
-                    push(Value(m(i, 0)));
-                }
-                else {
-                    if (i < 0) i = m.getRows() + i;
-                    push(Value(m.getRow(i)));
-                }
-            }
-            else if (obj.isObjType(ObjType::LIST)) {
-                auto list = static_cast<ObjList*>(obj.asObj());
-                int n = static_cast<int>(list->vec.size());
-                if (i < 0) i = n + i;
-                if (i < 0 || i >= n) throw std::out_of_range("List Error: Index out of bounds.");
-                push(list->vec[i]);
-            }
-            else if (obj.isString()) {
-                const auto& s = obj.asString();
-                if (i < 0) i = static_cast<int>(s.size()) + i;
-                if (i < 0 || i >= static_cast<int>(s.size()))
-                    throw std::runtime_error("VM Error: String index out of bounds.");
-                push(Value(std::string(1, s[i])));
-            }
+            pop(); pop();
+            push(result);
         }
         else if (dims == 2) {
-            Value col = pop(); stack[getStackSize()] = Value::none();
-            Value row = pop(); stack[getStackSize()] = Value::none();
-            Value obj = pop(); stack[getStackSize()] = Value::none();
+            Value col = peek(0);
+            Value row = peek(1);
+            Value obj = peek(2);
+            Value result;
+
             int r = static_cast<int>(std::round(row.asDouble()));
             int c = static_cast<int>(std::round(col.asDouble()));
 
@@ -3243,23 +3244,26 @@ namespace jc {
                 const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                 if (r < 0) r = m.getRows() + r;
                 if (c < 0) c = m.getCols() + c;
-                push(Value(m(r, c)));
+                result = Value(m(r, c));
             }
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                 if (r < 0) r = m.getRows() + r;
                 if (c < 0) c = m.getCols() + c;
-                push(Value(m(r, c)));
+                result = Value(m(r, c));
             }
             else if (obj.isObjType(ObjType::STRING_MATRIX)) {
                 const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                 if (r < 0) r = m.getRows() + r;
                 if (c < 0) c = m.getCols() + c;
-                push(Value(m(r, c)));
+                result = Value(m(r, c));
             }
             else {
                 throw std::runtime_error("VM Error: 2D indexing requires a matrix.");
             }
+
+            pop(); pop(); pop();
+            push(result);
         }
         else {
             throw std::runtime_error("VM Error: Unsupported index dimensionality.");
@@ -3267,15 +3271,15 @@ namespace jc {
     }
 
     void VM::execIndexSet(uint8_t dims) {
-        Value val = pop(); stack[getStackSize()] = Value::none();
-
         if (dims == 1) {
-            Value idx = pop(); stack[getStackSize()] = Value::none();
-            Value obj = pop(); stack[getStackSize()] = Value::none();
+            Value val = peek(0);
+            Value idx = peek(1);
+            Value obj = peek(2);
 
             if (obj.isObjType(ObjType::DICT)) {
                 auto d = static_cast<ObjDict*>(obj.asObj());
                 d->set(idx, val);
+                pop(); pop(); pop();
                 push(val); push(obj); return;
             }
 
@@ -3294,6 +3298,7 @@ namespace jc {
                     uv->location = &uv->closed;
                     ns->fields[key] = { uv, false };
                 }
+                pop(); pop(); pop();
                 push(val); push(obj); return;
             }
 
@@ -3317,6 +3322,9 @@ namespace jc {
                         if (setitemMethod->hasCaptures())
                             captures = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(setitemMethod->capturedEnv);
 
+                        eraseStack(2); // remove obj, idx. val shifts to peek(0)
+                        pop(); // remove val
+                        
                         callVMFunction(setitemMethod->compiledFnIndex, { idx, val }, captures, Value(inst), Value(inst->classDef));
                         push(val); push(obj); return; // ★ 绝对返回防线！
                     }
@@ -3332,6 +3340,7 @@ namespace jc {
                             throw;
                         }
                         helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
+                        pop(); pop(); pop();
                         push(val); push(obj); return; // ★ 绝对返回防线！
                     }
                     else {
@@ -3503,13 +3512,15 @@ namespace jc {
                     throw std::runtime_error("VM Error: String element assignment requires a single character.");
                 s[i] = val.asString()[0];
             }
+            pop(); pop(); pop();
             push(val);
             push(obj);
         }
         else if (dims == 2) {
-            Value col = pop();
-            Value row = pop();
-            Value obj = pop();
+            Value val = peek(0);
+            Value col = peek(1);
+            Value row = peek(2);
+            Value obj = peek(3);
             int r = static_cast<int>(std::round(row.asDouble()));
             int c = static_cast<int>(std::round(col.asDouble()));
 
@@ -3553,14 +3564,16 @@ namespace jc {
             else {
                 throw std::runtime_error("VM Error: 2D index assignment requires a matrix.");
             }
+            pop(); pop(); pop(); pop();
             push(val);
             push(obj);
         }
     }
 
     void VM::execSliceGet(uint8_t dims) {
-        auto readOptionalInt = [this]() -> std::pair<bool, int> {
-            Value v = pop(); stack[getStackSize()] = Value::none();
+        int popCount = 0;
+        auto readOptionalInt = [this, &popCount]() -> std::pair<bool, int> {
+            Value v = peek(popCount++);
             if (v.isNone()) return { false, 0 };
             return { true, static_cast<int>(std::round(v.asDouble())) };
             };
@@ -3615,13 +3628,14 @@ namespace jc {
             auto step = readOptionalInt();
             auto end = readOptionalInt();
             auto start = readOptionalInt();
-            Value obj = pop();
+            Value obj = peek(popCount++);
 
             if (obj.isString()) {
                 const auto& s = obj.asString();
                 auto ids = buildSliceIndices(static_cast<int>(s.size()), start, end, step);
                 std::string result;
                 for (int id : ids) result += s[id];
+                for (int i = 0; i < popCount; ++i) pop();
                 push(Value(result));
                 return;
             }
@@ -3633,10 +3647,12 @@ namespace jc {
                 std::vector<double> result;
                 if (m.getRows() == 1) {
                     for (int id : ids) result.push_back(m(0, id));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(RealMatrix(1, static_cast<int>(result.size()), result)));
                 }
                 else if (m.getCols() == 1) {
                     for (int id : ids) result.push_back(m(id, 0));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(RealMatrix(static_cast<int>(result.size()), 1, result)));
                 }
                 else {
@@ -3645,6 +3661,7 @@ namespace jc {
                     for (int id : ids)
                         for (int j = 0; j < m.getCols(); ++j)
                             flat.push_back(m(id, j));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(RealMatrix(rc, m.getCols(), flat)));
                 }
                 return;
@@ -3657,11 +3674,13 @@ namespace jc {
                 if (m.getRows() == 1) {
                     std::vector<Complex> result;
                     for (int id : ids) result.push_back(m(0, id));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(ComplexMatrix(1, static_cast<int>(result.size()), result)));
                 }
                 else if (m.getCols() == 1) {
                     std::vector<Complex> result;
                     for (int id : ids) result.push_back(m(id, 0));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(ComplexMatrix(static_cast<int>(result.size()), 1, result)));
                 }
                 else {
@@ -3670,6 +3689,7 @@ namespace jc {
                     for (int id : ids)
                         for (int j = 0; j < m.getCols(); ++j)
                             flat.push_back(m(id, j));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(ComplexMatrix(rc, m.getCols(), flat)));
                 }
                 return;
@@ -3682,11 +3702,13 @@ namespace jc {
                 if (m.getRows() == 1) {
                     std::vector<std::string> result;
                     for (int id : ids) result.push_back(m(0, id));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(StringMatrix(1, static_cast<int>(result.size()), result)));
                 }
                 else if (m.getCols() == 1) {
                     std::vector<std::string> result;
                     for (int id : ids) result.push_back(m(id, 0));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(StringMatrix(static_cast<int>(result.size()), 1, result)));
                 }
                 else {
@@ -3695,6 +3717,7 @@ namespace jc {
                     for (int id : ids)
                         for (int j = 0; j < m.getCols(); ++j)
                             flat.push_back(m(id, j));
+                    for (int i = 0; i < popCount; ++i) pop();
                     push(Value(StringMatrix(rc, m.getCols(), flat)));
                 }
                 return;
@@ -3705,6 +3728,7 @@ namespace jc {
                 auto ids = buildSliceIndices(static_cast<int>(L.size()), start, end, step);
                 ObjList* result = GcHeap::get().allocate<ObjList>();
                 for (int id : ids) result->vec.push_back(L[id]);
+                for (int i = 0; i < popCount; ++i) pop();
                 push(Value(result));
                 return;
             }
@@ -3718,7 +3742,7 @@ namespace jc {
             auto rStep = readOptionalInt();
             auto rEnd = readOptionalInt();
             auto rStart = readOptionalInt();
-            Value obj = pop();
+            Value obj = peek(popCount++);
 
             auto processMatSlice = [&](const auto& m) {
                 auto rIds = buildSliceIndices(m.getRows(), rStart, rEnd, rStep);
@@ -3730,6 +3754,7 @@ namespace jc {
                 for (int ri : rIds)
                     for (int ci : cIds)
                         flat.push_back(m(ri, ci));
+                for (int i = 0; i < popCount; ++i) pop();
                 push(Value(MatType(static_cast<int>(rIds.size()),
                     static_cast<int>(cIds.size()), flat)));
                 };
@@ -3754,9 +3779,9 @@ namespace jc {
     }
 
     void VM::execSliceSet(uint8_t dims) {
-
-        auto readOptionalInt = [this]() -> std::pair<bool, int> {
-            Value v = pop();
+        int popCount = 0;
+        auto readOptionalInt = [this, &popCount]() -> std::pair<bool, int> {
+            Value v = peek(popCount++);
             if (v.isNone()) return { false, 0 };
             return { true, static_cast<int>(std::round(v.asDouble())) };
             };
@@ -3808,11 +3833,11 @@ namespace jc {
             };
 
         if (dims == 1) {
-            Value val = pop(); stack[getStackSize()] = Value::none();
+            Value val = peek(popCount++);
             auto step = readOptionalInt();
             auto end = readOptionalInt();
             auto start = readOptionalInt();
-            Value obj = pop(); stack[getStackSize()] = Value::none();
+            Value obj = peek(popCount++);
 
             if (obj.isObjType(ObjType::REAL_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
@@ -3985,18 +4010,19 @@ namespace jc {
             else {
                 throw std::runtime_error("VM Error: Cannot slice-assign a value of type '" + getTypeName(obj) + "'.");
             }
+            for (int i = 0; i < popCount; ++i) pop();
             push(val);
             push(obj);
         }
         else if (dims == 2) {
-            Value val = pop(); stack[getStackSize()] = Value::none();
+            Value val = peek(popCount++);
             auto cStep = readOptionalInt();
             auto cEnd = readOptionalInt();
             auto cStart = readOptionalInt();
             auto rStep = readOptionalInt();
             auto rEnd = readOptionalInt();
             auto rStart = readOptionalInt();
-            Value obj = pop(); stack[getStackSize()] = Value::none();
+            Value obj = peek(popCount++);
 
             auto processMatSliceSet = [&](auto& m) {
                 auto rIds = buildSliceIndices(m.getRows(), rStart, rEnd, rStep);
@@ -4099,6 +4125,7 @@ namespace jc {
             else {
                 throw std::runtime_error("VM Error: 2D slice assignment requires a matrix, got '" + getTypeName(obj) + "'.");
             }
+            for (int i = 0; i < popCount; ++i) pop();
             push(val);
             push(obj);
         }
@@ -4313,147 +4340,112 @@ namespace jc {
     void VM::execIn() {
         Value haystack = peek(0);
         Value needle = peek(1);
+        bool found = false;
 
         if (needle.isString() && haystack.isString()) {
-            bool found = haystack.asString().find(needle.asString()) != std::string::npos;
-            pop(); pop();
-            push(Value(found));
-            return;
+            found = haystack.asString().find(needle.asString()) != std::string::npos;
         }
-        if (haystack.isString()) {
+        else if (haystack.isString()) {
             throw std::runtime_error(
                 "VM Error: 'in' on string requires a string on the left side.");
         }
-
-        if (haystack.isObjType(ObjType::REAL_MATRIX)) {
+        else if (haystack.isObjType(ObjType::REAL_MATRIX)) {
             const auto& m = static_cast<ObjRealMatrix*>(haystack.asObj())->mat;
             double target;
-            try { target = needle.asDouble(); }
-            catch (...) { pop(); pop(); push(Value(false)); return; }
-            for (const auto& v : m.rawData()) {
-                if (v == target) { pop(); pop(); push(Value(true)); return; }
+            try { 
+                target = needle.asDouble(); 
+                for (const auto& v : m.rawData()) {
+                    if (v == target) { found = true; break; }
+                }
             }
-            pop(); pop();
-            push(Value(false));
-            return;
+            catch (...) { /* found remains false */ }
         }
-
-        if (haystack.isObjType(ObjType::COMPLEX_MATRIX)) {
+        else if (haystack.isObjType(ObjType::COMPLEX_MATRIX)) {
             const auto& m = static_cast<ObjComplexMatrix*>(haystack.asObj())->mat;
             Complex target;
-            try { target = needle.asComplex(); }
-            catch (...) { pop(); pop(); push(Value(false)); return; }
-            for (const auto& v : m.rawData()) {
-                if (v == target) { pop(); pop(); push(Value(true)); return; }
+            try { 
+                target = needle.asComplex(); 
+                for (const auto& v : m.rawData()) {
+                    if (v == target) { found = true; break; }
+                }
             }
-            pop(); pop();
-            push(Value(false));
-            return;
+            catch (...) { /* found remains false */ }
         }
-
-        if (haystack.isObjType(ObjType::STRING_MATRIX)) {
+        else if (haystack.isObjType(ObjType::STRING_MATRIX)) {
             if (!needle.isString())
                 throw std::runtime_error(
                     "VM Error: 'in' on StringMatrix requires a string needle.");
             const auto& m = static_cast<ObjStringMatrix*>(haystack.asObj())->mat;
             const auto& target = needle.asString();
             for (const auto& v : m.rawData()) {
-                if (v == target) { pop(); pop(); push(Value(true)); return; }
+                if (v == target) { found = true; break; }
             }
-            pop(); pop();
-            push(Value(false));
-            return;
         }
-
-        if (haystack.isObjType(ObjType::LIST)) {
+        else if (haystack.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(haystack.asObj())->vec;
             for (const auto& e : L) {
                 try {
                     if (Value::equals(needle, e)) {
-                        pop(); pop();
-                        push(Value(true));
-                        return;
+                        found = true;
+                        break;
                     }
                 }
                 catch (...) {}
             }
-            pop(); pop();
-            push(Value(false));
-            return;
         }
-
-        if (haystack.isObjType(ObjType::DICT)) {
+        else if (haystack.isObjType(ObjType::DICT)) {
             auto d = static_cast<ObjDict*>(haystack.asObj());
-            bool found = d->keyMap.find(needle) != d->keyMap.end();
-            pop(); pop();
-            push(Value(found));
-            return;
+            found = d->keyMap.find(needle) != d->keyMap.end();
         }
-
-        if (haystack.isObjType(ObjType::NAMESPACE)) {
+        else if (haystack.isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(haystack.asObj());
-            if (!needle.isString()) {
-                pop(); pop();
-                push(Value(false));
-                return;
+            if (needle.isString()) {
+                found = ns->fields.find(needle.asString()) != ns->fields.end();
             }
-            bool found = ns->fields.find(needle.asString()) != ns->fields.end();
-            pop(); pop();
-            push(Value(found));
-            return;
         }
-
-        if (haystack.isObjType(ObjType::SET)) {
+        else if (haystack.isObjType(ObjType::SET)) {
             auto s = static_cast<ObjSet*>(haystack.asObj());
-            bool found = s->keys.find(needle) != s->keys.end();
-            pop(); pop();
-            push(Value(found));
-            return;
+            found = s->keys.find(needle) != s->keys.end();
         }
-
-        if (haystack.isInstance()) {
+        else if (haystack.isInstance()) {
             auto method = findDunder(haystack, DUNDER_CONTAINS);
             if (method) {
-                Value res = Value(callDunder(haystack, DUNDER_CONTAINS, { needle }).truthy());
-                pop(); pop();
-                push(res);
-                return;
-            }
-            auto inst = haystack.asInstance();
-            if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
-                pop(); pop();
-                push(Value(true));
-                return;
-            }
-            if (needle.isString()) {
-                auto c = inst->classDef;
-                std::string key = needle.asString();
-                while (c) {
-                    if (c->methods.find(key) != c->methods.end()) {
-                        pop(); pop();
-                        push(Value(true));
-                        return;
+                found = callDunder(haystack, DUNDER_CONTAINS, { needle }).truthy();
+            } else {
+                auto inst = haystack.asInstance();
+                if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
+                    found = true;
+                } else if (needle.isString()) {
+                    auto c = inst->classDef;
+                    std::string key = needle.asString();
+                    while (c) {
+                        if (c->methods.find(key) != c->methods.end()) {
+                            found = true;
+                            break;
+                        }
+                        c = c->parent;
                     }
-                    c = c->parent;
-                }
-                auto getattrMethod = findDunder(haystack, DUNDER_GETATTR);
-                if (getattrMethod) {
-                    try {
-                        callDunder(haystack, DUNDER_GETATTR, { needle });
-                        pop(); pop();
-                        push(Value(true));
-                        return;
-                    } catch (...) {
-                        // Fall through to false
+                    if (!found) {
+                        auto getattrMethod = findDunder(haystack, DUNDER_GETATTR);
+                        if (getattrMethod) {
+                            try {
+                                callDunder(haystack, DUNDER_GETATTR, { needle });
+                                found = true;
+                            } catch (...) {
+                                // Fall through to false
+                            }
+                        }
                     }
                 }
             }
-            pop(); pop();
-            push(Value(false));
-            return;
         }
-        throw std::runtime_error(
-            "VM Error: 'in' requires an array, vector, matrix, string, list, dict, or instance, got '" + getTypeName(haystack) + "'.");
+        else {
+            throw std::runtime_error(
+                "VM Error: 'in' requires an array, vector, matrix, string, list, dict, or instance, got '" + getTypeName(haystack) + "'.");
+        }
+
+        pop(); pop();
+        push(Value(found));
     }
 
     // VM.cpp 中的实现：

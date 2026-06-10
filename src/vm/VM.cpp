@@ -2227,27 +2227,21 @@ namespace jc {
                         auto setattrMethod = findDunder(obj, DUNDER_SETATTR);
                         if (setattrMethod) {
                             callDunder(obj, DUNDER_SETATTR, { Value(field), val });
-                            pop(); pop();
-                            push(val);
-                            break;
-                        }
-                        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
-                        Value key(field);
-                        auto it = inst->fields->keyMap.find(key);
-                        if (it != inst->fields->keyMap.end()) {
-                            inst->fields->elements[it->second].second = val;
                         } else {
-                            inst->fields->keyMap[key] = inst->fields->elements.size();
-                            inst->fields->elements.push_back({key, val});
+                            if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
+                            Value key(field);
+                            auto it = inst->fields->keyMap.find(key);
+                            if (it != inst->fields->keyMap.end()) {
+                                inst->fields->elements[it->second].second = val;
+                            } else {
+                                inst->fields->keyMap[key] = inst->fields->elements.size();
+                                inst->fields->elements.push_back({key, val});
+                            }
                         }
-                        pop(); pop();
-                        push(val);
                     }
                     else if (obj.isObjType(ObjType::DICT)) {
                         auto d = static_cast<ObjDict*>(obj.asObj());
                         d->set(Value(field), val);
-                        pop(); pop();
-                        push(val);
                     }
                     else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
@@ -2262,8 +2256,6 @@ namespace jc {
                             uv->location = &uv->closed;
                             ns->fields[field] = { uv, false };
                         }
-                        pop(); pop();
-                        push(val);
                     }
                     else {
                         throw std::runtime_error("VM Error: Cannot set property on this type.");

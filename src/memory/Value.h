@@ -365,10 +365,6 @@ namespace jc {
                 if (p < 0) magnitude = 1.0 / magnitude;
                 bool negResult = (std::abs(p) % 2 != 0);
                 double res = negResult ? -magnitude : magnitude;
-                double rounded = std::round(res);
-                if (Tol::isEq(res, rounded, 1e5) && std::abs(rounded) < 9e15) {
-                    return Value(BigInt(static_cast<int64_t>(rounded)));
-                }
                 return Value(res);
             }
             else {
@@ -900,8 +896,6 @@ namespace jc {
                 return Value(Complex(a, 0.0) ^ Complex(b, 0.0));
             }
             double res = std::pow(a, b);
-            double rounded = std::round(res);
-            if (Tol::isEq(res, rounded, 1e5) && std::abs(rounded) < 9e15) return Value(BigInt(static_cast<int64_t>(rounded)));
             return Value(res);
 
         throw std::runtime_error("Type Error: Power operation not supported for these types.");
@@ -1068,7 +1062,11 @@ namespace jc {
         if (isDouble()) {
             std::ostringstream oss;
             oss << std::setprecision(16) << asDoubleRaw();
-            return oss.str();
+            std::string s = oss.str();
+            if (std::isfinite(asDoubleRaw()) && s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+                s += ".0";
+            }
+            return s;
         }
         Obj* obj = asObj();
         switch (obj->type) {
@@ -1825,11 +1823,13 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
     if (val.isInt32()) { os << val.asInt32(); return os; }
     if (val.isDouble()) {
         double v = val.asDoubleRaw();
-        double rounded = std::round(v);
-        if (rounded != 0.0 && v != 0.0 && Tol::isEq(v, rounded, 1e5) && std::abs(rounded) < 1e15) {
-            if (rounded == std::trunc(rounded)) os << static_cast<int64_t>(rounded);
-            else os << rounded;
-        } else os << v;
+        std::ostringstream temp;
+        temp << v;
+        std::string s = temp.str();
+        if (std::isfinite(v) && s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+            s += ".0";
+        }
+        os << s;
         return os;
     }
 

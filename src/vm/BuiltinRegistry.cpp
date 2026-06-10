@@ -2692,9 +2692,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             std::ostringstream oss; auto v = m.rawData();
             for (size_t i = 0; i < v.size(); ++i) {
                 if (i > 0) oss << delim;
-                double val = v[i]; double rounded = std::round(val);
-                if (Tol::isEq(val, rounded, 1e5) && std::abs(rounded) < 1e15 && rounded == std::trunc(rounded)) oss << static_cast<int64_t>(rounded);
-                else oss << val;
+                oss << Value(v[i]);
             }
             return Value(oss.str());
         } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -3332,7 +3330,7 @@ void BuiltinRegistry::registerHigherOrder() {
                 if (i == 0) {
                     if (y.isString()) hasString = true;
                     else if (y.isComplex()) hasComp = true;
-                    else if (!y.isDouble() && !y.isBigInt() && !y.isObjType(ObjType::FRACTION)) typeConflict = true;
+                    else if (!y.isNumber() && !y.isBigInt() && !y.isObjType(ObjType::FRACTION)) typeConflict = true;
                 }
                 if (typeConflict) { fallback->vec.push_back(y); }
                 else if (hasString) {
@@ -3895,7 +3893,7 @@ void BuiltinRegistry::registerFileIO() {
         std::string delim = ",";
         if (args.size() == 3) { if (!args[2].isString()) throw std::runtime_error("Type Error: writeCSV() delimiter must be a string."); delim = args[2].asString(); }
         std::ofstream file(path); if (!file.is_open()) throw std::runtime_error("IO Error: Cannot write to file '" + path + "'.");
-        if (args[1].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; double val = m(i, j); double rounded = std::round(val); if (Tol::isEq(val, rounded, 1e5) && std::abs(rounded) < 1e15 && rounded == std::trunc(rounded)) file << static_cast<int64_t>(rounded); else file << val; } file << "\n"; } }
+        if (args[1].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << Value(m(i, j)); } file << "\n"; } }
         else if (args[1].isObjType(ObjType::STRING_MATRIX)) { const auto& m = static_cast<ObjStringMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << m(i, j); } file << "\n"; } }
         else if (args[1].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << m(i, j); } file << "\n"; } }
         else if (args[1].isObjType(ObjType::LIST)) { for (const auto& e : static_cast<ObjList*>(args[1].asObj())->vec) { file << e << "\n"; } }
@@ -3948,8 +3946,8 @@ void BuiltinRegistry::registerErrorHandling() {
         Value first = L[0];
         if (first.isBool())
             return Value(!first.asBool());
-        if (first.isDouble())
-            return Value(first.asDoubleRaw() == 0.0);
+        if (first.isNumber())
+            return Value(first.asDouble() == 0.0);
         return Value(false);
         });
 

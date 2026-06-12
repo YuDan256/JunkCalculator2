@@ -1636,6 +1636,18 @@ namespace jc {
             res->vec.insert(res->vec.end(), l2->vec.begin(), l2->vec.end());
             return Value(res);
         }
+        if (lhs.isObjType(ObjType::DICT) && rhs.isObjType(ObjType::DICT)) {
+            ObjDict* d1 = static_cast<ObjDict*>(lhs.asObj());
+            ObjDict* d2 = static_cast<ObjDict*>(rhs.asObj());
+            ObjDict* res = GcHeap::get().allocate<ObjDict>();
+            for (const auto& [k, v] : d1->elements) {
+                res->set(k, v);
+            }
+            for (const auto& [k, v] : d2->elements) {
+                res->set(k, v);
+            }
+            return Value(res);
+        }
         
         if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat + static_cast<ObjRealMatrix*>(rhs.asObj())->mat);
             if (lhs.isObjType(ObjType::COMPLEX_MATRIX) && rhs.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(lhs.asObj())->mat + static_cast<ObjComplexMatrix*>(rhs.asObj())->mat);

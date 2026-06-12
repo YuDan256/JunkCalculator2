@@ -237,8 +237,8 @@
         "punctuation": {
             "patterns": [
                 { "name": "punctuation.bracket.round.jc2", "match": "[()]" },
-                { "name": "punctuation.bracket.square.jc2", "match": "[\\[\\]]" },
-                { "name": "punctuation.bracket.curly.jc2", "match": "[{}]" },
+                { "name": "punctuation.bracket.square.jc2", "match": "@?\\[|\\]" },
+                { "name": "punctuation.bracket.curly.jc2", "match": "@?\\{|\\}" },
                 { "name": "punctuation.separator.jc2", "match": "[,;]" },
                 { "name": "punctuation.accessor.jc2", "match": "\\." }
             ]

@@ -58,6 +58,7 @@ namespace jc {
     struct SliceExpr;        // ★ 新增
     struct SequenceExpr;
     struct MatchExpr;
+    struct GroupingExpr;     // ★ 新增
 
     struct Pattern {
         virtual ~Pattern() = default;
@@ -73,6 +74,11 @@ namespace jc {
     struct ExprPattern : public Pattern {
         std::unique_ptr<Expr> expr;
         explicit ExprPattern(std::unique_ptr<Expr> expr) : expr(std::move(expr)) {}
+    };
+
+    struct DynamicAssertPattern : public Pattern {
+        std::unique_ptr<Expr> expr;
+        explicit DynamicAssertPattern(std::unique_ptr<Expr> expr) : expr(std::move(expr)) {}
     };
 
     struct VariablePattern : public Pattern {
@@ -164,6 +170,7 @@ namespace jc {
         virtual std::any visitSliceExpr(SliceExpr* expr) = 0;  // ★ 新增
         virtual std::any visitSequenceExpr(SequenceExpr* expr) = 0;
         virtual std::any visitMatchExpr(MatchExpr* expr) = 0;
+        virtual std::any visitGroupingExpr(GroupingExpr* expr) = 0;
     };
 
     struct Expr {
@@ -665,6 +672,13 @@ namespace jc {
         MatchExpr(std::unique_ptr<Expr> subject, std::vector<MatchBranch> branches)
             : subject(std::move(subject)), branches(std::move(branches)) {}
         std::any accept(ExprVisitor& visitor) override { return visitor.visitMatchExpr(this); }
+    };
+
+    struct GroupingExpr : public Expr {
+        std::unique_ptr<Expr> expression;
+        explicit GroupingExpr(std::unique_ptr<Expr> expression)
+            : expression(std::move(expression)) {}
+        std::any accept(ExprVisitor& visitor) override { return visitor.visitGroupingExpr(this); }
     };
 
 } // namespace jc

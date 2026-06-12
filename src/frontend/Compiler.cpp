@@ -560,6 +560,9 @@ namespace jc {
             }
             catch (...) { return std::nullopt; }
         }
+        else if (auto* group = dynamic_cast<GroupingExpr*>(expr)) {
+            return tryFoldConstant(group->expression.get());
+        }
         else if (auto* bin = dynamic_cast<Binary*>(expr)) {
             if (bin->op.type == TokenType::AND_AND) {
                 auto leftVal = tryFoldConstant(bin->left.get());
@@ -1891,7 +1894,16 @@ namespace jc {
 
     void Compiler::compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps) {
         if (auto* lit = dynamic_cast<LiteralPattern*>(p)) {
+            if (!tryFoldConstant(lit->literal.get())) {
+                throw std::runtime_error("Compiler Error: Dynamic expression assertions must be enclosed in parentheses '()'.");
+            }
             compileNode(lit->literal.get());
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_EQUAL, lastLine);
+            failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+            emit(OpCode::OP_POP, lastLine);
+        } else if (auto* dynPat = dynamic_cast<DynamicAssertPattern*>(p)) {
+            compileNode(dynPat->expr.get());
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_EQUAL, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
@@ -2902,6 +2914,11 @@ namespace jc {
             }
         }
         // 最后一个表达式的结果自然留在栈顶供上层读取
+        return {};
+    }
+
+    std::any Compiler::visitGroupingExpr(GroupingExpr* expr) {
+        compileNode(expr->expression.get());
         return {};
     }
 

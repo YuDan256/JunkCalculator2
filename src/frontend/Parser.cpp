@@ -1103,7 +1103,7 @@ namespace jc {
                 auto expr = expression();
                 while (match({ TokenType::NEWLINE })) {}
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after expression.");
-                return expr;
+                return std::make_unique<GroupingExpr>(std::move(expr));
             }
         }
 
@@ -1230,6 +1230,12 @@ namespace jc {
     }
 
     std::unique_ptr<Pattern> Parser::exprToPattern(std::unique_ptr<Expr> expr) {
+        if (auto* group = dynamic_cast<GroupingExpr*>(expr.get())) {
+            return std::make_unique<DynamicAssertPattern>(std::move(group->expression));
+        }
+        if (auto* setLit = dynamic_cast<SetLiteral*>(expr.get())) {
+            return std::make_unique<DynamicAssertPattern>(std::move(expr));
+        }
         if (auto* var = dynamic_cast<Variable*>(expr.get())) {
             return std::make_unique<VariablePattern>(var->name);
         }
@@ -1260,8 +1266,6 @@ namespace jc {
                     return std::make_unique<RestPattern>(st->name, ScopeModifier::State);
                 }
                 throw std::runtime_error("Parser Error: Invalid rest pattern target.");
-            } else {
-                throw std::runtime_error("Parser Error: Invalid unary operator in pattern.");
             }
         }
         if (auto* mat = dynamic_cast<MatrixNode*>(expr.get())) {
@@ -1342,6 +1346,12 @@ namespace jc {
     }
 
     std::unique_ptr<Pattern> Parser::parsePattern() {
+        if (match({TokenType::LPAREN})) {
+            auto expr = expression();
+            consume(TokenType::RPAREN, "Parser Error: Expect ')' after dynamic expression pattern.");
+            return std::make_unique<DynamicAssertPattern>(std::move(expr));
+        }
+
         ScopeModifier mod = ScopeModifier::None;
         bool hasMod = false;
         if (match({TokenType::LOCAL})) { mod = ScopeModifier::Local; hasMod = true; }
@@ -1501,6 +1511,9 @@ namespace jc {
         }
         
         auto expr = primary();
+        if (dynamic_cast<SetLiteral*>(expr.get())) {
+            return std::make_unique<DynamicAssertPattern>(std::move(expr));
+        }
         return std::make_unique<LiteralPattern>(std::move(expr));
     }
 

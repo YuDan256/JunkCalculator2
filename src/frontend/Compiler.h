@@ -133,6 +133,7 @@ namespace jc {
         std::any visitSliceExpr(SliceExpr*) override;
         std::any visitSequenceExpr(SequenceExpr* expr) override;
         std::any visitMatchExpr(MatchExpr* expr) override;
+        std::any visitGroupingExpr(GroupingExpr* expr) override;
     };
 
 }

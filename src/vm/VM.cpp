@@ -2053,61 +2053,102 @@ namespace jc {
 
                 case OpCode::OP_GET_PROPERTY: {
                     uint16_t nameIdx = readShort();
+                    uint16_t icIdx = readShort();
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value obj = peek(0);
                     bool found = false;
                     Value result;
 
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+
                     if (obj.isInstance()) {
                         auto inst = obj.asInstance();
 
-                        // 1. 字段查找
-                        if (inst->fields) {
-                            auto it = inst->fields->keyMap.find(Value(field));
-                            if (it != inst->fields->keyMap.end()) {
-                                result = inst->fields->elements[it->second].second;
-                                found = true;
-                            }
-                        }
-
-                        // 2. 方法查找
-                        if (!found) {
-                            ObjClosure* rawMethod = nullptr;
-                            ObjClass* ownerClass = nullptr;
-                            auto c = inst->classDef;
-                            while (c) {
-                                auto it = c->methods.find(field);
-                                if (it != c->methods.end()) {
-                                    rawMethod = it->second;
-                                    ownerClass = c;
-                                    break;
+                        // ★ IC 命中检查
+                        if (ic.cachedClass == inst->classDef) {
+                            if (ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                                if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                                    result = inst->fields->elements[ic.cachedFieldIndex].second;
+                                    found = true;
                                 }
-                                c = c->parent;
-                            }
-                            if (rawMethod) {
+                            } else if (ic.cachedMethod) {
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
                                     std::vector<std::string>{}, std::vector<bool>{},
                                     field, nullptr
                                 );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->paramNames = ic.cachedMethod->paramNames;
+                                bound->isRef = ic.cachedMethod->isRef;
+                                bound->defaultValues = ic.cachedMethod->defaultValues;
+                                bound->hasRestParam = ic.cachedMethod->hasRestParam;
                                 
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                bound->capturedEnv = rawMethod->capturedEnv;
-                                bound->nativeFn = rawMethod->nativeFn;
+                                bound->compiledFnIndex = ic.cachedMethod->compiledFnIndex;
+                                bound->capturedEnv = ic.cachedMethod->capturedEnv;
+                                bound->nativeFn = ic.cachedMethod->nativeFn;
                                 
                                 bound->boundSelf = Value(inst);
-                                bound->boundClass = Value(ownerClass);
+                                bound->boundClass = Value(ic.cachedClass);
 
                                 result = Value(bound);
                                 found = true;
-                            } else {
-                                auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
-                                if (getattrMethod) {
-                                    result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                            }
+                        }
+
+                        if (!found) {
+                            // 1. 字段查找
+                            if (inst->fields) {
+                                auto it = inst->fields->keyMap.find(Value(field));
+                                if (it != inst->fields->keyMap.end()) {
+                                    result = inst->fields->elements[it->second].second;
                                     found = true;
+                                    ic.cachedClass = inst->classDef;
+                                    ic.cachedFieldIndex = it->second;
+                                    ic.cachedMethod = nullptr;
+                                }
+                            }
+
+                            // 2. 方法查找
+                            if (!found) {
+                                ObjClosure* rawMethod = nullptr;
+                                ObjClass* ownerClass = nullptr;
+                                auto c = inst->classDef;
+                                while (c) {
+                                    auto it = c->methods.find(field);
+                                    if (it != c->methods.end()) {
+                                        rawMethod = it->second;
+                                        ownerClass = c;
+                                        break;
+                                    }
+                                    c = c->parent;
+                                }
+                                if (rawMethod) {
+                                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                                        std::vector<std::string>{}, std::vector<bool>{},
+                                        field, nullptr
+                                    );
+                                    bound->paramNames = rawMethod->paramNames;
+                                    bound->isRef = rawMethod->isRef;
+                                    bound->defaultValues = rawMethod->defaultValues;
+                                    bound->hasRestParam = rawMethod->hasRestParam;
+                                    
+                                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                    bound->capturedEnv = rawMethod->capturedEnv;
+                                    bound->nativeFn = rawMethod->nativeFn;
+                                    
+                                    bound->boundSelf = Value(inst);
+                                    bound->boundClass = Value(ownerClass);
+
+                                    result = Value(bound);
+                                    found = true;
+                                    
+                                    ic.cachedClass = inst->classDef;
+                                    ic.cachedMethod = rawMethod;
+                                    ic.cachedFieldIndex = -1;
+                                } else {
+                                    auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
+                                    if (getattrMethod) {
+                                        result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                                        found = true;
+                                    }
                                 }
                             }
                         }
@@ -2214,28 +2255,44 @@ namespace jc {
 
                 case OpCode::OP_TRY_GET_PROPERTY: {
                     uint16_t nameIdx = readShort();
+                    uint16_t icIdx = readShort();
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value obj = peek(0);
                     bool found = false;
                     Value result;
 
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+
                     if (obj.isInstance()) {
                         auto inst = obj.asInstance();
-                        if (inst->fields) {
-                            auto it = inst->fields->keyMap.find(Value(field));
-                            if (it != inst->fields->keyMap.end()) {
-                                result = inst->fields->elements[it->second].second;
+                        
+                        // ★ IC 命中检查
+                        if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                            if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                                result = inst->fields->elements[ic.cachedFieldIndex].second;
                                 found = true;
                             }
                         }
+
                         if (!found) {
-                            auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
-                            if (getattrMethod) {
-                                try {
-                                    result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                            if (inst->fields) {
+                                auto it = inst->fields->keyMap.find(Value(field));
+                                if (it != inst->fields->keyMap.end()) {
+                                    result = inst->fields->elements[it->second].second;
                                     found = true;
-                                } catch (...) {
-                                    found = false;
+                                    ic.cachedClass = inst->classDef;
+                                    ic.cachedFieldIndex = it->second;
+                                }
+                            }
+                            if (!found) {
+                                auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
+                                if (getattrMethod) {
+                                    try {
+                                        result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                                        found = true;
+                                    } catch (...) {
+                                        found = false;
+                                    }
                                 }
                             }
                         }
@@ -2270,9 +2327,12 @@ namespace jc {
 
                 case OpCode::OP_SET_PROPERTY: {
                     uint16_t nameIdx = readShort();
+                    uint16_t icIdx = readShort();
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value val = peek(0);
                     Value obj = peek(1);
+
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
 
                     if (obj.isInstance()) {
                         auto inst = obj.asInstance();
@@ -2282,11 +2342,26 @@ namespace jc {
                             callDunder(obj, DUNDER_SETATTR, { Value(field), val });
                         } else {
                             if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
+                            
+                            // ★ IC 命中检查
+                            if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                                if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                                    inst->fields->elements[ic.cachedFieldIndex].second = val;
+                                    pop(); pop();
+                                    push(val);
+                                    break;
+                                }
+                            }
+
                             Value key(field);
                             auto it = inst->fields->keyMap.find(key);
                             if (it != inst->fields->keyMap.end()) {
                                 inst->fields->elements[it->second].second = val;
+                                ic.cachedClass = inst->classDef;
+                                ic.cachedFieldIndex = it->second;
                             } else {
+                                ic.cachedClass = inst->classDef;
+                                ic.cachedFieldIndex = inst->fields->elements.size();
                                 inst->fields->keyMap[key] = inst->fields->elements.size();
                                 inst->fields->elements.push_back({key, val});
                             }
@@ -2321,7 +2396,8 @@ namespace jc {
                 case OpCode::OP_INVOKE: {
                     uint16_t nameIdx = readShort();
                     uint8_t argc = readByte();
-                    execInvoke(nameIdx, argc);
+                    uint16_t icIdx = readShort();
+                    execInvoke(nameIdx, argc, icIdx);
                     UPDATE_FRAME();
                     break;
                 }
@@ -2620,10 +2696,14 @@ namespace jc {
             }
         }
 
-        // 根集合 4: 常量池 (编译后的函数里缓存的字面量)
+        // 根集合 4: 常量池 (编译后的函数里缓存的字面量) 和 内联缓存
         for (const auto& fn : compiledFunctions) {
             for (const auto& c : fn->chunk.constants)
                 markValue(c);
+            for (auto& ic : fn->chunk.inlineCaches) {
+                if (ic.cachedClass) markObject(ic.cachedClass);
+                if (ic.cachedMethod) markObject(ic.cachedMethod);
+            }
         }
 
         // 根集合 5: C++ 层当前正在执行跨界调用的原生对象栈！
@@ -2661,8 +2741,13 @@ namespace jc {
                     markValue(c);
             }
         }
-        for (const auto& fn : compiledFunctions)
+        for (const auto& fn : compiledFunctions) {
             for (const auto& c : fn->chunk.constants) markValue(c);
+            for (auto& ic : fn->chunk.inlineCaches) {
+                if (ic.cachedClass) markObject(ic.cachedClass);
+                if (ic.cachedMethod) markObject(ic.cachedMethod);
+            }
+        }
 
         // ★ C++ 原生堆栈手动同步
         for (const auto& val : helpers::nativeSelfStack) markValue(val);
@@ -4563,12 +4648,14 @@ namespace jc {
         return Value::none();
     }
 
-    void VM::execInvoke(uint16_t nameIdx, uint8_t argc) {
+    void VM::execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx) {
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value obj = stack[getStackSize() - 1 - argc];
 
         ObjClosure* method = nullptr;
         ObjClass* owningClass = nullptr;
+
+        InlineCache& ic = const_cast<InlineCache&>(frame().function->chunk.inlineCaches[icIdx]);
 
         // ==============================================================
         // 1. 如果它是原生 Dict！我们要像对待对象一样去调用它内部的闭包
@@ -4612,6 +4699,13 @@ namespace jc {
             auto inst = obj.asInstance();
             bool foundInField = false;
 
+            // ★ IC 命中检查
+            if (ic.cachedClass == inst->classDef && ic.cachedMethod) {
+                method = ic.cachedMethod;
+                owningClass = ic.cachedClass;
+                goto invoke_method;
+            }
+
             // 2.1 优先查找实例自身的字段 (Fields)
             if (inst->fields) {
                 auto it = inst->fields->keyMap.find(Value(methodName));
@@ -4643,6 +4737,11 @@ namespace jc {
                     c = c->parent;
                 }
                 
+                if (method) {
+                    ic.cachedClass = inst->classDef;
+                    ic.cachedMethod = method;
+                }
+
                 // 2.3 如果类方法也没找到，尝试 __getattr__
                 if (!method) {
                     auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
@@ -4661,6 +4760,7 @@ namespace jc {
             }
         }
 
+    invoke_method:
         // ==============================================================
         // ★ UFCS Fallback: 允许内置类型像对象一样调用全局函数
         // ==============================================================

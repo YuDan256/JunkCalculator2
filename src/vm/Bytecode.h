@@ -240,6 +240,12 @@ namespace jc {
         }
     }
 
+    struct InlineCache {
+        ObjClass* cachedClass = nullptr;
+        ObjClosure* cachedMethod = nullptr;
+        int cachedFieldIndex = -1;
+    };
+
     // ═══════════════════════════════════════════
     // 字节码块 (Chunk)
     // 存储一段编译后的字节码 + 常量池 + 行号信息
@@ -249,6 +255,7 @@ namespace jc {
         std::vector<uint8_t> code;      // 字节码流
         std::vector<Value> constants;   // 常量池
         std::vector<int> lines;         // 每条指令对应的源码行号
+        std::vector<InlineCache> inlineCaches; // ★ 内联缓存池
 
         // ── 写入接口 ──
 
@@ -280,6 +287,12 @@ namespace jc {
             uint16_t idx = addConstant(val);
             write(OpCode::OP_CONSTANT, line);
             write16(idx, line);
+        }
+
+        uint16_t addInlineCache() {
+            inlineCaches.push_back(InlineCache{});
+            if (inlineCaches.size() > 65535) throw std::runtime_error("Compiler Error: Too many inline caches.");
+            return static_cast<uint16_t>(inlineCaches.size() - 1);
         }
 
         // 生成跳转指令，返回需要回填的偏移位置
@@ -392,9 +405,6 @@ namespace jc {
             case OpCode::OP_DEFINE_GLOBAL:
             case OpCode::OP_CLASS:
             case OpCode::OP_METHOD:
-            case OpCode::OP_GET_PROPERTY:
-            case OpCode::OP_TRY_GET_PROPERTY:
-            case OpCode::OP_SET_PROPERTY:
             case OpCode::OP_GET_SUPER: 
             case OpCode::OP_ASSERT_RETURN_TYPE:
             case OpCode::OP_MATCH_TYPE: {
@@ -408,6 +418,22 @@ namespace jc {
                 }
                 std::cout << ")" << std::endl;
                 return offset + 3;
+            }
+
+            case OpCode::OP_GET_PROPERTY:
+            case OpCode::OP_TRY_GET_PROPERTY:
+            case OpCode::OP_SET_PROPERTY: {
+                uint16_t idx = read16(offset + 1);
+                uint16_t icIdx = read16(offset + 3);
+                std::cout << idx << " (";
+                if (idx < constants.size()) {
+                    if (constants[idx].isString())
+                        std::cout << constants[idx].asString();
+                    else
+                        std::cout << constants[idx];
+                }
+                std::cout << ") [IC:" << icIdx << "]" << std::endl;
+                return offset + 5;
             }
 
             // ============================================
@@ -462,7 +488,6 @@ namespace jc {
             // ============================================
             // 格式 4: uint16_t 名称索引 + uint8_t 参数个数 (4 字节)
             // ============================================
-            case OpCode::OP_INVOKE:
             case OpCode::OP_SUPER_INVOKE: {
                 uint16_t idx = read16(offset + 1);
                 uint8_t argc = code[offset + 3];
@@ -471,6 +496,16 @@ namespace jc {
                     std::cout << constants[idx].asString();
                 std::cout << ") " << static_cast<int>(argc) << " args" << std::endl;
                 return offset + 4;
+            }
+            case OpCode::OP_INVOKE: {
+                uint16_t idx = read16(offset + 1);
+                uint8_t argc = code[offset + 3];
+                uint16_t icIdx = read16(offset + 4);
+                std::cout << idx << " (";
+                if (idx < constants.size() && constants[idx].isString())
+                    std::cout << constants[idx].asString();
+                std::cout << ") " << static_cast<int>(argc) << " args [IC:" << icIdx << "]" << std::endl;
+                return offset + 6;
             }
 
             // ============================================

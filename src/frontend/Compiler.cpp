@@ -121,6 +121,7 @@ namespace jc {
             uint16_t fieldIdx = identifierConstant(dot->field.lexeme);
             emit(OpCode::OP_SET_PROPERTY, lastLine);
             emit16(fieldIdx, lastLine);
+            emit16(chunk()->addInlineCache(), lastLine);
 
             emit(OpCode::OP_POP, lastLine);
             current().locals.pop_back();
@@ -1232,6 +1233,7 @@ namespace jc {
             uint16_t nameIdx = identifierConstant(dot->field.lexeme);
             emit(OpCode::OP_GET_PROPERTY, lastLine);
             emit16(nameIdx, lastLine);
+            emit16(chunk()->addInlineCache(), lastLine);
             
             compileNode(expr->value.get());
             emitOp(expr->op);
@@ -1248,6 +1250,7 @@ namespace jc {
             emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
             emit(OpCode::OP_SET_PROPERTY, lastLine);
             emit16(nameIdx, lastLine);
+            emit16(chunk()->addInlineCache(), lastLine);
             
             current().locals.pop_back();
             current().locals.pop_back();
@@ -2235,6 +2238,7 @@ namespace jc {
             for (auto& entry : dp->entries) {
                 emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                 emit(OpCode::OP_TRY_GET_PROPERTY, lastLine); emit16(identifierConstant(entry.first), lastLine);
+                emit16(chunk()->addInlineCache(), lastLine);
                 
                 int failJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                 
@@ -2854,6 +2858,7 @@ namespace jc {
         uint16_t nameIdx = identifierConstant(expr->field.lexeme);
         emit(OpCode::OP_GET_PROPERTY, lastLine);
         emit16(nameIdx, lastLine);
+        emit16(chunk()->addInlineCache(), lastLine);
         return;
     }
 
@@ -2866,6 +2871,7 @@ namespace jc {
         uint16_t nameIdx = identifierConstant(expr->field.lexeme);
         emit(OpCode::OP_SET_PROPERTY, lastLine);
         emit16(nameIdx, lastLine);
+        emit16(chunk()->addInlineCache(), lastLine);
         
         return;
     }
@@ -2888,6 +2894,7 @@ namespace jc {
         emit(OpCode::OP_INVOKE, lastLine);
         emit16(nameIdx, lastLine);
         emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+        emit16(chunk()->addInlineCache(), lastLine);
         return;
     }
 

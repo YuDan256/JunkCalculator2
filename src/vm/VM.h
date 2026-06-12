@@ -162,7 +162,7 @@ namespace jc {
         void execBuildMatrix(uint16_t rows, const std::vector<uint16_t>& rowCols);
         void execIn();
         Value execReturn(bool& shouldExit);
-        void execInvoke(uint16_t nameIdx, uint8_t argc);
+        void execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx);
         void execSuperInvoke(uint16_t nameIdx, uint8_t argc);
         void execAssertParamType(const Value& val, uint16_t typeIdx, uint16_t nameIdx);
         void execAssertReturnType(const Value& val, uint16_t typeIdx);

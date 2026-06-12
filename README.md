@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.2.0
+# Junk Calculator 2.4.3.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.2.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.3.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -22,7 +22,7 @@ Developed by Yu Liangyang, Tsinghua University.
 - **Lexer**: Tokenizer supporting over 55 token types, including string interpolation (`f""`), raw strings with custom delimiters (`r"TAG()TAG"`), alternating single/double quotes, imaginary suffixes (`3i`), and variadic ellipsis (`...`).
 - **Parser**: Recursive descent parser producing an AST (Abstract Syntax Tree) with over 30 node types. Supports operator precedence, block statements, comma sequence evaluation, and destructuring.
 - **Compiler**: AST-to-bytecode compiler utilizing the Visitor pattern. Handles lexical scoping, auto-local variable declaration, loop patching, and closure capture.
-- **Virtual Machine**: Stack-based bytecode interpreter. Implements late-binding for function calls, exception handling with line-number unwinding, an interactive step-debugger, execution profiling, and dynamic operator dispatching.
+- **Virtual Machine**: Stack-based bytecode interpreter. Implements inline caching, tail call optimization (TCO), late-binding for function calls, exception handling with line-number unwinding, an interactive step-debugger, execution profiling, and dynamic operator dispatching.
 
 ### Language Semantics
 - **Type System & Memory Management**: NaN-boxing backed dynamic typing supporting 20+ internal types (including hidden types). 
@@ -31,12 +31,12 @@ Developed by Yu Liangyang, Tsinghua University.
 - **Gradual Typing**: Optional runtime type contracts for function parameters and return values (e.g., `func(a: double, b: matrix) -> bool = ...`). Supports base types, containers, and class inheritance definitions.
 - **Garbage Collection (GC)**: Mark-and-Sweep Garbage Collector (`GcHeap`) executing on top of the VM stack. Traces GC roots (Globals, Stack, Upvalues, and Contexts) to resolve cyclic references.
 - **Object-Oriented Programming**: Single inheritance (`extends`), `super` dispatching, and operator overloading via dunder methods (e.g., `__add__`). Instances support destructuring assignment.
-- **Control Flow**: `if/else`, `while`, `for`, `for-in`, `switch/case`, `break/continue/return`.
+- **Control Flow & Pattern Matching**: `if/else`, `while`, `for`, `for-in`, `switch/case`, `match` (with deep destructuring and dependent binding), `break/continue/return`.
 - **Error Handling**: `try/catch/throw` constructs and functional `pcall` with stack tracebacks.
 - **Execution Control**: Robust `Ctrl+C` interrupt mechanism to safely halt infinite loops or heavy CAS computations without crashing the VM. Pressing `Ctrl+C` three times consecutively triggers an immediate hard exit.
 - **Functions**: Closures, lambdas `(x) => expr`, default parameters, variadic arguments (`...args`), and `ref` parameter binding.
-- **Generic Container API**: Array manipulation functions (`push`, `slice`, `map`, `filter`, `reduce`, `sort`, `join`, `zip`, etc.) operate across four container types: `RealMatrix`, `ComplexMatrix`, `StringMatrix`, and `List`.
-- **Set Algebra**: `Set` type with O(1) membership testing (`in`). Supports operators for union (`|`), intersection (`&`), difference (`-`), and Cartesian product (`*`). Includes powerset generation (`setPow`) and relation predicates.
+- **Generic Container API**: Array manipulation functions (`push`, `slice`, `map`, `filter`, `reduce`, `sort`, `join`, `zip`, etc.) operate across four container types: `RealMatrix`, `ComplexMatrix`, `StringMatrix`, and `List` (with `@[...]` forced literal syntax).
+- **Set Algebra**: `Set` type (with `@{...}` literal syntax) providing O(1) membership testing (`in`). Supports operators for union (`|`), intersection (`&`), difference (`-`), and Cartesian product (`*`). Includes powerset generation (`setPow`) and relation predicates.
 
 ### Mathematics & CAS Engine
 - **Computer Algebra System (CAS)**: A symbolic mathematics engine operating on Directed Acyclic Graphs (DAG). Features simplification (`simplify`, `expand`, `contract`, `factor`, `trigsimp`), symbolic calculus (`diff`, `integ`, `limit`, `taylor`), and exact analytic root finding (`solveEq`).
@@ -68,23 +68,30 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.2.0
+## What's New in v2.4.3.0
 
-Version 2.4.2.0 focuses on unifying pattern matching and destructuring, overhauling `state` variable capture semantics, and improving frontend parsing stability.
+Version 2.4.3.0 delivers massive performance optimizations, introduces new literal syntaxes, hardens the Garbage Collector, and completely overhauls the standard library.
 
-### Core Mechanisms & Compiler
-- **Unified Pattern Matching**: Destructuring assignments and `match` expressions now share the same underlying bytecode logic. Removed the legacy `OP_DESTRUCT` instruction and enhanced `OP_MATCH_SHAPE` to support strict shape validation for matrices and lists.
-- **State Variable Fixes**: Fixed `state` variable capture semantics. Resolved bugs with standalone declarations, nested closures, and global scope propagation. Properly supported `state x = x` and `state x += 1` by separating upvalue slots for initialization and external capture.
-- **Explicit Ref Restoration**: Fixed a regression where inner closures automatically upgraded upvalues to `ref`. Restored the original design where inner closures default to pass-by-value capture of outer `state` variables (capturing an uninitialized variable at closure creation time), and mutating outer state requires explicit `ref` binding.
+### Performance Optimizations
+- **Tail Call Optimization (TCO)**: Implemented TCO for deep recursion, automatically disabled when `ref` arguments require writeback to preserve semantics.
+- **Inline Caching & Interning**: Added inline caching for property access and method invocation. Introduced string interning for literals to enable blazing-fast pointer equality checks.
+- **Memory Pre-allocation**: Added memory pre-allocation for string concatenation and Dict/Set building.
+- **Fast-Paths**: Introduced a fast-path for double arithmetic in binary operator dispatching.
 
-### Frontend & Parser
-- **Dict Rest Patterns**: Eliminated the magic `"<rest>"` string hack for dictionary rest patterns, replacing it with `nullptr` keys for robust AST representation. Fixed unspecified evaluation order bugs in dictionary parsing.
-- **Matrix & Destructuring Fixes**: Deferred matrix column count validation from the parser to the compiler, and implemented strict column count consistency checks for matrix patterns during compilation to prevent malformed destructuring. Fixed middle `...rest` pattern extraction in destructuring.
-- **Match Expression Parsing**: Fixed a parsing bug where dictionary literals (e.g., `{a:b}`) in `match` expression bodies were misidentified as block statements.
+### Syntax & Features
+- **New Literals**: Added Set literal syntax `@{...}` and forced List literal syntax `@[...]` (prevents implicit matrix concatenation).
+- **Pattern Matching Enhancements**: Introduced dependent binding and explicit dynamic assertions `(expr)` in `match` expressions. Added strict shape validation for matrix patterns.
+- **List Comprehensions**: Enforced parentheses in list comprehension clauses and added support for alternating nested `for` and `if` statements.
 
-### Testing & REPL
-- **Test Suite**: Introduced a public `tests/` directory with comprehensive unit tests for `match`, `closure`, and `state` semantics.
-- **REPL Commands**: Added the `/about` command to display JC2 project information and naturally introduce its sister project, SCORIVM.
+### VM & GC Stability
+- **GC Hardening**: Fixed a critical bug where arguments could be reclaimed by the GC during native C++ calls. Delayed stack erasure until after GC-triggering operations to ensure memory safety.
+- **Execution Logic**: Unified stack management to the SESE (Single Entry Single Exit) principle. Fixed Copy-On-Write (COW) semantics for string mutations.
+- **Fail-Fast Closures**: Closures now fail-fast at creation time if they attempt to capture missing global or uninitialized variables.
+
+### Math & Standard Library
+- **Math Engine**: Removed integer rounding in numeric cleaning, aligning matrix output strictly with floating-point precision. Relaxed matrix shape checks at compile time to enable runtime row concatenation.
+- **Standard Library Overhaul**: Adapted type constraints across the standard library from `int` to `whole` to support floating-point integers. Replaced all `list()` function calls with `@[...]` literals to eliminate call overhead.
+- **Regex Rewrite**: Completely rewrote `regex.jc2` using the new pattern matching syntax, removing the legacy `re_` prefix and replacing internal lambdas with `for` loops to resolve upvalue capture issues.
 
 ---
 

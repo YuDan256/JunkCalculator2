@@ -2168,7 +2168,7 @@
       "  Reference Semantics",
       "  ──────────────────────",
       "    Sets share the same underlying memory when assigned:",
-      "      s1 = Set(1, 2, 3)",
+      "      s1 = @{1, 2, 3}",
       "      s2 = s1                      s2 and s1 are the SAME set",
       "      add(s2, 99)                  s1 now also contains 99",
       "    Sets are tracked by the Garbage Collector (see: /help sys).",

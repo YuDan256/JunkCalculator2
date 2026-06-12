@@ -98,28 +98,29 @@ file(GENERATE OUTPUT "$<TARGET_FILE_DIR:JunkCalculator2>/jc" CONTENT "#!/bin/sh\
 
 # ★ Use a custom target (ALL) to ensure directories are synced on EVERY build,
 # even if the C++ executable itself didn't need to be recompiled.
+# Using COMMAND directly inside add_custom_target guarantees execution across all generators.
+set(SYNC_CMD_DATA "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
+    set(SYNC_CMD_DATA COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/data" "$<TARGET_FILE_DIR:JunkCalculator2>/data")
+endif()
+
+set(SYNC_CMD_LIB "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib")
+    set(SYNC_CMD_LIB COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/lib" "$<TARGET_FILE_DIR:JunkCalculator2>/lib")
+endif()
+
+set(SYNC_CMD_EXAMPLES "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
+    set(SYNC_CMD_EXAMPLES COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/examples" "$<TARGET_FILE_DIR:JunkCalculator2>/examples")
+endif()
+
 add_custom_target(SyncResources ALL
+    ${SYNC_CMD_DATA}
+    ${SYNC_CMD_LIB}
+    ${SYNC_CMD_EXAMPLES}
     COMMENT "Syncing resource directories (data, lib, examples) to build output..."
 )
 add_dependencies(SyncResources JunkCalculator2)
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
-    add_custom_command(TARGET SyncResources POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/data" "$<TARGET_FILE_DIR:JunkCalculator2>/data"
-    )
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib")
-    add_custom_command(TARGET SyncResources POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/lib" "$<TARGET_FILE_DIR:JunkCalculator2>/lib"
-    )
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
-    add_custom_command(TARGET SyncResources POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/examples" "$<TARGET_FILE_DIR:JunkCalculator2>/examples"
-    )
-endif()
 
 # ==============================================================================
 # CPack Installation & Release Packaging Rules

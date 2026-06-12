@@ -8,7 +8,7 @@
 
 class Stack {
     init() = {
-        self.data = list()
+        self.data = @[]
     }
     
     push(item: any) = {
@@ -36,7 +36,7 @@ class Stack {
 
 class Queue {
     init() = {
-        self.data = list()
+        self.data = @[]
     }
     
     enqueue(item: any) = {
@@ -64,7 +64,7 @@ class Queue {
 
 class Deque {
     init() = {
-        self.data = list()
+        self.data = @[]
     }
     
     pushRight(item: any) = { self.data.push(item); return self }
@@ -129,8 +129,8 @@ class Counter {
         return self.data.hasKey(key) ? self.data[key] : 0
     }
     
-    mostCommon(n: int = 1) -> list = {
-        L = list()
+    mostCommon(n: whole = 1) -> list = {
+        L = @[]
         for ([k, v] in self.data) L.push([k, v])
         sorted = L.sort((a, b) => a[1] > b[1])
         return sorted.slice(0, n)
@@ -142,7 +142,7 @@ class Counter {
 
 class PriorityQueue {
     init(cmp: func = (a, b) => a < b) = {
-        self.data = list()
+        self.data = @[]
         self.cmp = cmp   
     }
     
@@ -174,7 +174,7 @@ class PriorityQueue {
     isEmpty() -> bool = return self.data.len() == 0
     size() -> int     = return self.data.len()
 
-    _siftUp(idx: int) = {
+    _siftUp(idx: whole) = {
         while (idx > 0) {
             parent = idiv(idx - 1, 2)
             if (self.cmp(self.data[idx], self.data[parent])) {
@@ -186,7 +186,7 @@ class PriorityQueue {
         }
     }
     
-    _siftDown(idx: int) = {
+    _siftDown(idx: whole) = {
         n = self.data.len()
         while (true) {
             left = 2 * idx + 1
@@ -256,7 +256,7 @@ class BST {
     size() -> int = return self._size
     
     inorder() -> list = {
-        result = list()
+        result = @[]
         self._inorderTraversal(self.root, result)
         return result
     }

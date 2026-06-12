@@ -5,7 +5,7 @@ import image
 import window
 
 class GameEngine {
-    init(title: string = "JC2 Game", width: int = 800, height: int = 600, fps: int = 60) = {
+    init(title: string = "JC2 Game", width: whole = 800, height: whole = 600, fps: whole = 60) = {
         self.width = width
         self.height = height
         self.fps = fps
@@ -24,8 +24,8 @@ class GameEngine {
     // ─── Event Callbacks ───
     onKeyDown(key: string) = {}
     onKeyUp(key: string)   = {}
-    onMouseDown(x: any, y: any, btn: int) = {}
-    onMouseUp(x: any, y: any, btn: int)   = {}
+    onMouseDown(x: any, y: any, btn: whole) = {}
+    onMouseUp(x: any, y: any, btn: whole)   = {}
     onMouseMove(x: any, y: any)           = {}
 
     // ─── Utilities ───

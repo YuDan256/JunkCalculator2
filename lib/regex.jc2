@@ -45,7 +45,7 @@ class _RePS {
 
     parse() = {
         nodes = self.alt()
-        if (isdict(nodes)) nodes = list(nodes)
+        if (isdict(nodes)) nodes = @[nodes]
         if (self.ok()) throw f"Regex Error: Unexpected '{self.pk()}' at position {self.p}"
         return nodes
     }
@@ -55,14 +55,14 @@ class _RePS {
         if (self.ok() && self.pk() == "|") {
             self.nx()
             right = self.alt()
-            if (isdict(right)) right = list(right)
+            if (isdict(right)) right = @[right]
             return {type: "alt", a: left, b: right}
         }
         return left
     }
 
     seq() -> list = {
-        nodes = list()
+        nodes = @[]
         while (self.ok() && self.pk() != ")" && self.pk() != "|") { 
             nodes.push(self.quant()) 
         }
@@ -117,7 +117,7 @@ class _RePS {
                 self.gc += 1
                 idx = self.gc
                 inner = self.alt()
-                if (isdict(inner)) inner = list(inner)
+                if (isdict(inner)) inner = @[inner]
                 if (!self.ok() || self.pk() != ")") throw "Regex Error: Unmatched '('"
                 self.nx()
                 return {type: "group", inner: inner, idx: idx}
@@ -145,7 +145,7 @@ class _RePS {
         self.nx()
         neg = false
         if (self.ok() && self.pk() == "^") { neg = true; self.nx() }
-        specs = list()
+        specs = @[]
         if (self.ok() && self.pk() == "]") { specs.push({t: "c", v: "]"}); self.nx() }
         
         while (self.ok() && self.pk() != "]") {
@@ -168,7 +168,7 @@ class _RePS {
 
 class _ReCaps {
     init(numGroups: whole) = { 
-        self.data = list()
+        self.data = @[]
         for (_ in range(numGroups + 1)) self.data.push([-1, -1])
     }
     set(idx: whole, s: whole, e: whole) = { self.data[idx] = [s, e] }
@@ -235,7 +235,7 @@ _rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps)
         {type: "start"} => return pos == 0 ? _rm(nodes, idx + 1, text, pos, tl, caps) : -1,
         {type: "end"} => return pos == tl ? _rm(nodes, idx + 1, text, pos, tl, caps) : -1,
         {type: "group", inner, idx: gidx} => {
-            comb = list({type: "_cs", idx: gidx})
+            comb = @[{type: "_cs", idx: gidx}]
             for (n in inner) comb.push(n)
             comb.push({type: "_ce", idx: gidx})
             for (k in range(idx + 1, nodes.len())) comb.push(nodes[k])
@@ -262,7 +262,7 @@ _rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps)
 }
 
 _rm_quant(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps, inner: dict, min_v: whole, max_v: whole) -> whole = {
-    positions = list(pos); cur = pos; count = 0
+    positions = @[pos]; cur = pos; count = 0
     while (max_v < 0 || count < max_v) {
         np = _rm_single(inner, text, cur, tl, caps)
         if (np < 0 || np == cur) break
@@ -323,7 +323,7 @@ class Regex {
     }
 
     findall(text: string) -> list = {
-        tl = text.len(); res = list(); i = 0
+        tl = text.len(); res = @[]; i = 0
         while (i <= tl) {
             m = self._run(text, i)
             if (m != 0) {
@@ -365,7 +365,7 @@ class Regex {
     }
 
     splitBy(text: string) -> list = {
-        tl = text.len(); res = list(); lastEnd = 0; i = 0
+        tl = text.len(); res = @[]; lastEnd = 0; i = 0
         while (i <= tl) {
             m = self._run(text, i)
             if (m != 0 && m.end > lastEnd) {

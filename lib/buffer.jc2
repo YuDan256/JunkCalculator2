@@ -19,7 +19,7 @@ class ByteBuffer {
     // ─── Cursor & State Control ───
 
     seek(p: int)         = { self.pos = p }
-    skip(n: int)         = { self.pos = self.pos + n }
+    skip(n: whole)         = { self.pos = self.pos + n }
     isEnd() -> bool      = return self.pos >= self.size
     tell() -> int        = return self.pos
     length() -> int      = return self.size
@@ -32,31 +32,31 @@ class ByteBuffer {
         return self
     }
 
-    writeU8(v: int) -> ByteBuffer = { 
+    writeU8(v: whole) -> ByteBuffer = { 
         self.buf.set(self.pos, v, "u8")
         self.pos = self.pos + 1
         return self 
     }
 
-    writeI16(v: int) -> ByteBuffer = { 
+    writeI16(v: whole) -> ByteBuffer = { 
         self.buf.set(self.pos, v, "i16")
         self.pos = self.pos + 2
         return self 
     }
 
-    writeI32(v: int) -> ByteBuffer = { 
+    writeI32(v: whole) -> ByteBuffer = { 
         self.buf.set(self.pos, v, "i32")
         self.pos = self.pos + 4
         return self 
     }
 
-    writeI64(v: int) -> ByteBuffer = { 
+    writeI64(v: whole) -> ByteBuffer = { 
         self.buf.set(self.pos, v, "i64")
         self.pos = self.pos + 8
         return self 
     }
 
-    writeU64(v: int) -> ByteBuffer = { 
+    writeU64(v: whole) -> ByteBuffer = { 
         self.buf.set(self.pos, v, "u64")
         self.pos = self.pos + 8
         return self 
@@ -70,7 +70,7 @@ class ByteBuffer {
 
     // ─── Sequential Readers (Auto-advancing cursor) ───
 
-    readStr(n: int) -> string = {
+    readStr(n: whole) -> string = {
         s = self.buf.get(self.pos, "str", n)
         self.pos = self.pos + n
         return s
@@ -113,7 +113,7 @@ class ByteBuffer {
 
 // ─── Global Factory API ───────────────────────────────────────
 
-alloc(size: int) -> ByteBuffer        = return ByteBuffer(bytes.alloc(size))
+alloc(size: whole) -> ByteBuffer        = return ByteBuffer(bytes.alloc(size))
 fromFile(path: string) -> ByteBuffer  = return ByteBuffer(bytes.readFile(path))
 
 // ─── Dynamic Help Registry ────────────────────────────────────

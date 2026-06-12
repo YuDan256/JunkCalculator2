@@ -7,6 +7,7 @@
 #pragma warning(disable: 4702) 
 #endif
 
+#include <any>
 #include <variant>
 #include <string>
 #include <stdexcept>

@@ -89,12 +89,18 @@ namespace jc {
     struct UpVal;
     struct NamespaceField;
 
+    ObjString* internString(const std::string& str);
+
     // =======================================================
     // Obj 派生类定义
     // =======================================================
     struct ObjString : public Obj {
         std::string str;
-        ObjString(std::string s) : str(std::move(s)) { type = ObjType::STRING; }
+        size_t hash;
+        ObjString(std::string s) : str(std::move(s)) { 
+            hash = std::hash<std::string>{}(str);
+            type = ObjType::STRING; 
+        }
     };
     struct ObjBigInt : public Obj {
         BigInt num;
@@ -296,8 +302,8 @@ namespace jc {
             if (isObj()) asObj()->refCount--;
         }
         
-        Value(std::string val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjString>(std::move(val))); }
-        Value(const char* val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjString>(std::string(val))); }
+        Value(std::string val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(internString(val)); }
+        Value(const char* val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(internString(std::string(val))); }
         Value(Complex val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjComplex>(std::move(val))); }
         Value(RealMatrix val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjRealMatrix>(std::move(val))); }
         Value(ComplexMatrix val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjComplexMatrix>(std::move(val))); }
@@ -1366,7 +1372,7 @@ namespace jc {
             Obj* lobj = lhs.asObj();
             Obj* robj = rhs.asObj();
             switch (lobj->type) {
-                case ObjType::STRING: return static_cast<ObjString*>(lobj)->str == static_cast<ObjString*>(robj)->str;
+                case ObjType::STRING: return lobj == robj; // ★ 字符串驻留池，直接比较指针
                 case ObjType::BIGINT: return static_cast<ObjBigInt*>(lobj)->num == static_cast<ObjBigInt*>(robj)->num;
                 case ObjType::COMPLEX: return static_cast<ObjComplex*>(lobj)->comp == static_cast<ObjComplex*>(robj)->comp;
                 case ObjType::FRACTION: return static_cast<ObjFraction*>(lobj)->frac == static_cast<ObjFraction*>(robj)->frac;
@@ -1921,7 +1927,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
     
     Obj* obj = v.asObj();
     switch (obj->type) {
-        case ObjType::STRING: return std::hash<std::string>{}(static_cast<ObjString*>(obj)->str);
+        case ObjType::STRING: return static_cast<ObjString*>(obj)->hash; // ★ O(1) 哈希
         case ObjType::BIGINT: {
             try { 
                 double d = static_cast<ObjBigInt*>(obj)->num.toDouble();

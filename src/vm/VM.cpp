@@ -13,6 +13,21 @@
 namespace jc {
 
     // =======================================================
+    // ★ 字符串驻留池 (String Interning)
+    // =======================================================
+    std::unordered_map<std::string, ObjString*> g_internedStrings;
+
+    ObjString* internString(const std::string& str) {
+        auto it = g_internedStrings.find(str);
+        if (it != g_internedStrings.end()) {
+            return it->second;
+        }
+        ObjString* obj = GcHeap::get().allocate<ObjString>(str);
+        g_internedStrings[str] = obj;
+        return obj;
+    }
+
+    // =======================================================
     // ★ 统一拦截与展开 Try-Catch 栈
     // =======================================================
     bool VM::handleExceptionUnwind(std::string& msg) {
@@ -2716,6 +2731,15 @@ namespace jc {
 
         traceReferences();
 
+        // ★ 在 sweep 之前，清理驻留池中未被标记的字符串
+        for (auto it = g_internedStrings.begin(); it != g_internedStrings.end(); ) {
+            if (!it->second->isMarked) {
+                it = g_internedStrings.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
         // ═══ Phase 2: SWEEP ═══
         GcHeap::get().sweep();
     }
@@ -2757,6 +2781,15 @@ namespace jc {
         for (Value* val : GcHeap::get().getTempValueRoots()) markValue(*val);
 
         traceReferences();
+
+        // ★ 在 sweep 之前，清理驻留池中未被标记的字符串
+        for (auto it = g_internedStrings.begin(); it != g_internedStrings.end(); ) {
+            if (!it->second->isMarked) {
+                it = g_internedStrings.erase(it);
+            } else {
+                ++it;
+            }
+        }
 
         return GcHeap::get().sweep();
     }

@@ -1353,19 +1353,22 @@ namespace jc {
 
                 case OpCode::OP_CONCAT_STRINGS: {
                     uint16_t count = readShort();
-                    std::string result;
                     std::vector<std::string> parts(count);
+                    size_t totalLen = 0;
                     for (int j = count - 1; j >= 0; --j) {
                         Value v = pop();
-                        if (v.isString())
+                        if (v.isString()) {
                             parts[j] = v.asString();
-                        else {
+                        } else {
                             std::ostringstream oss;
                             if (v.isUninit()) oss << "Uninitialized";
                             else oss << v;
                             parts[j] = oss.str();
                         }
+                        totalLen += parts[j].size();
                     }
+                    std::string result;
+                    result.reserve(totalLen);
                     for (const auto& p : parts) result += p;
                     push(Value(result));
                     break;
@@ -1444,6 +1447,8 @@ namespace jc {
                 case OpCode::OP_BUILD_DICT: {
                     uint16_t count = readShort();
                     ObjDict* d = GcHeap::get().allocate<ObjDict>();
+                    d->elements.reserve(count);
+                    d->keyMap.reserve(count);
                     std::vector<std::pair<Value, Value>> pairs(count);
                     for (int j = count - 1; j >= 0; --j) {
                         Value val = pop();
@@ -1460,6 +1465,8 @@ namespace jc {
                 case OpCode::OP_BUILD_SET: {
                     uint16_t count = readShort();
                     ObjSet* s = GcHeap::get().allocate<ObjSet>();
+                    s->elements.reserve(count);
+                    s->keys.reserve(count);
                     std::vector<Value> items(count);
                     for (int j = count - 1; j >= 0; --j) {
                         items[j] = pop();

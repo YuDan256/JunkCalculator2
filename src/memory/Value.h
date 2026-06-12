@@ -1371,6 +1371,7 @@ namespace jc {
         if (lhs.isObj() && rhs.isObj() && lhs.asObj()->type == rhs.asObj()->type) {
             Obj* lobj = lhs.asObj();
             Obj* robj = rhs.asObj();
+            if (lobj == robj) return true; // ★ 极速通道：同一对象直接返回 true
             switch (lobj->type) {
                 case ObjType::STRING: return lobj == robj; // ★ 字符串驻留池，直接比较指针
                 case ObjType::BIGINT: return static_cast<ObjBigInt*>(lobj)->num == static_cast<ObjBigInt*>(robj)->num;

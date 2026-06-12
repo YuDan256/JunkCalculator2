@@ -2114,31 +2114,33 @@ namespace jc {
                                     found = true;
                                 }
                             } else if (ic.cachedMethod) {
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{},
-                                    field, nullptr
-                                );
-                                bound->paramNames = ic.cachedMethod->paramNames;
-                                bound->isRef = ic.cachedMethod->isRef;
-                                bound->defaultValues = ic.cachedMethod->defaultValues;
-                                bound->hasRestParam = ic.cachedMethod->hasRestParam;
-                                
-                                bound->compiledFnIndex = ic.cachedMethod->compiledFnIndex;
-                                bound->capturedEnv = ic.cachedMethod->capturedEnv;
-                                bound->nativeFn = ic.cachedMethod->nativeFn;
-                                
-                                bound->boundSelf = Value(inst);
-                                bound->boundClass = Value(ic.cachedClass);
+                                if (!inst->fields || inst->fields->keyMap.find(chunk->constants[nameIdx]) == inst->fields->keyMap.end()) {
+                                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                                        std::vector<std::string>{}, std::vector<bool>{},
+                                        field, nullptr
+                                    );
+                                    bound->paramNames = ic.cachedMethod->paramNames;
+                                    bound->isRef = ic.cachedMethod->isRef;
+                                    bound->defaultValues = ic.cachedMethod->defaultValues;
+                                    bound->hasRestParam = ic.cachedMethod->hasRestParam;
+                                    
+                                    bound->compiledFnIndex = ic.cachedMethod->compiledFnIndex;
+                                    bound->capturedEnv = ic.cachedMethod->capturedEnv;
+                                    bound->nativeFn = ic.cachedMethod->nativeFn;
+                                    
+                                    bound->boundSelf = Value(inst);
+                                    bound->boundClass = Value(ic.cachedClass);
 
-                                result = Value(bound);
-                                found = true;
+                                    result = Value(bound);
+                                    found = true;
+                                }
                             }
                         }
 
                         if (!found) {
                             // 1. 字段查找
                             if (inst->fields) {
-                                auto it = inst->fields->keyMap.find(Value(field));
+                                auto it = inst->fields->keyMap.find(chunk->constants[nameIdx]);
                                 if (it != inst->fields->keyMap.end()) {
                                     result = inst->fields->elements[it->second].second;
                                     found = true;
@@ -2197,7 +2199,7 @@ namespace jc {
                     }
                     else if (obj.isObjType(ObjType::DICT)) {
                         auto d = static_cast<ObjDict*>(obj.asObj());
-                        auto it = d->keyMap.find(Value(field));
+                        auto it = d->keyMap.find(chunk->constants[nameIdx]);
                         if (it != d->keyMap.end()) {
                             result = d->elements[it->second].second;
                             found = true;
@@ -2318,7 +2320,7 @@ namespace jc {
 
                         if (!found) {
                             if (inst->fields) {
-                                auto it = inst->fields->keyMap.find(Value(field));
+                                auto it = inst->fields->keyMap.find(chunk->constants[nameIdx]);
                                 if (it != inst->fields->keyMap.end()) {
                                     result = inst->fields->elements[it->second].second;
                                     found = true;
@@ -2341,7 +2343,7 @@ namespace jc {
                     }
                     else if (obj.isObjType(ObjType::DICT)) {
                         auto d = static_cast<ObjDict*>(obj.asObj());
-                        auto it = d->keyMap.find(Value(field));
+                        auto it = d->keyMap.find(chunk->constants[nameIdx]);
                         if (it != d->keyMap.end()) {
                             result = d->elements[it->second].second;
                             found = true;
@@ -2395,7 +2397,7 @@ namespace jc {
                                 }
                             }
 
-                            Value key(field);
+                            Value key = chunk->constants[nameIdx];
                             auto it = inst->fields->keyMap.find(key);
                             if (it != inst->fields->keyMap.end()) {
                                 inst->fields->elements[it->second].second = val;
@@ -2411,7 +2413,7 @@ namespace jc {
                     }
                     else if (obj.isObjType(ObjType::DICT)) {
                         auto d = static_cast<ObjDict*>(obj.asObj());
-                        d->set(Value(field), val);
+                        d->set(chunk->constants[nameIdx], val);
                     }
                     else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
@@ -4821,7 +4823,7 @@ namespace jc {
         // ==============================================================
         if (obj.isObjType(ObjType::DICT)) {
             auto d = static_cast<ObjDict*>(obj.asObj());
-            auto it = d->keyMap.find(Value(methodName));
+            auto it = d->keyMap.find(frame().function->chunk.constants[nameIdx]);
             if (it != d->keyMap.end()) {
                 Value fv = d->elements[it->second].second;
                 if (fv.isFunctionClosure()) {
@@ -4860,14 +4862,16 @@ namespace jc {
 
             // ★ IC 命中检查
             if (ic.cachedClass == inst->classDef && ic.cachedMethod) {
-                method = ic.cachedMethod;
-                owningClass = ic.cachedClass;
-                goto invoke_method;
+                if (!inst->fields || inst->fields->keyMap.find(frame().function->chunk.constants[nameIdx]) == inst->fields->keyMap.end()) {
+                    method = ic.cachedMethod;
+                    owningClass = ic.cachedClass;
+                    goto invoke_method;
+                }
             }
 
             // 2.1 优先查找实例自身的字段 (Fields)
             if (inst->fields) {
-                auto it = inst->fields->keyMap.find(Value(methodName));
+                auto it = inst->fields->keyMap.find(frame().function->chunk.constants[nameIdx]);
                 if (it != inst->fields->keyMap.end()) {
                     Value fv = inst->fields->elements[it->second].second;
                     if (fv.isFunctionClosure()) {

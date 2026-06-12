@@ -757,15 +757,6 @@ namespace jc {
             compileNode(argExpr.get());
         }
         
-        if (inTailPosition) {
-            emit(OpCode::OP_TAIL_CALL, expr->callee.line);
-            emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
-            tailCallEmitted = true;
-        } else {
-            emit(OpCode::OP_CALL, expr->callee.line);
-            emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
-        }
-
         bool hasVariableArgs = false;
         for (auto& argExpr : expr->arguments) {
             if (dynamic_cast<Variable*>(argExpr.get())) {
@@ -789,10 +780,10 @@ namespace jc {
             if (!foundDef) mayHaveRef = true;
         }
 
-        if (mayHaveRef) {
-            struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
-            std::vector<ArgSource> sources;
+        struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
+        std::vector<ArgSource> sources;
 
+        if (mayHaveRef) {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
                     int localSlot = resolveLocal(varExpr->name.lexeme);
@@ -811,15 +802,26 @@ namespace jc {
                     }
                 }
             }
+        }
 
-            if (!sources.empty()) {
-                emit(OpCode::OP_REF_WRITEBACK, expr->callee.line);
-                emit(static_cast<uint8_t>(sources.size()), expr->callee.line);
-                for (auto& s : sources) {
-                    emit(s.argIndex, expr->callee.line);
-                    emit(s.sourceType, expr->callee.line);
-                    emit16(s.sourceRef, expr->callee.line);
-                }
+        bool actualTailCall = inTailPosition && sources.empty();
+
+        if (actualTailCall) {
+            emit(OpCode::OP_TAIL_CALL, expr->callee.line);
+            emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
+            tailCallEmitted = true;
+        } else {
+            emit(OpCode::OP_CALL, expr->callee.line);
+            emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
+        }
+
+        if (!sources.empty()) {
+            emit(OpCode::OP_REF_WRITEBACK, expr->callee.line);
+            emit(static_cast<uint8_t>(sources.size()), expr->callee.line);
+            for (auto& s : sources) {
+                emit(s.argIndex, expr->callee.line);
+                emit(s.sourceType, expr->callee.line);
+                emit16(s.sourceRef, expr->callee.line);
             }
         }
         return;
@@ -1880,24 +1882,15 @@ namespace jc {
         compileNode(expr->callee.get());
         for (auto& argExpr : expr->arguments) compileNode(argExpr.get());
         
-        if (inTailPosition) {
-            emit(OpCode::OP_TAIL_CALL, lastLine);
-            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-            tailCallEmitted = true;
-        } else {
-            emit(OpCode::OP_CALL, lastLine);
-            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-        }
-
         bool hasVariableArgs = false;
         for (auto& argExpr : expr->arguments) {
             if (dynamic_cast<Variable*>(argExpr.get())) { hasVariableArgs = true; break; }
         }
 
-        if (hasVariableArgs) {
-            struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
-            std::vector<ArgSource> sources;
+        struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
+        std::vector<ArgSource> sources;
 
+        if (hasVariableArgs) {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
                     int localSlot = resolveLocal(varExpr->name.lexeme);
@@ -1909,12 +1902,23 @@ namespace jc {
                     }
                 }
             }
+        }
 
-            if (!sources.empty()) {
-                emit(OpCode::OP_REF_WRITEBACK, lastLine);
-                emit(static_cast<uint8_t>(sources.size()), lastLine);
-                for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
-            }
+        bool actualTailCall = inTailPosition && sources.empty();
+
+        if (actualTailCall) {
+            emit(OpCode::OP_TAIL_CALL, lastLine);
+            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+            tailCallEmitted = true;
+        } else {
+            emit(OpCode::OP_CALL, lastLine);
+            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+        }
+
+        if (!sources.empty()) {
+            emit(OpCode::OP_REF_WRITEBACK, lastLine);
+            emit(static_cast<uint8_t>(sources.size()), lastLine);
+            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
         }
         return;
     }
@@ -2925,7 +2929,32 @@ namespace jc {
             emit(OpCode::OP_GET_SELF, lastLine);
             for (auto& arg : expr->arguments) compileNode(arg.get());
             uint16_t nameIdx = identifierConstant(expr->method.lexeme);
-            if (inTailPosition) {
+
+            bool hasVariableArgs = false;
+            for (auto& argExpr : expr->arguments) {
+                if (dynamic_cast<Variable*>(argExpr.get())) { hasVariableArgs = true; break; }
+            }
+
+            struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
+            std::vector<ArgSource> sources;
+
+            if (hasVariableArgs) {
+                for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
+                    if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
+                        int localSlot = resolveLocal(varExpr->name.lexeme);
+                        if (localSlot != -1) sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                        else {
+                            int uv = resolveUpvalue(varExpr->name.lexeme);
+                            if (uv != -1) sources.push_back({ static_cast<uint8_t>(i), 3, static_cast<uint16_t>(uv) });
+                            else sources.push_back({ static_cast<uint8_t>(i), 1, identifierConstant(varExpr->name.lexeme) });
+                        }
+                    }
+                }
+            }
+
+            bool actualTailCall = inTailPosition && sources.empty();
+
+            if (actualTailCall) {
                 emit(OpCode::OP_TAIL_SUPER_INVOKE, lastLine);
                 emit16(nameIdx, lastLine);
                 emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
@@ -2935,13 +2964,44 @@ namespace jc {
                 emit16(nameIdx, lastLine);
                 emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
             }
+
+            if (!sources.empty()) {
+                emit(OpCode::OP_REF_WRITEBACK, lastLine);
+                emit(static_cast<uint8_t>(sources.size()), lastLine);
+                for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
+            }
             return;
         }
 
         compileNode(expr->object.get());
         for (auto& arg : expr->arguments) compileNode(arg.get());
         uint16_t nameIdx = identifierConstant(expr->method.lexeme);
-        if (inTailPosition) {
+
+        bool hasVariableArgs = false;
+        for (auto& argExpr : expr->arguments) {
+            if (dynamic_cast<Variable*>(argExpr.get())) { hasVariableArgs = true; break; }
+        }
+
+        struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
+        std::vector<ArgSource> sources;
+
+        if (hasVariableArgs) {
+            for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
+                if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
+                    int localSlot = resolveLocal(varExpr->name.lexeme);
+                    if (localSlot != -1) sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                    else {
+                        int uv = resolveUpvalue(varExpr->name.lexeme);
+                        if (uv != -1) sources.push_back({ static_cast<uint8_t>(i), 3, static_cast<uint16_t>(uv) });
+                        else sources.push_back({ static_cast<uint8_t>(i), 1, identifierConstant(varExpr->name.lexeme) });
+                    }
+                }
+            }
+        }
+
+        bool actualTailCall = inTailPosition && sources.empty();
+
+        if (actualTailCall) {
             emit(OpCode::OP_TAIL_INVOKE, lastLine);
             emit16(nameIdx, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
@@ -2952,6 +3012,12 @@ namespace jc {
             emit16(nameIdx, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
             emit16(chunk()->addInlineCache(), lastLine);
+        }
+
+        if (!sources.empty()) {
+            emit(OpCode::OP_REF_WRITEBACK, lastLine);
+            emit(static_cast<uint8_t>(sources.size()), lastLine);
+            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
         }
         return;
     }

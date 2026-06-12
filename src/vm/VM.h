@@ -154,7 +154,7 @@ namespace jc {
         std::vector<Obj*> grayStack;
         int gcInstructionCounter_ = 0;
 
-        void execCall(uint8_t argc);
+        void execCall(uint8_t argc, bool isTailCall = false);
         void execIndexGet(uint8_t dims);
         void execIndexSet(uint8_t dims);
         void execSliceGet(uint8_t dims);
@@ -162,8 +162,8 @@ namespace jc {
         void execBuildMatrix(uint16_t rows, const std::vector<uint16_t>& rowCols);
         void execIn();
         Value execReturn(bool& shouldExit);
-        void execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx);
-        void execSuperInvoke(uint16_t nameIdx, uint8_t argc);
+        void execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx, bool isTailCall = false);
+        void execSuperInvoke(uint16_t nameIdx, uint8_t argc, bool isTailCall = false);
         void execAssertParamType(const Value& val, uint16_t typeIdx, uint16_t nameIdx);
         void execAssertReturnType(const Value& val, uint16_t typeIdx);
 

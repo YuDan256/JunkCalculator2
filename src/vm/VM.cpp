@@ -1164,6 +1164,19 @@ namespace jc {
                     break;
                 }
 
+                case OpCode::OP_TAIL_CALL: {
+                    uint8_t argc = readByte();
+                    int prevIp = currentFrame->ip;
+                    execCall(argc, true);
+                    if (currentFrame->ip == prevIp) {
+                        bool shouldExit = false;
+                        Value result = execReturn(shouldExit);
+                        if (shouldExit) return result;
+                    }
+                    UPDATE_FRAME();
+                    break;
+                }
+
                 case OpCode::OP_GET_UPVALUE: {
                     uint16_t idx = readShort();
                     if (!currentFrame->upvalues || idx >= currentFrame->upvalues->size())
@@ -1186,6 +1199,20 @@ namespace jc {
                     uint16_t nameIdx = readShort();
                     uint8_t argc = readByte();
                     execSuperInvoke(nameIdx, argc);
+                    UPDATE_FRAME();
+                    break;
+                }
+
+                case OpCode::OP_TAIL_SUPER_INVOKE: {
+                    uint16_t nameIdx = readShort();
+                    uint8_t argc = readByte();
+                    int prevIp = currentFrame->ip;
+                    execSuperInvoke(nameIdx, argc, true);
+                    if (currentFrame->ip == prevIp) {
+                        bool shouldExit = false;
+                        Value result = execReturn(shouldExit);
+                        if (shouldExit) return result;
+                    }
                     UPDATE_FRAME();
                     break;
                 }
@@ -2417,6 +2444,21 @@ namespace jc {
                     break;
                 }
 
+                case OpCode::OP_TAIL_INVOKE: {
+                    uint16_t nameIdx = readShort();
+                    uint8_t argc = readByte();
+                    uint16_t icIdx = readShort();
+                    int prevIp = currentFrame->ip;
+                    execInvoke(nameIdx, argc, icIdx, true);
+                    if (currentFrame->ip == prevIp) {
+                        bool shouldExit = false;
+                        Value result = execReturn(shouldExit);
+                        if (shouldExit) return result;
+                    }
+                    UPDATE_FRAME();
+                    break;
+                }
+
                 case OpCode::OP_PRINT: {
                     std::cout << pop() << std::flush;
                     push(Value::none());
@@ -2794,7 +2836,7 @@ namespace jc {
         return GcHeap::get().sweep();
     }
 
-    void VM::execCall(uint8_t argc) {
+    void VM::execCall(uint8_t argc, bool isTailCall) {
         Value callee = stack[getStackSize() - 1 - argc];
         pendingRefWritebacks.clear();
 
@@ -2814,6 +2856,25 @@ namespace jc {
                 
                 eraseStack(fn->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
                 
+                if (isTailCall) {
+                    int base = frame().stackBase;
+                    closeUpvalues(base);
+                    int newLocalCount = fn->localCount;
+                    int argStart = static_cast<int>(getStackSize()) - newLocalCount;
+                    if (base != argStart) {
+                        for (int i = 0; i < newLocalCount; ++i) {
+                            stack[base + i] = std::move(stack[argStart + i]);
+                        }
+                    }
+                    setStackSize(base + newLocalCount);
+                    frame().function = fn.get();
+                    frame().ip = 0;
+                    frame().upvalues = nullptr;
+                    frame().selfContext = Value::none();
+                    frame().classContext = Value::none();
+                    return;
+                }
+
                 CallFrame newFrame; newFrame.function = fn.get(); newFrame.ip = 0;
                 newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
@@ -3004,6 +3065,29 @@ namespace jc {
 
                 eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
 
+                if (isTailCall) {
+                    int base = frame().stackBase;
+                    closeUpvalues(base);
+                    int newLocalCount = fnDef->localCount;
+                    int argStart = static_cast<int>(getStackSize()) - newLocalCount;
+                    if (base != argStart) {
+                        for (int i = 0; i < newLocalCount; ++i) {
+                            stack[base + i] = std::move(stack[argStart + i]);
+                        }
+                    }
+                    setStackSize(base + newLocalCount);
+                    frame().function = fnDef.get();
+                    frame().ip = 0;
+                    if (closure->hasCaptures()) {
+                        frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(closure->capturedEnv);
+                    } else {
+                        frame().upvalues = nullptr;
+                    }
+                    frame().selfContext = closure->boundSelf;
+                    frame().classContext = closure->boundClass;
+                    return;
+                }
+
                 CallFrame newFrame;
                 newFrame.function = fnDef.get();
                 newFrame.ip = 0;
@@ -3109,6 +3193,25 @@ namespace jc {
                 int reserveCount = fn->localCount - fn->maxArity;
                 for (int j = 0; j < reserveCount; ++j) push(Value::none());
 
+                if (isTailCall) {
+                    int base = frame().stackBase;
+                    closeUpvalues(base);
+                    int newLocalCount = fn->localCount;
+                    int argStart = static_cast<int>(getStackSize()) - newLocalCount;
+                    if (base != argStart) {
+                        for (int i = 0; i < newLocalCount; ++i) {
+                            stack[base + i] = std::move(stack[argStart + i]);
+                        }
+                    }
+                    setStackSize(base + newLocalCount);
+                    frame().function = fn.get();
+                    frame().ip = 0;
+                    frame().upvalues = nullptr;
+                    frame().selfContext = Value::none();
+                    frame().classContext = Value::none();
+                    return;
+                }
+
                 CallFrame newFrame; newFrame.function = fn.get(); newFrame.ip = 0;
                 newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
@@ -3176,6 +3279,29 @@ namespace jc {
                     for (int j = 0; j < reserveCount; ++j) push(Value::none());
 
                     eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
+
+                    if (isTailCall) {
+                        int base = frame().stackBase;
+                        closeUpvalues(base);
+                        int newLocalCount = fnDef->localCount;
+                        int argStart = static_cast<int>(getStackSize()) - newLocalCount;
+                        if (base != argStart) {
+                            for (int i = 0; i < newLocalCount; ++i) {
+                                stack[base + i] = std::move(stack[argStart + i]);
+                            }
+                        }
+                        setStackSize(base + newLocalCount);
+                        frame().function = fnDef.get();
+                        frame().ip = 0;
+                        if (method->hasCaptures()) {
+                            frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
+                        } else {
+                            frame().upvalues = nullptr;
+                        }
+                        frame().selfContext = callee;
+                        frame().classContext = Value(owningClass);
+                        return;
+                    }
 
                     CallFrame newFrame;
                     newFrame.function = fnDef.get();
@@ -4681,7 +4807,7 @@ namespace jc {
         return Value::none();
     }
 
-    void VM::execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx) {
+    void VM::execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx, bool isTailCall) {
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value obj = stack[getStackSize() - 1 - argc];
 
@@ -4875,6 +5001,29 @@ namespace jc {
             
             eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 obj，保护其在可能触发的 GC 中存活
             
+            if (isTailCall) {
+                int base = frame().stackBase;
+                closeUpvalues(base);
+                int newLocalCount = fnDef->localCount;
+                int argStart = static_cast<int>(getStackSize()) - newLocalCount;
+                if (base != argStart) {
+                    for (int i = 0; i < newLocalCount; ++i) {
+                        stack[base + i] = std::move(stack[argStart + i]);
+                    }
+                }
+                setStackSize(base + newLocalCount);
+                frame().function = fnDef.get();
+                frame().ip = 0;
+                if (method->hasCaptures()) {
+                    frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
+                } else {
+                    frame().upvalues = nullptr;
+                }
+                frame().selfContext = obj;
+                frame().classContext = owningClass ? Value(owningClass) : Value::none();
+                return;
+            }
+
             newFrame.function = fnDef.get();
             newFrame.ip = 0;
             newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
@@ -4982,7 +5131,7 @@ namespace jc {
             "' has no callable implementation.");
     }
 
-    void VM::execSuperInvoke(uint16_t nameIdx, uint8_t argc) {
+    void VM::execSuperInvoke(uint16_t nameIdx, uint8_t argc, bool isTailCall) {
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value selfVal = stack[getStackSize() - 1 - argc];
         if (!selfVal.isInstance())
@@ -5060,6 +5209,29 @@ namespace jc {
             for (int j = 0; j < reserveCount; ++j) push(Value::none());
 
             eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 selfVal，保护其在可能触发的 GC 中存活
+
+            if (isTailCall) {
+                int base = frame().stackBase;
+                closeUpvalues(base);
+                int newLocalCount = fnDef->localCount;
+                int argStart = static_cast<int>(getStackSize()) - newLocalCount;
+                if (base != argStart) {
+                    for (int i = 0; i < newLocalCount; ++i) {
+                        stack[base + i] = std::move(stack[argStart + i]);
+                    }
+                }
+                setStackSize(base + newLocalCount);
+                frame().function = fnDef.get();
+                frame().ip = 0;
+                if (method->hasCaptures()) {
+                    frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
+                } else {
+                    frame().upvalues = nullptr;
+                }
+                frame().selfContext = Value(inst);
+                frame().classContext = Value(owningClass);
+                return;
+            }
 
             newFrame.function = fnDef.get();
             newFrame.ip = 0;

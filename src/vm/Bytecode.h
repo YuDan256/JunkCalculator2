@@ -132,6 +132,10 @@ namespace jc {
         OP_SUPER_INVOKE,    // [name_idx:16bit, argc:8bit]
         OP_GET_SELF,        // ★ 新增
 
+        OP_TAIL_CALL,       // [arg_count:8bit]
+        OP_TAIL_INVOKE,     // [name_idx:16bit, argc:8bit, icIdx:16bit]
+        OP_TAIL_SUPER_INVOKE, // [name_idx:16bit, argc:8bit]
+
         // 导入
         OP_IMPORT,          // [path_idx:16bit]
 
@@ -236,6 +240,9 @@ namespace jc {
         case OpCode::OP_ASSERT_RETURN_TYPE: return "OP_ASSERT_RETURN_TYPE";
         case OpCode::OP_MATCH_TYPE: return "OP_MATCH_TYPE";
         case OpCode::OP_MATCH_SHAPE: return "OP_MATCH_SHAPE";
+        case OpCode::OP_TAIL_CALL: return "OP_TAIL_CALL";
+        case OpCode::OP_TAIL_INVOKE: return "OP_TAIL_INVOKE";
+        case OpCode::OP_TAIL_SUPER_INVOKE: return "OP_TAIL_SUPER_INVOKE";
         default: return "UNKNOWN_OP";
         }
     }
@@ -376,7 +383,8 @@ namespace jc {
             // ============================================
             // 格式 1: 1 个 uint8_t 操作数 (2 字节)
             // ============================================
-            case OpCode::OP_CALL: {
+            case OpCode::OP_CALL:
+            case OpCode::OP_TAIL_CALL: {
                 uint8_t argc = code[offset + 1];
                 std::cout << static_cast<int>(argc) << " args" << std::endl;
                 return offset + 2;
@@ -488,7 +496,8 @@ namespace jc {
             // ============================================
             // 格式 4: uint16_t 名称索引 + uint8_t 参数个数 (4 字节)
             // ============================================
-            case OpCode::OP_SUPER_INVOKE: {
+            case OpCode::OP_SUPER_INVOKE:
+            case OpCode::OP_TAIL_SUPER_INVOKE: {
                 uint16_t idx = read16(offset + 1);
                 uint8_t argc = code[offset + 3];
                 std::cout << idx << " (";
@@ -497,7 +506,8 @@ namespace jc {
                 std::cout << ") " << static_cast<int>(argc) << " args" << std::endl;
                 return offset + 4;
             }
-            case OpCode::OP_INVOKE: {
+            case OpCode::OP_INVOKE:
+            case OpCode::OP_TAIL_INVOKE: {
                 uint16_t idx = read16(offset + 1);
                 uint8_t argc = code[offset + 3];
                 uint16_t icIdx = read16(offset + 4);

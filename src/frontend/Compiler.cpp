@@ -18,7 +18,13 @@ namespace jc {
     }
     uint16_t Compiler::makeConstant(const Value& val) { return chunk()->addConstant(val); }
     uint16_t Compiler::identifierConstant(const std::string& name) { return makeConstant(Value(name)); }
-    void Compiler::compileNode(Expr* expr) { expr->accept(*this); }
+    void Compiler::compileNode(Expr* expr) { 
+        bool isCall = dynamic_cast<Call*>(expr) || dynamic_cast<InvokeExpr*>(expr) || dynamic_cast<MethodCallExpr*>(expr) || dynamic_cast<GroupingExpr*>(expr);
+        bool prevTail = inTailPosition;
+        if (!isCall) inTailPosition = false;
+        expr->accept(*this); 
+        inTailPosition = prevTail;
+    }
 
     void Compiler::initCompiler(CompiledFunction* fn) {
         CompilerState state;
@@ -750,8 +756,15 @@ namespace jc {
         for (auto& argExpr : expr->arguments) {
             compileNode(argExpr.get());
         }
-        emit(OpCode::OP_CALL, expr->callee.line);
-        emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
+        
+        if (inTailPosition) {
+            emit(OpCode::OP_TAIL_CALL, expr->callee.line);
+            emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
+            tailCallEmitted = true;
+        } else {
+            emit(OpCode::OP_CALL, expr->callee.line);
+            emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
+        }
 
         bool hasVariableArgs = false;
         for (auto& argExpr : expr->arguments) {
@@ -1094,8 +1107,31 @@ namespace jc {
     }
 
     void Compiler::visitReturnExpr(ReturnExpr* expr) {
-        if (expr->value) compileNode(expr->value.get());
-        else emit(OpCode::OP_NONE, lastLine);
+        bool hasRefParams = false;
+        for (bool isRef : current().function->paramIsRef) {
+            if (isRef) { hasRefParams = true; break; }
+        }
+        bool isInit = current().function->name == "init";
+        bool canTailCall = current().expectedReturnType.empty() && current().tryDepth == 0 && !hasRefParams && !isInit;
+
+        if (expr->value) {
+            bool prevTail = inTailPosition;
+            bool prevEmitted = tailCallEmitted;
+            inTailPosition = canTailCall;
+            tailCallEmitted = false;
+            
+            compileNode(expr->value.get());
+            
+            bool emitted = tailCallEmitted;
+            inTailPosition = prevTail;
+            tailCallEmitted = prevEmitted;
+
+            if (emitted) {
+                return; // 尾调用指令已经包含了 return 语义
+            }
+        } else {
+            emit(OpCode::OP_NONE, lastLine);
+        }
 
         // ★ 幽灵注入：手工书写的返回值检查
         if (!current().expectedReturnType.empty()) {
@@ -1843,8 +1879,15 @@ namespace jc {
     void Compiler::visitInvokeExpr(InvokeExpr* expr) {
         compileNode(expr->callee.get());
         for (auto& argExpr : expr->arguments) compileNode(argExpr.get());
-        emit(OpCode::OP_CALL, lastLine);
-        emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+        
+        if (inTailPosition) {
+            emit(OpCode::OP_TAIL_CALL, lastLine);
+            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+            tailCallEmitted = true;
+        } else {
+            emit(OpCode::OP_CALL, lastLine);
+            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+        }
 
         bool hasVariableArgs = false;
         for (auto& argExpr : expr->arguments) {
@@ -2882,19 +2925,34 @@ namespace jc {
             emit(OpCode::OP_GET_SELF, lastLine);
             for (auto& arg : expr->arguments) compileNode(arg.get());
             uint16_t nameIdx = identifierConstant(expr->method.lexeme);
-            emit(OpCode::OP_SUPER_INVOKE, lastLine);
-            emit16(nameIdx, lastLine);
-            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+            if (inTailPosition) {
+                emit(OpCode::OP_TAIL_SUPER_INVOKE, lastLine);
+                emit16(nameIdx, lastLine);
+                emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+                tailCallEmitted = true;
+            } else {
+                emit(OpCode::OP_SUPER_INVOKE, lastLine);
+                emit16(nameIdx, lastLine);
+                emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+            }
             return;
         }
 
         compileNode(expr->object.get());
         for (auto& arg : expr->arguments) compileNode(arg.get());
         uint16_t nameIdx = identifierConstant(expr->method.lexeme);
-        emit(OpCode::OP_INVOKE, lastLine);
-        emit16(nameIdx, lastLine);
-        emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-        emit16(chunk()->addInlineCache(), lastLine);
+        if (inTailPosition) {
+            emit(OpCode::OP_TAIL_INVOKE, lastLine);
+            emit16(nameIdx, lastLine);
+            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+            emit16(chunk()->addInlineCache(), lastLine);
+            tailCallEmitted = true;
+        } else {
+            emit(OpCode::OP_INVOKE, lastLine);
+            emit16(nameIdx, lastLine);
+            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+            emit16(chunk()->addInlineCache(), lastLine);
+        }
         return;
     }
 

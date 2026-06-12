@@ -32,6 +32,8 @@ namespace jc {
             int tryDepth = 0;
             std::string expectedReturnType = "";
         };
+        bool inTailPosition = false;
+        bool tailCallEmitted = false;
         struct LoopInfo {
             int loopStart;
             std::vector<int> breakJumps;

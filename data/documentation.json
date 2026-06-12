@@ -200,7 +200,7 @@
       "    x += expr           x -= expr           x *= expr",
       "    x /= expr           x %= expr           x ^= expr",
       "    x &= expr           x |= expr           x <<= expr          x >>= expr",
-      "    Also works on indexed elements: A[i, j] += 1, d.flag |= set(\"X\")",
+      "    Also works on indexed elements: A[i, j] += 1, d.flag |= @{\"X\"}",
       "",
       "  Multi-statement Rules",
       "  ──────────────────────",
@@ -2105,12 +2105,11 @@
       "",
       "  Construction",
       "  ──────────────────────",
-      "    s = set()                       Empty set",
-      "    s = @{1, 2, 3}                  Set literal syntax",
-      "    s = set(1, 2, 3)               From values (duplicates auto-removed)",
-      "    s = set(1, 1, 2, 2, 3)         → Set{1, 2, 3}",
+      "    s = set()                       Empty set (or use @{})",
+      "    s = @{1, 2, 3}                  Set literal syntax (recommended)",
+      "    s = @{1, 1, 2, 2, 3}            → @{1, 2, 3} (duplicates auto-removed)",
       "    s = toSet([3, 1, 4, 1, 5])     From array/list/string (deduplicates)",
-      "    s = toSet(\"hello\")             → Set{\"h\", \"e\", \"l\", \"o\"}",
+      "    s = toSet(\"hello\")             → @{\"h\", \"e\", \"l\", \"o\"}",
       "",
       "  Membership & Iteration",
       "  ──────────────────────",
@@ -2177,7 +2176,7 @@
       "  Immutability & Hashing (Native Value Hashing)",
       "  ──────────────────────",
       "    Sets use the same Native Value Hashing engine as Dicts.",
-      "    `set(1.0, int(1), frac(1,1))` will result in a Set with exactly ONE element.",
+      "    `@{1.0, int(1), frac(1,1)}` will result in a Set with exactly ONE element.",
       "",
       "    Elements MUST be hashable. Unfrozen containers will throw a TypeError ",
       "    if inserted. Built-in functions that generate nested sets (like setPow ",
@@ -2195,26 +2194,26 @@
       "      ",
       "    Syntax        Depth         Lock State          Best For...",
       "    b = a         Zero (Ref)    Same as source      Fast passing, default high-perf state.",
-      "    b = a | set() Shallow       Outer unfrozen      Flat cloning, simple unfrozen shell.",
+      "    b = a | @{}   Shallow       Outer unfrozen      Flat cloning, simple unfrozen shell.",
       "    b = copy(a)   Deep          Same as source      Exact deep clone, preserving lock states.",
       "    b = val(a)    Deep          Fully frozen        Read-only snapshots, safe Set elements.",
       "    b = clone(a)  Deep          Fully unfrozen      Complete rebirth. Fully mutable nested data.",
       "",
       "  Examples",
       "  ──────────────────────",
-      "    a = set(1, 2, 3)",
-      "    b = set(2, 3, 4)",
+      "    a = @{1, 2, 3}",
+      "    b = @{2, 3, 4}",
       "",
-      "    a | b                           → Set{1, 2, 3, 4}",
-      "    a & b                           → Set{2, 3}",
-      "    a - b                           → Set{1}",
-      "    a * set(\"x\", \"y\")               → Set{[1, \"x\"], [1, \"y\"], ... [3, \"y\"]}",
-      "    setPow(set(1, 2))               → Set{Set{}, Set{1}, Set{2}, Set{1, 2}}",
+      "    a | b                           → @{1, 2, 3, 4}",
+      "    a & b                           → @{2, 3}",
+      "    a - b                           → @{1}",
+      "    a * @{\"x\", \"y\"}                   → @{[1, \"x\"], [1, \"y\"], ... [3, \"y\"]}",
+      "    setPow(@{1, 2})                   → @{@{}, @{1}, @{2}, @{1, 2}}",
       "",
-      "    chars = toSet(\"abracadabra\")    → Set{\"a\", \"b\", \"c\", \"d\", \"r\"}",
+      "    chars = toSet(\"abracadabra\")    → @{\"a\", \"b\", \"c\", \"d\", \"r\"}",
       "    3 in a                          → true",
       "    9 in a                          → false",
-      "    isSubset(set(1, 2), a)          → true"
+      "    isSubset(@{1, 2}, a)              → true"
     ],
     "class": [
       "═══ Classes, Instances, Inheritance & Operator Overloading ═══",
@@ -4287,7 +4286,7 @@
     },
     "set": {
       "signature": "set(...)",
-      "desc": "Constructs a Set containing unique elements.",
+      "desc": "Constructs a Set containing unique elements. (Note: @{...} literal syntax is recommended).",
       "examples": [
         "set(1, 2, 2, 3)"
       ]
@@ -4362,14 +4361,14 @@
       "signature": "setUnion(a, b)",
       "desc": "Returns a new Set containing all elements from both sets.",
       "examples": [
-        "setUnion(set(1, 2), set(2, 3))"
+        "setUnion(@{1, 2}, @{2, 3})"
       ]
     },
     "setIntersect": {
       "signature": "setIntersect(a, b)",
       "desc": "Returns a new Set containing elements present in both sets.",
       "examples": [
-        "setIntersect(set(1, 2), set(2, 3))"
+        "setIntersect(@{1, 2}, @{2, 3})"
       ]
     },
     "print": {
@@ -5020,37 +5019,37 @@
     "setDiff": {
       "signature": "setDiff(a, b)",
       "desc": "Returns a Set of elements in a but not in b.",
-      "examples": ["setDiff(set(1, 2), set(2, 3))"]
+      "examples": ["setDiff(@{1, 2}, @{2, 3})"]
     },
     "setSymDiff": {
       "signature": "setSymDiff(a, b)",
       "desc": "Returns a Set of elements in exactly one of the sets.",
-      "examples": ["setSymDiff(set(1, 2), set(2, 3))"]
+      "examples": ["setSymDiff(@{1, 2}, @{2, 3})"]
     },
     "isSubset": {
       "signature": "isSubset(a, b)",
       "desc": "Returns true if a is a subset of b.",
-      "examples": ["isSubset(set(1), set(1, 2))"]
+      "examples": ["isSubset(@{1}, @{1, 2})"]
     },
     "isSuperset": {
       "signature": "isSuperset(a, b)",
       "desc": "Returns true if a is a superset of b.",
-      "examples": ["isSuperset(set(1, 2), set(1))"]
+      "examples": ["isSuperset(@{1, 2}, @{1})"]
     },
     "isDisjoint": {
       "signature": "isDisjoint(a, b)",
       "desc": "Returns true if a and b share no elements.",
-      "examples": ["isDisjoint(set(1), set(2))"]
+      "examples": ["isDisjoint(@{1}, @{2})"]
     },
     "setProduct": {
       "signature": "setProduct(a, b)",
       "desc": "Returns the Cartesian product of two sets.",
-      "examples": ["setProduct(set(1), set(\"a\"))"]
+      "examples": ["setProduct(@{1}, @{\"a\"})"]
     },
     "setPow": {
       "signature": "setPow(s)",
       "desc": "Returns the powerset of s (Set of all subsets).",
-      "examples": ["setPow(set(1, 2))"]
+      "examples": ["setPow(@{1, 2})"]
     },
     "appendFile": {
       "signature": "appendFile(path, content)",
@@ -5518,7 +5517,7 @@
     "isset": {
       "signature": "isset(x)",
       "desc": "Returns true if x is a Set.",
-      "examples": ["isset(set(1))"]
+      "examples": ["isset(@{1})"]
     },
     "prob.Normal": {
       "signature": "prob.Normal([mu], [sigma])",

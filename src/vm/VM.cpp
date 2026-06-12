@@ -3803,14 +3803,14 @@ namespace jc {
                 list->mut()[i] = val;
             }
             else if (obj.isString()) {
-                if (obj.asObj()->refCount > 2) obj = Value(static_cast<ObjString*>(obj.asObj())->str);
-                auto& s = static_cast<ObjString*>(obj.asObj())->str;
+                std::string s = obj.asString();
                 if (i < 0) i = static_cast<int>(s.size()) + i;
                 if (i < 0 || i >= static_cast<int>(s.size()))
                     throw std::runtime_error("VM Error: String index out of bounds.");
                 if (!val.isString() || val.asString().size() != 1)
                     throw std::runtime_error("VM Error: String element assignment requires a single character.");
                 s[i] = val.asString()[0];
+                obj = Value(s);
             }
             pop(); pop(); pop();
             push(val);
@@ -4205,8 +4205,7 @@ namespace jc {
                 }
             }
             else if (obj.isString()) {
-                if (obj.asObj()->refCount > 2) obj = Value(static_cast<ObjString*>(obj.asObj())->str);
-                auto& s = static_cast<ObjString*>(obj.asObj())->str;
+                std::string s = obj.asString();
                 auto ids = buildSliceIndices(static_cast<int>(s.size()), start, end, step);
                 if (!val.isString())
                     throw std::runtime_error("VM Error: String slice assignment requires a string.");
@@ -4214,6 +4213,7 @@ namespace jc {
                 if (static_cast<int>(src.size()) != static_cast<int>(ids.size()))
                     throw std::runtime_error("VM Error: String slice assignment size mismatch.");
                 for (size_t k = 0; k < ids.size(); ++k) s[ids[k]] = src[k];
+                obj = Value(s);
             }
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));

@@ -301,7 +301,7 @@ namespace jc {
     }
 
 
-    std::any Compiler::visitLiteral(Literal* expr) {
+    void Compiler::visitLiteral(Literal* expr) {
         if (expr->isKeyword) {
             if (expr->value == "true") emit(OpCode::OP_TRUE, lastLine);
             else if (expr->value == "false") emit(OpCode::OP_FALSE, lastLine);
@@ -353,10 +353,10 @@ namespace jc {
                 chunk()->emitConstant(Value(std::stod(s)), lastLine);
             }
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitVariable(Variable* expr) {
+    void Compiler::visitVariable(Variable* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
         int slot = resolveLocal(name);
@@ -376,10 +376,10 @@ namespace jc {
                 emit16(idx, expr->name.line);
             }
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitAssign(Assign* expr) {
+    void Compiler::visitAssign(Assign* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
 
@@ -441,7 +441,7 @@ namespace jc {
                 emit16(static_cast<uint16_t>(upvalue), expr->name.line);
                 
                 chunk()->patchJump(endJump);
-                return {};
+                return;
             }
         }
 
@@ -489,7 +489,7 @@ namespace jc {
                 emit16(idx, expr->name.line);
             }
         }
-        return {};
+        return;
     }
 
     std::optional<Value> Compiler::tryFoldConstant(Expr* expr) {
@@ -633,13 +633,13 @@ namespace jc {
         return std::nullopt;
     }
 
-    std::any Compiler::visitUnary(Unary* expr) {
+    void Compiler::visitUnary(Unary* expr) {
         lastLine = expr->op.line;
         if (auto folded = tryFoldConstant(expr)) {
             uint16_t idx = makeConstant(*folded);
             emit(OpCode::OP_CONSTANT, lastLine);
             emit16(idx, lastLine);
-            return {};
+            return;
         }
 
         compileNode(expr->right.get());
@@ -650,16 +650,16 @@ namespace jc {
         case TokenType::PLUS:  break;
         default: throw std::runtime_error("Compiler Error: Unknown unary operator.");
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitBinary(Binary* expr) {
+    void Compiler::visitBinary(Binary* expr) {
         lastLine = expr->op.line;
         if (auto folded = tryFoldConstant(expr)) {
             uint16_t idx = makeConstant(*folded);
             emit(OpCode::OP_CONSTANT, lastLine);
             emit16(idx, lastLine);
-            return {};
+            return;
         }
 
         if (expr->op.type == TokenType::AND_AND) {
@@ -668,7 +668,7 @@ namespace jc {
             emit(OpCode::OP_POP, expr->op.line);
             compileNode(expr->right.get());
             chunk()->patchJump(jump);
-            return {};
+            return;
         }
         if (expr->op.type == TokenType::OR_OR) {
             compileNode(expr->left.get());
@@ -678,7 +678,7 @@ namespace jc {
             emit(OpCode::OP_POP, expr->op.line);
             compileNode(expr->right.get());
             chunk()->patchJump(endJump);
-            return {};
+            return;
         }
 
         if (expr->op.type == TokenType::PIPE) {
@@ -686,7 +686,7 @@ namespace jc {
             compileNode(expr->left.get());
             emit(OpCode::OP_CALL, expr->op.line);
             emit(1, expr->op.line);
-            return {};
+            return;
         }
 
         compileNode(expr->left.get());
@@ -716,10 +716,10 @@ namespace jc {
             throw std::runtime_error("Compiler Error: Unsupported binary operator '" +
                 expr->op.lexeme + "'.");
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitCall(Call* expr) {
+    void Compiler::visitCall(Call* expr) {
         lastLine = expr->callee.line;
         const std::string& name = expr->callee.lexeme;
 
@@ -808,10 +808,10 @@ namespace jc {
                 }
             }
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitBlock(Block* expr) {
+    void Compiler::visitBlock(Block* expr) {
         beginScope();
         if (expr->statements.empty()) {
             emit(OpCode::OP_NONE, lastLine);
@@ -826,10 +826,10 @@ namespace jc {
         }
 
         endScope();
-        return {};
+        return;
     }
 
-    std::any Compiler::visitIfExpr(IfExpr* expr) {
+    void Compiler::visitIfExpr(IfExpr* expr) {
         if (auto condVal = tryFoldConstant(expr->condition.get())) {
             beginScope();
             if (condVal->truthy()) {
@@ -842,7 +842,7 @@ namespace jc {
                 emit(OpCode::OP_NONE, lastLine);
             }
             endScope();
-            return {};
+            return;
         }
 
         beginScope(); // ★ 自动创建块级作用域
@@ -861,14 +861,14 @@ namespace jc {
         }
         chunk()->patchJump(elseJump);
         endScope(); // ★
-        return {};
+        return;
     }
 
-    std::any Compiler::visitWhileExpr(WhileExpr* expr) {
+    void Compiler::visitWhileExpr(WhileExpr* expr) {
         auto condVal = tryFoldConstant(expr->condition.get());
         if (condVal && !condVal->truthy()) {
             emit(OpCode::OP_NONE, lastLine);
-            return {};
+            return;
         }
 
         beginScope(); // ★ 自动创建块级作用域
@@ -904,10 +904,10 @@ namespace jc {
 
         emit(OpCode::OP_NONE, lastLine);
         endScope(); // ★
-        return {};
+        return;
     }
 
-    std::any Compiler::visitForExpr(ForExpr* expr) {
+    void Compiler::visitForExpr(ForExpr* expr) {
         beginScope();
         compileNode(expr->initializer.get());
         emit(OpCode::OP_POP, lastLine);
@@ -938,10 +938,10 @@ namespace jc {
 
         emit(OpCode::OP_NONE, lastLine);
         endScope();
-        return {};
+        return;
     }
 
-    std::any Compiler::visitLambdaExpr(LambdaExpr* expr) {
+    void Compiler::visitLambdaExpr(LambdaExpr* expr) {
         auto fn = std::make_shared<CompiledFunction>();
         fn->name = expr->name;
         fn->maxArity = static_cast<int>(expr->params.size());
@@ -1002,7 +1002,7 @@ namespace jc {
         emit(OpCode::OP_CLOSURE, lastLine);
         emit16(fnIdx, lastLine);
 
-        return {};
+        return;
     }
 
     int Compiler::addUpvalue(int level, const std::string& name,
@@ -1092,7 +1092,7 @@ namespace jc {
         return uv;
     }
 
-    std::any Compiler::visitReturnExpr(ReturnExpr* expr) {
+    void Compiler::visitReturnExpr(ReturnExpr* expr) {
         if (expr->value) compileNode(expr->value.get());
         else emit(OpCode::OP_NONE, lastLine);
 
@@ -1105,10 +1105,10 @@ namespace jc {
 
         for (int i = 0; i < current().tryDepth; ++i) emit(OpCode::OP_TRY_END, lastLine);
         emit(OpCode::OP_RETURN, lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitBreakExpr(BreakExpr*) {
+    void Compiler::visitBreakExpr(BreakExpr*) {
         if (loopStack.empty()) throw std::runtime_error("Compiler Error: 'break' outside loop.");
 
         // ★ 智能发散机制：清理掉在这层跳出沿途中遇到的所有 Try 处理器
@@ -1116,10 +1116,10 @@ namespace jc {
         for (int i = 0; i < diff; ++i) emit(OpCode::OP_TRY_END, lastLine);
         int jump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
         loopStack.back().breakJumps.push_back(jump);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitContinueExpr(ContinueExpr*) {
+    void Compiler::visitContinueExpr(ContinueExpr*) {
         if (loopStack.empty()) throw std::runtime_error("Compiler Error: 'continue' outside loop.");
         emit(OpCode::OP_NONE, lastLine);
         // ★ 同样智能清理
@@ -1127,10 +1127,10 @@ namespace jc {
         for (int i = 0; i < diff; ++i) emit(OpCode::OP_TRY_END, lastLine);
         int jump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
         loopStack.back().continueJumps.push_back(jump);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitCompoundAssign(CompoundAssign* expr) {
+    void Compiler::visitCompoundAssign(CompoundAssign* expr) {
         auto emitOp = [this](TokenType op) {
             switch (op) {
             case TokenType::PLUS:    emit(OpCode::OP_ADD, lastLine); break;
@@ -1216,7 +1216,7 @@ namespace jc {
                     emit16(idx, lastLine);
                 }
             }
-            return {};
+            return;
         }
 
         if (auto* dot = dynamic_cast<DotAccess*>(expr->target.get())) {
@@ -1251,7 +1251,7 @@ namespace jc {
             
             current().locals.pop_back();
             current().locals.pop_back();
-            return {};
+            return;
         }
 
         if (auto* idx = dynamic_cast<IndexAccess*>(expr->target.get())) {
@@ -1385,13 +1385,13 @@ namespace jc {
             }
             current().locals.pop_back();
             
-            return {};
+            return;
         }
 
         throw std::runtime_error("Compiler Error: Compound assignment target not supported in VM.");
     }
 
-    std::any Compiler::visitForInExpr(ForInExpr* expr) {
+    void Compiler::visitForInExpr(ForInExpr* expr) {
         beginScope(); // ★ 自动创建块级作用域
         compileNode(expr->iterable.get());
         emit(OpCode::OP_ITER_INIT, lastLine);
@@ -1515,10 +1515,10 @@ namespace jc {
         emit(OpCode::OP_POP, lastLine);   // pop List
         emit(OpCode::OP_NONE, lastLine);
         endScope(); // ★
-        return {};
+        return;
     }
 
-    std::any Compiler::visitMatrixNode(MatrixNode* expr) {
+    void Compiler::visitMatrixNode(MatrixNode* expr) {
         int rows = static_cast<int>(expr->elements.size());
         if (rows == 0) {
             if (expr->forceList) {
@@ -1526,7 +1526,7 @@ namespace jc {
             } else {
                 chunk()->emitConstant(Value(RealMatrix(0, 0)), lastLine);
             }
-            return {};
+            return;
         }
         
         if (expr->forceList) {
@@ -1549,7 +1549,7 @@ namespace jc {
                 emit(OpCode::OP_BUILD_LIST, lastLine);
                 emit16(static_cast<uint16_t>(rows), lastLine);
             }
-            return {};
+            return;
         }
 
         std::vector<int> rowCols;
@@ -1565,10 +1565,10 @@ namespace jc {
         for (int c : rowCols) {
             emit16(static_cast<uint16_t>(c), lastLine);
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitIndexAccess(IndexAccess* expr) {
+    void Compiler::visitIndexAccess(IndexAccess* expr) {
         bool hasSlice = false;
         for (auto& idx : expr->indices) {
             if (dynamic_cast<SliceExpr*>(idx.get())) {
@@ -1593,16 +1593,16 @@ namespace jc {
             }
             emit(OpCode::OP_SLICE_GET, lastLine);
             emit(static_cast<uint8_t>(expr->indices.size()), lastLine);
-            return {};
+            return;
         }
         compileNode(expr->object.get());
         for (auto& idx : expr->indices) compileNode(idx.get());
         emit(OpCode::OP_INDEX_GET, lastLine);
         emit(static_cast<uint8_t>(expr->indices.size()), lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitIndexAssign(IndexAssign* expr) {
+    void Compiler::visitIndexAssign(IndexAssign* expr) {
         bool hasSlice = false;
         if (expr->indexChain.size() == 1) {
             for (auto& idx : expr->indexChain[0]) {
@@ -1834,10 +1834,10 @@ namespace jc {
         if (rootTmpIdx != -1) current().locals.pop_back();
         current().locals.pop_back(); // untrack valTmpIdx
 
-        return {};
+        return;
     }
 
-    std::any Compiler::visitInvokeExpr(InvokeExpr* expr) {
+    void Compiler::visitInvokeExpr(InvokeExpr* expr) {
         compileNode(expr->callee.get());
         for (auto& argExpr : expr->arguments) compileNode(argExpr.get());
         emit(OpCode::OP_CALL, lastLine);
@@ -1870,7 +1870,7 @@ namespace jc {
                 for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
             }
         }
-        return {};
+        return;
     }
 
     void Compiler::collectPatternVars(Pattern* pat, std::vector<std::pair<std::string, ScopeModifier>>& boundVars) {
@@ -2292,7 +2292,7 @@ namespace jc {
         }
     }
 
-    std::any Compiler::visitDestructAssign(DestructAssign* expr) {
+    void Compiler::visitDestructAssign(DestructAssign* expr) {
         // 1. Pre-register ref/state names
         std::vector<std::pair<std::string, ScopeModifier>> boundVars;
         collectPatternVars(expr->pattern.get(), boundVars);
@@ -2372,10 +2372,10 @@ namespace jc {
         emit(OpCode::OP_GET_LOCAL, lastLine);
         emit16(static_cast<uint16_t>(valSlot), lastLine);
 
-        return {};
+        return;
     }
 
-    std::any Compiler::visitSwitchExpr(SwitchExpr* expr) {
+    void Compiler::visitSwitchExpr(SwitchExpr* expr) {
         compileNode(expr->subject.get());
         std::vector<int> endJumps;
 
@@ -2407,16 +2407,16 @@ namespace jc {
         else emit(OpCode::OP_NONE, lastLine);
 
         for (int ej : endJumps) chunk()->patchJump(ej);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitThrowExpr(ThrowExpr* expr) {
+    void Compiler::visitThrowExpr(ThrowExpr* expr) {
         compileNode(expr->value.get());
         emit(OpCode::OP_THROW, lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitTryCatchExpr(TryCatchExpr* expr) {
+    void Compiler::visitTryCatchExpr(TryCatchExpr* expr) {
         uint16_t catchNameIdx = identifierConstant(expr->catchName.lexeme);
         emit(OpCode::OP_TRY_BEGIN, lastLine);
         int offsetSlot = static_cast<int>(chunk()->code.size());
@@ -2462,10 +2462,10 @@ namespace jc {
 
         compileNode(expr->catchBody.get());
         chunk()->patchJump(skipCatch);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitDictLiteral(DictLiteral* expr) {
+    void Compiler::visitDictLiteral(DictLiteral* expr) {
         for (auto& [keyExpr, valExpr] : expr->entries) {
             if (!keyExpr) {
                 throw std::runtime_error("Compiler Error: Dictionary spread ('...') is not supported in normal dictionary literals.");
@@ -2475,19 +2475,19 @@ namespace jc {
         }
         emit(OpCode::OP_BUILD_DICT, lastLine);
         emit16(static_cast<uint16_t>(expr->entries.size()), lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitSetLiteral(SetLiteral* expr) {
+    void Compiler::visitSetLiteral(SetLiteral* expr) {
         for (auto& elemExpr : expr->elements) {
             compileNode(elemExpr.get());
         }
         emit(OpCode::OP_BUILD_SET, lastLine);
         emit16(static_cast<uint16_t>(expr->elements.size()), lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitRefDecl(RefDecl* expr) {
+    void Compiler::visitRefDecl(RefDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
         if (current().stateNames.count(name) > 0) {
@@ -2504,10 +2504,10 @@ namespace jc {
             emit(OpCode::OP_GET_GLOBAL, lastLine);
             emit16(idx, lastLine);
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitStateDecl(StateDecl* expr) {
+    void Compiler::visitStateDecl(StateDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
         if (current().refNames.count(name) > 0) {
@@ -2524,10 +2524,10 @@ namespace jc {
             emit(OpCode::OP_GET_GLOBAL, lastLine);
             emit16(idx, lastLine);
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitLocalDecl(LocalDecl* expr) {
+    void Compiler::visitLocalDecl(LocalDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
         if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) {
@@ -2541,10 +2541,10 @@ namespace jc {
         emit(OpCode::OP_NONE, lastLine);
         emit(OpCode::OP_SET_LOCAL, lastLine);
         emit16(static_cast<uint16_t>(slot), lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitConstDecl(ConstDecl* expr) {
+    void Compiler::visitConstDecl(ConstDecl* expr) {
         compileNode(expr->value.get());
         const std::string& name = expr->name.lexeme;
 
@@ -2569,10 +2569,10 @@ namespace jc {
                 emit16(idx, lastLine);
             }
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitDeleteExpr(DeleteExpr* expr) {
+    void Compiler::visitDeleteExpr(DeleteExpr* expr) {
         for (auto& tok : expr->names) {
             uint16_t fnIdx = identifierConstant("__vm_delete__");
             emit(OpCode::OP_CONSTANT, lastLine);
@@ -2583,10 +2583,10 @@ namespace jc {
             emit(OpCode::OP_POP, lastLine);
         }
         emit(OpCode::OP_NONE, lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitFStringExpr(FStringExpr* expr) {
+    void Compiler::visitFStringExpr(FStringExpr* expr) {
         int partCount = 0;
         for (size_t i = 0; i < expr->exprs.size(); ++i) {
             if (!expr->literals[i].empty()) {
@@ -2610,10 +2610,10 @@ namespace jc {
         }
         emit(OpCode::OP_CONCAT_STRINGS, lastLine);
         emit16(static_cast<uint16_t>(partCount), lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitListCompExpr(ListCompExpr* expr) {
+    void Compiler::visitListCompExpr(ListCompExpr* expr) {
         beginScope(); // ★ 列表推导式自带块级作用域
         emit(OpCode::OP_LIST_INIT, lastLine);
         compileCompClause(expr, 0);
@@ -2621,16 +2621,16 @@ namespace jc {
             emit(OpCode::OP_LIST_COMP_END, lastLine); // ★ 底层指令降维
         }
         endScope();
-        return {};
+        return;
     }
 
-    std::any Compiler::visitImportExpr(ImportExpr* expr) {
+    void Compiler::visitImportExpr(ImportExpr* expr) {
         compileNode(expr->path.get());
         emit(OpCode::OP_IMPORT, lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitNamespaceDecl(NamespaceDecl* expr) {
+    void Compiler::visitNamespaceDecl(NamespaceDecl* expr) {
         auto fn = std::make_shared<CompiledFunction>();
         fn->name = "<namespace " + expr->name.lexeme + ">";
         fn->maxArity = 0;
@@ -2713,10 +2713,10 @@ namespace jc {
             }
         }
 
-        return {};
+        return;
     }
 
-    std::any Compiler::visitClassDefExpr(ClassDefExpr* expr) {
+    void Compiler::visitClassDefExpr(ClassDefExpr* expr) {
         lastLine = expr->name.line;
         const std::string& className = expr->name.lexeme;
         uint16_t nameIdx = identifierConstant(className);
@@ -2838,26 +2838,26 @@ namespace jc {
 
             emit(OpCode::OP_POP, lastLine);
         }
-        return {};
+        return;
     }
 
-    std::any Compiler::visitDotAccess(DotAccess* expr) {
+    void Compiler::visitDotAccess(DotAccess* expr) {
         lastLine = expr->field.line;
         if (dynamic_cast<SuperExpr*>(expr->object.get())) {
             emit(OpCode::OP_GET_SELF, lastLine);
             uint16_t nameIdx = identifierConstant(expr->field.lexeme);
             emit(OpCode::OP_GET_SUPER, lastLine); emit16(nameIdx, lastLine);
-            return {};
+            return;
         }
 
         compileNode(expr->object.get());
         uint16_t nameIdx = identifierConstant(expr->field.lexeme);
         emit(OpCode::OP_GET_PROPERTY, lastLine);
         emit16(nameIdx, lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitDotAssign(DotAssign* expr) {
+    void Compiler::visitDotAssign(DotAssign* expr) {
         lastLine = expr->field.line;
         
         compileNode(expr->object.get());
@@ -2867,10 +2867,10 @@ namespace jc {
         emit(OpCode::OP_SET_PROPERTY, lastLine);
         emit16(nameIdx, lastLine);
         
-        return {};
+        return;
     }
 
-    std::any Compiler::visitMethodCallExpr(MethodCallExpr* expr) {
+    void Compiler::visitMethodCallExpr(MethodCallExpr* expr) {
         lastLine = expr->method.line;
         if (dynamic_cast<SuperExpr*>(expr->object.get())) {
             emit(OpCode::OP_GET_SELF, lastLine);
@@ -2879,7 +2879,7 @@ namespace jc {
             emit(OpCode::OP_SUPER_INVOKE, lastLine);
             emit16(nameIdx, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-            return {};
+            return;
         }
 
         compileNode(expr->object.get());
@@ -2888,23 +2888,23 @@ namespace jc {
         emit(OpCode::OP_INVOKE, lastLine);
         emit16(nameIdx, lastLine);
         emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitSuperExpr(SuperExpr*) {
+    void Compiler::visitSuperExpr(SuperExpr*) {
         throw std::runtime_error("Compiler Error: 'super' must be followed by '.method()'.");
     }
 
-    std::any Compiler::visitSelfExpr(SelfExpr*) {
+    void Compiler::visitSelfExpr(SelfExpr*) {
         emit(OpCode::OP_GET_SELF, lastLine);
-        return {};
+        return;
     }
 
-    std::any Compiler::visitSliceExpr(SliceExpr*) {
+    void Compiler::visitSliceExpr(SliceExpr*) {
         throw std::runtime_error("Compiler Error: Slice expression should be handled by visitIndexAccess.");
     }
 
-    std::any Compiler::visitSequenceExpr(SequenceExpr* expr) {
+    void Compiler::visitSequenceExpr(SequenceExpr* expr) {
         for (size_t i = 0; i < expr->expressions.size(); ++i) {
             compileNode(expr->expressions[i].get());
 
@@ -2914,15 +2914,15 @@ namespace jc {
             }
         }
         // 最后一个表达式的结果自然留在栈顶供上层读取
-        return {};
+        return;
     }
 
-    std::any Compiler::visitGroupingExpr(GroupingExpr* expr) {
+    void Compiler::visitGroupingExpr(GroupingExpr* expr) {
         compileNode(expr->expression.get());
-        return {};
+        return;
     }
 
-    std::any Compiler::visitMatchExpr(MatchExpr* expr) {
+    void Compiler::visitMatchExpr(MatchExpr* expr) {
         compileNode(expr->subject.get());
         
         addLocal("<match_subject>", current().scopeDepth);
@@ -3020,7 +3020,7 @@ namespace jc {
             chunk()->patchJump(ej);
         }
 
-        return {};
+        return;
     }
 
 }

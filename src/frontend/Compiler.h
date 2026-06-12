@@ -88,52 +88,52 @@ namespace jc {
         void setFunctionIndexOffset(int offset) { functionIndexOffset = offset; }
         int getTopLevelLocalCount() const { return topLevelLocalCount; }
 
-        std::any visitLiteral(Literal* expr) override;
-        std::any visitVariable(Variable* expr) override;
-        std::any visitAssign(Assign* expr) override;
-        std::any visitUnary(Unary* expr) override;
-        std::any visitBinary(Binary* expr) override;
-        std::any visitCall(Call* expr) override;
-        std::any visitBlock(Block* expr) override;
-        std::any visitIfExpr(IfExpr* expr) override;
-        std::any visitWhileExpr(WhileExpr* expr) override;
-        std::any visitForExpr(ForExpr* expr) override;
+        void visitLiteral(Literal* expr) override;
+        void visitVariable(Variable* expr) override;
+        void visitAssign(Assign* expr) override;
+        void visitUnary(Unary* expr) override;
+        void visitBinary(Binary* expr) override;
+        void visitCall(Call* expr) override;
+        void visitBlock(Block* expr) override;
+        void visitIfExpr(IfExpr* expr) override;
+        void visitWhileExpr(WhileExpr* expr) override;
+        void visitForExpr(ForExpr* expr) override;
 
-        std::any visitMatrixNode(MatrixNode*) override;
-        std::any visitBreakExpr(BreakExpr*) override;
-        std::any visitContinueExpr(ContinueExpr*) override;
-        std::any visitReturnExpr(ReturnExpr*) override;
-        std::any visitIndexAccess(IndexAccess*) override;
-        std::any visitIndexAssign(IndexAssign*) override;
-        std::any visitConstDecl(ConstDecl*) override;
-        std::any visitLocalDecl(LocalDecl*) override; // ★ 新增
-        std::any visitRefDecl(RefDecl*) override;
-        std::any visitStateDecl(StateDecl*) override; // ★ 新增
-        std::any visitDeleteExpr(DeleteExpr*) override;
-        std::any visitCompoundAssign(CompoundAssign*) override;
-        std::any visitLambdaExpr(LambdaExpr*) override;
-        std::any visitInvokeExpr(InvokeExpr*) override;
-        std::any visitForInExpr(ForInExpr*) override;
-        std::any visitThrowExpr(ThrowExpr*) override;
-        std::any visitTryCatchExpr(TryCatchExpr*) override;
-        std::any visitImportExpr(ImportExpr*) override;
-        std::any visitSwitchExpr(SwitchExpr*) override;
-        std::any visitClassDefExpr(ClassDefExpr*) override;
-        std::any visitNamespaceDecl(NamespaceDecl*) override;
-        std::any visitDotAccess(DotAccess*) override;
-        std::any visitDotAssign(DotAssign*) override;
-        std::any visitMethodCallExpr(MethodCallExpr*) override;
-        std::any visitSuperExpr(SuperExpr*) override;
-        std::any visitSelfExpr(SelfExpr*) override;
-        std::any visitDestructAssign(DestructAssign*) override;
-        std::any visitFStringExpr(FStringExpr*) override;
-        std::any visitListCompExpr(ListCompExpr*) override;
-        std::any visitDictLiteral(DictLiteral*) override;
-        std::any visitSetLiteral(SetLiteral*) override;
-        std::any visitSliceExpr(SliceExpr*) override;
-        std::any visitSequenceExpr(SequenceExpr* expr) override;
-        std::any visitMatchExpr(MatchExpr* expr) override;
-        std::any visitGroupingExpr(GroupingExpr* expr) override;
+        void visitMatrixNode(MatrixNode*) override;
+        void visitBreakExpr(BreakExpr*) override;
+        void visitContinueExpr(ContinueExpr*) override;
+        void visitReturnExpr(ReturnExpr*) override;
+        void visitIndexAccess(IndexAccess*) override;
+        void visitIndexAssign(IndexAssign*) override;
+        void visitConstDecl(ConstDecl*) override;
+        void visitLocalDecl(LocalDecl*) override;
+        void visitRefDecl(RefDecl*) override;
+        void visitStateDecl(StateDecl*) override;
+        void visitDeleteExpr(DeleteExpr*) override;
+        void visitCompoundAssign(CompoundAssign*) override;
+        void visitLambdaExpr(LambdaExpr*) override;
+        void visitInvokeExpr(InvokeExpr*) override;
+        void visitForInExpr(ForInExpr*) override;
+        void visitThrowExpr(ThrowExpr*) override;
+        void visitTryCatchExpr(TryCatchExpr*) override;
+        void visitImportExpr(ImportExpr*) override;
+        void visitSwitchExpr(SwitchExpr*) override;
+        void visitClassDefExpr(ClassDefExpr*) override;
+        void visitNamespaceDecl(NamespaceDecl*) override;
+        void visitDotAccess(DotAccess*) override;
+        void visitDotAssign(DotAssign*) override;
+        void visitMethodCallExpr(MethodCallExpr*) override;
+        void visitSuperExpr(SuperExpr*) override;
+        void visitSelfExpr(SelfExpr*) override;
+        void visitDestructAssign(DestructAssign*) override;
+        void visitFStringExpr(FStringExpr*) override;
+        void visitListCompExpr(ListCompExpr*) override;
+        void visitDictLiteral(DictLiteral*) override;
+        void visitSetLiteral(SetLiteral*) override;
+        void visitSliceExpr(SliceExpr*) override;
+        void visitSequenceExpr(SequenceExpr* expr) override;
+        void visitMatchExpr(MatchExpr* expr) override;
+        void visitGroupingExpr(GroupingExpr* expr) override;
     };
 
 }

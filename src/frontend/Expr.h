@@ -2,7 +2,6 @@
 #define JC2_EXPR_H
 
 #include "Token.h"
-#include <any>
 #include <memory>
 #include <stdexcept>   // ★ std::runtime_error
 #include <string>
@@ -125,57 +124,56 @@ namespace jc {
     class ExprVisitor {
     public:
         virtual ~ExprVisitor() = default;
-        virtual std::any visitBinary(Binary* expr) = 0;
-        virtual std::any visitUnary(Unary* expr) = 0;
-        virtual std::any visitLiteral(Literal* expr) = 0;
-        virtual std::any visitVariable(Variable* expr) = 0;
-        virtual std::any visitAssign(Assign* expr) = 0;
-        virtual std::any visitCall(Call* expr) = 0;
-        virtual std::any visitMatrixNode(MatrixNode* expr) = 0;
-        // ★ 新增 6 个访问者接口
-        virtual std::any visitBlock(Block* expr) = 0;
-        virtual std::any visitIfExpr(IfExpr* expr) = 0;
-        virtual std::any visitWhileExpr(WhileExpr* expr) = 0;
-        virtual std::any visitForExpr(ForExpr* expr) = 0;
-        virtual std::any visitBreakExpr(BreakExpr* expr) = 0;
-        virtual std::any visitContinueExpr(ContinueExpr* expr) = 0;
-        virtual std::any visitReturnExpr(ReturnExpr* expr) = 0;
-        virtual std::any visitIndexAccess(IndexAccess* expr) = 0;    // ★ 新增
-        virtual std::any visitIndexAssign(IndexAssign* expr) = 0;    // ★ 新增
-        virtual std::any visitConstDecl(ConstDecl* expr) = 0;   // ★ 新增
-        virtual std::any visitLocalDecl(LocalDecl* expr) = 0;   // ★ 新增
-        virtual std::any visitRefDecl(RefDecl* expr) = 0;       // ★ 新增
-        virtual std::any visitStateDecl(StateDecl* expr) = 0;   // ★ 新增
-        virtual std::any visitDeleteExpr(DeleteExpr* expr) = 0;   // ★ 新增
-        virtual std::any visitCompoundAssign(CompoundAssign* expr) = 0;
-        virtual std::any visitLambdaExpr(LambdaExpr* expr) = 0;
-        virtual std::any visitInvokeExpr(InvokeExpr* expr) = 0;
-        virtual std::any visitForInExpr(ForInExpr* expr) = 0;
-        virtual std::any visitThrowExpr(ThrowExpr* expr) = 0;         // ★
-        virtual std::any visitTryCatchExpr(TryCatchExpr* expr) = 0;   // ★
-        virtual std::any visitImportExpr(ImportExpr* expr) = 0;      // ★
-        virtual std::any visitSwitchExpr(SwitchExpr* expr) = 0;      // ★
-        virtual std::any visitClassDefExpr(ClassDefExpr* expr) = 0;     // ★
-        virtual std::any visitNamespaceDecl(NamespaceDecl* expr) = 0;   // ★ 新增
-        virtual std::any visitDotAccess(DotAccess* expr) = 0;           // ★
-        virtual std::any visitDotAssign(DotAssign* expr) = 0;           // ★
-        virtual std::any visitMethodCallExpr(MethodCallExpr* expr) = 0; // ★
-        virtual std::any visitSuperExpr(SuperExpr* expr) = 0;
-        virtual std::any visitSelfExpr(SelfExpr* expr) = 0;
-        virtual std::any visitDestructAssign(DestructAssign* expr) = 0;  // ★
-        virtual std::any visitFStringExpr(FStringExpr* expr) = 0;  // ★
-        virtual std::any visitListCompExpr(ListCompExpr* expr) = 0;  // ★
-        virtual std::any visitDictLiteral(DictLiteral* expr) = 0;  // ★
-        virtual std::any visitSetLiteral(SetLiteral* expr) = 0;  // ★ 新增
-        virtual std::any visitSliceExpr(SliceExpr* expr) = 0;  // ★ 新增
-        virtual std::any visitSequenceExpr(SequenceExpr* expr) = 0;
-        virtual std::any visitMatchExpr(MatchExpr* expr) = 0;
-        virtual std::any visitGroupingExpr(GroupingExpr* expr) = 0;
+        virtual void visitBinary(Binary* expr) = 0;
+        virtual void visitUnary(Unary* expr) = 0;
+        virtual void visitLiteral(Literal* expr) = 0;
+        virtual void visitVariable(Variable* expr) = 0;
+        virtual void visitAssign(Assign* expr) = 0;
+        virtual void visitCall(Call* expr) = 0;
+        virtual void visitMatrixNode(MatrixNode* expr) = 0;
+        virtual void visitBlock(Block* expr) = 0;
+        virtual void visitIfExpr(IfExpr* expr) = 0;
+        virtual void visitWhileExpr(WhileExpr* expr) = 0;
+        virtual void visitForExpr(ForExpr* expr) = 0;
+        virtual void visitBreakExpr(BreakExpr* expr) = 0;
+        virtual void visitContinueExpr(ContinueExpr* expr) = 0;
+        virtual void visitReturnExpr(ReturnExpr* expr) = 0;
+        virtual void visitIndexAccess(IndexAccess* expr) = 0;
+        virtual void visitIndexAssign(IndexAssign* expr) = 0;
+        virtual void visitConstDecl(ConstDecl* expr) = 0;
+        virtual void visitLocalDecl(LocalDecl* expr) = 0;
+        virtual void visitRefDecl(RefDecl* expr) = 0;
+        virtual void visitStateDecl(StateDecl* expr) = 0;
+        virtual void visitDeleteExpr(DeleteExpr* expr) = 0;
+        virtual void visitCompoundAssign(CompoundAssign* expr) = 0;
+        virtual void visitLambdaExpr(LambdaExpr* expr) = 0;
+        virtual void visitInvokeExpr(InvokeExpr* expr) = 0;
+        virtual void visitForInExpr(ForInExpr* expr) = 0;
+        virtual void visitThrowExpr(ThrowExpr* expr) = 0;
+        virtual void visitTryCatchExpr(TryCatchExpr* expr) = 0;
+        virtual void visitImportExpr(ImportExpr* expr) = 0;
+        virtual void visitSwitchExpr(SwitchExpr* expr) = 0;
+        virtual void visitClassDefExpr(ClassDefExpr* expr) = 0;
+        virtual void visitNamespaceDecl(NamespaceDecl* expr) = 0;
+        virtual void visitDotAccess(DotAccess* expr) = 0;
+        virtual void visitDotAssign(DotAssign* expr) = 0;
+        virtual void visitMethodCallExpr(MethodCallExpr* expr) = 0;
+        virtual void visitSuperExpr(SuperExpr* expr) = 0;
+        virtual void visitSelfExpr(SelfExpr* expr) = 0;
+        virtual void visitDestructAssign(DestructAssign* expr) = 0;
+        virtual void visitFStringExpr(FStringExpr* expr) = 0;
+        virtual void visitListCompExpr(ListCompExpr* expr) = 0;
+        virtual void visitDictLiteral(DictLiteral* expr) = 0;
+        virtual void visitSetLiteral(SetLiteral* expr) = 0;
+        virtual void visitSliceExpr(SliceExpr* expr) = 0;
+        virtual void visitSequenceExpr(SequenceExpr* expr) = 0;
+        virtual void visitMatchExpr(MatchExpr* expr) = 0;
+        virtual void visitGroupingExpr(GroupingExpr* expr) = 0;
     };
 
     struct Expr {
         virtual ~Expr() = default;
-        virtual std::any accept(ExprVisitor& visitor) = 0;
+        virtual void accept(ExprVisitor& visitor) = 0;
     };
 
     // ======== 原有节点 (不变) ========
@@ -187,7 +185,7 @@ namespace jc {
         Binary(std::unique_ptr<Expr> left, Token op, std::unique_ptr<Expr> right)
             : left(std::move(left)), op(std::move(op)), right(std::move(right)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitBinary(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitBinary(this); }
     };
 
     struct Unary : public Expr {
@@ -196,7 +194,7 @@ namespace jc {
         Unary(Token op, std::unique_ptr<Expr> right)
             : op(std::move(op)), right(std::move(right)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitUnary(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitUnary(this); }
     };
 
     struct Literal : public Expr {
@@ -207,13 +205,13 @@ namespace jc {
         explicit Literal(std::string value, bool isStr = false, bool isImag = false, bool isKw = false)
             : value(std::move(value)), isString(isStr), isImaginary(isImag), isKeyword(isKw) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitLiteral(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitLiteral(this); }
     };
 
     struct Variable : public Expr {
         Token name;
         explicit Variable(Token name) : name(std::move(name)) {}
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitVariable(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitVariable(this); }
     };
 
     struct Assign : public Expr {
@@ -225,13 +223,13 @@ namespace jc {
         Assign(Token name, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false)
             : name(std::move(name)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitAssign(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitAssign(this); }
     };
 
     struct LocalDecl : public Expr {
         Token name;
         explicit LocalDecl(Token name) : name(std::move(name)) {}
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitLocalDecl(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitLocalDecl(this); }
     };
 
     struct Call : public Expr {
@@ -240,7 +238,7 @@ namespace jc {
         Call(Token callee, std::vector<std::unique_ptr<Expr>> arguments)
             : callee(std::move(callee)), arguments(std::move(arguments)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitCall(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitCall(this); }
     };
 
     struct MatrixNode : public Expr {
@@ -249,7 +247,7 @@ namespace jc {
         explicit MatrixNode(std::vector<std::vector<std::unique_ptr<Expr>>> elements, bool forceList = false)
             : elements(std::move(elements)), forceList(forceList) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitMatrixNode(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitMatrixNode(this); }
     };
 
     // ======== ★ 新增控制流节点 ========
@@ -260,7 +258,7 @@ namespace jc {
         explicit Block(std::vector<std::unique_ptr<Expr>> statements)
             : statements(std::move(statements)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitBlock(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitBlock(this); }
     };
 
     // if (cond) { ... } else { ... }
@@ -275,7 +273,7 @@ namespace jc {
             thenBranch(std::move(thenBranch)),
             elseBranch(std::move(elseBranch)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitIfExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitIfExpr(this); }
     };
 
     // while (cond) { ... }
@@ -285,7 +283,7 @@ namespace jc {
         WhileExpr(std::unique_ptr<Expr> condition, std::unique_ptr<Expr> body)
             : condition(std::move(condition)), body(std::move(body)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitWhileExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitWhileExpr(this); }
     };
 
     // for (init; cond; update) { ... }
@@ -299,15 +297,15 @@ namespace jc {
             : initializer(std::move(init)), condition(std::move(cond)),
             update(std::move(upd)), body(std::move(body)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitForExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitForExpr(this); }
     };
 
     struct BreakExpr : public Expr {
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitBreakExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitBreakExpr(this); }
     };
 
     struct ContinueExpr : public Expr {
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitContinueExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitContinueExpr(this); }
     };
 
     struct ReturnExpr : public Expr {
@@ -315,19 +313,19 @@ namespace jc {
         explicit ReturnExpr(std::unique_ptr<Expr> value)
             : value(std::move(value)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitReturnExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitReturnExpr(this); }
     };
 
     struct RefDecl : public Expr {
         Token name;
         explicit RefDecl(Token name) : name(std::move(name)) {}
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitRefDecl(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitRefDecl(this); }
     };
 
     struct StateDecl : public Expr {
         Token name;
         explicit StateDecl(Token name) : name(std::move(name)) {}
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitStateDecl(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitStateDecl(this); }
     };
 
     struct IndexAccess : public Expr {
@@ -336,7 +334,7 @@ namespace jc {
         IndexAccess(std::unique_ptr<Expr> object, std::vector<std::unique_ptr<Expr>> indices)
             : object(std::move(object)), indices(std::move(indices)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitIndexAccess(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitIndexAccess(this); }
     };
 
     struct IndexAssign : public Expr {
@@ -362,7 +360,7 @@ namespace jc {
 
         bool hasObjectExpr() const { return objectExpr != nullptr; }
 
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitIndexAssign(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitIndexAssign(this); }
     };
 
     struct ConstDecl : public Expr {
@@ -371,7 +369,7 @@ namespace jc {
         ConstDecl(Token name, std::unique_ptr<Expr> value)
             : name(std::move(name)), value(std::move(value)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitConstDecl(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitConstDecl(this); }
     };
 
     struct DeleteExpr : public Expr {
@@ -379,7 +377,7 @@ namespace jc {
         explicit DeleteExpr(std::vector<Token> names)
             : names(std::move(names)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitDeleteExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitDeleteExpr(this); }
     };
 
     struct CompoundAssign : public Expr {
@@ -392,7 +390,7 @@ namespace jc {
         CompoundAssign(std::unique_ptr<Expr> target, TokenType op, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false)
             : target(std::move(target)), op(op), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitCompoundAssign(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitCompoundAssign(this); }
     };
 
     struct LambdaExpr : public Expr {
@@ -418,7 +416,7 @@ namespace jc {
             paramTypes(std::move(paramTypes)), returnType(std::move(returnType)), // ★ 新增
             rawBody(std::move(rawBody)), body(std::move(body)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitLambdaExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitLambdaExpr(this); }
     };
 
     struct InvokeExpr : public Expr {
@@ -427,7 +425,7 @@ namespace jc {
         InvokeExpr(std::unique_ptr<Expr> callee, std::vector<std::unique_ptr<Expr>> arguments)
             : callee(std::move(callee)), arguments(std::move(arguments)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitInvokeExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitInvokeExpr(this); }
     };
 
     struct ForInExpr : public Expr {
@@ -452,7 +450,7 @@ namespace jc {
             iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal) {
         }
 
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitForInExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitForInExpr(this); }
     };
 
     // ★ throw expr
@@ -461,7 +459,7 @@ namespace jc {
         explicit ThrowExpr(std::unique_ptr<Expr> value)
             : value(std::move(value)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitThrowExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitThrowExpr(this); }
     };
 
     // ★ try { ... } catch (e) { ... }
@@ -472,7 +470,7 @@ namespace jc {
         TryCatchExpr(std::unique_ptr<Expr> tryBody, Token catchName, std::unique_ptr<Expr> catchBody)
             : tryBody(std::move(tryBody)), catchName(std::move(catchName)), catchBody(std::move(catchBody)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitTryCatchExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitTryCatchExpr(this); }
     };
 
     struct ImportExpr : public Expr {
@@ -480,7 +478,7 @@ namespace jc {
         ImportExpr(std::unique_ptr<Expr> path)
             : path(std::move(path)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitImportExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitImportExpr(this); }
     };
 
     // ★ switch (expr) { case v1: { body } case v2, v3: { body } default: { body } }
@@ -495,7 +493,7 @@ namespace jc {
             : subject(std::move(subject)), cases(std::move(cases)),
             defaultBody(std::move(defaultBody)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitSwitchExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitSwitchExpr(this); }
     };
 
     struct NamespaceDecl : public Expr {
@@ -504,7 +502,7 @@ namespace jc {
         NamespaceDecl(Token name, std::unique_ptr<Expr> body)
             : name(std::move(name)), body(std::move(body)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitNamespaceDecl(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitNamespaceDecl(this); }
     };
 
     struct ClassDefExpr : public Expr {
@@ -529,7 +527,7 @@ namespace jc {
             : name(std::move(name)), superClassName(std::move(superClassName)),
             methods(std::move(methods)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitClassDefExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitClassDefExpr(this); }
     };
 
     // ★ obj.field
@@ -539,7 +537,7 @@ namespace jc {
         DotAccess(std::unique_ptr<Expr> object, Token field)
             : object(std::move(object)), field(std::move(field)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitDotAccess(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitDotAccess(this); }
     };
     // ★ obj.field = value
     struct DotAssign : public Expr {
@@ -549,7 +547,7 @@ namespace jc {
         DotAssign(std::unique_ptr<Expr> object, Token field, std::unique_ptr<Expr> value)
             : object(std::move(object)), field(std::move(field)), value(std::move(value)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitDotAssign(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitDotAssign(this); }
     };
     // ★ obj.method(args)
     struct MethodCallExpr : public Expr {
@@ -561,17 +559,17 @@ namespace jc {
             : object(std::move(object)), method(std::move(method)),
             arguments(std::move(arguments)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitMethodCallExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitMethodCallExpr(this); }
     };
 
     // ★ super — evaluates to a proxy that dispatches to parent class
     struct SuperExpr : public Expr {
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitSuperExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitSuperExpr(this); }
     };
 
     // ★ self
     struct SelfExpr : public Expr {
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitSelfExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitSelfExpr(this); }
     };
 
     // ★ [a, b, c] = expr
@@ -581,7 +579,7 @@ namespace jc {
         DestructAssign(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> value)
             : pattern(std::move(pattern)), value(std::move(value)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitDestructAssign(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitDestructAssign(this); }
     };
 
     // ★ f"Hello, {name}! x = {x:.2f}"
@@ -596,7 +594,7 @@ namespace jc {
             : literals(std::move(literals)), exprs(std::move(exprs)),
             formatSpecs(std::move(formatSpecs)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitFStringExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitFStringExpr(this); }
     };
 
     // ★ [expr for (var in iterable) if (condition)]
@@ -623,7 +621,7 @@ namespace jc {
         ListCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses, bool forceList = false)
             : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)), forceList(forceList) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitListCompExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitListCompExpr(this); }
     };
 
     // ★ @{val1, val2, ...}
@@ -632,7 +630,7 @@ namespace jc {
         explicit SetLiteral(std::vector<std::unique_ptr<Expr>> elements)
             : elements(std::move(elements)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitSetLiteral(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitSetLiteral(this); }
     };
 
     // ★ {key: value, key: value, ...}
@@ -643,7 +641,7 @@ namespace jc {
         explicit DictLiteral(std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries)
             : entries(std::move(entries)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitDictLiteral(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitDictLiteral(this); }
     };
 
     // ★ 切片表达式 start:end:step (仅在索引中有效)
@@ -654,7 +652,7 @@ namespace jc {
         SliceExpr(std::unique_ptr<Expr> start, std::unique_ptr<Expr> end, std::unique_ptr<Expr> step)
             : start(std::move(start)), end(std::move(end)), step(std::move(step)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitSliceExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitSliceExpr(this); }
     };
 
     // ★ 逗号表达式序列 (expr1, expr2, expr3) -> 返回 expr3 的值
@@ -663,7 +661,7 @@ namespace jc {
         explicit SequenceExpr(std::vector<std::unique_ptr<Expr>> expressions)
             : expressions(std::move(expressions)) {
         }
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitSequenceExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitSequenceExpr(this); }
     };
 
     struct MatchExpr : public Expr {
@@ -671,14 +669,14 @@ namespace jc {
         std::vector<MatchBranch> branches;
         MatchExpr(std::unique_ptr<Expr> subject, std::vector<MatchBranch> branches)
             : subject(std::move(subject)), branches(std::move(branches)) {}
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitMatchExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitMatchExpr(this); }
     };
 
     struct GroupingExpr : public Expr {
         std::unique_ptr<Expr> expression;
         explicit GroupingExpr(std::unique_ptr<Expr> expression)
             : expression(std::move(expression)) {}
-        std::any accept(ExprVisitor& visitor) override { return visitor.visitGroupingExpr(this); }
+        void accept(ExprVisitor& visitor) override { visitor.visitGroupingExpr(this); }
     };
 
 } // namespace jc

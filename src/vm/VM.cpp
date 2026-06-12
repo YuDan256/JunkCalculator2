@@ -646,24 +646,28 @@ namespace jc {
 
                 case OpCode::OP_ADD: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() + b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_ADD)) { Value res = callDunder(a, DUNDER_ADD, { b }); pop(); peek(0) = res; break; }
                     if (b.isInstance() && findDunder(b, DUNDER_RADD)) { Value res = callDunder(b, DUNDER_RADD, { a }); pop(); peek(0) = res; break; }
                     Value res = a + b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_SUBTRACT: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() - b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_SUB)) { Value res = callDunder(a, DUNDER_SUB, { b }); pop(); peek(0) = res; break; }
                     if (b.isInstance() && findDunder(b, DUNDER_RSUB)) { Value res = callDunder(b, DUNDER_RSUB, { a }); pop(); peek(0) = res; break; }
                     Value res = a - b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_MULTIPLY: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() * b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_MUL)) { Value res = callDunder(a, DUNDER_MUL, { b }); pop(); peek(0) = res; break; }
                     if (b.isInstance() && findDunder(b, DUNDER_RMUL)) { Value res = callDunder(b, DUNDER_RMUL, { a }); pop(); peek(0) = res; break; }
                     Value res = a * b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_DIVIDE: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() / b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_DIV)) { Value res = callDunder(a, DUNDER_DIV, { b }); pop(); peek(0) = res; break; }
                     if (b.isInstance() && findDunder(b, DUNDER_RDIV)) { Value res = callDunder(b, DUNDER_RDIV, { a }); pop(); peek(0) = res; break; }
                     Value res = a / b; pop(); peek(0) = res; break;
@@ -725,17 +729,20 @@ namespace jc {
 
                 case OpCode::OP_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() == b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(callDunder(a, DUNDER_EQ, { b }).truthy()); pop(); peek(0) = res; break; }
                     Value res = Value(Value::equals(a, b)); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_NOT_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() != b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_NEQ)) { Value res = Value(callDunder(a, DUNDER_NEQ, { b }).truthy()); pop(); peek(0) = res; break; }
                     if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(!callDunder(a, DUNDER_EQ, { b }).truthy()); pop(); peek(0) = res; break; }
                     Value res = Value(!Value::equals(a, b)); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_LESS: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() < b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_LT)) { Value res = Value(callDunder(a, DUNDER_LT, { b }).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() < b.asBigInt());
@@ -746,6 +753,7 @@ namespace jc {
                 }
                 case OpCode::OP_LESS_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() <= b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_LE)) { Value res = Value(callDunder(a, DUNDER_LE, { b }).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() <= b.asBigInt());
@@ -756,6 +764,7 @@ namespace jc {
                 }
                 case OpCode::OP_GREATER: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() > b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_GT)) { Value res = Value(callDunder(a, DUNDER_GT, { b }).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() > b.asBigInt());
@@ -766,6 +775,7 @@ namespace jc {
                 }
                 case OpCode::OP_GREATER_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
+                    if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() >= b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInstance() && findDunder(a, DUNDER_GE)) { Value res = Value(callDunder(a, DUNDER_GE, { b }).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() >= b.asBigInt());

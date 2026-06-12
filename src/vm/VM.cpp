@@ -2143,7 +2143,7 @@ namespace jc {
                                     result = inst->fields->elements[it->second].second;
                                     found = true;
                                     ic.cachedClass = inst->classDef;
-                                    ic.cachedFieldIndex = it->second;
+                                    ic.cachedFieldIndex = static_cast<int>(it->second);
                                     ic.cachedMethod = nullptr;
                                 }
                             }
@@ -2323,7 +2323,7 @@ namespace jc {
                                     result = inst->fields->elements[it->second].second;
                                     found = true;
                                     ic.cachedClass = inst->classDef;
-                                    ic.cachedFieldIndex = it->second;
+                                    ic.cachedFieldIndex = static_cast<int>(it->second);
                                 }
                             }
                             if (!found) {
@@ -2400,10 +2400,10 @@ namespace jc {
                             if (it != inst->fields->keyMap.end()) {
                                 inst->fields->elements[it->second].second = val;
                                 ic.cachedClass = inst->classDef;
-                                ic.cachedFieldIndex = it->second;
+                                ic.cachedFieldIndex = static_cast<int>(it->second);
                             } else {
                                 ic.cachedClass = inst->classDef;
-                                ic.cachedFieldIndex = inst->fields->elements.size();
+                                ic.cachedFieldIndex = static_cast<int>(inst->fields->elements.size());
                                 inst->fields->keyMap[key] = inst->fields->elements.size();
                                 inst->fields->elements.push_back({key, val});
                             }

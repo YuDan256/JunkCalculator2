@@ -2572,7 +2572,7 @@ namespace jc {
             }});
 
             // --- 1.94 双二次分式积分 (Biquadratic Fraction) ---
-            strats.push_back({"Biquadratic Fraction", 600, [&]() -> std::optional<SymExpr> {
+            strats.push_back({"Biquadratic Fraction", 870, [&]() -> std::optional<SymExpr> {
             if (varPart.ptr->getType() == SymType::MUL || varPart.ptr->getType() == SymType::POW) {
                 SymExpr bqBase;
                 int bqM = 0;
@@ -2679,7 +2679,7 @@ namespace jc {
             }});
 
             // --- 1.95 高次二项式分式积分 (Binomial Fraction Integration) ---
-            strats.push_back({"Binomial Fraction Integration", 550, [&]() -> std::optional<SymExpr> {
+            strats.push_back({"Binomial Fraction Integration", 860, [&]() -> std::optional<SymExpr> {
             if (varPart.ptr->getType() == SymType::POW) {
                 auto powNode = std::static_pointer_cast<SymPow>(varPart.ptr);
                 if (powNode->exp->getType() == SymType::NUM) {
@@ -2798,7 +2798,7 @@ namespace jc {
             bool isFraction = !den.isOne();
 
             // --- 1.98 二次配方法启发式 (Inverse Quadratic Integration) ---
-            strats.push_back({"Inverse Quadratic Integration", isFraction ? 500 : 0, [&]() -> std::optional<SymExpr> {
+            strats.push_back({"Inverse Quadratic Integration", isFraction ? 875 : 0, [&]() -> std::optional<SymExpr> {
             if (isFraction && !containsVar(num.ptr, var)) {
                 auto coeffs = extractCoeffs(den, var);
                 if (coeffs.size() == 3 && !coeffs[2].isZero()) {

@@ -771,14 +771,13 @@
       "",
       "  Decompositions & Spectra",
       "  ──────────────────────",
-      "    qr_Q(A), qr_R(A)           QR Decomposition (Modified Gram-Schmidt)",
-      "    lu_L(A), lu_U(A), lu_P(A)  PA = LU (Partial pivoting Doolittle)",
+      "    qr(A)                      QR Decomposition → @[Q, R]",
+      "    lu(A)                      PA = LU Decomposition → @[L, U, P]",
       "    orth(A)                    Orthonormal column basis (Q from QR)",
       "    null(A)                    Null-space basis (Homogeneous solution)",
       "    eig(A)                     Eigenvalues (Hessenberg + QR iteration)",
       "    eigvec(A)                  Eigenvector matrix",
-      "    diag(A)                    Diagonal eigenvalue matrix D",
-      "    diagP(A)                   Change-of-basis matrix P   (A = P D P⁻¹)"
+      "    diag(A)                    Diagonalization A = P D P⁻¹ → @[P, D]"
     ],
     "lineq": [
       "═══ Linear Equation Systems  Ax = b ═══",
@@ -930,7 +929,7 @@
       "",
       "  Polynomial Operations",
       "  ──────────────────────",
-      "    polyDiv(A, B, x)             Polynomial division → [quotient, remainder]",
+      "    polyDiv(A, B, x)             Polynomial division → @[quotient, remainder]",
       "    polyGCD(A, B, x)             Polynomial greatest common divisor",
       "    resultant(A, B, x)           Sylvester resultant of two polynomials",
       "",
@@ -955,8 +954,8 @@
       "",
       "  Equation Solving",
       "  ──────────────────────",
-      "    solveEq(x^2 - 2, x)          → [sqrt(2), -sqrt(2)] (Exact roots!)",
-      "    solveEq(x^3 - 1, x)          → [1, E^(2/3 * PI * i), E^(4/3 * PI * i)] (All complex roots!)",
+      "    solveEq(x^2 - 2, x)          → @[sqrt(2), -sqrt(2)] (Exact roots!)",
+      "    solveEq(x^3 - 1, x)          → @[1, E^(2/3 * PI * i), E^(4/3 * PI * i)] (All complex roots!)",
       "",
       "    ★ Constants & Limitations:",
       "    • PI and E are now parsed as exact symbolic constants in the CAS engine ",
@@ -1066,7 +1065,7 @@
       "    corr(X, Y)          Pearson correlation coefficient  r",
       "    rsq(X, Y)           Coefficient of determination  R²",
       "    regress(X, Y)       Linear regression Y = a + bX",
-      "                        Automatically prints the model equation & returns [a, b]."
+      "                        Automatically prints the model equation & returns @[a, b]."
     ],
     "prob": [
       "═══ Probability Distributions & Hypothesis Tests — Native Module ═══",
@@ -1118,7 +1117,7 @@
       "    prob.erf(x)                Error function",
       "    prob.erfc(x)               Complementary error function 1-erf(x)",
       "",
-      "  Hypothesis Tests (returns [statistic, df, p-value])",
+      "  Hypothesis Tests (returns @[statistic, df, p-value])",
       "  ──────────────────────",
       "    prob.ttest(X)              One-sample t-test:  H0: μ = 0",
       "    prob.ttest(X, mu0)         One-sample t-test:  H0: μ = μ0",
@@ -1181,7 +1180,7 @@
       "    nextPrime(n)         Smallest prime > n",
       "    nthPrime(k)          k-th prime (requires mounted Prime.txt)",
       "    primePi(n)           π(n) — number of primes ≤ n",
-      "    factor(n)            Returns an N×2 matrix: [Prime, Exponent]",
+      "    factor(n)            Returns a Dict of {Prime: Exponent}",
       "",
       "  Arithmetic Functions & Modular Arithmetic",
       "  ──────────────────────",
@@ -1825,7 +1824,7 @@
       "    list()                         Creates an empty list",
       "    list(1, \"hello\", [1;2])        Stores mixed types seamlessly",
       "    @[1, \"hello\", [1;2]]           Explicit List literal (prevents matrix concat)",
-      "    @[1, 2; 3, 4]                  Creates a List of Lists: [[1, 2], [3, 4]]",
+      "    @[1, 2; 3, 4]                  Creates a List of Lists: @[@[1, 2], @[3, 4]]",
       "    toList([1, 2, 3])              Convert array → list of doubles",
       "    toList([1+1i, 2+2i])           Convert ComplexMatrix → list",
       "    toList([\"a\", \"b\"])             Convert StringMatrix → list",
@@ -1870,8 +1869,8 @@
       "    Because Lists use reference semantics, pop() and shift() MUTATE",
       "    the original list directly:",
       "      L = list(1, 2, 3)",
-      "      pop(L)                → 3     (L is now [1, 2])",
-      "      shift(L)              → 1     (L is now [2])",
+      "      pop(L)                → 3     (L is now @[1, 2])",
+      "      shift(L)              → 1     (L is now @[2])",
       "",
       "  Slicing (Native Syntax)",
       "  ──────────────────────",
@@ -1886,7 +1885,7 @@
       "    reverse(L)              Returns a reversed copy",
       "    cat(L1, L2, ...)        Concatenate multiple lists",
       "    flatten(L)              Recursively flatten nested lists into 1D",
-      "                              flatten(list(1, list(2, 3))) → [1, 2, 3]",
+      "                              flatten(list(1, list(2, 3))) → @[1, 2, 3]",
       "    unique(L)               Remove duplicates (deep equality)",
       "",
       "  Search",
@@ -2041,9 +2040,9 @@
       "    type(d)                             Returns \"Dict\"",
       "    hasKey(d, \"key\") / has(d, \"key\")    Returns true if the key exists",
       "    removeKey(d, \"key\")                 Removes the key (throws error if absent)",
-      "    keys(d)                             Returns all keys as a StringMatrix row",
-      "    values(d)                           Returns all values",
-      "    dictPairs(d)                        Returns an N×2 StringMatrix of [key, value] rows",
+      "    keys(d)                             Returns all keys as a List",
+      "    values(d)                           Returns all values as a List",
+      "    dictPairs(d)                        Returns a List of @[key, value] pairs",
       "    dictMerge(d1, d2)                   Merges d2 into d1 (mutates d1 in-place)",
       "    d1 + d2                             Returns a NEW Dict merging d1 and d2 (right side overwrites left on key conflict)",
       "",
@@ -2209,7 +2208,7 @@
       "    a | b                           → @{1, 2, 3, 4}",
       "    a & b                           → @{2, 3}",
       "    a - b                           → @{1}",
-      "    a * @{\"x\", \"y\"}                   → @{[1, \"x\"], [1, \"y\"], ... [3, \"y\"]}",
+      "    a * @{\"x\", \"y\"}                   → @{@[1, \"x\"], @[1, \"y\"], ... @[3, \"y\"]}",
       "    setPow(@{1, 2})                   → @{@{}, @{1}, @{2}, @{1, 2}}",
       "",
       "    chars = toSet(\"abracadabra\")    → @{\"a\", \"b\", \"c\", \"d\", \"r\"}",
@@ -2496,8 +2495,8 @@
       "    `pcall(f)` provides a functional alternative to `try`/`catch`.",
       "    It executes a zero-argument function `f` and captures the result safely into a List.",
       "",
-      "    Returns `[1, result]` on success.",
-      "    Returns `[0, errorMsg]` on failure.",
+      "    Returns `@[1, result]` on success.",
+      "    Returns `@[0, errorMsg]` on failure.",
       "",
       "      status = pcall(riskyFunc)",
       "      isError(status)       → true if error, false if success",
@@ -3738,16 +3737,9 @@
     },
     "diag": {
       "signature": "diag(A)",
-      "desc": "Returns the diagonal eigenvalue matrix D such that A = P * D * inv(P).",
+      "desc": "Returns a List @[P, D] containing the change-of-basis matrix P (eigenvectors) and diagonal eigenvalue matrix D such that A = P * D * inv(P).",
       "examples": [
-        "diag([0, 1; -2, -3])"
-      ]
-    },
-    "diagP": {
-      "signature": "diagP(A)",
-      "desc": "Returns the change-of-basis matrix P (eigenvectors) such that A = P * D * inv(P).",
-      "examples": [
-        "diagP([0, 1; -2, -3])"
+        "[P, D] = diag([0, 1; -2, -3])"
       ]
     },
     "lsolve": {
@@ -4167,7 +4159,7 @@
     },
     "regress": {
       "signature": "regress(X, Y)",
-      "desc": "Performs linear regression Y = a + bX. Prints the model and returns [a, b].",
+      "desc": "Performs linear regression Y = a + bX. Prints the model and returns @[a, b].",
       "examples": [
         "regress([1, 2, 3], [2, 4, 5])"
       ]
@@ -4421,7 +4413,7 @@
     },
     "pcall": {
       "signature": "pcall(f)",
-      "desc": "Executes a zero-argument function safely. Returns [1, result] on success, [0, errorMsg] on failure.",
+      "desc": "Executes a zero-argument function safely. Returns @[1, result] on success, @[0, errorMsg] on failure.",
       "examples": [
         "pcall(() => 1 / 0)"
       ]
@@ -4981,7 +4973,7 @@
     },
     "dictPairs": {
       "signature": "dictPairs(d)",
-      "desc": "Returns a List of [key, value] pairs from a Dict.",
+      "desc": "Returns a List of @[key, value] pairs from a Dict.",
       "examples": ["dictPairs({a: 1})"]
     },
     "toList": {
@@ -5151,7 +5143,7 @@
     },
     "polyDiv": {
       "signature": "polyDiv(A, B, var)",
-      "desc": "Polynomial division, returning [quotient, remainder].",
+      "desc": "Polynomial division, returning @[quotient, remainder].",
       "examples": ["polyDiv(x^2 - 1, x - 1, x)"]
     },
     "polyGCD": {
@@ -5166,8 +5158,8 @@
     },
     "factor": {
       "signature": "factor(expr)",
-      "desc": "Factors a polynomial or an integer.",
-      "examples": ["factor(x^4 - 1)"]
+      "desc": "Factors a polynomial, or returns a Dict of {Prime: Exponent} for an integer.",
+      "examples": ["factor(x^4 - 1)", "factor(12)"]
     },
     "factorReal": {
       "signature": "factorReal(expr)",
@@ -5902,30 +5894,15 @@
       "desc": "Returns the block diagonal concatenation of matrices A and B.",
       "examples": ["integD(A, B)"]
     },
-    "qr_Q": {
-      "signature": "qr_Q(A)",
-      "desc": "Returns the orthogonal matrix Q from the QR decomposition of A.",
-      "examples": ["qr_Q(A)"]
+    "qr": {
+      "signature": "qr(A)",
+      "desc": "Returns a List @[Q, R] containing the orthogonal matrix Q and upper triangular matrix R from the QR decomposition of A.",
+      "examples": ["[Q, R] = qr(A)"]
     },
-    "qr_R": {
-      "signature": "qr_R(A)",
-      "desc": "Returns the upper triangular matrix R from the QR decomposition of A.",
-      "examples": ["qr_R(A)"]
-    },
-    "lu_L": {
-      "signature": "lu_L(A)",
-      "desc": "Returns the lower triangular matrix L from the LU decomposition of A.",
-      "examples": ["lu_L(A)"]
-    },
-    "lu_U": {
-      "signature": "lu_U(A)",
-      "desc": "Returns the upper triangular matrix U from the LU decomposition of A.",
-      "examples": ["lu_U(A)"]
-    },
-    "lu_P": {
-      "signature": "lu_P(A)",
-      "desc": "Returns the permutation matrix P from the LU decomposition of A.",
-      "examples": ["lu_P(A)"]
+    "lu": {
+      "signature": "lu(A)",
+      "desc": "Returns a List @[L, U, P] containing the lower triangular matrix L, upper triangular matrix U, and permutation matrix P from the LU decomposition of A.",
+      "examples": ["[L, U, P] = lu(A)"]
     },
     "linfo": {
       "signature": "linfo(A, b)",

@@ -1136,15 +1136,37 @@ void BuiltinRegistry::registerMatrixOps() {
 // [6] 矩阵分解与特征值
 // =================================================================
 void BuiltinRegistry::registerDecompositions() {
-    reg("qr_Q", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.qrDecomposition().first); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.qrDecomposition().first); throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("qr_R", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.qrDecomposition().second); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.qrDecomposition().second); throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("lu_L", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.luDecomposition().L); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.luDecomposition().L); throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("lu_U", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.luDecomposition().U); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.luDecomposition().U); throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("lu_P", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.luDecomposition().P); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.luDecomposition().P); throw std::runtime_error("Type Error: requires a matrix."); });
+    reg("qr", { 1 }, [](const std::vector<Value>& args) -> Value {
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        if (args[0].isObjType(ObjType::REAL_MATRIX)) {
+            auto [Q, R] = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.qrDecomposition();
+            L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
+        } else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto [Q, R] = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.qrDecomposition();
+            L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
+        } else throw std::runtime_error("Type Error: requires a matrix.");
+        L->is_frozen = true; return Value(L);
+    });
+    reg("lu", { 1 }, [](const std::vector<Value>& args) -> Value {
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        if (args[0].isObjType(ObjType::REAL_MATRIX)) {
+            auto res = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.luDecomposition();
+            L->vec.push_back(Value(res.L)); L->vec.push_back(Value(res.U)); L->vec.push_back(Value(res.P));
+        } else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto res = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.luDecomposition();
+            L->vec.push_back(Value(res.L)); L->vec.push_back(Value(res.U)); L->vec.push_back(Value(res.P));
+        } else throw std::runtime_error("Type Error: requires a matrix.");
+        L->is_frozen = true; return Value(L);
+    });
     reg("eig", { 1 }, [](const std::vector<Value>& args) -> Value { std::vector<Complex> vals; if (args[0].isObjType(ObjType::REAL_MATRIX)) vals = computeEigenvalues(static_cast<ObjRealMatrix*>(args[0].asObj())->mat); else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) vals = computeEigenvalues(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat); else throw std::runtime_error("Type Error: requires a matrix."); return Value(ComplexMatrix(static_cast<int>(vals.size()), 1, vals)); });
     reg("eigvec", { 1 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix(); auto vals = computeEigenvalues(A); return Value(computeEigenvectors(A, vals)); });
-    reg("diag", { 1 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix(); auto [P, D] = diagonalize(A); return Value(D); });
-    reg("diagP", { 1 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix(); auto [P, D] = diagonalize(A); return Value(P); });
+    reg("diag", { 1 }, [](const std::vector<Value>& args) -> Value {
+        ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix();
+        auto [P, D] = diagonalize(A);
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        L->vec.push_back(Value(P)); L->vec.push_back(Value(D));
+        L->is_frozen = true; return Value(L);
+    });
 }
 
 // =================================================================
@@ -1452,7 +1474,9 @@ void BuiltinRegistry::registerStatistics() {
         double b = c / vX, a = computeMean(Y) - b * computeMean(X);
         std::cout << "Linear Model: Y = " << a << " + " << b << " * X" << std::endl;
         std::cout << "Correlation r: " << computeCorr(X, Y) << std::endl;
-        return Value(RealMatrix(1, 2, { a, b }));
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        L->vec.push_back(Value(a)); L->vec.push_back(Value(b));
+        L->is_frozen = true; return Value(L);
     });
 }
 
@@ -1550,6 +1574,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto l = static_cast<ObjList*>(v.asObj());
                 if (visited.count(l)) return visited[l];
                 ObjList* newList = GcHeap::get().allocate<ObjList>();
+                GcObjGuard guard(newList);
                 Value newVal(newList);
                 visited[l] = newVal;
                 for (const auto& e : l->vec) {
@@ -1561,6 +1586,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto d = static_cast<ObjDict*>(v.asObj());
                 if (visited.count(d)) return visited[d];
                 ObjDict* newDict = GcHeap::get().allocate<ObjDict>();
+                GcObjGuard guard(newDict);
                 Value newVal(newDict);
                 visited[d] = newVal;
                 for (const auto& [k, val] : d->elements) {
@@ -1575,6 +1601,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto s = static_cast<ObjSet*>(v.asObj());
                 if (visited.count(s)) return visited[s];
                 ObjSet* newSet = GcHeap::get().allocate<ObjSet>();
+                GcObjGuard guard(newSet);
                 Value newVal(newSet);
                 visited[s] = newVal;
                 for (const auto& val : s->elements) {
@@ -1588,6 +1615,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto inst = v.asInstance();
                 if (visited.count(inst)) return visited[inst];
                 ObjInstance* newInst = GcHeap::get().allocate<ObjInstance>();
+                GcObjGuard guard(newInst);
                 newInst->classDef = inst->classDef;
                 newInst->nativeData = inst->nativeData;
                 Value newVal(newInst);
@@ -1601,6 +1629,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto ns = static_cast<ObjNamespace*>(v.asObj());
                 if (visited.count(ns)) return visited[ns];
                 ObjNamespace* newNs = GcHeap::get().allocate<ObjNamespace>();
+                GcObjGuard guard(newNs);
                 newNs->name = ns->name;
                 Value newVal(newNs);
                 visited[ns] = newVal;
@@ -1624,6 +1653,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto l = static_cast<ObjList*>(v.asObj());
                 if (visited.count(l)) return visited[l];
                 ObjList* newList = GcHeap::get().allocate<ObjList>();
+                GcObjGuard guard(newList);
                 Value newVal(newList);
                 visited[l] = newVal;
                 for (const auto& e : l->vec) {
@@ -1637,6 +1667,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto d = static_cast<ObjDict*>(v.asObj());
                 if (visited.count(d)) return visited[d];
                 ObjDict* newDict = GcHeap::get().allocate<ObjDict>();
+                GcObjGuard guard(newDict);
                 Value newVal(newDict);
                 visited[d] = newVal;
                 for (const auto& [k, val] : d->elements) {
@@ -1653,6 +1684,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto s = static_cast<ObjSet*>(v.asObj());
                 if (visited.count(s)) return visited[s];
                 ObjSet* newSet = GcHeap::get().allocate<ObjSet>();
+                GcObjGuard guard(newSet);
                 Value newVal(newSet);
                 visited[s] = newVal;
                 for (const auto& val : s->elements) {
@@ -1668,6 +1700,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto inst = v.asInstance();
                 if (visited.count(inst)) return visited[inst];
                 ObjInstance* newInst = GcHeap::get().allocate<ObjInstance>();
+                GcObjGuard guard(newInst);
                 newInst->classDef = inst->classDef;
                 newInst->nativeData = inst->nativeData;
                 Value newVal(newInst);
@@ -1683,6 +1716,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto ns = static_cast<ObjNamespace*>(v.asObj());
                 if (visited.count(ns)) return visited[ns];
                 ObjNamespace* newNs = GcHeap::get().allocate<ObjNamespace>();
+                GcObjGuard guard(newNs);
                 newNs->name = ns->name;
                 Value newVal(newNs);
                 visited[ns] = newVal;
@@ -1707,6 +1741,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto l = static_cast<ObjList*>(v.asObj());
                 if (visited.count(l)) return visited[l];
                 ObjList* newList = GcHeap::get().allocate<ObjList>();
+                GcObjGuard guard(newList);
                 Value newVal(newList);
                 visited[l] = newVal;
                 for (const auto& e : l->vec) {
@@ -1720,6 +1755,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto d = static_cast<ObjDict*>(v.asObj());
                 if (visited.count(d)) return visited[d];
                 ObjDict* newDict = GcHeap::get().allocate<ObjDict>();
+                GcObjGuard guard(newDict);
                 Value newVal(newDict);
                 visited[d] = newVal;
                 for (const auto& [k, val] : d->elements) {
@@ -1736,6 +1772,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto s = static_cast<ObjSet*>(v.asObj());
                 if (visited.count(s)) return visited[s];
                 ObjSet* newSet = GcHeap::get().allocate<ObjSet>();
+                GcObjGuard guard(newSet);
                 Value newVal(newSet);
                 visited[s] = newVal;
                 for (const auto& val : s->elements) {
@@ -1751,6 +1788,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto inst = v.asInstance();
                 if (visited.count(inst)) return visited[inst];
                 ObjInstance* newInst = GcHeap::get().allocate<ObjInstance>();
+                GcObjGuard guard(newInst);
                 newInst->classDef = inst->classDef;
                 newInst->nativeData = inst->nativeData;
                 Value newVal(newInst);
@@ -1766,6 +1804,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 auto ns = static_cast<ObjNamespace*>(v.asObj());
                 if (visited.count(ns)) return visited[ns];
                 ObjNamespace* newNs = GcHeap::get().allocate<ObjNamespace>();
+                GcObjGuard guard(newNs);
                 newNs->name = ns->name;
                 Value newVal(newNs);
                 visited[ns] = newVal;
@@ -2168,10 +2207,26 @@ void BuiltinRegistry::registerStringFunctions() {
     reg("contains", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: contains() expects two strings."); return Value(args[0].asString().find(args[1].asString())!=std::string::npos); });
     reg("replace", { 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()||!args[2].isString()) throw std::runtime_error("Type Error: replace() expects three strings."); std::string s=args[0].asString(); const std::string& from=args[1].asString(); const std::string& to=args[2].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); });
     reg("repeat", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: repeat() expects a string."); const std::string& s = args[0].asString(); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); });
-    reg("concat", {}, [](const std::vector<Value>& args) -> Value { std::ostringstream oss; for (const auto& a : args) oss << a; return Value(oss.str()); });
+    reg("concat", {}, [](const std::vector<Value>& args) -> Value {
+        bool allStrings = true;
+        size_t totalLen = 0;
+        for (const auto& a : args) {
+            if (!a.isString()) { allStrings = false; break; }
+            totalLen += a.asString().size();
+        }
+        if (allStrings) {
+            std::string result;
+            result.reserve(totalLen);
+            for (const auto& a : args) result.append(a.asString());
+            return Value(result);
+        }
+        std::ostringstream oss;
+        for (const auto& a : args) oss << a;
+        return Value(oss.str());
+    });
     reg("startsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: startsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& prefix=args[1].asString(); return Value(s.size()>=prefix.size()&&s.compare(0,prefix.size(),prefix)==0); });
     reg("endsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: endsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& suffix=args[1].asString(); return Value(s.size()>=suffix.size()&&s.compare(s.size()-suffix.size(),suffix.size(),suffix)==0); });
-    reg("split", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: split() expects two strings."); const std::string& s=args[0].asString(); const std::string& delim=args[1].asString(); if (delim.empty()) throw std::runtime_error("Runtime Error: split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); });
+    reg("split", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: split() expects two strings."); const std::string& s=args[0].asString(); const std::string& delim=args[1].asString(); if (delim.empty()) throw std::runtime_error("Runtime Error: split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(result); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); });
     reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: ord() expects a string."); const std::string& s=args[0].asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value(static_cast<double>(static_cast<unsigned char>(s[0]))); });
     reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>127) throw std::runtime_error("Runtime Error: chr() code must be 0–127."); return Value(std::string(1, static_cast<char>(code))); });
     reg("parseNum", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: parseNum() expects a string."); const std::string& s=args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) throw std::runtime_error("Math Error: Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { throw std::runtime_error("Math Error: Cannot parse '"+trimmed+"' as a number."); } });
@@ -2472,6 +2527,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             auto l = static_cast<ObjList*>(arg.asObj());
             int start, end; getBounds(static_cast<int>(l->vec.size()), start, end);
             ObjList* result = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(result);
             for (int i = start; i < end; ++i) result->vec.push_back(l->vec[i]);
             return Value(result);
         } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
@@ -2514,6 +2570,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             std::string s = arg.asString(); std::reverse(s.begin(), s.end()); return Value(s);
         } else if (arg.isObjType(ObjType::LIST)) {
             ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
             L->vec = static_cast<ObjList*>(arg.asObj())->vec;
             std::reverse(L->vec.begin(), L->vec.end());
             return Value(L);
@@ -2684,6 +2741,19 @@ void BuiltinRegistry::registerArrayFunctions() {
         Value arg = args[0];
         if (arg.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(arg.asObj());
+            if (l->vec.empty()) return Value(std::string(""));
+            bool allStrings = true; size_t totalLen = 0;
+            for (const auto& e : l->vec) {
+                if (!e.isString()) { allStrings = false; break; }
+                totalLen += e.asString().size();
+            }
+            if (allStrings) {
+                std::string result;
+                result.reserve(totalLen + delim.size() * (l->vec.size() - 1));
+                result.append(l->vec[0].asString());
+                for (size_t i = 1; i < l->vec.size(); ++i) { result.append(delim); result.append(l->vec[i].asString()); }
+                return Value(result);
+            }
             std::ostringstream oss;
             for (size_t i = 0; i < l->vec.size(); ++i) { if (i > 0) oss << delim; oss << l->vec[i]; }
             return Value(oss.str());
@@ -2702,9 +2772,15 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(oss.str());
         } else if (arg.isObjType(ObjType::STRING_MATRIX)) {
             auto& m = static_cast<ObjStringMatrix*>(arg.asObj())->mat;
-            std::ostringstream oss; auto v = m.rawData();
-            for (size_t i = 0; i < v.size(); ++i) { if (i > 0) oss << delim; oss << Value(v[i]); }
-            return Value(oss.str());
+            auto v = m.rawData();
+            if (v.empty()) return Value(std::string(""));
+            size_t totalLen = 0;
+            for (const auto& s : v) totalLen += s.size();
+            std::string result;
+            result.reserve(totalLen + delim.size() * (v.size() - 1));
+            result.append(v[0]);
+            for (size_t i = 1; i < v.size(); ++i) { result.append(delim); result.append(v[i]); }
+            return Value(result);
         }
         return expectContainer("join");
         });
@@ -2713,6 +2789,7 @@ void BuiltinRegistry::registerArrayFunctions() {
         if (val.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(val.asObj());
             ObjList* result = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(result);
             if (l->vec.empty()) return Value(result);
             Value acc = l->vec[0]; result->vec.push_back(acc);
             for (size_t i = 1; i < l->vec.size(); ++i) { acc = opBody(acc, l->vec[i]); result->vec.push_back(acc); }
@@ -2752,6 +2829,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             auto l = static_cast<ObjList*>(arg.asObj());
             if (l->vec.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
             ObjList* result = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(result);
             for (size_t i = 0; i < l->vec.size() - 1; ++i) result->vec.push_back(l->vec[i + 1] - l->vec[i]);
             return Value(result);
         } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
@@ -2816,11 +2894,13 @@ void BuiltinRegistry::registerDictFunctions() {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
             ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
             for (const auto& [k, v] : ns->fields) L->vec.push_back(Value(k));
             return Value(L);
         }
         ObjDict* d = helpers::getDictMap(args[0], "keys");
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) L->vec.push_back(k);
         return Value(L);
         });
@@ -2831,11 +2911,13 @@ void BuiltinRegistry::registerDictFunctions() {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
             ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
             for (const auto& [k, v] : ns->fields) L->vec.push_back(*(v.upval->location));
             return Value(L);
         }
         ObjDict* d = helpers::getDictMap(args[0], "values");
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) L->vec.push_back(v);
         return Value(L);
         });
@@ -2922,6 +3004,7 @@ void BuiltinRegistry::registerDictFunctions() {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
             ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
             for (const auto& [k, v] : ns->fields) {
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value(k));
@@ -2933,6 +3016,7 @@ void BuiltinRegistry::registerDictFunctions() {
         }
         ObjDict* d = helpers::getDictMap(args[0], "dictPairs");
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) {
             ObjList* pair = GcHeap::get().allocate<ObjList>();
             pair->vec.push_back(k);
@@ -2961,6 +3045,7 @@ void BuiltinRegistry::registerListConversion() {
                 return Value(L);
             }
             ObjList* rows = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(rows);
             for (int i = 0; i < m.getRows(); ++i) {
                 ObjList* row = GcHeap::get().allocate<ObjList>();
                 for (int j = 0; j < m.getCols(); ++j) row->vec.push_back(Value(m(i, j)));
@@ -2977,6 +3062,7 @@ void BuiltinRegistry::registerListConversion() {
                 return Value(L);
             }
             ObjList* rows = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(rows);
             for (int i = 0; i < m.getRows(); ++i) {
                 ObjList* row = GcHeap::get().allocate<ObjList>();
                 for (int j = 0; j < m.getCols(); ++j) row->vec.push_back(Value(m(i, j)));
@@ -2993,6 +3079,7 @@ void BuiltinRegistry::registerListConversion() {
                 return Value(L);
             }
             ObjList* rows = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(rows);
             for (int i = 0; i < m.getRows(); ++i) {
                 ObjList* row = GcHeap::get().allocate<ObjList>();
                 for (int j = 0; j < m.getCols(); ++j) row->vec.push_back(Value(m(i, j)));
@@ -3090,6 +3177,7 @@ void BuiltinRegistry::registerListConversion() {
             auto a = extractL(args[0]), b = extractL(args[1]);
             if (a.size() != b.size()) throw std::runtime_error("Math Error: zip() requires same length.");
             ObjList* result = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(result);
             for (size_t i = 0; i < a.size(); ++i) {
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(a[i]); pair->vec.push_back(b[i]); pair->is_frozen = true;
@@ -3154,6 +3242,7 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (hasList) {
             ObjList* result = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(result);
             for (const auto& a : args) {
                 if (a.isObjType(ObjType::LIST)) { for (const auto& e : static_cast<ObjList*>(a.asObj())->vec) result->vec.push_back(e); }
                 else result->vec.push_back(a);
@@ -3783,6 +3872,7 @@ void BuiltinRegistry::registerFileIO() {
         std::ifstream file(path);
         if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
         ObjList* L = GcHeap::get().allocate<ObjList>(); std::string line;
+        GcObjGuard guard(L);
         while (std::getline(file, line)) {
             jc::checkInterrupt();
             if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -3845,6 +3935,7 @@ void BuiltinRegistry::registerFileIO() {
         if (!std::filesystem::exists(dir))
             throw std::runtime_error("IO Error: Directory '" + dir + "' does not exist.");
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         for (const auto& entry : std::filesystem::directory_iterator(dir))
             L->vec.push_back(Value(entry.path().filename().string()));
         return Value(L);
@@ -3858,7 +3949,8 @@ void BuiltinRegistry::registerFileIO() {
         if (args.size() == 2) { if (!args[1].isString()) throw std::runtime_error("Type Error: readCSV() delimiter must be a string."); delim = args[1].asString(); }
         std::ifstream file(path); if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
         ObjList* rows = GcHeap::get().allocate<ObjList>(); std::string line;
-        while (std::getline(file, line)) { jc::checkInterrupt(); if (!line.empty() && line.back() == '\r') line.pop_back(); ObjList* row = GcHeap::get().allocate<ObjList>(); size_t pos = 0, found; while ((found = line.find(delim, pos)) != std::string::npos) { row->vec.push_back(Value(line.substr(pos, found - pos))); pos = found + delim.size(); } row->vec.push_back(Value(line.substr(pos))); row->is_frozen = true; rows->vec.push_back(Value(row)); }
+        GcObjGuard guard(rows);
+        while (std::getline(file, line)) { jc::checkInterrupt(); if (!line.empty() && line.back() == '\r') line.pop_back(); ObjList* row = GcHeap::get().allocate<ObjList>(); GcObjGuard rowGuard(row); size_t pos = 0, found; while ((found = line.find(delim, pos)) != std::string::npos) { row->vec.push_back(Value(line.substr(pos, found - pos))); pos = found + delim.size(); } row->vec.push_back(Value(line.substr(pos))); row->is_frozen = true; rows->vec.push_back(Value(row)); }
         file.close(); return Value(rows);
         });
 
@@ -5110,6 +5202,7 @@ void BuiltinRegistry::registerCAS() {
     reg("solveEq", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
         auto roots = jc::solveEq(args[0].asSymbolic(), getVarName(args[1], "solveEq"));
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         for (const auto& r : roots) {
             if (r.ptr->getType() == SymType::FUNC) {
                 auto func = std::static_pointer_cast<SymFunc>(r.ptr);
@@ -5141,6 +5234,7 @@ void BuiltinRegistry::registerCAS() {
     reg("polyDiv", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         auto [q, r] = jc::polyDiv(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "polyDiv"));
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         L->vec.push_back(Value(q));
         L->vec.push_back(Value(r));
         L->is_frozen = true;
@@ -5161,13 +5255,15 @@ void BuiltinRegistry::registerCAS() {
             return Value(jc::factor(args[0].asSymbolic()));
         }
         auto factors = toBigInt(args[0]).factorize();
-        int r = static_cast<int>(factors.size());
-        std::vector<double> flat;
+        ObjDict* d = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard guard(d);
         for (const auto& f : factors) {
-            flat.push_back(f.first.toDouble());
-            flat.push_back(static_cast<double>(f.second));
+            Value k(f.first);
+            Value v(static_cast<double>(f.second));
+            d->keyMap[k] = d->elements.size();
+            d->elements.push_back({k, v});
         }
-        return Value(RealMatrix(r, 2, flat));
+        return Value(d);
         });
 
     reg("factorReal", { 1 }, [](const std::vector<Value>& args) -> Value {

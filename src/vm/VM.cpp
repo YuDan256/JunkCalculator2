@@ -971,7 +971,7 @@ namespace jc {
                     globals[name] = peek(0);
                     break;
                 }
-                case OpCode::OP_DEFINE_GLOBAL: {
+                case OpCode::OP_DEFINE_CONST_GLOBAL: {
                     uint16_t idx = readShort();
                     const std::string& name = chunk->constants[idx].asString();
                     globals[name] = peek(0);
@@ -2004,12 +2004,7 @@ namespace jc {
                             ns->fields[kv.first] = { uv, true };
                         }
                     } else {
-                        // ★ 脚本模块：依然使用 diff 机制
-                        std::unordered_set<std::string> oldGlobals;
-                        for (const auto& kv : globals) oldGlobals.insert(kv.first);
-                        std::unordered_set<std::string> oldNatives;
-                        for (const auto& kv : nativeBuiltins) oldNatives.insert(kv.first);
-
+                        // ★ 脚本模块：使用真正的 Namespace 编译机制，彻底告别老掉牙的 diff！
                         std::string resolved = helpers::safeResolvePath(name);
                         if (!std::filesystem::exists(resolved)) {
                             resolved = helpers::safeResolvePath(name + ".jc2");
@@ -2021,28 +2016,51 @@ namespace jc {
 
                         importedModules.insert(name);
 
-                        if (helpers::runFileCallback) {
-                            helpers::runFileCallback(resolved);
-                        }
+                        std::ifstream file(resolved);
+                        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read module script.");
+                        std::string code, line;
+                        while (std::getline(file, line)) code += line + "\n";
+                        file.close();
 
-                        for (const auto& kv : globals) {
-                            if (!oldGlobals.count(kv.first)) {
-                                auto uv = std::make_shared<UpVal>();
-                                uv->closed = kv.second;
-                                uv->location = &uv->closed;
-                                bool isConst = constGlobals.count(kv.first) > 0;
-                                ns->fields[kv.first] = { uv, isConst };
-                            }
-                        }
+                        jc::Lexer lexer(code, resolved);
+                        auto tokens = lexer.tokenize();
+                        jc::Parser parser(tokens);
+                        auto ast = parser.parse();
 
-                        for (const auto& kv : nativeBuiltins) {
-                            if (!oldNatives.count(kv.first)) {
-                                auto uv = std::make_shared<UpVal>();
-                                uv->closed = getBuiltinClosure(kv.first);
-                                uv->location = &uv->closed;
-                                ns->fields[kv.first] = { uv, true };
-                            }
+                        jc::Compiler compiler;
+                        compiler.setCompiledFunctions(compiledFunctions);
+                        compiler.setFunctionIndexOffset(0);
+
+                        Chunk modChunk = compiler.compileModule(ast.get(), resolved, baseName);
+
+                        auto modFn = std::make_shared<CompiledFunction>();
+                        modFn->name = "<module " + baseName + ">";
+                        modFn->sourceFile = resolved;
+                        modFn->chunk = std::move(modChunk);
+                        modFn->arity = 0;
+                        modFn->maxArity = 0;
+                        modFn->localCount = compiler.getTopLevelLocalCount();
+
+                        auto fns = compiler.getCompiledFunctions();
+                        fns.push_back(modFn);
+                        int modFnIdx = static_cast<int>(fns.size()) - 1;
+                        compiledFunctions = fns;
+
+                        std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
+                        helpers::g_scriptDirStack.push_back(scriptDir);
+                        Value nsVal;
+                        try {
+                            nsVal = callVMFunction(modFnIdx, {});
+                        } catch (...) {
+                            helpers::g_scriptDirStack.pop_back();
+                            throw;
                         }
+                        helpers::g_scriptDirStack.pop_back();
+
+                        if (!nsVal.isObjType(ObjType::NAMESPACE)) {
+                            throw std::runtime_error("VM Error: Module script must not use top-level 'return'.");
+                        }
+                        ns = static_cast<ObjNamespace*>(nsVal.asObj());
                     }
 
                     loadedModules[name] = Value(ns);

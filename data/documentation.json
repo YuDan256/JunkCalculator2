@@ -2795,7 +2795,7 @@
       "    • Deduplication: Importing the same file/module twice is a no-op.",
       "    • Chained imports: A library can safely `import` other libraries.",
       "    • Error propagation: Errors inside an imported file abort the import.",
-      "    • All definitions become globally available in the caller."
+      "    • Encapsulation: All definitions are strictly isolated inside the returned Namespace."
     ],
     "image": [
       "═══ Image Processing — Native Module ═══",

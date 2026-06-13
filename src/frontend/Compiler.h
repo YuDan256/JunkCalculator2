@@ -16,6 +16,7 @@ namespace jc {
         std::string name;
         int depth;
         bool isCaptured;
+        bool isConst = false;
     };
 
     class Compiler : public ExprVisitor {
@@ -28,7 +29,6 @@ namespace jc {
             std::unordered_set<std::string> refNames;     // ★ 新增：跟踪当前作用域显式 ref 的外部变量
             std::unordered_set<std::string> stateNames;   // ★ 新增：跟踪当前作用域显式 state 的外部变量
             std::unordered_set<std::string> explicitStateNames; // ★ 新增：跟踪显式初始化的 state 变量
-            std::unordered_set<std::string> constNames;   // ★ 新增：跟踪当前作用域的局部常量
             int tryDepth = 0;
             std::string expectedReturnType = "";
         };
@@ -67,7 +67,7 @@ namespace jc {
         void beginScope();
         void endScope();
         int resolveLocal(const std::string& name);
-        void addLocal(const std::string& name, int depth);
+        void addLocal(const std::string& name, int depth, bool isConst = false);
         void declareVariable(const std::string& name);
 
         void compileNode(Expr* expr);
@@ -84,6 +84,7 @@ namespace jc {
 
     public:
         Chunk compile(Expr* ast, const std::string& sourceFile = "");
+        Chunk compileModule(Expr* ast, const std::string& sourceFile, const std::string& moduleName);
 
         const std::vector<std::shared_ptr<CompiledFunction>>& getCompiledFunctions() const { return compiledFunctions; }
         void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) { compiledFunctions = fns; }

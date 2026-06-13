@@ -51,7 +51,7 @@ namespace jc {
         OP_GET_GLOBAL,      // [name_idx:16bit]
         OP_SET_GLOBAL,      // [name_idx:16bit]
         OP_SET_GLOBAL_REF,  // [name_idx:16bit] ★ 新增
-        OP_DEFINE_GLOBAL,   // [name_idx:16bit]
+        OP_DEFINE_CONST_GLOBAL, // [name_idx:16bit]
         OP_IS_UNINIT,       // 检查栈顶是否为 UNINIT，返回 bool
 
         // 局部变量
@@ -182,7 +182,7 @@ namespace jc {
         case OpCode::OP_GET_GLOBAL: return "OP_GET_GLOBAL";
         case OpCode::OP_SET_GLOBAL: return "OP_SET_GLOBAL";
         case OpCode::OP_SET_GLOBAL_REF: return "OP_SET_GLOBAL_REF";
-        case OpCode::OP_DEFINE_GLOBAL: return "OP_DEFINE_GLOBAL";
+        case OpCode::OP_DEFINE_CONST_GLOBAL: return "OP_DEFINE_CONST_GLOBAL";
         case OpCode::OP_IS_UNINIT: return "OP_IS_UNINIT";
         case OpCode::OP_GET_LOCAL: return "OP_GET_LOCAL";
         case OpCode::OP_SET_LOCAL: return "OP_SET_LOCAL";
@@ -413,7 +413,7 @@ namespace jc {
             case OpCode::OP_GET_GLOBAL:
             case OpCode::OP_SET_GLOBAL:
             case OpCode::OP_SET_GLOBAL_REF:
-            case OpCode::OP_DEFINE_GLOBAL:
+            case OpCode::OP_DEFINE_CONST_GLOBAL:
             case OpCode::OP_CLASS:
             case OpCode::OP_METHOD:
             case OpCode::OP_GET_SUPER: 

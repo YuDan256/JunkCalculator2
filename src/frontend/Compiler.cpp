@@ -254,8 +254,8 @@ namespace jc {
         emit(OpCode::OP_POP, lastLine);
     }
 
-    void Compiler::addLocal(const std::string& name, int depth) {
-        current().locals.push_back({ name, depth, false });
+    void Compiler::addLocal(const std::string& name, int depth, bool isConst) {
+        current().locals.push_back({ name, depth, false, isConst });
         // ★ 跟踪峰值容量
         if (static_cast<int>(current().locals.size()) > current().maxLocals) {
             current().maxLocals = static_cast<int>(current().locals.size());
@@ -305,6 +305,62 @@ namespace jc {
         topLevelLocalCount = current().maxLocals;
         stateStack.pop_back();
         return mainFn->chunk;
+    }
+
+    Chunk Compiler::compileModule(Expr* ast, const std::string& sourceFile, const std::string& moduleName) {
+        currentSourceFile = sourceFile;
+        
+        // ★ 压入一个虚拟的全局状态，使得模块内部的 stateStack.size() > 1
+        // 这样模块顶层的变量就会被正确识别为 Auto-locals (depth 0) 而不是全局变量
+        CompilerState dummyGlobal;
+        stateStack.push_back(dummyGlobal);
+        
+        auto fn = std::make_shared<CompiledFunction>();
+        fn->name = "<module " + moduleName + ">";
+        fn->sourceFile = sourceFile;
+        
+        initCompiler(fn.get());
+        beginScope(); // depth 1 (用于隔离 local 声明的私有变量)
+        
+        if (auto* block = dynamic_cast<Block*>(ast)) {
+            for (size_t i = 0; i < block->statements.size(); ++i) {
+                compileNode(block->statements[i].get());
+                emit(OpCode::OP_POP, lastLine);
+            }
+        } else {
+            compileNode(ast);
+            emit(OpCode::OP_POP, lastLine);
+        }
+        
+        int count = 0;
+        for (auto& local : current().locals) {
+            // 仅导出 depth == 0 的 Auto-locals，完美实现 local 关键字的私有化封装！
+            if (local.depth == 0 && !local.name.empty() && local.name[0] != '<') {
+                uint16_t keyIdx = identifierConstant(local.name);
+                emit(OpCode::OP_CONSTANT, lastLine);
+                emit16(keyIdx, lastLine);
+
+                int slot = resolveLocal(local.name);
+                chunk()->emitConstant(Value(static_cast<double>(slot)), lastLine);
+
+                bool isConst = local.isConst;
+                chunk()->emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
+
+                count++;
+            }
+        }
+        
+        uint16_t nsNameIdx = identifierConstant(moduleName);
+        emit(OpCode::OP_BUILD_NAMESPACE, lastLine);
+        emit16(nsNameIdx, lastLine);
+        emit16(static_cast<uint16_t>(count), lastLine);
+        emit(OpCode::OP_RETURN, lastLine);
+        
+        topLevelLocalCount = current().maxLocals;
+        endScope();
+        stateStack.pop_back(); // pop module state
+        stateStack.pop_back(); // pop dummy global state
+        return fn->chunk;
     }
 
 
@@ -390,8 +446,11 @@ namespace jc {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
 
-        if (current().constNames.count(name) > 0) {
-            throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+        int existingSlot = resolveLocal(name);
+        if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+            if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
+                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+            }
         }
 
         // ★ Pre-register ref/state BEFORE compiling RHS so variable reads resolve to upvalue
@@ -1193,8 +1252,11 @@ namespace jc {
         if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
             const std::string& name = var->name.lexeme;
             
-            if (current().constNames.count(name) > 0) {
-                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+            int existingSlot = resolveLocal(name);
+            if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+                if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                }
             }
 
             if (stateStack.size() == 1) {
@@ -1485,7 +1547,12 @@ namespace jc {
                 ScopeModifier mod = varPair.second;
                 if (name == "_") continue;
                 
-                if (current().constNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                int existingSlot = resolveLocal(name);
+                if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+                    if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
+                        throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                    }
+                }
                 if (stateStack.size() == 1) knownGlobals.insert(name);
 
                 int slot = resolveLocal(name);
@@ -1514,7 +1581,12 @@ namespace jc {
         }
         else {
             const std::string& varName = expr->varName.lexeme;
-            if (current().constNames.count(varName) > 0) throw std::runtime_error("Compiler Error: Cannot modify const variable '" + varName + "'.");
+            int existingSlot = resolveLocal(varName);
+            if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+                if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + varName + "'.");
+                }
+            }
             
             if (stateStack.size() == 1) knownGlobals.insert(varName);
 
@@ -2387,8 +2459,11 @@ namespace jc {
             const std::string& name = varPair.first;
             ScopeModifier mod = varPair.second;
             
-            if (current().constNames.count(name) > 0) {
-                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+            int existingSlot = resolveLocal(name);
+            if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+                if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                }
             }
             if (stateStack.size() == 1) knownGlobals.insert(name);
 
@@ -2487,7 +2562,8 @@ namespace jc {
         chunk()->code[offsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
         chunk()->code[offsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
 
-        if (current().constNames.count(expr->catchName.lexeme) > 0) {
+        int existingSlot = resolveLocal(expr->catchName.lexeme);
+        if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].depth == current().scopeDepth) {
             throw std::runtime_error("Compiler Error: Cannot modify const variable '" + expr->catchName.lexeme + "'.");
         }
 
@@ -2602,26 +2678,21 @@ namespace jc {
         compileNode(expr->value.get());
         const std::string& name = expr->name.lexeme;
 
-        if (stateStack.size() == 1) {
+        if (stateStack.size() == 1 && current().scopeDepth == 0) {
             knownGlobals.insert(name);
             uint16_t idx = identifierConstant(name);
-            emit(OpCode::OP_DEFINE_GLOBAL, lastLine);
+            emit(OpCode::OP_DEFINE_CONST_GLOBAL, lastLine);
             emit16(idx, lastLine);
         } else {
-            current().constNames.insert(name);
             int slot = resolveLocal(name);
-            if (slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                addLocal(name, 0); // Auto-local
+            if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                addLocal(name, current().scopeDepth, true);
                 slot = resolveLocal(name);
-            }
-            if (slot != -1) {
-                emit(OpCode::OP_SET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(slot), lastLine);
             } else {
-                uint16_t idx = identifierConstant(name);
-                emit(OpCode::OP_DEFINE_GLOBAL, lastLine);
-                emit16(idx, lastLine);
+                current().locals[slot].isConst = true;
             }
+            emit(OpCode::OP_SET_LOCAL, lastLine);
+            emit16(static_cast<uint16_t>(slot), lastLine);
         }
         return;
     }
@@ -2715,7 +2786,7 @@ namespace jc {
                 int slot = resolveLocal(local.name);
                 chunk()->emitConstant(Value(static_cast<double>(slot)), lastLine);
 
-                bool isConst = current().constNames.count(local.name) > 0;
+                bool isConst = local.isConst;
                 chunk()->emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
 
                 count++;

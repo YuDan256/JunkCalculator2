@@ -1762,6 +1762,34 @@ namespace jc {
         }
         if (lhs.isNumber() && rhs.isNumber()) return Value(lhs.asNumber() - rhs.asNumber());
         
+        if (lhs.isObjType(ObjType::DICT)) {
+            if (rhs.isObjType(ObjType::SET) || rhs.isObjType(ObjType::LIST) || rhs.isObjType(ObjType::DICT)) {
+                ObjDict* d1 = static_cast<ObjDict*>(lhs.asObj());
+                ObjDict* res = GcHeap::get().allocate<ObjDict>();
+                
+                if (rhs.isObjType(ObjType::SET)) {
+                    ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
+                    for (const auto& [k, v] : d1->elements) {
+                        if (s2->keys.find(k) == s2->keys.end()) res->set(k, v);
+                    }
+                } else if (rhs.isObjType(ObjType::LIST)) {
+                    ObjList* l2 = static_cast<ObjList*>(rhs.asObj());
+                    std::unordered_set<Value, ValueHasher, ValueEqual> toRemove;
+                    for (const auto& k : l2->vec) toRemove.insert(k);
+                    for (const auto& [k, v] : d1->elements) {
+                        if (toRemove.find(k) == toRemove.end()) res->set(k, v);
+                    }
+                } else if (rhs.isObjType(ObjType::DICT)) {
+                    ObjDict* d2 = static_cast<ObjDict*>(rhs.asObj());
+                    for (const auto& [k, v] : d1->elements) {
+                        if (d2->keyMap.find(k) == d2->keyMap.end()) res->set(k, v);
+                    }
+                }
+                return Value(res);
+            }
+            throw std::runtime_error("Type Error: Dict subtraction requires a Set, List, or Dict on the right side.");
+        }
+
         if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat - static_cast<ObjRealMatrix*>(rhs.asObj())->mat);
             if (lhs.isObjType(ObjType::COMPLEX_MATRIX) && rhs.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(lhs.asObj())->mat - static_cast<ObjComplexMatrix*>(rhs.asObj())->mat);
             if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::COMPLEX_MATRIX)) return Value(lhs.asComplexMatrix() - rhs.asComplexMatrix());

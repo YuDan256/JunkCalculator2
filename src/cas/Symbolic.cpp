@@ -5630,19 +5630,6 @@ namespace jc {
         if (depth > SymConfig::maxDepth) throw std::runtime_error("Calculus Error: Limit evaluation depth exceeded.");
         if (!expr.ptr) return expr;
 
-        // 1. 尝试直接代入 (静默模式，不抛出除零异常)
-        if (auto subbed = trySubsQuiet(expr, var, val)) {
-            try {
-                SymExpr simp = simplify(*subbed);
-                if (!containsVar(simp.ptr, var)) return simp;
-            } catch (...) {}
-        }
-
-        // 2. 转换为 x -> oo 的标准 Gruntz 形式
-        std::string t_var = "_t_inf";
-        SymExpr t = SymExpr::makeVar(t_var);
-        SymExpr expr_inf;
-        
         bool isInfLimit = false;
         bool isNegInfLimit = false;
         
@@ -5661,6 +5648,22 @@ namespace jc {
                 }
             }
         }
+
+        // 1. 尝试直接代入 (静默模式，不抛出除零异常)
+        // 仅当极限点不是无穷大时才尝试直接代入
+        if (!isInfLimit) {
+            if (auto subbed = trySubsQuiet(expr, var, val)) {
+                try {
+                    SymExpr simp = simplify(*subbed);
+                    if (!containsVar(simp.ptr, var)) return simp;
+                } catch (...) {}
+            }
+        }
+
+        // 2. 转换为 x -> oo 的标准 Gruntz 形式
+        std::string t_var = "_t_inf";
+        SymExpr t = SymExpr::makeVar(t_var);
+        SymExpr expr_inf;
         
         if (isInfLimit) {
             if (isNegInfLimit) {

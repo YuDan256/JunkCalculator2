@@ -77,9 +77,9 @@ namespace jc {
         int resolveUpvalue(const std::string& name);
         int resolveUpvalueAt(int level, const std::string& name, bool isRef, bool isState);
         int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false);
-        void emitStoreTarget(Expr* target);
+        void emitStoreTarget(Expr* target, bool isConst = false);
         std::optional<Value> tryFoldConstant(Expr* expr);
-        void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps);
+        void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst = false);
         void collectPatternVars(Pattern* pat, std::vector<std::pair<std::string, ScopeModifier>>& boundVars);
 
     public:
@@ -108,7 +108,6 @@ namespace jc {
         void visitReturnExpr(ReturnExpr*) override;
         void visitIndexAccess(IndexAccess*) override;
         void visitIndexAssign(IndexAssign*) override;
-        void visitConstDecl(ConstDecl*) override;
         void visitLocalDecl(LocalDecl*) override;
         void visitRefDecl(RefDecl*) override;
         void visitStateDecl(StateDecl*) override;

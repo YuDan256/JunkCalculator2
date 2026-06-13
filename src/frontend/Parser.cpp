@@ -139,10 +139,26 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::assignment() {
-        bool isLocal = match({ TokenType::LOCAL });
-        bool isRef = !isLocal && match({ TokenType::REF });
-        bool isState = !isLocal && !isRef && match({ TokenType::STATE });
-        bool isConst = !isLocal && !isRef && !isState && match({ TokenType::CONST });
+        bool isLocal = false, isRef = false, isState = false, isConst = false;
+        while (true) {
+            if (match({ TokenType::LOCAL })) {
+                if (isLocal) throw std::runtime_error("Parser Error: Duplicate 'local' modifier.");
+                isLocal = true;
+            } else if (match({ TokenType::REF })) {
+                if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                isRef = true;
+            } else if (match({ TokenType::STATE })) {
+                if (isState) throw std::runtime_error("Parser Error: Duplicate 'state' modifier.");
+                isState = true;
+            } else if (match({ TokenType::CONST })) {
+                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                isConst = true;
+            } else {
+                break;
+            }
+        }
+        if (isLocal && (isRef || isState)) throw std::runtime_error("Parser Error: Cannot combine 'local' with 'ref' or 'state'.");
+        if (isRef && isState) throw std::runtime_error("Parser Error: Cannot combine 'ref' and 'state'.");
 
         // ★ 特权推测解析：精准捕获带类型注解的函数定义 f(x: int) -> int = ...
         if (check(TokenType::IDENTIFIER) &&
@@ -277,8 +293,7 @@ namespace jc {
                         paramTypes, retType, rawBodyStr, std::move(finalBody)
                     );
 
-                    if (isConst) return std::make_unique<ConstDecl>(funcName, std::move(lambda));
-                    return std::make_unique<Assign>(funcName, std::move(lambda), isRef, isState, isLocal);
+                    return std::make_unique<Assign>(funcName, std::move(lambda), isRef, isState, isLocal, isConst);
                 }
             }
         }
@@ -351,13 +366,12 @@ namespace jc {
             }
 
             if (dynamic_cast<MatrixNode*>(expr.get()) || dynamic_cast<DictLiteral*>(expr.get())) {
-                if (isRef || isState || isConst) throw std::runtime_error("Parser Error: 'ref', 'state', or 'const' cannot be applied to destructuring.");
-                return std::make_unique<DestructAssign>(exprToPattern(std::move(expr)), std::move(value));
+                if (isRef || isState) throw std::runtime_error("Parser Error: 'ref' or 'state' cannot be applied to destructuring.");
+                return std::make_unique<DestructAssign>(exprToPattern(std::move(expr)), std::move(value), isLocal, isConst);
             }
 
             if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {
-                if (isConst) return std::make_unique<ConstDecl>(varExpr->name, std::move(value));
-                return std::make_unique<Assign>(varExpr->name, std::move(value), isRef, isState, isLocal);
+                return std::make_unique<Assign>(varExpr->name, std::move(value), isRef, isState, isLocal, isConst);
             }
 
             // ★ （旧的 Call 拦截已经被上面顶端安全取代，这里删去原来的 Call if 分支即可！）
@@ -372,13 +386,10 @@ namespace jc {
                 else if (isRef) expr = std::make_unique<RefDecl>(var->name);
                 else expr = std::make_unique<StateDecl>(var->name);
             } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
-                if (isConst) {
-                    expr = std::make_unique<ConstDecl>(assign->name, std::move(assign->value));
-                } else {
-                    assign->isLocal = isLocal;
-                    assign->isRef = isRef;
-                    assign->isState = isState;
-                }
+                assign->isLocal = isLocal;
+                assign->isRef = isRef;
+                assign->isState = isState;
+                assign->isConst = isConst;
             } else {
                 throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
             }
@@ -798,7 +809,18 @@ namespace jc {
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'for'.");
 
         int savedPos = current;
-        bool isLocal = match({ TokenType::LOCAL });
+        bool isLocal = false, isConst = false;
+        while (true) {
+            if (match({ TokenType::LOCAL })) {
+                if (isLocal) throw std::runtime_error("Parser Error: Duplicate 'local' modifier.");
+                isLocal = true;
+            } else if (match({ TokenType::CONST })) {
+                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                isConst = true;
+            } else {
+                break;
+            }
+        }
 
         // ★ 解构 for-in: for ([a, b, ...] in iterable) or for ({a, b} in iterable)
         if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
@@ -810,7 +832,7 @@ namespace jc {
                     auto iterable = expression();
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
                     auto body = parseStatementOrBlock();
-                    return std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal);
+                    return std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal, isConst);
                 }
             } catch (...) {
                 // Fall through to normal for loop parsing
@@ -827,7 +849,7 @@ namespace jc {
             auto iterable = expression();
             consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
             auto body = parseStatementOrBlock();
-            return std::make_unique<ForInExpr>(std::move(varName), std::move(iterable), std::move(body), isLocal);
+            return std::make_unique<ForInExpr>(std::move(varName), std::move(iterable), std::move(body), isLocal, isConst);
         }
 
         // 不是 for-in，回退到 '(' 之后，让 expression() 正常解析 init

@@ -85,7 +85,7 @@ namespace jc {
         }
     }
 
-    void Compiler::emitStoreTarget(Expr* target) {
+    void Compiler::emitStoreTarget(Expr* target, bool isConst) {
         if (auto* var = dynamic_cast<Variable*>(target)) {
             const std::string& name = var->name.lexeme;
             int slot = resolveLocal(name);
@@ -104,6 +104,8 @@ namespace jc {
                     uint16_t nameIdx = identifierConstant(name);
                     if (current().refNames.count(name) > 0) {
                         emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
+                    } else if (isConst) {
+                        emit(OpCode::OP_DEFINE_CONST_GLOBAL, lastLine);
                     } else {
                         emit(OpCode::OP_SET_GLOBAL, lastLine);
                     }
@@ -203,7 +205,7 @@ namespace jc {
             }
 
             std::vector<int> failJumps;
-            compilePatternMatch(clause.pattern.get(), valSlot, failJumps);
+            compilePatternMatch(clause.pattern.get(), valSlot, failJumps, false);
 
             if (!failJumps.empty()) {
                 int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -469,9 +471,9 @@ namespace jc {
         if (dynamic_cast<LambdaExpr*>(expr->value.get())) {
             int slot = resolveLocal(name);
             if (expr->isLocal) {
-                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) addLocal(name, current().scopeDepth);
+                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) addLocal(name, current().scopeDepth, expr->isConst);
             } else if (!expr->isRef && !expr->isState && stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                addLocal(name, 0); // Auto-locals go to function scope
+                addLocal(name, 0, expr->isConst); // Auto-locals go to function scope
             }
         }
 
@@ -513,7 +515,7 @@ namespace jc {
 
         compileNode(expr->value.get());
 
-        if (stateStack.size() == 1) {
+        if (stateStack.size() == 1 && current().scopeDepth == 0) {
             knownGlobals.insert(name);
         }
 
@@ -522,16 +524,20 @@ namespace jc {
 
         if (expr->isLocal) {
             if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                addLocal(name, current().scopeDepth);
+                addLocal(name, current().scopeDepth, expr->isConst);
                 slot = resolveLocal(name);
+            } else {
+                current().locals[slot].isConst = expr->isConst;
             }
         } else if (expr->isRef || expr->isState) {
             upvalue = resolveUpvalue(name);
         } else {
             // ★ Auto-local Write (Shadowing)
             if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                addLocal(name, 0); // Auto-locals go to function scope
+                addLocal(name, 0, expr->isConst); // Auto-locals go to function scope
                 slot = resolveLocal(name);
+            } else if (slot != -1) {
+                current().locals[slot].isConst = expr->isConst;
             }
         }
 
@@ -549,6 +555,8 @@ namespace jc {
                 uint16_t idx = identifierConstant(name);
                 if (expr->isRef || current().refNames.count(name) > 0) {
                     emit(OpCode::OP_SET_GLOBAL_REF, expr->name.line);
+                } else if (expr->isConst) {
+                    emit(OpCode::OP_DEFINE_CONST_GLOBAL, expr->name.line);
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, expr->name.line);
                 }
@@ -1558,17 +1566,21 @@ namespace jc {
                 int slot = resolveLocal(name);
                 if (mod == ScopeModifier::Local) {
                     if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(name, current().scopeDepth);
+                        addLocal(name, current().scopeDepth, expr->isConst);
+                    } else {
+                        current().locals[slot].isConst = expr->isConst;
                     }
                 } else if (mod == ScopeModifier::None) {
                     if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                        addLocal(name, 0);
+                        addLocal(name, 0, expr->isConst);
+                    } else if (slot != -1) {
+                        current().locals[slot].isConst = expr->isConst;
                     }
                 }
             }
 
             std::vector<int> failJumps;
-            compilePatternMatch(expr->pattern.get(), valSlot, failJumps);
+            compilePatternMatch(expr->pattern.get(), valSlot, failJumps, expr->isConst);
 
             if (!failJumps.empty()) {
                 int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -1593,11 +1605,15 @@ namespace jc {
             int slot = resolveLocal(varName);
             if (expr->isLocal) {
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                    addLocal(varName, current().scopeDepth); slot = resolveLocal(varName);
+                    addLocal(varName, current().scopeDepth, expr->isConst); slot = resolveLocal(varName);
+                } else {
+                    current().locals[slot].isConst = expr->isConst;
                 }
             } else {
                 if (stateStack.size() > 1 && slot == -1 && current().refNames.count(varName) == 0 && current().stateNames.count(varName) == 0) {
-                    addLocal(varName, 0); slot = resolveLocal(varName);
+                    addLocal(varName, 0, expr->isConst); slot = resolveLocal(varName);
+                } else if (slot != -1) {
+                    current().locals[slot].isConst = expr->isConst;
                 }
             }
             if (slot != -1) { emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); }
@@ -1605,6 +1621,8 @@ namespace jc {
                 uint16_t idx = identifierConstant(varName); 
                 if (current().refNames.count(varName) > 0) {
                     emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
+                } else if (expr->isConst) {
+                    emit(OpCode::OP_DEFINE_CONST_GLOBAL, lastLine);
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, lastLine); 
                 }
@@ -2017,7 +2035,7 @@ namespace jc {
         }
     }
 
-    void Compiler::compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps) {
+    void Compiler::compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst) {
         if (auto* lit = dynamic_cast<LiteralPattern*>(p)) {
             if (!tryFoldConstant(lit->literal.get())) {
                 throw std::runtime_error("Compiler Error: Dynamic expression assertions must be enclosed in parentheses '()'.");
@@ -2056,13 +2074,13 @@ namespace jc {
                     }
                 } else {
                     Variable v(var->name);
-                    emitStoreTarget(&v);
+                    emitStoreTarget(&v, isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
         } else if (auto* exprPat = dynamic_cast<ExprPattern*>(p)) {
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-            emitStoreTarget(exprPat->expr.get());
+            emitStoreTarget(exprPat->expr.get(), isConst);
             emit(OpCode::OP_POP, lastLine);
         } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
             int minCols = 0;
@@ -2124,7 +2142,7 @@ namespace jc {
                             }
                         } else {
                             Variable v(restPat->name);
-                            emitStoreTarget(&v);
+                            emitStoreTarget(&v, isConst);
                         }
                         emit(OpCode::OP_POP, lastLine);
                     }
@@ -2144,7 +2162,7 @@ namespace jc {
                     emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     
-                    compilePatternMatch(lp->elements[i].get(), tmpSlot, failJumps);
+                    compilePatternMatch(lp->elements[i].get(), tmpSlot, failJumps, isConst);
                     current().locals.pop_back();
                 }
             }
@@ -2173,7 +2191,7 @@ namespace jc {
                     }
                 } else {
                     Variable v(lp->rest->name);
-                    emitStoreTarget(&v);
+                    emitStoreTarget(&v, isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
@@ -2284,7 +2302,7 @@ namespace jc {
                                 }
                             } else {
                                 Variable v(restPat->name);
-                                emitStoreTarget(&v);
+                                emitStoreTarget(&v, isConst);
                             }
                             emit(OpCode::OP_POP, lastLine);
                         }
@@ -2305,7 +2323,7 @@ namespace jc {
                         emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                         emit(OpCode::OP_POP, lastLine);
                         
-                        compilePatternMatch(e.get(), tmpSlot, failJumps);
+                        compilePatternMatch(e.get(), tmpSlot, failJumps, isConst);
                         current().locals.pop_back();
                     }
                 }
@@ -2338,7 +2356,7 @@ namespace jc {
                     }
                 } else {
                     Variable v(mp->restRow->name);
-                    emitStoreTarget(&v);
+                    emitStoreTarget(&v, isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
@@ -2371,7 +2389,7 @@ namespace jc {
                 emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                 emit(OpCode::OP_POP, lastLine); // pop the value
                 
-                compilePatternMatch(entry.second.get(), tmpSlot, failJumps);
+                compilePatternMatch(entry.second.get(), tmpSlot, failJumps, isConst);
                 current().locals.pop_back();
                 
                 int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -2411,7 +2429,7 @@ namespace jc {
                     }
                 } else {
                     Variable v(dp->rest->name);
-                    emitStoreTarget(&v);
+                    emitStoreTarget(&v, isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
@@ -2458,6 +2476,7 @@ namespace jc {
         for (const auto& varPair : boundVars) {
             const std::string& name = varPair.first;
             ScopeModifier mod = varPair.second;
+            if (mod == ScopeModifier::None && expr->isLocal) mod = ScopeModifier::Local;
             
             int existingSlot = resolveLocal(name);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
@@ -2470,18 +2489,22 @@ namespace jc {
             int slot = resolveLocal(name);
             if (mod == ScopeModifier::Local) {
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                    addLocal(name, current().scopeDepth);
+                    addLocal(name, current().scopeDepth, expr->isConst);
+                } else {
+                    current().locals[slot].isConst = expr->isConst;
                 }
             } else if (mod == ScopeModifier::None) {
                 if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                    addLocal(name, 0);
+                    addLocal(name, 0, expr->isConst);
+                } else if (slot != -1) {
+                    current().locals[slot].isConst = expr->isConst;
                 }
             }
         }
 
         // 5. Compile pattern match
         std::vector<int> failJumps;
-        compilePatternMatch(expr->pattern.get(), valSlot, failJumps);
+        compilePatternMatch(expr->pattern.get(), valSlot, failJumps, expr->isConst);
 
         // 6. Handle match failure
         if (!failJumps.empty()) {
@@ -2671,29 +2694,6 @@ namespace jc {
         emit(OpCode::OP_NONE, lastLine);
         emit(OpCode::OP_SET_LOCAL, lastLine);
         emit16(static_cast<uint16_t>(slot), lastLine);
-        return;
-    }
-
-    void Compiler::visitConstDecl(ConstDecl* expr) {
-        compileNode(expr->value.get());
-        const std::string& name = expr->name.lexeme;
-
-        if (stateStack.size() == 1 && current().scopeDepth == 0) {
-            knownGlobals.insert(name);
-            uint16_t idx = identifierConstant(name);
-            emit(OpCode::OP_DEFINE_CONST_GLOBAL, lastLine);
-            emit16(idx, lastLine);
-        } else {
-            int slot = resolveLocal(name);
-            if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                addLocal(name, current().scopeDepth, true);
-                slot = resolveLocal(name);
-            } else {
-                current().locals[slot].isConst = true;
-            }
-            emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(slot), lastLine);
-        }
         return;
     }
 
@@ -3178,7 +3178,7 @@ namespace jc {
                 auto& pat = branch.patterns[pi];
                 std::vector<int> failJumps;
 
-                compilePatternMatch(pat.get(), subjectSlot, failJumps);
+                compilePatternMatch(pat.get(), subjectSlot, failJumps, false);
 
                 bodyJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
 

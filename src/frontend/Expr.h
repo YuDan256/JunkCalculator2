@@ -140,7 +140,6 @@ namespace jc {
         virtual void visitReturnExpr(ReturnExpr* expr) = 0;
         virtual void visitIndexAccess(IndexAccess* expr) = 0;
         virtual void visitIndexAssign(IndexAssign* expr) = 0;
-        virtual void visitConstDecl(ConstDecl* expr) = 0;
         virtual void visitLocalDecl(LocalDecl* expr) = 0;
         virtual void visitRefDecl(RefDecl* expr) = 0;
         virtual void visitStateDecl(StateDecl* expr) = 0;
@@ -220,8 +219,9 @@ namespace jc {
         bool isRef;
         bool isState;
         bool isLocal; // ★ 新增
-        Assign(Token name, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false)
-            : name(std::move(name)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal) {
+        bool isConst; // ★ 新增
+        Assign(Token name, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false, bool isConst = false)
+            : name(std::move(name)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal), isConst(isConst) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitAssign(this); }
     };
@@ -363,15 +363,6 @@ namespace jc {
         void accept(ExprVisitor& visitor) override { visitor.visitIndexAssign(this); }
     };
 
-    struct ConstDecl : public Expr {
-        Token name;
-        std::unique_ptr<Expr> value;
-        ConstDecl(Token name, std::unique_ptr<Expr> value)
-            : name(std::move(name)), value(std::move(value)) {
-        }
-        void accept(ExprVisitor& visitor) override { visitor.visitConstDecl(this); }
-    };
-
     struct DeleteExpr : public Expr {
         std::vector<Token> names;
         explicit DeleteExpr(std::vector<Token> names)
@@ -434,20 +425,21 @@ namespace jc {
         std::unique_ptr<Expr> iterable;
         std::unique_ptr<Expr> body;
         bool isLocal; // ★ 新增
+        bool isConst; // ★ 新增
 
         bool isDestruct() const { return pattern != nullptr; }
 
         // Single variable: for (x in ...)
-        ForInExpr(Token varName, std::unique_ptr<Expr> iterable, std::unique_ptr<Expr> body, bool isLocal = false)
-            : varName(std::move(varName)), pattern(nullptr), iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal) {
+        ForInExpr(Token varName, std::unique_ptr<Expr> iterable, std::unique_ptr<Expr> body, bool isLocal = false, bool isConst = false)
+            : varName(std::move(varName)), pattern(nullptr), iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal), isConst(isConst) {
         }
 
         // ★ Destructured: for ([a, b] in ...)
         ForInExpr(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> iterable,
-            std::unique_ptr<Expr> body, bool isLocal = false)
+            std::unique_ptr<Expr> body, bool isLocal = false, bool isConst = false)
             : varName(Token(TokenType::IDENTIFIER, "", 0)),
             pattern(std::move(pattern)),
-            iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal) {
+            iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal), isConst(isConst) {
         }
 
         void accept(ExprVisitor& visitor) override { visitor.visitForInExpr(this); }
@@ -576,8 +568,10 @@ namespace jc {
     struct DestructAssign : public Expr {
         std::unique_ptr<Pattern> pattern;
         std::unique_ptr<Expr> value;
-        DestructAssign(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> value)
-            : pattern(std::move(pattern)), value(std::move(value)) {
+        bool isLocal;
+        bool isConst;
+        DestructAssign(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> value, bool isLocal = false, bool isConst = false)
+            : pattern(std::move(pattern)), value(std::move(value)), isLocal(isLocal), isConst(isConst) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitDestructAssign(this); }
     };

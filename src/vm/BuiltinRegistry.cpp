@@ -1180,21 +1180,56 @@ void BuiltinRegistry::registerLinearSolvers() {
         int n = A.getCols();
         ComplexMatrix aug = A.integR(b);
         int rankA = A.rank(), rankAug = aug.rank();
-        if (rankA != rankAug) { ComplexMatrix AH = A.conjugateTranspose(); ComplexMatrix nA = AH * A, nb = AH * b; ComplexMatrix a2 = nA.integR(nb); auto [r2, s2] = a2.gaussianElimination(); int n2 = nA.getCols(); std::vector<Complex> sol(n2); for (int i = 0; i < n2; ++i) sol[i] = r2(i, n2); return Value(ComplexMatrix(n2, 1, sol)); }
+        
+        ObjDict* d = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard guard(d);
+        auto setField = [&](const std::string& k, Value v) {
+            Value key(k);
+            d->keyMap[key] = d->elements.size();
+            d->elements.push_back({key, v});
+        };
+
+        if (rankA != rankAug) { 
+            ComplexMatrix AH = A.conjugateTranspose(); 
+            ComplexMatrix nA = AH * A, nb = AH * b; 
+            ComplexMatrix a2 = nA.integR(nb); 
+            auto [r2, s2] = a2.gaussianElimination(); 
+            int n2 = nA.getCols(); 
+            std::vector<Complex> sol(n2); 
+            for (int i = 0; i < n2; ++i) sol[i] = r2(i, n2); 
+            ComplexMatrix approx(n2, 1, sol);
+            ComplexMatrix residual = b - A * approx;
+            setField("status", Value("least_squares"));
+            setField("approx", Value(approx));
+            setField("residual", Value(residual));
+            return Value(d);
+        }
+        
         auto [rref, swaps] = aug.gaussianElimination();
-        std::vector<int> pivotCols; for (int i = 0; i < A.getRows(); ++i) for (int j = 0; j < n; ++j) { if (!ComplexMatrix::isEssentiallyZero(rref(i, j))) { pivotCols.push_back(j); break; } }
-        std::vector<Complex> particular(n, Complex(0, 0)); for (int p = 0; p < static_cast<int>(pivotCols.size()); ++p) particular[pivotCols[p]] = rref(p, n);
-        return Value(ComplexMatrix(n, 1, particular));
-    });
-    reg("linfo", { 2 }, [](const std::vector<Value>& args) -> Value {
-        ComplexMatrix A = args[0].asComplexMatrix(), b = args[1].asComplexMatrix();
-        if (A.getRows() != b.getRows()) throw std::runtime_error("Math Error: Row count mismatch.");
-        int m = A.getRows(), n = A.getCols(); ComplexMatrix aug = A.integR(b); int rA = A.rank(), rAug = aug.rank();
-        std::cout << "Equations: " << m << "  Variables: " << n << "  rank(A): " << rA << "  rank([A|b]): " << rAug << std::endl;
-        if (rA != rAug) std::cout << "Status: NO SOLUTION -> lsolve gives least squares." << std::endl;
-        else if (rA == n) std::cout << "Status: UNIQUE SOLUTION" << std::endl;
-        else std::cout << "Status: INFINITE SOLUTIONS  Free vars: " << (n - rA) << std::endl;
-        return Value::none();
+        std::vector<int> pivotCols; 
+        for (int i = 0; i < A.getRows(); ++i) {
+            for (int j = 0; j < n; ++j) { 
+                if (!ComplexMatrix::isEssentiallyZero(rref(i, j))) { 
+                    pivotCols.push_back(j); 
+                    break; 
+                } 
+            }
+        }
+        std::vector<Complex> particular(n, Complex(0, 0)); 
+        for (int p = 0; p < static_cast<int>(pivotCols.size()); ++p) {
+            particular[pivotCols[p]] = rref(p, n);
+        }
+        ComplexMatrix partMat(n, 1, particular);
+        
+        if (rankA == n) {
+            setField("status", Value("unique"));
+            setField("solution", Value(partMat));
+        } else {
+            setField("status", Value("infinite"));
+            setField("particular", Value(partMat));
+            setField("basis", Value(A.nullSpace()));
+        }
+        return Value(d);
     });
     reg("lstsq", { 2 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); ComplexMatrix AH = A.conjugateTranspose(); ComplexMatrix aug = (AH * A).integR(AH * b); auto [rref, sw] = aug.gaussianElimination(); int n = (AH * A).getCols(); std::vector<Complex> sol(n); for (int i = 0; i < n; ++i) sol[i] = rref(i, n); return Value(ComplexMatrix(n, 1, sol)); });
     reg("residual", { 3 }, [](const std::vector<Value>& args) -> Value { return Value(args[2].asComplexMatrix() - args[0].asComplexMatrix() * args[1].asComplexMatrix()); });

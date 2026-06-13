@@ -784,17 +784,14 @@
       "",
       "  Primary Solver",
       "  ──────────────────────",
-      "    lsolve(A, b)        Automatic solver via Gaussian Elimination:",
-      "                          • Unique solution     → exact x",
-      "                          • Infinite solutions  → one particular solution",
-      "                          • No solution         → least-squares approximation",
+      "    lsolve(A, b)        Automatic solver via Gaussian Elimination. Returns a Dict:",
+      "                          • Unique solution     → {status: \"unique\", solution: x}",
+      "                          • Infinite solutions  → {status: \"infinite\", particular: x, basis: B}",
+      "                          • No solution         → {status: \"least_squares\", approx: x, residual: r}",
       "                        A must be an M×N matrix, b must be an M×1 column vector.",
       "",
       "  Diagnostics",
       "  ──────────────────────",
-      "    linfo(A, b)         Print rank info and classify the system:",
-      "                          Outputs whether the system has a unique solution,",
-      "                          infinite solutions, or no exact solution.",
       "    residual(A, x, b)   Residual vector  r = b − A*x",
       "",
       "  Least-Squares (forced)",
@@ -3745,7 +3742,7 @@
     },
     "lsolve": {
       "signature": "lsolve(A, b)",
-      "desc": "Solves the linear system Ax = b. Returns exact solution, particular solution, or least-squares approximation.",
+      "desc": "Solves the linear system Ax = b. Returns a Dict with 'status' (\"unique\", \"infinite\", or \"least_squares\") and corresponding fields ('solution', or 'particular' and 'basis', or 'approx' and 'residual').",
       "examples": [
         "lsolve([1, 2; 3, 4], [5; 11])"
       ]
@@ -5906,11 +5903,6 @@
       "signature": "lu(A)",
       "desc": "Returns a List @[L, U, P] containing the lower triangular matrix L, upper triangular matrix U, and permutation matrix P from the LU decomposition of A.",
       "examples": ["[L, U, P] = lu(A)"]
-    },
-    "linfo": {
-      "signature": "linfo(A, b)",
-      "desc": "Prints rank information and classifies the linear system Ax = b.",
-      "examples": ["linfo(A, b)"]
     },
     "residual": {
       "signature": "residual(A, x, b)",

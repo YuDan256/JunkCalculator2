@@ -5387,13 +5387,13 @@ namespace jc {
         if (L.isZero()) return -1; // f < g
         if (L.ptr->getType() == SymType::VAR) {
             std::string n = std::static_pointer_cast<SymVar>(L.ptr)->name;
-            if (n == "oo" || n == "inf" || n == "-oo") return 1; // f > g
+            if (n == "inf" || n == "-inf") return 1; // f > g
         }
         if (L.ptr->getType() == SymType::MUL) {
             for (auto& arg : std::static_pointer_cast<SymMul>(L.ptr)->args) {
                 if (arg->getType() == SymType::VAR) {
                     std::string n = std::static_pointer_cast<SymVar>(arg)->name;
-                    if (n == "oo" || n == "inf" || n == "-oo") return 1;
+                    if (n == "inf" || n == "-inf") return 1;
                 }
             }
         }
@@ -5467,12 +5467,12 @@ namespace jc {
                 bool isInf = false;
                 if (L.ptr->getType() == SymType::VAR) {
                     std::string n = std::static_pointer_cast<SymVar>(L.ptr)->name;
-                    if (n == "oo" || n == "inf" || n == "-oo") isInf = true;
+                    if (n == "inf" || n == "-inf") isInf = true;
                 } else if (L.ptr->getType() == SymType::MUL) {
                     for (auto& a : std::static_pointer_cast<SymMul>(L.ptr)->args) {
                         if (a->getType() == SymType::VAR) {
                             std::string n = std::static_pointer_cast<SymVar>(a)->name;
-                            if (n == "oo" || n == "inf" || n == "-oo") isInf = true;
+                            if (n == "inf" || n == "-inf") isInf = true;
                         }
                     }
                 }
@@ -5555,7 +5555,7 @@ namespace jc {
                     isNeg = isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value);
                 }
             }
-            return isNeg ? SymExpr::makeVar("-oo") : SymExpr::makeVar("oo");
+            return isNeg ? SymExpr::makeVar("-inf") : SymExpr::makeVar("inf");
         };
         
         if (omega.size() == 1 && omega[0].ptr->getType() == SymType::VAR) {
@@ -5587,13 +5587,13 @@ namespace jc {
         // Ensure g -> +oo
         SymExpr L_g = gruntzInf(g, var, depth + 1);
         bool g_is_neg_inf = false;
-        if (L_g.ptr->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(L_g.ptr)->name == "-oo") {
+        if (L_g.ptr->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(L_g.ptr)->name == "-inf") {
             g_is_neg_inf = true;
         } else if (L_g.ptr->getType() == SymType::MUL) {
             auto mul = std::static_pointer_cast<SymMul>(L_g.ptr);
             if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM && isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value)) {
                 for (auto& a : mul->args) {
-                    if (a->getType() == SymType::VAR && (std::static_pointer_cast<SymVar>(a)->name == "oo" || std::static_pointer_cast<SymVar>(a)->name == "inf")) {
+                    if (a->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(a)->name == "inf") {
                         g_is_neg_inf = true;
                     }
                 }
@@ -5648,13 +5648,13 @@ namespace jc {
         
         if (val.ptr->getType() == SymType::VAR) {
             std::string vName = std::static_pointer_cast<SymVar>(val.ptr)->name;
-            if (vName == "oo" || vName == "inf" || vName == "Infinity") isInfLimit = true;
-            if (vName == "-oo") { isInfLimit = true; isNegInfLimit = true; }
+            if (vName == "inf" || vName == "Infinity") isInfLimit = true;
+            if (vName == "-inf") { isInfLimit = true; isNegInfLimit = true; }
         } else if (val.ptr->getType() == SymType::MUL) {
             auto mul = std::static_pointer_cast<SymMul>(val.ptr);
             if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM && isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value)) {
                 for (auto& a : mul->args) {
-                    if (a->getType() == SymType::VAR && (std::static_pointer_cast<SymVar>(a)->name == "oo" || std::static_pointer_cast<SymVar>(a)->name == "inf")) {
+                    if (a->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(a)->name == "inf") {
                         isInfLimit = true;
                         isNegInfLimit = true;
                     }

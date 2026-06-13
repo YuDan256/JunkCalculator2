@@ -1319,9 +1319,18 @@ void BuiltinRegistry::registerBase() {
     reg("changeBase", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); });
     reg("data", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asBigInt()); });
 
-    reg("bitand", { 2 }, [](const std::vector<Value>& args) -> Value { return args[0] & args[1]; });
-    reg("bitor", { 2 }, [](const std::vector<Value>& args) -> Value { return args[0] | args[1]; });
-    reg("bitxor", { 2 }, [](const std::vector<Value>& args) -> Value { return bitXor(args[0], args[1]); });
+    reg("bitand", { 2 }, [](const std::vector<Value>& args) -> Value { 
+        if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitand() does not support Sets.");
+        return args[0] & args[1]; 
+    });
+    reg("bitor", { 2 }, [](const std::vector<Value>& args) -> Value { 
+        if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitor() does not support Sets.");
+        return args[0] | args[1]; 
+    });
+    reg("bitxor", { 2 }, [](const std::vector<Value>& args) -> Value { 
+        if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitxor() does not support Sets.");
+        return bitXor(args[0], args[1]); 
+    });
     
     reg("bitnot", { 1, 2 }, [](const std::vector<Value>& args) -> Value { 
         int width = -1;

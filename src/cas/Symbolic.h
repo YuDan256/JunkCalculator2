@@ -168,7 +168,7 @@ namespace jc {
     // ==========================================
     // 🚀 下一步发展路线图 (Roadmap) 接口预留
     // ==========================================
-    SymExpr limit(const SymExpr& expr, const std::string& var, const SymExpr& val);
+    SymExpr limit(const SymExpr& expr, const std::string& var, const SymExpr& val, const std::string& dir = "");
     SymExpr trigsimp(const SymExpr& expr);
     SymExpr taylor(const SymExpr& expr, const std::string& var, const SymExpr& a, int order); // 泰勒展开
     SymExpr rischNormalize(const SymExpr& expr); // 刘维尔域规范化 (Risch 算法前置)

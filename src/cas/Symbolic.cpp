@@ -5064,9 +5064,11 @@ namespace jc {
             rem.terms.erase(leadDeg);
             
             AsympSeries currentTerm = res;
-            for (int i = 1; i <= 5; ++i) { // 展开到 5 阶
+            int max_i = std::max(5, static_cast<int>(order.toDouble()));
+            for (int i = 1; i <= max_i; ++i) {
                 if (rem.terms.empty()) break;
                 currentTerm = currentTerm * rem * AsympSeries(order);
+                if (currentTerm.terms.empty() || currentTerm.terms.begin()->first > order) break;
                 // 乘以 -1/leadCoeff
                 AsympSeries negLead(order);
                 negLead.addTerm(-leadDeg, simplifyCore(SymExpr(BigInt(-1)) / leadCoeff));
@@ -5160,7 +5162,9 @@ namespace jc {
                             SymExpr currentCoeff = coeffF;
                             BigInt fact(1);
                             
-                            for (int i = 1; i <= 3; ++i) {
+                            int max_i = std::max(3, static_cast<int>(order.toDouble()));
+                            for (int i = 1; i <= max_i; ++i) {
+                                if (currentX.terms.empty() || currentX.terms.begin()->first > order) break;
                                 AsympSeries term(order);
                                 for (auto& kv : currentX.terms) {
                                     term.addTerm(kv.first, simplifyCore(kv.second * currentCoeff / SymExpr(fact)));
@@ -5214,9 +5218,11 @@ namespace jc {
                     currentTerm.addTerm(Fraction(0), SymExpr(BigInt(1)));
                     BigInt fact(1);
                     
-                    for (int i = 1; i <= 4; ++i) {
+                    int max_i = std::max(5, static_cast<int>(order.toDouble()));
+                    for (int i = 1; i <= max_i; ++i) {
                         if (argS.terms.empty()) break;
                         currentTerm = currentTerm * argS;
+                        if (currentTerm.terms.empty() || currentTerm.terms.begin()->first > order) break;
                         fact = fact * BigInt(i);
                         
                         AsympSeries termToAdd(order);
@@ -5233,7 +5239,10 @@ namespace jc {
                     }
                     return res;
                 }
-                if ((func->name == "sin" || func->name == "cos") && func->args.size() == 1) {
+                if ((func->name == "sin" || func->name == "cos" || func->name == "tan" || 
+                     func->name == "sinh" || func->name == "cosh" || func->name == "tanh" ||
+                     func->name == "asin" || func->name == "atan" || func->name == "asinh" || func->name == "atanh" ||
+                     func->name == "log") && func->args.size() == 1) {
                     AsympSeries argS = computeGruntzSeries(SymExpr(func->args[0]), t_var, order);
                     if (argS.terms.empty() || argS.terms.begin()->first < Fraction(0)) {
                         AsympSeries s(order);
@@ -5247,32 +5256,112 @@ namespace jc {
                     }
                     
                     AsympSeries res(order);
-                    if (func->name == "sin") {
+                    if (func->name == "sin" || func->name == "sinh" || func->name == "asin" || func->name == "asinh" || func->name == "tan" || func->name == "tanh" || func->name == "atan" || func->name == "atanh") {
                         if (c0.isZero()) {
                             res.addTerm(Fraction(0), SymExpr(BigInt(0)));
                             AsympSeries currentTerm = argS;
                             res = res + currentTerm;
                             currentTerm = currentTerm * argS * argS;
                             AsympSeries term3(order);
-                            for (auto& kv : currentTerm.terms) term3.addTerm(kv.first, simplifyCore(kv.second / SymExpr(BigInt(-6))));
+                            SymExpr coeff3(BigInt(0));
+                            if (func->name == "sin") coeff3 = SymExpr(Fraction(-1, 6));
+                            else if (func->name == "sinh") coeff3 = SymExpr(Fraction(1, 6));
+                            else if (func->name == "asin") coeff3 = SymExpr(Fraction(1, 6));
+                            else if (func->name == "asinh") coeff3 = SymExpr(Fraction(-1, 6));
+                            else if (func->name == "tan") coeff3 = SymExpr(Fraction(1, 3));
+                            else if (func->name == "tanh") coeff3 = SymExpr(Fraction(-1, 3));
+                            else if (func->name == "atan") coeff3 = SymExpr(Fraction(-1, 3));
+                            else if (func->name == "atanh") coeff3 = SymExpr(Fraction(1, 3));
+                            for (auto& kv : currentTerm.terms) term3.addTerm(kv.first, simplifyCore(kv.second * coeff3));
                             res = res + term3;
+                            
+                            currentTerm = currentTerm * argS * argS;
+                            AsympSeries term5(order);
+                            SymExpr coeff5(BigInt(0));
+                            if (func->name == "sin") coeff5 = SymExpr(Fraction(1, 120));
+                            else if (func->name == "sinh") coeff5 = SymExpr(Fraction(1, 120));
+                            else if (func->name == "asin") coeff5 = SymExpr(Fraction(3, 40));
+                            else if (func->name == "asinh") coeff5 = SymExpr(Fraction(3, 40));
+                            else if (func->name == "tan") coeff5 = SymExpr(Fraction(2, 15));
+                            else if (func->name == "tanh") coeff5 = SymExpr(Fraction(2, 15));
+                            else if (func->name == "atan") coeff5 = SymExpr(Fraction(1, 5));
+                            else if (func->name == "atanh") coeff5 = SymExpr(Fraction(1, 5));
+                            for (auto& kv : currentTerm.terms) term5.addTerm(kv.first, simplifyCore(kv.second * coeff5));
+                            res = res + term5;
                         } else {
                             AsympSeries s(order);
                             s.addTerm(Fraction(0), expr);
                             return s;
                         }
-                    } else {
+                    } else if (func->name == "cos" || func->name == "cosh") {
                         if (c0.isZero()) {
                             res.addTerm(Fraction(0), SymExpr(BigInt(1)));
                             AsympSeries currentTerm = argS * argS;
                             AsympSeries term2(order);
-                            for (auto& kv : currentTerm.terms) term2.addTerm(kv.first, simplifyCore(kv.second / SymExpr(BigInt(-2))));
+                            SymExpr coeff2 = (func->name == "cos") ? SymExpr(Fraction(-1, 2)) : SymExpr(Fraction(1, 2));
+                            for (auto& kv : currentTerm.terms) term2.addTerm(kv.first, simplifyCore(kv.second * coeff2));
                             res = res + term2;
+                            
+                            currentTerm = currentTerm * argS * argS;
+                            AsympSeries term4(order);
+                            SymExpr coeff4 = (func->name == "cos") ? SymExpr(Fraction(1, 24)) : SymExpr(Fraction(1, 24));
+                            for (auto& kv : currentTerm.terms) term4.addTerm(kv.first, simplifyCore(kv.second * coeff4));
+                            res = res + term4;
                         } else {
                             AsympSeries s(order);
                             s.addTerm(Fraction(0), expr);
                             return s;
                         }
+                    } else if (func->name == "log") {
+                        if (argS.terms.empty()) {
+                            AsympSeries s(order);
+                            s.addTerm(Fraction(0), expr);
+                            return s;
+                        }
+                        auto lead = *argS.terms.begin();
+                        Fraction leadDeg = lead.first;
+                        SymExpr leadCoeff = lead.second;
+                        
+                        AsympSeries res_log(order);
+                        SymExpr logC(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{leadCoeff.ptr}));
+                        SymExpr log_t(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{SymExpr::makeVar(t_var).ptr}));
+                        SymExpr k_log_t = SymExpr(leadDeg) * log_t;
+                        res_log.addTerm(Fraction(0), simplifyCore(logC + k_log_t));
+                        
+                        AsympSeries rem = argS;
+                        rem.terms.erase(leadDeg);
+                        if (!rem.terms.empty()) {
+                            AsympSeries invLead(order);
+                            invLead.addTerm(-leadDeg, simplifyCore(SymExpr(BigInt(1)) / leadCoeff));
+                            AsympSeries x = rem * invLead;
+                            
+                            AsympSeries currentTerm = x;
+                            AsympSeries log_rem(order);
+                            log_rem = log_rem + currentTerm;
+                            
+                            currentTerm = currentTerm * x;
+                            AsympSeries term2(order);
+                            for (auto& kv : currentTerm.terms) term2.addTerm(kv.first, simplifyCore(kv.second * SymExpr(Fraction(-1, 2))));
+                            log_rem = log_rem + term2;
+                            
+                            currentTerm = currentTerm * x;
+                            AsympSeries term3(order);
+                            for (auto& kv : currentTerm.terms) term3.addTerm(kv.first, simplifyCore(kv.second * SymExpr(Fraction(1, 3))));
+                            log_rem = log_rem + term3;
+                            
+                            currentTerm = currentTerm * x;
+                            AsympSeries term4(order);
+                            for (auto& kv : currentTerm.terms) term4.addTerm(kv.first, simplifyCore(kv.second * SymExpr(Fraction(-1, 4))));
+                            log_rem = log_rem + term4;
+                            
+                            currentTerm = currentTerm * x;
+                            AsympSeries term5(order);
+                            for (auto& kv : currentTerm.terms) term5.addTerm(kv.first, simplifyCore(kv.second * SymExpr(Fraction(1, 5))));
+                            log_rem = log_rem + term5;
+                            
+                            res_log = res_log + log_rem;
+                        }
+                        return res_log;
                     }
                     return res;
                 }
@@ -5287,7 +5376,257 @@ namespace jc {
         return s;
     }
 
-    static SymExpr limitCore(const SymExpr& expr, const std::string& var, const SymExpr& val, int depth) {
+    // =================================================================
+    // 🚀 极限计算 (Limit) - 真正的工业级 Gruntz 算法 (True Gruntz Algorithm)
+    // =================================================================
+    
+    static SymExpr gruntzInf(SymExpr expr, const std::string& var, int depth);
+
+    static int compareGrowth(SymExpr f, SymExpr g, const std::string& var, int depth) {
+        SymExpr L = gruntzInf(simplifyCore(f / g), var, depth + 1);
+        if (L.isZero()) return -1; // f < g
+        if (L.ptr->getType() == SymType::VAR) {
+            std::string n = std::static_pointer_cast<SymVar>(L.ptr)->name;
+            if (n == "oo" || n == "inf" || n == "-oo") return 1; // f > g
+        }
+        if (L.ptr->getType() == SymType::MUL) {
+            for (auto& arg : std::static_pointer_cast<SymMul>(L.ptr)->args) {
+                if (arg->getType() == SymType::VAR) {
+                    std::string n = std::static_pointer_cast<SymVar>(arg)->name;
+                    if (n == "oo" || n == "inf" || n == "-oo") return 1;
+                }
+            }
+        }
+        return 0; // f ~ g
+    }
+
+    static std::vector<SymExpr> mrvMax(const std::vector<SymExpr>& A, const std::vector<SymExpr>& B, const std::string& var, int depth) {
+        if (A.empty()) return B;
+        if (B.empty()) return A;
+        SymExpr a = A[0], b = B[0];
+        if (a.ptr->getType() == SymType::VAR && b.ptr->getType() == SymType::VAR) {
+            std::vector<SymExpr> res = A;
+            for (auto& x : B) {
+                bool found = false;
+                for (auto& y : res) if (x == y) found = true;
+                if (!found) res.push_back(x);
+            }
+            return res;
+        }
+        if (a.ptr->getType() == SymType::VAR) return B;
+        if (b.ptr->getType() == SymType::VAR) return A;
+        
+        SymExpr f = SymExpr(std::static_pointer_cast<SymFunc>(a.ptr)->args[0]);
+        SymExpr g = SymExpr(std::static_pointer_cast<SymFunc>(b.ptr)->args[0]);
+        int cmp = compareGrowth(f, g, var, depth);
+        if (cmp == 1) return A;
+        if (cmp == -1) return B;
+        
+        std::vector<SymExpr> res = A;
+        for (auto& x : B) {
+            bool found = false;
+            for (auto& y : res) if (x == y) found = true;
+            if (!found) res.push_back(x);
+        }
+        return res;
+    }
+
+    static std::vector<SymExpr> mrv(SymExpr expr, const std::string& var, int depth) {
+        if (!containsVar(expr.ptr, var)) return {};
+        if (expr.ptr->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(expr.ptr)->name == var) {
+            return {expr};
+        }
+        if (expr.ptr->getType() == SymType::ADD) {
+            std::vector<SymExpr> res;
+            for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args) {
+                res = mrvMax(res, mrv(SymExpr(arg), var, depth), var, depth);
+            }
+            return res;
+        }
+        if (expr.ptr->getType() == SymType::MUL) {
+            std::vector<SymExpr> res;
+            for (auto& arg : std::static_pointer_cast<SymMul>(expr.ptr)->args) {
+                res = mrvMax(res, mrv(SymExpr(arg), var, depth), var, depth);
+            }
+            return res;
+        }
+        if (expr.ptr->getType() == SymType::POW) {
+            auto p = std::static_pointer_cast<SymPow>(expr.ptr);
+            SymExpr base = SymExpr(p->base);
+            SymExpr exp = SymExpr(p->exp);
+            SymExpr log_base(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{base.ptr}));
+            SymExpr rewritten(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{(exp * log_base).ptr}));
+            return mrv(rewritten, var, depth);
+        }
+        if (expr.ptr->getType() == SymType::FUNC) {
+            auto f = std::static_pointer_cast<SymFunc>(expr.ptr);
+            if (f->name == "exp") {
+                SymExpr arg(f->args[0]);
+                std::vector<SymExpr> arg_mrv = mrv(arg, var, depth);
+                SymExpr L = gruntzInf(arg, var, depth + 1);
+                bool isInf = false;
+                if (L.ptr->getType() == SymType::VAR) {
+                    std::string n = std::static_pointer_cast<SymVar>(L.ptr)->name;
+                    if (n == "oo" || n == "inf" || n == "-oo") isInf = true;
+                } else if (L.ptr->getType() == SymType::MUL) {
+                    for (auto& a : std::static_pointer_cast<SymMul>(L.ptr)->args) {
+                        if (a->getType() == SymType::VAR) {
+                            std::string n = std::static_pointer_cast<SymVar>(a)->name;
+                            if (n == "oo" || n == "inf" || n == "-oo") isInf = true;
+                        }
+                    }
+                }
+                
+                if (isInf) {
+                    return mrvMax(arg_mrv, {expr}, var, depth);
+                } else {
+                    return arg_mrv;
+                }
+            }
+            std::vector<SymExpr> res;
+            for (auto& arg : f->args) {
+                res = mrvMax(res, mrv(SymExpr(arg), var, depth), var, depth);
+            }
+            return res;
+        }
+        return {};
+    }
+
+    static SymExpr rewriteMRV(SymExpr expr, const std::vector<SymExpr>& omega, const std::string& var, const std::string& w_var, SymExpr g, int depth) {
+        if (!containsVar(expr.ptr, var)) return expr;
+        if (expr.ptr->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(expr.ptr)->name == var) {
+            return expr;
+        }
+        
+        for (auto& o : omega) {
+            if (expr == o) {
+                if (expr.ptr->getType() == SymType::FUNC && std::static_pointer_cast<SymFunc>(expr.ptr)->name == "exp") {
+                    SymExpr f = SymExpr(std::static_pointer_cast<SymFunc>(expr.ptr)->args[0]);
+                    SymExpr c = gruntzInf(simplifyCore(f / g), var, depth + 1);
+                    SymExpr w = SymExpr::makeVar(w_var);
+                    SymExpr rem = simplifyCore(f - c * g);
+                    SymExpr exp_rem(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{rem.ptr}));
+                    return (w ^ simplifyCore(-c)) * rewriteMRV(exp_rem, omega, var, w_var, g, depth);
+                }
+            }
+        }
+        
+        switch (expr.ptr->getType()) {
+            case SymType::ADD: {
+                SymExpr res(BigInt(0));
+                for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args) res = res + rewriteMRV(SymExpr(arg), omega, var, w_var, g, depth);
+                return res;
+            }
+            case SymType::MUL: {
+                SymExpr res(BigInt(1));
+                for (auto& arg : std::static_pointer_cast<SymMul>(expr.ptr)->args) res = res * rewriteMRV(SymExpr(arg), omega, var, w_var, g, depth);
+                return res;
+            }
+            case SymType::POW: {
+                auto p = std::static_pointer_cast<SymPow>(expr.ptr);
+                return rewriteMRV(SymExpr(p->base), omega, var, w_var, g, depth) ^ rewriteMRV(SymExpr(p->exp), omega, var, w_var, g, depth);
+            }
+            case SymType::FUNC: {
+                auto f = std::static_pointer_cast<SymFunc>(expr.ptr);
+                std::vector<std::shared_ptr<SymNode>> newArgs;
+                for (auto& arg : f->args) newArgs.push_back(rewriteMRV(SymExpr(arg), omega, var, w_var, g, depth).ptr);
+                return SymExpr(std::make_shared<SymFunc>(f->name, std::move(newArgs)));
+            }
+            default: return expr;
+        }
+    }
+
+    static SymExpr gruntzInf(SymExpr expr, const std::string& var, int depth) {
+        if (depth > SymConfig::maxDepth * 3) throw std::runtime_error("Math Error: Gruntz limit depth exceeded.");
+        if (!containsVar(expr.ptr, var)) return expr;
+        
+        expr = simplifyCore(expr);
+        std::vector<SymExpr> omega = mrv(expr, var, depth);
+        if (omega.empty()) return expr;
+        
+        auto getInfSign = [&](const SymExpr& C) -> SymExpr {
+            SymExpr C_lim = gruntzInf(C, var, depth + 1);
+            bool isNeg = false;
+            if (C_lim.ptr->getType() == SymType::NUM) {
+                isNeg = isCasNegative(std::static_pointer_cast<SymNum>(C_lim.ptr)->value);
+            } else if (C_lim.ptr->getType() == SymType::MUL) {
+                auto mul = std::static_pointer_cast<SymMul>(C_lim.ptr);
+                if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                    isNeg = isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value);
+                }
+            }
+            return isNeg ? SymExpr::makeVar("-oo") : SymExpr::makeVar("oo");
+        };
+        
+        if (omega.size() == 1 && omega[0].ptr->getType() == SymType::VAR) {
+            std::string t_var = "_t_inf";
+            SymExpr t = SymExpr::makeVar(t_var);
+            SymExpr expr_t = simplifyCore(subs(expr, var, SymExpr(BigInt(1)) / t));
+            
+            for (int order = 6; order <= 24; order += 6) {
+                try {
+                    AsympSeries s = computeGruntzSeries(expr_t, t_var, Fraction(order));
+                    if (s.terms.empty()) return SymExpr(BigInt(0));
+                    auto lead = *s.terms.begin();
+                    if (lead.first >= Fraction(order)) continue;
+                    
+                    SymExpr leadCoeff = lead.second;
+                    SymExpr log_t(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{t.ptr}));
+                    leadCoeff = simplifyCore(applyRule(leadCoeff, log_t, -SymExpr(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{SymExpr::makeVar(var).ptr}))));
+                    
+                    if (lead.first > Fraction(0)) return SymExpr(BigInt(0));
+                    if (lead.first < Fraction(0)) return getInfSign(leadCoeff);
+                    return gruntzInf(leadCoeff, var, depth + 1);
+                } catch (...) { break; }
+            }
+            return expr;
+        }
+        
+        SymExpr g = SymExpr(std::static_pointer_cast<SymFunc>(omega[0].ptr)->args[0]);
+        
+        // Ensure g -> +oo
+        SymExpr L_g = gruntzInf(g, var, depth + 1);
+        bool g_is_neg_inf = false;
+        if (L_g.ptr->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(L_g.ptr)->name == "-oo") {
+            g_is_neg_inf = true;
+        } else if (L_g.ptr->getType() == SymType::MUL) {
+            auto mul = std::static_pointer_cast<SymMul>(L_g.ptr);
+            if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM && isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value)) {
+                for (auto& a : mul->args) {
+                    if (a->getType() == SymType::VAR && (std::static_pointer_cast<SymVar>(a)->name == "oo" || std::static_pointer_cast<SymVar>(a)->name == "inf")) {
+                        g_is_neg_inf = true;
+                    }
+                }
+            }
+        }
+        if (g_is_neg_inf) {
+            g = simplifyCore(-g);
+        }
+        
+        std::string w_var = "_w";
+        SymExpr w = SymExpr::makeVar(w_var);
+        SymExpr rewritten = rewriteMRV(expr, omega, var, w_var, g, depth);
+        
+        for (int order = 6; order <= 24; order += 6) {
+            try {
+                AsympSeries s = computeGruntzSeries(rewritten, w_var, Fraction(order));
+                if (s.terms.empty()) return SymExpr(BigInt(0));
+                auto lead = *s.terms.begin();
+                if (lead.first >= Fraction(order)) continue;
+                
+                SymExpr leadCoeff = lead.second;
+                SymExpr log_w(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{w.ptr}));
+                leadCoeff = simplifyCore(applyRule(leadCoeff, log_w, -g));
+                
+                if (lead.first > Fraction(0)) return SymExpr(BigInt(0));
+                if (lead.first < Fraction(0)) return getInfSign(leadCoeff);
+                return gruntzInf(leadCoeff, var, depth + 1);
+            } catch (...) { break; }
+        }
+        return expr;
+    }
+
+    static SymExpr limitCore(const SymExpr& expr, const std::string& var, const SymExpr& val, const std::string& dir, int depth) {
         if (depth > SymConfig::maxDepth) throw std::runtime_error("Calculus Error: Limit evaluation depth exceeded.");
         if (!expr.ptr) return expr;
 
@@ -5296,99 +5635,66 @@ namespace jc {
             try {
                 SymExpr simp = simplify(*subbed);
                 if (!containsVar(simp.ptr, var)) return simp;
-            } catch (const EngineInterruptError&) {
-                throw;
-            } catch (const std::runtime_error& e) {
-                std::string msg = e.what();
-                if (msg.find("Division by zero") == std::string::npos && 
-                    msg.find("0^0") == std::string::npos) {
-                    throw;
+            } catch (...) {}
+        }
+
+        // 2. 转换为 x -> oo 的标准 Gruntz 形式
+        std::string t_var = "_t_inf";
+        SymExpr t = SymExpr::makeVar(t_var);
+        SymExpr expr_inf;
+        
+        bool isInfLimit = false;
+        bool isNegInfLimit = false;
+        
+        if (val.ptr->getType() == SymType::VAR) {
+            std::string vName = std::static_pointer_cast<SymVar>(val.ptr)->name;
+            if (vName == "oo" || vName == "inf" || vName == "Infinity") isInfLimit = true;
+            if (vName == "-oo") { isInfLimit = true; isNegInfLimit = true; }
+        } else if (val.ptr->getType() == SymType::MUL) {
+            auto mul = std::static_pointer_cast<SymMul>(val.ptr);
+            if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM && isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value)) {
+                for (auto& a : mul->args) {
+                    if (a->getType() == SymType::VAR && (std::static_pointer_cast<SymVar>(a)->name == "oo" || std::static_pointer_cast<SymVar>(a)->name == "inf")) {
+                        isInfLimit = true;
+                        isNegInfLimit = true;
+                    }
                 }
             }
         }
-
-        // 2. 提取分子和分母
-        auto [num, den] = getFraction(expr);
-
-        if (den.isOne()) {
-            if (auto subbed = trySubsQuiet(expr, var, val)) {
-                try { return simplify(*subbed); } catch (const EngineInterruptError&) { throw; } catch (...) { return *subbed; }
+        
+        if (isInfLimit) {
+            if (isNegInfLimit) {
+                expr_inf = subs(expr, var, -t);
+            } else {
+                expr_inf = subs(expr, var, t);
             }
-            return expr;
-        }
-
-        // 3. 检查是否为 0/0 型
-        bool numZero = false, denZero = false;
-        if (auto subNum = trySubsQuiet(num, var, val)) {
-            try { numZero = simplify(*subNum).isZero(); } catch (const EngineInterruptError&) { throw; } catch (...) {}
-        }
-        if (auto subDen = trySubsQuiet(den, var, val)) {
-            try { denZero = simplify(*subDen).isZero(); } catch (const EngineInterruptError&) { throw; } catch (...) {}
-        }
-
-        if (numZero && denZero) {
-            // 工业级 Gruntz 渐近线展开 (Asymptotic Series Expansion)
-            // 替代洛必达法则，使用自底向上的泰勒/洛朗级数截断
-            
-            std::string t_var = "_t_asymp";
-            SymExpr t = SymExpr::makeVar(t_var);
-            SymExpr num_t = simplifyCore(subs(num, var, val + t));
-            SymExpr den_t = simplifyCore(subs(den, var, val + t));
-            
-            try {
-                AsympSeries sNum = computeGruntzSeries(num_t, t_var, Fraction(6));
-                AsympSeries sDen = computeGruntzSeries(den_t, t_var, Fraction(6));
-                
-                if (!sNum.terms.empty() && !sDen.terms.empty()) {
-                    auto leadNum = *sNum.terms.begin();
-                    auto leadDen = *sDen.terms.begin();
-                    
-                    if (leadNum.first > leadDen.first) return SymExpr(BigInt(0));
-                    if (leadNum.first < leadDen.first) throw std::runtime_error("Math Error: Limit is infinite (pole).");
-                    return simplify(leadNum.second / leadDen.second);
-                }
-            } catch (const EngineInterruptError&) {
-                throw;
-            } catch (...) {
-                // 级数展开失败，回退到多项式主导项提取 (Leading Term Extraction)
-            }
-            
-            // 备用方案：多项式主导项提取 (针对有理函数)
-            auto coeffsNum = extractCoeffs(num_t, t_var);
-            auto coeffsDen = extractCoeffs(den_t, t_var);
-            
-            if (!coeffsNum.empty() && !coeffsDen.empty()) {
-                int minDegNum = -1, minDegDen = -1;
-                SymExpr leadNum(BigInt(0)), leadDen(BigInt(0));
-                
-                for (size_t i = 0; i < coeffsNum.size(); ++i) {
-                    if (!coeffsNum[i].isZero()) { minDegNum = static_cast<int>(i); leadNum = coeffsNum[i]; break; }
-                }
-                for (size_t i = 0; i < coeffsDen.size(); ++i) {
-                    if (!coeffsDen[i].isZero()) { minDegDen = static_cast<int>(i); leadDen = coeffsDen[i]; break; }
-                }
-                
-                if (minDegNum != -1 && minDegDen != -1) {
-                    if (minDegNum > minDegDen) return SymExpr(BigInt(0));
-                    if (minDegNum < minDegDen) throw std::runtime_error("Math Error: Limit is infinite (pole).");
-                    return simplify(leadNum / leadDen);
-                }
+        } else {
+            // x -> val 转化为 t -> oo
+            if (dir == "-") {
+                expr_inf = subs(expr, var, val - SymExpr(BigInt(1)) / t);
+            } else {
+                expr_inf = subs(expr, var, val + SymExpr(BigInt(1)) / t);
             }
         }
-
-        // 如果分母为0但分子不为0，则是无穷大
-        if (denZero && !numZero) {
-            throw std::runtime_error("Math Error: Limit is infinite (division by zero).");
-        }
-
-        if (auto subbed = trySubsQuiet(expr, var, val)) {
-            try { return simplify(*subbed); } catch (const EngineInterruptError&) { throw; } catch (...) { return *subbed; }
-        }
-        return expr;
+        
+        return gruntzInf(simplifyCore(expr_inf), t_var, 0);
     }
 
-    SymExpr limit(const SymExpr& expr, const std::string& var, const SymExpr& val) {
-        return limitCore(expr, var, val, 0);
+    SymExpr limit(const SymExpr& expr, const std::string& var, const SymExpr& val, const std::string& dir) {
+        if (dir == "" || dir == "both") {
+            SymExpr right, left;
+            bool rightOk = false, leftOk = false;
+            try { right = limitCore(expr, var, val, "+", 0); rightOk = true; } catch (const EngineInterruptError&) { throw; } catch (...) {}
+            try { left = limitCore(expr, var, val, "-", 0); leftOk = true; } catch (const EngineInterruptError&) { throw; } catch (...) {}
+            
+            if (rightOk && leftOk) {
+                if (right == left) return right;
+                throw std::runtime_error("Math Error: Limit does not exist (left and right limits differ).");
+            }
+            
+            throw std::runtime_error("Math Error: Limit does not exist or is undefined.");
+        }
+        return limitCore(expr, var, val, dir, 0);
     }
 
     // =================================================================

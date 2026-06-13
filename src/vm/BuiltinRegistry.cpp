@@ -5276,16 +5276,28 @@ void BuiltinRegistry::registerCAS() {
         return Value(jc::taylor(args[0].asSymbolic(), getVarName(args[1], "taylor"), args[2].asSymbolic(), order));
     });
 
-    reg("limit", { 2, 3 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
+    reg("limit", { 2, 3, 4 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
         bool isSymLimit = args[0].isSymbolic();
-        if (!isSymLimit && args.size() == 3) {
+        if (!isSymLimit && args.size() >= 3) {
             if (args[1].isString() || (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR)) {
                 isSymLimit = true;
             }
         }
         if (isSymLimit) {
-            if (args.size() != 3) throw std::runtime_error("TypeError: Symbolic limit expects 3 arguments: expr, var, val.");
-            return Value(jc::limit(args[0].asSymbolic(), getVarName(args[1], "limit"), args[2].asSymbolic()));
+            if (args.size() < 3 || args.size() > 4) throw std::runtime_error("TypeError: Symbolic limit expects 3 or 4 arguments: expr, var, val, [dir].");
+            std::string dir = "";
+            if (args.size() == 4) {
+                if (!args[3].isString()) throw std::runtime_error("TypeError: Symbolic limit direction must be a string ('+' or '-').");
+                dir = args[3].asString();
+            }
+            SymExpr valExpr;
+            if (args[2].isString()) valExpr = SymExpr::makeVar(args[2].asString());
+            else valExpr = args[2].asSymbolic();
+            return Value(jc::limit(args[0].asSymbolic(), getVarName(args[1], "limit"), valExpr, dir));
+        }
+
+        if (args.size() > 3) {
+            throw std::runtime_error("TypeError: Numeric limit expects 2 or 3 arguments: func, x0, [dir].");
         }
 
         auto cl = args[0].asFunction();
@@ -5298,18 +5310,24 @@ void BuiltinRegistry::registerCAS() {
             catch (...) { return std::numeric_limits<double>::quiet_NaN(); }
         };
 
+        std::string dir = "";
         if (args.size() == 3) {
-            double dir = args[2].asDouble();
-            if (dir > 0) {
-                double v = safeEval(x0 + h);
-                if (std::isnan(v)) throw std::runtime_error("Math Error: Right limit does not exist.");
-                return Value(v);
+            if (args[2].isString()) dir = args[2].asString();
+            else if (args[2].isNumber()) {
+                double d = args[2].asDouble();
+                dir = d > 0 ? "+" : (d < 0 ? "-" : "");
             }
-            if (dir < 0) {
-                double v = safeEval(x0 - h);
-                if (std::isnan(v)) throw std::runtime_error("Math Error: Left limit does not exist.");
-                return Value(v);
-            }
+        }
+        
+        if (dir == "+") {
+            double v = safeEval(x0 + h);
+            if (std::isnan(v)) throw std::runtime_error("Math Error: Right limit does not exist.");
+            return Value(v);
+        }
+        if (dir == "-") {
+            double v = safeEval(x0 - h);
+            if (std::isnan(v)) throw std::runtime_error("Math Error: Left limit does not exist.");
+            return Value(v);
         }
         
         double left = safeEval(x0 - h);
@@ -5317,10 +5335,6 @@ void BuiltinRegistry::registerCAS() {
         
         if (!std::isnan(left) && !std::isnan(right) && std::abs(left - right) < 1e-4) {
             return Value((left + right) / 2.0);
-        } else if (std::isnan(left) && !std::isnan(right)) {
-            return Value(right);
-        } else if (std::isnan(right) && !std::isnan(left)) {
-            return Value(left);
         }
         
         throw std::runtime_error("Math Error: Limit does not exist (left and right limits differ significantly or are undefined).");

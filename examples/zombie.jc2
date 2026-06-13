@@ -1,0 +1,614 @@
+import engine
+
+class FpsProbe {
+    init(samples) = {
+        self.max_samples = samples
+        self.history = zeros(1, self.max_samples) 
+        self.idx = 0
+        self.avg_fps = 60
+    }
+
+    update(dt) = {
+        // ★ 注意：监控逻辑必须一直跑，不受 UI 显示与否的影响
+        self.history[self.idx] = dt
+        self.idx = (self.idx + 1) % self.max_samples
+        
+        if (self.idx % 10 == 0) {
+            sum_dt = 0.0
+            for (i in range(self.max_samples)) { sum_dt += self.history[i] }
+            avg_dt = sum_dt / double(self.max_samples)
+            if (avg_dt > 0.0) self.avg_fps = int(1.0 / avg_dt)
+        }
+    }
+
+    draw(im) = {
+        base_x = 10
+        base_y = 10
+        box_width = self.max_samples + 10
+        box_height = 65 // 调整高度：上面25放文字，下面40放图表
+        
+        // 探针底板与顶部修饰线
+        im.fillRect(base_x, base_y, box_width, box_height, "#151515")
+        im.fillRect(base_x, base_y, box_width, 2, "#00FFCC")
+        
+        c_fps = (self.avg_fps >= 45) ? "#00FFCC" : ((self.avg_fps >= 30) ? "#FFCC00" : "#FF0055")
+        im.text(f"FPS: {self.avg_fps}", base_x + 5, base_y + 8, c_fps, 2)
+        
+        graph_bottom = base_y + box_height - 5
+        
+        for (i in range(self.max_samples)) {
+            read_idx = (self.idx + i) % self.max_samples
+            dt_ms = self.history[read_idx] * 1000.0 
+            
+            bar_h = int([dt_ms, 40.0].min())
+            
+            color = "#00FF33"
+            if (dt_ms > 16.5) color = "#FFCC00"  // 低于 60帧
+            if (dt_ms > 33.3) color = "#FF0033"  // 低于 30帧 红色警告
+            
+            x_pos = base_x + 5 + i
+            im.line(x_pos, graph_bottom, x_pos, graph_bottom - bar_h, color, 1)
+        }
+    }
+}
+
+class Raycaster3D extends GameEngine {
+    init() = {
+        self.W = 800
+        self.H = 600
+        super.init("JC2 3D Maze - Survival FPS", self.W, self.H, 1e6) // 不设置性能上限，让睿频发力
+        
+        self.STRIP_WIDTH = 2 // 调高一点性能更稳包容光影
+        
+        // Cyberpunk Color Palette: [0]=Empty, [1~4]=Walls, [5]=Portal
+        self.colors = list("#000000", "#FF0055", "#00AADD", "#FFCC00", "#9933FF", "#FFFFFF")
+        self.shades = list("#000000", "#AA0033", "#0088AA", "#AA8800", "#6622AA", "#DDDDDD")
+        
+        self.mouse_locked = false 
+        self.last_mouse_x = self.W / 2
+        self.show_map = false 
+        self.fps_timer = 0.0
+        
+        // ★ 核心：用于非墙体实体遮挡处理的 Z-Buffer (1D Array)
+        self.ZBuffer = zeros(1, self.W)
+        
+        // 玩家状态与武器
+        self.MAX_LEVEL = 5
+        self.status = "PLAYING" 
+        self.trans_timer = 0.0
+        
+        // 🔫 新增属性：血量、武器CD与分数
+        self.hp = 100
+        self.score = 0
+        self.weapon_cd = 0.0
+        self.shoot_flash = 0.0
+
+        self.ammo = 20         // 初始弹药
+        self.max_ammo = 50     // 弹药携带上限
+        
+        self.generateLevel(1)
+
+        self.probe = FpsProbe(100)
+        self.show_probe = false
+
+        self.tex = {
+            "ZOMBIE": list(
+                ".XXXXXX.",
+                "XX0RR0X.",
+                "XXGGGGX.",
+                ".XXXXXX.",
+                ".XGGGGX.",
+                "XXXXXXXX",
+                "XG.XX.GX",
+                "XX....XX"
+            ),
+            "DEAD": list(
+                "........",
+                "........",
+                "........",
+                "........",
+                ".X..X...",
+                "XrXXrX..",
+                "rDDDrDr.",
+                "XDDDrDXX"
+            ),
+            "HP": list(
+                "........",
+                "........",
+                ".XXXXXX.",
+                ".XWRWWX.",
+                ".XRRRWX.",
+                ".XWRWWX.",
+                ".XWWWWX.",
+                ".XXXXXX."
+            ),
+            "AMMO": list(
+                "........",
+                "........",
+                ".XXXXXX.",
+                ".XGGGGX.",
+                ".XYGGYX.",
+                ".XYYYYX.",
+                ".XGGGGX.",
+                ".XXXXXX."
+            )
+        }
+        
+        // 调色板映射 (. = 透明背景)
+        self.pal = {
+            "X": "#151515", "G": "#00AA44", "R": "#FF0033", 
+            "0": "#FFFFFF", "W": "#EEEEEE", "Y": "#FFCC00", 
+            "D": "#550011", "r": "#990022"
+        }
+    }
+
+    generateLevel(lv) = {
+        self.level = lv
+        self.size = 11 + lv * 4
+        self.map = zeros(self.size, self.size)
+        // 填充实心墙 (利用矩阵函数加速)
+        self.map = ones(self.size, self.size)
+        
+        path_stack = list()
+        self.map[1, 1] = 0.0 
+        path_stack.push(list(1, 1))
+        
+        while (path_stack.len() > 0) {
+            curr = path_stack.last()
+            r = int(curr[0]); c = int(curr[1])
+            dirs = list(list(2,0), list(-2,0), list(0,2), list(0,-2))
+            
+            for (k in range(6)) {
+                i1 = randint(0, 3); i2 = randint(0, 3)
+                [dirs[i2], dirs[i1]] = [dirs[i1], dirs[i2]]// Destructuring swap
+            }
+            
+            moved = false
+            for (i in range(4)) {
+                dr = int(dirs[i][0]); dc = int(dirs[i][1])
+                nr = r + dr; nc = c + dc
+                if (nr > 0 && nr < self.size - 1 && nc > 0 && nc < self.size - 1) {
+                    if (self.map[nr, nc] == 1.0) {
+                        self.map[r + int(dr/2), c + int(dc/2)] = 0.0
+                        self.map[nr, nc] = 0.0 
+                        path_stack.push(list(nr, nc))
+                        moved = true
+                        break
+                    }
+                }
+            }
+            if (!moved) path_stack.pop() 
+        }
+        
+        for (r in range(self.size)) {
+            for (c in range(self.size)) {
+                if (self.map[r, c] == 1.0) self.map[r, c] = double(randint(1, 4))
+            }
+        }
+        self.map[self.size - 2, self.size - 2] = 5.0
+        
+        self.zombies = list()
+        self.items = list()
+        
+        for (r in range(2, self.size - 2)) {
+            for (c in range(2, self.size - 2)) {
+                if (self.map[r, c] == 0.0) {
+                    // 留出玩家出生地(1,1)周围的安全空间
+                    if (r > 5 || c > 5) {
+                        rng = rand()
+                        if (rng > 0.88) {
+                            z_hp = 100.0 + (self.level - 1) * 25.0 + double(randint(-10, 10)) // 动态递增难度血量
+                            push(self.zombies, {x: double(r) + 0.5, y: double(c) + 0.5, hp: z_hp, status: "ALIVE", hurt_timer: 0.0})
+                        } else if (rng > 0.83) {
+                            // 血包道具（白底红十字）
+                            push(self.items, {x: double(r) + 0.5, y: double(c) + 0.5, type: "HP", active: true})
+                        } else if (rng > 0.76) {
+                            // 弹药盒（绿底黄束）
+                            push(self.items, {x: double(r) + 0.5, y: double(c) + 0.5, type: "AMMO", active: true})
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 初始化摄像机
+        self.pos_x = 1.5;     self.pos_y = 1.5
+        self.dir_x = -1.0;    self.dir_y = 0.0
+        self.plane_x = 0.0;   self.plane_y = 0.66
+    }
+
+    // ==========================================
+    // 🔫 开火与击中判定 (Hitscan)
+    // ==========================================
+    onMouseDown(x, y, btn) = {
+        if (btn == 0 && self.status == "PLAYING") {
+            if (!self.mouse_locked) {
+                // 激活并隐匿鼠标指针
+                self.mouse_locked = true
+                self.win.showCursor(0.0) 
+                self.win.setCursorPos(int(self.W / 2), int(self.H / 2)) 
+            } else {
+                // ★ 射击逻辑
+                if (self.weapon_cd <= 0.0 && self.ammo > 0) {
+                    self.ammo -= 1             // 扣除弹药
+                    self.weapon_cd = 0.35      // 射速冷却
+                    self.shoot_flash = 0.1     // 枪口火光持续时间
+                    
+                    closest_z = none
+                    min_dist = 1e30
+                    
+                    for (z in self.zombies) {
+                        if (z.status == "DEAD") continue
+                        dx = z.x - self.pos_x; dy = z.y - self.pos_y
+                        
+                        invDet = 1.0 / (self.plane_x * self.dir_y - self.dir_x * self.plane_y)
+                        transX = invDet * (self.dir_y * dx - self.dir_x * dy)
+                        transY = invDet * (-self.plane_y * dx + self.plane_x * dy) 
+                        
+                        if (transY > 0.1 && transY < self.ZBuffer[int(self.W / 2)]) {
+                            sx = int((self.W / 2) * (1.0 + transX / transY))
+                            // ★ 偷偷将准星的碰撞框放大！(原本是 /1.5，现在放大到 *1.1 给你一种百发百中的手感)
+                            s_width = abs(self.H / transY) * 1.1 
+                            
+                            if (self.W / 2 >= sx - s_width / 2 && self.W / 2 <= sx + s_width / 2) {
+                                if (transY < min_dist) {
+                                    min_dist = transY
+                                    closest_z = z
+                                }
+                            }
+                        }
+                    } // for (z in self.zombies) 的花括号结束
+                    
+                    if (!isnone(closest_z)) {
+                        closest_z.hp -= 50.0
+                        closest_z.hurt_timer = 0.12 // ★ 命中瞬间，注入 0.12秒 的受击闪烁！
+                        if (closest_z.hp <= 0.0) {
+                            closest_z.status = "DEAD"
+                            self.score += 100
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    onKeyDown(key) = {
+        if (key == "ESC") { self.mouse_locked = false; self.win.showCursor(1.0) }
+        if (key == "M" || key == "m") { self.show_map = !self.show_map }
+        // ★ 新增按键：用 P(robe) 键控制探针的显示
+        if (key == "P" || key == "p") { self.show_probe = !self.show_probe }
+    }
+
+    onMouseMove(x, y) = {
+        if (!self.mouse_locked || self.status != "PLAYING") return none
+        center_x = int(self.W / 2); center_y = int(self.H / 2)
+        delta_x = x - center_x
+        if (delta_x == 0) return none 
+        
+        rot_speed = -delta_x * 0.0035 
+        rm = cos(rot_speed); rn = sin(rot_speed)
+        
+        odx = self.dir_x
+        self.dir_x = self.dir_x * rm - self.dir_y * rn
+        self.dir_y = odx * rn + self.dir_y * rm
+        
+        opx = self.plane_x
+        self.plane_x = self.plane_x * rm - self.plane_y * rn
+        self.plane_y = opx * rn + self.plane_y * rm
+        
+        self.win.setCursorPos(center_x, center_y) 
+    }
+
+    tryMove(new_x, new_y, axis) = {
+        val = self.map[int(new_x), int(new_y)]
+        if (val == 5.0) { 
+            if (self.level >= self.MAX_LEVEL) {
+                self.status = "GAME_OVER"
+                self.mouse_locked = false; self.win.showCursor(1.0)
+            } else {
+                self.status = "TRANSITION"
+                self.trans_timer = 2.5 
+            }
+            return 1 
+        } 
+        else if (val == 0.0) { 
+            if (axis == 0) self.pos_x = new_x
+            if (axis == 1) self.pos_y = new_y
+        }
+        return 0
+    }
+
+    update(dt) = {
+        self.probe.update(dt)
+        self.fps_timer = dt
+        if (self.weapon_cd > 0.0) self.weapon_cd -= dt
+        if (self.shoot_flash > 0.0) self.shoot_flash -= dt
+        
+        if (self.status == "TRANSITION") {
+            self.trans_timer -= dt
+            if (self.trans_timer <= 0.0) { self.generateLevel(self.level + 1); self.status = "PLAYING" }
+            return none 
+        }
+        if (self.status != "PLAYING") return none 
+
+        // ★ 🧟 丧尸 AI 更新逻辑
+        for (z in self.zombies) {
+            if (z.hurt_timer > 0.0) z.hurt_timer -= dt
+            if (z.status == "DEAD") continue
+            dx = self.pos_x - z.x; dy = self.pos_y - z.y
+            dist = sqrtD(dx^2 + dy^2)
+            
+            if (dist < 0.6) {
+                // 近身攻击玩家
+                self.hp -= 20.0 * dt
+                if (self.hp <= 0.0) {
+                    self.status = "GAME_OVER_DEAD"
+                    self.mouse_locked = false
+                    self.win.showCursor(1.0)
+                }
+            } else if (dist < 9.0) {
+                // 察觉距离内，向玩家缓慢移动。简单碰撞检测防止卡墙
+                move_x = (dx / dist) * 1.5 * dt
+                move_y = (dy / dist) * 1.5 * dt
+                if (self.map[int(z.x + move_x * 1.5), int(z.y)] == 0.0) z.x += move_x
+                if (self.map[int(z.x), int(z.y + move_y * 1.5)] == 0.0) z.y += move_y
+            }
+        }
+
+        for (item in self.items) {
+            if (!item.active) continue
+            dx = self.pos_x - item.x; dy = self.pos_y - item.y
+            dist = sqrtD(dx^2 + dy^2)
+            
+            if (dist < 0.6) { // 玩家走到足够近时自动拾取
+                if (item.type == "HP" && self.hp < 100.0) {
+                    self.hp = [100.0, self.hp + 25.0].min()
+                    item.active = false // 标记为已吃掉
+                } else if (item.type == "AMMO" && self.ammo < self.max_ammo) {
+                    self.ammo = [self.max_ammo, self.ammo + 15].min()
+                    item.active = false
+                }
+            }
+        }
+
+        // 玩家移动
+        move_speed = 4.0 * dt
+        dx = self.dir_x * move_speed; dy = self.dir_y * move_speed
+        px = self.plane_x * move_speed; py = self.plane_y * move_speed
+
+        if (self.isKeyDown("W") || self.isKeyDown("w")) {
+            if (self.tryMove(self.pos_x + dx, self.pos_y, 0)) return none
+            if (self.tryMove(self.pos_x, self.pos_y + dy, 1)) return none
+        }
+        if (self.isKeyDown("S") || self.isKeyDown("s")) {
+            if (self.tryMove(self.pos_x - dx, self.pos_y, 0)) return none
+            if (self.tryMove(self.pos_x, self.pos_y - dy, 1)) return none
+        }
+        if (self.isKeyDown("A") || self.isKeyDown("a")) {
+            if (self.tryMove(self.pos_x - px, self.pos_y, 0)) return none
+            if (self.tryMove(self.pos_x, self.pos_y - py, 1)) return none
+        }
+        if (self.isKeyDown("D") || self.isKeyDown("d")) {
+            if (self.tryMove(self.pos_x + px, self.pos_y, 0)) return none
+            if (self.tryMove(self.pos_x, self.pos_y + py, 1)) return none
+        }
+    }
+
+    drawCentered(im, txt, y, color, scale) = {
+        txt_width = txt.len() * 8 * scale
+        im.text(txt, int((self.W - txt_width) / 2), y, color, scale)
+    }
+
+    // ==========================================
+    // 👁️ 渲染管线
+    // ==========================================
+    draw(im) = {
+        im.fillRect(0, 0, self.W, int(self.H / 2), "#111118")
+        im.fillRect(0, int(self.H / 2), self.W, int(self.H / 2), "#1A1A22")
+        
+        // 1. 投射墙体并构建 ZBuffer
+        x = 0
+        while (x < self.W) {
+            camera_x = 2.0 * x / double(self.W) - 1.0
+            ray_dir_x = self.dir_x + self.plane_x * camera_x
+            ray_dir_y = self.dir_y + self.plane_y * camera_x
+            map_x = int(self.pos_x)
+            map_y = int(self.pos_y)
+            delta_x = (ray_dir_x == 0.0) ? 1e30 : abs(1.0 / ray_dir_x)
+            delta_y = (ray_dir_y == 0.0) ? 1e30 : abs(1.0 / ray_dir_y)
+            
+            step_x = 0; step_y = 0
+            side_dist_x = 0.0; side_dist_y = 0.0
+            if (ray_dir_x < 0.0) { step_x = -1; side_dist_x = (self.pos_x - map_x) * delta_x } 
+            else { step_x = 1; side_dist_x = (map_x + 1.0 - self.pos_x) * delta_x }
+            if (ray_dir_y < 0.0) { step_y = -1; side_dist_y = (self.pos_y - map_y) * delta_y } 
+            else { step_y = 1; side_dist_y = (map_y + 1.0 - self.pos_y) * delta_y }
+            
+            hit = 0; side = 0
+            while (hit == 0) {
+                if (side_dist_x < side_dist_y) { side_dist_x += delta_x; map_x += step_x; side = 0 } 
+                else { side_dist_y += delta_y; map_y += step_y; side = 1 }
+                if (self.map[map_x, map_y] > 0.0) hit = 1
+            }
+            
+            perp_dist = (side == 0) ? (side_dist_x - delta_x) : (side_dist_y - delta_y)
+            if (perp_dist <= 0.0001) perp_dist = 0.0001
+            
+            // ★ 注册 ZBuffer 深度，跨步跳跃优化
+            for (w in range(x, x + self.STRIP_WIDTH)) {
+                if (w < self.W) self.ZBuffer[w] = perp_dist
+            }
+            
+            line_height = self.H / perp_dist
+            draw_start = [0.0, -line_height / 2.0 + self.H / 2.0].max()
+            draw_end = [self.H - 1.0, line_height / 2.0 + self.H / 2.0].min()
+            
+            color_idx = int(self.map[map_x, map_y])
+            c_hex = (side == 1) ? self.shades[color_idx] : self.colors[color_idx]
+            im.line(x, draw_start, x, draw_end, c_hex, self.STRIP_WIDTH + 0.8)
+            
+            x += self.STRIP_WIDTH
+        }
+        
+        // ===================================
+        // 2. 收集所有可见实体（存活/死亡丧尸 + 未拾取的道具）
+        entities = list()
+        for (z in self.zombies) {
+            z.dist = (z.x - self.pos_x)^2 + (z.y - self.pos_y)^2
+            z.is_zombie = true
+            push(entities, z)
+        }
+        for (item in self.items) {
+            if (item.active) { // 只渲染还没吃的道具
+                item.dist = (item.x - self.pos_x)^2 + (item.y - self.pos_y)^2
+                item.is_zombie = false
+                push(entities, item)
+            }
+        }
+
+        entities = entities.sort((a,b)=> a.dist > b.dist)
+        
+        // 3. 渲染 Sprite 精灵 (适配独立缩放与地板对齐)
+        for (e in entities) {
+            dx = e.x - self.pos_x; dy = e.y - self.pos_y
+            invDet = 1.0 / (self.plane_x * self.dir_y - self.dir_x * self.plane_y)
+            transX = invDet * (self.dir_y * dx - self.dir_x * dy)
+            transY = invDet * (-self.plane_y * dx + self.plane_x * dy) 
+            
+            if (transY > 0.1) {
+                sx = int((self.W / 2) * (1.0 + transX / transY))
+                
+                // ★ 1. 基准高度计算：该距离下一块标准墙体的高度
+                base_h = abs(self.H / transY)
+                
+                // ★ 2. 根据实体类型设置缩放因子：僵尸缩小为75%，道具缩小为25%
+                scale = e.is_zombie ? 0.75 : 0.25
+                s_h = base_h * scale
+                s_w = s_h // 纹理保持 1:1 正方形
+                
+                // ★ 3. 地板对齐计算：算出当前距离的“地平线/墙根”物理落点，让精灵图贴地
+                floor_y = self.H / 2.0 + base_h / 2.0
+                sprite_top = floor_y - s_h  // 精灵的绘制起点 Y
+                
+                start_x = [0.0, sx - s_w / 2.0].max()
+                end_x = [self.W - 1.0, sx + s_w / 2.0].min()
+
+                // 判断贴图
+                tex_name = "ZOMBIE"
+                if (e.is_zombie) tex_name = (e.status == "DEAD") ? "DEAD" : "ZOMBIE"
+                else tex_name = e.type 
+                
+                tex_art = self.tex[tex_name]
+
+                // 纹理光栅化投射
+                for (spt_x in range(int(start_x), int(end_x), self.STRIP_WIDTH)) {
+                    if (transY < self.ZBuffer[spt_x]) {
+                        
+                        tx = int((spt_x - (sx - s_w / 2.0)) * 8.0 / s_w)
+                        if (tx < 0) tx = 0
+                        if (tx > 7) tx = 7
+                        
+                        pixel_h = s_h / 8.0
+                        for (ty in range(8)) {
+                            char = tex_art[ty][tx] 
+                            
+                            if (char != ".") { 
+
+                                if (e.is_zombie && e.status != "DEAD" && e.hurt_timer > 0.0) {
+                                    c_hex = "#FFFFFF" 
+                                } else {
+                                    c_hex = self.pal[char]
+                                }
+                                
+                                // 以前是按屏幕中心，现在按真实物理 sprite_top 往下推
+                                y0 = sprite_top + ty * pixel_h
+                                y1 = sprite_top + (ty + 1) * pixel_h
+                                
+                                // 只画处于屏幕区域内的像素（超出屏幕的进行几何裁剪）
+                                clip_y0 = [0.0, y0].max()
+                                clip_y1 = [self.H - 1.0, y1].min()
+                                block_h = clip_y1 - clip_y0
+                                
+                                if (block_h > 0.0) {
+                                    im.fillRect(spt_x, int(clip_y0), self.STRIP_WIDTH + 1, int(block_h) + 1, c_hex)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 🎯 玩家 HUD / 武器枪模渲染
+        gun_w = 40; gun_h = 130
+        gun_x = self.W/2 - gun_w/2; 
+        gun_y = self.H - gun_h + ((self.weapon_cd > 0.2) ? 15 : 0) 
+        im.fillRect(gun_x, gun_y, gun_w, gun_h, "#555566")
+        im.fillRect(gun_x + 5, gun_y, gun_w - 10, gun_h, "#333344")
+        
+        if (self.shoot_flash > 0.0) {
+            im.fillCircle(self.W/2, gun_y - 12, randint(25, 40), "#FFCC00")
+            im.fillCircle(self.W/2, gun_y - 12, randint(10, 20), "#FFFFFF")
+        }
+        im.fillRect(400 - 10, 300 - 1, 20, 2, "#FFFFFF")
+        im.fillRect(400 - 1, 300 - 10, 2, 20, "#FFFFFF")
+        
+        im.fillRect(0, self.H - 60, self.W, 60, "#0D0D12")
+        im.line(0, self.H - 60, self.W, self.H - 60, "#00AADD", 2)
+        
+        // 🏅 UI数据面板 (新增 AMMO 弹药显示)
+        hp_color = (self.hp < 30.0) ? "#FF0055" : "#00FFCC"
+        ammo_color = (self.ammo == 0) ? "#FF0055" : "#FFCC00"
+        
+        im.text(f"HP: {int([self.hp, 0.0].max())}%", 20, self.H - 40, hp_color, 2)
+        im.text(f"AMMO: {self.ammo.int()}", 180, self.H - 40, ammo_color, 2)
+        im.text(f"SCORE: {self.score}", 350, self.H - 40, "#FFFFFF", 2)
+        im.text(f"SECTOR: {self.level} / {self.MAX_LEVEL}", self.W - 220, self.H - 40, "#00AADD", 2)
+
+        // 🛰️ 简易雷达 (仅画墙体)
+        if (self.show_map) {
+            rx = self.W - 160; ry = 60
+            r_cell = [2, int(130 / self.size)].max() 
+            im.fillRect(rx - 5, ry - 5, self.size * r_cell + 10, self.size * r_cell + 10, "#111111")
+            for (r in range(self.size)) {
+                for (c in range(self.size)) {
+                    val = self.map[c, r]
+                    if (val > 0.0 && val < 5.0) im.fillRect(rx + r * r_cell, ry + c * r_cell, r_cell-1, r_cell-1, "#666666")
+                    if (val == 5.0) im.fillRect(rx + r * r_cell, ry + c * r_cell, r_cell-1, r_cell-1, "#FFFFFF") 
+                }
+            }
+            im.fillCircle(rx + int(self.pos_y) * r_cell + r_cell/2, ry + int(self.pos_x) * r_cell + r_cell/2, r_cell/2, "#FF0055")
+        }
+
+        // ==========================================
+        // 🎞️ 情境弹窗
+        // ==========================================
+        if (self.status == "TRANSITION") {
+            im.fillRect(0, 200, self.W, 140, "#111115")
+            im.line(0, 200, self.W, 200, "#00FFCC", 3)
+            im.line(0, 340, self.W, 340, "#00FFCC", 3)
+            self.drawCentered(im, f"SECTOR {self.level} CLEARED!", 240, "#00FFCC", 3)
+            self.drawCentered(im, "WARPING TO NEXT SECTOR...", 290, "#FFFFFF", 2)
+        }
+        else if (self.status == "GAME_OVER") {
+            im.fillRect(0, 180, self.W, 220, "#0A0A0A")
+            im.line(0, 180, self.W, 180, "#FFCC00", 4)
+            im.line(0, 400, self.W, 400, "#FFCC00", 4)
+            self.drawCentered(im, "MISSION ACCOMPLISHED", 210, "#FFCC00", 4)
+            self.drawCentered(im, "YOU HAVE ESCAPED THE MAZE.", 270, "#FFFFFF", 2)
+            self.drawCentered(im, f"FINAL SCORE: {self.score}", 330, "#00FFCC", 2)
+        }
+        else if (self.status == "GAME_OVER_DEAD") {
+            im.fillRect(0, 180, self.W, 180, "#220000")
+            im.line(0, 180, self.W, 180, "#FF0000", 4)
+            im.line(0, 360, self.W, 360, "#FF0000", 4)
+            self.drawCentered(im, "YOU DIED.", 230, "#FF0000", 5)
+            self.drawCentered(im, "SIGNAL LOST.", 310, "#AAAAAA", 2)
+        }
+        if (self.show_probe) {
+            self.probe.draw(im)
+        }
+    }
+}
+
+Raycaster3D().run()

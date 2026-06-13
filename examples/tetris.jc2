@@ -1,0 +1,336 @@
+// ═══════════════════════════════════════════════════════════════
+// tetris.jc2 — Coded entirely in Junk Calculator 2 
+// ═══════════════════════════════════════════════════════════════
+import engine
+
+class Tetris extends GameEngine {
+    init() = {
+        // Expanded window size to make room for the right-side Native UI
+        super.init("JC2 Tetris - Advanced Edition", 660, 720, 60)
+        
+        // Tetromino shapes modeled perfectly as exact Matrices!
+        self.shapes = list(
+            [0,0,0,0; 1,1,1,1; 0,0,0,0; 0,0,0,0], // I
+            [1,1; 1,1],                           // O
+            [0,1,0; 1,1,1; 0,0,0],                // T
+            [0,1,1; 1,1,0; 0,0,0],                // S
+            [1,1,0; 0,1,1; 0,0,0],                // Z
+            [1,0,0; 1,1,1; 0,0,0],                // J
+            [0,0,1; 1,1,1; 0,0,0]                 // L
+        )
+        
+        // Cyberpunk styling: [0] = Empty, [1~7] = Block Colors
+        self.colors = list(
+            "#111116",   // 0: Empty Background Grid
+            "#00FFFF",   // 1: I (Cyan)
+            "#FFFF00",   // 2: O (Yellow)
+            "#FF00FF",   // 3: T (Purple)
+            "#00FF00",   // 4: S (Green)
+            "#FF0055",   // 5: Z (Red)
+            "#0055FF",   // 6: J (Blue)
+            "#FF8800"    // 7: L (Orange)
+        )
+        
+        self.COLS = 10
+        self.ROWS = 20
+        self.CELL = 30   // Slightly larger blocks!
+        
+        // Pin the game board to the left side
+        self.ox = 50
+        self.oy = 60
+
+        // Start the game!
+        self.reset()
+    }
+
+    reset() = {
+        // A pure JC2 zero-matrix makes the perfect game board
+        self.board = zeros(self.ROWS, self.COLS)
+        self.score = 0
+        self.lines = 0
+        self.game_over = false
+        self.fall_speed = 0.5   
+        self.fall_timer = 0.0
+        
+        // Generate the first "Next" piece, then spawn
+        self.next_idx = randint(0, 6)
+        self.spawnPiece()
+    }
+
+    spawnPiece() = {
+        // Inherit the planned 'next' piece
+        self.curr_piece = self.shapes[self.next_idx]
+        self.curr_color = self.next_idx + 1
+        
+        // Reroll the upcoming 'next' piece
+        self.next_idx = randint(0, 6)
+        
+        self.curr_r = 0
+        self.curr_c = int(self.COLS / 2) - int(col(self.curr_piece) / 2)
+        
+        // If it collides on spawn, the board is full -> GAME OVER
+        if (!self.isValid(self.curr_piece, self.curr_r, self.curr_c)) {
+            self.game_over = true
+        }
+    }
+
+    // ─── Core Logic: Physical Collision Detection ───
+    isValid(piece, br, bc) = {
+        local pr = row(piece)
+        local pc = col(piece)
+        
+        for (local r = 0; r < pr; r += 1) {
+            for (local c = 0; c < pc; c += 1) {
+                if (piece[r, c] != 0.0) {
+                    local target_r = br + r
+                    local target_c = bc + c
+                    
+                    // Out of bounds checking
+                    if (target_c < 0 || target_c >= self.COLS || target_r >= self.ROWS) {
+                        return false
+                    }
+                    // Hit another locked block
+                    if (target_r >= 0 && self.board[target_r, target_c] != 0.0) {
+                        return false
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    // Mathematical 90-degree Clockwise Matrix Rotation!
+    rotatePiece(piece) = {
+        local pr = row(piece)
+        local pc = col(piece)
+        local res = zeros(pc, pr)
+        
+        for (local r = 0; r < pr; r += 1) {
+            for (local c = 0; c < pc; c += 1) {
+                res[c, pr - 1 - r] = piece[r, c]
+            }
+        }
+        return res
+    }
+
+    lockPiece() = {
+        local pr = row(self.curr_piece)
+        local pc = col(self.curr_piece)
+        
+        // Bake the falling piece into the background board matrix
+        for (local r = 0; r < pr; r += 1) {
+            for (local c = 0; c < pc; c += 1) {
+                if (self.curr_piece[r, c] != 0.0) {
+                    local br = self.curr_r + r
+                    local bc = self.curr_c + c
+                    if (br >= 0 && br < self.ROWS) {
+                        self.board[br, bc] = double(self.curr_color)
+                    }
+                }
+            }
+        }
+        self.clearLines()
+        self.spawnPiece()
+    }
+
+    clearLines() = {
+        local cleared = 0
+        // Search rows from bottom to top
+        for (local r = self.ROWS - 1; r >= 0; r -= 1) {
+            local full = true
+            for (local c = 0; c < self.COLS; c += 1) {
+                if (self.board[r, c] == 0.0) { full = false; break }
+            }
+            
+            if (full) {
+                cleared += 1
+                // Shift all rows above down by one
+                for (local y = r; y > 0; y -= 1) {
+                    for (local x = 0; x < self.COLS; x += 1) {
+                        self.board[y, x] = self.board[y - 1, x]
+                    }
+                }
+                // Clear the top-most row
+                for (local x = 0; x < self.COLS; x += 1) self.board[0, x] = 0.0
+                
+                // Re-evaluate current row because everything shifted down!
+                r += 1 
+            }
+        }
+        
+        // Exponential score and speed-up calculation
+        if (cleared > 0) {
+            if (cleared == 1) self.score += 100
+            if (cleared == 2) self.score += 300
+            if (cleared == 3) self.score += 500
+            if (cleared >= 4) self.score += 800
+            
+            self.lines += cleared
+            self.fall_speed -= double(cleared) * 0.001
+            if (self.fall_speed < 0.20) self.fall_speed = 0.20 // Terminal velocity
+        }
+    }
+
+    // ─── Engine Framework Hooks ───
+    update(dt) = {
+        if (self.game_over) return none
+        
+        self.fall_timer += dt
+        if (self.fall_timer >= self.fall_speed) {
+            self.fall_timer = 0.0
+            // Gravity Tick
+            if (self.isValid(self.curr_piece, self.curr_r + 1, self.curr_c)) {
+                self.curr_r += 1
+            } else {
+                self.lockPiece()
+            }
+        }
+    }
+
+    onKeyDown(key) = {
+        if (key == "ESC") self.quit()
+        if (self.game_over) {
+            if (key == "R" || key == "r") self.reset()
+            return none
+        }
+        
+        if (key == "LEFT" || key == "A" || key == "a") {
+            if (self.isValid(self.curr_piece, self.curr_r, self.curr_c - 1)) self.curr_c -= 1
+        }
+        if (key == "RIGHT" || key == "D" || key == "d") {
+            if (self.isValid(self.curr_piece, self.curr_r, self.curr_c + 1)) self.curr_c += 1
+        }
+        if (key == "DOWN" || key == "S" || key == "s") {
+            if (self.isValid(self.curr_piece, self.curr_r + 1, self.curr_c)) {
+                self.curr_r += 1
+                self.score += 1 // Soft drop bonus
+            }
+        }
+        if (key == "UP" || key == "W" || key == "w") {
+            local rot = self.rotatePiece(self.curr_piece)
+            if (self.isValid(rot, self.curr_r, self.curr_c)) {
+                self.curr_piece = rot
+            }
+        }
+        if (key == "SPACE") {
+            // Hard Drop
+            while (self.isValid(self.curr_piece, self.curr_r + 1, self.curr_c)) {
+                self.curr_r += 1
+                self.score += 2 // Hard drop bonus
+            }
+            self.lockPiece()
+            self.fall_timer = 0.0
+        }
+    }
+
+    draw(im) = {
+        // Deep space background
+        im.fillRect(0, 0, self.width, self.height, "#14141A")
+        
+        // -------------------------------------------------------------
+        // 🎨 Left Box: MAIN BOARD RENDERER
+        // -------------------------------------------------------------
+        for (local r = 0; r < self.ROWS; r += 1) {
+            for (local c = 0; c < self.COLS; c += 1) {
+                local val = int(self.board[r, c])
+                local x = self.ox + c * self.CELL
+                local y = self.oy + r * self.CELL
+                im.fillRect(x, y, self.CELL - 1, self.CELL - 1, self.colors[val])
+            }
+        }
+        
+        // Draw Main Board Frame
+        im.rect(self.ox - 2, self.oy - 2, self.COLS * self.CELL + 3, self.ROWS * self.CELL + 3, "#555566", 2.0)
+
+        // Draw Ghost/Shadow Piece
+        if (!self.game_over) {
+            local ghost_r = self.curr_r
+            while (self.isValid(self.curr_piece, ghost_r + 1, self.curr_c)) ghost_r += 1
+            
+            local pr = row(self.curr_piece)
+            local pc = col(self.curr_piece)
+            
+            for (local r = 0; r < pr; r += 1) {
+                for (local c = 0; c < pc; c += 1) {
+                    if (self.curr_piece[r, c] != 0.0) {
+                        // Ghost footprint
+                        if (ghost_r + r >= 0) {
+                            local gx = self.ox + (self.curr_c + c) * self.CELL
+                            local gy = self.oy + (ghost_r + r) * self.CELL
+                            im.rect(gx + 1, gy + 1, self.CELL - 3, self.CELL - 3, "#444455", 1.5)
+                        }
+                        // Actual falling block
+                        if (self.curr_r + r >= 0) {
+                            local ax = self.ox + (self.curr_c + c) * self.CELL
+                            local ay = self.oy + (self.curr_r + r) * self.CELL
+                            im.fillRect(ax, ay, self.CELL - 1, self.CELL - 1, self.colors[self.curr_color])
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 🖥️ Right Box: NATIVE UI DASHBOARD
+        // -------------------------------------------------------------
+        local ui_x = self.ox + self.COLS * self.CELL + 50
+        
+        im.text("JC2 TETRIS", ui_x, self.oy, "#00FFCC", 2.0)
+        
+        // ★ NEXT PIECE PREVIEW BOX
+        local next_y = self.oy + 50
+        im.text("UPCOMING", ui_x, next_y, "#8888AA", 1.5)
+        im.fillRect(ui_x, next_y + 30, 160, 120, "#191922")
+        im.rect(ui_x, next_y + 30, 160, 120, "#333344", 2.0)
+        
+        local next_p = self.shapes[self.next_idx]
+        local nr = row(next_p)
+        local nc = col(next_p)
+        
+        // Mathematically center the preview piece inside the 160x120 box!
+        local prev_ox = ui_x + int((160 - nc * self.CELL) / 2)
+        local prev_oy = next_y + 30 + int((120 - nr * self.CELL) / 2)
+        
+        for (local r = 0; r < nr; r += 1) {
+            for (local c = 0; c < nc; c += 1) {
+                if (next_p[r, c] != 0.0) {
+                    im.fillRect(prev_ox + c * self.CELL, prev_oy + r * self.CELL, self.CELL - 1, self.CELL - 1, self.colors[self.next_idx + 1])
+                } 
+            }
+        }
+        
+        // ★ SCORE & STATS
+        local stat_y = next_y + 180
+        im.text("SCORE", ui_x, stat_y, "#8888AA", 1.5)
+        im.text(str(self.score), ui_x, stat_y + 25, "#FFFFFF", 2.5)
+        
+        im.text("LINES", ui_x, stat_y + 70, "#8888AA", 1.5)
+        im.text(str(self.lines), ui_x, stat_y + 95, "#FFCC00", 2.0)
+        
+        local spd = int((0.5 - self.fall_speed) * 1000)
+        im.text(f"SPEED: +{(spd > 0) ? spd : 0}", ui_x, stat_y + 130, "#00FFCC", 1.2)
+
+        // ★ CONTROLS LEGEND
+        local ctrl_y = stat_y + 200
+        im.text("CONTROLS", ui_x, ctrl_y, "#555566", 1.5)
+        im.line(ui_x, ctrl_y + 20, ui_x + 160, ctrl_y + 20, "#333344", 2.0)
+        im.text("[W /UP] Rotate", ui_x, ctrl_y + 35, "#8888AA", 1.0)
+        im.text("[A / D] Move", ui_x, ctrl_y + 55, "#8888AA", 1.0)
+        im.text("[S/DWN] Soft Drop", ui_x, ctrl_y + 75, "#8888AA", 1.0)
+        im.text("[SPACE] Hard Drop", ui_x, ctrl_y + 95, "#FF0055", 1.0)
+
+        // -------------------------------------------------------------
+        // 💀 GAME OVER OVERLAY
+        // -------------------------------------------------------------
+        if (self.game_over) {
+            im.fillRect(self.ox - 20, self.oy + 220, self.COLS * self.CELL + 40, 140, "#000000")
+            im.rect(self.ox - 20, self.oy + 220, self.COLS * self.CELL + 40, 140, "#FF0055", 4)
+            im.text("SYSTEM FAILURE", self.ox + 20, self.oy + 245, "#FF0055", 2.2)
+            im.text("BOARD CAPACITY EXCEEDED", self.ox + 35, self.oy + 285, "#8888AA", 1.0)
+            im.text("PRESS [ R ] TO REBOOT", self.ox + 35, self.oy + 320, "#FFFFFF", 1.2)
+        }
+    }
+}
+
+// Spin up the engine!
+Tetris().run()

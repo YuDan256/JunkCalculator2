@@ -8,9 +8,9 @@
 //            and 256 unsigned cyclic overflow wrap-around.
 // ═══════════════════════════════════════════════════════════════
 
-print("=================================================")
-print("  JC2 Brainfuck Engine (VM in VM)                ")
-print("=================================================\n")
+println("=================================================")
+println("  JC2 Brainfuck Engine (VM in VM)                ")
+println("=================================================\n")
 
 // 1. Prepare the Brainfuck source code
 // This cryptic string of pluses and minuses is a set of extremely precise memory instructions
@@ -18,9 +18,9 @@ bf_code = "+++++++[>++++++++++<-]>++++.        ; 7*10+4 = 74 → 'J'
 > ++++++[>++++++++++<-]>+++++++.    ; 6*10+7 = 67 → 'C'
 > +++++[>++++++++++<-]>.            ; 5*10+0 = 50 → '2'"
 
-print("Source Code Loaded:")
-print(bf_code)
-print("\n[1/3] Parsing brackets and building jump tables...")
+println("Source Code Loaded:")
+println(bf_code)
+println("\n[1/3] Parsing brackets and building jump tables...")
 
 // 2. AOT Lexical Analysis: Precompute all [ and ] jump addresses.
 // Finding matching brackets at runtime is slow. We pair them ahead of time in O(N) using a stack.
@@ -41,10 +41,10 @@ for (i = 0; i < bf_code.len(); i += 1) {
     }
 }
 t1 = clock()
-print(f"      Matched {jumps.len()/2} bracket pairs in {t1 - t0::.4f}s.")
+println(f"      Matched {jumps.len()/2} bracket pairs in {t1 - t0::.4f}s.")
 
 // 3. Initialize Turing Machine State
-print("[2/3] Initializing Turing Machine Tape and Pointers...")
+println("[2/3] Initializing Turing Machine Tape and Pointers...")
 
 // Use a hash Dict to simulate an "infinite" tape extending in both directions.
 // (Only stores non-zero data: extreme memory efficiency!)
@@ -52,8 +52,8 @@ tape = dict()
 dp = 0        // Data Pointer (points to the current tape cell)
 ip = 0        // Instruction Pointer (points to the current char in bf_code)
 
-print("[3/3] Executing Virtual Machine...\n")
-print(">>>>> OUTPUT START >>>>>")
+println("[3/3] Executing Virtual Machine...\n")
+println(">>>>> OUTPUT START >>>>>")
 
 // 4. Core Turing Machine Hot Loop
 output_str = ""
@@ -111,9 +111,9 @@ while (ip < bf_code.len()) {
 t3 = clock()
 
 // Flush the captured 1D output buffer to the console.
-print(output_str)
-print("\n<<<<< OUTPUT END <<<<<")
+println(output_str)
+println("\n<<<<< OUTPUT END <<<<<")
 
-print(f"\n[Success] Brainfuck Process Terminated Successfully.")
-print(f"Metrics: Executed {steps} instructions via hot-loop in {t3 - t2::.4f}s.")
-print(f"Memory used: {tape.len()} tape blocks allocated.")
+println(f"\n[Success] Brainfuck Process Terminated Successfully.")
+println(f"Metrics: Executed {steps} instructions via hot-loop in {t3 - t2::.4f}s.")
+println(f"Memory used: {tape.len()} tape blocks allocated.")

@@ -1319,23 +1319,9 @@ void BuiltinRegistry::registerBase() {
     reg("changeBase", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); });
     reg("data", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asBigInt()); });
 
-    auto bitwiseOp = [](const Value& a, const Value& b, auto baseOp, auto int32Op) -> Value {
-        if (a.isObjType(ObjType::BASENUM) && b.isObjType(ObjType::BASENUM)) return Value(baseOp(static_cast<ObjBaseNum*>(a.asObj())->base, static_cast<ObjBaseNum*>(b.asObj())->base));
-        if (a.isObjType(ObjType::BASENUM)) return Value(baseOp(static_cast<ObjBaseNum*>(a.asObj())->base, BaseNum(b.asBigInt(), static_cast<ObjBaseNum*>(a.asObj())->base.getRadix())));
-        if (b.isObjType(ObjType::BASENUM)) return Value(baseOp(BaseNum(a.asBigInt(), static_cast<ObjBaseNum*>(b.asObj())->base.getRadix()), static_cast<ObjBaseNum*>(b.asObj())->base));
-        if (a.isInt32() && b.isInt32()) return Value::fromInt32(int32Op(a.asInt32(), b.asInt32()));
-        return Value(baseOp(BaseNum(a.asBigInt(), 2), BaseNum(b.asBigInt(), 2)).getValue());
-    };
-
-    reg("bitand", { 2 }, [bitwiseOp](const std::vector<Value>& args) -> Value { 
-        return bitwiseOp(args[0], args[1], [](const BaseNum& x, const BaseNum& y){ return x.bitAnd(y); }, [](int32_t x, int32_t y){ return x & y; }); 
-    });
-    reg("bitor", { 2 }, [bitwiseOp](const std::vector<Value>& args) -> Value { 
-        return bitwiseOp(args[0], args[1], [](const BaseNum& x, const BaseNum& y){ return x.bitOr(y); }, [](int32_t x, int32_t y){ return x | y; }); 
-    });
-    reg("bitxor", { 2 }, [bitwiseOp](const std::vector<Value>& args) -> Value { 
-        return bitwiseOp(args[0], args[1], [](const BaseNum& x, const BaseNum& y){ return x.bitXor(y); }, [](int32_t x, int32_t y){ return x ^ y; }); 
-    });
+    reg("bitand", { 2 }, [](const std::vector<Value>& args) -> Value { return args[0] & args[1]; });
+    reg("bitor", { 2 }, [](const std::vector<Value>& args) -> Value { return args[0] | args[1]; });
+    reg("bitxor", { 2 }, [](const std::vector<Value>& args) -> Value { return bitXor(args[0], args[1]); });
     
     reg("bitnot", { 1, 2 }, [](const std::vector<Value>& args) -> Value { 
         int width = -1;
@@ -4833,34 +4819,13 @@ void BuiltinRegistry::registerSetFunctions() {
     reg("setUnion", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setUnion() expects two Sets.");
-        auto a = static_cast<ObjSet*>(args[0].asObj());
-        auto b = static_cast<ObjSet*>(args[1].asObj());
-        ObjSet* result = GcHeap::get().allocate<ObjSet>();
-        GcObjGuard guard(result);
-        for (const auto& val : a->elements) { result->keys.insert(val); result->elements.push_back(val); }
-        for (const auto& val : b->elements) {
-            if (result->keys.find(val) == result->keys.end()) {
-                result->keys.insert(val);
-                result->elements.push_back(val);
-            }
-        }
-        return Value(result);
+        return args[0] | args[1];
         });
 
     reg("setIntersect", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setIntersect() expects two Sets.");
-        auto a = static_cast<ObjSet*>(args[0].asObj());
-        auto b = static_cast<ObjSet*>(args[1].asObj());
-        ObjSet* result = GcHeap::get().allocate<ObjSet>();
-        GcObjGuard guard(result);
-        for (const auto& val : a->elements) {
-            if (b->keys.find(val) != b->keys.end()) {
-                result->keys.insert(val);
-                result->elements.push_back(val);
-            }
-        }
-        return Value(result);
+        return args[0] & args[1];
         });
 
     reg("setDiff", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -4882,23 +4847,7 @@ void BuiltinRegistry::registerSetFunctions() {
     reg("setSymDiff", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setSymDiff() expects two Sets.");
-        auto a = static_cast<ObjSet*>(args[0].asObj());
-        auto b = static_cast<ObjSet*>(args[1].asObj());
-        ObjSet* result = GcHeap::get().allocate<ObjSet>();
-        GcObjGuard guard(result);
-        for (const auto& val : a->elements) {
-            if (b->keys.find(val) == b->keys.end()) {
-                result->keys.insert(val);
-                result->elements.push_back(val);
-            }
-        }
-        for (const auto& val : b->elements) {
-            if (a->keys.find(val) == a->keys.end()) {
-                result->keys.insert(val);
-                result->elements.push_back(val);
-            }
-        }
-        return Value(result);
+        return bitXor(args[0], args[1]);
         });
 
     // ═══ 集合关系谓词 ═══

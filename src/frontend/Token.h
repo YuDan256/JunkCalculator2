@@ -29,6 +29,7 @@ namespace jc {
         BACKSLASH_ASSIGN,    // ★ \=
         BIT_AND_ASSIGN,      // ★ &=
         BIT_OR_ASSIGN,       // ★ |=
+        BIT_XOR_ASSIGN,      // ★ ^^=
         SHIFT_LEFT_ASSIGN,   // ★ <<=
         SHIFT_RIGHT_ASSIGN,  // ★ >>=
 
@@ -71,6 +72,7 @@ namespace jc {
         TILDE,          // ~  (★ 新增)
         BIT_AND,        // &  (★ 新增)
         BIT_OR,         // |  (★ 新增)
+        BIT_XOR,        // ^^ (★ 新增)
 
 
         // --- 特殊标记 ---
@@ -117,6 +119,7 @@ namespace jc {
         case TokenType::BACKSLASH_ASSIGN: return "BACKSLASH_ASSIGN(\\=)";
         case TokenType::BIT_AND_ASSIGN: return "BIT_AND_ASSIGN(&=)";   // ★
         case TokenType::BIT_OR_ASSIGN:  return "BIT_OR_ASSIGN(|=)";    // ★
+        case TokenType::BIT_XOR_ASSIGN: return "BIT_XOR_ASSIGN(^^=)";  // ★
         case TokenType::SHIFT_LEFT_ASSIGN: return "SHIFT_LEFT_ASSIGN(<<=)";
         case TokenType::SHIFT_RIGHT_ASSIGN: return "SHIFT_RIGHT_ASSIGN(>>=)";
         case TokenType::AND_AND:       return "AND_AND(&&)";    // ★
@@ -125,6 +128,7 @@ namespace jc {
         case TokenType::TILDE:         return "TILDE(~)";        // ★
         case TokenType::BIT_AND:       return "BIT_AND(&)";
         case TokenType::BIT_OR:        return "BIT_OR(|)";
+        case TokenType::BIT_XOR:       return "BIT_XOR(^^)";
         case TokenType::SHIFT_LEFT:    return "SHIFT_LEFT(<<)";
         case TokenType::SHIFT_RIGHT:   return "SHIFT_RIGHT(>>)";
         case TokenType::GREATER:       return "GREATER(>)";

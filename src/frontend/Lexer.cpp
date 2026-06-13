@@ -51,7 +51,7 @@ namespace jc {
         case TokenType::STAR_ASSIGN: case TokenType::SLASH_ASSIGN:
         case TokenType::PERCENT_ASSIGN: case TokenType::CARET_ASSIGN:
         case TokenType::BACKSLASH_ASSIGN:
-        case TokenType::BIT_AND_ASSIGN: case TokenType::BIT_OR_ASSIGN: // ★
+        case TokenType::BIT_AND_ASSIGN: case TokenType::BIT_OR_ASSIGN: case TokenType::BIT_XOR_ASSIGN: // ★
         case TokenType::SHIFT_LEFT_ASSIGN: case TokenType::SHIFT_RIGHT_ASSIGN:
             // 比较
         case TokenType::EQUAL: case TokenType::BANG_EQUAL:
@@ -60,7 +60,7 @@ namespace jc {
         case TokenType::SHIFT_LEFT: case TokenType::SHIFT_RIGHT:
             // 逻辑
         case TokenType::AND_AND: case TokenType::OR_OR:
-        case TokenType::BIT_AND: case TokenType::BIT_OR:
+        case TokenType::BIT_AND: case TokenType::BIT_OR: case TokenType::BIT_XOR:
         case TokenType::BANG: case TokenType::TILDE: // ★
             // 管道与箭头
         case TokenType::PIPE: case TokenType::ARROW: case TokenType::RIGHT_ARROW:
@@ -170,7 +170,11 @@ namespace jc {
             addToken(match('=') ? TokenType::PERCENT_ASSIGN : TokenType::PERCENT);
             break;
         case '^':
-            addToken(match('=') ? TokenType::CARET_ASSIGN : TokenType::CARET);
+            if (match('^')) {
+                addToken(match('=') ? TokenType::BIT_XOR_ASSIGN : TokenType::BIT_XOR);
+            } else {
+                addToken(match('=') ? TokenType::CARET_ASSIGN : TokenType::CARET);
+            }
             break;
         case '\\':
             addToken(match('=') ? TokenType::BACKSLASH_ASSIGN : TokenType::BACKSLASH);

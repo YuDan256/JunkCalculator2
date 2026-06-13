@@ -35,6 +35,7 @@ namespace jc {
         OP_BIT_NOT,         // ★ ~ 按位取反
         OP_BIT_AND,         // ★ & 
         OP_BIT_OR,          // ★ |
+        OP_BIT_XOR,         // ★ ^^
         OP_BIT_SHIFT_LEFT,  // ★ <<
         OP_BIT_SHIFT_RIGHT, // ★ >>
 
@@ -234,6 +235,7 @@ namespace jc {
         case OpCode::OP_REF_WRITEBACK: return "OP_REF_WRITEBACK";
         case OpCode::OP_BIT_AND: return "OP_BIT_AND";
         case OpCode::OP_BIT_OR: return "OP_BIT_OR";
+        case OpCode::OP_BIT_XOR: return "OP_BIT_XOR";
         case OpCode::OP_BIT_SHIFT_LEFT: return "OP_BIT_SHIFT_LEFT";
         case OpCode::OP_BIT_SHIFT_RIGHT: return "OP_BIT_SHIFT_RIGHT";
         case OpCode::OP_ASSERT_PARAM_TYPE: return "OP_ASSERT_PARAM_TYPE";
@@ -374,6 +376,7 @@ namespace jc {
             case OpCode::OP_IN: case OpCode::OP_STRINGIFY: case OpCode::OP_TRY_END:
             case OpCode::OP_THROW: case OpCode::OP_LIST_INIT: case OpCode::OP_INHERIT:
             case OpCode::OP_IMPORT: case OpCode::OP_BIT_AND: case OpCode::OP_BIT_OR:
+            case OpCode::OP_BIT_XOR:
             case OpCode::OP_BIT_SHIFT_LEFT: case OpCode::OP_BIT_SHIFT_RIGHT:
             case OpCode::OP_GET_SELF: case OpCode::OP_LIST_COMP_END:
             case OpCode::OP_IS_UNINIT:

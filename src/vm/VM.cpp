@@ -141,7 +141,11 @@ namespace jc {
     static const std::string DUNDER_NEG = "__neg__";
     static const std::string DUNDER_BITNOT = "__bitnot__";
     static const std::string DUNDER_BITAND = "__bitand__";
+    static const std::string DUNDER_RBITAND = "__rbitand__";
     static const std::string DUNDER_BITOR = "__bitor__";
+    static const std::string DUNDER_RBITOR = "__rbitor__";
+    static const std::string DUNDER_BITXOR = "__bitxor__";
+    static const std::string DUNDER_RBITXOR = "__rbitxor__";
     static const std::string DUNDER_LSHIFT = "__lshift__";
     static const std::string DUNDER_RLSHIFT = "__rlshift__";
     static const std::string DUNDER_RSHIFT = "__rshift__";
@@ -734,12 +738,20 @@ namespace jc {
                 case OpCode::OP_BIT_AND: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isInstance() && findDunder(a, DUNDER_BITAND)) { Value res = callDunder(a, DUNDER_BITAND, { b }); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RBITAND)) { Value res = callDunder(b, DUNDER_RBITAND, { a }); pop(); peek(0) = res; break; }
                     Value res = a & b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_OR: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isInstance() && findDunder(a, DUNDER_BITOR)) { Value res = callDunder(a, DUNDER_BITOR, { b }); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RBITOR)) { Value res = callDunder(b, DUNDER_RBITOR, { a }); pop(); peek(0) = res; break; }
                     Value res = a | b; pop(); peek(0) = res; break;
+                }
+                case OpCode::OP_BIT_XOR: {
+                    Value& b = peek(0); Value& a = peek(1);
+                    if (a.isInstance() && findDunder(a, DUNDER_BITXOR)) { Value res = callDunder(a, DUNDER_BITXOR, { b }); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RBITXOR)) { Value res = callDunder(b, DUNDER_RBITXOR, { a }); pop(); peek(0) = res; break; }
+                    Value res = bitXor(a, b); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_SHIFT_LEFT: {
                     Value& b = peek(0); Value& a = peek(1);

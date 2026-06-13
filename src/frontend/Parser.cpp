@@ -50,8 +50,19 @@ namespace jc {
 
     // ★ 新增层级 1：位或 (并集)
     std::unique_ptr<Expr> Parser::bitwiseOr() {
-        auto expr = bitwiseAnd();
+        auto expr = bitwiseXor();
         while (match({ TokenType::BIT_OR })) {
+            Token op = previous();
+            auto right = bitwiseXor();
+            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+        }
+        return expr;
+    }
+
+    // ★ 新增层级 1.5：位异或
+    std::unique_ptr<Expr> Parser::bitwiseXor() {
+        auto expr = bitwiseAnd();
+        while (match({ TokenType::BIT_XOR })) {
             Token op = previous();
             auto right = bitwiseAnd();
             expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
@@ -279,7 +290,7 @@ namespace jc {
                     TokenType::STAR_ASSIGN, TokenType::SLASH_ASSIGN,
                     TokenType::PERCENT_ASSIGN, TokenType::CARET_ASSIGN,
                     TokenType::BACKSLASH_ASSIGN,
-                    TokenType::BIT_AND_ASSIGN, TokenType::BIT_OR_ASSIGN,
+                    TokenType::BIT_AND_ASSIGN, TokenType::BIT_OR_ASSIGN, TokenType::BIT_XOR_ASSIGN,
                     TokenType::SHIFT_LEFT_ASSIGN, TokenType::SHIFT_RIGHT_ASSIGN })) {
             if (isConst) throw std::runtime_error("Parser Error: 'const' cannot be applied to compound assignment.");
             Token compOp = previous();
@@ -295,6 +306,7 @@ namespace jc {
             case TokenType::BACKSLASH_ASSIGN: baseOp = TokenType::BACKSLASH; break;
             case TokenType::BIT_AND_ASSIGN: baseOp = TokenType::BIT_AND; break;
             case TokenType::BIT_OR_ASSIGN:  baseOp = TokenType::BIT_OR; break;
+            case TokenType::BIT_XOR_ASSIGN: baseOp = TokenType::BIT_XOR; break;
             case TokenType::SHIFT_LEFT_ASSIGN: baseOp = TokenType::SHIFT_LEFT; break;
             case TokenType::SHIFT_RIGHT_ASSIGN: baseOp = TokenType::SHIFT_RIGHT; break;
             default: baseOp = TokenType::PLUS; break;

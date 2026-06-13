@@ -489,6 +489,7 @@ namespace jc {
 
         friend Value operator&(const Value& lhs, const Value& rhs);
         friend Value operator|(const Value& lhs, const Value& rhs);
+        friend Value bitXor(const Value& lhs, const Value& rhs);
         friend Value operator<<(const Value& lhs, const Value& rhs);
         friend Value operator>>(const Value& lhs, const Value& rhs);
 
@@ -1035,6 +1036,40 @@ namespace jc {
             return Value(res);
         }
         throw std::runtime_error("Type Error: Bitwise/Set OR '|' not supported for these types.");
+    }
+
+    inline Value bitXor(const Value& lhs, const Value& rhs) {
+        if (lhs.isInt32() && rhs.isInt32()) return Value::fromInt32(lhs.asInt32() ^ rhs.asInt32());
+        
+        if (lhs.isObjType(ObjType::SET) && rhs.isObjType(ObjType::SET)) {
+            ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
+            ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
+            ObjSet* res = GcHeap::get().allocate<ObjSet>();
+            for (const auto& val : s1->elements) {
+                if (s2->keys.find(val) == s2->keys.end()) {
+                    res->add(val);
+                }
+            }
+            for (const auto& val : s2->elements) {
+                if (s1->keys.find(val) == s1->keys.end()) {
+                    res->add(val);
+                }
+            }
+            return Value(res);
+        }
+        if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitXor(static_cast<ObjBaseNum*>(rhs.asObj())->base));
+        if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitXor(BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix())));
+        if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()).bitXor(static_cast<ObjBaseNum*>(rhs.asObj())->base));
+        
+        bool lhsIsInt = lhs.isInt32() || lhs.isBigInt() || lhs.isBool();
+        bool rhsIsInt = rhs.isInt32() || rhs.isBigInt() || rhs.isBool();
+        if (lhsIsInt && rhsIsInt) {
+            BigInt lVal = lhs.isBool() ? BigInt(lhs.asBool() ? 1 : 0) : lhs.asBigInt();
+            BigInt rVal = rhs.isBool() ? BigInt(rhs.asBool() ? 1 : 0) : rhs.asBigInt();
+            BigInt res = BaseNum(lVal, 2).bitXor(BaseNum(rVal, 2)).getValue();
+            return Value(res);
+        }
+        throw std::runtime_error("Type Error: Bitwise/Set XOR '^^' not supported for these types.");
     }
 
     inline std::string Value::toJC2Expression() const {

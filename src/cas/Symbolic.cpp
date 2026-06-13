@@ -1058,6 +1058,61 @@ namespace jc {
     }
 
     // =================================================================
+    // AST 复杂度计算器 (用于多重宇宙最优解选择)
+    // =================================================================
+    static int computeComplexity(const std::shared_ptr<SymNode>& node, std::unordered_set<const SymNode*>& visited) {
+        if (!node) return 0;
+        if (!visited.insert(node.get()).second) return 0;
+        int score = 10; // 基础分放大，便于微调
+        switch (node->getType()) {
+        case SymType::NUM: {
+            auto num = std::static_pointer_cast<SymNum>(node);
+            if (std::holds_alternative<Fraction>(num->value)) score += 15; 
+            else if (std::holds_alternative<double>(num->value)) score += 20; 
+            break;
+        }
+        case SymType::VAR:
+            break;
+        case SymType::ADD:
+            score += 5; 
+            for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args)
+                score += computeComplexity(arg, visited);
+            break;
+        case SymType::MUL:
+            score += 2;
+            for (auto& arg : std::static_pointer_cast<SymMul>(node)->args)
+                score += computeComplexity(arg, visited);
+            break;
+        case SymType::POW: {
+            score += 10; 
+            auto powNode = std::static_pointer_cast<SymPow>(node);
+            score += computeComplexity(powNode->base, visited);
+            score += computeComplexity(powNode->exp, visited);
+            if (powNode->exp->getType() == SymType::NUM) {
+                auto numVal = std::static_pointer_cast<SymNum>(powNode->exp)->value;
+                if (isCasNegative(numVal)) score += 15; // 负指数（分母）惩罚
+                if (std::holds_alternative<Fraction>(numVal)) score += 20; // 根式惩罚
+            } else if (powNode->exp->getType() != SymType::VAR) {
+                score += 20; // 复杂指数惩罚（表达式在幂次上方）
+            }
+            break;
+        }
+        case SymType::FUNC:
+            score += 25; 
+            for (auto& arg : std::static_pointer_cast<SymFunc>(node)->args)
+                score += computeComplexity(arg, visited);
+            break;
+        default: break;
+        }
+        return score;
+    }
+
+    int getAstComplexity(const SymExpr& expr) {
+        std::unordered_set<const SymNode*> visited;
+        return computeComplexity(expr.ptr, visited);
+    }
+
+    // =================================================================
     // 变量深度探测器 (Variable Submergence Check)
     // =================================================================
     static int calcVarDepth(const std::shared_ptr<SymNode>& node, const std::string& var, int currentDepth) {
@@ -2919,15 +2974,24 @@ namespace jc {
                             SymExpr A = coeffs[0];
                             SymExpr B = coeffs[1];
                             if (!containsVar(A.ptr, "i") && !containsVar(B.ptr, "i")) {
-                                SymExpr den = simplifyCore(A * A + B * B);
-                                if (!den.isZero()) {
-                                    SymExpr conj = simplifyCore(A - SymExpr::makeVar("i") * B);
-                                    SymExpr inv = simplifyCore(expand_core(conj * (den ^ SymExpr(BigInt(-1))), SymConfig::maxExpandTerms));
+                                if (A.isZero()) {
+                                    SymExpr inv = simplifyCore(-SymExpr::makeVar("i") * (B ^ SymExpr(BigInt(-1))));
                                     SymExpr res(BigInt(1));
                                     for (int64_t i = 0; i < -n; ++i) {
                                         res = simplifyCore(expand_core(res * inv, SymConfig::maxExpandTerms));
                                     }
                                     return res;
+                                } else {
+                                    SymExpr den = simplifyCore(A * A + B * B);
+                                    if (!den.isZero()) {
+                                        SymExpr conj = simplifyCore(A - SymExpr::makeVar("i") * B);
+                                        SymExpr inv = simplifyCore(expand_core(conj * (den ^ SymExpr(BigInt(-1))), SymConfig::maxExpandTerms));
+                                        SymExpr res(BigInt(1));
+                                        for (int64_t i = 0; i < -n; ++i) {
+                                            res = simplifyCore(expand_core(res * inv, SymConfig::maxExpandTerms));
+                                        }
+                                        return res;
+                                    }
                                 }
                             }
                         }
@@ -3020,10 +3084,30 @@ namespace jc {
                     }
                 }
                 
+                auto isNegativeArg = [](const SymExpr& e) -> bool {
+                    if (e.ptr->getType() == SymType::NUM) return isCasNegative(std::static_pointer_cast<SymNum>(e.ptr)->value);
+                    if (e.ptr->getType() == SymType::MUL) {
+                        auto mul = std::static_pointer_cast<SymMul>(e.ptr);
+                        if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                            return isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value);
+                        }
+                    }
+                    return false;
+                };
+
                 if (func->name == "sin" || func->name == "cos" || func->name == "tan") {
                     if (inner.isZero()) {
                         if (func->name == "sin" || func->name == "tan") return SymExpr(BigInt(0));
                         if (func->name == "cos") return SymExpr(BigInt(1));
+                    }
+                    
+                    if (isNegativeArg(inner)) {
+                        SymExpr posInner = simplifyCore(-inner);
+                        if (func->name == "sin" || func->name == "tan") {
+                            return simplifyCore(-SymExpr(std::make_shared<SymFunc>(func->name, std::vector<std::shared_ptr<SymNode>>{posInner.ptr})));
+                        } else if (func->name == "cos") {
+                            return simplifyCore(SymExpr(std::make_shared<SymFunc>(func->name, std::vector<std::shared_ptr<SymNode>>{posInner.ptr})));
+                        }
                     }
                     
                     auto getPiCoeff = [](const SymExpr& e) -> std::pair<bool, Fraction> {
@@ -3114,6 +3198,22 @@ namespace jc {
                             if (c == Fraction(BigInt(5), BigInt(4)) || c == Fraction(BigInt(7), BigInt(4))) return -(SymExpr(BigInt(2)) ^ SymExpr(Fraction(BigInt(1), BigInt(2))));
                             if (c == Fraction(BigInt(1), BigInt(3)) || c == Fraction(BigInt(2), BigInt(3))) return SymExpr(Fraction(BigInt(2), BigInt(3))) * (SymExpr(BigInt(3)) ^ SymExpr(Fraction(BigInt(1), BigInt(2))));
                             if (c == Fraction(BigInt(4), BigInt(3)) || c == Fraction(BigInt(5), BigInt(3))) return SymExpr(Fraction(BigInt(-2), BigInt(3))) * (SymExpr(BigInt(3)) ^ SymExpr(Fraction(BigInt(1), BigInt(2))));
+                        }
+                    }
+                }
+                
+                if (func->name == "sinh" || func->name == "cosh" || func->name == "tanh") {
+                    if (inner.isZero()) {
+                        if (func->name == "sinh" || func->name == "tanh") return SymExpr(BigInt(0));
+                        if (func->name == "cosh") return SymExpr(BigInt(1));
+                    }
+                    
+                    if (isNegativeArg(inner)) {
+                        SymExpr posInner = simplifyCore(-inner);
+                        if (func->name == "sinh" || func->name == "tanh") {
+                            return simplifyCore(-SymExpr(std::make_shared<SymFunc>(func->name, std::vector<std::shared_ptr<SymNode>>{posInner.ptr})));
+                        } else if (func->name == "cosh") {
+                            return simplifyCore(SymExpr(std::make_shared<SymFunc>(func->name, std::vector<std::shared_ptr<SymNode>>{posInner.ptr})));
                         }
                     }
                 }
@@ -3219,9 +3319,9 @@ namespace jc {
         catch (const std::runtime_error&) {}
 
         SymExpr best = current;
-        int minSize = getAstNodeCount(current);
+        int minSize = getAstComplexity(current);
         auto tryC = [&](const SymExpr& cand) {
-            int sz = getAstNodeCount(cand);
+            int sz = getAstComplexity(cand);
             if (sz < minSize) { minSize = sz; best = cand; }
             };
         tryC(c_expand);
@@ -3655,7 +3755,15 @@ namespace jc {
         if (!coeffsA.empty()) {
             SymExpr lead = coeffsA.back();
             if (!lead.isZero() && !lead.isOne()) {
-                for (auto& c : coeffsA) c = simplifyFrac(c / lead);
+                if (lead.ptr->getType() == SymType::NUM) {
+                    for (auto& c : coeffsA) c = simplifyFrac(c / lead);
+                } else if (lead.ptr->getType() == SymType::MUL) {
+                    auto mul = std::static_pointer_cast<SymMul>(lead.ptr);
+                    if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                        SymExpr numLead(mul->args[0]);
+                        for (auto& c : coeffsA) c = simplifyFrac(c / numLead);
+                    }
+                }
             }
         }
         
@@ -3683,8 +3791,18 @@ namespace jc {
 
         auto coeffs = extractCoeffs(P, var);
         SymExpr lead = coeffs.back();
-        SymExpr c = lead;
-        P = simplifyFrac(P / c);
+        SymExpr c(BigInt(1));
+        if (lead.ptr->getType() == SymType::NUM) {
+            c = lead;
+        } else if (lead.ptr->getType() == SymType::MUL) {
+            auto mul = std::static_pointer_cast<SymMul>(lead.ptr);
+            if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                c = SymExpr(mul->args[0]);
+            }
+        }
+        if (!c.isOne()) {
+            P = simplifyFrac(P / c);
+        }
 
         SymExpr dP = diff(P, var);
         SymExpr R = polyGCD(P, dP, var);
@@ -3749,9 +3867,19 @@ namespace jc {
         if (!coeffs.empty()) {
             SymExpr lead = coeffs.back();
             if (!lead.isZero() && !lead.isOne()) {
-                r0 = simplifyFrac(r0 / lead);
-                s0 = simplifyFrac(s0 / lead);
-                t0 = simplifyFrac(t0 / lead);
+                if (lead.ptr->getType() == SymType::NUM) {
+                    r0 = simplifyFrac(r0 / lead);
+                    s0 = simplifyFrac(s0 / lead);
+                    t0 = simplifyFrac(t0 / lead);
+                } else if (lead.ptr->getType() == SymType::MUL) {
+                    auto mul = std::static_pointer_cast<SymMul>(lead.ptr);
+                    if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                        SymExpr numLead(mul->args[0]);
+                        r0 = simplifyFrac(r0 / numLead);
+                        s0 = simplifyFrac(s0 / numLead);
+                        t0 = simplifyFrac(t0 / numLead);
+                    }
+                }
             }
         }
         
@@ -3917,17 +4045,76 @@ namespace jc {
                 auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
                 std::vector<std::pair<SymExpr, SymExpr>> nds;
                 for (auto& arg : add->args) nds.push_back(getFraction(SymExpr(arg)));
-                SymExpr den(BigInt(1));
-                for (auto& nd : nds) den = simplifyCore(den * nd.second);
-                SymExpr num(BigInt(0));
-                for (size_t i = 0; i < nds.size(); ++i) {
-                    SymExpr termNum = nds[i].first;
-                    for (size_t j = 0; j < nds.size(); ++j) {
-                        if (i != j) termNum = simplifyCore(expand_core(termNum * nds[j].second, SymConfig::maxExpandTerms));
+                
+                struct DenomData {
+                    BigInt num_factor;
+                    SymExpr sym_part;
+                };
+                std::vector<std::pair<SymExpr, DenomData>> parsed_nds;
+                BigInt lcm_num(1);
+                std::vector<SymExpr> unique_sym_dens;
+                
+                for (auto& nd : nds) {
+                    SymExpr d = nd.second;
+                    BigInt c(1);
+                    SymExpr s(BigInt(1));
+                    if (d.ptr->getType() == SymType::NUM) {
+                        auto [isInt, val] = extractExactInt(std::static_pointer_cast<SymNum>(d.ptr)->value);
+                        if (isInt) c = BigInt(val);
+                        else s = d;
+                    } else if (d.ptr->getType() == SymType::MUL) {
+                        auto mul = std::static_pointer_cast<SymMul>(d.ptr);
+                        std::vector<std::shared_ptr<SymNode>> s_args;
+                        for (auto& arg : mul->args) {
+                            if (arg->getType() == SymType::NUM) {
+                                auto [isInt, val] = extractExactInt(std::static_pointer_cast<SymNum>(arg)->value);
+                                if (isInt) c = c * BigInt(val);
+                                else s_args.push_back(arg);
+                            } else {
+                                s_args.push_back(arg);
+                            }
+                        }
+                        if (s_args.size() == 1) s = SymExpr(s_args[0]);
+                        else if (s_args.size() > 1) s = SymExpr(std::make_shared<SymMul>(s_args));
+                    } else {
+                        s = d;
                     }
-                    num = simplifyCore(expand_core(num + termNum, SymConfig::maxExpandTerms));
+                    
+                    if (c.isNegative()) {
+                        c = -c;
+                        nd.first = simplifyCore(-nd.first);
+                    }
+                    
+                    if (c.isZero()) c = BigInt(1); // 防御性
+                    lcm_num = BigInt::lcm(lcm_num, c);
+                    
+                    bool found = false;
+                    for (auto& usd : unique_sym_dens) {
+                        if (usd == s) { found = true; break; }
+                    }
+                    if (!found && !s.isOne()) unique_sym_dens.push_back(s);
+                    
+                    parsed_nds.push_back({nd.first, {c, s}});
                 }
-                return {num, den};
+                
+                SymExpr final_den = SymExpr(lcm_num);
+                for (auto& usd : unique_sym_dens) final_den = simplifyCore(final_den * usd);
+                
+                SymExpr final_num(BigInt(0));
+                for (auto& pnd : parsed_nds) {
+                    SymExpr term_num = pnd.first;
+                    BigInt missing_c = lcm_num / pnd.second.num_factor;
+                    if (missing_c > BigInt(1)) term_num = simplifyCore(term_num * SymExpr(missing_c));
+                    
+                    for (auto& usd : unique_sym_dens) {
+                        if (usd != pnd.second.sym_part) {
+                            term_num = simplifyCore(expand_core(term_num * usd, SymConfig::maxExpandTerms));
+                        }
+                    }
+                    final_num = simplifyCore(expand_core(final_num + term_num, SymConfig::maxExpandTerms));
+                }
+                
+                return {final_num, final_den};
             }
             case SymType::MUL: {
                 auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
@@ -4093,7 +4280,7 @@ namespace jc {
     // =================================================================
     // 有理分式化简 (Rational Fraction Simplification)
     // =================================================================
-    static SymExpr simplifyRational(const SymExpr& expr) {
+    SymExpr simplifyRational(const SymExpr& expr) {
         if (!expr.ptr) return expr;
         
         SymExpr rationalized = rationalizeDenominator(expr);
@@ -4109,21 +4296,29 @@ namespace jc {
         collectAllVars(num.ptr, vars);
         collectAllVars(den.ptr, vars);
         
-        if (vars.size() == 1) {
-            std::string var = *vars.begin();
+        if (!vars.empty()) {
             SymExpr numExp = simplifyCore(expand_core(num, SymConfig::maxExpandTerms));
             SymExpr denExp = simplifyCore(expand_core(den, SymConfig::maxExpandTerms));
             
-            if (getDegree(numExp, var) >= 0 && getDegree(denExp, var) >= 0) {
-                SymExpr g = polyGCD(numExp, denExp, var);
-                if (!g.isOne() && !g.isZero()) {
-                    SymExpr newNum = polyDiv(numExp, g, var).first;
-                    SymExpr newDen = polyDiv(denExp, g, var).first;
-                    
-                    SymExpr canceled = simplifyCore(newNum / newDen);
-                    if (canceled != rationalized) {
-                        return canceled;
+            SymExpr currentNum = numExp;
+            SymExpr currentDen = denExp;
+            bool reduced = false;
+            
+            for (const std::string& var : vars) {
+                if (getDegree(currentNum, var) >= 0 && getDegree(currentDen, var) >= 0) {
+                    SymExpr g = polyGCD(currentNum, currentDen, var);
+                    if (!g.isOne() && !g.isZero()) {
+                        currentNum = polyDiv(currentNum, g, var).first;
+                        currentDen = polyDiv(currentDen, g, var).first;
+                        reduced = true;
                     }
+                }
+            }
+            
+            if (reduced) {
+                SymExpr canceled = simplifyCore(currentNum / currentDen);
+                if (canceled != rationalized) {
+                    return canceled;
                 }
             }
         }
@@ -4143,102 +4338,304 @@ namespace jc {
 // 轻量级启发式化简：多重宇宙博弈（剥离 factor 和 rational）
 // =================================================================
     SymExpr simplify(const SymExpr& expr) {
+        checkInterrupt();
         if (!expr.ptr) return expr;
 
-        // 第一阶段：递归化简 + 身份吸收（与 simplifyCore 相同）
-        SymExpr current = simplifyCore(expr);
-        
-        // 强制进行一次三角化简，消除反三角嵌套等，将超越函数转化为代数式
-        try { current = trigsimp(current); } catch (const EngineInterruptError&) { throw; } catch (...) {}
+        static thread_local std::unordered_map<std::string, SymExpr> cache;
+        static thread_local int depth = 0;
 
-        // 第二阶段：多重宇宙博弈 (轻量级)
-        SymExpr c_expand = current;
-        SymExpr c_contract = current;
-        SymExpr c_both = current;
-
-        try { c_expand = expand_core(current, 30); }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
-
-        try { c_contract = contract(current); }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
-
-        try {
-            if (c_expand.ptr != current.ptr) {
-                c_both = contract(c_expand);
-            }
+        std::string sig = expr.ptr->getSignature();
+        if (depth > 0) {
+            auto it = cache.find(sig);
+            if (it != cache.end()) return it->second;
+        } else {
+            cache.clear();
         }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
 
-        // 选出体积最小的宇宙
-        SymExpr best = current;
-        int minSize = getAstNodeCount(current);
+        depth++;
 
-        auto tryCandidate = [&](const SymExpr& cand) {
-            int sz = getAstNodeCount(cand);
-            if (sz < minSize) {
-                minSize = sz;
-                best = cand;
+        auto compute = [&]() -> SymExpr {
+            // 递归地对子节点调用 simplify (Bottom-up)
+            SymExpr current = expr;
+            switch (expr.ptr->getType()) {
+                case SymType::ADD: {
+                    SymExpr res(BigInt(0));
+                    for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args) res = res + simplify(SymExpr(arg));
+                    current = res;
+                    break;
+                }
+                case SymType::MUL: {
+                    SymExpr res(BigInt(1));
+                    for (auto& arg : std::static_pointer_cast<SymMul>(expr.ptr)->args) res = res * simplify(SymExpr(arg));
+                    current = res;
+                    break;
+                }
+                case SymType::POW: {
+                    auto p = std::static_pointer_cast<SymPow>(expr.ptr);
+                    current = simplify(SymExpr(p->base)) ^ simplify(SymExpr(p->exp));
+                    break;
+                }
+                case SymType::FUNC: {
+                    auto f = std::static_pointer_cast<SymFunc>(expr.ptr);
+                    std::vector<std::shared_ptr<SymNode>> nArgs;
+                    for (auto& arg : f->args) nArgs.push_back(simplify(SymExpr(arg)).ptr);
+                    current = SymExpr(std::make_shared<SymFunc>(f->name, std::move(nArgs)));
+                    break;
+                }
+                default: break;
             }
+
+            // 第一阶段：核心化简 + 身份吸收
+            current = simplifyCore(current);
+            
+            // 强制进行一次三角化简，消除反三角嵌套等，将超越函数转化为代数式
+            try { current = trigsimp(current); } catch (const EngineInterruptError&) { throw; } catch (...) {}
+
+            // 第二阶段：多重宇宙博弈 (轻量级)
+            SymExpr c_expand = current;
+            SymExpr c_contract = current;
+            SymExpr c_both = current;
+            SymExpr c_rat_fast = current;
+            SymExpr c_trig_expand = current;
+            SymExpr c_trig_contract = current;
+
+            try { c_expand = expand_core(current, 30); }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+
+            try { c_contract = contract(current); }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+
+            try {
+                if (c_expand.ptr != current.ptr) {
+                    c_both = contract(c_expand);
+                    c_trig_expand = trigsimp(c_expand);
+                }
+            }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+            
+            try {
+                if (c_contract.ptr != current.ptr) {
+                    c_trig_contract = trigsimp(c_contract);
+                }
+            }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+
+            try {
+                auto [num, den] = getFraction(current);
+                if (!den.isOne()) {
+                    std::set<std::string> vars;
+                    collectAllVars(num.ptr, vars);
+                    collectAllVars(den.ptr, vars);
+                    if (!vars.empty()) {
+                        SymExpr numExp = simplifyCore(expand_core(num, 30));
+                        SymExpr denExp = simplifyCore(expand_core(den, 30));
+                        SymExpr currentNum = numExp;
+                        SymExpr currentDen = denExp;
+                        bool reduced = false;
+                        
+                        auto getIntContent = [](const SymExpr& e) -> BigInt {
+                            if (e.ptr->getType() == SymType::NUM) {
+                                auto [isInt, val] = extractExactInt(std::static_pointer_cast<SymNum>(e.ptr)->value);
+                                if (isInt) return BigInt(val).abs();
+                                return BigInt(1);
+                            }
+                            if (e.ptr->getType() == SymType::ADD) {
+                                BigInt gcd(0);
+                                for (auto& arg : std::static_pointer_cast<SymAdd>(e.ptr)->args) {
+                                    BigInt c(1);
+                                    if (arg->getType() == SymType::NUM) {
+                                        auto [isInt, val] = extractExactInt(std::static_pointer_cast<SymNum>(arg)->value);
+                                        if (isInt) c = BigInt(val).abs();
+                                    } else if (arg->getType() == SymType::MUL) {
+                                        auto mul = std::static_pointer_cast<SymMul>(arg);
+                                        if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                                            auto [isInt, val] = extractExactInt(std::static_pointer_cast<SymNum>(mul->args[0])->value);
+                                            if (isInt) c = BigInt(val).abs();
+                                        }
+                                    }
+                                    if (gcd.isZero()) gcd = c;
+                                    else gcd = BigInt::gcd(gcd, c);
+                                    if (gcd == BigInt(1)) break;
+                                }
+                                return gcd.isZero() ? BigInt(1) : gcd;
+                            }
+                            if (e.ptr->getType() == SymType::MUL) {
+                                auto mul = std::static_pointer_cast<SymMul>(e.ptr);
+                                if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                                    auto [isInt, val] = extractExactInt(std::static_pointer_cast<SymNum>(mul->args[0])->value);
+                                    if (isInt) return BigInt(val).abs();
+                                }
+                            }
+                            return BigInt(1);
+                        };
+                        
+                        BigInt cNum = getIntContent(currentNum);
+                        BigInt cDen = getIntContent(currentDen);
+                        BigInt cGcd = BigInt::gcd(cNum, cDen);
+                        if (cGcd > BigInt(1)) {
+                            currentNum = simplifyCore(currentNum / SymExpr(cGcd));
+                            currentDen = simplifyCore(currentDen / SymExpr(cGcd));
+                            reduced = true;
+                        }
+
+                        for (const std::string& var : vars) {
+                            if (getDegree(currentNum, var) >= 0 && getDegree(currentDen, var) >= 0) {
+                                SymExpr g = polyGCD(currentNum, currentDen, var);
+                                if (!g.isOne() && !g.isZero()) {
+                                    currentNum = polyDiv(currentNum, g, var).first;
+                                    currentDen = polyDiv(currentDen, g, var).first;
+                                    reduced = true;
+                                }
+                            }
+                        }
+                        if (reduced) c_rat_fast = simplifyCore(currentNum / currentDen);
+                    }
+                }
+            }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+
+            // 选出体积最小的宇宙
+            SymExpr best = current;
+            int minSize = getAstComplexity(current);
+
+            auto tryCandidate = [&](const SymExpr& cand) {
+                int sz = getAstComplexity(cand);
+                if (sz < minSize) {
+                    minSize = sz;
+                    best = cand;
+                }
             };
 
-        tryCandidate(c_expand);
-        tryCandidate(c_contract);
-        tryCandidate(c_both);
+            tryCandidate(c_expand);
+            tryCandidate(c_contract);
+            tryCandidate(c_both);
+            tryCandidate(c_rat_fast);
+            tryCandidate(c_trig_expand);
+            tryCandidate(c_trig_contract);
 
-        return best;
+            return best;
+        };
+
+        SymExpr result = compute();
+        depth--;
+        cache[sig] = result;
+        return result;
     }
 
     // =================================================================
 // 深度启发式化简：包含 factor 和 rational 的重型多重宇宙博弈
 // =================================================================
     SymExpr full_simplify(const SymExpr& expr) {
+        checkInterrupt();
         if (!expr.ptr) return expr;
 
-        // 第一阶段：先进行一次轻量级化简
-        SymExpr current = simplify(expr);
+        static thread_local std::unordered_map<std::string, SymExpr> cache;
+        static thread_local int depth = 0;
 
-        // 第二阶段：重型多重宇宙博弈
-        SymExpr c_factor = current;
-        SymExpr c_rational = current;
-        SymExpr c_factor_expand = current;
-
-        try { c_rational = simplifyRational(current); }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
-
-        try { c_factor = factor(current); }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
-
-        try {
-            SymExpr c_expand = expand_core(current, 30);
-            if (c_expand.ptr != current.ptr) {
-                c_factor_expand = factor(c_expand);
-            }
+        std::string sig = expr.ptr->getSignature();
+        if (depth > 0) {
+            auto it = cache.find(sig);
+            if (it != cache.end()) return it->second;
+        } else {
+            cache.clear();
         }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
 
-        // 选出体积最小的宇宙
-        SymExpr best = current;
-        int minSize = getAstNodeCount(current);
+        depth++;
 
-        auto tryCandidate = [&](const SymExpr& cand) {
-            int sz = getAstNodeCount(cand);
-            if (sz < minSize) {
-                minSize = sz;
-                best = cand;
+        auto compute = [&]() -> SymExpr {
+            // 递归地对子节点调用 full_simplify (Bottom-up)
+            SymExpr current = expr;
+            switch (expr.ptr->getType()) {
+                case SymType::ADD: {
+                    SymExpr res(BigInt(0));
+                    for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args) res = res + full_simplify(SymExpr(arg));
+                    current = res;
+                    break;
+                }
+                case SymType::MUL: {
+                    SymExpr res(BigInt(1));
+                    for (auto& arg : std::static_pointer_cast<SymMul>(expr.ptr)->args) res = res * full_simplify(SymExpr(arg));
+                    current = res;
+                    break;
+                }
+                case SymType::POW: {
+                    auto p = std::static_pointer_cast<SymPow>(expr.ptr);
+                    current = full_simplify(SymExpr(p->base)) ^ full_simplify(SymExpr(p->exp));
+                    break;
+                }
+                case SymType::FUNC: {
+                    auto f = std::static_pointer_cast<SymFunc>(expr.ptr);
+                    std::vector<std::shared_ptr<SymNode>> nArgs;
+                    for (auto& arg : f->args) nArgs.push_back(full_simplify(SymExpr(arg)).ptr);
+                    current = SymExpr(std::make_shared<SymFunc>(f->name, std::move(nArgs)));
+                    break;
+                }
+                default: break;
             }
+
+            // 第一阶段：先进行一次轻量级化简
+            current = simplify(current);
+
+            // 第二阶段：重型多重宇宙博弈
+            SymExpr c_factor = current;
+            SymExpr c_rational = current;
+            SymExpr c_factor_expand = current;
+            SymExpr c_rat_factor = current;
+
+            try { c_rational = simplifyRational(current); }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+
+            try { c_factor = factor(current); }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+
+            try {
+                SymExpr c_expand = expand_core(current, 30);
+                if (c_expand.ptr != current.ptr) {
+                    c_factor_expand = factor(c_expand);
+                }
+            }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+            
+            try {
+                if (c_rational.ptr != current.ptr) {
+                    c_rat_factor = factor(c_rational);
+                }
+            }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+
+            // 选出体积最小的宇宙
+            SymExpr best = current;
+            int minSize = getAstComplexity(current);
+
+            auto tryCandidate = [&](const SymExpr& cand) {
+                int sz = getAstComplexity(cand);
+                if (sz < minSize) {
+                    minSize = sz;
+                    best = cand;
+                }
             };
 
-        tryCandidate(c_factor);
-        tryCandidate(c_rational);
-        tryCandidate(c_factor_expand);
+            tryCandidate(c_factor);
+            tryCandidate(c_rational);
+            tryCandidate(c_factor_expand);
+            tryCandidate(c_rat_factor);
 
-        return best;
+            return best;
+        };
+
+        SymExpr result = compute();
+        depth--;
+        cache[sig] = result;
+        return result;
     }
 
     // =================================================================

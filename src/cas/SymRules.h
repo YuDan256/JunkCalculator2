@@ -177,6 +177,12 @@ namespace jc {
                 { func("sin", SymExpr(-1) * _x), -sin_x },
                 { func("cos", SymExpr(-1) * _x), cos_x },
                 { func("tan", SymExpr(-1) * _x), -tan_x },
+                { func("cot", SymExpr(-1) * _x), -func("cot", _x) },
+                { func("sec", SymExpr(-1) * _x), func("sec", _x) },
+                { func("csc", SymExpr(-1) * _x), -func("csc", _x) },
+                { func("sinh", SymExpr(-1) * _x), -func("sinh", _x) },
+                { func("cosh", SymExpr(-1) * _x), func("cosh", _x) },
+                { func("tanh", SymExpr(-1) * _x), -func("tanh", _x) },
 
                 // 双曲函数平方关系
                 { (func("cosh", _x) ^ SymExpr(2)) - (func("sinh", _x) ^ SymExpr(2)), SymExpr(1) },

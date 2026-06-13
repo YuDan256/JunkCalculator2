@@ -136,6 +136,7 @@ namespace jc {
     SymExpr diff(const SymExpr& expr, const std::string& var);
 
     int getAstNodeCount(const SymExpr& expr);
+    int getAstComplexity(const SymExpr& expr);
     int getVarDepth(const SymExpr& expr, const std::string& var);
     int getTranscendentalWeight(const SymExpr& expr, const std::string& var);
     SymExpr contract(const SymExpr& expr);
@@ -185,6 +186,7 @@ namespace jc {
     std::vector<SymExpr> extractCoeffs(const SymExpr& expr, const std::string& var);
     std::pair<SymExpr, SymExpr> getFraction(const SymExpr& expr);
     SymExpr rationalizeDenominator(const SymExpr& expr);
+    SymExpr simplifyRational(const SymExpr& expr);
 
     // ==========================================
     // 派生数学节点

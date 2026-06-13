@@ -74,10 +74,11 @@ namespace jc {
                 SymExpr twoA = SymExpr(BigInt(2)) * A;
                 SymExpr num1 = factor(simplifyCore(-B + sqrtDelta), depth + 1);
                 SymExpr num2 = factor(simplifyCore(-B - sqrtDelta), depth + 1);
+                SymExpr factTwoA = factor(twoA, depth + 1);
 
-                // 让底层的同底数幂相加法则自然地处理 2*(y-z) 和 2^-1 * (y-z)^-1 的相消
-                SymExpr r1 = num1 / twoA;
-                SymExpr r2 = num2 / twoA;
+                // 分子分母分别 factor 后相除，底层会自动合并同底数幂，避免 full_simplify 循环引用
+                SymExpr r1 = simplifyCore(num1 / factTwoA);
+                SymExpr r2 = simplifyCore(num2 / factTwoA);
 
                 if (A.isOne()) return (X - r1) * (X - r2);
                 return A * (X - r1) * (X - r2);

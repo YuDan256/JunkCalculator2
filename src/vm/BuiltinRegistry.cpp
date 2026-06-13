@@ -5333,7 +5333,7 @@ void BuiltinRegistry::registerCAS() {
         SymExpr derivative = jc::diff(integral, var);
         SymExpr diff_expr = jc::simplify(derivative - expr);
         
-        if (diff_expr.isZero()) return Value(1.0);
+        if (diff_expr.isZero()) return Value(true);
 
         std::set<std::string> vars;
         jc::collectAllVars(diff_expr.ptr, vars);

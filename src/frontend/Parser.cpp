@@ -371,6 +371,14 @@ namespace jc {
                 if (isLocal) expr = std::make_unique<LocalDecl>(var->name);
                 else if (isRef) expr = std::make_unique<RefDecl>(var->name);
                 else expr = std::make_unique<StateDecl>(var->name);
+            } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
+                if (isConst) {
+                    expr = std::make_unique<ConstDecl>(assign->name, std::move(assign->value));
+                } else {
+                    assign->isLocal = isLocal;
+                    assign->isRef = isRef;
+                    assign->isState = isState;
+                }
             } else {
                 throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
             }

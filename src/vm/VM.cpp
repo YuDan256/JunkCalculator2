@@ -3,6 +3,9 @@
 #include "../modules/Module.h"
 #include "BuiltinRegistry.h"
 #include "../frontend/Highlight.h"
+#include "../frontend/Lexer.h"
+#include "../frontend/Parser.h"
+#include "../frontend/Compiler.h"
 #include "../memory/GcHeap.h"
 #include "EngineInterrupt.h"
 #include <iostream>
@@ -1953,7 +1956,6 @@ namespace jc {
                     std::string baseName = std::filesystem::path(name).stem().string();
 
                     if (loadedModules.count(name)) {
-                        globals[baseName] = loadedModules[name];
                         push(loadedModules[name]);
                         break;
                     }
@@ -2064,7 +2066,6 @@ namespace jc {
                     }
 
                     loadedModules[name] = Value(ns);
-                    globals[baseName] = Value(ns);
                     push(Value(ns));
                     break;
                 }

@@ -71,7 +71,7 @@ assert(res[0] == 10 && res[1] == 20 && res[2] == 30, "Modifiers with Defaults Fa
 // 6. Rest Pattern with Defaults
 // ---------------------------------------------------------
 [ra = 1, rb = 2, ...r_rest] = [99]
-assert(ra == 99 && rb == 2 && r_rest == [], "Rest Pattern with Defaults Failed")
+assert(ra == 99 && rb == 2 && len(r_rest) == 0, "Rest Pattern with Defaults Failed")
 
 // ---------------------------------------------------------
 // 7. Nested Destructuring Defaults

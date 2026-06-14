@@ -152,7 +152,7 @@ namespace jc {
         OP_ASSERT_RETURN_TYPE,  // 返回值断言：[type_idx:16bit]
 
         OP_MATCH_TYPE,          // [type_idx:16bit] 检查栈顶类型，返回 bool
-        OP_MATCH_SHAPE,         // [rows:16bit, cols:16bit, exact:8bit] 检查栈顶形状，返回 bool
+        OP_MATCH_SHAPE,         // [rows:16bit, minCols:16bit, maxCols:16bit, exact:8bit] 检查栈顶形状，返回 bool
     };
 
     // =================================================================
@@ -554,10 +554,11 @@ namespace jc {
             }
             case OpCode::OP_MATCH_SHAPE: {
                 uint16_t r = read16(offset + 1);
-                uint16_t c = read16(offset + 3);
-                uint8_t exactMask = code[offset + 5];
-                std::cout << r << "x" << c << " (mask:" << static_cast<int>(exactMask) << ")" << std::endl;
-                return offset + 6;
+                uint16_t minC = read16(offset + 3);
+                uint16_t maxC = read16(offset + 5);
+                uint8_t exactMask = code[offset + 7];
+                std::cout << r << "x[" << minC << "~" << maxC << "] (mask:" << static_cast<int>(exactMask) << ")" << std::endl;
+                return offset + 8;
             }
 
             // ============================================

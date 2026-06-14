@@ -176,107 +176,105 @@ class _ReCaps {
     getEnd(idx: whole) -> whole   = self.data[idx][1]
 }
 
-namespace _Re {
-    in_class(node: dict, ch: string) -> bool = {
-        found = false
-        for (spec in node.specs) {
-            res = match (spec) {
-                {t: "c", v} => ch == v,
-                {t: "r", lo, hi} => ch.ord() >= lo.ord() && ch.ord() <= hi.ord(),
-                {t: "sh", v} => _re_shorthand(v, ch),
-                _ => false
-            }
-            if (res) {
-                found = true
-                break
-            }
+_re_in_class(node: dict, ch: string) -> bool = {
+    found = false
+    for (spec in node.specs) {
+        res = match (spec) {
+            {t: "c", v} => ch == v,
+            {t: "r", lo, hi} => ch.ord() >= lo.ord() && ch.ord() <= hi.ord(),
+            {t: "sh", v} => regex._re_shorthand(v, ch),
+            _ => false
         }
-        return node.neg ? !found : found
-    }
-
-    rm_one(node: dict, text: string, pos: whole, tl: whole) -> whole = {
-        if (pos >= tl) return -1
-        c = text[pos]
-        match (node) {
-            {type: "lit", ch} => return ch == c ? pos + 1 : -1,
-            {type: "dot"} => return c != "\n" ? pos + 1 : -1,
-            {type: "esc", kind} => return _re_shorthand(kind, c) ? pos + 1 : -1,
-            {type: "class"} => return _Re.in_class(node, c) ? pos + 1 : -1,
-            _ => return -1
+        if (res) {
+            found = true
+            break
         }
     }
+    return node.neg ? !found : found
+}
 
-    rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = match (node) {
-        {type: "group", inner, idx} => {
-            r = _Re.rm(inner, 0, text, pos, tl, caps)
-            if (r >= 0) caps.set(idx, pos, r)
-            return r
+_re_rm_one(node: dict, text: string, pos: whole, tl: whole) -> whole = {
+    if (pos >= tl) return -1
+    c = text[pos]
+    match (node) {
+        {type: "lit", ch} => return ch == c ? pos + 1 : -1,
+        {type: "dot"} => return c != "\n" ? pos + 1 : -1,
+        {type: "esc", kind} => return regex._re_shorthand(kind, c) ? pos + 1 : -1,
+        {type: "class"} => return regex._re_in_class(node, c) ? pos + 1 : -1,
+        _ => return -1
+    }
+}
+
+_re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = match (node) {
+    {type: "group", inner, idx} => {
+        r = regex._re_rm(inner, 0, text, pos, tl, caps)
+        if (r >= 0) caps.set(idx, pos, r)
+        return r
+    },
+    {type: "alt", a, b} => {
+        ra = regex._re_rm(a, 0, text, pos, tl, caps)
+        if (ra >= 0) return ra
+        return regex._re_rm(b, 0, text, pos, tl, caps)
+    },
+    _ => regex._re_rm_one(node, text, pos, tl)
+}
+
+_re_rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = {
+    if (idx >= nodes.len()) return pos
+    node = nodes[idx]
+    
+    match (node) {
+        {type: "_cs", idx: cidx} => {
+            caps.set(cidx, pos, -1)
+            return regex._re_rm(nodes, idx + 1, text, pos, tl, caps)
+        },
+        {type: "_ce", idx: cidx} => {
+            caps.set(cidx, caps.getStart(cidx), pos)
+            return regex._re_rm(nodes, idx + 1, text, pos, tl, caps)
+        },
+        {type: "start"} => return pos == 0 ? regex._re_rm(nodes, idx + 1, text, pos, tl, caps) : -1,
+        {type: "end"} => return pos == tl ? regex._re_rm(nodes, idx + 1, text, pos, tl, caps) : -1,
+        {type: "group", inner, idx: gidx} => {
+            comb = @[{type: "_cs", idx: gidx}]
+            for (n in inner) comb.push(n)
+            comb.push({type: "_ce", idx: gidx})
+            for (k in range(idx + 1, nodes.len())) comb.push(nodes[k])
+            return regex._re_rm(comb, 0, text, pos, tl, caps)
         },
         {type: "alt", a, b} => {
-            ra = _Re.rm(a, 0, text, pos, tl, caps)
-            if (ra >= 0) return ra
-            return _Re.rm(b, 0, text, pos, tl, caps)
-        },
-        _ => _Re.rm_one(node, text, pos, tl)
-    }
-
-    rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = {
-        if (idx >= nodes.len()) return pos
-        node = nodes[idx]
-        
-        match (node) {
-            {type: "_cs", idx: cidx} => {
-                caps.set(cidx, pos, -1)
-                return _Re.rm(nodes, idx + 1, text, pos, tl, caps)
-            },
-            {type: "_ce", idx: cidx} => {
-                caps.set(cidx, caps.getStart(cidx), pos)
-                return _Re.rm(nodes, idx + 1, text, pos, tl, caps)
-            },
-            {type: "start"} => return pos == 0 ? _Re.rm(nodes, idx + 1, text, pos, tl, caps) : -1,
-            {type: "end"} => return pos == tl ? _Re.rm(nodes, idx + 1, text, pos, tl, caps) : -1,
-            {type: "group", inner, idx: gidx} => {
-                comb = @[{type: "_cs", idx: gidx}]
-                for (n in inner) comb.push(n)
-                comb.push({type: "_ce", idx: gidx})
-                for (k in range(idx + 1, nodes.len())) comb.push(nodes[k])
-                return _Re.rm(comb, 0, text, pos, tl, caps)
-            },
-            {type: "alt", a, b} => {
-                ra = _Re.rm(a, 0, text, pos, tl, caps)
-                if (ra >= 0) {
-                    rest = _Re.rm(nodes, idx + 1, text, ra, tl, caps)
-                    if (rest >= 0) return rest
-                }
-                rb = _Re.rm(b, 0, text, pos, tl, caps)
-                return (rb >= 0) ? _Re.rm(nodes, idx + 1, text, rb, tl, caps) : -1
-            },
-            {type: "bound", inner, min, max} => return _Re.rm_quant(nodes, idx, text, pos, tl, caps, inner, min, max),
-            {type: "star", inner} => return _Re.rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, -1),
-            {type: "plus", inner} => return _Re.rm_quant(nodes, idx, text, pos, tl, caps, inner, 1, -1),
-            {type: "opt", inner} => return _Re.rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, 1),
-            _ => {
-                np = _Re.rm_one(node, text, pos, tl)
-                return (np >= 0) ? _Re.rm(nodes, idx + 1, text, np, tl, caps) : -1
+            ra = regex._re_rm(a, 0, text, pos, tl, caps)
+            if (ra >= 0) {
+                rest = regex._re_rm(nodes, idx + 1, text, ra, tl, caps)
+                if (rest >= 0) return rest
             }
+            rb = regex._re_rm(b, 0, text, pos, tl, caps)
+            return (rb >= 0) ? regex._re_rm(nodes, idx + 1, text, rb, tl, caps) : -1
+        },
+        {type: "bound", inner, min, max} => return regex._re_rm_quant(nodes, idx, text, pos, tl, caps, inner, min, max),
+        {type: "star", inner} => return regex._re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, -1),
+        {type: "plus", inner} => return regex._re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 1, -1),
+        {type: "opt", inner} => return regex._re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, 1),
+        _ => {
+            np = regex._re_rm_one(node, text, pos, tl)
+            return (np >= 0) ? regex._re_rm(nodes, idx + 1, text, np, tl, caps) : -1
         }
     }
+}
 
-    rm_quant(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps, inner: dict, min_v: whole, max_v: whole) -> whole = {
-        positions = @[pos]; cur = pos; count = 0
-        while (max_v < 0 || count < max_v) {
-            np = _Re.rm_single(inner, text, cur, tl, caps)
-            if (np < 0 || np == cur) break
-            positions.push(np)
-            cur = np
-            count += 1
-        }
-        for (k in range(positions.len() - 1, min_v - 1, -1)) {
-            rest = _Re.rm(nodes, idx + 1, text, positions[k], tl, caps)
-            if (rest >= 0) return rest
-        }
-        return -1
+_re_rm_quant(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps, inner: dict, min_v: whole, max_v: whole) -> whole = {
+    positions = @[pos]; cur = pos; count = 0
+    while (max_v < 0 || count < max_v) {
+        np = regex._re_rm_single(inner, text, cur, tl, caps)
+        if (np < 0 || np == cur) break
+        positions.push(np)
+        cur = np
+        count += 1
     }
+    for (k in range(positions.len() - 1, min_v - 1, -1)) {
+        rest = regex._re_rm(nodes, idx + 1, text, positions[k], tl, caps)
+        if (rest >= 0) return rest
+    }
+    return -1
 }
 
 // ─── Regex Object (Compiled Pattern) ──────────────────────────
@@ -292,7 +290,7 @@ class Regex {
     _run(text: string, startPos: whole) = {
         tl = text.len()
         caps = _ReCaps(self.groups)
-        endPos = _Re.rm(self.nodes, 0, text, startPos, tl, caps)
+        endPos = regex._re_rm(self.nodes, 0, text, startPos, tl, caps)
         if (endPos < 0) return 0
         
         matched = text[startPos : endPos]
@@ -309,7 +307,7 @@ class Regex {
     test(text: string) -> bool = {
         tl = text.len()
         for (i in range(tl + 1)) {
-            if (_Re.rm(self.nodes, 0, text, i, tl, _ReCaps(self.groups)) >= 0) return true
+            if (regex._re_rm(self.nodes, 0, text, i, tl, _ReCaps(self.groups)) >= 0) return true
         }
         return false
     }

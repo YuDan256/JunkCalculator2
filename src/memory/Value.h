@@ -305,8 +305,14 @@ namespace jc {
         Value(std::string val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(internString(val)); }
         Value(const char* val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(internString(std::string(val))); }
         Value(Complex val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjComplex>(std::move(val))); }
-        Value(RealMatrix val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjRealMatrix>(std::move(val))); }
-        Value(ComplexMatrix val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjComplexMatrix>(std::move(val))); }
+        Value(RealMatrix val) : as_bits(QNAN | TAG_NONE) {
+            if (val.getRows() * val.getCols() == 0) val = RealMatrix(0, 0);
+            *this = fromObj(GcHeap::get().allocate<ObjRealMatrix>(std::move(val)));
+        }
+        Value(ComplexMatrix val) : as_bits(QNAN | TAG_NONE) {
+            if (val.getRows() * val.getCols() == 0) val = ComplexMatrix(0, 0);
+            *this = fromObj(GcHeap::get().allocate<ObjComplexMatrix>(std::move(val)));
+        }
         Value(BigInt val) : as_bits(QNAN | TAG_NONE) {
             try {
                 int64_t v = val.toInt64();
@@ -319,7 +325,10 @@ namespace jc {
         }
         Value(Fraction val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjFraction>(std::move(val))); }
         Value(BaseNum val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjBaseNum>(std::move(val))); }
-        Value(StringMatrix val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjStringMatrix>(std::move(val))); }
+        Value(StringMatrix val) : as_bits(QNAN | TAG_NONE) {
+            if (val.getRows() * val.getCols() == 0) val = StringMatrix(0, 0);
+            *this = fromObj(GcHeap::get().allocate<ObjStringMatrix>(std::move(val)));
+        }
         
         Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {
             if (val.ptr && val.ptr->getType() == SymType::NUM) {

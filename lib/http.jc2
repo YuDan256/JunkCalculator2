@@ -25,77 +25,79 @@ class HttpResponse {
 
 // ─── Internal Parsers ─────────────────────────────────────────
 
-_parse_url(url_str: string) -> dict = {
-    u = url_str
-    if (u.startsWith("https://")) {
-        throw "HTTP Library currently only supports plain HTTP (TCP 80)."
-    }
-    if (u.startsWith("http://")) {
-        u = u.substr(7)
-    }
-
-    url_host = ""
-    url_path = "/"
-    slash_idx = u.find("/", 0)
-    
-    if (slash_idx == -1) {
-        url_host = u
-    } else {
-        url_host = u.substr(0, slash_idx)
-        url_path = u.substr(slash_idx)
-    }
-
-    url_port = 80
-    colon_idx = url_host.find(":", 0)
-    if (colon_idx != -1) {
-        port_str = url_host.substr(colon_idx + 1)
-        url_port = int(port_str.parseNum())
-        url_host = url_host.substr(0, colon_idx)
-    }
-
-    res_dict = dict()
-    res_dict["host"] = url_host
-    res_dict["port"] = url_port
-    res_dict["path"] = url_path
-    return res_dict
-}
-
-_parse_response(raw: string) -> HttpResponse = {
-    header_end = raw.find("\r\n\r\n", 0)
-    if (header_end == -1) {
-        return HttpResponse(0, dict(), raw, raw)
-    }
-
-    head_part = raw.substr(0, header_end)
-    body_part = raw.substr(header_end + 4)
-
-    lines = head_part.split("\r\n")
-    
-    status_code = 0
-    if (lines.len() > 0) {
-        parts = lines[0].split(" ")
-        if (parts.len() > 1) status_code = int(parts[1].parseNum())
-    }
-
-    headers_dict = dict()
-    lines_count = lines.len()
-    for (i in range(1, lines_count)) {
-        line = lines[i]
-        colon = line.find(":", 0)
-        if (colon != -1) {
-            k = line.substr(0, colon).trim()
-            v = line.substr(colon + 1).trim()
-            headers_dict[k] = v
+namespace _Http {
+    parse_url(url_str: string) -> dict = {
+        u = url_str
+        if (u.startsWith("https://")) {
+            throw "HTTP Library currently only supports plain HTTP (TCP 80)."
         }
+        if (u.startsWith("http://")) {
+            u = u.substr(7)
+        }
+
+        url_host = ""
+        url_path = "/"
+        slash_idx = u.find("/", 0)
+        
+        if (slash_idx == -1) {
+            url_host = u
+        } else {
+            url_host = u.substr(0, slash_idx)
+            url_path = u.substr(slash_idx)
+        }
+
+        url_port = 80
+        colon_idx = url_host.find(":", 0)
+        if (colon_idx != -1) {
+            port_str = url_host.substr(colon_idx + 1)
+            url_port = int(port_str.parseNum())
+            url_host = url_host.substr(0, colon_idx)
+        }
+
+        res_dict = dict()
+        res_dict["host"] = url_host
+        res_dict["port"] = url_port
+        res_dict["path"] = url_path
+        return res_dict
     }
 
-    return HttpResponse(status_code, headers_dict, body_part, raw)
+    parse_response(raw: string) -> HttpResponse = {
+        header_end = raw.find("\r\n\r\n", 0)
+        if (header_end == -1) {
+            return HttpResponse(0, dict(), raw, raw)
+        }
+
+        head_part = raw.substr(0, header_end)
+        body_part = raw.substr(header_end + 4)
+
+        lines = head_part.split("\r\n")
+        
+        status_code = 0
+        if (lines.len() > 0) {
+            parts = lines[0].split(" ")
+            if (parts.len() > 1) status_code = int(parts[1].parseNum())
+        }
+
+        headers_dict = dict()
+        lines_count = lines.len()
+        for (i in range(1, lines_count)) {
+            line = lines[i]
+            colon = line.find(":", 0)
+            if (colon != -1) {
+                k = line.substr(0, colon).trim()
+                v = line.substr(colon + 1).trim()
+                headers_dict[k] = v
+            }
+        }
+
+        return HttpResponse(status_code, headers_dict, body_part, raw)
+    }
 }
 
 // ─── Public API ───────────────────────────────────────────────
 
 http_get(url: string) -> HttpResponse = {
-    target = _parse_url(url)
+    target = _Http.parse_url(url)
     
     t_host = target["host"]
     t_port = target["port"]
@@ -118,7 +120,7 @@ http_get(url: string) -> HttpResponse = {
     }
     
     client.close()
-    return _parse_response(raw_res)
+    return _Http.parse_response(raw_res)
 }
 
 // ─── Dynamic Help Registry ────────────────────────────────────

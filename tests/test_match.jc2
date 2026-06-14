@@ -90,15 +90,15 @@ check("1.2 Literal: 匹配兜底分支", test_literal(500), "Unknown")
 check("2.1 Guard: 识别整数", test_guard(42), "Int: 42")
 check("2.2 Guard: 识别字符串", test_guard("JC2"), "Str: JC2")
 
-check("3.1 Middle: 正常提取中间段", test_middle([1, 2, 3, 4]), "1 | [2, 3] | 4")
-check("3.2 Middle: 中间为空时提取", test_middle([9, 8]), "9 | [] | 8")
+check("3.1 Middle: 正常提取中间段", test_middle([1, 2, 3, 4]), "1.0 | [2.0, 3.0] | 4.0")
+check("3.2 Middle: 中间为空时提取", test_middle([9, 8]), "9.0 | [] | 8.0")
 
 // 物理矩阵:
 // 1 2 3
 // 4 5 6
 // 7 8 9
 mat3x3 = [1, 2, 3; 4, 5, 6; 7, 8, 9]
-check("4.1 Matrix: 左上标量+列残差+行残差", test_matrix_slice(mat3x3), "1 & [2, 3] & [4, 5, 6; 7, 8, 9]")
+check("4.1 Matrix: 左上标量+列残差+行残差", test_matrix_slice(mat3x3), "1.0 & [2.0, 3.0] & [4.0, 5.0, 6.0; 7.0, 8.0, 9.0]")
 
 check("5.1 Strict: 完美匹配2行矩阵", test_strict_rows([1, 2; 3, 4]), "Exactly 2 rows")
 check("5.2 Strict: 阻击3行矩阵越界", test_strict_rows(mat3x3), "Other")

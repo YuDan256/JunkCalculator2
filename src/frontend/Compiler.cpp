@@ -2222,7 +2222,7 @@ namespace jc {
                     }
                 } else {
                     Variable v(var->name);
-                    emitStoreTarget(&v, isConst);
+                    emitStoreTarget(&v, isConst || var->isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
@@ -2295,7 +2295,7 @@ namespace jc {
                             }
                         } else {
                             Variable v(restPat->name);
-                            emitStoreTarget(&v, isConst);
+                            emitStoreTarget(&v, isConst || restPat->isConst);
                         }
                         emit(OpCode::OP_POP, lastLine);
                     }
@@ -2349,7 +2349,7 @@ namespace jc {
                     }
                 } else {
                     Variable v(lp->rest->name);
-                    emitStoreTarget(&v, isConst);
+                    emitStoreTarget(&v, isConst || lp->rest->isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
@@ -2465,7 +2465,7 @@ namespace jc {
                                 }
                             } else {
                                 Variable v(restPat->name);
-                                emitStoreTarget(&v, isConst);
+                                emitStoreTarget(&v, isConst || restPat->isConst);
                             }
                             emit(OpCode::OP_POP, lastLine);
                         }
@@ -2524,7 +2524,7 @@ namespace jc {
                     }
                 } else {
                     Variable v(mp->restRow->name);
-                    emitStoreTarget(&v, isConst);
+                    emitStoreTarget(&v, isConst || mp->restRow->isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
@@ -2602,7 +2602,7 @@ namespace jc {
                     }
                 } else {
                     Variable v(dp->rest->name);
-                    emitStoreTarget(&v, isConst);
+                    emitStoreTarget(&v, isConst || dp->rest->isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }

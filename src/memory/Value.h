@@ -1107,6 +1107,7 @@ namespace jc {
             }
             case ObjType::REAL_MATRIX: {
                 const auto& mat = static_cast<ObjRealMatrix*>(obj)->mat;
+                if (mat.getRows() * mat.getCols() == 0) return "[]";
                 std::string res = "[";
                 for (int i = 0; i < mat.getRows(); ++i) {
                     for (int j = 0; j < mat.getCols(); ++j) {
@@ -1119,6 +1120,7 @@ namespace jc {
             }
             case ObjType::COMPLEX_MATRIX: {
                 const auto& mat = static_cast<ObjComplexMatrix*>(obj)->mat;
+                if (mat.getRows() * mat.getCols() == 0) return "[]";
                 std::string res = "[";
                 for (int i = 0; i < mat.getRows(); ++i) {
                     for (int j = 0; j < mat.getCols(); ++j) {
@@ -1131,6 +1133,7 @@ namespace jc {
             }
             case ObjType::STRING_MATRIX: {
                 const auto& mat = static_cast<ObjStringMatrix*>(obj)->mat;
+                if (mat.getRows() * mat.getCols() == 0) return "[]";
                 std::string res = "strmat(" + std::to_string(mat.getRows()) + ", " + std::to_string(mat.getCols());
                 for (int i = 0; i < mat.getRows(); ++i)
                     for (int j = 0; j < mat.getCols(); ++j)
@@ -1907,9 +1910,24 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         case ObjType::FRACTION: os << static_cast<ObjFraction*>(obj)->frac; break;
         case ObjType::COMPLEX: os << static_cast<ObjComplex*>(obj)->comp; break;
         case ObjType::BASENUM: os << static_cast<ObjBaseNum*>(obj)->base; break;
-        case ObjType::REAL_MATRIX: os << static_cast<ObjRealMatrix*>(obj)->mat; break;
-        case ObjType::COMPLEX_MATRIX: os << static_cast<ObjComplexMatrix*>(obj)->mat; break;
-        case ObjType::STRING_MATRIX: os << static_cast<ObjStringMatrix*>(obj)->mat; break;
+        case ObjType::REAL_MATRIX: {
+            const auto& m = static_cast<ObjRealMatrix*>(obj)->mat;
+            if (m.getRows() * m.getCols() == 0) os << "[]";
+            else os << m;
+            break;
+        }
+        case ObjType::COMPLEX_MATRIX: {
+            const auto& m = static_cast<ObjComplexMatrix*>(obj)->mat;
+            if (m.getRows() * m.getCols() == 0) os << "[]";
+            else os << m;
+            break;
+        }
+        case ObjType::STRING_MATRIX: {
+            const auto& m = static_cast<ObjStringMatrix*>(obj)->mat;
+            if (m.getRows() * m.getCols() == 0) os << "[]";
+            else os << m;
+            break;
+        }
         case ObjType::SYMBOLIC: os << static_cast<ObjSym*>(obj)->sym.toString(); break;
         case ObjType::CLOSURE: os << static_cast<ObjClosure*>(obj)->toString(); break;
         case ObjType::CLASS: os << "<class " << static_cast<ObjClass*>(obj)->name << ">"; break;

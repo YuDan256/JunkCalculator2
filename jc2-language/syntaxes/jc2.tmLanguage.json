@@ -229,8 +229,8 @@
                 { "name": "keyword.operator.spread.jc2", "match": "\\.\\.\\." },
                 { "name": "keyword.operator.comparison.jc2", "match": "==|!=|<=|>=|<|>" },
                 { "name": "keyword.operator.logical.jc2", "match": "&&|\\|\\||!" },
-                { "name": "keyword.operator.assignment.jc2", "match": "\\+=|-=|\\*=|/=|%=|\\^=|&=|\\|=|=" },
-                { "name": "keyword.operator.arithmetic.jc2", "match": "\\+|-|\\*|/|%|\\^|\\\\|~|&|\\|" },
+                { "name": "keyword.operator.assignment.jc2", "match": "\\+=|-=|\\*=|/=|%=|\\^\\^=|\\^=|&=|\\|=|=" },
+                { "name": "keyword.operator.arithmetic.jc2", "match": "\\+|-|\\*|/|%|\\^\\^|\\^|\\\\|~|&|\\|" },
                 { "name": "keyword.operator.ternary.jc2", "match": "\\?|:" }
             ]
         },

@@ -243,9 +243,6 @@
     "diag": {
       "signature": "diag(A)"
     },
-    "diagP": {
-      "signature": "diagP(A)"
-    },
     "lsolve": {
       "signature": "lsolve(A, b)"
     },
@@ -1347,23 +1344,11 @@
     "integD": {
       "signature": "integD(A, B)"
     },
-    "qr_Q": {
-      "signature": "qr_Q(A)"
+    "qr": {
+      "signature": "qr(A)"
     },
-    "qr_R": {
-      "signature": "qr_R(A)"
-    },
-    "lu_L": {
-      "signature": "lu_L(A)"
-    },
-    "lu_U": {
-      "signature": "lu_U(A)"
-    },
-    "lu_P": {
-      "signature": "lu_P(A)"
-    },
-    "linfo": {
-      "signature": "linfo(A, b)"
+    "lu": {
+      "signature": "lu(A)"
     },
     "residual": {
       "signature": "residual(A, x, b)"
@@ -1659,7 +1644,7 @@
       "signature": "local variable = expr  |  local variable"
     },
     "ref": {
-      "signature": "ref variable = expr  |  ref variable"
+      "signature": "ref variable = expr  |  ref variable  |  func(ref param)"
     },
     "state": {
       "signature": "state variable = expr  |  state variable"

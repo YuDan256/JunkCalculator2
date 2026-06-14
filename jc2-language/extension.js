@@ -281,8 +281,8 @@ function activate(context) {
                     continue;
                 }
                 
-                // 匹配函数定义: funcName(args) = 或 local/ref/state/const funcName(args) -> type =
-                const funcMatch = line.match(/^\s*(?:(?:local|ref|state|const)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)(?:\s*->\s*[a-zA-Z_][a-zA-Z0-9_]*)?\s*(?:\{|=)/);
+                // 匹配函数定义: funcName(args) = 或 [const] [local/ref/state] funcName(args) -> type =
+                const funcMatch = line.match(/^\s*(?:const\s+)?(?:(?:local|ref|state)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)(?:\s*->\s*[a-zA-Z_][a-zA-Z0-9_]*)?\s*(?:\{|=)/);
                 if (funcMatch) {
                     const range = new vscode.Range(i, 0, i, line.length);
                     const selectionRange = new vscode.Range(i, line.indexOf(funcMatch[1]), i, line.indexOf(funcMatch[1]) + funcMatch[1].length);

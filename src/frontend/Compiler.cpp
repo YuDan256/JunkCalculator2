@@ -530,6 +530,7 @@ namespace jc {
             if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
             current().captures[name] = {CaptureType::Ref, expr->isConst, false};
         } else if (expr->isState) {
+            if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
             if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
             current().captures[name] = {CaptureType::State, expr->isConst, true};
         }
@@ -1248,6 +1249,8 @@ namespace jc {
 
     int Compiler::resolveUpvalue(const std::string& name) {
         int currentLevel = static_cast<int>(stateStack.size()) - 1;
+        if (currentLevel == 0) return -1; // ★ 顶层作用域没有 Upvalue，直接退化为全局变量
+        
         auto it = stateStack[currentLevel].captures.find(name);
         bool isRef = it != stateStack[currentLevel].captures.end() && it->second.type == CaptureType::Ref;
         bool isState = it != stateStack[currentLevel].captures.end() && it->second.type == CaptureType::State;
@@ -1397,6 +1400,7 @@ namespace jc {
                 current().captures[name] = {CaptureType::Ref, false, false}; // ★ 提前注册
                 upvalue = resolveUpvalue(name);
             } else if (expr->isState) {
+                if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
                 if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                 current().captures[name] = {CaptureType::State, false, false};
                 // DO NOT set explicitState for compound assignment!
@@ -1663,6 +1667,7 @@ namespace jc {
                     if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                     current().captures[name] = {CaptureType::Ref, isConst, false};
                 } else if (mod == ScopeModifier::State) {
+                    if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
                     if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                     tempStateNames.push_back(name);
                 }
@@ -2816,6 +2821,7 @@ namespace jc {
                 if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                 current().captures[name] = {CaptureType::Ref, isConst, false};
             } else if (mod == ScopeModifier::State) {
+                if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
                 if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                 tempStateNames.push_back(name);
                 current().captures[name] = {CaptureType::State, isConst, true};
@@ -3078,6 +3084,7 @@ namespace jc {
     void Compiler::visitStateDecl(StateDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
+        if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
         if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) {
             throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
         }
@@ -3626,6 +3633,7 @@ namespace jc {
                     if (current().captures.count(var) > 0 && current().captures[var].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                     current().captures[var] = {CaptureType::Ref, isConst, false};
                 } else if (mod == ScopeModifier::State) {
+                    if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
                     if (current().captures.count(var) > 0 && current().captures[var].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                     current().captures[var] = {CaptureType::State, isConst, true};
                 }

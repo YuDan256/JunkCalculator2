@@ -978,6 +978,9 @@ namespace jc {
                 case OpCode::OP_DEFINE_CONST_GLOBAL: {
                     uint16_t idx = readShort();
                     const std::string& name = chunk->constants[idx].asString();
+                    if (constGlobals.count(name)) {
+                        throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
+                    }
                     globals[name] = peek(0);
                     constGlobals.insert(name);
                     break;

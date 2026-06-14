@@ -2411,20 +2411,20 @@ namespace jc {
             }
         } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
             int rows = static_cast<int>(mp->rows.size());
-            int minCols = -1;
+            int exactTotalCols = -1;
             bool anyRowNoRest = false;
             
             for (const auto& row : mp->rows) {
                 bool hasRest = false;
-                int fixed = 0;
+                int total = 0;
                 for (const auto& e : row) {
                     if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                    else fixed++;
+                    else total++;
                 }
                 if (!hasRest) {
                     anyRowNoRest = true;
-                    if (minCols == -1) minCols = fixed;
-                    else if (minCols != fixed) {
+                    if (exactTotalCols == -1) exactTotalCols = total;
+                    else if (exactTotalCols != total) {
                         throw std::runtime_error("Compiler Error: Matrix pattern rows without '...' must have the same number of columns.");
                     }
                 }
@@ -2433,24 +2433,26 @@ namespace jc {
             if (anyRowNoRest) {
                 for (const auto& row : mp->rows) {
                     bool hasRest = false;
-                    int fixed = 0;
+                    int total = 0;
                     for (const auto& e : row) {
                         if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                        else if (!dynamic_cast<DefaultPattern*>(e.get())) fixed++;
+                        else total++;
                     }
-                    if (hasRest && fixed > minCols) {
+                    if (hasRest && total > exactTotalCols) {
                         throw std::runtime_error("Compiler Error: Matrix pattern row with '...' has more fixed elements than the exact column count.");
                     }
                 }
-            } else {
-                minCols = 0;
-                for (const auto& row : mp->rows) {
-                    int fixed = 0;
-                    for (const auto& e : row) {
-                        if (!dynamic_cast<RestPattern*>(e.get()) && !dynamic_cast<DefaultPattern*>(e.get())) fixed++;
+            }
+            
+            int minCols = 0;
+            for (const auto& row : mp->rows) {
+                int required = 0;
+                for (const auto& e : row) {
+                    if (!dynamic_cast<RestPattern*>(e.get()) && !dynamic_cast<DefaultPattern*>(e.get())) {
+                        required++;
                     }
-                    if (fixed > minCols) minCols = fixed;
                 }
+                if (required > minCols) minCols = required;
             }
             
             int maxCols = 0xFFFF;

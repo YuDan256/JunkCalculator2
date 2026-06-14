@@ -879,22 +879,34 @@ namespace jc {
                         }
                     } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
-                        bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
-                        bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
-                        if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
-                        else matched = rMatch && cMatch;
+                        if (is1DPattern) {
+                            matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                        } else {
+                            bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
+                            bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+                            else matched = rMatch && cMatch;
+                        }
                     } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
-                        bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
-                        bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
-                        if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
-                        else matched = rMatch && cMatch;
+                        if (is1DPattern) {
+                            matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                        } else {
+                            bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
+                            bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+                            else matched = rMatch && cMatch;
+                        }
                     } else if (val.isObjType(ObjType::STRING_MATRIX)) {
                         const auto& m = static_cast<ObjStringMatrix*>(val.asObj())->mat;
-                        bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
-                        bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
-                        if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
-                        else matched = rMatch && cMatch;
+                        if (is1DPattern) {
+                            matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                        } else {
+                            bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
+                            bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+                            else matched = rMatch && cMatch;
+                        }
                     }
                     
                     push(Value(matched));
@@ -3588,14 +3600,17 @@ namespace jc {
                     const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                     if (m.getRows() == 1) {
                         if (i < 0) i = m.getCols() + i;
+                        if (i < 0 || i >= m.getCols()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m(0, i));
                     }
                     else if (m.getCols() == 1) {
                         if (i < 0) i = m.getRows() + i;
+                        if (i < 0 || i >= m.getRows()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m(i, 0));
                     }
                     else {
                         if (i < 0) i = m.getRows() + i;
+                        if (i < 0 || i >= m.getRows()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m.getRow(i));
                     }
                 }
@@ -3603,14 +3618,17 @@ namespace jc {
                     const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                     if (m.getRows() == 1) {
                         if (i < 0) i = m.getCols() + i;
+                        if (i < 0 || i >= m.getCols()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m(0, i));
                     }
                     else if (m.getCols() == 1) {
                         if (i < 0) i = m.getRows() + i;
+                        if (i < 0 || i >= m.getRows()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m(i, 0));
                     }
                     else {
                         if (i < 0) i = m.getRows() + i;
+                        if (i < 0 || i >= m.getRows()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m.getRow(i));
                     }
                 }
@@ -3618,14 +3636,17 @@ namespace jc {
                     const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                     if (m.getRows() == 1) {
                         if (i < 0) i = m.getCols() + i;
+                        if (i < 0 || i >= m.getCols()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m(0, i));
                     }
                     else if (m.getCols() == 1) {
                         if (i < 0) i = m.getRows() + i;
+                        if (i < 0 || i >= m.getRows()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m(i, 0));
                     }
                     else {
                         if (i < 0) i = m.getRows() + i;
+                        if (i < 0 || i >= m.getRows()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                         result = Value(m.getRow(i));
                     }
                 }
@@ -3661,18 +3682,21 @@ namespace jc {
                 const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                 if (r < 0) r = m.getRows() + r;
                 if (c < 0) c = m.getCols() + c;
+                if (r < 0 || r >= m.getRows() || c < 0 || c >= m.getCols()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                 result = Value(m(r, c));
             }
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                 if (r < 0) r = m.getRows() + r;
                 if (c < 0) c = m.getCols() + c;
+                if (r < 0 || r >= m.getRows() || c < 0 || c >= m.getCols()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                 result = Value(m(r, c));
             }
             else if (obj.isObjType(ObjType::STRING_MATRIX)) {
                 const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                 if (r < 0) r = m.getRows() + r;
                 if (c < 0) c = m.getCols() + c;
+                if (r < 0 || r >= m.getRows() || c < 0 || c >= m.getCols()) throw std::out_of_range("Matrix Error: Index out of bounds.");
                 result = Value(m(r, c));
             }
             else {

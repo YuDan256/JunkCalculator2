@@ -1,0 +1,122 @@
+println("=== Testing Modifiers (const, local, ref, state) ===")
+
+// 1. 测试 const local
+test_const_local() = {
+    const local x = 10
+    assert(x == 10, "const local init failed")
+    
+    try {
+        x = 20
+        assert(false, "Should not be able to modify const local")
+    } catch (e) {
+        assert("Cannot modify const variable" in e, "Wrong error message for const local")
+    }
+}
+test_const_local()
+println("[1/5] const local: OK")
+
+// 2. 测试 const state (惰性只读常量)
+test_const_state() = {
+    call_count = 0
+    
+    get_val() = {
+        ref call_count
+        const state s = {
+            call_count += 1
+            42
+        }
+        return s
+    }
+    
+    assert(get_val() == 42, "const state init failed")
+    assert(call_count == 1, "const state should evaluate once")
+    
+    assert(get_val() == 42, "const state read failed")
+    assert(call_count == 1, "const state should not re-evaluate")
+    
+    // 尝试在外部修改 state (通过闭包暴露)
+    try_modify() = {
+        const state s = 42
+        s = 100 // 编译期或运行期应该拦截
+    }
+    
+    try {
+        try_modify()
+        assert(false, "Should not be able to modify const state")
+    } catch (e) {
+        assert("Cannot modify const variable" in e, "Wrong error message for const state")
+    }
+}
+test_const_state()
+println("[2/5] const state: OK")
+
+// 3. 测试 const ref (只读视图)
+test_const_ref() = {
+    outer_var = 100
+    
+    read_only_view() = {
+        const ref outer_var
+        assert(outer_var == 100, "const ref read failed")
+        
+        try {
+            outer_var = 200
+            assert(false, "Should not be able to modify const ref")
+        } catch (e) {
+            assert("Cannot modify const variable" in e, "Wrong error message for const ref")
+        }
+    }
+    
+    read_only_view()
+    
+    // 外部依然可以修改
+    outer_var = 300
+    
+    read_only_view_2() = {
+        const ref outer_var
+        assert(outer_var == 300, "const ref should see updated value")
+    }
+    read_only_view_2()
+}
+test_const_ref()
+println("[3/5] const ref: OK")
+
+// 4. 测试解构赋值中的修饰符
+test_destruct_modifiers() = {
+    // const local 解构
+    const local [a, b] = [1, 2]
+    assert(a == 1 && b == 2, "const local destruct failed")
+    try { a = 10; assert(false, "Should not modify const destructed var") } catch(e) {}
+    
+    // state 解构
+    call_count = 0
+    get_state() = {
+        ref call_count
+        state [x, y] = {
+            call_count += 1
+            [10, 20]
+        }
+        return x + y
+    }
+    assert(get_state() == 30, "state destruct failed")
+    assert(get_state() == 30, "state destruct read failed")
+    assert(call_count == 1, "state destruct should evaluate once")
+}
+test_destruct_modifiers()
+println("[4/5] destruct modifiers: OK")
+
+// 5. 测试 for-in 循环中的修饰符
+test_forin_modifiers() = {
+    sum = 0
+    for (const local x in [1, 2, 3]) {
+        sum += x
+        try {
+            x = 10
+            assert(false, "Should not modify const loop variable")
+        } catch (e) {}
+    }
+    assert(sum == 6, "const local for-in failed")
+}
+test_forin_modifiers()
+println("[5/5] for-in modifiers: OK")
+
+println("All modifier tests passed successfully!")

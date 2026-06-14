@@ -366,8 +366,7 @@ namespace jc {
             }
 
             if (dynamic_cast<MatrixNode*>(expr.get()) || dynamic_cast<DictLiteral*>(expr.get())) {
-                if (isRef || isState) throw std::runtime_error("Parser Error: 'ref' or 'state' cannot be applied to destructuring.");
-                return std::make_unique<DestructAssign>(exprToPattern(std::move(expr)), std::move(value), isLocal, isConst);
+                return std::make_unique<DestructAssign>(exprToPattern(std::move(expr)), std::move(value), isRef, isState, isLocal, isConst);
             }
 
             if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {
@@ -381,10 +380,12 @@ namespace jc {
 
         if (isLocal || isRef || isState || isConst) {
             if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-                if (isConst) throw std::runtime_error("Parser Error: 'const' declaration requires '= value'.");
+                if (isConst && !isRef && !isState) {
+                    throw std::runtime_error("Parser Error: 'const' declaration requires '= value'.");
+                }
                 if (isLocal) expr = std::make_unique<LocalDecl>(var->name);
-                else if (isRef) expr = std::make_unique<RefDecl>(var->name);
-                else expr = std::make_unique<StateDecl>(var->name);
+                else if (isRef) expr = std::make_unique<RefDecl>(var->name, isConst);
+                else expr = std::make_unique<StateDecl>(var->name, isConst);
             } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
                 assign->isLocal = isLocal;
                 assign->isRef = isRef;

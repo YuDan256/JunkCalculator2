@@ -100,7 +100,7 @@ namespace jc {
             const std::string& name = var->name.lexeme;
             int slot = resolveLocal(name);
 
-            if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+            if (slot != -1 && current().captures.count(name) == 0) {
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
                     emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
@@ -117,7 +117,8 @@ namespace jc {
                 }
                 else {
                     uint16_t nameIdx = identifierConstant(name);
-                    if (current().refNames.count(name) > 0) {
+                    auto it = current().captures.find(name);
+                    if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
                         emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
                     } else if (isConst) {
                         emit(OpCode::OP_DEFINE_CONST_GLOBAL, lastLine);
@@ -440,7 +441,7 @@ namespace jc {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
         int slot = resolveLocal(name);
-        if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+        if (slot != -1 && current().captures.count(name) == 0) {
             if (current().locals[slot].isRefParam) {
                 emit(OpCode::OP_GET_REF_PARAM, expr->name.line);
                 emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), expr->name.line);
@@ -471,20 +472,33 @@ namespace jc {
         int existingSlot = resolveLocal(name);
         if (existingSlot != -1 && current().locals[existingSlot].isConst) {
             if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
-                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                emit(OpCode::OP_CONSTANT, lastLine);
+                emit16(msgIdx, lastLine);
+                emit(OpCode::OP_THROW, lastLine);
+                return;
+            }
+        }
+        auto capIt = current().captures.find(name);
+        if (capIt != current().captures.end() && capIt->second.isConst) {
+            if (!expr->isLocal) {
+                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                emit(OpCode::OP_CONSTANT, lastLine);
+                emit16(msgIdx, lastLine);
+                emit(OpCode::OP_THROW, lastLine);
+                return;
             }
         }
 
         // ★ Pre-register ref/state BEFORE compiling RHS so variable reads resolve to upvalue
         if (expr->isLocal) {
-            if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+            if (current().captures.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
         } else if (expr->isRef) {
-            if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-            current().refNames.insert(name);
+            if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+            current().captures[name] = {CaptureType::Ref, expr->isConst, false};
         } else if (expr->isState) {
-            if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-            current().stateNames.insert(name);
-            current().explicitStateNames.insert(name);
+            if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+            current().captures[name] = {CaptureType::State, expr->isConst, true};
         }
 
         // ★ Pre-declare local variable if RHS is a Lambda, to support local recursion
@@ -492,7 +506,7 @@ namespace jc {
             int slot = resolveLocal(name);
             if (expr->isLocal) {
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) addLocal(name, current().scopeDepth, expr->isConst);
-            } else if (!expr->isRef && !expr->isState && stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+            } else if (!expr->isRef && !expr->isState && stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
                 addLocal(name, 0, expr->isConst); // Auto-locals go to function scope
             }
         }
@@ -509,14 +523,13 @@ namespace jc {
                 emit(OpCode::OP_POP, expr->name.line); // pop boolean
                 
                 // ★ Temporarily unregister so RHS can capture the outer variable if it references the same name
-                current().stateNames.erase(name);
-                current().explicitStateNames.erase(name);
+                CaptureModifier tempMod = current().captures[name];
+                current().captures.erase(name);
                 
                 compileNode(expr->value.get());
                 
                 // ★ Re-register
-                current().stateNames.insert(name);
-                current().explicitStateNames.insert(name);
+                current().captures[name] = tempMod;
 
                 emit(OpCode::OP_SET_UPVALUE, expr->name.line);
                 emit16(static_cast<uint16_t>(upvalue), expr->name.line);
@@ -553,7 +566,7 @@ namespace jc {
             upvalue = resolveUpvalue(name);
         } else {
             // ★ Auto-local Write (Shadowing)
-            if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+            if (stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
                 addLocal(name, 0, expr->isConst); // Auto-locals go to function scope
                 slot = resolveLocal(name);
             } else if (slot != -1) {
@@ -561,7 +574,7 @@ namespace jc {
             }
         }
 
-        if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+        if (slot != -1 && current().captures.count(name) == 0) {
             if (current().locals[slot].isRefParam) {
                 emit(OpCode::OP_SET_REF_PARAM, expr->name.line);
                 emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), expr->name.line);
@@ -578,7 +591,8 @@ namespace jc {
             }
             else {
                 uint16_t idx = identifierConstant(name);
-                if (expr->isRef || current().refNames.count(name) > 0) {
+                auto it = current().captures.find(name);
+                if (expr->isRef || (it != current().captures.end() && it->second.type == CaptureType::Ref)) {
                     emit(OpCode::OP_SET_GLOBAL_REF, expr->name.line);
                 } else if (expr->isConst) {
                     emit(OpCode::OP_DEFINE_CONST_GLOBAL, expr->name.line);
@@ -1163,9 +1177,10 @@ namespace jc {
             }
         }
 
-        bool isStateVar = enclosing.stateNames.count(name) > 0;
-        bool isRefVar = enclosing.refNames.count(name) > 0;
-        bool isExplicitStateVar = enclosing.explicitStateNames.count(name) > 0;
+        auto it = enclosing.captures.find(name);
+        bool isStateVar = it != enclosing.captures.end() && it->second.type == CaptureType::State;
+        bool isRefVar = it != enclosing.captures.end() && it->second.type == CaptureType::Ref;
+        bool isExplicitStateVar = isStateVar && it->second.isExplicitState;
 
         if (isExplicitStateVar) {
             int enclosingUv = addUpvalue(enclosingLevel, name, false, -1, isRefVar, true, true);
@@ -1195,9 +1210,10 @@ namespace jc {
 
     int Compiler::resolveUpvalue(const std::string& name) {
         int currentLevel = static_cast<int>(stateStack.size()) - 1;
-        bool isRef = stateStack[currentLevel].refNames.count(name) > 0;
-        bool isState = stateStack[currentLevel].stateNames.count(name) > 0;
-        bool isExplicitState = stateStack[currentLevel].explicitStateNames.count(name) > 0;
+        auto it = stateStack[currentLevel].captures.find(name);
+        bool isRef = it != stateStack[currentLevel].captures.end() && it->second.type == CaptureType::Ref;
+        bool isState = it != stateStack[currentLevel].captures.end() && it->second.type == CaptureType::State;
+        bool isExplicitState = isState && it->second.isExplicitState;
         
         // ★ 规避副作用：仅在闭包捕获自身函数名时，临时强制按引用捕获。
         // 这样既支持了递归，又不会污染 refNames 导致无法创建同名局部变量。
@@ -1307,7 +1323,21 @@ namespace jc {
             int existingSlot = resolveLocal(name);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                 if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
-                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(msgIdx, lastLine);
+                    emit(OpCode::OP_THROW, lastLine);
+                    return;
+                }
+            }
+            auto capIt = current().captures.find(name);
+            if (capIt != current().captures.end() && capIt->second.isConst) {
+                if (!expr->isLocal) {
+                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(msgIdx, lastLine);
+                    emit(OpCode::OP_THROW, lastLine);
+                    return;
                 }
             }
 
@@ -1319,24 +1349,24 @@ namespace jc {
             int upvalue = -1;
 
             if (expr->isLocal) {
-                if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+                if (current().captures.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
                     addLocal(name, current().scopeDepth);
                     slot = resolveLocal(name);
                 }
             } else if (expr->isRef) {
-                if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                current().refNames.insert(name); // ★ 提前注册
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().captures[name] = {CaptureType::Ref, false, false}; // ★ 提前注册
                 upvalue = resolveUpvalue(name);
             } else if (expr->isState) {
-                if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                current().stateNames.insert(name);
-                // DO NOT insert into explicitStateNames for compound assignment!
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().captures[name] = {CaptureType::State, false, false};
+                // DO NOT set explicitState for compound assignment!
                 upvalue = resolveUpvalue(name);
             }
 
             // 读取当前值
-            if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+            if (slot != -1 && current().captures.count(name) == 0) {
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_GET_REF_PARAM, lastLine);
                     emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
@@ -1361,7 +1391,7 @@ namespace jc {
             compileNode(expr->value.get());
             emitOp(expr->op);
 
-            if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+            if (slot != -1 && current().captures.count(name) == 0) {
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
                     emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
@@ -1589,19 +1619,18 @@ namespace jc {
                 if (mod == ScopeModifier::None && expr->isLocal) mod = ScopeModifier::Local;
 
                 if (mod == ScopeModifier::Local) {
-                    if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+                    if (current().captures.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
                 } else if (mod == ScopeModifier::Ref) {
-                    if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().refNames.insert(name);
+                    if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    current().captures[name] = {CaptureType::Ref, expr->isConst, false};
                 } else if (mod == ScopeModifier::State) {
-                    if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                     tempStateNames.push_back(name);
                 }
             }
 
             for (const auto& name : tempStateNames) {
-                current().stateNames.insert(name);
-                current().explicitStateNames.insert(name);
+                current().captures[name] = {CaptureType::State, expr->isConst, true};
             }
 
             for (const auto& varPair : boundVars) {
@@ -1612,7 +1641,21 @@ namespace jc {
                 int existingSlot = resolveLocal(name);
                 if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                     if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
-                        throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                        uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                        emit(OpCode::OP_CONSTANT, lastLine);
+                        emit16(msgIdx, lastLine);
+                        emit(OpCode::OP_THROW, lastLine);
+                        continue;
+                    }
+                }
+                auto capIt = current().captures.find(name);
+                if (capIt != current().captures.end() && capIt->second.isConst) {
+                    if (mod != ScopeModifier::Local) {
+                        uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                        emit(OpCode::OP_CONSTANT, lastLine);
+                        emit16(msgIdx, lastLine);
+                        emit(OpCode::OP_THROW, lastLine);
+                        continue;
                     }
                 }
                 if (stateStack.size() == 1) knownGlobals.insert(name);
@@ -1625,7 +1668,7 @@ namespace jc {
                         current().locals[slot].isConst = expr->isConst;
                     }
                 } else if (mod == ScopeModifier::None) {
-                    if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+                    if (stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
                         addLocal(name, 0, expr->isConst);
                     } else if (slot != -1) {
                         current().locals[slot].isConst = expr->isConst;
@@ -1650,7 +1693,19 @@ namespace jc {
             int existingSlot = resolveLocal(varName);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                 if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
-                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + varName + "'.");
+                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + varName + "'.");
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(msgIdx, lastLine);
+                    emit(OpCode::OP_THROW, lastLine);
+                }
+            }
+            auto capIt = current().captures.find(varName);
+            if (capIt != current().captures.end() && capIt->second.isConst) {
+                if (!expr->isLocal) {
+                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + varName + "'.");
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(msgIdx, lastLine);
+                    emit(OpCode::OP_THROW, lastLine);
                 }
             }
             
@@ -1664,7 +1719,7 @@ namespace jc {
                     current().locals[slot].isConst = expr->isConst;
                 }
             } else {
-                if (stateStack.size() > 1 && slot == -1 && current().refNames.count(varName) == 0 && current().stateNames.count(varName) == 0) {
+                if (stateStack.size() > 1 && slot == -1 && current().captures.count(varName) == 0) {
                     addLocal(varName, 0, expr->isConst); slot = resolveLocal(varName);
                 } else if (slot != -1) {
                     current().locals[slot].isConst = expr->isConst;
@@ -1673,7 +1728,8 @@ namespace jc {
             if (slot != -1) { emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); }
             else { 
                 uint16_t idx = identifierConstant(varName); 
-                if (current().refNames.count(varName) > 0) {
+                auto it = current().captures.find(varName);
+                if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
                     emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
                 } else if (expr->isConst) {
                     emit(OpCode::OP_DEFINE_CONST_GLOBAL, lastLine);
@@ -1791,6 +1847,25 @@ namespace jc {
     }
 
     void Compiler::visitIndexAssign(IndexAssign* expr) {
+        if (!expr->hasObjectExpr()) {
+            int existingSlot = resolveLocal(expr->name.lexeme);
+            if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + expr->name.lexeme + "'.");
+                emit(OpCode::OP_CONSTANT, lastLine);
+                emit16(msgIdx, lastLine);
+                emit(OpCode::OP_THROW, lastLine);
+                return;
+            }
+            auto capIt = current().captures.find(expr->name.lexeme);
+            if (capIt != current().captures.end() && capIt->second.isConst) {
+                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + expr->name.lexeme + "'.");
+                emit(OpCode::OP_CONSTANT, lastLine);
+                emit16(msgIdx, lastLine);
+                emit(OpCode::OP_THROW, lastLine);
+                return;
+            }
+        }
+
         bool hasSlice = false;
         if (expr->indexChain.size() == 1) {
             for (auto& idx : expr->indexChain[0]) {
@@ -1894,7 +1969,8 @@ namespace jc {
                     if (upvalue != -1) { emit(OpCode::OP_SET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(upvalue), lastLine); }
                     else { 
                         uint16_t nameIdx = identifierConstant(expr->name.lexeme); 
-                        if (current().refNames.count(expr->name.lexeme) > 0) {
+                        auto it = current().captures.find(expr->name.lexeme);
+                        if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
                             emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
                         } else {
                             emit(OpCode::OP_SET_GLOBAL, lastLine); 
@@ -2115,7 +2191,13 @@ namespace jc {
             if (var->name.lexeme != "_") {
                 emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                 
-                if (var->modifier == ScopeModifier::State) {
+                bool isExplicitState = false;
+                auto it = current().captures.find(var->name.lexeme);
+                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
+                    isExplicitState = true;
+                }
+
+                if (var->modifier == ScopeModifier::State || isExplicitState) {
                     int upvalue = resolveUpvalue(var->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2185,7 +2267,12 @@ namespace jc {
                         emit(OpCode::OP_NONE, lastLine);
                         emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
                         
-                        if (restPat->modifier == ScopeModifier::State) {
+                        bool isExplicitState = false;
+                        auto it = current().captures.find(restPat->name.lexeme);
+                        if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
+                            isExplicitState = true;
+                        }
+                        if (restPat->modifier == ScopeModifier::State || isExplicitState) {
                             int upvalue = resolveUpvalue(restPat->name.lexeme);
                             if (upvalue != -1) {
                                 emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2234,7 +2321,12 @@ namespace jc {
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
                 
-                if (lp->rest->modifier == ScopeModifier::State) {
+                bool isExplicitState = false;
+                auto it = current().captures.find(lp->rest->name.lexeme);
+                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
+                    isExplicitState = true;
+                }
+                if (lp->rest->modifier == ScopeModifier::State || isExplicitState) {
                     int upvalue = resolveUpvalue(lp->rest->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2345,7 +2437,12 @@ namespace jc {
                             emit(OpCode::OP_NONE, lastLine);
                             emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
                             
-                            if (restPat->modifier == ScopeModifier::State) {
+                            bool isExplicitState = false;
+                            auto it = current().captures.find(restPat->name.lexeme);
+                            if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
+                                isExplicitState = true;
+                            }
+                            if (restPat->modifier == ScopeModifier::State || isExplicitState) {
                                 int upvalue = resolveUpvalue(restPat->name.lexeme);
                                 if (upvalue != -1) {
                                     emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2399,7 +2496,12 @@ namespace jc {
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
                 
-                if (mp->restRow->modifier == ScopeModifier::State) {
+                bool isExplicitState = false;
+                auto it = current().captures.find(mp->restRow->name.lexeme);
+                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
+                    isExplicitState = true;
+                }
+                if (mp->restRow->modifier == ScopeModifier::State || isExplicitState) {
                     int upvalue = resolveUpvalue(mp->restRow->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2472,7 +2574,12 @@ namespace jc {
                 emit(OpCode::OP_DICT_REST, lastLine);
                 emit16(static_cast<uint16_t>(dp->entries.size()), lastLine);
                 
-                if (dp->rest->modifier == ScopeModifier::State) {
+                bool isExplicitState = false;
+                auto it = current().captures.find(dp->rest->name.lexeme);
+                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
+                    isExplicitState = true;
+                }
+                if (dp->rest->modifier == ScopeModifier::State || isExplicitState) {
                     int upvalue = resolveUpvalue(dp->rest->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2505,24 +2612,47 @@ namespace jc {
         for (const auto& varPair : boundVars) {
             const std::string& name = varPair.first;
             ScopeModifier mod = varPair.second;
+            if (mod == ScopeModifier::None) {
+                if (expr->isLocal) mod = ScopeModifier::Local;
+                else if (expr->isRef) mod = ScopeModifier::Ref;
+                else if (expr->isState) mod = ScopeModifier::State;
+            }
             
             if (mod == ScopeModifier::Local) {
-                if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+                if (current().captures.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
             } else if (mod == ScopeModifier::Ref) {
-                if (current().stateNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                current().refNames.insert(name);
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().captures[name] = {CaptureType::Ref, expr->isConst, false};
             } else if (mod == ScopeModifier::State) {
-                if (current().refNames.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                 tempStateNames.push_back(name);
+                current().captures[name] = {CaptureType::State, expr->isConst, true};
             }
+        }
+
+        int skipAllJump = -1;
+        if (expr->isState && !tempStateNames.empty()) {
+            int upvalue = resolveUpvalue(tempStateNames[0]);
+            if (upvalue != -1) {
+                emit(OpCode::OP_GET_UPVALUE, lastLine);
+                emit16(static_cast<uint16_t>(upvalue), lastLine);
+                emit(OpCode::OP_IS_UNINIT, lastLine);
+                skipAllJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                emit(OpCode::OP_POP, lastLine); // pop boolean
+            }
+        }
+
+        std::vector<CaptureModifier> tempMods;
+        for (const auto& name : tempStateNames) {
+            tempMods.push_back(current().captures[name]);
+            current().captures.erase(name);
         }
 
         // 2. Compile RHS
         compileNode(expr->value.get());
 
-        for (const auto& name : tempStateNames) {
-            current().stateNames.insert(name);
-            current().explicitStateNames.insert(name);
+        for (size_t i = 0; i < tempStateNames.size(); ++i) {
+            current().captures[tempStateNames[i]] = tempMods[i];
         }
 
         // 3. Save RHS to a temporary local variable
@@ -2536,12 +2666,30 @@ namespace jc {
         for (const auto& varPair : boundVars) {
             const std::string& name = varPair.first;
             ScopeModifier mod = varPair.second;
-            if (mod == ScopeModifier::None && expr->isLocal) mod = ScopeModifier::Local;
+            if (mod == ScopeModifier::None) {
+                if (expr->isLocal) mod = ScopeModifier::Local;
+                else if (expr->isRef) mod = ScopeModifier::Ref;
+                else if (expr->isState) mod = ScopeModifier::State;
+            }
             
             int existingSlot = resolveLocal(name);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                 if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
-                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
+                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(msgIdx, lastLine);
+                    emit(OpCode::OP_THROW, lastLine);
+                    continue;
+                }
+            }
+            auto capIt = current().captures.find(name);
+            if (capIt != current().captures.end() && capIt->second.isConst) {
+                if (mod != ScopeModifier::Local) {
+                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(msgIdx, lastLine);
+                    emit(OpCode::OP_THROW, lastLine);
+                    continue;
                 }
             }
             if (stateStack.size() == 1) knownGlobals.insert(name);
@@ -2554,7 +2702,7 @@ namespace jc {
                     current().locals[slot].isConst = expr->isConst;
                 }
             } else if (mod == ScopeModifier::None) {
-                if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+                if (stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
                     addLocal(name, 0, expr->isConst);
                 } else if (slot != -1) {
                     current().locals[slot].isConst = expr->isConst;
@@ -2583,6 +2731,14 @@ namespace jc {
         // 7. Restore RHS value to stack top
         emit(OpCode::OP_GET_LOCAL, lastLine);
         emit16(static_cast<uint16_t>(valSlot), lastLine);
+
+        if (skipAllJump != -1) {
+            int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+            chunk()->patchJump(skipAllJump);
+            emit(OpCode::OP_POP, lastLine); // pop boolean
+            emit(OpCode::OP_NONE, lastLine); // push none when skipped
+            chunk()->patchJump(endJump);
+        }
 
         return;
     }
@@ -2647,13 +2803,17 @@ namespace jc {
 
         int existingSlot = resolveLocal(expr->catchName.lexeme);
         if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].depth == current().scopeDepth) {
-            throw std::runtime_error("Compiler Error: Cannot modify const variable '" + expr->catchName.lexeme + "'.");
+            uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + expr->catchName.lexeme + "'.");
+            emit(OpCode::OP_CONSTANT, lastLine);
+            emit16(msgIdx, lastLine);
+            emit(OpCode::OP_THROW, lastLine);
+            return;
         }
 
         if (stateStack.size() == 1) knownGlobals.insert(expr->catchName.lexeme);
 
         int slot = resolveLocal(expr->catchName.lexeme);
-        if (stateStack.size() > 1 && slot == -1 && current().refNames.count(expr->catchName.lexeme) == 0 && current().stateNames.count(expr->catchName.lexeme) == 0) {
+        if (stateStack.size() > 1 && slot == -1 && current().captures.count(expr->catchName.lexeme) == 0) {
             addLocal(expr->catchName.lexeme, current().scopeDepth); // catch 变量严格块级
             slot = resolveLocal(expr->catchName.lexeme);
         }
@@ -2664,7 +2824,8 @@ namespace jc {
         else {
             // ★ 修复：在这里补充未定义的 nameIdx
             uint16_t nameIdx = identifierConstant(expr->catchName.lexeme);
-            if (current().refNames.count(expr->catchName.lexeme) > 0) {
+            auto it = current().captures.find(expr->catchName.lexeme);
+            if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
                 emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
             } else {
                 emit(OpCode::OP_SET_GLOBAL, lastLine);
@@ -2703,10 +2864,10 @@ namespace jc {
     void Compiler::visitRefDecl(RefDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
-        if (current().stateNames.count(name) > 0) {
+        if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) {
             throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
         }
-        current().refNames.insert(name);
+        current().captures[name] = {CaptureType::Ref, expr->isConst, false};
         int upvalue = resolveUpvalue(name);
         
         if (upvalue != -1) {
@@ -2723,10 +2884,10 @@ namespace jc {
     void Compiler::visitStateDecl(StateDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
-        if (current().refNames.count(name) > 0) {
+        if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) {
             throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
         }
-        current().stateNames.insert(name);
+        current().captures[name] = {CaptureType::State, expr->isConst, false};
         int upvalue = resolveUpvalue(name);
         
         if (upvalue != -1) {
@@ -2743,7 +2904,7 @@ namespace jc {
     void Compiler::visitLocalDecl(LocalDecl* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
-        if (current().stateNames.count(name) > 0 || current().refNames.count(name) > 0) {
+        if (current().captures.count(name) > 0) {
             throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
         }
         int slot = resolveLocal(name);
@@ -2874,7 +3035,7 @@ namespace jc {
         if (stateStack.size() == 1) knownGlobals.insert(name);
 
         int slot = resolveLocal(name);
-        if (stateStack.size() > 1 && slot == -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
+        if (stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
             addLocal(name, 0);
             slot = resolveLocal(name);
         }
@@ -2889,7 +3050,8 @@ namespace jc {
                 emit16(static_cast<uint16_t>(upvalue), lastLine);
             } else {
                 uint16_t nameIdx = identifierConstant(name);
-                if (current().refNames.count(name) > 0) {
+                auto it = current().captures.find(name);
+                if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
                     emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, lastLine);
@@ -2912,7 +3074,7 @@ namespace jc {
 
         // 2. 将类保存进环境（局部/闭包/全局 安全判定）
         int slot = resolveLocal(className);
-        if (stateStack.size() > 1 && slot == -1 && current().refNames.count(className) == 0 && current().stateNames.count(className) == 0) {
+        if (stateStack.size() > 1 && slot == -1 && current().captures.count(className) == 0) {
             addLocal(className, 0); // 类名自动溢出到函数作用域
             slot = resolveLocal(className);
         }
@@ -2923,7 +3085,8 @@ namespace jc {
             int upvalue = resolveUpvalue(className);
             if (upvalue != -1) { emit(OpCode::OP_SET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(upvalue), lastLine); }
             else { 
-                if (current().refNames.count(className) > 0) {
+                auto it = current().captures.find(className);
+                if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
                     emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, lastLine); 
@@ -3233,14 +3396,13 @@ namespace jc {
                 ScopeModifier mod = varPair.second;
                 
                 if (mod == ScopeModifier::Local) {
-                    if (current().stateNames.count(var) > 0 || current().refNames.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+                    if (current().captures.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
                 } else if (mod == ScopeModifier::Ref) {
-                    if (current().stateNames.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().refNames.insert(var);
+                    if (current().captures.count(var) > 0 && current().captures[var].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    current().captures[var] = {CaptureType::Ref, false, false};
                 } else if (mod == ScopeModifier::State) {
-                    if (current().refNames.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().stateNames.insert(var);
-                    current().explicitStateNames.insert(var);
+                    if (current().captures.count(var) > 0 && current().captures[var].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                    current().captures[var] = {CaptureType::State, false, true};
                 }
 
                 int slot = resolveLocal(var);

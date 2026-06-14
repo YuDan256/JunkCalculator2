@@ -21,6 +21,17 @@ namespace jc {
         int refParamIndex = -1;  // ★ 新增
     };
 
+    enum class CaptureType {
+        Ref,
+        State
+    };
+
+    struct CaptureModifier {
+        CaptureType type;
+        bool isConst = false;
+        bool isExplicitState = false;
+    };
+
     class Compiler : public ExprVisitor {
     private:
         struct CompilerState {
@@ -28,9 +39,7 @@ namespace jc {
             int scopeDepth = 0;
             std::vector<Local> locals;
             int maxLocals = 0;                  // ★ 新增：跟踪该函数所使用的最大局部变量数
-            std::unordered_set<std::string> refNames;     // ★ 新增：跟踪当前作用域显式 ref 的外部变量
-            std::unordered_set<std::string> stateNames;   // ★ 新增：跟踪当前作用域显式 state 的外部变量
-            std::unordered_set<std::string> explicitStateNames; // ★ 新增：跟踪显式初始化的 state 变量
+            std::unordered_map<std::string, CaptureModifier> captures; // ★ 新增：统一跟踪当前作用域的 ref/state 变量及其修饰符
             int tryDepth = 0;
             std::string expectedReturnType = "";
         };

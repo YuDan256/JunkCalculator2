@@ -318,13 +318,15 @@ namespace jc {
 
     struct RefDecl : public Expr {
         Token name;
-        explicit RefDecl(Token name) : name(std::move(name)) {}
+        bool isConst;
+        explicit RefDecl(Token name, bool isConst = false) : name(std::move(name)), isConst(isConst) {}
         void accept(ExprVisitor& visitor) override { visitor.visitRefDecl(this); }
     };
 
     struct StateDecl : public Expr {
         Token name;
-        explicit StateDecl(Token name) : name(std::move(name)) {}
+        bool isConst;
+        explicit StateDecl(Token name, bool isConst = false) : name(std::move(name)), isConst(isConst) {}
         void accept(ExprVisitor& visitor) override { visitor.visitStateDecl(this); }
     };
 
@@ -568,10 +570,12 @@ namespace jc {
     struct DestructAssign : public Expr {
         std::unique_ptr<Pattern> pattern;
         std::unique_ptr<Expr> value;
+        bool isRef;
+        bool isState;
         bool isLocal;
         bool isConst;
-        DestructAssign(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> value, bool isLocal = false, bool isConst = false)
-            : pattern(std::move(pattern)), value(std::move(value)), isLocal(isLocal), isConst(isConst) {
+        DestructAssign(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false, bool isConst = false)
+            : pattern(std::move(pattern)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal), isConst(isConst) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitDestructAssign(this); }
     };

@@ -251,8 +251,61 @@ namespace jc {
         if (val.isInstance()) {
             auto inst = val.asInstance();
             auto c = inst->classDef;
+            
+            // 尝试解析可能带有模块前缀的 typeStr (如 "engine.GameEngine")
+            Value typeVal = Value::none();
+            size_t dotPos = typeStr.find('.');
+            if (dotPos != std::string::npos) {
+                std::string currentName = typeStr.substr(0, dotPos);
+                auto it = globals.find(currentName);
+                if (it != globals.end()) {
+                    Value currentVal = it->second;
+                    size_t start = dotPos + 1;
+                    while (start < typeStr.size()) {
+                        size_t nextDot = typeStr.find('.', start);
+                        std::string part = typeStr.substr(start, nextDot == std::string::npos ? std::string::npos : nextDot - start);
+                        
+                        if (currentVal.isObjType(ObjType::NAMESPACE)) {
+                            auto ns = static_cast<ObjNamespace*>(currentVal.asObj());
+                            auto fIt = ns->fields.find(part);
+                            if (fIt != ns->fields.end()) {
+                                currentVal = *(fIt->second.upval->location);
+                            } else {
+                                currentVal = Value::none();
+                                break;
+                            }
+                        } else {
+                            currentVal = Value::none();
+                            break;
+                        }
+                        
+                        if (nextDot == std::string::npos) break;
+                        start = nextDot + 1;
+                    }
+                    typeVal = currentVal;
+                }
+            } else {
+                auto it = globals.find(typeStr);
+                if (it != globals.end()) typeVal = it->second;
+            }
+
+            // 如果找到了真实的类对象，进行严格的指针比对！
+            if (typeVal.isClass()) {
+                ObjClass* expectedClass = static_cast<ObjClass*>(typeVal.asObj());
+                while (c) {
+                    if (c == expectedClass) return true;
+                    c = c->parent;
+                }
+                return false; // 名字可能一样，但指针不同，严格拒绝！
+            }
+
+            // 如果没找到真实的类对象（可能是内置类型，或者是没导入的局部类），退化为字符串匹配
+            std::string shortName = typeStr;
+            size_t lastDot = typeStr.find_last_of('.');
+            if (lastDot != std::string::npos) shortName = typeStr.substr(lastDot + 1);
+            
             while (c) {
-                if (c->name == typeStr) return true;
+                if (c->name == shortName) return true;
                 c = c->parent;
             }
         }

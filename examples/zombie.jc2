@@ -52,7 +52,7 @@ class FpsProbe {
     }
 }
 
-class Raycaster3D extends GameEngine {
+class Raycaster3D extends engine.GameEngine {
     init() = {
         self.W = 800
         self.H = 600

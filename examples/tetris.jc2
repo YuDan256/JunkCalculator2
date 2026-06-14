@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import engine
 
-class Tetris extends GameEngine {
+class Tetris extends engine.GameEngine {
     init() = {
         // Expanded window size to make room for the right-side Native UI
         super.init("JC2 Tetris - Advanced Edition", 660, 720, 60)

@@ -3339,18 +3339,10 @@ namespace jc {
             }
             };
 
-        // 3. 继承逻辑（修复：彻底兼容局部/闭包父类）
-        if (!expr->superClassName.empty()) {
-            uint16_t superIdx = identifierConstant(expr->superClassName);
+        // 3. 继承逻辑
+        if (expr->superClassExpr) {
             emitLoadClass(); // 取出当前子类
-
-            int sSlot = resolveLocal(expr->superClassName);
-            if (sSlot != -1) { emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(sSlot), lastLine); }
-            else {
-                int sUpvalue = resolveUpvalue(expr->superClassName);
-                if (sUpvalue != -1) { emit(OpCode::OP_GET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(sUpvalue), lastLine); }
-                else { emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(superIdx, lastLine); }
-            }
+            compileNode(expr->superClassExpr.get());
             emit(OpCode::OP_INHERIT, lastLine);
         }
 

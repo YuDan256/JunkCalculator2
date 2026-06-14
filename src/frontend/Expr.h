@@ -521,7 +521,7 @@ namespace jc {
 
     struct ClassDefExpr : public Expr {
         Token name;
-        std::string superClassName;
+        std::unique_ptr<Expr> superClassExpr;
         struct MethodDef {
             Token name;
             std::vector<Token> params;
@@ -537,8 +537,8 @@ namespace jc {
         };
         std::vector<MethodDef> methods;
 
-        ClassDefExpr(Token name, std::string superClassName, std::vector<MethodDef> methods)
-            : name(std::move(name)), superClassName(std::move(superClassName)),
+        ClassDefExpr(Token name, std::unique_ptr<Expr> superClassExpr, std::vector<MethodDef> methods)
+            : name(std::move(name)), superClassExpr(std::move(superClassExpr)),
             methods(std::move(methods)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitClassDefExpr(this); }

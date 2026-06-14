@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.4.1
+# Junk Calculator 2.4.4.2
 
-![Version](https://img.shields.io/badge/Version-v2.4.4.1-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.4.2-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,35 +68,13 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.4.1
+## What's New in v2.4.4.2
 
-### Compiler & Mutual Recursion Support
-- **Single-pass Compilation with Function Hoisting**: Implemented single-pass compilation based on function hoisting and forced reference capture. This fundamentally resolves forward reference issues for mutually recursive functions within the same scope (especially inside modules) at the compiler level, eliminating the need for multi-pass compilation.
-- **Standard Library Cleanup**: Leveraged this mechanism to clean up standard libraries (`regex`, `discrete`, `http`). Removed redundant module prefixes (e.g., `regex._re_parse`) previously added to bypass compiler limitations, restoring clean lexical scope calls.
-- **Module Encapsulation**: Optimized the encapsulation of modules like `http` by moving internal functions to private namespaces like `_Http`, preventing internal implementations from polluting public APIs.
+### Compiler & Pattern Matching Fixes
+- **Explicit State Initialization Flag**: Fixed an issue where the `state` keyword flag in destructuring assignments could pollute subsequent normal destructuring assignments. By explicitly passing the `isStateInit` parameter to `compilePatternMatch`, normal destructuring assignments (e.g., `[a, b] = [b, a + b]`) are no longer mistakenly treated as state initialization statements, preventing the erroneous emission of `OP_IS_UNINIT` instructions.
 
-### Parsing Optimization (Dict vs. Block Disambiguation)
-- **Lookahead Logic**: Completely optimized the lookahead detection logic for curly braces `{ ... }` (`isDictLiteralLookahead`). Accurately distinguishes between block statements and dictionary literals based on internal features like colons, semicolons, compound assignments (e.g., `+=`), and newlines.
-- **Bug Fixes**: Fixed issues where pure code blocks (e.g., `{ max_str += self.nx() }` or `{ f() }`) were misidentified as dictionary literals, causing syntax errors.
-
-### Destructuring Assignment & Pattern Matching Refactoring
-- **Early Sniffing**: Removed the unstable "expression-to-pattern" patch. Introduced early lookahead sniffing to identify destructuring assignments (e.g., `[a] = ...`) during the initial parsing phase, directly constructing pattern nodes to prevent dict or block nodes from being mislabeled.
-- **Enhanced Destructuring**: Supports complex lvalues in destructuring; perfectly supports the combination of local scope modifiers (`local`, `const`, `ref`, `state`) with default values (`= value`); supports placing modifiers before rest parameters (`...rest`).
-- **Const Semantics**: Decoupled `const` from `local` and reintroduced the `ConstDecl` node to prevent global constants from being incorrectly downgraded to local constants. Merged the `const` flag for overall patterns and single variables. Prohibited the VM from redefining or overwriting existing constants globally. Strictly prohibited assignment or compound assignment initialization for `const ref`.
-- **Syntax Rules**: Clarified syntax rules: when default values exist in the same destructuring match line, the rest parameter `...rest` must be placed at the end. The compiler will report errors for violations to prevent semantic ambiguity.
-
-### Matrix System & VM Optimization
-- **Unified Empty Matrix**: Standardized that numeric and string matrices (`StringMatrix`) with 0 total elements will uniformly collapse into a standard `0x0` shape during construction. This resolves equality and output inconsistencies caused by differently shaped empty matrices (e.g., `1x0`).
-- **Bounds Checking**: Added out-of-bounds exception checks for matrix indexing, ensuring that destructuring can correctly catch out-of-bounds errors and fallback to default value logic.
-- **Pattern Matching Bytecode**: Upgraded the `OP_MATCH_SHAPE` instruction, moving elastic 2D shape validation (supporting optional rows/columns with default values) into the VM's C++ backend for one-shot execution.
-
-### OOP & Type System Enhancements
-- **Advanced Inheritance**: The `extends` keyword now supports arbitrary expressions, allowing direct inheritance from classes inside modules (e.g., `class MyGame extends engine.GameEngine`).
-- **Strict Type Hinting**: Type annotations now support module prefixes (e.g., `func(game: engine.GameEngine)`). The VM's type checker has been upgraded to perform strict pointer comparisons for class types, correctly distinguishing identically named classes across different modules.
-
-### Tests & Documentation Synchronization
-- **Documentation**: Updated help documentation with advanced examples of function destructuring parameters and explicitly documented the ordering rules for `...rest` and default values.
-- **Tests**: Synchronized math modules and destructuring test cases to adapt expected values to the unified `.0` suffixed floating-point format and the latest empty matrix matching logic.
+### Virtual Machine & Tail Call Optimization (TCO)
+- **Full Tail Call Optimization Enabled**: Removed the conservative restriction in the compiler that disabled TCO when cross-function calls might involve reference passing. Since the VM safely closes over local variables (`closeUpvalues`) before executing a tail call (`OP_TAIL_CALL`), passing references during tail calls is perfectly safe. This update restores full tail recursion optimization, completely resolving stack overflow issues in mutually tail-recursive scenarios.
 
 ---
 

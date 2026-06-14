@@ -90,6 +90,10 @@ JC2 standard libraries loaded via `import`:
 - **Bounds Checking**: Added out-of-bounds exception checks for matrix indexing, ensuring that destructuring can correctly catch out-of-bounds errors and fallback to default value logic.
 - **Pattern Matching Bytecode**: Upgraded the `OP_MATCH_SHAPE` instruction, moving elastic 2D shape validation (supporting optional rows/columns with default values) into the VM's C++ backend for one-shot execution.
 
+### OOP & Type System Enhancements
+- **Advanced Inheritance**: The `extends` keyword now supports arbitrary expressions, allowing direct inheritance from classes inside modules (e.g., `class MyGame extends engine.GameEngine`).
+- **Strict Type Hinting**: Type annotations now support module prefixes (e.g., `func(game: engine.GameEngine)`). The VM's type checker has been upgraded to perform strict pointer comparisons for class types, correctly distinguishing identically named classes across different modules.
+
 ### Tests & Documentation Synchronization
 - **Documentation**: Updated help documentation with advanced examples of function destructuring parameters and explicitly documented the ordering rules for `...rest` and default values.
 - **Tests**: Synchronized math modules and destructuring test cases to adapt expected values to the unified `.0` suffixed floating-point format and the latest empty matrix matching logic.

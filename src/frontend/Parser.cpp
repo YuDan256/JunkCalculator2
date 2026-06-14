@@ -307,6 +307,9 @@ namespace jc {
                     TokenType::BACKSLASH_ASSIGN,
                     TokenType::BIT_AND_ASSIGN, TokenType::BIT_OR_ASSIGN, TokenType::BIT_XOR_ASSIGN,
                     TokenType::SHIFT_LEFT_ASSIGN, TokenType::SHIFT_RIGHT_ASSIGN })) {
+            if (isConst && isRef) {
+                throw std::runtime_error("Parser Error: 'const ref' declaration cannot be initialized with compound assignment.");
+            }
             if (isConst) throw std::runtime_error("Parser Error: 'const' cannot be applied to compound assignment.");
             Token compOp = previous();
 
@@ -338,6 +341,9 @@ namespace jc {
 
         // ── 处理标准赋值 (=) ──
         if (match({ TokenType::ASSIGN })) {
+            if (isConst && isRef) {
+                throw std::runtime_error("Parser Error: 'const ref' declaration cannot be initialized with '='.");
+            }
             Token equals = previous();
             auto value = assignment();  // ★ 直接读取右值即可，把上下两行记录 index 的删掉
 

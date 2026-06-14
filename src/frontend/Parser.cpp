@@ -394,6 +394,18 @@ namespace jc {
                 assign->isRef = isRef;
                 assign->isState = isState;
                 assign->isConst = isConst;
+            } else if (auto* un = dynamic_cast<Unary*>(expr.get())) {
+                if (un->op.type == TokenType::ELLIPSIS) {
+                    if (auto* restVar = dynamic_cast<Variable*>(un->right.get())) {
+                        if (isLocal || (isConst && !isRef && !isState)) un->right = std::make_unique<LocalDecl>(restVar->name, isConst);
+                        else if (isRef) un->right = std::make_unique<RefDecl>(restVar->name, isConst);
+                        else un->right = std::make_unique<StateDecl>(restVar->name, isConst);
+                    } else {
+                        throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
+                    }
+                } else {
+                    throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
+                }
             } else {
                 throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
             }

@@ -251,7 +251,7 @@ namespace jc {
             }
 
             std::vector<int> failJumps;
-            compilePatternMatch(clause.pattern.get(), valSlot, failJumps, false);
+            compilePatternMatch(clause.pattern.get(), valSlot, failJumps, false, false);
 
             if (!failJumps.empty()) {
                 int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -1721,7 +1721,7 @@ namespace jc {
             }
 
             std::vector<int> failJumps;
-            compilePatternMatch(expr->pattern.get(), valSlot, failJumps, expr->isConst);
+            compilePatternMatch(expr->pattern.get(), valSlot, failJumps, expr->isConst, false);
 
             if (!failJumps.empty()) {
                 int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -2217,12 +2217,12 @@ namespace jc {
         }
     }
 
-    void Compiler::compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst) {
+    void Compiler::compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst, bool isStateInit) {
         if (auto* dp = dynamic_cast<DefaultPattern*>(p)) {
             // 如果在顶层直接遇到 DefaultPattern，说明它没有被容器解构剥离。
             // 此时 valSlot 里的值已经是确定的（不会是缺失），所以默认值永远不会触发。
             // 直接匹配内部模式即可。
-            compilePatternMatch(dp->inner.get(), valSlot, failJumps, isConst);
+            compilePatternMatch(dp->inner.get(), valSlot, failJumps, isConst, isStateInit);
             return;
         }
         if (auto* lit = dynamic_cast<LiteralPattern*>(p)) {
@@ -2244,13 +2244,7 @@ namespace jc {
             if (var->name.lexeme != "_") {
                 emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                 
-                bool isExplicitState = false;
-                auto it = current().captures.find(var->name.lexeme);
-                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
-                    isExplicitState = true;
-                }
-
-                if (var->modifier == ScopeModifier::State || isExplicitState) {
+                if (var->modifier == ScopeModifier::State || isStateInit) {
                     int upvalue = resolveUpvalue(var->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2336,12 +2330,7 @@ namespace jc {
                         emit(OpCode::OP_NONE, lastLine);
                         emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
                         
-                        bool isExplicitState = false;
-                        auto it = current().captures.find(restPat->name.lexeme);
-                        if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
-                            isExplicitState = true;
-                        }
-                        if (restPat->modifier == ScopeModifier::State || isExplicitState) {
+                        if (restPat->modifier == ScopeModifier::State || isStateInit) {
                             int upvalue = resolveUpvalue(restPat->name.lexeme);
                             if (upvalue != -1) {
                                 emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2423,7 +2412,7 @@ namespace jc {
                     emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     
-                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
+                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
                     current().locals.pop_back();
                 }
             }
@@ -2435,12 +2424,7 @@ namespace jc {
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_SLICE_GET, lastLine); emit(1, lastLine);
                 
-                bool isExplicitState = false;
-                auto it = current().captures.find(lp->rest->name.lexeme);
-                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
-                    isExplicitState = true;
-                }
-                if (lp->rest->modifier == ScopeModifier::State || isExplicitState) {
+                if (lp->rest->modifier == ScopeModifier::State || isStateInit) {
                     int upvalue = resolveUpvalue(lp->rest->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2586,12 +2570,7 @@ namespace jc {
                             emit(OpCode::OP_NONE, lastLine);
                             emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
                             
-                            bool isExplicitState = false;
-                            auto it = current().captures.find(restPat->name.lexeme);
-                            if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
-                                isExplicitState = true;
-                            }
-                            if (restPat->modifier == ScopeModifier::State || isExplicitState) {
+                            if (restPat->modifier == ScopeModifier::State || isStateInit) {
                                 int upvalue = resolveUpvalue(restPat->name.lexeme);
                                 if (upvalue != -1) {
                                     emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2674,7 +2653,7 @@ namespace jc {
                         emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                         emit(OpCode::OP_POP, lastLine);
                         
-                        compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
+                        compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
                         current().locals.pop_back();
                     }
                 }
@@ -2690,12 +2669,7 @@ namespace jc {
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_SLICE_GET, lastLine); emit(2, lastLine);
                 
-                bool isExplicitState = false;
-                auto it = current().captures.find(mp->restRow->name.lexeme);
-                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
-                    isExplicitState = true;
-                }
-                if (mp->restRow->modifier == ScopeModifier::State || isExplicitState) {
+                if (mp->restRow->modifier == ScopeModifier::State || isStateInit) {
                     int upvalue = resolveUpvalue(mp->restRow->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2760,7 +2734,7 @@ namespace jc {
                     emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     
-                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
+                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
                     current().locals.pop_back();
                 } else {
                     int failJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
@@ -2772,7 +2746,7 @@ namespace jc {
                     emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine); // pop the value
                     
-                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
+                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
                     current().locals.pop_back();
                     
                     int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -2796,12 +2770,7 @@ namespace jc {
                 emit(OpCode::OP_DICT_REST, lastLine);
                 emit16(static_cast<uint16_t>(dictPat->entries.size()), lastLine);
                 
-                bool isExplicitState = false;
-                auto it = current().captures.find(dictPat->rest->name.lexeme);
-                if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
-                    isExplicitState = true;
-                }
-                if (dictPat->rest->modifier == ScopeModifier::State || isExplicitState) {
+                if (dictPat->rest->modifier == ScopeModifier::State || isStateInit) {
                     int upvalue = resolveUpvalue(dictPat->rest->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
@@ -2936,7 +2905,7 @@ namespace jc {
 
         // 5. Compile pattern match
         std::vector<int> failJumps;
-        compilePatternMatch(expr->pattern.get(), valSlot, failJumps, expr->isConst);
+        compilePatternMatch(expr->pattern.get(), valSlot, failJumps, expr->isConst, expr->isState);
 
         // 6. Handle match failure
         if (!failJumps.empty()) {
@@ -3651,7 +3620,7 @@ namespace jc {
                 auto& pat = branch.patterns[pi];
                 std::vector<int> failJumps;
 
-                compilePatternMatch(pat.get(), subjectSlot, failJumps, false);
+                compilePatternMatch(pat.get(), subjectSlot, failJumps, false, false);
 
                 bodyJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
 

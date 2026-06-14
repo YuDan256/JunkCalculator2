@@ -92,7 +92,7 @@ namespace jc {
         int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false, bool isRefParam = false);
         void emitStoreTarget(Expr* target, bool isConst = false);
         std::optional<Value> tryFoldConstant(Expr* expr);
-        void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst = false);
+        void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst = false, bool isStateInit = false);
         void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars);
 
     public:

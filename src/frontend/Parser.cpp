@@ -747,7 +747,25 @@ namespace jc {
             bool foundSemicolon = false;
             bool foundComma = false;
             bool foundNewline = false;
-            bool foundAssign = false; // ★ 新增
+            bool foundAssign = false;
+
+            bool isSingleId = false;
+            bool isSingleRest = false;
+            if (peekPos < static_cast<int>(tokens.size())) {
+                if (tokens[peekPos].type == TokenType::IDENTIFIER) {
+                    int nextPos = peekPos + 1;
+                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                        isSingleId = true;
+                    }
+                } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
+                    int nextPos = peekPos + 2;
+                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                        isSingleRest = true;
+                    }
+                }
+            }
 
             // 深度扫描，跳过嵌套的 [], {}, ()
             while (scanPos < static_cast<int>(tokens.size())) {
@@ -772,14 +790,17 @@ namespace jc {
                         foundComma = true;
                     } else if (t == TokenType::NEWLINE) {
                         foundNewline = true;
-                    } else if (t == TokenType::ASSIGN) { // ★ 嗅探 =
+                    } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
+                               t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
+                               t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
+                               t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
+                               t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
                         foundAssign = true;
                     }
                 }
                 scanPos++;
             }
 
-            // ★ 移除 isDestructLValue 的逻辑，因为解构赋值在 assignment() 中处理
             if (foundColon) {
                 isDict = true;
             } else if (foundSemicolon) {
@@ -788,10 +809,12 @@ namespace jc {
                 isDict = true;
             } else if (foundNewline) {
                 isDict = false;
-            } else if (foundAssign) { // ★ {a = 10} 作为 Block
+            } else if (foundAssign) {
                 isDict = false;
-            } else { // 单行无逗号无冒号无等号 （如 {a}），优先作为字典简写
+            } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
                 isDict = true;
+            } else {
+                isDict = false;
             }
 
             // 如果它是字典，必须让 expression() 层级去调用 primary() 将其当做右值解析！
@@ -1030,7 +1053,25 @@ namespace jc {
             bool foundSemicolon = false;
             bool foundComma = false;
             bool foundNewline = false;
-            bool foundAssign = false; // ★ 新增
+            bool foundAssign = false;
+
+            bool isSingleId = false;
+            bool isSingleRest = false;
+            if (peekPos < static_cast<int>(tokens.size())) {
+                if (tokens[peekPos].type == TokenType::IDENTIFIER) {
+                    int nextPos = peekPos + 1;
+                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                        isSingleId = true;
+                    }
+                } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
+                    int nextPos = peekPos + 2;
+                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                        isSingleRest = true;
+                    }
+                }
+            }
 
             // 深度扫描，跳过嵌套的 [], {}, ()
             while (scanPos < static_cast<int>(tokens.size())) {
@@ -1055,14 +1096,17 @@ namespace jc {
                         foundComma = true;
                     } else if (t == TokenType::NEWLINE) {
                         foundNewline = true;
-                    } else if (t == TokenType::ASSIGN) { // ★ 嗅探 =
+                    } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
+                               t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
+                               t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
+                               t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
+                               t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
                         foundAssign = true;
                     }
                 }
                 scanPos++;
             }
 
-            // ★ 移除 isDestructLValue 的逻辑，因为解构赋值在 assignment() 中处理
             if (foundColon) {
                 isDict = true;
             } else if (foundSemicolon) {
@@ -1071,10 +1115,12 @@ namespace jc {
                 isDict = true;
             } else if (foundNewline) {
                 isDict = false;
-            } else if (foundAssign) { // ★ {a = 10} 作为 Block
+            } else if (foundAssign) {
                 isDict = false;
-            } else { // 单行无逗号无冒号无等号 （如 {a}），优先作为字典简写
+            } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
                 isDict = true;
+            } else {
+                isDict = false;
             }
 
             if (isDict) {
@@ -1531,7 +1577,25 @@ namespace jc {
             bool foundSemicolon = false;
             bool foundComma = false;
             bool foundNewline = false;
-            bool foundAssign = false; // ★ 新增
+            bool foundAssign = false;
+
+            bool isSingleId = false;
+            bool isSingleRest = false;
+            if (peekPos < static_cast<int>(tokens.size())) {
+                if (tokens[peekPos].type == TokenType::IDENTIFIER) {
+                    int nextPos = peekPos + 1;
+                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                        isSingleId = true;
+                    }
+                } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
+                    int nextPos = peekPos + 2;
+                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                        isSingleRest = true;
+                    }
+                }
+            }
 
             while (scanPos < static_cast<int>(tokens.size())) {
                 TokenType t = tokens[scanPos].type;
@@ -1555,14 +1619,17 @@ namespace jc {
                         foundComma = true;
                     } else if (t == TokenType::NEWLINE) {
                         foundNewline = true;
-                    } else if (t == TokenType::ASSIGN) { // ★ 嗅探 =
+                    } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
+                               t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
+                               t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
+                               t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
+                               t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
                         foundAssign = true;
                     }
                 }
                 scanPos++;
             }
 
-            // ★ 移除 isDestructLValue 的逻辑，因为解构赋值在 assignment() 中处理
             if (foundColon) {
                 isDict = true;
             } else if (foundSemicolon) {
@@ -1571,10 +1638,12 @@ namespace jc {
                 isDict = true;
             } else if (foundNewline) {
                 isDict = false;
-            } else if (foundAssign) { // ★ {a = 10} 作为 Block
+            } else if (foundAssign) {
                 isDict = false;
-            } else { // 单行无逗号无冒号无等号 （如 {a}），优先作为字典简写
+            } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
                 isDict = true;
+            } else {
+                isDict = false;
             }
 
             if (!isDict) {

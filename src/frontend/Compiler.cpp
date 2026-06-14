@@ -3104,12 +3104,41 @@ namespace jc {
         if (expr->isConst) {
             throw std::runtime_error("Compiler Error: 'const' declaration requires '= value'.");
         }
+        
+        int outerSlot = -1;
+        for (int i = static_cast<int>(current().locals.size()) - 1; i >= 0; --i) {
+            if (current().locals[i].name == name && current().locals[i].depth < current().scopeDepth) {
+                outerSlot = i;
+                break;
+            }
+        }
+        int upvalue = -1;
+        if (outerSlot == -1) {
+            upvalue = resolveUpvalue(name);
+        }
+
+        if (outerSlot != -1) {
+            if (current().locals[outerSlot].isRefParam) {
+                emit(OpCode::OP_GET_REF_PARAM, lastLine);
+                emit16(static_cast<uint16_t>(current().locals[outerSlot].refParamIndex), lastLine);
+            } else {
+                emit(OpCode::OP_GET_LOCAL, lastLine);
+                emit16(static_cast<uint16_t>(outerSlot), lastLine);
+            }
+        } else if (upvalue != -1) {
+            emit(OpCode::OP_GET_UPVALUE, lastLine);
+            emit16(static_cast<uint16_t>(upvalue), lastLine);
+        } else {
+            uint16_t idx = identifierConstant(name);
+            emit(OpCode::OP_GET_GLOBAL, lastLine);
+            emit16(idx, lastLine);
+        }
+
         int slot = resolveLocal(name);
         if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
             addLocal(name, current().scopeDepth, expr->isConst);
             slot = resolveLocal(name);
         }
-        emit(OpCode::OP_NONE, lastLine);
         emit(OpCode::OP_SET_LOCAL, lastLine);
         emit16(static_cast<uint16_t>(slot), lastLine);
         return;

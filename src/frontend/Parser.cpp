@@ -1296,6 +1296,17 @@ namespace jc {
         if (auto* setLit = dynamic_cast<SetLiteral*>(expr.get())) {
             return std::make_unique<DynamicAssertPattern>(std::move(expr));
         }
+        if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
+            ScopeModifier mod = ScopeModifier::None;
+            if (assign->isLocal) mod = ScopeModifier::Local;
+            else if (assign->isRef) mod = ScopeModifier::Ref;
+            else if (assign->isState) mod = ScopeModifier::State;
+            auto innerPat = std::make_unique<VariablePattern>(assign->name, mod, assign->isConst);
+            return std::make_unique<DefaultPattern>(std::move(innerPat), std::move(assign->value));
+        }
+        if (auto* destAssign = dynamic_cast<DestructAssign*>(expr.get())) {
+            return std::make_unique<DefaultPattern>(std::move(destAssign->pattern), std::move(destAssign->value));
+        }
         if (auto* var = dynamic_cast<Variable*>(expr.get())) {
             return std::make_unique<VariablePattern>(var->name);
         }
@@ -1411,7 +1422,7 @@ namespace jc {
         return std::make_unique<LiteralPattern>(std::move(expr));
     }
 
-    std::unique_ptr<Pattern> Parser::parsePattern() {
+    std::unique_ptr<Pattern> Parser::parsePrimaryPattern() {
         if (match({TokenType::LPAREN})) {
             auto expr = expression();
             consume(TokenType::RPAREN, "Parser Error: Expect ')' after dynamic expression pattern.");
@@ -1544,41 +1555,42 @@ namespace jc {
                 while (match({TokenType::NEWLINE})) {}
                 if (check(TokenType::RBRACE)) break;
 
-                if (check(TokenType::ELLIPSIS) || check(TokenType::LOCAL) || check(TokenType::REF) || check(TokenType::STATE) || check(TokenType::CONST)) {
-                    int savedPos = current;
-                    ScopeModifier elemMod = ScopeModifier::None;
-                    bool elemConst = false;
-                    while (true) {
-                        if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
-                        else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
-                        else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
-                        else if (match({TokenType::CONST})) elemConst = true;
-                        else break;
-                    }
-                    
-                    if (match({TokenType::ELLIPSIS})) {
-                        Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
-                        rest = std::make_unique<RestPattern>(name, elemMod, elemConst);
-                        break; // Rest must be last
-                    } else {
-                        current = savedPos; // Not a rest pattern, backtrack
-                    }
+                ScopeModifier elemMod = ScopeModifier::None;
+                bool elemConst = false;
+                bool elemHasMod = false;
+                while (true) {
+                    if (match({TokenType::LOCAL})) { elemMod = ScopeModifier::Local; elemHasMod = true; }
+                    else if (match({TokenType::REF})) { elemMod = ScopeModifier::Ref; elemHasMod = true; }
+                    else if (match({TokenType::STATE})) { elemMod = ScopeModifier::State; elemHasMod = true; }
+                    else if (match({TokenType::CONST})) { elemConst = true; elemHasMod = true; }
+                    else break;
+                }
+                
+                if (match({TokenType::ELLIPSIS})) {
+                    Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+                    rest = std::make_unique<RestPattern>(name, elemMod, elemConst);
+                    break; // Rest must be last
                 }
                 
                 std::string keyStr;
                 Token keyTok = peek();
                 if (match({TokenType::IDENTIFIER})) {
                     keyStr = previous().lexeme;
-                } else if (match({TokenType::STRING})) {
+                } else if (!elemHasMod && match({TokenType::STRING})) {
                     keyStr = previous().lexeme;
                 } else {
                     throw std::runtime_error("Parser Error: Expect identifier or string as dict pattern key.");
                 }
                 
-                if (match({TokenType::COLON})) {
+                if (!elemHasMod && match({TokenType::COLON})) {
                     entries.push_back({keyStr, parsePattern()});
                 } else {
-                    entries.push_back({keyStr, std::make_unique<VariablePattern>(keyTok)});
+                    if (match({TokenType::ASSIGN})) {
+                        auto defExpr = ternary();
+                        entries.push_back({keyStr, std::make_unique<DefaultPattern>(std::make_unique<VariablePattern>(keyTok, elemMod, elemConst), std::move(defExpr))});
+                    } else {
+                        entries.push_back({keyStr, std::make_unique<VariablePattern>(keyTok, elemMod, elemConst)});
+                    }
                 }
 
                 if (!match({TokenType::COMMA})) {
@@ -1596,6 +1608,18 @@ namespace jc {
             return std::make_unique<DynamicAssertPattern>(std::move(expr));
         }
         return std::make_unique<LiteralPattern>(std::move(expr));
+    }
+
+    std::unique_ptr<Pattern> Parser::parsePattern() {
+        auto pat = parsePrimaryPattern();
+        if (match({TokenType::ASSIGN})) {
+            if (dynamic_cast<RestPattern*>(pat.get())) {
+                throw std::runtime_error("Parser Error: Rest pattern '...' cannot have a default value.");
+            }
+            auto defExpr = ternary();
+            return std::make_unique<DefaultPattern>(std::move(pat), std::move(defExpr));
+        }
+        return pat;
     }
 
     std::unique_ptr<Expr> Parser::parseMatchBody() {

@@ -59,6 +59,8 @@ namespace jc {
     struct MatchExpr;
     struct GroupingExpr;     // ★ 新增
 
+    struct DefaultPattern;   // ★ 新增
+
     struct Pattern {
         virtual ~Pattern() = default;
     };
@@ -115,6 +117,13 @@ namespace jc {
         std::unique_ptr<RestPattern> rest;
         DictPattern(std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries, std::unique_ptr<RestPattern> rest)
             : entries(std::move(entries)), rest(std::move(rest)) {}
+    };
+
+    struct DefaultPattern : public Pattern {
+        std::unique_ptr<Pattern> inner;
+        std::unique_ptr<Expr> defaultExpr;
+        DefaultPattern(std::unique_ptr<Pattern> inner, std::unique_ptr<Expr> defaultExpr)
+            : inner(std::move(inner)), defaultExpr(std::move(defaultExpr)) {}
     };
 
     struct MatchBranch {

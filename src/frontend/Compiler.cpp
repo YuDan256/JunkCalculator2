@@ -2159,7 +2159,9 @@ namespace jc {
     }
 
     void Compiler::collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars) {
-        if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+        if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
+            collectPatternVars(dp->inner.get(), boundVars);
+        } else if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
             if (vp->name.lexeme != "_") boundVars.push_back({vp->name.lexeme, vp->modifier, vp->isConst});
         } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
             if (rp->name.lexeme != "_") boundVars.push_back({rp->name.lexeme, rp->modifier, rp->isConst});
@@ -2171,13 +2173,20 @@ namespace jc {
                 for (auto& e : row) collectPatternVars(e.get(), boundVars);
             }
             if (mp->restRow) collectPatternVars(mp->restRow.get(), boundVars);
-        } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
-            for (auto& e : dp->entries) collectPatternVars(e.second.get(), boundVars);
-            if (dp->rest) collectPatternVars(dp->rest.get(), boundVars);
+        } else if (auto* dictPat = dynamic_cast<DictPattern*>(pat)) {
+            for (auto& e : dictPat->entries) collectPatternVars(e.second.get(), boundVars);
+            if (dictPat->rest) collectPatternVars(dictPat->rest.get(), boundVars);
         }
     }
 
     void Compiler::compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst) {
+        if (auto* dp = dynamic_cast<DefaultPattern*>(p)) {
+            // 如果在顶层直接遇到 DefaultPattern，说明它没有被容器解构剥离。
+            // 此时 valSlot 里的值已经是确定的（不会是缺失），所以默认值永远不会触发。
+            // 直接匹配内部模式即可。
+            compilePatternMatch(dp->inner.get(), valSlot, failJumps, isConst);
+            return;
+        }
         if (auto* lit = dynamic_cast<LiteralPattern*>(p)) {
             if (!tryFoldConstant(lit->literal.get())) {
                 throw std::runtime_error("Compiler Error: Dynamic expression assertions must be enclosed in parentheses '()'.");
@@ -2235,7 +2244,7 @@ namespace jc {
             bool hasRest = lp->rest != nullptr;
             for (auto& e : lp->elements) {
                 if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                else minCols++;
+                else if (!dynamic_cast<DefaultPattern*>(e.get())) minCols++;
             }
             uint8_t exactMask = hasRest ? 0 : 3; // 3 means both exact
             exactMask |= 4; // ★ 标记为 1D 模式 (ListPattern)
@@ -2300,6 +2309,19 @@ namespace jc {
                         emit(OpCode::OP_POP, lastLine);
                     }
                 } else {
+                    Pattern* actualPat = lp->elements[i].get();
+                    Expr* defExpr = nullptr;
+                    if (auto* dp = dynamic_cast<DefaultPattern*>(actualPat)) {
+                        actualPat = dp->inner.get();
+                        defExpr = dp->defaultExpr.get();
+                    }
+
+                    emit(OpCode::OP_TRY_BEGIN, lastLine);
+                    int catchOffsetSlot = static_cast<int>(chunk()->code.size());
+                    emit16(0, lastLine);
+                    emit16(identifierConstant(""), lastLine);
+                    current().tryDepth++;
+
                     emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                     if (afterRest) {
                         emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-currentRightOffset))), lastLine);
@@ -2309,13 +2331,45 @@ namespace jc {
                         c_idx++;
                     }
                     emit(OpCode::OP_INDEX_GET, lastLine); emit(1, lastLine);
-                    
+
+                    current().tryDepth--;
+                    emit(OpCode::OP_TRY_END, lastLine);
+                    emit(OpCode::OP_TRUE, lastLine);
+                    int skipCatch = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+
+                    int catchAddr = static_cast<int>(chunk()->code.size());
+                    int relOffset = catchAddr - (catchOffsetSlot + 4);
+                    chunk()->code[catchOffsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
+                    chunk()->code[catchOffsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
+
+                    emit(OpCode::OP_POP, lastLine); // pop error
+                    emit(OpCode::OP_NONE, lastLine); // dummy value
+                    emit(OpCode::OP_FALSE, lastLine);
+
+                    chunk()->patchJump(skipCatch);
+
+                    if (defExpr) {
+                        int hasValJump = chunk()->emitJump(OpCode::OP_JUMP_IF_TRUE, lastLine);
+                        emit(OpCode::OP_POP, lastLine); // pop false
+                        emit(OpCode::OP_POP, lastLine); // pop none
+                        compileNode(defExpr);
+                        int endDefJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+
+                        chunk()->patchJump(hasValJump);
+                        emit(OpCode::OP_POP, lastLine); // pop true
+
+                        chunk()->patchJump(endDefJump);
+                    } else {
+                        failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+                        emit(OpCode::OP_POP, lastLine); // pop true
+                    }
+
                     addLocal("<pat_tmp>", current().scopeDepth);
                     int tmpSlot = static_cast<int>(current().locals.size()) - 1;
                     emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     
-                    compilePatternMatch(lp->elements[i].get(), tmpSlot, failJumps, isConst);
+                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
                     current().locals.pop_back();
                 }
             }
@@ -2381,7 +2435,7 @@ namespace jc {
                     int fixed = 0;
                     for (const auto& e : row) {
                         if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                        else fixed++;
+                        else if (!dynamic_cast<DefaultPattern*>(e.get())) fixed++;
                     }
                     if (hasRest && fixed > minCols) {
                         throw std::runtime_error("Compiler Error: Matrix pattern row with '...' has more fixed elements than the exact column count.");
@@ -2392,7 +2446,7 @@ namespace jc {
                 for (const auto& row : mp->rows) {
                     int fixed = 0;
                     for (const auto& e : row) {
-                        if (!dynamic_cast<RestPattern*>(e.get())) fixed++;
+                        if (!dynamic_cast<RestPattern*>(e.get()) && !dynamic_cast<DefaultPattern*>(e.get())) fixed++;
                     }
                     if (fixed > minCols) minCols = fixed;
                 }
@@ -2470,6 +2524,19 @@ namespace jc {
                             emit(OpCode::OP_POP, lastLine);
                         }
                     } else {
+                        Pattern* actualPat = e.get();
+                        Expr* defExpr = nullptr;
+                        if (auto* dp = dynamic_cast<DefaultPattern*>(actualPat)) {
+                            actualPat = dp->inner.get();
+                            defExpr = dp->defaultExpr.get();
+                        }
+
+                        emit(OpCode::OP_TRY_BEGIN, lastLine);
+                        int catchOffsetSlot = static_cast<int>(chunk()->code.size());
+                        emit16(0, lastLine);
+                        emit16(identifierConstant(""), lastLine);
+                        current().tryDepth++;
+
                         emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                         emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r))), lastLine);
                         if (afterRest) {
@@ -2480,13 +2547,45 @@ namespace jc {
                             c_idx++;
                         }
                         emit(OpCode::OP_INDEX_GET, lastLine); emit(2, lastLine);
-                        
+
+                        current().tryDepth--;
+                        emit(OpCode::OP_TRY_END, lastLine);
+                        emit(OpCode::OP_TRUE, lastLine);
+                        int skipCatch = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+
+                        int catchAddr = static_cast<int>(chunk()->code.size());
+                        int relOffset = catchAddr - (catchOffsetSlot + 4);
+                        chunk()->code[catchOffsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
+                        chunk()->code[catchOffsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
+
+                        emit(OpCode::OP_POP, lastLine); // pop error
+                        emit(OpCode::OP_NONE, lastLine); // dummy value
+                        emit(OpCode::OP_FALSE, lastLine);
+
+                        chunk()->patchJump(skipCatch);
+
+                        if (defExpr) {
+                            int hasValJump = chunk()->emitJump(OpCode::OP_JUMP_IF_TRUE, lastLine);
+                            emit(OpCode::OP_POP, lastLine); // pop false
+                            emit(OpCode::OP_POP, lastLine); // pop none
+                            compileNode(defExpr);
+                            int endDefJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+
+                            chunk()->patchJump(hasValJump);
+                            emit(OpCode::OP_POP, lastLine); // pop true
+
+                            chunk()->patchJump(endDefJump);
+                        } else {
+                            failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+                            emit(OpCode::OP_POP, lastLine); // pop true
+                        }
+
                         addLocal("<pat_tmp>", current().scopeDepth);
                         int tmpSlot = static_cast<int>(current().locals.size()) - 1;
                         emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
                         emit(OpCode::OP_POP, lastLine);
                         
-                        compilePatternMatch(e.get(), tmpSlot, failJumps, isConst);
+                        compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
                         current().locals.pop_back();
                     }
                 }
@@ -2528,7 +2627,7 @@ namespace jc {
                 }
                 emit(OpCode::OP_POP, lastLine);
             }
-        } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+        } else if (auto* dictPat = dynamic_cast<DictPattern*>(p)) {
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("dict"), lastLine);
             
@@ -2543,50 +2642,78 @@ namespace jc {
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
 
-            for (auto& entry : dp->entries) {
+            for (auto& entry : dictPat->entries) {
+                Pattern* actualPat = entry.second.get();
+                Expr* defExpr = nullptr;
+                if (auto* dp_inner = dynamic_cast<DefaultPattern*>(actualPat)) {
+                    actualPat = dp_inner->inner.get();
+                    defExpr = dp_inner->defaultExpr.get();
+                }
+
                 emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                 emit(OpCode::OP_TRY_GET_PROPERTY, lastLine); emit16(identifierConstant(entry.first), lastLine);
                 emit16(chunk()->addInlineCache(), lastLine);
                 
-                int failJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
-                
-                // Success path:
-                emit(OpCode::OP_POP, lastLine); // pop true
-                addLocal("<pat_tmp>", current().scopeDepth);
-                int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
-                emit(OpCode::OP_POP, lastLine); // pop the value
-                
-                compilePatternMatch(entry.second.get(), tmpSlot, failJumps, isConst);
-                current().locals.pop_back();
-                
-                int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                
-                // Fail path:
-                chunk()->patchJump(failJump);
-                emit(OpCode::OP_POP, lastLine); // pop false
-                emit(OpCode::OP_POP, lastLine); // pop none
-                emit(OpCode::OP_FALSE, lastLine); // push false for the outer failJumps handler
-                failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
-                
-                chunk()->patchJump(endJump);
+                if (defExpr) {
+                    int hasValJump = chunk()->emitJump(OpCode::OP_JUMP_IF_TRUE, lastLine);
+                    emit(OpCode::OP_POP, lastLine); // pop false
+                    emit(OpCode::OP_POP, lastLine); // pop none
+                    compileNode(defExpr);
+                    int endDefJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                    
+                    chunk()->patchJump(hasValJump);
+                    emit(OpCode::OP_POP, lastLine); // pop true
+                    
+                    chunk()->patchJump(endDefJump);
+                    
+                    addLocal("<pat_tmp>", current().scopeDepth);
+                    int tmpSlot = static_cast<int>(current().locals.size()) - 1;
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                    emit(OpCode::OP_POP, lastLine);
+                    
+                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
+                    current().locals.pop_back();
+                } else {
+                    int failJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+                    
+                    // Success path:
+                    emit(OpCode::OP_POP, lastLine); // pop true
+                    addLocal("<pat_tmp>", current().scopeDepth);
+                    int tmpSlot = static_cast<int>(current().locals.size()) - 1;
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                    emit(OpCode::OP_POP, lastLine); // pop the value
+                    
+                    compilePatternMatch(actualPat, tmpSlot, failJumps, isConst);
+                    current().locals.pop_back();
+                    
+                    int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+                    
+                    // Fail path:
+                    chunk()->patchJump(failJump);
+                    emit(OpCode::OP_POP, lastLine); // pop false
+                    emit(OpCode::OP_POP, lastLine); // pop none
+                    emit(OpCode::OP_FALSE, lastLine); // push false for the outer failJumps handler
+                    failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
+                    
+                    chunk()->patchJump(endJump);
+                }
             }
 
-            if (dp->rest && dp->rest->name.lexeme != "_") {
+            if (dictPat->rest && dictPat->rest->name.lexeme != "_") {
                 emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                for (auto& entry : dp->entries) {
+                for (auto& entry : dictPat->entries) {
                     emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
                 }
                 emit(OpCode::OP_DICT_REST, lastLine);
-                emit16(static_cast<uint16_t>(dp->entries.size()), lastLine);
+                emit16(static_cast<uint16_t>(dictPat->entries.size()), lastLine);
                 
                 bool isExplicitState = false;
-                auto it = current().captures.find(dp->rest->name.lexeme);
+                auto it = current().captures.find(dictPat->rest->name.lexeme);
                 if (it != current().captures.end() && it->second.type == CaptureType::State && it->second.isExplicitState) {
                     isExplicitState = true;
                 }
-                if (dp->rest->modifier == ScopeModifier::State || isExplicitState) {
-                    int upvalue = resolveUpvalue(dp->rest->name.lexeme);
+                if (dictPat->rest->modifier == ScopeModifier::State || isExplicitState) {
+                    int upvalue = resolveUpvalue(dictPat->rest->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
                         emit16(static_cast<uint16_t>(upvalue), lastLine);
@@ -2601,8 +2728,8 @@ namespace jc {
                         chunk()->patchJump(endJump);
                     }
                 } else {
-                    Variable v(dp->rest->name);
-                    emitStoreTarget(&v, isConst || dp->rest->isConst);
+                    Variable v(dictPat->rest->name);
+                    emitStoreTarget(&v, isConst || dictPat->rest->isConst);
                 }
                 emit(OpCode::OP_POP, lastLine);
             }

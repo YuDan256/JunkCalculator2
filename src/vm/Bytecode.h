@@ -61,6 +61,7 @@ namespace jc {
         // 跳转
         OP_JUMP,            // 无条件跳转 [offset:16bit]
         OP_JUMP_IF_FALSE,   // 条件跳转 [offset:16bit]
+        OP_JUMP_IF_TRUE,    // 条件跳转 [offset:16bit]
         OP_LOOP,            // 回跳 [offset:16bit]
 
         // 函数
@@ -190,6 +191,7 @@ namespace jc {
         case OpCode::OP_SET_LOCAL: return "OP_SET_LOCAL";
         case OpCode::OP_JUMP: return "OP_JUMP";
         case OpCode::OP_JUMP_IF_FALSE: return "OP_JUMP_IF_FALSE";
+        case OpCode::OP_JUMP_IF_TRUE: return "OP_JUMP_IF_TRUE";
         case OpCode::OP_LOOP: return "OP_LOOP";
         case OpCode::OP_CALL: return "OP_CALL";
         case OpCode::OP_RETURN: return "OP_RETURN";
@@ -470,6 +472,7 @@ namespace jc {
             }
             case OpCode::OP_JUMP:
             case OpCode::OP_JUMP_IF_FALSE:
+            case OpCode::OP_JUMP_IF_TRUE:
             case OpCode::OP_ITER_NEXT: {
                 uint16_t jump = read16(offset + 1);
                 std::cout << "-> " << (offset + 3 + jump) << std::endl;

@@ -1007,6 +1007,11 @@ namespace jc {
                     if (!peek(0).truthy()) currentFrame->ip += offset;
                     break;
                 }
+                case OpCode::OP_JUMP_IF_TRUE: {
+                    uint16_t offset = readShort();
+                    if (peek(0).truthy()) currentFrame->ip += offset;
+                    break;
+                }
                 case OpCode::OP_LOOP: {
                     uint16_t offset = readShort();
                     currentFrame->ip -= offset;

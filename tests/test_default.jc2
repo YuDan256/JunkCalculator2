@@ -1,0 +1,79 @@
+// ============================================================================
+// JC2 Destructuring Default Values Test Suite
+// ============================================================================
+
+println("Running Destructuring Default Values Tests...")
+
+// ---------------------------------------------------------
+// 1. Dict Destructuring Defaults
+// ---------------------------------------------------------
+{a, b = 20, c: d = 30} = {a: 10}
+assert(a == 10 && b == 20 && d == 30, "Dict Default Failed")
+
+{x = 99, y = 88} = {x: 1, y: 88}
+assert(x == 1 && y == 88, "Dict Default (Existing Key) Failed")
+
+// ---------------------------------------------------------
+// 2. List Destructuring Defaults
+// ---------------------------------------------------------
+[l1, l2 = 2, l3 = 3] = [10]
+assert(l1 == 10 && l2 == 2 && l3 == 3, "List Default Failed")
+
+[l4 = 4, l5 = 5] = [40, 50]
+assert(l4 == 40 && l5 == 50, "List Default (Existing Index) Failed")
+
+// ---------------------------------------------------------
+// 3. Matrix Destructuring Defaults
+// ---------------------------------------------------------
+[
+  m1,     m2 = 2;
+  m3 = 3, m4 = 4
+] = [10]
+assert(m1 == 10 && m2 == 2 && m3 == 3 && m4 == 4, "Matrix Default Failed")
+
+// ---------------------------------------------------------
+// 4. Lazy Evaluation (Short-circuit) Test
+// ---------------------------------------------------------
+side_effect_count = 0
+get_default() = {
+    ref side_effect_count += 1
+    return 999
+}
+
+// Key exists, default should NOT be evaluated
+{val1 = get_default()} = {val1: 1}
+assert(val1 == 1 && side_effect_count == 0, "Lazy Eval (Dict Existing) Failed")
+
+// Key missing, default SHOULD be evaluated
+{val2 = get_default()} = {}
+assert(val2 == 999 && side_effect_count == 1, "Lazy Eval (Dict Missing) Failed")
+
+// Index exists, default should NOT be evaluated
+[val3 = get_default()] = [1]
+assert(val3 == 1 && side_effect_count == 1, "Lazy Eval (List Existing) Failed")
+
+// Index missing, default SHOULD be evaluated
+[val4, val5 = get_default()] = [1]
+assert(val5 == 999 && side_effect_count == 2, "Lazy Eval (List Missing) Failed")
+
+// ---------------------------------------------------------
+// 5. Modifiers with Defaults
+// ---------------------------------------------------------
+test_modifiers() = {
+    outer_var = 0
+    [local ma = 10, ref outer_var = 20, const mc = 30] = []
+    return @[ma, outer_var, mc]
+}
+res = test_modifiers()
+assert(res[0] == 10 && res[1] == 20 && res[2] == 30, "Modifiers with Defaults Failed")
+
+// ---------------------------------------------------------
+// 6. Nested Destructuring Defaults
+// ---------------------------------------------------------
+[[na, nb = 2] = [1], nc = 3] = []
+assert(na == 1 && nb == 2 && nc == 3, "Nested Destructuring Defaults Failed")
+
+{nested: {nx, ny = 20} = {nx: 10}} = {}
+assert(nx == 10 && ny == 20, "Nested Dict Destructuring Defaults Failed")
+
+println("All Destructuring Default Values Tests Passed Successfully! 🎉")

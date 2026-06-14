@@ -2975,7 +2975,8 @@ namespace jc {
     }
 
     void Compiler::visitDictLiteral(DictLiteral* expr) {
-        for (auto& [keyExpr, valExpr] : expr->entries) {
+        for (size_t i = 0; i < expr->entries.size(); ++i) {
+            auto& [keyExpr, valExpr] = expr->entries[i];
             if (!keyExpr) {
                 throw std::runtime_error("Compiler Error: Dictionary spread ('...') is not supported in normal dictionary literals.");
             }

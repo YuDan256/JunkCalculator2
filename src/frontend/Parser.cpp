@@ -219,20 +219,21 @@ namespace jc {
                                 continue;
                             }
 
-                            // 2. 字典解构参数 {a, b}
-                            if (check(TokenType::LBRACE)) {
-                                if (isParamRef) throw std::runtime_error("Destructured dict cannot be ref.");
-                                auto dictNode = parseDictLiteral();
+                            // 2. 解构参数 {a, b} 或 [a, b]
+                            if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                                if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                                bool isDict = check(TokenType::LBRACE);
+                                auto patNode = parsePattern();
 
-                                std::string phName = "<param_dict>_" + std::to_string(destructCounter++);
+                                std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
                                 Token phTok(TokenType::IDENTIFIER, phName, funcName.line);
                                 params.push_back(phTok);
                                 paramIsRef.push_back(false);
-                                paramTypes.push_back("dict"); // ★ 自动加上硬性字典类型约束！
+                                paramTypes.push_back(isDict ? "dict" : "list"); // ★ 自动加上硬性类型约束！
                                 defaultExprs.push_back(nullptr);
 
                                 auto rhs = std::make_unique<Variable>(phTok);
-                                destructStmts.push_back(std::make_unique<DestructAssign>(exprToPattern(std::move(dictNode)), std::move(rhs)));
+                                destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
                                 continue;
                             }
 
@@ -295,6 +296,27 @@ namespace jc {
 
                     return std::make_unique<Assign>(funcName, std::move(lambda), isRef, isState, isLocal, isConst);
                 }
+            }
+        }
+
+        // ★ 新增：直接拦截解构赋值！彻底分离 Pattern 和 Expr 的解析！
+        if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
+            int peekPos = current;
+            int depth = 0;
+            while (peekPos < static_cast<int>(tokens.size())) {
+                TokenType t = tokens[peekPos].type;
+                if (t == TokenType::LBRACKET || t == TokenType::LBRACE || t == TokenType::LPAREN) depth++;
+                else if (t == TokenType::RBRACKET || t == TokenType::RBRACE || t == TokenType::RPAREN) depth--;
+                peekPos++;
+                if (depth == 0) break;
+            }
+            while (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::NEWLINE) peekPos++;
+            if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::ASSIGN) {
+                // 确认是解构赋值，直接解析为纯正的 Pattern！
+                auto pat = parsePattern();
+                consume(TokenType::ASSIGN, "Parser Error: Expect '=' after destructuring pattern.");
+                auto value = assignment();
+                return std::make_unique<DestructAssign>(std::move(pat), std::move(value), isRef, isState, isLocal, isConst);
             }
         }
 
@@ -369,10 +391,6 @@ namespace jc {
                 else {
                     return std::make_unique<IndexAssign>(std::move(currentIA->object), std::move(chain), std::move(value));
                 }
-            }
-
-            if (dynamic_cast<MatrixNode*>(expr.get()) || dynamic_cast<DictLiteral*>(expr.get())) {
-                return std::make_unique<DestructAssign>(exprToPattern(std::move(expr)), std::move(value), isRef, isState, isLocal, isConst);
             }
 
             if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {
@@ -722,6 +740,9 @@ namespace jc {
             int scanPos = peekPos;
             bool foundColon = false;
             bool foundSemicolon = false;
+            bool foundComma = false;
+            bool foundNewline = false;
+            bool foundAssign = false; // ★ 新增
 
             // 深度扫描，跳过嵌套的 [], {}, ()
             while (scanPos < static_cast<int>(tokens.size())) {
@@ -739,34 +760,33 @@ namespace jc {
                             ternaryDepth--;
                         } else {
                             foundColon = true;
-                            break;
                         }
                     } else if (t == TokenType::SEMICOLON) {
                         foundSemicolon = true;
-                        break;
+                    } else if (t == TokenType::COMMA) {
+                        foundComma = true;
+                    } else if (t == TokenType::NEWLINE) {
+                        foundNewline = true;
+                    } else if (t == TokenType::ASSIGN) { // ★ 嗅探 =
+                        foundAssign = true;
                     }
                 }
                 scanPos++;
             }
 
+            // ★ 移除 isDestructLValue 的逻辑，因为解构赋值在 assignment() 中处理
             if (foundColon) {
                 isDict = true;
             } else if (foundSemicolon) {
                 isDict = false;
-            } else {
-                // 最低优先级：简写字典推断
-                if (peekPos < static_cast<int>(tokens.size())) {
-                    if (tokens[peekPos].type == TokenType::RBRACE) {
-                        isDict = true;
-                    } else if (tokens[peekPos].type == TokenType::IDENTIFIER) {
-                        int afterId = peekPos + 1;
-                        while (afterId < static_cast<int>(tokens.size()) && tokens[afterId].type == TokenType::NEWLINE) afterId++;
-                        if (afterId < static_cast<int>(tokens.size()) && 
-                            (tokens[afterId].type == TokenType::RBRACE || tokens[afterId].type == TokenType::COMMA)) {
-                            isDict = true;
-                        }
-                    }
-                }
+            } else if (foundComma) {
+                isDict = true;
+            } else if (foundNewline) {
+                isDict = false;
+            } else if (foundAssign) { // ★ {a = 10} 作为 Block
+                isDict = false;
+            } else { // 单行无逗号无冒号无等号 （如 {a}），优先作为字典简写
+                isDict = true;
             }
 
             // 如果它是字典，必须让 expression() 层级去调用 primary() 将其当做右值解析！
@@ -1003,6 +1023,9 @@ namespace jc {
             int scanPos = peekPos;
             bool foundColon = false;
             bool foundSemicolon = false;
+            bool foundComma = false;
+            bool foundNewline = false;
+            bool foundAssign = false; // ★ 新增
 
             // 深度扫描，跳过嵌套的 [], {}, ()
             while (scanPos < static_cast<int>(tokens.size())) {
@@ -1020,34 +1043,33 @@ namespace jc {
                             ternaryDepth--;
                         } else {
                             foundColon = true;
-                            break;
                         }
                     } else if (t == TokenType::SEMICOLON) {
                         foundSemicolon = true;
-                        break;
+                    } else if (t == TokenType::COMMA) {
+                        foundComma = true;
+                    } else if (t == TokenType::NEWLINE) {
+                        foundNewline = true;
+                    } else if (t == TokenType::ASSIGN) { // ★ 嗅探 =
+                        foundAssign = true;
                     }
                 }
                 scanPos++;
             }
 
+            // ★ 移除 isDestructLValue 的逻辑，因为解构赋值在 assignment() 中处理
             if (foundColon) {
                 isDict = true;
             } else if (foundSemicolon) {
                 isDict = false;
-            } else {
-                // 最低优先级：简写字典推断
-                if (peekPos < static_cast<int>(tokens.size())) {
-                    if (tokens[peekPos].type == TokenType::RBRACE) {
-                        isDict = true;
-                    } else if (tokens[peekPos].type == TokenType::IDENTIFIER) {
-                        int afterId = peekPos + 1;
-                        while (afterId < static_cast<int>(tokens.size()) && tokens[afterId].type == TokenType::NEWLINE) afterId++;
-                        if (afterId < static_cast<int>(tokens.size()) && 
-                            (tokens[afterId].type == TokenType::RBRACE || tokens[afterId].type == TokenType::COMMA)) {
-                            isDict = true;
-                        }
-                    }
-                }
+            } else if (foundComma) {
+                isDict = true;
+            } else if (foundNewline) {
+                isDict = false;
+            } else if (foundAssign) { // ★ {a = 10} 作为 Block
+                isDict = false;
+            } else { // 单行无逗号无冒号无等号 （如 {a}），优先作为字典简写
+                isDict = true;
             }
 
             if (isDict) {
@@ -1289,139 +1311,6 @@ namespace jc {
         return std::make_unique<SwitchExpr>(std::move(subject), std::move(cases), std::move(defaultBody));
     }
 
-    std::unique_ptr<Pattern> Parser::exprToPattern(std::unique_ptr<Expr> expr) {
-        if (auto* group = dynamic_cast<GroupingExpr*>(expr.get())) {
-            return std::make_unique<DynamicAssertPattern>(std::move(group->expression));
-        }
-        if (auto* setLit = dynamic_cast<SetLiteral*>(expr.get())) {
-            return std::make_unique<DynamicAssertPattern>(std::move(expr));
-        }
-        if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
-            ScopeModifier mod = ScopeModifier::None;
-            if (assign->isLocal) mod = ScopeModifier::Local;
-            else if (assign->isRef) mod = ScopeModifier::Ref;
-            else if (assign->isState) mod = ScopeModifier::State;
-            auto innerPat = std::make_unique<VariablePattern>(assign->name, mod, assign->isConst);
-            return std::make_unique<DefaultPattern>(std::move(innerPat), std::move(assign->value));
-        }
-        if (auto* destAssign = dynamic_cast<DestructAssign*>(expr.get())) {
-            return std::make_unique<DefaultPattern>(std::move(destAssign->pattern), std::move(destAssign->value));
-        }
-        if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-            return std::make_unique<VariablePattern>(var->name);
-        }
-        if (auto* loc = dynamic_cast<LocalDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(loc->name, ScopeModifier::Local, loc->isConst);
-        }
-        if (auto* ref = dynamic_cast<RefDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(ref->name, ScopeModifier::Ref, ref->isConst);
-        }
-        if (auto* st = dynamic_cast<StateDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(st->name, ScopeModifier::State, st->isConst);
-        }
-        if (auto* cd = dynamic_cast<ConstDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(cd->name, ScopeModifier::None, true);
-        }
-        if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
-            return std::make_unique<ExprPattern>(std::move(expr));
-        }
-        if (auto* un = dynamic_cast<Unary*>(expr.get())) {
-            if (un->op.type == TokenType::ELLIPSIS) {
-                if (auto* var = dynamic_cast<Variable*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(var->name);
-                }
-                if (auto* loc = dynamic_cast<LocalDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(loc->name, ScopeModifier::Local, loc->isConst);
-                }
-                if (auto* ref = dynamic_cast<RefDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(ref->name, ScopeModifier::Ref, ref->isConst);
-                }
-                if (auto* st = dynamic_cast<StateDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(st->name, ScopeModifier::State, st->isConst);
-                }
-                if (auto* cd = dynamic_cast<ConstDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(cd->name, ScopeModifier::None, true);
-                }
-                throw std::runtime_error("Parser Error: Invalid rest pattern target.");
-            }
-        }
-        if (auto* mat = dynamic_cast<MatrixNode*>(expr.get())) {
-            std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
-            std::unique_ptr<RestPattern> restRow = nullptr;
-            bool isMatrix = mat->elements.size() > 1;
-
-            for (size_t i = 0; i < mat->elements.size(); ++i) {
-                std::vector<std::unique_ptr<Pattern>> currentRow;
-                std::unique_ptr<RestPattern> restCol = nullptr;
-
-                for (size_t j = 0; j < mat->elements[i].size(); ++j) {
-                    auto pat = exprToPattern(std::move(mat->elements[i][j]));
-                    if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
-                        if (isMatrix && i == mat->elements.size() - 1 && mat->elements[i].size() == 1) {
-                            restRow = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
-                        } else if (j == mat->elements[i].size() - 1) {
-                            bool hasRest = false;
-                            for (const auto& p : currentRow) {
-                                if (dynamic_cast<RestPattern*>(p.get())) hasRest = true;
-                            }
-                            if (hasRest || restCol) throw std::runtime_error("Parser Error: Multiple rest patterns in a single row.");
-                            restCol = std::unique_ptr<RestPattern>(static_cast<RestPattern*>(pat.release()));
-                        } else {
-                            bool hasRest = false;
-                            for (const auto& p : currentRow) {
-                                if (dynamic_cast<RestPattern*>(p.get())) hasRest = true;
-                            }
-                            if (hasRest) throw std::runtime_error("Parser Error: Multiple rest patterns in a single row.");
-                            currentRow.push_back(std::move(pat));
-                        }
-                    } else {
-                        currentRow.push_back(std::move(pat));
-                    }
-                }
-                if (restRow) break;
-                
-                if (isMatrix && restCol) {
-                    currentRow.push_back(std::move(restCol));
-                    restCol = nullptr;
-                }
-                
-                if (!isMatrix) {
-                    return std::make_unique<ListPattern>(std::move(currentRow), std::move(restCol));
-                }
-                rows.push_back(std::move(currentRow));
-            }
-            return std::make_unique<MatrixPattern>(std::move(rows), std::move(restRow));
-        }
-        if (auto* dict = dynamic_cast<DictLiteral*>(expr.get())) {
-            std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries;
-            std::unique_ptr<RestPattern> rest = nullptr;
-
-            for (auto& entry : dict->entries) {
-                if (!entry.first) {
-                    auto pat = exprToPattern(std::move(entry.second));
-                    if (auto* rp = dynamic_cast<RestPattern*>(pat.get())) {
-                        if (rest) throw std::runtime_error("Parser Error: Multiple rest patterns in dict.");
-                        pat.release(); // 放弃所有权
-                        rest = std::unique_ptr<RestPattern>(rp); // 直接接管已经 cast 好的指针
-                    } else {
-                        throw std::runtime_error("Parser Error: Invalid rest pattern in dict.");
-                    }
-                } else {
-                    auto* litKey = dynamic_cast<Literal*>(entry.first.get());
-                    if (!litKey || !litKey->isString) throw std::runtime_error("Parser Error: Dict pattern keys must be strings.");
-                    
-                    auto pat = exprToPattern(std::move(entry.second));
-                    if (dynamic_cast<RestPattern*>(pat.get())) {
-                        throw std::runtime_error("Parser Error: Rest pattern must not have a key.");
-                    }
-                    entries.push_back({ litKey->value, std::move(pat) });
-                }
-            }
-            return std::make_unique<DictPattern>(std::move(entries), std::move(rest));
-        }
-        return std::make_unique<LiteralPattern>(std::move(expr));
-    }
-
     std::unique_ptr<Pattern> Parser::parsePrimaryPattern() {
         if (match({TokenType::LPAREN})) {
             auto expr = expression();
@@ -1637,6 +1526,9 @@ namespace jc {
             int scanPos = peekPos;
             bool foundColon = false;
             bool foundSemicolon = false;
+            bool foundComma = false;
+            bool foundNewline = false;
+            bool foundAssign = false; // ★ 新增
 
             while (scanPos < static_cast<int>(tokens.size())) {
                 TokenType t = tokens[scanPos].type;
@@ -1653,33 +1545,33 @@ namespace jc {
                             ternaryDepth--;
                         } else {
                             foundColon = true;
-                            break;
                         }
                     } else if (t == TokenType::SEMICOLON) {
                         foundSemicolon = true;
-                        break;
+                    } else if (t == TokenType::COMMA) {
+                        foundComma = true;
+                    } else if (t == TokenType::NEWLINE) {
+                        foundNewline = true;
+                    } else if (t == TokenType::ASSIGN) { // ★ 嗅探 =
+                        foundAssign = true;
                     }
                 }
                 scanPos++;
             }
 
+            // ★ 移除 isDestructLValue 的逻辑，因为解构赋值在 assignment() 中处理
             if (foundColon) {
                 isDict = true;
             } else if (foundSemicolon) {
                 isDict = false;
-            } else {
-                if (peekPos < static_cast<int>(tokens.size())) {
-                    if (tokens[peekPos].type == TokenType::RBRACE) {
-                        isDict = true;
-                    } else if (tokens[peekPos].type == TokenType::IDENTIFIER) {
-                        int afterId = peekPos + 1;
-                        while (afterId < static_cast<int>(tokens.size()) && tokens[afterId].type == TokenType::NEWLINE) afterId++;
-                        if (afterId < static_cast<int>(tokens.size()) && 
-                            (tokens[afterId].type == TokenType::RBRACE || tokens[afterId].type == TokenType::COMMA)) {
-                            isDict = true;
-                        }
-                    }
-                }
+            } else if (foundComma) {
+                isDict = true;
+            } else if (foundNewline) {
+                isDict = false;
+            } else if (foundAssign) { // ★ {a = 10} 作为 Block
+                isDict = false;
+            } else { // 单行无逗号无冒号无等号 （如 {a}），优先作为字典简写
+                isDict = true;
             }
 
             if (!isDict) {
@@ -2020,6 +1912,7 @@ namespace jc {
 
             // 1. 尝试将第一个元素当成可能的标识符或常数提取出来
             int savedPos = current;
+            
             bool isSimpleId = check(TokenType::IDENTIFIER);
             Token maybeIdTok = peek(); // 暂存这个可能的名字
             

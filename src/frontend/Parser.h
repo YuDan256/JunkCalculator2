@@ -52,7 +52,6 @@ namespace jc {
         std::unique_ptr<Expr> pipe();
         std::unique_ptr<Expr> parseDictLiteral();  // ★
         std::unique_ptr<Expr> parseSetLiteral();   // ★ 新增
-        std::unique_ptr<Pattern> exprToPattern(std::unique_ptr<Expr> expr); // ★ 新增
 
         // --- 游标工具 ---
         inline bool match(std::initializer_list<TokenType> types) { for (auto t : types) if (check(t)) { advance(); return true; } return false; }

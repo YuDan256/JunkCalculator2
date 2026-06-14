@@ -149,4 +149,14 @@ assert(shape_err3, "Strict Shape Mismatch (2D vs 1D) Failed")
 [] = []
 assert(true, "Empty Matrix Destructuring Failed")
 
+// ---------------------------------------------------------
+// 13. Block vs Dict Ambiguity
+// ---------------------------------------------------------
+block_res = {
+    a = 10
+    b = 20
+    a + b
+}
+assert(block_res == 30, "Block vs Dict Ambiguity Failed")
+
 println("All Destructuring Tests Passed Successfully! 🎉")

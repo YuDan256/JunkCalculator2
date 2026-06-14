@@ -231,7 +231,9 @@ namespace jc {
     struct LocalDecl : public Expr {
         Token name;
         bool isConst;
-        explicit LocalDecl(Token name, bool isConst = false) : name(std::move(name)), isConst(isConst) {}
+        bool isExplicitLocal;
+        explicit LocalDecl(Token name, bool isConst = false, bool isExplicitLocal = true) 
+            : name(std::move(name)), isConst(isConst), isExplicitLocal(isExplicitLocal) {}
         void accept(ExprVisitor& visitor) override { visitor.visitLocalDecl(this); }
     };
 

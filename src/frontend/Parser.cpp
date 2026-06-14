@@ -386,7 +386,7 @@ namespace jc {
 
         if (isLocal || isRef || isState || isConst) {
             if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-                if (isLocal || (isConst && !isRef && !isState)) expr = std::make_unique<LocalDecl>(var->name, isConst);
+                if (isLocal || (isConst && !isRef && !isState)) expr = std::make_unique<LocalDecl>(var->name, isConst, isLocal);
                 else if (isRef) expr = std::make_unique<RefDecl>(var->name, isConst);
                 else expr = std::make_unique<StateDecl>(var->name, isConst);
             } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
@@ -397,7 +397,7 @@ namespace jc {
             } else if (auto* un = dynamic_cast<Unary*>(expr.get())) {
                 if (un->op.type == TokenType::ELLIPSIS) {
                     if (auto* restVar = dynamic_cast<Variable*>(un->right.get())) {
-                        if (isLocal || (isConst && !isRef && !isState)) un->right = std::make_unique<LocalDecl>(restVar->name, isConst);
+                        if (isLocal || (isConst && !isRef && !isState)) un->right = std::make_unique<LocalDecl>(restVar->name, isConst, isLocal);
                         else if (isRef) un->right = std::make_unique<RefDecl>(restVar->name, isConst);
                         else un->right = std::make_unique<StateDecl>(restVar->name, isConst);
                     } else {
@@ -1298,7 +1298,7 @@ namespace jc {
             return std::make_unique<VariablePattern>(var->name);
         }
         if (auto* loc = dynamic_cast<LocalDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(loc->name, ScopeModifier::Local, loc->isConst);
+            return std::make_unique<VariablePattern>(loc->name, loc->isExplicitLocal ? ScopeModifier::Local : ScopeModifier::None, loc->isConst);
         }
         if (auto* ref = dynamic_cast<RefDecl*>(expr.get())) {
             return std::make_unique<VariablePattern>(ref->name, ScopeModifier::Ref, ref->isConst);
@@ -1315,7 +1315,7 @@ namespace jc {
                     return std::make_unique<RestPattern>(var->name);
                 }
                 if (auto* loc = dynamic_cast<LocalDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(loc->name, ScopeModifier::Local, loc->isConst);
+                    return std::make_unique<RestPattern>(loc->name, loc->isExplicitLocal ? ScopeModifier::Local : ScopeModifier::None, loc->isConst);
                 }
                 if (auto* ref = dynamic_cast<RefDecl*>(un->right.get())) {
                     return std::make_unique<RestPattern>(ref->name, ScopeModifier::Ref, ref->isConst);

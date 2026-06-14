@@ -2251,7 +2251,8 @@ namespace jc {
 
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
-            emit16(1, lastLine);
+            emit16(1, lastLine); // minRows
+            emit16(1, lastLine); // maxRows
             emit16(static_cast<uint16_t>(minCols), lastLine);
             emit16(static_cast<uint16_t>(maxCols), lastLine);
             emit(exactMask, lastLine);
@@ -2460,12 +2461,26 @@ namespace jc {
                 }
             }
 
+            int minRows = 0;
+            for (int r = 0; r < rows; ++r) {
+                bool hasRequired = false;
+                for (const auto& e : mp->rows[r]) {
+                    if (!dynamic_cast<DefaultPattern*>(e.get()) && !dynamic_cast<RestPattern*>(e.get())) {
+                        hasRequired = true;
+                        break;
+                    }
+                }
+                if (hasRequired) minRows = r + 1;
+            }
+
+            int maxRows = mp->restRow ? 0xFFFF : rows;
+
             uint8_t exactMask = 0;
-            if (!mp->restRow) exactMask |= 1; // exactRows
             
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
-            emit16(static_cast<uint16_t>(rows), lastLine);
+            emit16(static_cast<uint16_t>(minRows), lastLine);
+            emit16(static_cast<uint16_t>(maxRows), lastLine);
             emit16(static_cast<uint16_t>(minCols), lastLine);
             emit16(static_cast<uint16_t>(maxCols), lastLine);
             emit(exactMask, lastLine);

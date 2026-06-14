@@ -64,8 +64,13 @@ namespace jc {
     {
         for (int i = 0; i < paramCount; ++i) {
             if (i < static_cast<int>(defaultExprs.size()) && defaultExprs[i]) {
-                emit(OpCode::OP_GET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(i), lastLine);
+                if (current().locals[i].isRefParam) {
+                    emit(OpCode::OP_GET_REF_PARAM, lastLine);
+                    emit16(static_cast<uint16_t>(current().locals[i].refParamIndex), lastLine);
+                } else {
+                    emit(OpCode::OP_GET_LOCAL, lastLine);
+                    emit16(static_cast<uint16_t>(i), lastLine);
+                }
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_EQUAL, lastLine);
 
@@ -73,8 +78,13 @@ namespace jc {
                 emit(OpCode::OP_POP, lastLine);
 
                 compileNode(defaultExprs[i].get());
-                emit(OpCode::OP_SET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(i), lastLine);
+                if (current().locals[i].isRefParam) {
+                    emit(OpCode::OP_SET_REF_PARAM, lastLine);
+                    emit16(static_cast<uint16_t>(current().locals[i].refParamIndex), lastLine);
+                } else {
+                    emit(OpCode::OP_SET_LOCAL, lastLine);
+                    emit16(static_cast<uint16_t>(i), lastLine);
+                }
                 emit(OpCode::OP_POP, lastLine);
 
                 int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -91,8 +101,13 @@ namespace jc {
             int slot = resolveLocal(name);
 
             if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                emit(OpCode::OP_SET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(slot), lastLine);
+                if (current().locals[slot].isRefParam) {
+                    emit(OpCode::OP_SET_REF_PARAM, lastLine);
+                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                } else {
+                    emit(OpCode::OP_SET_LOCAL, lastLine);
+                    emit16(static_cast<uint16_t>(slot), lastLine);
+                }
             }
             else {
                 int upvalue = resolveUpvalue(name);
@@ -426,8 +441,13 @@ namespace jc {
         const std::string& name = expr->name.lexeme;
         int slot = resolveLocal(name);
         if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-            emit(OpCode::OP_GET_LOCAL, expr->name.line);
-            emit16(static_cast<uint16_t>(slot), expr->name.line);
+            if (current().locals[slot].isRefParam) {
+                emit(OpCode::OP_GET_REF_PARAM, expr->name.line);
+                emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), expr->name.line);
+            } else {
+                emit(OpCode::OP_GET_LOCAL, expr->name.line);
+                emit16(static_cast<uint16_t>(slot), expr->name.line);
+            }
         }
         else {
             int upvalue = resolveUpvalue(name);
@@ -542,8 +562,13 @@ namespace jc {
         }
 
         if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-            emit(OpCode::OP_SET_LOCAL, expr->name.line);
-            emit16(static_cast<uint16_t>(slot), expr->name.line);
+            if (current().locals[slot].isRefParam) {
+                emit(OpCode::OP_SET_REF_PARAM, expr->name.line);
+                emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), expr->name.line);
+            } else {
+                emit(OpCode::OP_SET_LOCAL, expr->name.line);
+                emit16(static_cast<uint16_t>(slot), expr->name.line);
+            }
         }
         else {
             if (upvalue == -1) upvalue = resolveUpvalue(name);
@@ -857,7 +882,11 @@ namespace jc {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
                     int localSlot = resolveLocal(varExpr->name.lexeme);
                     if (localSlot != -1) {
-                        sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                        if (current().locals[localSlot].isRefParam) {
+                            sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint16_t>(current().locals[localSlot].refParamIndex) });
+                        } else {
+                            sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                        }
                     }
                     else {
                         int uv = resolveUpvalue(varExpr->name.lexeme);
@@ -875,6 +904,16 @@ namespace jc {
 
         bool actualTailCall = inTailPosition && sources.empty();
 
+        if (!sources.empty()) {
+            emit(OpCode::OP_PASS_REFS, expr->callee.line);
+            emit(static_cast<uint8_t>(sources.size()), expr->callee.line);
+            for (auto& s : sources) {
+                emit(s.argIndex, expr->callee.line);
+                emit(s.sourceType, expr->callee.line);
+                emit16(s.sourceRef, expr->callee.line);
+            }
+        }
+
         if (actualTailCall) {
             emit(OpCode::OP_TAIL_CALL, expr->callee.line);
             emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
@@ -882,16 +921,6 @@ namespace jc {
         } else {
             emit(OpCode::OP_CALL, expr->callee.line);
             emit(static_cast<uint8_t>(expr->arguments.size()), expr->callee.line);
-        }
-
-        if (!sources.empty()) {
-            emit(OpCode::OP_REF_WRITEBACK, expr->callee.line);
-            emit(static_cast<uint8_t>(sources.size()), expr->callee.line);
-            for (auto& s : sources) {
-                emit(s.argIndex, expr->callee.line);
-                emit(s.sourceType, expr->callee.line);
-                emit16(s.sourceRef, expr->callee.line);
-            }
         }
         return;
     }
@@ -1050,8 +1079,13 @@ namespace jc {
         initCompiler(fn.get());
         beginScope();
 
+        int refIdx = 0;
         for (size_t i = 0; i < expr->params.size(); ++i) {
             addLocal(expr->params[i].lexeme, current().scopeDepth);
+            if (expr->paramIsRef[i]) {
+                current().locals.back().isRefParam = true;
+                current().locals.back().refParamIndex = refIdx++;
+            }
         }
         fn->paramIsRef = expr->paramIsRef; // ★ Transfer ref info
         emitDefaultPreamble(expr->defaultExprs, fn->maxArity);
@@ -1060,7 +1094,13 @@ namespace jc {
         for (size_t i = 0; i < expr->params.size(); ++i) {
             if (i < expr->paramTypes.size() && !expr->paramTypes[i].empty()) {
                 int slot = resolveLocal(expr->params[i].lexeme);
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine);
+                if (current().locals[slot].isRefParam) {
+                    emit(OpCode::OP_GET_REF_PARAM, lastLine); 
+                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                } else {
+                    emit(OpCode::OP_GET_LOCAL, lastLine); 
+                    emit16(static_cast<uint16_t>(slot), lastLine);
+                }
 
                 uint16_t typeIdx = identifierConstant(expr->paramTypes[i]);
                 uint16_t nameIdx = identifierConstant(expr->params[i].lexeme);
@@ -1091,7 +1131,7 @@ namespace jc {
     }
 
     int Compiler::addUpvalue(int level, const std::string& name,
-        bool isLocal, int index, bool isRef, bool isGlobal, bool isExplicitState) {
+        bool isLocal, int index, bool isRef, bool isGlobal, bool isExplicitState, bool isRefParam) {
         auto* fn = stateStack[level].function;
         for (int j = 0; j < static_cast<int>(fn->upvalues.size()); ++j) {
             if (fn->upvalues[j].name == name && fn->upvalues[j].isExplicitState == isExplicitState) {
@@ -1100,7 +1140,7 @@ namespace jc {
                 return j;
             }
         }
-        fn->upvalues.push_back({ name, isLocal, index, isRef, isGlobal, isExplicitState });
+        fn->upvalues.push_back({ name, isLocal, index, isRef, isGlobal, isExplicitState, isRefParam });
         return static_cast<int>(fn->upvalues.size()) - 1;
     }
 
@@ -1115,7 +1155,11 @@ namespace jc {
         for (int i = static_cast<int>(enclosing.locals.size()) - 1; i >= 0; --i) {
             if (enclosing.locals[i].name == name) {
                 enclosing.locals[i].isCaptured = true; // ★ 标记为被捕获，防止其物理 slot 被复用
-                return addUpvalue(level, name, true, i, isRef, false);
+                if (enclosing.locals[i].isRefParam) {
+                    return addUpvalue(level, name, true, enclosing.locals[i].refParamIndex, isRef, false, false, true);
+                } else {
+                    return addUpvalue(level, name, true, i, isRef, false, false, false);
+                }
             }
         }
 
@@ -1293,8 +1337,13 @@ namespace jc {
 
             // 读取当前值
             if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                emit(OpCode::OP_GET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(slot), lastLine);
+                if (current().locals[slot].isRefParam) {
+                    emit(OpCode::OP_GET_REF_PARAM, lastLine);
+                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                } else {
+                    emit(OpCode::OP_GET_LOCAL, lastLine);
+                    emit16(static_cast<uint16_t>(slot), lastLine);
+                }
             }
             else {
                 if (upvalue == -1) upvalue = resolveUpvalue(name);
@@ -1313,8 +1362,13 @@ namespace jc {
             emitOp(expr->op);
 
             if (slot != -1 && current().refNames.count(name) == 0 && current().stateNames.count(name) == 0) {
-                emit(OpCode::OP_SET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(slot), lastLine);
+                if (current().locals[slot].isRefParam) {
+                    emit(OpCode::OP_SET_REF_PARAM, lastLine);
+                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                } else {
+                    emit(OpCode::OP_SET_LOCAL, lastLine);
+                    emit16(static_cast<uint16_t>(slot), lastLine);
+                }
             }
             else {
                 if (upvalue == -1) upvalue = resolveUpvalue(name);
@@ -1987,7 +2041,13 @@ namespace jc {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
                     int localSlot = resolveLocal(varExpr->name.lexeme);
-                    if (localSlot != -1) sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                    if (localSlot != -1) {
+                        if (current().locals[localSlot].isRefParam) {
+                            sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint16_t>(current().locals[localSlot].refParamIndex) });
+                        } else {
+                            sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                        }
+                    }
                     else {
                         int uv = resolveUpvalue(varExpr->name.lexeme);
                         if (uv != -1) sources.push_back({ static_cast<uint8_t>(i), 3, static_cast<uint16_t>(uv) });
@@ -1999,6 +2059,12 @@ namespace jc {
 
         bool actualTailCall = inTailPosition && sources.empty();
 
+        if (!sources.empty()) {
+            emit(OpCode::OP_PASS_REFS, lastLine);
+            emit(static_cast<uint8_t>(sources.size()), lastLine);
+            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
+        }
+
         if (actualTailCall) {
             emit(OpCode::OP_TAIL_CALL, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
@@ -2006,12 +2072,6 @@ namespace jc {
         } else {
             emit(OpCode::OP_CALL, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-        }
-
-        if (!sources.empty()) {
-            emit(OpCode::OP_REF_WRITEBACK, lastLine);
-            emit(static_cast<uint8_t>(sources.size()), lastLine);
-            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
         }
         return;
     }
@@ -2920,7 +2980,14 @@ namespace jc {
 
             initCompiler(fn.get());
             beginScope();
-            for (size_t i = 0; i < md.params.size(); ++i) addLocal(md.params[i].lexeme, current().scopeDepth);
+            int refIdx = 0;
+            for (size_t i = 0; i < md.params.size(); ++i) {
+                addLocal(md.params[i].lexeme, current().scopeDepth);
+                if (md.paramIsRef[i]) {
+                    current().locals.back().isRefParam = true;
+                    current().locals.back().refParamIndex = refIdx++;
+                }
+            }
             fn->paramIsRef = md.paramIsRef;
 
             emitDefaultPreamble(md.defaultExprs, fn->maxArity);
@@ -2929,8 +2996,13 @@ namespace jc {
             for (size_t i = 0; i < md.params.size(); ++i) {
                 if (i < md.paramTypes.size() && !md.paramTypes[i].empty()) {
                     int paramSlot = resolveLocal(md.params[i].lexeme);
-                    emit(OpCode::OP_GET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(paramSlot), lastLine);
+                    if (current().locals[paramSlot].isRefParam) {
+                        emit(OpCode::OP_GET_REF_PARAM, lastLine);
+                        emit16(static_cast<uint16_t>(current().locals[paramSlot].refParamIndex), lastLine);
+                    } else {
+                        emit(OpCode::OP_GET_LOCAL, lastLine);
+                        emit16(static_cast<uint16_t>(paramSlot), lastLine);
+                    }
 
                     uint16_t paramTypeIdx = identifierConstant(md.paramTypes[i]);
                     uint16_t paramNameIdx = identifierConstant(md.params[i].lexeme);
@@ -3016,7 +3088,13 @@ namespace jc {
                 for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                     if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
                         int localSlot = resolveLocal(varExpr->name.lexeme);
-                        if (localSlot != -1) sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                        if (localSlot != -1) {
+                            if (current().locals[localSlot].isRefParam) {
+                                sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint16_t>(current().locals[localSlot].refParamIndex) });
+                            } else {
+                                sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                            }
+                        }
                         else {
                             int uv = resolveUpvalue(varExpr->name.lexeme);
                             if (uv != -1) sources.push_back({ static_cast<uint8_t>(i), 3, static_cast<uint16_t>(uv) });
@@ -3028,6 +3106,12 @@ namespace jc {
 
             bool actualTailCall = inTailPosition && sources.empty();
 
+            if (!sources.empty()) {
+                emit(OpCode::OP_PASS_REFS, lastLine);
+                emit(static_cast<uint8_t>(sources.size()), lastLine);
+                for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
+            }
+
             if (actualTailCall) {
                 emit(OpCode::OP_TAIL_SUPER_INVOKE, lastLine);
                 emit16(nameIdx, lastLine);
@@ -3037,12 +3121,6 @@ namespace jc {
                 emit(OpCode::OP_SUPER_INVOKE, lastLine);
                 emit16(nameIdx, lastLine);
                 emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-            }
-
-            if (!sources.empty()) {
-                emit(OpCode::OP_REF_WRITEBACK, lastLine);
-                emit(static_cast<uint8_t>(sources.size()), lastLine);
-                for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
             }
             return;
         }
@@ -3063,7 +3141,13 @@ namespace jc {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
                     int localSlot = resolveLocal(varExpr->name.lexeme);
-                    if (localSlot != -1) sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                    if (localSlot != -1) {
+                        if (current().locals[localSlot].isRefParam) {
+                            sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint16_t>(current().locals[localSlot].refParamIndex) });
+                        } else {
+                            sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                        }
+                    }
                     else {
                         int uv = resolveUpvalue(varExpr->name.lexeme);
                         if (uv != -1) sources.push_back({ static_cast<uint8_t>(i), 3, static_cast<uint16_t>(uv) });
@@ -3074,6 +3158,12 @@ namespace jc {
         }
 
         bool actualTailCall = inTailPosition && sources.empty();
+
+        if (!sources.empty()) {
+            emit(OpCode::OP_PASS_REFS, lastLine);
+            emit(static_cast<uint8_t>(sources.size()), lastLine);
+            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
+        }
 
         if (actualTailCall) {
             emit(OpCode::OP_TAIL_INVOKE, lastLine);
@@ -3086,12 +3176,6 @@ namespace jc {
             emit16(nameIdx, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
             emit16(chunk()->addInlineCache(), lastLine);
-        }
-
-        if (!sources.empty()) {
-            emit(OpCode::OP_REF_WRITEBACK, lastLine);
-            emit(static_cast<uint8_t>(sources.size()), lastLine);
-            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
         }
         return;
     }

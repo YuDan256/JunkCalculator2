@@ -143,7 +143,9 @@ namespace jc {
         // 切片
         OP_SLICE_GET,       // 切片索引读取
         OP_SLICE_SET,
-        OP_REF_WRITEBACK,
+        OP_GET_REF_PARAM,   // [idx:16bit] ★ 新增
+        OP_SET_REF_PARAM,   // [idx:16bit] ★ 新增
+        OP_PASS_REFS,       // [count:8bit, (argIdx:8bit, type:8bit, ref:16bit)...] ★ 新增
 
         OP_ASSERT_PARAM_TYPE,   // 参数断言：[type_idx:16bit, name_idx:16bit]
         OP_ASSERT_RETURN_TYPE,  // 返回值断言：[type_idx:16bit]
@@ -232,7 +234,9 @@ namespace jc {
         case OpCode::OP_IMPORT: return "OP_IMPORT";
         case OpCode::OP_SLICE_GET: return "OP_SLICE_GET";
         case OpCode::OP_SLICE_SET: return "OP_SLICE_SET";
-        case OpCode::OP_REF_WRITEBACK: return "OP_REF_WRITEBACK";
+        case OpCode::OP_GET_REF_PARAM: return "OP_GET_REF_PARAM";
+        case OpCode::OP_SET_REF_PARAM: return "OP_SET_REF_PARAM";
+        case OpCode::OP_PASS_REFS: return "OP_PASS_REFS";
         case OpCode::OP_BIT_AND: return "OP_BIT_AND";
         case OpCode::OP_BIT_OR: return "OP_BIT_OR";
         case OpCode::OP_BIT_XOR: return "OP_BIT_XOR";
@@ -458,6 +462,12 @@ namespace jc {
                 std::cout << "slot " << slot << std::endl;
                 return offset + 3;
             }
+            case OpCode::OP_GET_REF_PARAM:
+            case OpCode::OP_SET_REF_PARAM: {
+                uint16_t idx = read16(offset + 1);
+                std::cout << "idx " << idx << std::endl;
+                return offset + 3;
+            }
             case OpCode::OP_JUMP:
             case OpCode::OP_JUMP_IF_FALSE:
             case OpCode::OP_ITER_NEXT: {
@@ -561,7 +571,7 @@ namespace jc {
                 std::cout << std::endl;
                 return pos;
             }
-            case OpCode::OP_REF_WRITEBACK: {
+            case OpCode::OP_PASS_REFS: {
                 uint8_t count = code[offset + 1];
                 std::cout << static_cast<int>(count) << " source(s)" << std::endl;
                 int pos = offset + 2;
@@ -569,7 +579,7 @@ namespace jc {
                     uint8_t argIdx = code[pos];
                     uint8_t srcType = code[pos + 1];
                     uint16_t srcRef = static_cast<uint16_t>((code[pos + 2] << 8) | code[pos + 3]);
-                    std::string typeName = (srcType == 1) ? "global" : ((srcType == 2) ? "local" : "upvalue");
+                    std::string typeName = (srcType == 1) ? "global" : ((srcType == 2) ? "local" : ((srcType == 3) ? "upvalue" : "refparam"));
 
                     // 绘制下划线树形结构，方便透视查看
                     std::cout << "         |                 arg " << static_cast<int>(argIdx)
@@ -603,6 +613,7 @@ namespace jc {
             bool isRef = false; // ★ 新增：是否按引用捕获
             bool isGlobal = false; // ★ 新增：是否来自全局变量
             bool isExplicitState = false; // ★ 新增：是否是显式初始化的 state
+            bool isRefParam = false; // ★ 新增：是否来自外层的 ref 参数
         };
         std::vector<UpvalueInfo> upvalues;
         std::vector<bool> paramIsRef;
@@ -616,6 +627,7 @@ namespace jc {
         int ip = 0;
         int stackBase = 0;
         std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> upvalues;
+        std::vector<std::shared_ptr<UpVal>> refParams; // ★ 新增：动态注入的引用参数
 
         // ★ 新增：独立与当前调用帧绑定的物理上下文寄存器！
         Value selfContext = Value::none();

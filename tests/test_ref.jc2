@@ -1,0 +1,88 @@
+println("=== Testing ref parameters ===")
+
+// 1. 测试全局变量的 ref 传参
+global_x = 10
+modify_global(ref x) = {
+    x = 20
+}
+modify_global(global_x)
+assert(global_x == 20, "Global ref failed")
+println("[1/5] Global ref: OK")
+
+// 2. 测试局部变量的 ref 传参
+test_local() = {
+    local_y = 30
+    modify_local(ref y) = {
+        y += 5
+    }
+    modify_local(local_y)
+    assert(local_y == 35, "Local ref failed")
+}
+test_local()
+println("[2/5] Local ref: OK")
+
+// 3. 测试闭包上值 (Upvalue) 的 ref 传参
+make_counter() = {
+    count = 0
+    increment(ref c) = {
+        c += 1
+    }
+    return () => {
+        increment(count)
+        return count
+    }
+}
+c1 = make_counter()
+assert(c1() == 1, "Upvalue ref failed 1")
+assert(c1() == 2, "Upvalue ref failed 2")
+println("[3/5] Upvalue ref: OK")
+
+// 4. 测试多层嵌套的 ref 传参
+inner(ref a) = {
+    a *= 2
+}
+outer(ref b) = {
+    inner(b)
+}
+val = 5
+outer(val)
+assert(val == 10, "Nested ref failed")
+println("[4/5] Nested ref: OK")
+
+// 5. 测试实时内存绑定特性（抛出异常时，修改不回滚）
+val2 = 100
+fail_halfway(ref x) = {
+    x = 999
+    throw "Oops"
+}
+try {
+    fail_halfway(val2)
+} catch (e) {
+    // 忽略异常
+}
+assert(val2 == 999, "Real-time ref modification failed (should not rollback)")
+println("[5/5] Real-time ref (Exception): OK")
+
+// 6. UFCS 结合全局函数的 ref 传参
+ufcs_modify(obj, ref x) = {
+    x += obj
+}
+val3 = 10
+5.ufcs_modify(val3)
+assert(val3 == 15, "UFCS ref failed")
+println("[6/7] UFCS ref: OK")
+
+// 7. 类方法的 ref 传参
+class RefTester {
+    init(f) = { self.factor = f }
+    modify(ref x) = {
+        x *= self.factor
+    }
+}
+tester = RefTester(3)
+val4 = 7
+tester.modify(val4)
+assert(val4 == 21, "Class method ref failed")
+println("[7/7] Class method ref: OK")
+
+println("All ref tests passed successfully!")

@@ -17,6 +17,8 @@ namespace jc {
         int depth;
         bool isCaptured;
         bool isConst = false;
+        bool isRefParam = false; // ★ 新增
+        int refParamIndex = -1;  // ★ 新增
     };
 
     class Compiler : public ExprVisitor {
@@ -76,7 +78,7 @@ namespace jc {
         void emitDefaultPreamble(const std::vector<std::shared_ptr<Expr>>& defaultExprs, int paramCount);
         int resolveUpvalue(const std::string& name);
         int resolveUpvalueAt(int level, const std::string& name, bool isRef, bool isState);
-        int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false);
+        int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false, bool isRefParam = false);
         void emitStoreTarget(Expr* target, bool isConst = false);
         std::optional<Value> tryFoldConstant(Expr* expr);
         void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst = false);

@@ -43,6 +43,7 @@ namespace jc {
                 frames[frameCount - 1].selfContext = Value::none();
                 frames[frameCount - 1].classContext = Value::none();
                 frames[frameCount - 1].upvalues = nullptr;
+                frames[frameCount - 1].refParams.clear();
                 frameCount--;
             }
 
@@ -421,6 +422,7 @@ namespace jc {
             frames[frameCount - 1].selfContext = Value::none();
             frames[frameCount - 1].classContext = Value::none();
             frames[frameCount - 1].upvalues = nullptr;
+            frames[frameCount - 1].refParams.clear();
             frameCount--;
         }
         exceptionHandlers.clear();
@@ -439,8 +441,8 @@ namespace jc {
             throw std::runtime_error("VM Error: Invalid function index in callback.");
         auto fn = compiledFunctions[fnIdx]; // ★ 拷贝 shared_ptr，防止 run 期间 compiledFunctions 重新分配导致悬空引用
         int savedTargetFrameDepth = currentTargetFrameDepth;
-        auto savedRefWritebacks = pendingRefWritebacks;
-        pendingRefWritebacks.clear();
+        auto savedCallRefs = pendingCallRefs;
+        pendingCallRefs.clear();
 
         // ★ 临时保护 boundSelf 和 boundClass，防止在打包变长参数触发 GC 时被回收
         helpers::nativeSelfStack.push_back(boundSelf);
@@ -495,6 +497,7 @@ namespace jc {
         // ★ 清爽下发！寄存器已就位：
         newFrame.selfContext = boundSelf;
         newFrame.classContext = boundClass;
+        populateRefParams(newFrame, fn.get());
         if (frameCount >= MAX_FRAMES) {
             helpers::nativeSelfStack.pop_back();
             helpers::nativeClassStack.pop_back();
@@ -517,11 +520,12 @@ namespace jc {
         }
         catch (const StackTracedException&) {
             currentTargetFrameDepth = savedTargetFrameDepth;
-            pendingRefWritebacks = savedRefWritebacks;
+            pendingCallRefs = savedCallRefs;
             while (frameCount > boundary) {
                 frames[frameCount - 1].selfContext = Value::none();
                 frames[frameCount - 1].classContext = Value::none();
                 frames[frameCount - 1].upvalues = nullptr;
+                frames[frameCount - 1].refParams.clear();
                 frameCount--;
             }
             closeUpvalues(newFrame.stackBase);
@@ -530,11 +534,12 @@ namespace jc {
         }
         catch (...) {
             currentTargetFrameDepth = savedTargetFrameDepth;
-            pendingRefWritebacks = savedRefWritebacks;
+            pendingCallRefs = savedCallRefs;
             while (frameCount > boundary) {
                 frames[frameCount - 1].selfContext = Value::none();
                 frames[frameCount - 1].classContext = Value::none();
                 frames[frameCount - 1].upvalues = nullptr;
+                frames[frameCount - 1].refParams.clear();
                 frameCount--;
             }
             closeUpvalues(newFrame.stackBase);
@@ -549,13 +554,9 @@ namespace jc {
             prof.totalTimeMs += duration;
         }
 
-        auto myRefWritebacks = pendingRefWritebacks;
         currentTargetFrameDepth = savedTargetFrameDepth;
-        pendingRefWritebacks = savedRefWritebacks;
+        pendingCallRefs = savedCallRefs;
 
-        if (!myRefWritebacks.empty()) {
-            pendingRefWritebacks = myRefWritebacks;
-        }
         return result;
     }
 
@@ -1025,21 +1026,25 @@ namespace jc {
                             if (uv.isRef) {
                                 // ★ 按引用捕获 (Open Upvalue)
                                 if (uv.isLocal) {
-                                    int captureIdx = currentFrame->stackBase + uv.index;
-                                    std::shared_ptr<UpVal> upval = nullptr;
-                                    for (auto& openUv : openUpvalues) {
-                                        if (openUv->stackIndex == captureIdx) {
-                                            upval = openUv;
-                                            break;
+                                    if (uv.isRefParam) {
+                                        captures->push_back(currentFrame->refParams[uv.index]);
+                                    } else {
+                                        int captureIdx = currentFrame->stackBase + uv.index;
+                                        std::shared_ptr<UpVal> upval = nullptr;
+                                        for (auto& openUv : openUpvalues) {
+                                            if (openUv->stackIndex == captureIdx) {
+                                                upval = openUv;
+                                                break;
+                                            }
                                         }
+                                        if (!upval) {
+                                            upval = std::make_shared<UpVal>();
+                                            upval->location = &stack[captureIdx];
+                                            upval->stackIndex = captureIdx;
+                                            openUpvalues.push_back(upval);
+                                        }
+                                        captures->push_back(upval);
                                     }
-                                    if (!upval) {
-                                        upval = std::make_shared<UpVal>();
-                                        upval->location = &stack[captureIdx];
-                                        upval->stackIndex = captureIdx;
-                                        openUpvalues.push_back(upval);
-                                    }
-                                    captures->push_back(upval);
                                 }
                                 else {
                                     if (currentFrame->upvalues && uv.index < static_cast<int>(currentFrame->upvalues->size()))
@@ -1075,8 +1080,12 @@ namespace jc {
                                         dummy->closed = Value::uninit();
                                     }
                                 } else if (uv.isLocal) {
-                                    int captureIdx = currentFrame->stackBase + uv.index;
-                                    dummy->closed = stack[captureIdx];
+                                    if (uv.isRefParam) {
+                                        dummy->closed = *(currentFrame->refParams[uv.index]->location);
+                                    } else {
+                                        int captureIdx = currentFrame->stackBase + uv.index;
+                                        dummy->closed = stack[captureIdx];
+                                    }
                                 } else {
                                     if (currentFrame->upvalues && uv.index < static_cast<int>(currentFrame->upvalues->size())) {
                                         dummy->closed = *((*currentFrame->upvalues)[uv.index]->location);
@@ -1290,48 +1299,71 @@ namespace jc {
                     break;
                 }
 
-                case OpCode::OP_REF_WRITEBACK: {
+                case OpCode::OP_PASS_REFS: {
                     uint8_t count = readByte();
-
+                    pendingCallRefs.clear();
                     for (int k = 0; k < count; ++k) {
                         uint8_t argIndex = readByte();
                         uint8_t sourceType = readByte();
                         uint16_t sourceRef = readShort();
 
-                        bool found = false;
-                        Value modifiedVal;
-                        for (auto& rw : pendingRefWritebacks) {
-                            if (rw.argIndex == static_cast<int>(argIndex)) {
-                                modifiedVal = rw.modifiedValue;
-                                found = true;
-                                break;
-                            }
-                        }
-
-                        if (!found) continue;
-
+                        std::shared_ptr<UpVal> upval = nullptr;
                         switch (sourceType) {
                         case 1: {
                             std::string name = currentChunk().constants[sourceRef].asString();
-                            globals[name] = modifiedVal;
+                            upval = std::make_shared<UpVal>();
+                            upval->location = &globals[name];
                             break;
                         }
                         case 2: {
-                            int localIdx = currentFrame->stackBase + sourceRef;
-                            if (localIdx < static_cast<int>(getStackSize()))
-                                stack[localIdx] = modifiedVal;
+                            int captureIdx = currentFrame->stackBase + sourceRef;
+                            for (auto& openUv : openUpvalues) {
+                                if (openUv->stackIndex == captureIdx) {
+                                    upval = openUv;
+                                    break;
+                                }
+                            }
+                            if (!upval) {
+                                upval = std::make_shared<UpVal>();
+                                upval->location = &stack[captureIdx];
+                                upval->stackIndex = captureIdx;
+                                openUpvalues.push_back(upval);
+                            }
                             break;
                         }
                         case 3: {
-                            if (currentFrame->upvalues &&
-                                sourceRef < currentFrame->upvalues->size())
-                                *((*currentFrame->upvalues)[sourceRef]->location) = modifiedVal;
+                            if (currentFrame->upvalues && sourceRef < currentFrame->upvalues->size()) {
+                                upval = (*currentFrame->upvalues)[sourceRef];
+                            }
+                            break;
+                        }
+                        case 4: {
+                            if (sourceRef < currentFrame->refParams.size()) {
+                                upval = currentFrame->refParams[sourceRef];
+                            }
                             break;
                         }
                         }
+                        if (upval) {
+                            pendingCallRefs.push_back({ argIndex, upval });
+                        }
                     }
+                    break;
+                }
 
-                    pendingRefWritebacks.clear();
+                case OpCode::OP_GET_REF_PARAM: {
+                    uint16_t idx = readShort();
+                    if (idx >= currentFrame->refParams.size())
+                        throw std::runtime_error("VM Error: Invalid ref param index.");
+                    push(*(currentFrame->refParams[idx]->location));
+                    break;
+                }
+
+                case OpCode::OP_SET_REF_PARAM: {
+                    uint16_t idx = readShort();
+                    if (idx >= currentFrame->refParams.size())
+                        throw std::runtime_error("VM Error: Invalid ref param index.");
+                    *(currentFrame->refParams[idx]->location) = peek(0);
                     break;
                 }
 
@@ -2782,6 +2814,9 @@ namespace jc {
                     if (uv && uv->location) markValue(*(uv->location));
                 }
             }
+            for (const auto& uv : f.refParams) {
+                if (uv && uv->location) markValue(*(uv->location));
+            }
             // ★ 世纪补漏：必须追踪目前存活函数的上下文环境！
             markValue(f.selfContext);
             markValue(f.classContext);
@@ -2838,6 +2873,9 @@ namespace jc {
                     if (uv && uv->location) markValue(*(uv->location));
                 }
             }
+            for (const auto& uv : f.refParams) {
+                if (uv && uv->location) markValue(*(uv->location));
+            }
             // ★ 防止手动 gc() 触发对象丢失
             markValue(f.selfContext);
             markValue(f.classContext);
@@ -2876,9 +2914,32 @@ namespace jc {
         return GcHeap::get().sweep();
     }
 
+    void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
+        newFrame.refParams.clear();
+        for (int i = 0; i < fn->maxArity; ++i) {
+            if (i < static_cast<int>(fn->paramIsRef.size()) && fn->paramIsRef[i]) {
+                std::shared_ptr<UpVal> providedRef = nullptr;
+                for (auto& pr : pendingCallRefs) {
+                    if (pr.first == i) {
+                        providedRef = pr.second;
+                        break;
+                    }
+                }
+                if (providedRef) {
+                    newFrame.refParams.push_back(providedRef);
+                } else {
+                    auto dummy = std::make_shared<UpVal>();
+                    dummy->location = &stack[newFrame.stackBase + i];
+                    newFrame.refParams.push_back(dummy);
+                }
+            }
+        }
+        pendingCallRefs.clear();
+    }
+
     void VM::execCall(uint8_t argc, bool isTailCall) {
+        struct CallRefGuard { VM* vm; ~CallRefGuard() { vm->pendingCallRefs.clear(); } } guard{this};
         Value callee = stack[getStackSize() - 1 - argc];
-        pendingRefWritebacks.clear();
 
         // ======== [1] 字符串动态调用 (晚绑定) ========
         if (callee.isString()) {
@@ -2912,11 +2973,13 @@ namespace jc {
                     frame().upvalues = nullptr;
                     frame().selfContext = Value::none();
                     frame().classContext = Value::none();
+                    populateRefParams(frame(), fn.get());
                     return;
                 }
 
                 CallFrame newFrame; newFrame.function = fn.get(); newFrame.ip = 0;
                 newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
+                populateRefParams(newFrame, fn.get());
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                 frames[frameCount++] = newFrame; return;
             }
@@ -3010,6 +3073,7 @@ namespace jc {
                         newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(
                             initMethod->capturedEnv);
                     }
+                    populateRefParams(newFrame, fnDef.get());
                     if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                     frames[frameCount++] = newFrame;
                     return;
@@ -3067,6 +3131,7 @@ namespace jc {
                     // ★ UFCS 绑定闭包：将 boundSelf 插入到参数列表的最前面
                     if (static_cast<int>(getStackSize()) >= MAX_STACK) throw std::runtime_error("VM Error: Stack overflow.");
                     insertStack(argc, closure->boundSelf);
+                    for (auto& pr : pendingCallRefs) pr.first += 1; // ★ UFCS 引用参数索引右移
                     argc++;
                 }
 
@@ -3125,6 +3190,7 @@ namespace jc {
                     }
                     frame().selfContext = closure->boundSelf;
                     frame().classContext = closure->boundClass;
+                    populateRefParams(frame(), fnDef.get());
                     return;
                 }
 
@@ -3140,6 +3206,7 @@ namespace jc {
                 // ★ NEW：将该闭包出生时带的 self 塞进新帧的心房！
                 newFrame.selfContext = closure->boundSelf;
                 newFrame.classContext = closure->boundClass;
+                populateRefParams(newFrame, fnDef.get());
 
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                 frames[frameCount++] = newFrame;
@@ -3249,11 +3316,13 @@ namespace jc {
                     frame().upvalues = nullptr;
                     frame().selfContext = Value::none();
                     frame().classContext = Value::none();
+                    populateRefParams(frame(), fn.get());
                     return;
                 }
 
                 CallFrame newFrame; newFrame.function = fn.get(); newFrame.ip = 0;
                 newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
+                populateRefParams(newFrame, fn.get());
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                 frames[frameCount++] = newFrame; return;
             }
@@ -3340,6 +3409,7 @@ namespace jc {
                         }
                         frame().selfContext = callee;
                         frame().classContext = Value(owningClass);
+                        populateRefParams(frame(), fnDef.get());
                         return;
                     }
 
@@ -3354,6 +3424,7 @@ namespace jc {
                     // ★ 核心：将实例自身作为 self 注入
                     newFrame.selfContext = callee;
                     newFrame.classContext = Value(owningClass);
+                    populateRefParams(newFrame, fnDef.get());
 
                     if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                     frames[frameCount++] = newFrame;
@@ -4796,20 +4867,6 @@ namespace jc {
         // ★ 核心：记录下属于当前自身心跳的上下文
         Value activeSelf = frame().selfContext;
 
-        // --- ref writeback ---
-        pendingRefWritebacks.clear();
-        const auto& refFlags = frame().function->paramIsRef;
-        if (!refFlags.empty()) {
-            for (int i = 0; i < static_cast<int>(refFlags.size()); ++i) {
-                if (refFlags[i]) {
-                    int localIdx = base + i;
-                    if (localIdx < static_cast<int>(getStackSize())) {
-                        pendingRefWritebacks.push_back({ i, stack[localIdx] });
-                    }
-                }
-            }
-        }
-
         while (!exceptionHandlers.empty() &&
             exceptionHandlers.back().frameIndex == frameCount - 1) {
             exceptionHandlers.pop_back();
@@ -4818,6 +4875,7 @@ namespace jc {
         frames[frameCount - 1].selfContext = Value::none();
         frames[frameCount - 1].classContext = Value::none();
         frames[frameCount - 1].upvalues = nullptr;
+        frames[frameCount - 1].refParams.clear();
         frameCount--;
 
         // ★ 退出判定
@@ -4848,6 +4906,7 @@ namespace jc {
     }
 
     void VM::execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx, bool isTailCall) {
+        struct CallRefGuard { VM* vm; ~CallRefGuard() { vm->pendingCallRefs.clear(); } } guard{this};
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value obj = stack[getStackSize() - 1 - argc];
 
@@ -4991,6 +5050,7 @@ namespace jc {
             if (gIt != globals.end() && gIt->second.isFunctionClosure()) {
                 if (static_cast<int>(getStackSize()) >= MAX_STACK) throw std::runtime_error("VM Error: Stack overflow.");
                 insertStack(argc + 1, gIt->second); // ★ FIX: 插入点上方有 argc + 1 个元素 (obj + args)
+                for (auto& pr : pendingCallRefs) pr.first += 1; // ★ UFCS 引用参数索引右移
                 execCall(argc + 1);
                 return;
             }
@@ -5063,6 +5123,7 @@ namespace jc {
                 }
                 frame().selfContext = obj;
                 frame().classContext = owningClass ? Value(owningClass) : Value::none();
+                populateRefParams(frame(), fnDef.get());
                 return;
             }
 
@@ -5073,6 +5134,7 @@ namespace jc {
                 newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(
                     method->capturedEnv);
             }
+            populateRefParams(newFrame, fnDef.get());
             if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
             frames[frameCount++] = newFrame;
             return;
@@ -5120,6 +5182,7 @@ namespace jc {
                     newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
                     newFrame.selfContext = obj;
                     newFrame.classContext = owningClass ? Value(owningClass) : Value::none();
+                    populateRefParams(newFrame, fnDef.get());
                     if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                     frames[frameCount++] = newFrame;
                     return;
@@ -5174,6 +5237,7 @@ namespace jc {
     }
 
     void VM::execSuperInvoke(uint16_t nameIdx, uint8_t argc, bool isTailCall) {
+        struct CallRefGuard { VM* vm; ~CallRefGuard() { vm->pendingCallRefs.clear(); } } guard{this};
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value selfVal = stack[getStackSize() - 1 - argc];
         if (!selfVal.isInstance())
@@ -5272,6 +5336,7 @@ namespace jc {
                 }
                 frame().selfContext = Value(inst);
                 frame().classContext = Value(owningClass);
+                populateRefParams(frame(), fnDef.get());
                 return;
             }
 
@@ -5282,6 +5347,7 @@ namespace jc {
                 newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(
                     method->capturedEnv);
             }
+            populateRefParams(newFrame, fnDef.get());
             if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
             frames[frameCount++] = newFrame;
             return;

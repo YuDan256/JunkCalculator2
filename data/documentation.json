@@ -952,6 +952,7 @@
       "    g(x, y) = sqrt(x^2 + y^2)          Multi variable",
       "    h(a, b) = { t = a+b; t^2 }         Block body (auto-local t)",
       "    f(x, k = 1) = sin(k * x)           Default parameters supported!",
+      "    swap(ref a, ref b) = { t=a; a=b; b=t } Pass-by-reference parameters",
       "    const f(x) = x^2                   Immutable function",
       "    local const f(x) = x^2             Block-scoped immutable function",
       "    ref f(x) = x^2                     Modify outer function",
@@ -1476,6 +1477,9 @@
       "      Global variables are captured by name (late-binding).",
       "    • Standalone: `ref a;` binds to outer `a`. Throws immediately if undefined.",
       "    • Parameters: `addOne(ref x) = { x += 1 }` forces pass-by-reference.",
+      "      When calling `addOne(val)`, the outer variable `val` is modified directly.",
+      "      If a literal or expression is passed (e.g., `addOne(5)`), it safely degrades",
+      "      to pass-by-value.",
       "",
       "  Closures & State Semantics (state)",
       "  ──────────────────────",
@@ -6501,9 +6505,9 @@
       ]
     },
     "ref": {
-      "signature": "ref variable = expr  |  ref variable",
+      "signature": "ref variable = expr  |  ref variable  |  func(ref param)",
       "desc": [
-        "Scope modifier: binds a variable to an OUTER scope variable.",
+        "Scope modifier: binds a variable to an OUTER scope variable, or declares a pass-by-reference parameter.",
         "Without `ref`, assignments inside functions create new auto-locals.",
         "With `ref`, the assignment reads/writes the enclosing scope directly.",
         "",
@@ -6516,8 +6520,11 @@
         "  [ref a, b] = [1, 2]         a writes to outer, b is auto-local",
         "  {x: ref a, y: b} = obj      Same for dict destructuring",
         "",
-        "Also used for pass-by-reference parameters:",
-        "  addOne(ref x) = { x = x + 1 }   Mutates the caller's variable",
+        "Pass-by-Reference Parameters:",
+        "  addOne(ref x) = { x = x + 1 }",
+        "  When calling `addOne(val)`, the outer variable `val` is modified directly.",
+        "  If a literal or expression is passed (e.g., `addOne(5)`), it safely degrades",
+        "  to pass-by-value. Works seamlessly with closures, UFCS, and class methods.",
         "",
         "See also: /help scope, /help state"
       ],
@@ -6525,7 +6532,8 @@
         "counter = 0",
         "bump() = ref counter += 1",
         "bump(); bump(); print(counter)  // → 2",
-        "[ref a, state b] = [x + 1, y + 1]"
+        "swap(ref a, ref b) = { t=a; a=b; b=t }",
+        "x = 1; y = 2; swap(x, y)"
       ]
     },
     "state": {

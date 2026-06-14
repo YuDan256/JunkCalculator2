@@ -19,11 +19,7 @@ namespace jc {
     class VM {
     private:
 
-        struct RefWriteback {
-            int argIndex;
-            Value modifiedValue;
-        };
-        std::vector<RefWriteback> pendingRefWritebacks;
+        std::vector<std::pair<int, std::shared_ptr<UpVal>>> pendingCallRefs;
 
         // ★ 多帧栈：支持嵌套函数调用
         CallFrame* frames = nullptr;
@@ -162,6 +158,7 @@ namespace jc {
         void execBuildMatrix(uint16_t rows, const std::vector<uint16_t>& rowCols);
         void execIn();
         Value execReturn(bool& shouldExit);
+        void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
         void execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx, bool isTailCall = false);
         void execSuperInvoke(uint16_t nameIdx, uint8_t argc, bool isTailCall = false);
         void execAssertParamType(const Value& val, uint16_t typeIdx, uint16_t nameIdx);

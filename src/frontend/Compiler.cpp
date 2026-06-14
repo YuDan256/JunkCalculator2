@@ -2242,9 +2242,23 @@ namespace jc {
         } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
             int minCols = 0;
             bool hasRest = lp->rest != nullptr;
-            for (auto& e : lp->elements) {
-                if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                else if (!dynamic_cast<DefaultPattern*>(e.get())) minCols++;
+            bool hasRestInMiddle = false;
+            bool hasDefault = false;
+            for (size_t i = 0; i < lp->elements.size(); ++i) {
+                auto& e = lp->elements[i];
+                if (dynamic_cast<RestPattern*>(e.get())) {
+                    hasRest = true;
+                    if (i < lp->elements.size() - 1) hasRestInMiddle = true;
+                }
+                else if (dynamic_cast<DefaultPattern*>(e.get())) {
+                    hasDefault = true;
+                }
+                else {
+                    minCols++;
+                }
+            }
+            if (hasRestInMiddle && hasDefault) {
+                throw std::runtime_error("Compiler Error: Default values are not allowed when a rest pattern ('...') is used in the middle of a list.");
             }
             int maxCols = hasRest ? 0xFFFF : static_cast<int>(lp->elements.size());
             uint8_t exactMask = 2; // 1D pattern
@@ -2416,10 +2430,25 @@ namespace jc {
             
             for (const auto& row : mp->rows) {
                 bool hasRest = false;
+                bool hasRestInMiddle = false;
+                bool hasDefault = false;
                 int total = 0;
-                for (const auto& e : row) {
-                    if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
-                    else total++;
+                for (size_t i = 0; i < row.size(); ++i) {
+                    auto& e = row[i];
+                    if (dynamic_cast<RestPattern*>(e.get())) {
+                        hasRest = true;
+                        if (i < row.size() - 1) hasRestInMiddle = true;
+                    }
+                    else if (dynamic_cast<DefaultPattern*>(e.get())) {
+                        hasDefault = true;
+                        total++;
+                    }
+                    else {
+                        total++;
+                    }
+                }
+                if (hasRestInMiddle && hasDefault) {
+                    throw std::runtime_error("Compiler Error: Default values are not allowed when a rest pattern ('...') is used in the middle of a matrix row.");
                 }
                 if (!hasRest) {
                     anyRowNoRest = true;

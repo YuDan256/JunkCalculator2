@@ -10,6 +10,9 @@
 #include "EngineInterrupt.h"
 #include <iostream>
 #include <cmath>
+
+// ★ 开启 VM 级指令与栈追踪日志
+#define JC2_DEBUG_VM_TRACE false
 #include <stdexcept>
 #include <filesystem>
 #include <sstream>
@@ -34,9 +37,15 @@ namespace jc {
     // ★ 统一拦截与展开 Try-Catch 栈
     // =======================================================
     bool VM::handleExceptionUnwind(std::string& msg) {
+#if JC2_DEBUG_VM_TRACE
+        std::cout << "[VM TRACE] Exception Thrown: " << msg << "\n";
+#endif
         if (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= currentTargetFrameDepth) {
             auto handler = exceptionHandlers.back();
             exceptionHandlers.pop_back();
+#if JC2_DEBUG_VM_TRACE
+            std::cout << "[VM TRACE] Caught by handler at IP " << handler.ip << ", restoring stack to " << handler.stackSize << "\n";
+#endif
 
             // 剥除所有比 catch 更深的函数堆栈
             while (frameCount > handler.frameIndex + 1) {
@@ -627,6 +636,19 @@ namespace jc {
             catch (...) {
                 return getStackSize() == 0 ? Value::none() : pop();
             }
+
+#if JC2_DEBUG_VM_TRACE
+            std::cout << "[VM TRACE] IP: " << currentFrame->ip - 1 
+                      << " | OP: " << opCodeToString(op) 
+                      << " | STACK (" << getStackSize() << "): [";
+            for (size_t i = 0; i < getStackSize(); ++i) {
+                if (stack[i].isString()) std::cout << "\"" << stack[i].asString() << "\"";
+                else std::cout << stack[i];
+                if (i < getStackSize() - 1) std::cout << ", ";
+            }
+            std::cout << "]\n";
+#endif
+
 			// =======================================================
 			// ★ Profiler 探针: 记录微观指令 (Instruction Tick)
 			// =======================================================
@@ -880,7 +902,8 @@ namespace jc {
                     } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && 0 <= maxCols);
+                            else matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
                         } else {
                             bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
                             bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
@@ -890,7 +913,8 @@ namespace jc {
                     } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && 0 <= maxCols);
+                            else matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
                         } else {
                             bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
                             bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
@@ -900,7 +924,8 @@ namespace jc {
                     } else if (val.isObjType(ObjType::STRING_MATRIX)) {
                         const auto& m = static_cast<ObjStringMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && 0 <= maxCols);
+                            else matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
                         } else {
                             bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
                             bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
@@ -908,6 +933,9 @@ namespace jc {
                             else matched = rMatch && cMatch;
                         }
                     }
+#if JC2_DEBUG_VM_TRACE
+                    std::cout << "[VM TRACE] OP_MATCH_SHAPE: val=" << val << " minR=" << minRows << " maxR=" << maxRows << " minC=" << minCols << " maxC=" << maxCols << " 1D=" << is1DPattern << " -> matched=" << matched << "\n";
+#endif
                     
                     push(Value(matched));
                     break;

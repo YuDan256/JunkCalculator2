@@ -26,6 +26,36 @@ namespace jc {
         inTailPosition = prevTail;
     }
 
+    void Compiler::preDeclareFunctions(Expr* ast) {
+        auto processAssign = [&](Assign* assign) {
+            if (dynamic_cast<LambdaExpr*>(assign->value.get())) {
+                const std::string& name = assign->name.lexeme;
+                int slot = resolveLocal(name);
+                if (assign->isLocal) {
+                    if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                        addLocal(name, current().scopeDepth, assign->isConst, true);
+                    } else {
+                        current().locals[slot].isFunction = true;
+                    }
+                } else if (!assign->isRef && !assign->isState && stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
+                    addLocal(name, 0, assign->isConst, true);
+                } else if (slot != -1) {
+                    current().locals[slot].isFunction = true;
+                }
+            }
+        };
+
+        if (auto* block = dynamic_cast<Block*>(ast)) {
+            for (auto& stmt : block->statements) {
+                if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+                    processAssign(assign);
+                }
+            }
+        } else if (auto* assign = dynamic_cast<Assign*>(ast)) {
+            processAssign(assign);
+        }
+    }
+
     void Compiler::initCompiler(CompiledFunction* fn) {
         CompilerState state;
         state.function = fn;
@@ -272,8 +302,8 @@ namespace jc {
         emit(OpCode::OP_POP, lastLine);
     }
 
-    void Compiler::addLocal(const std::string& name, int depth, bool isConst) {
-        current().locals.push_back({ name, depth, false, isConst });
+    void Compiler::addLocal(const std::string& name, int depth, bool isConst, bool isFunction) {
+        current().locals.push_back({ name, depth, false, isConst, false, -1, isFunction });
         // ★ 跟踪峰值容量
         if (static_cast<int>(current().locals.size()) > current().maxLocals) {
             current().maxLocals = static_cast<int>(current().locals.size());
@@ -317,6 +347,7 @@ namespace jc {
         // 否则 REPL 每敲一行代码，它的 AST、字节码和常量池（包含变量名的 ObjString）
         // 就会被永久驻留在内存中，导致 GC 追踪的对象数量无限增长。
         initCompiler(mainFn.get());
+        preDeclareFunctions(ast);
         compileNode(ast);
         emit(OpCode::OP_RETURN, lastLine);
         mainFn->localCount = current().maxLocals;
@@ -339,6 +370,8 @@ namespace jc {
         
         initCompiler(fn.get());
         beginScope(); // depth 1 (用于隔离 local 声明的私有变量)
+        
+        preDeclareFunctions(ast);
         
         if (auto* block = dynamic_cast<Block*>(ast)) {
             for (size_t i = 0; i < block->statements.size(); ++i) {
@@ -505,9 +538,12 @@ namespace jc {
         if (dynamic_cast<LambdaExpr*>(expr->value.get())) {
             int slot = resolveLocal(name);
             if (expr->isLocal) {
-                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) addLocal(name, current().scopeDepth, expr->isConst);
+                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) addLocal(name, current().scopeDepth, expr->isConst, true);
+                else current().locals[slot].isFunction = true;
             } else if (!expr->isRef && !expr->isState && stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
-                addLocal(name, 0, expr->isConst); // Auto-locals go to function scope
+                addLocal(name, 0, expr->isConst, true); // Auto-locals go to function scope
+            } else if (slot != -1) {
+                current().locals[slot].isFunction = true;
             }
         }
 
@@ -941,6 +977,7 @@ namespace jc {
 
     void Compiler::visitBlock(Block* expr) {
         beginScope();
+        preDeclareFunctions(expr);
         if (expr->statements.empty()) {
             emit(OpCode::OP_NONE, lastLine);
         }
@@ -1169,10 +1206,11 @@ namespace jc {
         for (int i = static_cast<int>(enclosing.locals.size()) - 1; i >= 0; --i) {
             if (enclosing.locals[i].name == name) {
                 enclosing.locals[i].isCaptured = true; // ★ 标记为被捕获，防止其物理 slot 被复用
+                bool forceRef = isRef || enclosing.locals[i].isFunction; // ★ 函数强制按引用捕获，解决互相递归
                 if (enclosing.locals[i].isRefParam) {
-                    return addUpvalue(level, name, true, enclosing.locals[i].refParamIndex, isRef, false, false, true);
+                    return addUpvalue(level, name, true, enclosing.locals[i].refParamIndex, forceRef, false, false, true);
                 } else {
-                    return addUpvalue(level, name, true, i, isRef, false, false, false);
+                    return addUpvalue(level, name, true, i, forceRef, false, false, false);
                 }
             }
         }
@@ -3182,6 +3220,8 @@ namespace jc {
 
         initCompiler(fn.get());
         beginScope(); // depth 1
+
+        preDeclareFunctions(expr->body.get());
 
         auto block = static_cast<Block*>(expr->body.get());
         for (size_t i = 0; i < block->statements.size(); ++i) {

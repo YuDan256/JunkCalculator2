@@ -19,6 +19,7 @@ namespace jc {
         bool isConst = false;
         bool isRefParam = false; // ★ 新增
         int refParamIndex = -1;  // ★ 新增
+        bool isFunction = false; // ★ 新增：标记是否为预声明的函数
     };
 
     enum class CaptureType {
@@ -78,11 +79,12 @@ namespace jc {
         void beginScope();
         void endScope();
         int resolveLocal(const std::string& name);
-        void addLocal(const std::string& name, int depth, bool isConst = false);
+        void addLocal(const std::string& name, int depth, bool isConst = false, bool isFunction = false);
         void declareVariable(const std::string& name);
 
         void compileNode(Expr* expr);
         void initCompiler(CompiledFunction* fn);
+        void preDeclareFunctions(Expr* ast);
         void compileCompClause(ListCompExpr* expr, size_t clauseIdx);
         void emitDefaultPreamble(const std::vector<std::shared_ptr<Expr>>& defaultExprs, int paramCount);
         int resolveUpvalue(const std::string& name);

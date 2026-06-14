@@ -16,6 +16,10 @@ namespace jc {
         chunk()->write16(val, line);
         if (line > 0) lastLine = line; // ★ 新增同步点
     }
+    void Compiler::emit32(uint32_t val, int line) {
+        chunk()->write32(val, line);
+        if (line > 0) lastLine = line; // ★ 新增同步点
+    }
     uint16_t Compiler::makeConstant(const Value& val) { return chunk()->addConstant(val); }
     uint16_t Compiler::identifierConstant(const std::string& name) { return makeConstant(Value(name)); }
     void Compiler::compileNode(Expr* expr) { 
@@ -2297,15 +2301,15 @@ namespace jc {
             if (hasRestInMiddle && hasDefault) {
                 throw std::runtime_error("Compiler Error: Default values are not allowed when a rest pattern ('...') is used in the middle of a list.");
             }
-            int maxCols = hasRest ? 0xFFFF : static_cast<int>(lp->elements.size());
+            uint32_t maxCols = hasRest ? 0xFFFFFFFF : static_cast<uint32_t>(lp->elements.size());
             uint8_t exactMask = 2; // 1D pattern
 
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
-            emit16(1, lastLine); // minRows
-            emit16(1, lastLine); // maxRows
-            emit16(static_cast<uint16_t>(minCols), lastLine);
-            emit16(static_cast<uint16_t>(maxCols), lastLine);
+            emit32(1, lastLine); // minRows
+            emit32(1, lastLine); // maxRows
+            emit32(static_cast<uint32_t>(minCols), lastLine);
+            emit32(maxCols, lastLine);
             emit(exactMask, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
@@ -2511,15 +2515,15 @@ namespace jc {
                 if (required > minCols) minCols = required;
             }
             
-            int maxCols = 0xFFFF;
+            uint32_t maxCols = 0xFFFFFFFF;
             if (anyRowNoRest || (mp->rows.empty() && !mp->restRow)) {
                 maxCols = 0;
                 for (const auto& row : mp->rows) {
-                    if (static_cast<int>(row.size()) > maxCols) maxCols = static_cast<int>(row.size());
+                    if (static_cast<uint32_t>(row.size()) > maxCols) maxCols = static_cast<uint32_t>(row.size());
                 }
             }
 
-            int minRows = 0;
+            uint32_t minRows = 0;
             for (int r = 0; r < rows; ++r) {
                 bool hasRequired = false;
                 for (const auto& e : mp->rows[r]) {
@@ -2531,16 +2535,16 @@ namespace jc {
                 if (hasRequired) minRows = r + 1;
             }
 
-            int maxRows = mp->restRow ? 0xFFFF : rows;
+            uint32_t maxRows = mp->restRow ? 0xFFFFFFFF : static_cast<uint32_t>(rows);
 
             uint8_t exactMask = 0;
             
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
-            emit16(static_cast<uint16_t>(minRows), lastLine);
-            emit16(static_cast<uint16_t>(maxRows), lastLine);
-            emit16(static_cast<uint16_t>(minCols), lastLine);
-            emit16(static_cast<uint16_t>(maxCols), lastLine);
+            emit32(minRows, lastLine);
+            emit32(maxRows, lastLine);
+            emit32(static_cast<uint32_t>(minCols), lastLine);
+            emit32(maxCols, lastLine);
             emit(exactMask, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);

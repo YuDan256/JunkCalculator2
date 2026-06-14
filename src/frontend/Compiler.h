@@ -73,6 +73,7 @@ namespace jc {
         void emit(OpCode op, int line = 0);
         void emit(uint8_t byte, int line = 0);
         void emit16(uint16_t val, int line = 0);
+        void emit32(uint32_t val, int line = 0);
         uint16_t makeConstant(const Value& val);
         uint16_t identifierConstant(const std::string& name);
 

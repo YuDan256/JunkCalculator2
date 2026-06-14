@@ -152,7 +152,7 @@ namespace jc {
         OP_ASSERT_RETURN_TYPE,  // 返回值断言：[type_idx:16bit]
 
         OP_MATCH_TYPE,          // [type_idx:16bit] 检查栈顶类型，返回 bool
-        OP_MATCH_SHAPE,         // [minRows:16bit, maxRows:16bit, minCols:16bit, maxCols:16bit, exact:8bit] 检查栈顶形状，返回 bool
+        OP_MATCH_SHAPE,         // [minRows:32bit, maxRows:32bit, minCols:32bit, maxCols:32bit, exact:8bit] 检查栈顶形状，返回 bool
     };
 
     // =================================================================
@@ -289,6 +289,14 @@ namespace jc {
             write(static_cast<uint8_t>(val & 0xFF), line);
         }
 
+        // 写入 32-bit 操作数 (大端序)
+        void write32(uint32_t val, int line) {
+            write(static_cast<uint8_t>((val >> 24) & 0xFF), line);
+            write(static_cast<uint8_t>((val >> 16) & 0xFF), line);
+            write(static_cast<uint8_t>((val >> 8) & 0xFF), line);
+            write(static_cast<uint8_t>(val & 0xFF), line);
+        }
+
         // 添加常量到常量池，返回索引
         uint16_t addConstant(const Value& val) {
             constants.push_back(val);
@@ -339,6 +347,11 @@ namespace jc {
         // 读取 16-bit 操作数
         uint16_t read16(int offset) const {
             return static_cast<uint16_t>((code[offset] << 8) | code[offset + 1]);
+        }
+
+        // 读取 32-bit 操作数
+        uint32_t read32(int offset) const {
+            return static_cast<uint32_t>((code[offset] << 24) | (code[offset + 1] << 16) | (code[offset + 2] << 8) | code[offset + 3]);
         }
 
         // ── 反汇编器（调试用）──
@@ -553,13 +566,15 @@ namespace jc {
                 return offset + 5;
             }
             case OpCode::OP_MATCH_SHAPE: {
-                uint16_t minR = read16(offset + 1);
-                uint16_t maxR = read16(offset + 3);
-                uint16_t minC = read16(offset + 5);
-                uint16_t maxC = read16(offset + 7);
-                uint8_t exactMask = code[offset + 9];
-                std::cout << "[" << minR << "~" << maxR << "]x[" << minC << "~" << maxC << "] (mask:" << static_cast<int>(exactMask) << ")" << std::endl;
-                return offset + 10;
+                uint32_t minR = read32(offset + 1);
+                uint32_t maxR = read32(offset + 5);
+                uint32_t minC = read32(offset + 9);
+                uint32_t maxC = read32(offset + 13);
+                uint8_t exactMask = code[offset + 17];
+                std::cout << "[" << minR << "~" << (maxR == 0xFFFFFFFF ? "inf" : std::to_string(maxR)) 
+                          << "]x[" << minC << "~" << (maxC == 0xFFFFFFFF ? "inf" : std::to_string(maxC)) 
+                          << "] (mask:" << static_cast<int>(exactMask) << ")" << std::endl;
+                return offset + 18;
             }
 
             // ============================================

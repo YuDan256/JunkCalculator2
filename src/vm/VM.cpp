@@ -932,10 +932,15 @@ namespace jc {
                 }
 
                 case OpCode::OP_MATCH_SHAPE: {
-                    uint16_t minRows = readShort();
-                    uint16_t maxRows = readShort();
-                    uint16_t minCols = readShort();
-                    uint16_t maxCols = readShort();
+                    auto read32 = [&]() -> uint32_t {
+                        uint32_t val = chunk->read32(currentFrame->ip);
+                        currentFrame->ip += 4;
+                        return val;
+                    };
+                    uint32_t minRows = read32();
+                    uint32_t maxRows = read32();
+                    uint32_t minCols = read32();
+                    uint32_t maxCols = read32();
                     uint8_t exactMask = readByte();
                     Value val = pop();
                     bool matched = false;
@@ -944,44 +949,44 @@ namespace jc {
 
                     if (val.isObjType(ObjType::LIST)) {
                         if (is1DPattern) {
-                            int len = static_cast<int>(static_cast<ObjList*>(val.asObj())->vec.size());
-                            matched = (len >= minCols && len <= maxCols);
+                            uint32_t len = static_cast<uint32_t>(static_cast<ObjList*>(val.asObj())->vec.size());
+                            matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
                         }
                     } else if (val.isString()) {
                         if (is1DPattern) {
-                            int len = static_cast<int>(val.asString().size());
-                            matched = (len >= minCols && len <= maxCols);
+                            uint32_t len = static_cast<uint32_t>(val.asString().size());
+                            matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
                         }
                     } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && 0 <= maxCols);
-                            else matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && (maxCols == 0xFFFFFFFF || 0 <= maxCols));
+                            else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                         } else {
-                            bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
-                            bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
+                            bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                             if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
                             else matched = rMatch && cMatch;
                         }
                     } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && 0 <= maxCols);
-                            else matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && (maxCols == 0xFFFFFFFF || 0 <= maxCols));
+                            else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                         } else {
-                            bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
-                            bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
+                            bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                             if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
                             else matched = rMatch && cMatch;
                         }
                     } else if (val.isObjType(ObjType::STRING_MATRIX)) {
                         const auto& m = static_cast<ObjStringMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && 0 <= maxCols);
-                            else matched = (m.getRows() == 1) && (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && (maxCols == 0xFFFFFFFF || 0 <= maxCols));
+                            else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                         } else {
-                            bool rMatch = (m.getRows() >= minRows && m.getRows() <= maxRows);
-                            bool cMatch = (m.getCols() >= minCols && m.getCols() <= maxCols);
+                            bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
+                            bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                             if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
                             else matched = rMatch && cMatch;
                         }

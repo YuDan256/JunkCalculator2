@@ -97,7 +97,7 @@ namespace _Http {
 // ─── Public API ───────────────────────────────────────────────
 
 http_get(url: string) -> HttpResponse = {
-    target = _Http.parse_url(url)
+    target = http._Http.parse_url(url)
     
     t_host = target["host"]
     t_port = target["port"]
@@ -120,7 +120,7 @@ http_get(url: string) -> HttpResponse = {
     }
     
     client.close()
-    return _Http.parse_response(raw_res)
+    return http._Http.parse_response(raw_res)
 }
 
 // ─── Dynamic Help Registry ────────────────────────────────────

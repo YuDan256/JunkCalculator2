@@ -15,7 +15,7 @@ permutations(arr: any) -> list = {
         curr = arr[i]
         rest = @[]
         for (j in range(n)) { if (i != j) rest.push(arr[j]) }
-        for (p in permutations(rest)) {
+        for (p in discrete.permutations(rest)) {
             new_p = @[curr]
             for (x in p) new_p.push(x)
             res.push(new_p)
@@ -33,12 +33,12 @@ combinations(arr: any, k: whole) -> list = {
     first = arr[0]
     rest = arr[1:]
     
-    for (c in combinations(rest, k - 1)) {
+    for (c in discrete.combinations(rest, k - 1)) {
         new_c = @[first]
         for (x in c) new_c.push(x)
         res.push(new_c)
     }
-    for (c in combinations(rest, k)) { res.push(c) }
+    for (c in discrete.combinations(rest, k)) { res.push(c) }
     return res
 }
 

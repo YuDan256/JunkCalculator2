@@ -53,6 +53,8 @@ namespace jc {
         std::unique_ptr<Expr> parseDictLiteral();  // ★
         std::unique_ptr<Expr> parseSetLiteral();   // ★ 新增
 
+        bool isDictLiteralLookahead(int startPos);
+
         // --- 游标工具 ---
         inline bool match(std::initializer_list<TokenType> types) { for (auto t : types) if (check(t)) { advance(); return true; } return false; }
         inline bool check(TokenType type) const { if (isAtEnd()) return false; return peek().type == type; }

@@ -725,6 +725,96 @@ namespace jc {
         return std::make_unique<Block>(std::move(stmts));
     }
 
+    bool Parser::isDictLiteralLookahead(int startPos) {
+        int peekPos = startPos;
+        while (peekPos < static_cast<int>(tokens.size()) &&
+            tokens[peekPos].type == TokenType::NEWLINE) {
+            peekPos++;
+        }
+
+        bool isDict = false;
+        int depth = 0;
+        int ternaryDepth = 0;
+        int scanPos = peekPos;
+        bool foundColon = false;
+        bool foundSemicolon = false;
+        bool foundComma = false;
+        bool foundNewline = false;
+        bool foundAssign = false;
+        bool foundTernary = false;
+
+        bool isSingleId = false;
+        bool isSingleRest = false;
+        if (peekPos < static_cast<int>(tokens.size())) {
+            if (tokens[peekPos].type == TokenType::IDENTIFIER) {
+                int nextPos = peekPos + 1;
+                while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                    isSingleId = true;
+                }
+            } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
+                int nextPos = peekPos + 2;
+                while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
+                if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
+                    isSingleRest = true;
+                }
+            }
+        }
+
+        while (scanPos < static_cast<int>(tokens.size())) {
+            TokenType t = tokens[scanPos].type;
+            if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
+                depth++;
+            } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
+                if (depth == 0) break;
+                depth--;
+            } else if (depth == 0) {
+                if (t == TokenType::QUESTION) {
+                    ternaryDepth++;
+                    foundTernary = true;
+                } else if (t == TokenType::COLON) {
+                    if (ternaryDepth > 0) {
+                        ternaryDepth--;
+                    } else {
+                        foundColon = true;
+                    }
+                } else if (t == TokenType::SEMICOLON) {
+                    foundSemicolon = true;
+                } else if (t == TokenType::COMMA) {
+                    foundComma = true;
+                } else if (t == TokenType::NEWLINE) {
+                    foundNewline = true;
+                } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
+                           t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
+                           t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
+                           t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
+                           t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
+                    foundAssign = true;
+                }
+            }
+            scanPos++;
+        }
+
+        if (foundColon) {
+            isDict = true;
+        } else if (foundSemicolon) {
+            isDict = false;
+        } else if (foundAssign) {
+            isDict = false;
+        } else if (foundTernary) {
+            isDict = false;
+        } else if (foundComma) {
+            isDict = true;
+        } else if (foundNewline) {
+            isDict = false;
+        } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
+            isDict = true;
+        } else {
+            isDict = false;
+        }
+        return isDict;
+    }
+
     // =================================================================
 // ★ 升级版：支持单行语句并智能避开字典字面量陷阱
 // =================================================================
@@ -733,92 +823,7 @@ namespace jc {
 
         if (check(TokenType::LBRACE)) {
             // ★ 我们必须在这里进行智能探测！
-            int peekPos = current + 1;
-            while (peekPos < static_cast<int>(tokens.size()) &&
-                tokens[peekPos].type == TokenType::NEWLINE) {
-                peekPos++;
-            }
-
-            bool isDict = false;
-            int depth = 0;
-            int ternaryDepth = 0;
-            int scanPos = peekPos;
-            bool foundColon = false;
-            bool foundSemicolon = false;
-            bool foundComma = false;
-            bool foundNewline = false;
-            bool foundAssign = false;
-
-            bool isSingleId = false;
-            bool isSingleRest = false;
-            if (peekPos < static_cast<int>(tokens.size())) {
-                if (tokens[peekPos].type == TokenType::IDENTIFIER) {
-                    int nextPos = peekPos + 1;
-                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                        isSingleId = true;
-                    }
-                } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
-                    int nextPos = peekPos + 2;
-                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                        isSingleRest = true;
-                    }
-                }
-            }
-
-            // 深度扫描，跳过嵌套的 [], {}, ()
-            while (scanPos < static_cast<int>(tokens.size())) {
-                TokenType t = tokens[scanPos].type;
-                if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
-                    depth++;
-                } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
-                    if (depth == 0) break;
-                    depth--;
-                } else if (depth == 0) {
-                    if (t == TokenType::QUESTION) {
-                        ternaryDepth++;
-                    } else if (t == TokenType::COLON) {
-                        if (ternaryDepth > 0) {
-                            ternaryDepth--;
-                        } else {
-                            foundColon = true;
-                        }
-                    } else if (t == TokenType::SEMICOLON) {
-                        foundSemicolon = true;
-                    } else if (t == TokenType::COMMA) {
-                        foundComma = true;
-                    } else if (t == TokenType::NEWLINE) {
-                        foundNewline = true;
-                    } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
-                               t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
-                               t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
-                               t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
-                               t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
-                        foundAssign = true;
-                    }
-                }
-                scanPos++;
-            }
-
-            if (foundColon) {
-                isDict = true;
-            } else if (foundSemicolon) {
-                isDict = false;
-            } else if (foundComma) {
-                isDict = true;
-            } else if (foundNewline) {
-                isDict = false;
-            } else if (foundAssign) {
-                isDict = false;
-            } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
-                isDict = true;
-            } else {
-                isDict = false;
-            }
-
-            // 如果它是字典，必须让 expression() 层级去调用 primary() 将其当做右值解析！
-            if (!isDict) {
+            if (!isDictLiteralLookahead(current + 1)) {
                 return parseBlock(); // 确定是普通代码块，安全进入！
             }
         }
@@ -1039,91 +1044,7 @@ namespace jc {
 
         // ★ 裸块 { ... } 或字典字面量 { key: value, ... }
         if (check(TokenType::LBRACE)) {
-            // ★ 修改 lookahead：跳过 { 后的 NEWLINE 再检查是否为 dict
-            int peekPos = current + 1;
-            while (peekPos < static_cast<int>(tokens.size()) &&
-                tokens[peekPos].type == TokenType::NEWLINE) {
-                peekPos++;
-            }
-            bool isDict = false;
-            int depth = 0;
-            int ternaryDepth = 0;
-            int scanPos = peekPos;
-            bool foundColon = false;
-            bool foundSemicolon = false;
-            bool foundComma = false;
-            bool foundNewline = false;
-            bool foundAssign = false;
-
-            bool isSingleId = false;
-            bool isSingleRest = false;
-            if (peekPos < static_cast<int>(tokens.size())) {
-                if (tokens[peekPos].type == TokenType::IDENTIFIER) {
-                    int nextPos = peekPos + 1;
-                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                        isSingleId = true;
-                    }
-                } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
-                    int nextPos = peekPos + 2;
-                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                        isSingleRest = true;
-                    }
-                }
-            }
-
-            // 深度扫描，跳过嵌套的 [], {}, ()
-            while (scanPos < static_cast<int>(tokens.size())) {
-                TokenType t = tokens[scanPos].type;
-                if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
-                    depth++;
-                } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
-                    if (depth == 0) break;
-                    depth--;
-                } else if (depth == 0) {
-                    if (t == TokenType::QUESTION) {
-                        ternaryDepth++;
-                    } else if (t == TokenType::COLON) {
-                        if (ternaryDepth > 0) {
-                            ternaryDepth--;
-                        } else {
-                            foundColon = true;
-                        }
-                    } else if (t == TokenType::SEMICOLON) {
-                        foundSemicolon = true;
-                    } else if (t == TokenType::COMMA) {
-                        foundComma = true;
-                    } else if (t == TokenType::NEWLINE) {
-                        foundNewline = true;
-                    } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
-                               t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
-                               t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
-                               t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
-                               t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
-                        foundAssign = true;
-                    }
-                }
-                scanPos++;
-            }
-
-            if (foundColon) {
-                isDict = true;
-            } else if (foundSemicolon) {
-                isDict = false;
-            } else if (foundComma) {
-                isDict = true;
-            } else if (foundNewline) {
-                isDict = false;
-            } else if (foundAssign) {
-                isDict = false;
-            } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
-                isDict = true;
-            } else {
-                isDict = false;
-            }
-
-            if (isDict) {
+            if (isDictLiteralLookahead(current + 1)) {
                 return parseDictLiteral();
             }
             return parseBlock();
@@ -1563,90 +1484,7 @@ namespace jc {
     std::unique_ptr<Expr> Parser::parseMatchBody() {
         while (match({TokenType::NEWLINE})) {}
         if (check(TokenType::LBRACE)) {
-            int peekPos = current + 1;
-            while (peekPos < static_cast<int>(tokens.size()) &&
-                tokens[peekPos].type == TokenType::NEWLINE) {
-                peekPos++;
-            }
-
-            bool isDict = false;
-            int depth = 0;
-            int ternaryDepth = 0;
-            int scanPos = peekPos;
-            bool foundColon = false;
-            bool foundSemicolon = false;
-            bool foundComma = false;
-            bool foundNewline = false;
-            bool foundAssign = false;
-
-            bool isSingleId = false;
-            bool isSingleRest = false;
-            if (peekPos < static_cast<int>(tokens.size())) {
-                if (tokens[peekPos].type == TokenType::IDENTIFIER) {
-                    int nextPos = peekPos + 1;
-                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                        isSingleId = true;
-                    }
-                } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
-                    int nextPos = peekPos + 2;
-                    while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                    if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                        isSingleRest = true;
-                    }
-                }
-            }
-
-            while (scanPos < static_cast<int>(tokens.size())) {
-                TokenType t = tokens[scanPos].type;
-                if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
-                    depth++;
-                } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
-                    if (depth == 0) break;
-                    depth--;
-                } else if (depth == 0) {
-                    if (t == TokenType::QUESTION) {
-                        ternaryDepth++;
-                    } else if (t == TokenType::COLON) {
-                        if (ternaryDepth > 0) {
-                            ternaryDepth--;
-                        } else {
-                            foundColon = true;
-                        }
-                    } else if (t == TokenType::SEMICOLON) {
-                        foundSemicolon = true;
-                    } else if (t == TokenType::COMMA) {
-                        foundComma = true;
-                    } else if (t == TokenType::NEWLINE) {
-                        foundNewline = true;
-                    } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
-                               t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
-                               t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
-                               t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
-                               t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
-                        foundAssign = true;
-                    }
-                }
-                scanPos++;
-            }
-
-            if (foundColon) {
-                isDict = true;
-            } else if (foundSemicolon) {
-                isDict = false;
-            } else if (foundComma) {
-                isDict = true;
-            } else if (foundNewline) {
-                isDict = false;
-            } else if (foundAssign) {
-                isDict = false;
-            } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
-                isDict = true;
-            } else {
-                isDict = false;
-            }
-
-            if (!isDict) {
+            if (!isDictLiteralLookahead(current + 1)) {
                 return parseBlock();
             }
         }

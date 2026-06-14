@@ -83,15 +83,17 @@ namespace jc {
     struct VariablePattern : public Pattern {
         Token name;
         ScopeModifier modifier;
-        explicit VariablePattern(Token name, ScopeModifier modifier = ScopeModifier::None) 
-            : name(std::move(name)), modifier(modifier) {}
+        bool isConst;
+        explicit VariablePattern(Token name, ScopeModifier modifier = ScopeModifier::None, bool isConst = false) 
+            : name(std::move(name)), modifier(modifier), isConst(isConst) {}
     };
 
     struct RestPattern : public Pattern {
         Token name;
         ScopeModifier modifier;
-        explicit RestPattern(Token name, ScopeModifier modifier = ScopeModifier::None) 
-            : name(std::move(name)), modifier(modifier) {}
+        bool isConst;
+        explicit RestPattern(Token name, ScopeModifier modifier = ScopeModifier::None, bool isConst = false) 
+            : name(std::move(name)), modifier(modifier), isConst(isConst) {}
     };
 
     struct ListPattern : public Pattern {
@@ -228,7 +230,8 @@ namespace jc {
 
     struct LocalDecl : public Expr {
         Token name;
-        explicit LocalDecl(Token name) : name(std::move(name)) {}
+        bool isConst;
+        explicit LocalDecl(Token name, bool isConst = false) : name(std::move(name)), isConst(isConst) {}
         void accept(ExprVisitor& visitor) override { visitor.visitLocalDecl(this); }
     };
 

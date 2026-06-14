@@ -91,7 +91,7 @@ namespace jc {
         void emitStoreTarget(Expr* target, bool isConst = false);
         std::optional<Value> tryFoldConstant(Expr* expr);
         void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst = false);
-        void collectPatternVars(Pattern* pat, std::vector<std::pair<std::string, ScopeModifier>>& boundVars);
+        void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars);
 
     public:
         Chunk compile(Expr* ast, const std::string& sourceFile = "");

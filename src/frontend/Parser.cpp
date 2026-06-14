@@ -386,10 +386,7 @@ namespace jc {
 
         if (isLocal || isRef || isState || isConst) {
             if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-                if (isConst && !isRef && !isState) {
-                    throw std::runtime_error("Parser Error: 'const' declaration requires '= value'.");
-                }
-                if (isLocal) expr = std::make_unique<LocalDecl>(var->name);
+                if (isLocal || (isConst && !isRef && !isState)) expr = std::make_unique<LocalDecl>(var->name, isConst);
                 else if (isRef) expr = std::make_unique<RefDecl>(var->name, isConst);
                 else expr = std::make_unique<StateDecl>(var->name, isConst);
             } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
@@ -1289,13 +1286,13 @@ namespace jc {
             return std::make_unique<VariablePattern>(var->name);
         }
         if (auto* loc = dynamic_cast<LocalDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(loc->name, ScopeModifier::Local);
+            return std::make_unique<VariablePattern>(loc->name, ScopeModifier::Local, loc->isConst);
         }
         if (auto* ref = dynamic_cast<RefDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(ref->name, ScopeModifier::Ref);
+            return std::make_unique<VariablePattern>(ref->name, ScopeModifier::Ref, ref->isConst);
         }
         if (auto* st = dynamic_cast<StateDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(st->name, ScopeModifier::State);
+            return std::make_unique<VariablePattern>(st->name, ScopeModifier::State, st->isConst);
         }
         if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
             return std::make_unique<ExprPattern>(std::move(expr));
@@ -1306,13 +1303,13 @@ namespace jc {
                     return std::make_unique<RestPattern>(var->name);
                 }
                 if (auto* loc = dynamic_cast<LocalDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(loc->name, ScopeModifier::Local);
+                    return std::make_unique<RestPattern>(loc->name, ScopeModifier::Local, loc->isConst);
                 }
                 if (auto* ref = dynamic_cast<RefDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(ref->name, ScopeModifier::Ref);
+                    return std::make_unique<RestPattern>(ref->name, ScopeModifier::Ref, ref->isConst);
                 }
                 if (auto* st = dynamic_cast<StateDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(st->name, ScopeModifier::State);
+                    return std::make_unique<RestPattern>(st->name, ScopeModifier::State, st->isConst);
                 }
                 throw std::runtime_error("Parser Error: Invalid rest pattern target.");
             }
@@ -1403,23 +1400,28 @@ namespace jc {
 
         ScopeModifier mod = ScopeModifier::None;
         bool hasMod = false;
-        if (match({TokenType::LOCAL})) { mod = ScopeModifier::Local; hasMod = true; }
-        else if (match({TokenType::REF})) { mod = ScopeModifier::Ref; hasMod = true; }
-        else if (match({TokenType::STATE})) { mod = ScopeModifier::State; hasMod = true; }
+        bool isConst = false;
+        while (true) {
+            if (match({TokenType::LOCAL})) { mod = ScopeModifier::Local; hasMod = true; }
+            else if (match({TokenType::REF})) { mod = ScopeModifier::Ref; hasMod = true; }
+            else if (match({TokenType::STATE})) { mod = ScopeModifier::State; hasMod = true; }
+            else if (match({TokenType::CONST})) { isConst = true; hasMod = true; }
+            else break;
+        }
 
         if (match({TokenType::ELLIPSIS})) {
             Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
-            return std::make_unique<RestPattern>(name, mod);
+            return std::make_unique<RestPattern>(name, mod, isConst);
         }
         
         if (hasMod) {
             Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after modifier.");
-            return std::make_unique<VariablePattern>(name, mod);
+            return std::make_unique<VariablePattern>(name, mod, isConst);
         }
 
         if (check(TokenType::IDENTIFIER)) {
             Token name = advance();
-            return std::make_unique<VariablePattern>(name, mod);
+            return std::make_unique<VariablePattern>(name, mod, isConst);
         }
         if (match({TokenType::LBRACKET})) {
             std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
@@ -1442,12 +1444,17 @@ namespace jc {
                     currentRow.clear();
                     continue;
                 }
-                if (check(TokenType::ELLIPSIS) || check(TokenType::LOCAL) || check(TokenType::REF) || check(TokenType::STATE)) {
+                if (check(TokenType::ELLIPSIS) || check(TokenType::LOCAL) || check(TokenType::REF) || check(TokenType::STATE) || check(TokenType::CONST)) {
                     int savedPos = current;
                     ScopeModifier elemMod = ScopeModifier::None;
-                    if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
-                    else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
-                    else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
+                    bool elemConst = false;
+                    while (true) {
+                        if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
+                        else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
+                        else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
+                        else if (match({TokenType::CONST})) elemConst = true;
+                        else break;
+                    }
                     
                     if (match({TokenType::ELLIPSIS})) {
                         Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
@@ -1465,14 +1472,14 @@ namespace jc {
 
                         if (check(TokenType::SEMICOLON) || check(TokenType::RBRACKET)) {
                             if (check(TokenType::RBRACKET) && currentRow.empty() && !rows.empty()) {
-                                restRow = std::make_unique<RestPattern>(name, elemMod);
+                                restRow = std::make_unique<RestPattern>(name, elemMod, elemConst);
                                 isMatrix = true;
                             } else {
-                                restCol = std::make_unique<RestPattern>(name, elemMod);
+                                restCol = std::make_unique<RestPattern>(name, elemMod, elemConst);
                             }
                             continue;
                         } else {
-                            currentRow.push_back(std::make_unique<RestPattern>(name, elemMod));
+                            currentRow.push_back(std::make_unique<RestPattern>(name, elemMod, elemConst));
                             if (!match({TokenType::COMMA})) {
                                 throw std::runtime_error("Parser Error: Expect ',' after pattern.");
                             }
@@ -1517,16 +1524,21 @@ namespace jc {
                 while (match({TokenType::NEWLINE})) {}
                 if (check(TokenType::RBRACE)) break;
 
-                if (check(TokenType::ELLIPSIS) || check(TokenType::LOCAL) || check(TokenType::REF) || check(TokenType::STATE)) {
+                if (check(TokenType::ELLIPSIS) || check(TokenType::LOCAL) || check(TokenType::REF) || check(TokenType::STATE) || check(TokenType::CONST)) {
                     int savedPos = current;
                     ScopeModifier elemMod = ScopeModifier::None;
-                    if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
-                    else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
-                    else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
+                    bool elemConst = false;
+                    while (true) {
+                        if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
+                        else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
+                        else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
+                        else if (match({TokenType::CONST})) elemConst = true;
+                        else break;
+                    }
                     
                     if (match({TokenType::ELLIPSIS})) {
                         Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
-                        rest = std::make_unique<RestPattern>(name, elemMod);
+                        rest = std::make_unique<RestPattern>(name, elemMod, elemConst);
                         break; // Rest must be last
                     } else {
                         current = savedPos; // Not a rest pattern, backtrack

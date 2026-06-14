@@ -209,10 +209,10 @@ namespace jc {
             emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_POP, lastLine);
 
-            std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+            std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
             collectPatternVars(clause.pattern.get(), boundVars);
-            for (const auto& varPair : boundVars) {
-                const std::string& name = varPair.first;
+            for (const auto& varTuple : boundVars) {
+                const std::string& name = std::get<0>(varTuple);
                 if (name == "_") continue;
                 int slot = resolveLocal(name);
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
@@ -1607,13 +1607,14 @@ namespace jc {
             emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_POP, lastLine);
 
-            std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+            std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
             collectPatternVars(expr->pattern.get(), boundVars);
 
             std::vector<std::string> tempStateNames;
-            for (auto& varPair : boundVars) {
-                const std::string& name = varPair.first;
-                ScopeModifier& mod = varPair.second;
+            for (auto& varTuple : boundVars) {
+                const std::string& name = std::get<0>(varTuple);
+                ScopeModifier& mod = std::get<1>(varTuple);
+                bool isConst = std::get<2>(varTuple) || expr->isConst;
                 if (name == "_") continue;
                 
                 if (mod == ScopeModifier::None && expr->isLocal) mod = ScopeModifier::Local;
@@ -1622,20 +1623,25 @@ namespace jc {
                     if (current().captures.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
                 } else if (mod == ScopeModifier::Ref) {
                     if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().captures[name] = {CaptureType::Ref, expr->isConst, false};
+                    current().captures[name] = {CaptureType::Ref, isConst, false};
                 } else if (mod == ScopeModifier::State) {
                     if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                     tempStateNames.push_back(name);
                 }
             }
 
-            for (const auto& name : tempStateNames) {
-                current().captures[name] = {CaptureType::State, expr->isConst, true};
+            for (auto& varTuple : boundVars) {
+                const std::string& name = std::get<0>(varTuple);
+                bool isConst = std::get<2>(varTuple) || expr->isConst;
+                if (std::find(tempStateNames.begin(), tempStateNames.end(), name) != tempStateNames.end()) {
+                    current().captures[name] = {CaptureType::State, isConst, true};
+                }
             }
 
-            for (const auto& varPair : boundVars) {
-                const std::string& name = varPair.first;
-                ScopeModifier mod = varPair.second;
+            for (const auto& varTuple : boundVars) {
+                const std::string& name = std::get<0>(varTuple);
+                ScopeModifier mod = std::get<1>(varTuple);
+                bool isConst = std::get<2>(varTuple) || expr->isConst;
                 if (name == "_") continue;
                 
                 int existingSlot = resolveLocal(name);
@@ -1663,15 +1669,15 @@ namespace jc {
                 int slot = resolveLocal(name);
                 if (mod == ScopeModifier::Local) {
                     if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(name, current().scopeDepth, expr->isConst);
+                        addLocal(name, current().scopeDepth, isConst);
                     } else {
-                        current().locals[slot].isConst = expr->isConst;
+                        current().locals[slot].isConst = isConst;
                     }
                 } else if (mod == ScopeModifier::None) {
                     if (stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
-                        addLocal(name, 0, expr->isConst);
+                        addLocal(name, 0, isConst);
                     } else if (slot != -1) {
-                        current().locals[slot].isConst = expr->isConst;
+                        current().locals[slot].isConst = isConst;
                     }
                 }
             }
@@ -2152,11 +2158,11 @@ namespace jc {
         return;
     }
 
-    void Compiler::collectPatternVars(Pattern* pat, std::vector<std::pair<std::string, ScopeModifier>>& boundVars) {
+    void Compiler::collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars) {
         if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
-            if (vp->name.lexeme != "_") boundVars.push_back({vp->name.lexeme, vp->modifier});
+            if (vp->name.lexeme != "_") boundVars.push_back({vp->name.lexeme, vp->modifier, vp->isConst});
         } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
-            if (rp->name.lexeme != "_") boundVars.push_back({rp->name.lexeme, rp->modifier});
+            if (rp->name.lexeme != "_") boundVars.push_back({rp->name.lexeme, rp->modifier, rp->isConst});
         } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
             for (auto& e : lp->elements) collectPatternVars(e.get(), boundVars);
             if (lp->rest) collectPatternVars(lp->rest.get(), boundVars);
@@ -2605,13 +2611,14 @@ namespace jc {
 
     void Compiler::visitDestructAssign(DestructAssign* expr) {
         // 1. Pre-register ref/state names
-        std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+        std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
         collectPatternVars(expr->pattern.get(), boundVars);
 
         std::vector<std::string> tempStateNames;
-        for (const auto& varPair : boundVars) {
-            const std::string& name = varPair.first;
-            ScopeModifier mod = varPair.second;
+        for (const auto& varTuple : boundVars) {
+            const std::string& name = std::get<0>(varTuple);
+            ScopeModifier mod = std::get<1>(varTuple);
+            bool isConst = std::get<2>(varTuple) || expr->isConst;
             if (mod == ScopeModifier::None) {
                 if (expr->isLocal) mod = ScopeModifier::Local;
                 else if (expr->isRef) mod = ScopeModifier::Ref;
@@ -2622,11 +2629,11 @@ namespace jc {
                 if (current().captures.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
             } else if (mod == ScopeModifier::Ref) {
                 if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                current().captures[name] = {CaptureType::Ref, expr->isConst, false};
+                current().captures[name] = {CaptureType::Ref, isConst, false};
             } else if (mod == ScopeModifier::State) {
                 if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
                 tempStateNames.push_back(name);
-                current().captures[name] = {CaptureType::State, expr->isConst, true};
+                current().captures[name] = {CaptureType::State, isConst, true};
             }
         }
 
@@ -2663,9 +2670,10 @@ namespace jc {
         emit(OpCode::OP_POP, lastLine);
 
         // 4. Register locals for bound variables
-        for (const auto& varPair : boundVars) {
-            const std::string& name = varPair.first;
-            ScopeModifier mod = varPair.second;
+        for (const auto& varTuple : boundVars) {
+            const std::string& name = std::get<0>(varTuple);
+            ScopeModifier mod = std::get<1>(varTuple);
+            bool isConst = std::get<2>(varTuple) || expr->isConst;
             if (mod == ScopeModifier::None) {
                 if (expr->isLocal) mod = ScopeModifier::Local;
                 else if (expr->isRef) mod = ScopeModifier::Ref;
@@ -2697,15 +2705,15 @@ namespace jc {
             int slot = resolveLocal(name);
             if (mod == ScopeModifier::Local) {
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                    addLocal(name, current().scopeDepth, expr->isConst);
+                    addLocal(name, current().scopeDepth, isConst);
                 } else {
-                    current().locals[slot].isConst = expr->isConst;
+                    current().locals[slot].isConst = isConst;
                 }
             } else if (mod == ScopeModifier::None) {
                 if (stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
-                    addLocal(name, 0, expr->isConst);
+                    addLocal(name, 0, isConst);
                 } else if (slot != -1) {
-                    current().locals[slot].isConst = expr->isConst;
+                    current().locals[slot].isConst = isConst;
                 }
             }
         }
@@ -2907,9 +2915,12 @@ namespace jc {
         if (current().captures.count(name) > 0) {
             throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
         }
+        if (expr->isConst) {
+            throw std::runtime_error("Compiler Error: 'const' declaration requires '= value'.");
+        }
         int slot = resolveLocal(name);
         if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-            addLocal(name, current().scopeDepth);
+            addLocal(name, current().scopeDepth, expr->isConst);
             slot = resolveLocal(name);
         }
         emit(OpCode::OP_NONE, lastLine);
@@ -3388,31 +3399,32 @@ namespace jc {
         for (auto& branch : expr->branches) {
             beginScope();
 
-            std::vector<std::pair<std::string, ScopeModifier>> boundVars;
+            std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
             for (auto& pat : branch.patterns) collectPatternVars(pat.get(), boundVars);
 
-            for (const auto& varPair : boundVars) {
-                const std::string& var = varPair.first;
-                ScopeModifier mod = varPair.second;
+            for (const auto& varTuple : boundVars) {
+                const std::string& var = std::get<0>(varTuple);
+                ScopeModifier mod = std::get<1>(varTuple);
+                bool isConst = std::get<2>(varTuple);
                 
                 if (mod == ScopeModifier::Local) {
                     if (current().captures.count(var) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
                 } else if (mod == ScopeModifier::Ref) {
                     if (current().captures.count(var) > 0 && current().captures[var].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().captures[var] = {CaptureType::Ref, false, false};
+                    current().captures[var] = {CaptureType::Ref, isConst, false};
                 } else if (mod == ScopeModifier::State) {
                     if (current().captures.count(var) > 0 && current().captures[var].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
-                    current().captures[var] = {CaptureType::State, false, true};
+                    current().captures[var] = {CaptureType::State, isConst, true};
                 }
 
                 int slot = resolveLocal(var);
                 if (mod == ScopeModifier::Local) {
                     if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(var, current().scopeDepth);
+                        addLocal(var, current().scopeDepth, isConst);
                     }
                 } else if (mod == ScopeModifier::None) {
                     if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(var, current().scopeDepth);
+                        addLocal(var, current().scopeDepth, isConst);
                     }
                 }
             }

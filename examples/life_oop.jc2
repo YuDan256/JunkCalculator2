@@ -1,5 +1,6 @@
 // Import the standard Object-Oriented Game and UI Framework
 import engine
+{ GameEngine } = engine
 
 // Inherit from the GameEngine class
 class LifeGame extends GameEngine {

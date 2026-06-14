@@ -2246,8 +2246,7 @@ namespace jc {
                 if (dynamic_cast<RestPattern*>(e.get())) hasRest = true;
                 else if (!dynamic_cast<DefaultPattern*>(e.get())) minCols++;
             }
-            uint8_t exactMask = hasRest ? 0 : 3; // 3 means both exact
-            exactMask |= 4; // ★ 标记为 1D 模式 (ListPattern)
+            uint8_t exactMask = 4; // 1D pattern, exactCols = false
 
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
@@ -2256,6 +2255,17 @@ namespace jc {
             emit(exactMask, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
+
+            if (!hasRest) {
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                uint16_t lenIdx = identifierConstant("len");
+                emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(lenIdx, lastLine);
+                emit(OpCode::OP_CALL, lastLine); emit(1, lastLine);
+                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(lp->elements.size()))), lastLine);
+                emit(OpCode::OP_LESS_EQUAL, lastLine);
+                failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+                emit(OpCode::OP_POP, lastLine);
+            }
 
             int c_idx = 0;
             bool afterRest = false;
@@ -2452,12 +2462,9 @@ namespace jc {
                 }
             }
             
-            if (anyRowNoRest) exactCols = true;
-            if (mp->rows.empty() && !mp->restRow) exactCols = true;
-
             uint8_t exactMask = 0;
             if (!mp->restRow) exactMask |= 1; // exactRows
-            if (exactCols) exactMask |= 2;    // exactCols
+            // exactCols is always false to allow defaults, we manually check maxCols
             
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
@@ -2466,6 +2473,21 @@ namespace jc {
             emit(exactMask, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
+
+            if (anyRowNoRest || (mp->rows.empty() && !mp->restRow)) {
+                int maxCols = 0;
+                for (const auto& row : mp->rows) {
+                    if (static_cast<int>(row.size()) > maxCols) maxCols = static_cast<int>(row.size());
+                }
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                uint16_t colsIdx = identifierConstant("cols");
+                emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(colsIdx, lastLine);
+                emit(OpCode::OP_CALL, lastLine); emit(1, lastLine);
+                emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(maxCols))), lastLine);
+                emit(OpCode::OP_LESS_EQUAL, lastLine);
+                failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
+                emit(OpCode::OP_POP, lastLine);
+            }
 
             for (int r = 0; r < rows; ++r) {
                 int c_idx = 0;

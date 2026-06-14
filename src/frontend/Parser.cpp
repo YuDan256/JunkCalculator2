@@ -223,14 +223,19 @@ namespace jc {
                             if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
                                 if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                                 bool isDict = check(TokenType::LBRACE);
-                                auto patNode = parsePattern();
+                                auto patNode = parsePrimaryPattern();
 
                                 std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
                                 Token phTok(TokenType::IDENTIFIER, phName, funcName.line);
                                 params.push_back(phTok);
                                 paramIsRef.push_back(false);
                                 paramTypes.push_back(isDict ? "dict" : "list"); // ★ 自动加上硬性类型约束！
-                                defaultExprs.push_back(nullptr);
+                                
+                                if (match({ TokenType::ASSIGN })) {
+                                    defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
+                                } else {
+                                    defaultExprs.push_back(nullptr);
+                                }
 
                                 auto rhs = std::make_unique<Variable>(phTok);
                                 destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
@@ -313,7 +318,7 @@ namespace jc {
             while (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::NEWLINE) peekPos++;
             if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::ASSIGN) {
                 // 确认是解构赋值，直接解析为纯正的 Pattern！
-                auto pat = parsePattern();
+                auto pat = parsePrimaryPattern();
                 consume(TokenType::ASSIGN, "Parser Error: Expect '=' after destructuring pattern.");
                 auto value = assignment();
                 return std::make_unique<DestructAssign>(std::move(pat), std::move(value), isRef, isState, isLocal, isConst);
@@ -864,7 +869,7 @@ namespace jc {
         if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
             int savedPos2 = current;
             try {
-                auto pat = parsePattern();
+                auto pat = parsePrimaryPattern();
                 if (check(TokenType::IN)) {
                     advance(); // consume 'in'
                     auto iterable = expression();
@@ -1312,12 +1317,6 @@ namespace jc {
     }
 
     std::unique_ptr<Pattern> Parser::parsePrimaryPattern() {
-        if (match({TokenType::LPAREN})) {
-            auto expr = expression();
-            consume(TokenType::RPAREN, "Parser Error: Expect ')' after dynamic expression pattern.");
-            return std::make_unique<DynamicAssertPattern>(std::move(expr));
-        }
-
         ScopeModifier mod = ScopeModifier::None;
         bool hasMod = false;
         bool isConst = false;
@@ -1336,11 +1335,6 @@ namespace jc {
         
         if (hasMod) {
             Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after modifier.");
-            return std::make_unique<VariablePattern>(name, mod, isConst);
-        }
-
-        if (check(TokenType::IDENTIFIER)) {
-            Token name = advance();
             return std::make_unique<VariablePattern>(name, mod, isConst);
         }
         if (match({TokenType::LBRACKET})) {
@@ -1492,7 +1486,16 @@ namespace jc {
             return std::make_unique<DictPattern>(std::move(entries), std::move(rest));
         }
         
-        auto expr = primary();
+        auto expr = call();
+        if (auto* var = dynamic_cast<Variable*>(expr.get())) {
+            return std::make_unique<VariablePattern>(var->name, mod, isConst);
+        }
+        if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
+            return std::make_unique<ExprPattern>(std::move(expr));
+        }
+        if (auto* group = dynamic_cast<GroupingExpr*>(expr.get())) {
+            return std::make_unique<DynamicAssertPattern>(std::move(group->expression));
+        }
         if (dynamic_cast<SetLiteral*>(expr.get())) {
             return std::make_unique<DynamicAssertPattern>(std::move(expr));
         }
@@ -1842,7 +1845,7 @@ namespace jc {
 
             // ★ 解构模式：for ([a, b] in ...) or for ({a, b} in ...)
             if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
-                auto pat = parsePattern();
+                auto pat = parsePrimaryPattern();
                 consume(TokenType::IN, "Parser Error: Expect 'in' after pattern in list comprehension.");
                 auto iterable = expression();
                 clauses.emplace_back(std::move(pat), std::shared_ptr<Expr>(iterable.release()));

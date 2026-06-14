@@ -145,6 +145,7 @@ namespace jc {
         virtual void visitLocalDecl(LocalDecl* expr) = 0;
         virtual void visitRefDecl(RefDecl* expr) = 0;
         virtual void visitStateDecl(StateDecl* expr) = 0;
+        virtual void visitConstDecl(ConstDecl* expr) = 0;
         virtual void visitDeleteExpr(DeleteExpr* expr) = 0;
         virtual void visitCompoundAssign(CompoundAssign* expr) = 0;
         virtual void visitLambdaExpr(LambdaExpr* expr) = 0;
@@ -231,10 +232,15 @@ namespace jc {
     struct LocalDecl : public Expr {
         Token name;
         bool isConst;
-        bool isExplicitLocal;
-        explicit LocalDecl(Token name, bool isConst = false, bool isExplicitLocal = true) 
-            : name(std::move(name)), isConst(isConst), isExplicitLocal(isExplicitLocal) {}
+        explicit LocalDecl(Token name, bool isConst = false) 
+            : name(std::move(name)), isConst(isConst) {}
         void accept(ExprVisitor& visitor) override { visitor.visitLocalDecl(this); }
+    };
+
+    struct ConstDecl : public Expr {
+        Token name;
+        explicit ConstDecl(Token name) : name(std::move(name)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitConstDecl(this); }
     };
 
     struct Call : public Expr {

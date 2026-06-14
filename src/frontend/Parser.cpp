@@ -386,9 +386,10 @@ namespace jc {
 
         if (isLocal || isRef || isState || isConst) {
             if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-                if (isLocal || (isConst && !isRef && !isState)) expr = std::make_unique<LocalDecl>(var->name, isConst, isLocal);
+                if (isLocal) expr = std::make_unique<LocalDecl>(var->name, isConst);
                 else if (isRef) expr = std::make_unique<RefDecl>(var->name, isConst);
-                else expr = std::make_unique<StateDecl>(var->name, isConst);
+                else if (isState) expr = std::make_unique<StateDecl>(var->name, isConst);
+                else if (isConst) expr = std::make_unique<ConstDecl>(var->name);
             } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
                 assign->isLocal = isLocal;
                 assign->isRef = isRef;
@@ -397,9 +398,10 @@ namespace jc {
             } else if (auto* un = dynamic_cast<Unary*>(expr.get())) {
                 if (un->op.type == TokenType::ELLIPSIS) {
                     if (auto* restVar = dynamic_cast<Variable*>(un->right.get())) {
-                        if (isLocal || (isConst && !isRef && !isState)) un->right = std::make_unique<LocalDecl>(restVar->name, isConst, isLocal);
+                        if (isLocal) un->right = std::make_unique<LocalDecl>(restVar->name, isConst);
                         else if (isRef) un->right = std::make_unique<RefDecl>(restVar->name, isConst);
-                        else un->right = std::make_unique<StateDecl>(restVar->name, isConst);
+                        else if (isState) un->right = std::make_unique<StateDecl>(restVar->name, isConst);
+                        else if (isConst) un->right = std::make_unique<ConstDecl>(restVar->name);
                     } else {
                         throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
                     }
@@ -1298,13 +1300,16 @@ namespace jc {
             return std::make_unique<VariablePattern>(var->name);
         }
         if (auto* loc = dynamic_cast<LocalDecl*>(expr.get())) {
-            return std::make_unique<VariablePattern>(loc->name, loc->isExplicitLocal ? ScopeModifier::Local : ScopeModifier::None, loc->isConst);
+            return std::make_unique<VariablePattern>(loc->name, ScopeModifier::Local, loc->isConst);
         }
         if (auto* ref = dynamic_cast<RefDecl*>(expr.get())) {
             return std::make_unique<VariablePattern>(ref->name, ScopeModifier::Ref, ref->isConst);
         }
         if (auto* st = dynamic_cast<StateDecl*>(expr.get())) {
             return std::make_unique<VariablePattern>(st->name, ScopeModifier::State, st->isConst);
+        }
+        if (auto* cd = dynamic_cast<ConstDecl*>(expr.get())) {
+            return std::make_unique<VariablePattern>(cd->name, ScopeModifier::None, true);
         }
         if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
             return std::make_unique<ExprPattern>(std::move(expr));
@@ -1315,13 +1320,16 @@ namespace jc {
                     return std::make_unique<RestPattern>(var->name);
                 }
                 if (auto* loc = dynamic_cast<LocalDecl*>(un->right.get())) {
-                    return std::make_unique<RestPattern>(loc->name, loc->isExplicitLocal ? ScopeModifier::Local : ScopeModifier::None, loc->isConst);
+                    return std::make_unique<RestPattern>(loc->name, ScopeModifier::Local, loc->isConst);
                 }
                 if (auto* ref = dynamic_cast<RefDecl*>(un->right.get())) {
                     return std::make_unique<RestPattern>(ref->name, ScopeModifier::Ref, ref->isConst);
                 }
                 if (auto* st = dynamic_cast<StateDecl*>(un->right.get())) {
                     return std::make_unique<RestPattern>(st->name, ScopeModifier::State, st->isConst);
+                }
+                if (auto* cd = dynamic_cast<ConstDecl*>(un->right.get())) {
+                    return std::make_unique<RestPattern>(cd->name, ScopeModifier::None, true);
                 }
                 throw std::runtime_error("Parser Error: Invalid rest pattern target.");
             }

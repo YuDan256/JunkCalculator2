@@ -2929,6 +2929,10 @@ namespace jc {
         return;
     }
 
+    void Compiler::visitConstDecl(ConstDecl*) {
+        throw std::runtime_error("Compiler Error: 'const' declaration requires '= value'.");
+    }
+
     void Compiler::visitDeleteExpr(DeleteExpr* expr) {
         for (auto& tok : expr->names) {
             uint16_t fnIdx = identifierConstant("__vm_delete__");

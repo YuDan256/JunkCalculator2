@@ -122,6 +122,7 @@ namespace jc {
         void visitLocalDecl(LocalDecl*) override;
         void visitRefDecl(RefDecl*) override;
         void visitStateDecl(StateDecl*) override;
+        void visitConstDecl(ConstDecl*) override;
         void visitDeleteExpr(DeleteExpr*) override;
         void visitCompoundAssign(CompoundAssign*) override;
         void visitLambdaExpr(LambdaExpr*) override;

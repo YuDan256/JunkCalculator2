@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.3.0
+# Junk Calculator 2.4.4.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.3.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.4.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,30 +68,24 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.3.0
+## What's New in v2.4.4.0
 
-Version 2.4.3.0 delivers massive performance optimizations, introduces new literal syntaxes, hardens the Garbage Collector, and completely overhauls the standard library.
+Version 2.4.4.0 delivers a deep architectural refactoring and a massive standard library cleanup. It completely resolves legacy issues with module isolation and reference write-backs, significantly enhances the CAS engine's deduction capabilities, and modernizes container APIs.
 
-### Performance Optimizations
-- **Tail Call Optimization (TCO)**: Implemented TCO for deep recursion, automatically disabled when `ref` arguments require writeback to preserve semantics.
-- **Inline Caching & Interning**: Added inline caching for property access and method invocation. Introduced string interning for literals to enable blazing-fast pointer equality checks.
-- **Memory Pre-allocation**: Added memory pre-allocation for string concatenation and Dict/Set building.
-- **Fast-Paths**: Introduced a fast-path for double arithmetic in binary operator dispatching.
+### Architectural Refactoring: Isolation & References
+- **Namespace-based Module System**: Overhauled the `import` mechanism by compiling scripts as independent blocks with a dummy global state. Uses `OP_BUILD_NAMESPACE` to pack exports, achieving 100% lexical isolation (similar to Node.js) and preventing global pollution.
+- **Unified Ref Handling**: Abolished the legacy delayed write-back instruction. Introduced `OP_PASS_REFS` and a dedicated reference tracking table. The VM now resolves references directly via the CallFrame, enabling O(1) real-time memory penetration and fixing state loss during exceptions.
+- **Const Modifier Demotion**: Demoted `const` to a boolean flag on assignment nodes, unlocking orthogonal combinations like `const local x` and `for (const local x in ...)`. The compiler and runtime now uniformly enforce write protection.
 
-### Syntax & Features
-- **New Literals**: Added Set literal syntax `@{...}` and forced List literal syntax `@[...]` (prevents implicit matrix concatenation).
-- **Pattern Matching Enhancements**: Introduced dependent binding and explicit dynamic assertions `(expr)` in `match` expressions. Added strict shape validation for matrix patterns.
-- **List Comprehensions**: Enforced parentheses in list comprehension clauses and added support for alternating nested `for` and `if` statements.
+### Data Structures: Container Algebra & GC Guards
+- **Dict Algebra (+ & -)**: Overloaded `+` for right-biased dictionary merges. Overloaded `-` for functional key eviction (RHS accepts Set/List/Dict), triggering only a single deep copy followed by rapid C++ `erase()` operations.
+- **Bitwise XOR & Symmetric Difference**: Introduced the `^^` operator (and `^^=`). Performs blazing-fast bitwise XOR for integers and Symmetric Difference for `Set` types.
+- **String Fast-path & GC Guards**: Implemented a fast-path for string concatenation using pre-calculated lengths and `reserve()`. Added `GcObjGuard` across the standard library to protect newly allocated objects from being mistakenly reclaimed by the GC during complex operations.
 
-### VM & GC Stability
-- **GC Hardening**: Fixed a critical bug where arguments could be reclaimed by the GC during native C++ calls. Delayed stack erasure until after GC-triggering operations to ensure memory safety.
-- **Execution Logic**: Unified stack management to the SESE (Single Entry Single Exit) principle. Fixed Copy-On-Write (COW) semantics for string mutations.
-- **Fail-Fast Closures**: Closures now fail-fast at creation time if they attempt to capture missing global or uninitialized variables.
-
-### Math & Standard Library
-- **Math Engine**: Removed integer rounding in numeric cleaning, aligning matrix output strictly with floating-point precision. Relaxed matrix shape checks at compile time to enable runtime row concatenation.
-- **Standard Library Overhaul**: Adapted type constraints across the standard library from `int` to `whole` to support floating-point integers. Replaced all `list()` function calls with `@[...]` literals to eliminate call overhead.
-- **Regex Rewrite**: Completely rewrote `regex.jc2` using the new pattern matching syntax, removing the legacy `re_` prefix and replacing internal lambdas with `for` loops to resolve upvalue capture issues.
+### Math Engine: CAS Evolution & Modern APIs
+- **Modernized Linalg APIs**: Fully adopted multiple returns and self-describing dictionaries. E.g., `[Q, R] = qr(A)`; `factor(n)` returns a `{prime: exponent}` dict; `lsolve` returns a state dict containing `status`, `basis`, and `residual`. Removed the redundant `linfo`.
+- **Gruntz Algorithm Completion**: Added directional parameters for one-sided limits. Supported $x \to -\infty$ via variable substitution. Fixed leading coefficient sign evaluation. Replaced the legacy `oo` symbol with the IEEE-standard `inf`.
+- **Integration Heuristics Boost**: Significantly increased the priority score of specific rational fraction heuristics in the integration engine. This short-circuits execution for specific patterns, drastically reducing AST bloat caused by complex transcendental functions.
 
 ---
 

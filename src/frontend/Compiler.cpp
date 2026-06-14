@@ -952,7 +952,7 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition && sources.empty();
+        bool actualTailCall = inTailPosition;
 
         if (!sources.empty()) {
             emit(OpCode::OP_PASS_REFS, expr->callee.line);
@@ -2177,7 +2177,7 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition && sources.empty();
+        bool actualTailCall = inTailPosition;
 
         if (!sources.empty()) {
             emit(OpCode::OP_PASS_REFS, lastLine);
@@ -3493,7 +3493,7 @@ namespace jc {
                 }
             }
 
-            bool actualTailCall = inTailPosition && sources.empty();
+            bool actualTailCall = inTailPosition;
 
             if (!sources.empty()) {
                 emit(OpCode::OP_PASS_REFS, lastLine);
@@ -3546,7 +3546,7 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition && sources.empty();
+        bool actualTailCall = inTailPosition;
 
         if (!sources.empty()) {
             emit(OpCode::OP_PASS_REFS, lastLine);

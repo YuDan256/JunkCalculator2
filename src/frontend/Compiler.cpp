@@ -2420,7 +2420,6 @@ namespace jc {
         } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
             int rows = static_cast<int>(mp->rows.size());
             int minCols = -1;
-            bool exactCols = false;
             bool anyRowNoRest = false;
             
             for (const auto& row : mp->rows) {

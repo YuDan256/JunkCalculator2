@@ -748,44 +748,32 @@ namespace jc {
         bool foundNewline = false;
         bool foundAssign = false;
         bool foundTernary = false;
-
-        bool isSingleId = false;
-        bool isSingleRest = false;
-        if (peekPos < static_cast<int>(tokens.size())) {
-            if (tokens[peekPos].type == TokenType::IDENTIFIER) {
-                int nextPos = peekPos + 1;
-                while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                    isSingleId = true;
-                }
-            } else if (tokens[peekPos].type == TokenType::ELLIPSIS && peekPos + 1 < static_cast<int>(tokens.size()) && tokens[peekPos+1].type == TokenType::IDENTIFIER) {
-                int nextPos = peekPos + 2;
-                while (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::NEWLINE) nextPos++;
-                if (nextPos < static_cast<int>(tokens.size()) && tokens[nextPos].type == TokenType::RBRACE) {
-                    isSingleRest = true;
-                }
-            }
-        }
+        bool allIdentifiersAndCommas = true;
 
         while (scanPos < static_cast<int>(tokens.size())) {
             TokenType t = tokens[scanPos].type;
             if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
                 depth++;
+                allIdentifiersAndCommas = false;
             } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
                 if (depth == 0) break;
                 depth--;
+                allIdentifiersAndCommas = false;
             } else if (depth == 0) {
                 if (t == TokenType::QUESTION) {
                     ternaryDepth++;
                     foundTernary = true;
+                    allIdentifiersAndCommas = false;
                 } else if (t == TokenType::COLON) {
                     if (ternaryDepth > 0) {
                         ternaryDepth--;
                     } else {
                         foundColon = true;
                     }
+                    allIdentifiersAndCommas = false;
                 } else if (t == TokenType::SEMICOLON) {
                     foundSemicolon = true;
+                    allIdentifiersAndCommas = false;
                 } else if (t == TokenType::COMMA) {
                     foundComma = true;
                 } else if (t == TokenType::NEWLINE) {
@@ -796,6 +784,9 @@ namespace jc {
                            t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
                            t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
                     foundAssign = true;
+                    allIdentifiersAndCommas = false;
+                } else if (t != TokenType::IDENTIFIER && t != TokenType::ELLIPSIS) {
+                    allIdentifiersAndCommas = false;
                 }
             }
             scanPos++;
@@ -809,12 +800,12 @@ namespace jc {
             isDict = false;
         } else if (foundTernary) {
             isDict = false;
-        } else if (foundComma) {
-            isDict = true;
-        } else if (foundNewline) {
-            isDict = false;
-        } else if (isSingleId || isSingleRest || scanPos == peekPos) { 
-            isDict = true;
+        } else if (allIdentifiersAndCommas) {
+            if (foundNewline && !foundComma && scanPos > peekPos + 2) {
+                isDict = false;
+            } else {
+                isDict = true;
+            }
         } else {
             isDict = false;
         }

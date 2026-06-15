@@ -1446,6 +1446,13 @@ namespace jc {
             compileNode(expr->value.get());
             emitOp(expr->op);
 
+            if (!expr->isLocal && !expr->isRef && !expr->isState) {
+                if (stateStack.size() > 1 && slot == -1 && current().captures.count(name) == 0) {
+                    addLocal(name, 0); // Auto-locals go to function scope
+                    slot = resolveLocal(name);
+                }
+            }
+
             if (slot != -1 && current().captures.count(name) == 0) {
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);

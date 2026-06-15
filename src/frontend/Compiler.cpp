@@ -890,7 +890,7 @@ namespace jc {
             emit16(static_cast<uint16_t>(slot), expr->callee.line);
         }
         else {
-            int upvalue = resolveUpvalue(name, false); // ★ 不捕获全局变量，保留晚绑定能力
+            int upvalue = resolveUpvalue(name);
             if (upvalue != -1 && !isBuiltin) {
                 emit(OpCode::OP_GET_UPVALUE, expr->callee.line);
                 emit16(static_cast<uint16_t>(upvalue), expr->callee.line);
@@ -1251,7 +1251,7 @@ namespace jc {
         return -1;
     }
 
-    int Compiler::resolveUpvalue(const std::string& name, bool captureGlobal) {
+    int Compiler::resolveUpvalue(const std::string& name) {
         int currentLevel = static_cast<int>(stateStack.size()) - 1;
         if (currentLevel == 0) return -1; // ★ 顶层作用域没有 Upvalue，直接退化为全局变量
         
@@ -1275,15 +1275,6 @@ namespace jc {
         int uv = resolveUpvalueAt(currentLevel, name, isRef, isState);
         if (uv == -2) {
             if (isState) {
-                return addUpvalue(currentLevel, name, false, -1, isRef, true, false);
-            }
-            if (captureGlobal && !isRef) {
-                return addUpvalue(currentLevel, name, false, -1, isRef, true, false);
-            }
-            return -1;
-        }
-        if (uv == -1) {
-            if (captureGlobal && !isRef) {
                 return addUpvalue(currentLevel, name, false, -1, isRef, true, false);
             }
             return -1;

@@ -1179,7 +1179,7 @@ namespace jc {
                                             if (!builtinVal.isNone()) {
                                                 dummy->closed = builtinVal;
                                             } else {
-                                                throw std::runtime_error("Runtime Error: Undefined state variable '" + uv.name + "'.");
+                                                throw std::runtime_error("Runtime Error: Undefined variable '" + uv.name + "'.");
                                             }
                                         }
                                     } else {
@@ -1196,7 +1196,7 @@ namespace jc {
                                     if (currentFrame->upvalues && uv.index < static_cast<int>(currentFrame->upvalues->size())) {
                                         dummy->closed = *((*currentFrame->upvalues)[uv.index]->location);
                                         if (!uv.isExplicitState && dummy->closed.isUninit()) {
-                                            throw std::runtime_error("Runtime Error: Undefined state variable '" + uv.name + "'.");
+                                            throw std::runtime_error("Runtime Error: Undefined variable '" + uv.name + "'.");
                                         }
                                     }
                                     else

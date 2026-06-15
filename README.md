@@ -74,12 +74,15 @@ JC2 standard libraries loaded via `import`:
 - **Explicit State Initialization Flag**: Fixed an issue where the `state` keyword flag in destructuring assignments could pollute subsequent normal destructuring assignments. By explicitly passing the `isStateInit` parameter to `compilePatternMatch`, normal destructuring assignments (e.g., `[a, b] = [b, a + b]`) are no longer mistakenly treated as state initialization statements, preventing the erroneous emission of `OP_IS_UNINIT` instructions.
 - **Top-Level State Declaration**: Disallowed `state` declarations at the top level (global scope) since they are meant for closure-private persistent state.
 - **Local Variable Capture**: Independent `local a` declarations (without explicit initialization) now correctly capture outer variables by value or throw an `Undefined variable` exception if not found.
+- **Auto-Local Shadowing in Compound Assignments**: Fixed an inconsistency where compound assignments (e.g., `x += 1`) on implicitly captured outer variables would incorrectly mutate the outer variable instead of creating a local shadow. It now correctly mirrors simple assignment (`x = 1`) by creating an auto-local variable.
+- **Global Variable Capture Refactoring**: Removed redundant upvalue captures for global variables. Global variables are now strictly accessed via late-binding (`OP_GET_GLOBAL`/`OP_SET_GLOBAL`), which perfectly preserves mutual recursion for global functions while keeping closure environments clean.
 
 ### Frontend & Parsing
 - **Dictionary vs. Block Resolution**: Improved the lookahead scanner to accurately distinguish between shorthand dictionary literals and code blocks. Shorthand dictionaries now strictly require commas between elements and only allow identifiers, rest operators, and scope modifiers. This prevents comma expressions like `{1, 2}` or multi-line blocks from being misparsed as dictionaries.
 
 ### Virtual Machine & Tail Call Optimization (TCO)
 - **Full Tail Call Optimization Enabled**: Removed the conservative restriction in the compiler that disabled TCO when cross-function calls might involve reference passing. Since the VM safely closes over local variables (`closeUpvalues`) before executing a tail call (`OP_TAIL_CALL`), passing references during tail calls is perfectly safe. This update restores full tail recursion optimization, completely resolving stack overflow issues in mutually tail-recursive scenarios.
+- **TCO for Class Instantiation**: Fixed a critical bug where tail-calling a class constructor (e.g., `return MyClass()`) would bypass the `init` method's bytecode execution. The VM now correctly reuses the call frame for class instantiations in tail positions.
 - **Infinite Pattern Matching**: Upgraded `OP_MATCH_SHAPE` operands to 32-bit, extending the maximum pattern matching limit to infinity (4,294,967,295) for rest patterns (`...rest`).
 
 ---

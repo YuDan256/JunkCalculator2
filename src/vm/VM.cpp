@@ -3158,11 +3158,6 @@ namespace jc {
 
             if (initMethod) {
                 if (initMethod->isBytecode()) {
-                    CallFrame newFrame;
-                    // ★ NEW: 直接将新建的 instance 注入帧寄存器！绝不弄脏 globals
-                    newFrame.selfContext = Value(instance);
-                    newFrame.classContext = Value(initOwner);
-
                     auto& fnDef = compiledFunctions[initMethod->compiledFnIndex];
 
                     int padCount = fnDef->maxArity - static_cast<int>(argc);
@@ -3171,6 +3166,35 @@ namespace jc {
                     for (int j = 0; j < reserveCount; ++j) push(Value::none());
 
                     eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
+
+                    if (isTailCall) {
+                        int base = frame().stackBase;
+                        closeUpvalues(base);
+                        int newLocalCount = fnDef->localCount;
+                        int argStart = static_cast<int>(getStackSize()) - newLocalCount;
+                        if (base != argStart) {
+                            for (int i = 0; i < newLocalCount; ++i) {
+                                stack[base + i] = std::move(stack[argStart + i]);
+                            }
+                        }
+                        setStackSize(base + newLocalCount);
+                        frame().function = fnDef.get();
+                        frame().ip = 0;
+                        if (initMethod->hasCaptures()) {
+                            frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(initMethod->capturedEnv);
+                        } else {
+                            frame().upvalues = nullptr;
+                        }
+                        frame().selfContext = Value(instance);
+                        frame().classContext = Value(initOwner);
+                        populateRefParams(frame(), fnDef.get());
+                        return;
+                    }
+
+                    CallFrame newFrame;
+                    // ★ NEW: 直接将新建的 instance 注入帧寄存器！绝不弄脏 globals
+                    newFrame.selfContext = Value(instance);
+                    newFrame.classContext = Value(initOwner);
 
                     newFrame.function = fnDef.get();
                     newFrame.ip = 0;

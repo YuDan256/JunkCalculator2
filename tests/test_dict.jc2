@@ -1,0 +1,95 @@
+// ============================================================================
+// JC2 Dictionary vs Block Parsing Edge Cases Test Suite
+// ============================================================================
+
+println("Running Dictionary vs Block Parsing Tests...")
+
+// 1. Empty Dict
+d1 = {}
+assert(isdict(d1) && len(d1) == 0, "Empty dict failed")
+
+// 2. Standard Dict
+d2 = {a: 1, b: 2}
+assert(isdict(d2) && d2.a == 1 && d2.b == 2, "Standard dict failed")
+
+// 3. Shorthand Dict (Single)
+a = 10
+d3 = {a}
+assert(isdict(d3) && d3.a == 10, "Single shorthand dict failed")
+
+// 4. Shorthand Dict (Multiple)
+b = 20
+d4 = {a, b}
+assert(isdict(d4) && d4.a == 10 && d4.b == 20, "Multiple shorthand dict failed")
+
+// 5. Block returning shorthand dict
+f1() = { x = 1; {x} }
+assert(isdict(f1()) && f1().x == 1, "Block returning shorthand dict failed")
+
+// 6. Block with semicolon
+f2() = { x = 1; }
+assert(f2() == 1, "Block with semicolon failed")
+
+// 7. Block with assignment
+f3() = { c = 3 }
+assert(f3() == 3, "Block with assignment failed")
+
+// 8. Block with ternary
+f4() = { true ? 4 : 5 }
+assert(f4() == 4, "Block with ternary failed")
+
+// 9. Block with complex expression
+f5() = { a + b }
+assert(f5() == 30, "Block with complex expression failed")
+
+// 10. Block with comma expression (not pure shorthand because of numbers)
+f6() = { 1, 2 }
+assert(f6() == 2, "Block with comma expression failed")
+
+// 11. Multi-line Block (missing comma, should be parsed as block)
+f7() = {
+    x = 1
+    y = 2
+    x + y
+}
+assert(f7() == 3, "Multi-line block failed")
+
+// 12. Multi-line Dict (with comma, should be parsed as dict)
+d5 = {
+    a,
+    b
+}
+assert(isdict(d5) && d5.a == 10 && d5.b == 20, "Multi-line shorthand dict failed")
+
+// 13. Multi-line Block with just identifiers (missing comma, must be block)
+f8() = {
+    a
+    b
+}
+assert(f8() == 20, "Multi-line block with identifiers failed")
+
+// 14. Dict with string keys
+d6 = {"a": 1, "b": 2}
+assert(isdict(d6) && d6["a"] == 1, "Dict with string keys failed")
+
+// 15. Dict with computed keys
+d7 = {(a): 100}
+assert(isdict(d7) && d7[10] == 100, "Dict with computed keys failed")
+
+// 16. Dict with ternary in value
+d8 = {a: true ? 1 : 2}
+assert(isdict(d8) && d8.a == 1, "Dict with ternary value failed")
+
+// 17. Dict with assignment in value
+d9 = {a: c = 99}
+assert(isdict(d9) && d9.a == 99 && c == 99, "Dict with assignment value failed")
+
+// 18. Destructuring with modifiers (should parse as dict pattern, not block)
+f9() = {
+    {local x, ref y, const z} = {x: 1, y: 2, z: 3}
+    return x + y + z
+}
+y = 0
+assert(f9() == 6 && y == 2, "Destructuring dict pattern with modifiers failed")
+
+println("All Dictionary vs Block Parsing Tests Passed Successfully! 🎉")

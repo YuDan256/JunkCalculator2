@@ -748,32 +748,32 @@ namespace jc {
         bool foundNewline = false;
         bool foundAssign = false;
         bool foundTernary = false;
-        bool allIdentifiersAndCommas = true;
+        bool isPureShorthand = true;
 
         while (scanPos < static_cast<int>(tokens.size())) {
             TokenType t = tokens[scanPos].type;
             if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
                 depth++;
-                allIdentifiersAndCommas = false;
+                isPureShorthand = false;
             } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
                 if (depth == 0) break;
                 depth--;
-                allIdentifiersAndCommas = false;
+                isPureShorthand = false;
             } else if (depth == 0) {
                 if (t == TokenType::QUESTION) {
                     ternaryDepth++;
                     foundTernary = true;
-                    allIdentifiersAndCommas = false;
+                    isPureShorthand = false;
                 } else if (t == TokenType::COLON) {
                     if (ternaryDepth > 0) {
                         ternaryDepth--;
                     } else {
                         foundColon = true;
                     }
-                    allIdentifiersAndCommas = false;
+                    isPureShorthand = false;
                 } else if (t == TokenType::SEMICOLON) {
                     foundSemicolon = true;
-                    allIdentifiersAndCommas = false;
+                    isPureShorthand = false;
                 } else if (t == TokenType::COMMA) {
                     foundComma = true;
                 } else if (t == TokenType::NEWLINE) {
@@ -784,9 +784,12 @@ namespace jc {
                            t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
                            t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
                     foundAssign = true;
-                    allIdentifiersAndCommas = false;
-                } else if (t != TokenType::IDENTIFIER && t != TokenType::ELLIPSIS) {
-                    allIdentifiersAndCommas = false;
+                    isPureShorthand = false;
+                } else if (t != TokenType::IDENTIFIER && t != TokenType::ELLIPSIS && 
+                           t != TokenType::LOCAL && t != TokenType::REF && 
+                           t != TokenType::STATE && t != TokenType::CONST) {
+                    // 如果出现了除了标识符、展开符、修饰符、逗号、换行之外的任何 Token，它就不是纯简写字典
+                    isPureShorthand = false;
                 }
             }
             scanPos++;
@@ -800,11 +803,12 @@ namespace jc {
             isDict = false;
         } else if (foundTernary) {
             isDict = false;
-        } else if (allIdentifiersAndCommas) {
+        } else if (isPureShorthand) {
+            // 如果全是标识符/修饰符，但没有逗号，且有换行，且元素超过1个，说明是多行代码块 (如 { a \n b })
             if (foundNewline && !foundComma && scanPos > peekPos + 2) {
                 isDict = false;
             } else {
-                isDict = true;
+                isDict = true; // 空字典 {} 或 纯简写字典 {a, b} 或 {local a}
             }
         } else {
             isDict = false;

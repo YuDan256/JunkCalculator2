@@ -88,7 +88,7 @@ namespace jc {
         void preDeclareFunctions(Expr* ast);
         void compileCompClause(ListCompExpr* expr, size_t clauseIdx);
         void emitDefaultPreamble(const std::vector<std::shared_ptr<Expr>>& defaultExprs, int paramCount);
-        int resolveUpvalue(const std::string& name);
+        int resolveUpvalue(const std::string& name, bool captureGlobal = true);
         int resolveUpvalueAt(int level, const std::string& name, bool isRef, bool isState);
         int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false, bool isRefParam = false);
         void emitStoreTarget(Expr* target, bool isConst = false);

@@ -2628,12 +2628,6 @@ namespace jc {
                     break;
                 }
 
-                case OpCode::OP_PRINT: {
-                    std::cout << pop() << std::flush;
-                    push(Value::none());
-                    break;
-                }
-
                 default:
                     throw std::runtime_error("VM Error: Unknown opcode " +
                         std::to_string(static_cast<int>(op)));

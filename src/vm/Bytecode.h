@@ -67,9 +67,6 @@ namespace jc {
         OP_CALL,            // [arg_count:8bit]
         OP_RETURN,
 
-        // 输出（临时，调试用）
-        OP_PRINT,
-
         // 索引
         OP_INDEX_GET,       // [dim_count:8bit]
         OP_INDEX_SET,       // [dim_count:8bit]
@@ -188,7 +185,6 @@ namespace jc {
         case OpCode::OP_LOOP: return "OP_LOOP";
         case OpCode::OP_CALL: return "OP_CALL";
         case OpCode::OP_RETURN: return "OP_RETURN";
-        case OpCode::OP_PRINT: return "OP_PRINT";
         case OpCode::OP_INDEX_GET: return "OP_INDEX_GET";
         case OpCode::OP_INDEX_SET: return "OP_INDEX_SET";
         case OpCode::OP_BUILD_LIST: return "OP_BUILD_LIST";
@@ -425,7 +421,7 @@ namespace jc {
             case OpCode::OP_BIT_NOT:
             case OpCode::OP_EQUAL: case OpCode::OP_NOT_EQUAL: case OpCode::OP_LESS:
             case OpCode::OP_LESS_EQUAL: case OpCode::OP_GREATER: case OpCode::OP_GREATER_EQUAL:
-            case OpCode::OP_PRINT: case OpCode::OP_RETURN: case OpCode::OP_DUP:
+            case OpCode::OP_RETURN: case OpCode::OP_DUP:
             case OpCode::OP_IN: case OpCode::OP_STRINGIFY: case OpCode::OP_TRY_END:
             case OpCode::OP_THROW: case OpCode::OP_LIST_INIT: case OpCode::OP_INHERIT:
             case OpCode::OP_IMPORT: case OpCode::OP_BIT_AND: case OpCode::OP_BIT_OR:

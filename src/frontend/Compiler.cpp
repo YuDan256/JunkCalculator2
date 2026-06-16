@@ -1005,7 +1005,11 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
+        bool hasLocalRef = false;
+        for (const auto& src : sources) {
+            if (src.sourceType == 2) { hasLocalRef = true; break; }
+        }
+        bool actualTailCall = inTailPosition && !hasLocalRef; // ★ 仅当传递当前局部变量时禁止尾调用，防止悬垂指针！
 
         if (!sources.empty()) {
             uint32_t sigIdx = chunk()->addCallSignature(sources);
@@ -2225,7 +2229,11 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
+        bool hasLocalRef = false;
+        for (const auto& src : sources) {
+            if (src.sourceType == 2) { hasLocalRef = true; break; }
+        }
+        bool actualTailCall = inTailPosition && !hasLocalRef; // ★ 仅当传递当前局部变量时禁止尾调用，防止悬垂指针！
 
         if (!sources.empty()) {
             uint32_t sigIdx = chunk()->addCallSignature(sources);
@@ -3576,7 +3584,11 @@ namespace jc {
                 }
             }
 
-            bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
+            bool hasLocalRef = false;
+            for (const auto& src : sources) {
+                if (src.sourceType == 2) { hasLocalRef = true; break; }
+            }
+            bool actualTailCall = inTailPosition && !hasLocalRef; // ★ 仅当传递当前局部变量时禁止尾调用，防止悬垂指针！
 
             if (!sources.empty()) {
                 uint32_t sigIdx = chunk()->addCallSignature(sources);
@@ -3628,7 +3640,11 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
+        bool hasLocalRef = false;
+        for (const auto& src : sources) {
+            if (src.sourceType == 2) { hasLocalRef = true; break; }
+        }
+        bool actualTailCall = inTailPosition && !hasLocalRef; // ★ 仅当传递当前局部变量时禁止尾调用，防止悬垂指针！
 
         if (!sources.empty()) {
             uint32_t sigIdx = chunk()->addCallSignature(sources);

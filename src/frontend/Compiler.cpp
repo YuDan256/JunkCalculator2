@@ -310,6 +310,9 @@ namespace jc {
     }
 
     void Compiler::addLocal(const std::string& name, int depth, bool isConst, bool isFunction) {
+        if (current().locals.size() >= 65535) {
+            throw std::runtime_error("Compiler Error: Too many local variables in function (max 65535).");
+        }
         current().locals.push_back({ name, depth, false, isConst, false, -1, isFunction, false });
         // ★ 跟踪峰值容量
         if (static_cast<int>(current().locals.size()) > current().maxLocals) {
@@ -421,6 +424,10 @@ namespace jc {
                 }
             }
             
+            if (count > 65535) {
+                throw std::runtime_error("Compiler Error: Too many exported variables in module (max 65535).");
+            }
+
             uint16_t nsNameIdx = identifierConstant(moduleName);
             emit(OpCode::OP_BUILD_NAMESPACE, lastLine);
             emit16(nsNameIdx, lastLine);
@@ -922,6 +929,9 @@ namespace jc {
                 emit16(idx, expr->callee.line);
             }
         }
+        if (expr->arguments.size() > 255) {
+            throw std::runtime_error("Compiler Error: Too many arguments in function call (max 255).");
+        }
         for (auto& argExpr : expr->arguments) {
             compileNode(argExpr.get());
         }
@@ -1130,6 +1140,9 @@ namespace jc {
     }
 
     void Compiler::visitLambdaExpr(LambdaExpr* expr) {
+        if (expr->params.size() > 255) {
+            throw std::runtime_error("Compiler Error: Too many parameters in function definition (max 255).");
+        }
         auto fn = std::make_shared<CompiledFunction>();
         fn->name = expr->name;
         fn->maxArity = static_cast<int>(expr->params.size());
@@ -1214,6 +1227,9 @@ namespace jc {
                 if (isGlobal) fn->upvalues[j].isGlobal = true;
                 return j;
             }
+        }
+        if (fn->upvalues.size() >= 65535) {
+            throw std::runtime_error("Compiler Error: Too many upvalues in function (max 65535).");
         }
         fn->upvalues.push_back({ name, isLocal, index, isRef, isGlobal, isExplicitState, isRefParam });
         return static_cast<int>(fn->upvalues.size()) - 1;
@@ -1835,14 +1851,17 @@ namespace jc {
         if (expr->forceList) {
             if (rows == 1) {
                 int cols = static_cast<int>(expr->elements[0].size());
+                if (cols > 65535) throw std::runtime_error("Compiler Error: Too many elements in list literal (max 65535).");
                 for (int j = 0; j < cols; ++j) {
                     compileNode(expr->elements[0][j].get());
                 }
                 emit(OpCode::OP_BUILD_LIST, lastLine);
                 emit16(static_cast<uint16_t>(cols), lastLine);
             } else {
+                if (rows > 65535) throw std::runtime_error("Compiler Error: Too many rows in list literal (max 65535).");
                 for (int i = 0; i < rows; ++i) {
                     int cols = static_cast<int>(expr->elements[i].size());
+                    if (cols > 65535) throw std::runtime_error("Compiler Error: Too many elements in list literal row (max 65535).");
                     for (int j = 0; j < cols; ++j) {
                         compileNode(expr->elements[i][j].get());
                     }
@@ -1870,6 +1889,9 @@ namespace jc {
     }
 
     void Compiler::visitIndexAccess(IndexAccess* expr) {
+        if (expr->indices.size() > 255) {
+            throw std::runtime_error("Compiler Error: Too many dimensions in index access (max 255).");
+        }
         bool hasSlice = false;
         for (auto& idx : expr->indices) {
             if (dynamic_cast<SliceExpr*>(idx.get())) {
@@ -1904,6 +1926,11 @@ namespace jc {
     }
 
     void Compiler::visitIndexAssign(IndexAssign* expr) {
+        for (const auto& chain : expr->indexChain) {
+            if (chain.size() > 255) {
+                throw std::runtime_error("Compiler Error: Too many dimensions in index assignment (max 255).");
+            }
+        }
         if (!expr->hasObjectExpr()) {
             int existingSlot = resolveLocal(expr->name.lexeme);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
@@ -2151,6 +2178,9 @@ namespace jc {
     }
 
     void Compiler::visitInvokeExpr(InvokeExpr* expr) {
+        if (expr->arguments.size() > 255) {
+            throw std::runtime_error("Compiler Error: Too many arguments in function call (max 255).");
+        }
         compileNode(expr->callee.get());
         for (auto& argExpr : expr->arguments) compileNode(argExpr.get());
         
@@ -2761,6 +2791,9 @@ namespace jc {
             }
 
             if (dictPat->rest && dictPat->rest->name.lexeme != "_") {
+                if (dictPat->entries.size() > 65535) {
+                    throw std::runtime_error("Compiler Error: Too many entries in dictionary pattern (max 65535).");
+                }
                 emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
                 for (auto& entry : dictPat->entries) {
                     emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
@@ -3021,6 +3054,9 @@ namespace jc {
     }
 
     void Compiler::visitDictLiteral(DictLiteral* expr) {
+        if (expr->entries.size() > 65535) {
+            throw std::runtime_error("Compiler Error: Too many entries in dictionary literal (max 65535).");
+        }
         for (size_t i = 0; i < expr->entries.size(); ++i) {
             auto& [keyExpr, valExpr] = expr->entries[i];
             if (!keyExpr) {
@@ -3035,6 +3071,9 @@ namespace jc {
     }
 
     void Compiler::visitSetLiteral(SetLiteral* expr) {
+        if (expr->elements.size() > 65535) {
+            throw std::runtime_error("Compiler Error: Too many elements in set literal (max 65535).");
+        }
         for (auto& elemExpr : expr->elements) {
             compileNode(elemExpr.get());
         }
@@ -3200,6 +3239,9 @@ namespace jc {
             chunk()->emitConstant(Value(expr->literals.back()), lastLine);
             partCount++;
         }
+        if (partCount > 65535) {
+            throw std::runtime_error("Compiler Error: Too many parts in f-string (max 65535).");
+        }
         emit(OpCode::OP_CONCAT_STRINGS, lastLine);
         emit16(static_cast<uint16_t>(partCount), lastLine);
         return;
@@ -3260,6 +3302,10 @@ namespace jc {
 
                 count++;
             }
+        }
+
+        if (count > 65535) {
+            throw std::runtime_error("Compiler Error: Too many exported variables in namespace (max 65535).");
         }
 
         uint16_t nsNameIdx = identifierConstant(expr->name.lexeme);
@@ -3362,6 +3408,9 @@ namespace jc {
 
         // 4. 方法注册逻辑
         for (auto& md : expr->methods) {
+            if (md.params.size() > 255) {
+                throw std::runtime_error("Compiler Error: Too many parameters in method definition (max 255).");
+            }
             auto fn = std::make_shared<CompiledFunction>();
             fn->name = md.name.lexeme;
             fn->maxArity = static_cast<int>(md.params.size());
@@ -3473,6 +3522,9 @@ namespace jc {
 
     void Compiler::visitMethodCallExpr(MethodCallExpr* expr) {
         lastLine = expr->method.line;
+        if (expr->arguments.size() > 255) {
+            throw std::runtime_error("Compiler Error: Too many arguments in method call (max 255).");
+        }
         if (dynamic_cast<SuperExpr*>(expr->object.get())) {
             emit(OpCode::OP_GET_SELF, lastLine);
             for (auto& arg : expr->arguments) compileNode(arg.get());

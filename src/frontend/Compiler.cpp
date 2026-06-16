@@ -3154,9 +3154,47 @@ namespace jc {
 
     void Compiler::visitDeleteExpr(DeleteExpr* expr) {
         for (auto& tok : expr->names) {
-            uint16_t nameIdx = identifierConstant(tok.lexeme);
-            emit(OpCode::OP_DELETE_GLOBAL, lastLine);
-            emit16(nameIdx, lastLine);
+            const std::string& name = tok.lexeme;
+            int slot = resolveLocal(name);
+            
+            if (slot != -1) {
+                if (current().locals[slot].isConst) {
+                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot delete const variable '" + name + "'.");
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(msgIdx, lastLine);
+                    emit(OpCode::OP_THROW, lastLine);
+                    continue;
+                }
+                emit(OpCode::OP_NONE, lastLine);
+                if (current().locals[slot].isRefParam) {
+                    emit(OpCode::OP_SET_REF_PARAM, lastLine);
+                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                } else {
+                    emit(OpCode::OP_SET_LOCAL, lastLine);
+                    emit16(static_cast<uint16_t>(slot), lastLine);
+                }
+                emit(OpCode::OP_POP, lastLine);
+            } else {
+                int upvalue = resolveUpvalue(name);
+                if (upvalue != -1) {
+                    auto capIt = current().captures.find(name);
+                    if (capIt != current().captures.end() && capIt->second.isConst) {
+                        uint16_t msgIdx = identifierConstant("Runtime Error: Cannot delete const variable '" + name + "'.");
+                        emit(OpCode::OP_CONSTANT, lastLine);
+                        emit16(msgIdx, lastLine);
+                        emit(OpCode::OP_THROW, lastLine);
+                        continue;
+                    }
+                    emit(OpCode::OP_NONE, lastLine);
+                    emit(OpCode::OP_SET_UPVALUE, lastLine);
+                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                    emit(OpCode::OP_POP, lastLine);
+                } else {
+                    uint16_t nameIdx = identifierConstant(name);
+                    emit(OpCode::OP_DELETE_GLOBAL, lastLine);
+                    emit16(nameIdx, lastLine);
+                }
+            }
         }
         emit(OpCode::OP_NONE, lastLine);
         return;

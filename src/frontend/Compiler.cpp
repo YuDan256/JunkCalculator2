@@ -18,10 +18,6 @@ namespace jc {
         chunk()->write16(val, line);
         if (line > 0) lastLine = line; // ★ 新增同步点
     }
-    void Compiler::emit32(uint32_t val, int line) {
-        chunk()->write32(val, line);
-        if (line > 0) lastLine = line; // ★ 新增同步点
-    }
     uint16_t Compiler::makeConstant(const Value& val) { return chunk()->addConstant(val); }
     uint16_t Compiler::identifierConstant(const std::string& name) { return makeConstant(Value(name)); }
     void Compiler::compileNode(Expr* expr) { 

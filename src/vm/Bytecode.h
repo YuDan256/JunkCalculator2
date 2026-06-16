@@ -305,14 +305,6 @@ namespace jc {
             write(static_cast<uint8_t>(val & 0xFF), line);
         }
 
-        // 写入 32-bit 操作数 (大端序)
-        void write32(uint32_t val, int line) {
-            write(static_cast<uint8_t>((val >> 24) & 0xFF), line);
-            write(static_cast<uint8_t>((val >> 16) & 0xFF), line);
-            write(static_cast<uint8_t>((val >> 8) & 0xFF), line);
-            write(static_cast<uint8_t>(val & 0xFF), line);
-        }
-
         // 添加常量到常量池，返回索引
         uint16_t addConstant(const Value& val) {
             constants.push_back(val);
@@ -381,11 +373,6 @@ namespace jc {
         // 读取 16-bit 操作数
         uint16_t read16(int offset) const {
             return static_cast<uint16_t>((code[offset] << 8) | code[offset + 1]);
-        }
-
-        // 读取 32-bit 操作数
-        uint32_t read32(int offset) const {
-            return static_cast<uint32_t>((code[offset] << 24) | (code[offset + 1] << 16) | (code[offset + 2] << 8) | code[offset + 3]);
         }
 
         // ── 反汇编器（调试用）──

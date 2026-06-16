@@ -16,7 +16,6 @@ namespace jc {
     enum class OpCode : uint8_t {
         // 栈操作
         OP_CONSTANT,        // 压入常量: [idx:16bit]
-        OP_CONSTANT_LONG,   // 压入常量（长地址）: [idx:24bit]
         OP_NONE,            // 压入 none
         OP_TRUE,            // 压入 1.0
         OP_FALSE,           // 压入 0.0
@@ -85,14 +84,9 @@ namespace jc {
         // 复合赋值辅助
         OP_DUP,             // 复制栈顶
 
-        // break/continue
-        OP_BREAK,           // 占位，编译时会被替换为 OP_JUMP
-        OP_CONTINUE,        // 占位，编译时会被替换为 OP_LOOP
-
         // for-in
         OP_ITER_INIT,       // 将可迭代对象转换为内部迭代器
         OP_ITER_NEXT,       // 取下一个元素，如果结束则跳转 [offset:16bit]
-        OP_ITER_VAR,        // 绑定当前迭代元素到变量
         OP_IN,
 
         // 字符串
@@ -161,7 +155,6 @@ namespace jc {
     inline std::string opCodeToString(OpCode op) {
         switch (op) {
         case OpCode::OP_CONSTANT: return "OP_CONSTANT";
-        case OpCode::OP_CONSTANT_LONG: return "OP_CONSTANT_LONG";
         case OpCode::OP_NONE: return "OP_NONE";
         case OpCode::OP_TRUE: return "OP_TRUE";
         case OpCode::OP_FALSE: return "OP_FALSE";
@@ -202,11 +195,8 @@ namespace jc {
         case OpCode::OP_BUILD_MATRIX: return "OP_BUILD_MATRIX";
         case OpCode::OP_CLOSURE: return "OP_CLOSURE";
         case OpCode::OP_DUP: return "OP_DUP";
-        case OpCode::OP_BREAK: return "OP_BREAK";
-        case OpCode::OP_CONTINUE: return "OP_CONTINUE";
         case OpCode::OP_ITER_INIT: return "OP_ITER_INIT";
         case OpCode::OP_ITER_NEXT: return "OP_ITER_NEXT";
-        case OpCode::OP_ITER_VAR: return "OP_ITER_VAR";
         case OpCode::OP_IN: return "OP_IN";
         case OpCode::OP_STRINGIFY: return "OP_STRINGIFY";
         case OpCode::OP_CONCAT_STRINGS: return "OP_CONCAT_STRINGS";
@@ -436,7 +426,6 @@ namespace jc {
             case OpCode::OP_EQUAL: case OpCode::OP_NOT_EQUAL: case OpCode::OP_LESS:
             case OpCode::OP_LESS_EQUAL: case OpCode::OP_GREATER: case OpCode::OP_GREATER_EQUAL:
             case OpCode::OP_PRINT: case OpCode::OP_RETURN: case OpCode::OP_DUP:
-            case OpCode::OP_BREAK: case OpCode::OP_CONTINUE: case OpCode::OP_ITER_VAR:
             case OpCode::OP_IN: case OpCode::OP_STRINGIFY: case OpCode::OP_TRY_END:
             case OpCode::OP_THROW: case OpCode::OP_LIST_INIT: case OpCode::OP_INHERIT:
             case OpCode::OP_IMPORT: case OpCode::OP_BIT_AND: case OpCode::OP_BIT_OR:

@@ -932,16 +932,13 @@ namespace jc {
                 }
 
                 case OpCode::OP_MATCH_SHAPE: {
-                    auto read32 = [&]() -> uint32_t {
-                        uint32_t val = chunk->read32(currentFrame->ip);
-                        currentFrame->ip += 4;
-                        return val;
-                    };
-                    uint32_t minRows = read32();
-                    uint32_t maxRows = read32();
-                    uint32_t minCols = read32();
-                    uint32_t maxCols = read32();
-                    uint8_t exactMask = readByte();
+                    uint16_t shapeIdx = readShort();
+                    const auto& sp = chunk->shapePatterns[shapeIdx];
+                    uint32_t minRows = sp.minRows;
+                    uint32_t maxRows = sp.maxRows;
+                    uint32_t minCols = sp.minCols;
+                    uint32_t maxCols = sp.maxCols;
+                    uint8_t exactMask = sp.exactMask;
                     Value val = pop();
                     bool matched = false;
                     

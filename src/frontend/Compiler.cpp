@@ -2312,12 +2312,9 @@ namespace jc {
             uint8_t exactMask = 2; // 1D pattern
 
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            uint16_t shapeIdx = chunk()->addShapePattern(1, 1, static_cast<uint32_t>(minCols), maxCols, exactMask);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
-            emit32(1, lastLine); // minRows
-            emit32(1, lastLine); // maxRows
-            emit32(static_cast<uint32_t>(minCols), lastLine);
-            emit32(maxCols, lastLine);
-            emit(exactMask, lastLine);
+            emit16(shapeIdx, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
 
@@ -2547,12 +2544,9 @@ namespace jc {
             uint8_t exactMask = 0;
             
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            uint16_t shapeIdx = chunk()->addShapePattern(minRows, maxRows, static_cast<uint32_t>(minCols), maxCols, exactMask);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
-            emit32(minRows, lastLine);
-            emit32(maxRows, lastLine);
-            emit32(static_cast<uint32_t>(minCols), lastLine);
-            emit32(maxCols, lastLine);
-            emit(exactMask, lastLine);
+            emit16(shapeIdx, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
 

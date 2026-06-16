@@ -152,7 +152,7 @@ namespace jc {
         OP_ASSERT_RETURN_TYPE,  // 返回值断言：[type_idx:16bit]
 
         OP_MATCH_TYPE,          // [type_idx:16bit] 检查栈顶类型，返回 bool
-        OP_MATCH_SHAPE,         // [minRows:32bit, maxRows:32bit, minCols:32bit, maxCols:32bit, exact:8bit] 检查栈顶形状，返回 bool
+        OP_MATCH_SHAPE,         // [shape_idx:16bit] 检查栈顶形状，返回 bool
     };
 
     // =================================================================
@@ -261,6 +261,14 @@ namespace jc {
         int cachedFieldIndex = -1;
     };
 
+    struct ShapePattern {
+        uint32_t minRows;
+        uint32_t maxRows;
+        uint32_t minCols;
+        uint32_t maxCols;
+        uint8_t exactMask;
+    };
+
     // ═══════════════════════════════════════════
     // 字节码块 (Chunk)
     // 存储一段编译后的字节码 + 常量池 + 行号信息
@@ -271,6 +279,7 @@ namespace jc {
         std::vector<Value> constants;   // 常量池
         std::vector<int> lines;         // 每条指令对应的源码行号
         std::vector<InlineCache> inlineCaches; // ★ 内联缓存池
+        std::vector<ShapePattern> shapePatterns; // ★ 形状匹配模式池
 
         // ── 写入接口 ──
 
@@ -316,6 +325,12 @@ namespace jc {
             inlineCaches.push_back(InlineCache{});
             if (inlineCaches.size() > 65535) throw std::runtime_error("Compiler Error: Too many inline caches.");
             return static_cast<uint16_t>(inlineCaches.size() - 1);
+        }
+
+        uint16_t addShapePattern(uint32_t minR, uint32_t maxR, uint32_t minC, uint32_t maxC, uint8_t mask) {
+            shapePatterns.push_back({minR, maxR, minC, maxC, mask});
+            if (shapePatterns.size() > 65535) throw std::runtime_error("Compiler Error: Too many shape patterns.");
+            return static_cast<uint16_t>(shapePatterns.size() - 1);
         }
 
         // 生成跳转指令，返回需要回填的偏移位置
@@ -437,16 +452,28 @@ namespace jc {
             case OpCode::OP_METHOD:
             case OpCode::OP_GET_SUPER: 
             case OpCode::OP_ASSERT_RETURN_TYPE:
-            case OpCode::OP_MATCH_TYPE: {
+            case OpCode::OP_MATCH_TYPE:
+            case OpCode::OP_MATCH_SHAPE: {
                 uint16_t idx = read16(offset + 1);
-                std::cout << idx << " (";
-                if (idx < constants.size()) {
-                    if (constants[idx].isString())
-                        std::cout << constants[idx].asString();
-                    else
-                        std::cout << constants[idx];
+                if (op == OpCode::OP_MATCH_SHAPE) {
+                    if (idx < shapePatterns.size()) {
+                        const auto& sp = shapePatterns[idx];
+                        std::cout << "shape_idx:" << idx << " [" << sp.minRows << "~" << (sp.maxRows == 0xFFFFFFFF ? "inf" : std::to_string(sp.maxRows)) 
+                                  << "]x[" << sp.minCols << "~" << (sp.maxCols == 0xFFFFFFFF ? "inf" : std::to_string(sp.maxCols)) 
+                                  << "] (mask:" << static_cast<int>(sp.exactMask) << ")" << std::endl;
+                    } else {
+                        std::cout << "INVALID_SHAPE_IDX" << std::endl;
+                    }
+                } else {
+                    std::cout << idx << " (";
+                    if (idx < constants.size()) {
+                        if (constants[idx].isString())
+                            std::cout << constants[idx].asString();
+                        else
+                            std::cout << constants[idx];
+                    }
+                    std::cout << ")" << std::endl;
                 }
-                std::cout << ")" << std::endl;
                 return offset + 3;
             }
 
@@ -564,17 +591,6 @@ namespace jc {
                 uint16_t nameIdx = read16(offset + 3);
                 std::cout << "typeConst: " << typeIdx << ", nameConst: " << nameIdx << std::endl;
                 return offset + 5;
-            }
-            case OpCode::OP_MATCH_SHAPE: {
-                uint32_t minR = read32(offset + 1);
-                uint32_t maxR = read32(offset + 5);
-                uint32_t minC = read32(offset + 9);
-                uint32_t maxC = read32(offset + 13);
-                uint8_t exactMask = code[offset + 17];
-                std::cout << "[" << minR << "~" << (maxR == 0xFFFFFFFF ? "inf" : std::to_string(maxR)) 
-                          << "]x[" << minC << "~" << (maxC == 0xFFFFFFFF ? "inf" : std::to_string(maxC)) 
-                          << "] (mask:" << static_cast<int>(exactMask) << ")" << std::endl;
-                return offset + 18;
             }
 
             // ============================================

@@ -3154,13 +3154,9 @@ namespace jc {
 
     void Compiler::visitDeleteExpr(DeleteExpr* expr) {
         for (auto& tok : expr->names) {
-            uint16_t fnIdx = identifierConstant("__vm_delete__");
-            emit(OpCode::OP_CONSTANT, lastLine);
-            emit16(fnIdx, lastLine);
-            chunk()->emitConstant(Value(tok.lexeme), lastLine);
-            emit(OpCode::OP_CALL, lastLine);
-            emit(static_cast<uint8_t>(1), lastLine);
-            emit(OpCode::OP_POP, lastLine);
+            uint16_t nameIdx = identifierConstant(tok.lexeme);
+            emit(OpCode::OP_DELETE_GLOBAL, lastLine);
+            emit16(nameIdx, lastLine);
         }
         emit(OpCode::OP_NONE, lastLine);
         return;

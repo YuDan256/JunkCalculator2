@@ -406,24 +406,6 @@ namespace jc {
         setGlobal("E", Value(2.71828182845904523536));
         setGlobal("i", Value(Complex(0.0, 1.0)));
         setGlobal("I", Value(Complex(0.0, 1.0)));
-
-        registerBuiltin("__vm_delete__", [this](const std::vector<Value>& args) -> Value {
-            if (args.size() != 1 || !args[0].isString())
-                throw std::runtime_error("VM Error: __vm_delete__ expects a string variable name.");
-            const std::string& name = args[0].asString();
-
-            // ★ 允许删除所有变量（包括 const 和系统常量）
-            // 用户可通过 resetConst() 或 pi() 等函数恢复
-            auto it = globalNamesToSlots.find(name);
-            if (it == globalNamesToSlots.end())
-                throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
-            globalValues[it->second] = Value::none();
-            globalNamesToSlots.erase(it);
-            constGlobals.erase(name);  // 同步清除 const 标记
-            clearAllGlobalICs();
-            
-            return Value::none();
-            }, { 1 });
     }
 
     VM::~VM() {
@@ -1097,7 +1079,7 @@ namespace jc {
                         } else {
                             if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
                             ic.cachedGlobalSlot = static_cast<int>(globalValues.size());
-                            globalNamesToSlots[name] = ic.cachedGlobalSlot;
+                            globalNamesToSlots[name] = static_cast<uint16_t>(ic.cachedGlobalSlot);
                             globalValues.push_back(val);
                         }
                     }
@@ -1122,11 +1104,23 @@ namespace jc {
                         } else {
                             if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
                             ic.cachedGlobalSlot = static_cast<int>(globalValues.size());
-                            globalNamesToSlots[name] = ic.cachedGlobalSlot;
+                            globalNamesToSlots[name] = static_cast<uint16_t>(ic.cachedGlobalSlot);
                             globalValues.push_back(peek(0));
                         }
                     }
                     constGlobals.insert(name);
+                    break;
+                }
+                case OpCode::OP_DELETE_GLOBAL: {
+                    uint16_t nameIdx = readShort();
+                    const std::string& name = chunk->constants[nameIdx].asString();
+                    auto it = globalNamesToSlots.find(name);
+                    if (it == globalNamesToSlots.end())
+                        throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
+                    globalValues[it->second] = Value::none();
+                    globalNamesToSlots.erase(it);
+                    constGlobals.erase(name);
+                    clearAllGlobalICs();
                     break;
                 }
 

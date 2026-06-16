@@ -2273,8 +2273,6 @@ namespace jc {
                     bool found = false;
                     Value result;
 
-                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
-
                     if (obj.isInstance()) {
                         auto inst = obj.asInstance();
 
@@ -2478,8 +2476,6 @@ namespace jc {
                     bool found = false;
                     Value result;
 
-                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
-
                     if (obj.isInstance()) {
                         auto inst = obj.asInstance();
                         
@@ -2549,8 +2545,6 @@ namespace jc {
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value val = peek(0);
                     Value obj = peek(1);
-
-                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
 
                     if (obj.isInstance()) {
                         auto inst = obj.asInstance();

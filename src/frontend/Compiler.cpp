@@ -1,6 +1,8 @@
 #include "Compiler.h"
 #include "../vm/VM.h"
 #include <functional>
+#include <filesystem>
+#include <stdexcept>
 
 namespace jc {
 
@@ -346,75 +348,99 @@ namespace jc {
         mainFn->name = "<script>";
         mainFn->sourceFile = sourceFile; // ★ 打上文件烙印
 
-        // ★ 核心修复：不要把顶层 <script> 函数塞进 compiledFunctions！
-        // 否则 REPL 每敲一行代码，它的 AST、字节码和常量池（包含变量名的 ObjString）
-        // 就会被永久驻留在内存中，导致 GC 追踪的对象数量无限增长。
-        initCompiler(mainFn.get());
-        preDeclareFunctions(ast);
-        compileNode(ast);
-        emit(OpCode::OP_RETURN, lastLine);
-        mainFn->localCount = current().maxLocals;
-        topLevelLocalCount = current().maxLocals;
-        stateStack.pop_back();
-        return mainFn->chunk;
+        try {
+            // ★ 核心修复：不要把顶层 <script> 函数塞进 compiledFunctions！
+            // 否则 REPL 每敲一行代码，它的 AST、字节码和常量池（包含变量名的 ObjString）
+            // 就会被永久驻留在内存中，导致 GC 追踪的对象数量无限增长。
+            initCompiler(mainFn.get());
+            preDeclareFunctions(ast);
+            compileNode(ast);
+            emit(OpCode::OP_RETURN, lastLine);
+            mainFn->localCount = current().maxLocals;
+            topLevelLocalCount = current().maxLocals;
+            stateStack.pop_back();
+            return mainFn->chunk;
+        }
+        catch (const std::exception& e) {
+            std::string msg = e.what();
+            if (msg.find("[") != 0) {
+                std::string fn = "Script";
+                try { fn = std::filesystem::path(currentSourceFile).filename().string(); } catch (...) {}
+                if (fn.empty()) fn = "Script";
+                msg = "[" + fn + " : " + std::to_string(lastLine) + "] " + msg;
+            }
+            throw std::runtime_error(msg);
+        }
     }
 
     Chunk Compiler::compileModule(Expr* ast, const std::string& sourceFile, const std::string& moduleName) {
         currentSourceFile = sourceFile;
         
-        // ★ 压入一个虚拟的全局状态，使得模块内部的 stateStack.size() > 1
-        // 这样模块顶层的变量就会被正确识别为 Auto-locals (depth 0) 而不是全局变量
-        CompilerState dummyGlobal;
-        stateStack.push_back(dummyGlobal);
-        
-        auto fn = std::make_shared<CompiledFunction>();
-        fn->name = "<module " + moduleName + ">";
-        fn->sourceFile = sourceFile;
-        
-        initCompiler(fn.get());
-        beginScope(); // depth 1 (用于隔离 local 声明的私有变量)
-        
-        preDeclareFunctions(ast);
-        
-        if (auto* block = dynamic_cast<Block*>(ast)) {
-            for (size_t i = 0; i < block->statements.size(); ++i) {
-                compileNode(block->statements[i].get());
+        try {
+            // ★ 压入一个虚拟的全局状态，使得模块内部的 stateStack.size() > 1
+            // 这样模块顶层的变量就会被正确识别为 Auto-locals (depth 0) 而不是全局变量
+            CompilerState dummyGlobal;
+            stateStack.push_back(dummyGlobal);
+            
+            auto fn = std::make_shared<CompiledFunction>();
+            fn->name = "<module " + moduleName + ">";
+            fn->sourceFile = sourceFile;
+            
+            initCompiler(fn.get());
+            beginScope(); // depth 1 (用于隔离 local 声明的私有变量)
+            
+            preDeclareFunctions(ast);
+            
+            if (auto* block = dynamic_cast<Block*>(ast)) {
+                for (size_t i = 0; i < block->statements.size(); ++i) {
+                    compileNode(block->statements[i].get());
+                    emit(OpCode::OP_POP, lastLine);
+                }
+            } else {
+                compileNode(ast);
                 emit(OpCode::OP_POP, lastLine);
             }
-        } else {
-            compileNode(ast);
-            emit(OpCode::OP_POP, lastLine);
-        }
-        
-        int count = 0;
-        for (auto& local : current().locals) {
-            // 仅导出 depth == 0 的 Auto-locals，完美实现 local 关键字的私有化封装！
-            if (local.depth == 0 && !local.name.empty() && local.name[0] != '<') {
-                uint16_t keyIdx = identifierConstant(local.name);
-                emit(OpCode::OP_CONSTANT, lastLine);
-                emit16(keyIdx, lastLine);
+            
+            int count = 0;
+            for (auto& local : current().locals) {
+                // 仅导出 depth == 0 的 Auto-locals，完美实现 local 关键字的私有化封装！
+                if (local.depth == 0 && !local.name.empty() && local.name[0] != '<') {
+                    uint16_t keyIdx = identifierConstant(local.name);
+                    emit(OpCode::OP_CONSTANT, lastLine);
+                    emit16(keyIdx, lastLine);
 
-                int slot = resolveLocal(local.name);
-                chunk()->emitConstant(Value(static_cast<double>(slot)), lastLine);
+                    int slot = resolveLocal(local.name);
+                    chunk()->emitConstant(Value(static_cast<double>(slot)), lastLine);
 
-                bool isConst = local.isConst;
-                chunk()->emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
+                    bool isConst = local.isConst;
+                    chunk()->emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
 
-                count++;
+                    count++;
+                }
             }
+            
+            uint16_t nsNameIdx = identifierConstant(moduleName);
+            emit(OpCode::OP_BUILD_NAMESPACE, lastLine);
+            emit16(nsNameIdx, lastLine);
+            emit16(static_cast<uint16_t>(count), lastLine);
+            emit(OpCode::OP_RETURN, lastLine);
+            
+            topLevelLocalCount = current().maxLocals;
+            endScope();
+            stateStack.pop_back(); // pop module state
+            stateStack.pop_back(); // pop dummy global state
+            return fn->chunk;
         }
-        
-        uint16_t nsNameIdx = identifierConstant(moduleName);
-        emit(OpCode::OP_BUILD_NAMESPACE, lastLine);
-        emit16(nsNameIdx, lastLine);
-        emit16(static_cast<uint16_t>(count), lastLine);
-        emit(OpCode::OP_RETURN, lastLine);
-        
-        topLevelLocalCount = current().maxLocals;
-        endScope();
-        stateStack.pop_back(); // pop module state
-        stateStack.pop_back(); // pop dummy global state
-        return fn->chunk;
+        catch (const std::exception& e) {
+            std::string msg = e.what();
+            if (msg.find("[") != 0) {
+                std::string fn = "Script";
+                try { fn = std::filesystem::path(currentSourceFile).filename().string(); } catch (...) {}
+                if (fn.empty()) fn = "Script";
+                msg = "[" + fn + " : " + std::to_string(lastLine) + "] " + msg;
+            }
+            throw std::runtime_error(msg);
+        }
     }
 
 

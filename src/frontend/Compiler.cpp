@@ -178,8 +178,7 @@ namespace jc {
 
             uint16_t fieldIdx = identifierConstant(dot->field.lexeme);
             emit(OpCode::OP_SET_PROPERTY, lastLine);
-            emit16(fieldIdx, lastLine);
-            emit16(chunk()->addInlineCache(), lastLine);
+            emit16(chunk()->addInlineCache(fieldIdx), lastLine);
 
             emit(OpCode::OP_POP, lastLine);
             current().locals.pop_back();
@@ -1480,8 +1479,7 @@ namespace jc {
             emit16(static_cast<uint16_t>(objTmpIdx), lastLine);
             uint16_t nameIdx = identifierConstant(dot->field.lexeme);
             emit(OpCode::OP_GET_PROPERTY, lastLine);
-            emit16(nameIdx, lastLine);
-            emit16(chunk()->addInlineCache(), lastLine);
+            emit16(chunk()->addInlineCache(nameIdx), lastLine);
             
             compileNode(expr->value.get());
             emitOp(expr->op);
@@ -1497,8 +1495,7 @@ namespace jc {
             emit(OpCode::OP_GET_LOCAL, lastLine);
             emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
             emit(OpCode::OP_SET_PROPERTY, lastLine);
-            emit16(nameIdx, lastLine);
-            emit16(chunk()->addInlineCache(), lastLine);
+            emit16(chunk()->addInlineCache(nameIdx), lastLine);
             
             current().locals.pop_back();
             current().locals.pop_back();
@@ -2722,8 +2719,8 @@ namespace jc {
                 }
 
                 emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
-                emit(OpCode::OP_TRY_GET_PROPERTY, lastLine); emit16(identifierConstant(entry.first), lastLine);
-                emit16(chunk()->addInlineCache(), lastLine);
+                emit(OpCode::OP_TRY_GET_PROPERTY, lastLine);
+                emit16(chunk()->addInlineCache(identifierConstant(entry.first)), lastLine);
                 
                 if (defExpr) {
                     int hasValJump = chunk()->emitJump(OpCode::OP_JUMP_IF_TRUE, lastLine);
@@ -3447,8 +3444,7 @@ namespace jc {
         compileNode(expr->object.get());
         uint16_t nameIdx = identifierConstant(expr->field.lexeme);
         emit(OpCode::OP_GET_PROPERTY, lastLine);
-        emit16(nameIdx, lastLine);
-        emit16(chunk()->addInlineCache(), lastLine);
+        emit16(chunk()->addInlineCache(nameIdx), lastLine);
         return;
     }
 
@@ -3460,8 +3456,7 @@ namespace jc {
         
         uint16_t nameIdx = identifierConstant(expr->field.lexeme);
         emit(OpCode::OP_SET_PROPERTY, lastLine);
-        emit16(nameIdx, lastLine);
-        emit16(chunk()->addInlineCache(), lastLine);
+        emit16(chunk()->addInlineCache(nameIdx), lastLine);
         
         return;
     }
@@ -3564,15 +3559,13 @@ namespace jc {
 
         if (actualTailCall) {
             emit(OpCode::OP_TAIL_INVOKE, lastLine);
-            emit16(nameIdx, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-            emit16(chunk()->addInlineCache(), lastLine);
+            emit16(chunk()->addInlineCache(nameIdx), lastLine);
             tailCallEmitted = true;
         } else {
             emit(OpCode::OP_INVOKE, lastLine);
-            emit16(nameIdx, lastLine);
             emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-            emit16(chunk()->addInlineCache(), lastLine);
+            emit16(chunk()->addInlineCache(nameIdx), lastLine);
         }
         return;
     }

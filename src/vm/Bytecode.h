@@ -126,16 +126,16 @@ namespace jc {
         OP_CLASS,           // [name_idx:16bit] 创建 ClassDefinition
         OP_METHOD,          // [name_idx:16bit] 添加方法到类
         OP_INHERIT,         // 继承
-        OP_GET_PROPERTY,    // [name_idx:16bit]
-        OP_TRY_GET_PROPERTY,// [name_idx:16bit] ★ 新增
-        OP_SET_PROPERTY,    // [name_idx:16bit]
-        OP_INVOKE,          // [name_idx:16bit, argc:8bit]
+        OP_GET_PROPERTY,    // [ic_idx:16bit]
+        OP_TRY_GET_PROPERTY,// [ic_idx:16bit]
+        OP_SET_PROPERTY,    // [ic_idx:16bit]
+        OP_INVOKE,          // [argc:8bit, ic_idx:16bit]
         OP_GET_SUPER,       // [name_idx:16bit]
         OP_SUPER_INVOKE,    // [name_idx:16bit, argc:8bit]
         OP_GET_SELF,        // ★ 新增
 
         OP_TAIL_CALL,       // [arg_count:8bit]
-        OP_TAIL_INVOKE,     // [name_idx:16bit, argc:8bit, icIdx:16bit]
+        OP_TAIL_INVOKE,     // [argc:8bit, ic_idx:16bit]
         OP_TAIL_SUPER_INVOKE, // [name_idx:16bit, argc:8bit]
 
         // 导入
@@ -256,6 +256,7 @@ namespace jc {
     }
 
     struct InlineCache {
+        uint16_t nameIdx = 0;
         ObjClass* cachedClass = nullptr;
         ObjClosure* cachedMethod = nullptr;
         int cachedFieldIndex = -1;
@@ -327,8 +328,8 @@ namespace jc {
             write16(idx, line);
         }
 
-        uint16_t addInlineCache() {
-            inlineCaches.push_back(InlineCache{});
+        uint16_t addInlineCache(uint16_t nameIdx) {
+            inlineCaches.push_back(InlineCache{nameIdx, nullptr, nullptr, -1});
             if (inlineCaches.size() > 65535) throw std::runtime_error("Compiler Error: Too many inline caches.");
             return static_cast<uint16_t>(inlineCaches.size() - 1);
         }
@@ -492,17 +493,17 @@ namespace jc {
             case OpCode::OP_GET_PROPERTY:
             case OpCode::OP_TRY_GET_PROPERTY:
             case OpCode::OP_SET_PROPERTY: {
-                uint16_t idx = read16(offset + 1);
-                uint16_t icIdx = read16(offset + 3);
-                std::cout << idx << " (";
-                if (idx < constants.size()) {
-                    if (constants[idx].isString())
-                        std::cout << constants[idx].asString();
-                    else
-                        std::cout << constants[idx];
+                uint16_t icIdx = read16(offset + 1);
+                std::cout << "[IC:" << icIdx << "]";
+                if (icIdx < inlineCaches.size()) {
+                    uint16_t nameIdx = inlineCaches[icIdx].nameIdx;
+                    std::cout << " -> " << nameIdx << " (";
+                    if (nameIdx < constants.size() && constants[nameIdx].isString())
+                        std::cout << constants[nameIdx].asString();
+                    std::cout << ")";
                 }
-                std::cout << ") [IC:" << icIdx << "]" << std::endl;
-                return offset + 5;
+                std::cout << std::endl;
+                return offset + 3;
             }
 
             // ============================================
@@ -588,14 +589,18 @@ namespace jc {
             }
             case OpCode::OP_INVOKE:
             case OpCode::OP_TAIL_INVOKE: {
-                uint16_t idx = read16(offset + 1);
-                uint8_t argc = code[offset + 3];
-                uint16_t icIdx = read16(offset + 4);
-                std::cout << idx << " (";
-                if (idx < constants.size() && constants[idx].isString())
-                    std::cout << constants[idx].asString();
-                std::cout << ") " << static_cast<int>(argc) << " args [IC:" << icIdx << "]" << std::endl;
-                return offset + 6;
+                uint8_t argc = code[offset + 1];
+                uint16_t icIdx = read16(offset + 2);
+                std::cout << static_cast<int>(argc) << " args [IC:" << icIdx << "]";
+                if (icIdx < inlineCaches.size()) {
+                    uint16_t nameIdx = inlineCaches[icIdx].nameIdx;
+                    std::cout << " -> " << nameIdx << " (";
+                    if (nameIdx < constants.size() && constants[nameIdx].isString())
+                        std::cout << constants[nameIdx].asString();
+                    std::cout << ")";
+                }
+                std::cout << std::endl;
+                return offset + 4;
             }
 
             // ============================================

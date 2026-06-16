@@ -159,7 +159,7 @@ namespace jc {
         void execIn();
         Value execReturn(bool& shouldExit);
         void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
-        void execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx, bool isTailCall = false);
+        void execInvoke(uint8_t argc, uint16_t icIdx, bool isTailCall = false);
         void execSuperInvoke(uint16_t nameIdx, uint8_t argc, bool isTailCall = false);
         void execAssertParamType(const Value& val, uint16_t typeIdx, uint16_t nameIdx);
         void execAssertReturnType(const Value& val, uint16_t typeIdx);

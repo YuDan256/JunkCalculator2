@@ -2265,8 +2265,9 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_PROPERTY: {
-                    uint16_t nameIdx = readShort();
                     uint16_t icIdx = readShort();
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+                    uint16_t nameIdx = ic.nameIdx;
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value obj = peek(0);
                     bool found = false;
@@ -2469,8 +2470,9 @@ namespace jc {
                 }
 
                 case OpCode::OP_TRY_GET_PROPERTY: {
-                    uint16_t nameIdx = readShort();
                     uint16_t icIdx = readShort();
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+                    uint16_t nameIdx = ic.nameIdx;
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value obj = peek(0);
                     bool found = false;
@@ -2541,8 +2543,9 @@ namespace jc {
                 }
 
                 case OpCode::OP_SET_PROPERTY: {
-                    uint16_t nameIdx = readShort();
                     uint16_t icIdx = readShort();
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+                    uint16_t nameIdx = ic.nameIdx;
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value val = peek(0);
                     Value obj = peek(1);
@@ -2609,20 +2612,18 @@ namespace jc {
                 }
 
                 case OpCode::OP_INVOKE: {
-                    uint16_t nameIdx = readShort();
                     uint8_t argc = readByte();
                     uint16_t icIdx = readShort();
-                    execInvoke(nameIdx, argc, icIdx);
+                    execInvoke(argc, icIdx);
                     UPDATE_FRAME();
                     break;
                 }
 
                 case OpCode::OP_TAIL_INVOKE: {
-                    uint16_t nameIdx = readShort();
                     uint8_t argc = readByte();
                     uint16_t icIdx = readShort();
                     int prevIp = currentFrame->ip;
-                    execInvoke(nameIdx, argc, icIdx, true);
+                    execInvoke(argc, icIdx, true);
                     if (currentFrame->ip == prevIp) {
                         bool shouldExit = false;
                         Value result = execReturn(shouldExit);
@@ -5046,15 +5047,15 @@ namespace jc {
         return Value::none();
     }
 
-    void VM::execInvoke(uint16_t nameIdx, uint8_t argc, uint16_t icIdx, bool isTailCall) {
+    void VM::execInvoke(uint8_t argc, uint16_t icIdx, bool isTailCall) {
         struct CallRefGuard { VM* vm; ~CallRefGuard() { vm->pendingCallRefs.clear(); } } guard{this};
+        InlineCache& ic = const_cast<InlineCache&>(frame().function->chunk.inlineCaches[icIdx]);
+        uint16_t nameIdx = ic.nameIdx;
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value obj = stack[getStackSize() - 1 - argc];
 
         ObjClosure* method = nullptr;
         ObjClass* owningClass = nullptr;
-
-        InlineCache& ic = const_cast<InlineCache&>(frame().function->chunk.inlineCaches[icIdx]);
 
         // ==============================================================
         // 1. 如果它是原生 Dict！我们要像对待对象一样去调用它内部的闭包

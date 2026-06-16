@@ -19,7 +19,7 @@ namespace jc {
     class VM {
     private:
 
-        std::vector<std::pair<int, std::shared_ptr<UpVal>>> pendingCallRefs;
+        std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
 
         // ★ 多帧栈：支持嵌套函数调用
         CallFrame* frames = nullptr;
@@ -48,6 +48,11 @@ namespace jc {
             if (stackTop >= stackLimit)
                 throw std::runtime_error("VM Error: Stack overflow.");
             *stackTop++ = val;
+        }
+        inline void push(Value&& val) {
+            if (stackTop >= stackLimit)
+                throw std::runtime_error("VM Error: Stack overflow.");
+            *stackTop++ = std::move(val);
         }
         inline Value pop() {
             stackTop--;
@@ -99,8 +104,9 @@ namespace jc {
         std::vector<ExceptionHandler> exceptionHandlers;
 
         // ★ 开放上值追踪 (Open Upvalues)
-        std::vector<std::shared_ptr<UpVal>> openUpvalues;
+        ObjUpVal* openUpvalues = nullptr; // 改为侵入式链表
         void closeUpvalues(int lastStackIndex);
+        ObjUpVal* captureUpvalue(Value* local);
 
         // ==============================================================
         // ★ 新增：干净统一的异常回滚处理与栈轨迹抓取 (Stack Trace)
@@ -183,7 +189,7 @@ namespace jc {
         }
 
         Value callVMFunction(int fnIdx, const std::vector<Value>& args,
-            std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> upvalues = nullptr,
+            ObjClosure* closure = nullptr,
             Value boundSelf = Value::none(), Value boundClass = Value::none());
         const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
 
@@ -208,7 +214,7 @@ namespace jc {
             constGlobals.clear();
             importedModules.clear(); // ★ 核心修复：彻底粉碎模块导入的防环缓存！
             loadedModules.clear();
-            openUpvalues.clear();
+            openUpvalues = nullptr;
             clearAllGlobalICs();
             // ★ 贴心修复：清理全局变量后，自动把系统必不可少的基础常量重新注入环境
             setGlobal("PI", Value(3.14159265358979323846));

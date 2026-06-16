@@ -51,8 +51,8 @@ namespace jc {
             while (frameCount > handler.frameIndex + 1) {
                 frames[frameCount - 1].selfContext = Value::none();
                 frames[frameCount - 1].classContext = Value::none();
-                frames[frameCount - 1].upvalues = nullptr;
-                frames[frameCount - 1].refParams.clear();
+                frames[frameCount - 1].closure = nullptr;
+                frames[frameCount - 1].refParamsBase = -1;
                 frameCount--;
             }
 
@@ -350,26 +350,47 @@ namespace jc {
             return result;
         }
         else if (method->isBytecode()) {
-            std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> captures = nullptr;
-            if (method->hasCaptures())
-                captures = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
             // ★ 无污染传参：直接送入 VM CallFrame 的 boundSelf
-            return callVMFunction(method->compiledFnIndex, args, captures, Value(inst), Value(inst->classDef));
+            return callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef));
         }
         else {
             throw std::runtime_error(std::string("VM Error: No callable dunder '") + name + "'.");
         }
     }
 
+    ObjUpVal* VM::captureUpvalue(Value* local) {
+        ObjUpVal* prevUpval = nullptr;
+        ObjUpVal* upval = openUpvalues;
+        int index = static_cast<int>(local - stack);
+        while (upval != nullptr && upval->stackIndex > index) {
+            prevUpval = upval;
+            upval = upval->nextOpen;
+        }
+
+        if (upval != nullptr && upval->stackIndex == index) {
+            return upval;
+        }
+
+        ObjUpVal* createdUpval = GcHeap::get().allocate<ObjUpVal>();
+        createdUpval->location = local;
+        createdUpval->stackIndex = index;
+        createdUpval->nextOpen = upval;
+
+        if (prevUpval == nullptr) {
+            openUpvalues = createdUpval;
+        } else {
+            prevUpval->nextOpen = createdUpval;
+        }
+
+        return createdUpval;
+    }
+
     void VM::closeUpvalues(int lastStackIndex) {
-        for (auto it = openUpvalues.begin(); it != openUpvalues.end(); ) {
-            if ((*it)->stackIndex >= lastStackIndex) {
-                (*it)->closed = *((*it)->location);
-                (*it)->location = &(*it)->closed;
-                it = openUpvalues.erase(it);
-            } else {
-                ++it;
-            }
+        while (openUpvalues != nullptr && openUpvalues->stackIndex >= lastStackIndex) {
+            ObjUpVal* upval = openUpvalues;
+            upval->closed = *upval->location;
+            upval->location = &upval->closed;
+            openUpvalues = upval->nextOpen;
         }
     }
 
@@ -476,8 +497,8 @@ namespace jc {
         while (frameCount > 0) {
             frames[frameCount - 1].selfContext = Value::none();
             frames[frameCount - 1].classContext = Value::none();
-            frames[frameCount - 1].upvalues = nullptr;
-            frames[frameCount - 1].refParams.clear();
+            frames[frameCount - 1].closure = nullptr;
+            frames[frameCount - 1].refParamsBase = -1;
             frameCount--;
         }
         exceptionHandlers.clear();
@@ -490,7 +511,7 @@ namespace jc {
     }
 
     Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args,
-        std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> upvalues,
+        ObjClosure* closure,
         Value boundSelf, Value boundClass) {
         if (fnIdx < 0 || fnIdx >= static_cast<int>(compiledFunctions.size()))
             throw std::runtime_error("VM Error: Invalid function index in callback.");
@@ -548,7 +569,7 @@ namespace jc {
         newFrame.function = fn.get();
         newFrame.ip = 0;
         newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
-        newFrame.upvalues = upvalues;
+        newFrame.closure = closure;
         // ★ 清爽下发！寄存器已就位：
         newFrame.selfContext = boundSelf;
         newFrame.classContext = boundClass;
@@ -579,8 +600,8 @@ namespace jc {
             while (frameCount > boundary) {
                 frames[frameCount - 1].selfContext = Value::none();
                 frames[frameCount - 1].classContext = Value::none();
-                frames[frameCount - 1].upvalues = nullptr;
-                frames[frameCount - 1].refParams.clear();
+                frames[frameCount - 1].closure = nullptr;
+                frames[frameCount - 1].refParamsBase = -1;
                 frameCount--;
             }
             closeUpvalues(newFrame.stackBase);
@@ -593,8 +614,8 @@ namespace jc {
             while (frameCount > boundary) {
                 frames[frameCount - 1].selfContext = Value::none();
                 frames[frameCount - 1].classContext = Value::none();
-                frames[frameCount - 1].upvalues = nullptr;
-                frames[frameCount - 1].refParams.clear();
+                frames[frameCount - 1].closure = nullptr;
+                frames[frameCount - 1].refParamsBase = -1;
                 frameCount--;
             }
             closeUpvalues(newFrame.stackBase);
@@ -702,12 +723,8 @@ namespace jc {
 				opCounts[op]++;
 			}
 
-            auto readByte = [&]() -> uint8_t { return codeData[currentFrame->ip++]; };
-            auto readShort = [&]() -> uint16_t {
-                uint8_t hi = codeData[currentFrame->ip++];
-                uint8_t lo = codeData[currentFrame->ip++];
-                return static_cast<uint16_t>((hi << 8) | lo);
-            };
+            #define readByte() (codeData[currentFrame->ip++])
+            #define readShort() (currentFrame->ip += 2, static_cast<uint16_t>((codeData[currentFrame->ip - 2] << 8) | codeData[currentFrame->ip - 1]))
 
             try {
 
@@ -1166,50 +1183,55 @@ namespace jc {
 
                     auto& fn = compiledFunctions[idx];
 
-                    std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> captures;
+                    auto closure = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{},
+                        std::vector<bool>{},
+                        fn->name,
+                        nullptr
+                    );
+
+                    closure->compiledFnIndex = idx;
+
                     if (!fn->upvalues.empty()) {
-                        captures = std::make_shared<std::vector<std::shared_ptr<UpVal>>>();
-                        for (auto& uv : fn->upvalues) {
+                        closure->upvalueCount = static_cast<int>(fn->upvalues.size());
+                        closure->upvalues = new ObjUpVal*[closure->upvalueCount];
+                        for (int i = 0; i < closure->upvalueCount; ++i) {
+                            auto& uv = fn->upvalues[i];
                             if (uv.isRef) {
                                 // ★ 按引用捕获 (Open Upvalue)
                                 if (uv.isLocal) {
                                     if (uv.isRefParam) {
-                                        captures->push_back(currentFrame->refParams[uv.index]);
+                                        closure->upvalues[i] = static_cast<ObjUpVal*>(stack[currentFrame->refParamsBase + uv.index].asObj());
                                     } else {
                                         int captureIdx = currentFrame->stackBase + uv.index;
-                                        std::shared_ptr<UpVal> upval = nullptr;
-                                        for (auto& openUv : openUpvalues) {
-                                            if (openUv->stackIndex == captureIdx) {
-                                                upval = openUv;
-                                                break;
-                                            }
-                                        }
-                                        if (!upval) {
-                                            upval = std::make_shared<UpVal>();
-                                            upval->location = &stack[captureIdx];
-                                            upval->stackIndex = captureIdx;
-                                            openUpvalues.push_back(upval);
-                                        }
-                                        captures->push_back(upval);
+                                        closure->upvalues[i] = captureUpvalue(&stack[captureIdx]);
                                     }
                                 }
                                 else {
-                                    if (currentFrame->upvalues && uv.index < static_cast<int>(currentFrame->upvalues->size()))
-                                        captures->push_back((*currentFrame->upvalues)[uv.index]);
+                                    if (currentFrame->closure && uv.index < currentFrame->closure->upvalueCount)
+                                        closure->upvalues[i] = currentFrame->closure->upvalues[uv.index];
                                     else {
-                                        auto dummy = std::make_shared<UpVal>();
+                                        auto dummy = GcHeap::get().allocate<ObjUpVal>();
                                         if (uv.isGlobal) {
-                                            dummy->closed = Value::uninit();
+                                            auto it = globalNamesToSlots.find(uv.name);
+                                            if (it != globalNamesToSlots.end()) {
+                                                dummy->location = &globalValues[it->second];
+                                            } else {
+                                                if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
+                                                globalNamesToSlots[uv.name] = static_cast<uint16_t>(globalValues.size());
+                                                globalValues.push_back(Value::uninit());
+                                                dummy->location = &globalValues.back();
+                                            }
                                         } else {
                                             dummy->closed = Value::none();
+                                            dummy->location = &dummy->closed;
                                         }
-                                        dummy->location = &dummy->closed;
-                                        captures->push_back(dummy);
+                                        closure->upvalues[i] = dummy;
                                     }
                                 }
                             } else {
                                 // ★ 默认按值捕获 (立即 Closed Upvalue)
-                                auto dummy = std::make_shared<UpVal>();
+                                auto dummy = GcHeap::get().allocate<ObjUpVal>();
                                 if (uv.isGlobal) {
                                     if (!uv.isExplicitState) {
                                         auto it = globalNamesToSlots.find(uv.name);
@@ -1228,14 +1250,14 @@ namespace jc {
                                     }
                                 } else if (uv.isLocal) {
                                     if (uv.isRefParam) {
-                                        dummy->closed = *(currentFrame->refParams[uv.index]->location);
+                                        dummy->closed = *(static_cast<ObjUpVal*>(stack[currentFrame->refParamsBase + uv.index].asObj())->location);
                                     } else {
                                         int captureIdx = currentFrame->stackBase + uv.index;
                                         dummy->closed = stack[captureIdx];
                                     }
                                 } else {
-                                    if (currentFrame->upvalues && uv.index < static_cast<int>(currentFrame->upvalues->size())) {
-                                        dummy->closed = *((*currentFrame->upvalues)[uv.index]->location);
+                                    if (currentFrame->closure && uv.index < currentFrame->closure->upvalueCount) {
+                                        dummy->closed = *(currentFrame->closure->upvalues[uv.index]->location);
                                         if (!uv.isExplicitState && dummy->closed.isUninit()) {
                                             throw std::runtime_error("Runtime Error: Undefined variable '" + uv.name + "'.");
                                         }
@@ -1244,36 +1266,23 @@ namespace jc {
                                         dummy->closed = Value::none();
                                 }
                                 dummy->location = &dummy->closed;
-                                captures->push_back(dummy);
+                                closure->upvalues[i] = dummy;
                             }
                         }
                     }
 
-                    auto closure = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{},
-                        std::vector<bool>{},
-                        fn->name,
-                        nullptr
-                    );
-
-                    closure->compiledFnIndex = idx;
-                    if (captures) {
-                        closure->capturedEnv = std::make_any<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(captures);
-                    }
-
                     // ★ （为了保证从外界通过 C++ 获取到这个闭包也能强制执行，我们依然做一层薄薄的回调包装）
                     int capturedFnIdx = idx;
-                    auto capturedUpvalues = captures;
                     VM* vm = this;
 
                     Value currentSelf = currentFrame->selfContext;
                     Value currentClass = currentFrame->classContext;
                     closure->nativeFn = std::make_any<NativeCallable>(
-                        [vm, capturedFnIdx, capturedUpvalues, currentSelf, currentClass](const std::vector<Value>& args) -> Value {
+                        [vm, capturedFnIdx, closure, currentSelf, currentClass](const std::vector<Value>& args) -> Value {
                             // ★ 智能窃取：如果有 Dunder 方法等触发的原生调用，优先使用隔离栈里的运行态 Target
                             Value s = !helpers::nativeSelfStack.empty() ? helpers::nativeSelfStack.back() : currentSelf;
                             Value c = !helpers::nativeClassStack.empty() ? helpers::nativeClassStack.back() : currentClass;
-                            return vm->callVMFunction(capturedFnIdx, args, capturedUpvalues, s, c);
+                            return vm->callVMFunction(capturedFnIdx, args, closure, s, c);
                         }
                     );
 
@@ -1350,19 +1359,19 @@ namespace jc {
 
                 case OpCode::OP_GET_UPVALUE: {
                     uint16_t idx = readShort();
-                    if (!currentFrame->upvalues || idx >= currentFrame->upvalues->size())
+                    if (!currentFrame->closure || idx >= currentFrame->closure->upvalueCount)
                         throw std::runtime_error("VM Error: Invalid upvalue index " +
                             std::to_string(idx) + ".");
-                    push(*((*currentFrame->upvalues)[idx]->location));
+                    push(*(currentFrame->closure->upvalues[idx]->location));
                     break;
                 }
 
                 case OpCode::OP_SET_UPVALUE: {
                     uint16_t idx = readShort();
-                    if (!currentFrame->upvalues || idx >= currentFrame->upvalues->size())
+                    if (!currentFrame->closure || idx >= currentFrame->closure->upvalueCount)
                         throw std::runtime_error("VM Error: Invalid upvalue index " +
                             std::to_string(idx) + ".");
-                    *((*currentFrame->upvalues)[idx]->location) = peek(0);
+                    *(currentFrame->closure->upvalues[idx]->location) = peek(0);
                     break;
                 }
 
@@ -1435,7 +1444,13 @@ namespace jc {
                     bound->hasRestParam = rawMethod->hasRestParam;
 
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    bound->capturedEnv = rawMethod->capturedEnv;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
                     bound->nativeFn = rawMethod->nativeFn;
                     
                     bound->boundSelf = Value(inst);
@@ -1455,11 +1470,11 @@ namespace jc {
                         uint8_t sourceType = ref.sourceType;
                         uint16_t sourceRef = ref.sourceRef;
 
-                        std::shared_ptr<UpVal> upval = nullptr;
+                        ObjUpVal* upval = nullptr;
                         switch (sourceType) {
                         case 1: {
                             std::string name = currentChunk().constants[sourceRef].asString();
-                            upval = std::make_shared<UpVal>();
+                            upval = GcHeap::get().allocate<ObjUpVal>();
                             auto it = globalNamesToSlots.find(name);
                             if (it == globalNamesToSlots.end()) {
                                 if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
@@ -1471,29 +1486,18 @@ namespace jc {
                         }
                         case 2: {
                             int captureIdx = currentFrame->stackBase + sourceRef;
-                            for (auto& openUv : openUpvalues) {
-                                if (openUv->stackIndex == captureIdx) {
-                                    upval = openUv;
-                                    break;
-                                }
-                            }
-                            if (!upval) {
-                                upval = std::make_shared<UpVal>();
-                                upval->location = &stack[captureIdx];
-                                upval->stackIndex = captureIdx;
-                                openUpvalues.push_back(upval);
-                            }
+                            upval = captureUpvalue(&stack[captureIdx]);
                             break;
                         }
                         case 3: {
-                            if (currentFrame->upvalues && sourceRef < currentFrame->upvalues->size()) {
-                                upval = (*currentFrame->upvalues)[sourceRef];
+                            if (currentFrame->closure && sourceRef < currentFrame->closure->upvalueCount) {
+                                upval = currentFrame->closure->upvalues[sourceRef];
                             }
                             break;
                         }
                         case 4: {
-                            if (sourceRef < currentFrame->refParams.size()) {
-                                upval = currentFrame->refParams[sourceRef];
+                            if (currentFrame->refParamsBase != -1) {
+                                upval = static_cast<ObjUpVal*>(stack[currentFrame->refParamsBase + sourceRef].asObj());
                             }
                             break;
                         }
@@ -1507,17 +1511,17 @@ namespace jc {
 
                 case OpCode::OP_GET_REF_PARAM: {
                     uint16_t idx = readShort();
-                    if (idx >= currentFrame->refParams.size())
+                    if (currentFrame->refParamsBase == -1)
                         throw std::runtime_error("VM Error: Invalid ref param index.");
-                    push(*(currentFrame->refParams[idx]->location));
+                    push(*(static_cast<ObjUpVal*>(stack[currentFrame->refParamsBase + idx].asObj())->location));
                     break;
                 }
 
                 case OpCode::OP_SET_REF_PARAM: {
                     uint16_t idx = readShort();
-                    if (idx >= currentFrame->refParams.size())
+                    if (currentFrame->refParamsBase == -1)
                         throw std::runtime_error("VM Error: Invalid ref param index.");
-                    *(currentFrame->refParams[idx]->location) = peek(0);
+                    *(static_cast<ObjUpVal*>(stack[currentFrame->refParamsBase + idx].asObj())->location) = peek(0);
                     break;
                 }
 
@@ -1556,17 +1560,18 @@ namespace jc {
                     uint16_t count = readShort();
                     std::vector<std::string> parts(count);
                     size_t totalLen = 0;
-                    for (int j = count - 1; j >= 0; --j) {
-                        Value v = pop();
+                    stackTop -= count;
+                    for (int i = 0; i < count; ++i) {
+                        Value& v = stackTop[i];
                         if (v.isString()) {
-                            parts[j] = v.asString();
+                            parts[i] = v.asString();
                         } else {
                             std::ostringstream oss;
                             if (v.isUninit()) oss << "Uninitialized";
                             else oss << v;
-                            parts[j] = oss.str();
+                            parts[i] = oss.str();
                         }
-                        totalLen += parts[j].size();
+                        totalLen += parts[i].size();
                     }
                     std::string result;
                     result.reserve(totalLen);
@@ -1626,19 +1631,7 @@ namespace jc {
                         std::string key = pop().asString();
                         
                         int captureIdx = currentFrame->stackBase + slot;
-                        std::shared_ptr<UpVal> upval = nullptr;
-                        for (auto& openUv : openUpvalues) {
-                            if (openUv->stackIndex == captureIdx) {
-                                upval = openUv;
-                                break;
-                            }
-                        }
-                        if (!upval) {
-                            upval = std::make_shared<UpVal>();
-                            upval->location = &stack[captureIdx];
-                            upval->stackIndex = captureIdx;
-                            openUpvalues.push_back(upval);
-                        }
+                        ObjUpVal* upval = captureUpvalue(&stack[captureIdx]);
                         ns->fields[key] = { upval, isConst };
                     }
                     push(Value(ns));
@@ -1650,14 +1643,9 @@ namespace jc {
                     ObjDict* d = GcHeap::get().allocate<ObjDict>();
                     d->elements.reserve(count);
                     d->keyMap.reserve(count);
-                    std::vector<std::pair<Value, Value>> pairs(count);
-                    for (int j = count - 1; j >= 0; --j) {
-                        Value val = pop();
-                        Value key = pop();
-                        pairs[j] = { key, val };
-                    }
-                    for (auto& [k, v] : pairs) {
-                        d->set(k, v);
+                    stackTop -= (count * 2);
+                    for (int i = 0; i < count; ++i) {
+                        d->set(std::move(stackTop[i * 2]), std::move(stackTop[i * 2 + 1]));
                     }
                     push(Value(d));
                     break;
@@ -1668,12 +1656,9 @@ namespace jc {
                     ObjSet* s = GcHeap::get().allocate<ObjSet>();
                     s->elements.reserve(count);
                     s->keys.reserve(count);
-                    std::vector<Value> items(count);
-                    for (int j = count - 1; j >= 0; --j) {
-                        items[j] = pop();
-                    }
-                    for (auto& v : items) {
-                        s->add(v);
+                    stackTop -= count;
+                    for (int i = 0; i < count; ++i) {
+                        s->add(std::move(stackTop[i]));
                     }
                     push(Value(s));
                     break;
@@ -1888,8 +1873,9 @@ namespace jc {
                     uint16_t count = readShort();
                     ObjList* list = GcHeap::get().allocate<ObjList>();
                     list->vec.resize(count);
-                    for (int i = count - 1; i >= 0; --i) {
-                        list->vec[i] = pop();
+                    stackTop -= count;
+                    for (int i = 0; i < count; ++i) {
+                        list->vec[i] = std::move(stackTop[i]);
                     }
                     push(Value(list));
                     break;
@@ -2159,7 +2145,7 @@ namespace jc {
                         importedModules.insert(name);
 
                         for (const auto& kv : tempGlobals) {
-                            auto uv = std::make_shared<UpVal>();
+                            auto uv = GcHeap::get().allocate<ObjUpVal>();
                             uv->closed = kv.second;
                             uv->location = &uv->closed;
                             ns->fields[kv.first] = { uv, true };
@@ -2184,7 +2170,7 @@ namespace jc {
                                 }
                             }
 
-                            auto uv = std::make_shared<UpVal>();
+                            auto uv = GcHeap::get().allocate<ObjUpVal>();
                             uv->closed = Value(closure);
                             uv->location = &uv->closed;
                             ns->fields[kv.first] = { uv, true };
@@ -2346,7 +2332,13 @@ namespace jc {
                                     bound->hasRestParam = ic.cachedMethod->hasRestParam;
                                     
                                     bound->compiledFnIndex = ic.cachedMethod->compiledFnIndex;
-                                    bound->capturedEnv = ic.cachedMethod->capturedEnv;
+                                    if (ic.cachedMethod->upvalueCount > 0) {
+                                        bound->upvalueCount = ic.cachedMethod->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = ic.cachedMethod->upvalues[i];
+                                        }
+                                    }
                                     bound->nativeFn = ic.cachedMethod->nativeFn;
                                     
                                     bound->boundSelf = Value(inst);
@@ -2396,7 +2388,13 @@ namespace jc {
                                     bound->hasRestParam = rawMethod->hasRestParam;
                                     
                                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                    bound->capturedEnv = rawMethod->capturedEnv;
+                                    if (rawMethod->upvalueCount > 0) {
+                                        bound->upvalueCount = rawMethod->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = rawMethod->upvalues[i];
+                                        }
+                                    }
                                     bound->nativeFn = rawMethod->nativeFn;
                                     
                                     bound->boundSelf = Value(inst);
@@ -2481,7 +2479,13 @@ namespace jc {
                             
                                 if (targetFn->isBytecode()) {
                                     bound->compiledFnIndex = targetFn->compiledFnIndex;
-                                    bound->capturedEnv = targetFn->capturedEnv;
+                                    if (targetFn->upvalueCount > 0) {
+                                        bound->upvalueCount = targetFn->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = targetFn->upvalues[i];
+                                        }
+                                    }
                                     bound->hasRestParam = targetFn->hasRestParam;
                                     bound->paramNames = targetFn->paramNames;
                                     bound->isRef = targetFn->isRef;
@@ -2642,7 +2646,7 @@ namespace jc {
                             if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + field + "' in namespace '" + ns->name + "'.");
                             *(it->second.upval->location) = val;
                         } else {
-                            auto uv = std::make_shared<UpVal>();
+                            auto uv = GcHeap::get().allocate<ObjUpVal>();
                             uv->closed = val;
                             uv->location = &uv->closed;
                             ns->fields[field] = { uv, false };
@@ -2712,6 +2716,8 @@ namespace jc {
             }
         }
         #undef UPDATE_FRAME
+        #undef readByte
+        #undef readShort
     }
 
     void VM::debugPrompt() {
@@ -2888,15 +2894,16 @@ namespace jc {
                     auto cl = static_cast<ObjClosure*>(obj);
                     markValue(cl->boundSelf);
                     markValue(cl->boundClass);
-                    if (cl->capturedEnv.has_value()) {
-                        try {
-                            auto env = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(cl->capturedEnv);
-                            if (env) {
-                                for (const auto& uv : *env) {
-                                    if (uv && uv->location) markValue(*(uv->location));
-                                }
-                            }
-                        } catch (...) {}
+                    for (int i = 0; i < cl->upvalueCount; ++i) {
+                        if (cl->upvalues[i]) markObject(cl->upvalues[i]);
+                    }
+                    break;
+                }
+                case ObjType::UPVALUE: {
+                    auto uv = static_cast<ObjUpVal*>(obj);
+                    markValue(uv->closed);
+                    if (uv->location && uv->location != &uv->closed) {
+                        markValue(*(uv->location));
                     }
                     break;
                 }
@@ -2917,8 +2924,8 @@ namespace jc {
                 case ObjType::NAMESPACE: {
                     auto ns = static_cast<ObjNamespace*>(obj);
                     for (const auto& [k, field] : ns->fields) {
-                        if (field.upval && field.upval->location) {
-                            markValue(*(field.upval->location));
+                        if (field.upval) {
+                            markObject(field.upval);
                         }
                     }
                     break;
@@ -2950,13 +2957,8 @@ namespace jc {
         // 根集合 3: 所有调用帧的闭包上值，以及存活帧的上下文引擎！
         for (int i = 0; i < frameCount; ++i) {
             const auto& f = frames[i];
-            if (f.upvalues) {
-                for (const auto& uv : *f.upvalues) {
-                    if (uv && uv->location) markValue(*(uv->location));
-                }
-            }
-            for (const auto& uv : f.refParams) {
-                if (uv && uv->location) markValue(*(uv->location));
+            if (f.closure) {
+                markObject(f.closure);
             }
             // ★ 世纪补漏：必须追踪目前存活函数的上下文环境！
             markValue(f.selfContext);
@@ -2987,6 +2989,18 @@ namespace jc {
         for (Obj* obj : GcHeap::get().getTempObjRoots()) markObject(obj);
         for (Value* val : GcHeap::get().getTempValueRoots()) markValue(*val);
 
+        // 根集合 7: 开放上值链表
+        ObjUpVal* uv = openUpvalues;
+        while (uv) {
+            markObject(uv);
+            uv = uv->nextOpen;
+        }
+
+        // 根集合 8: 挂起的引用参数
+        for (const auto& pr : pendingCallRefs) {
+            if (pr.second) markObject(pr.second);
+        }
+
         traceReferences();
 
         // ★ 在 sweep 之前，清理驻留池中未被标记的字符串
@@ -3009,13 +3023,8 @@ namespace jc {
         for (Value* p = stack; p < stackTop; ++p) markValue(*p);
         for (int i = 0; i < frameCount; ++i) {
             const auto& f = frames[i];
-            if (f.upvalues) {
-                for (const auto& uv : *f.upvalues) {
-                    if (uv && uv->location) markValue(*(uv->location));
-                }
-            }
-            for (const auto& uv : f.refParams) {
-                if (uv && uv->location) markValue(*(uv->location));
+            if (f.closure) {
+                markObject(f.closure);
             }
             // ★ 防止手动 gc() 触发对象丢失
             markValue(f.selfContext);
@@ -3041,6 +3050,16 @@ namespace jc {
         for (Obj* obj : GcHeap::get().getTempObjRoots()) markObject(obj);
         for (Value* val : GcHeap::get().getTempValueRoots()) markValue(*val);
 
+        ObjUpVal* uv = openUpvalues;
+        while (uv) {
+            markObject(uv);
+            uv = uv->nextOpen;
+        }
+
+        for (const auto& pr : pendingCallRefs) {
+            if (pr.second) markObject(pr.second);
+        }
+
         traceReferences();
 
         // ★ 在 sweep 之前，清理驻留池中未被标记的字符串
@@ -3056,10 +3075,27 @@ namespace jc {
     }
 
     void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
-        newFrame.refParams.clear();
+        int refCount = 0;
         for (int i = 0; i < fn->maxArity; ++i) {
             if (i < static_cast<int>(fn->paramIsRef.size()) && fn->paramIsRef[i]) {
-                std::shared_ptr<UpVal> providedRef = nullptr;
+                refCount++;
+            }
+        }
+        if (refCount == 0) {
+            newFrame.refParamsBase = -1;
+            pendingCallRefs.clear();
+            return;
+        }
+
+        newFrame.refParamsBase = static_cast<int>(getStackSize());
+        for (int i = 0; i < refCount; ++i) {
+            push(Value::none()); // 占位
+        }
+
+        int refIdx = 0;
+        for (int i = 0; i < fn->maxArity; ++i) {
+            if (i < static_cast<int>(fn->paramIsRef.size()) && fn->paramIsRef[i]) {
+                ObjUpVal* providedRef = nullptr;
                 for (auto& pr : pendingCallRefs) {
                     if (pr.first == i) {
                         providedRef = pr.second;
@@ -3067,12 +3103,13 @@ namespace jc {
                     }
                 }
                 if (providedRef) {
-                    newFrame.refParams.push_back(providedRef);
+                    stack[newFrame.refParamsBase + refIdx] = Value(providedRef);
                 } else {
-                    auto dummy = std::make_shared<UpVal>();
+                    ObjUpVal* dummy = GcHeap::get().allocate<ObjUpVal>();
                     dummy->location = &stack[newFrame.stackBase + i];
-                    newFrame.refParams.push_back(dummy);
+                    stack[newFrame.refParamsBase + refIdx] = Value(dummy);
                 }
+                refIdx++;
             }
         }
         pendingCallRefs.clear();
@@ -3111,7 +3148,7 @@ namespace jc {
                     setStackSize(base + newLocalCount);
                     frame().function = fn.get();
                     frame().ip = 0;
-                    frame().upvalues = nullptr;
+                    frame().closure = nullptr;
                     frame().selfContext = Value::none();
                     frame().classContext = Value::none();
                     populateRefParams(frame(), fn.get());
@@ -3215,11 +3252,7 @@ namespace jc {
                         setStackSize(base + newLocalCount);
                         frame().function = fnDef.get();
                         frame().ip = 0;
-                        if (initMethod->hasCaptures()) {
-                            frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(initMethod->capturedEnv);
-                        } else {
-                            frame().upvalues = nullptr;
-                        }
+                        frame().closure = initMethod;
                         frame().selfContext = Value(instance);
                         frame().classContext = Value(initOwner);
                         populateRefParams(frame(), fnDef.get());
@@ -3234,10 +3267,7 @@ namespace jc {
                     newFrame.function = fnDef.get();
                     newFrame.ip = 0;
                     newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
-                    if (initMethod->hasCaptures()) {
-                        newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(
-                            initMethod->capturedEnv);
-                    }
+                    newFrame.closure = initMethod;
                     populateRefParams(newFrame, fnDef.get());
                     if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                     frames[frameCount++] = newFrame;
@@ -3348,11 +3378,7 @@ namespace jc {
                     setStackSize(base + newLocalCount);
                     frame().function = fnDef.get();
                     frame().ip = 0;
-                    if (closure->hasCaptures()) {
-                        frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(closure->capturedEnv);
-                    } else {
-                        frame().upvalues = nullptr;
-                    }
+                    frame().closure = closure;
                     frame().selfContext = closure->boundSelf;
                     frame().classContext = closure->boundClass;
                     populateRefParams(frame(), fnDef.get());
@@ -3363,10 +3389,7 @@ namespace jc {
                 newFrame.function = fnDef.get();
                 newFrame.ip = 0;
                 newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
-
-                if (closure->hasCaptures()) {
-                    newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(closure->capturedEnv);
-                }
+                newFrame.closure = closure;
 
                 // ★ NEW：将该闭包出生时带的 self 塞进新帧的心房！
                 newFrame.selfContext = closure->boundSelf;
@@ -3478,7 +3501,7 @@ namespace jc {
                     setStackSize(base + newLocalCount);
                     frame().function = fn.get();
                     frame().ip = 0;
-                    frame().upvalues = nullptr;
+                    frame().closure = nullptr;
                     frame().selfContext = Value::none();
                     frame().classContext = Value::none();
                     populateRefParams(frame(), fn.get());
@@ -3567,11 +3590,7 @@ namespace jc {
                         setStackSize(base + newLocalCount);
                         frame().function = fnDef.get();
                         frame().ip = 0;
-                        if (method->hasCaptures()) {
-                            frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
-                        } else {
-                            frame().upvalues = nullptr;
-                        }
+                        frame().closure = method;
                         frame().selfContext = callee;
                         frame().classContext = Value(owningClass);
                         populateRefParams(frame(), fnDef.get());
@@ -3582,9 +3601,7 @@ namespace jc {
                     newFrame.function = fnDef.get();
                     newFrame.ip = 0;
                     newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
-                    if (method->hasCaptures()) {
-                        newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
-                    }
+                    newFrame.closure = method;
                     
                     // ★ 核心：将实例自身作为 self 注入
                     newFrame.selfContext = callee;
@@ -3690,10 +3707,8 @@ namespace jc {
                         newFrame.function = fnDef.get();
                         newFrame.ip = 0;
                         newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
+                        newFrame.closure = getitemMethod;
 
-                        if (getitemMethod->hasCaptures()) {
-                            newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(getitemMethod->capturedEnv);
-                        }
                         newFrame.selfContext = Value(inst);
                         newFrame.classContext = Value(inst->classDef);
                         if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
@@ -3879,7 +3894,7 @@ namespace jc {
                     if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "' in namespace '" + ns->name + "'.");
                     *(it->second.upval->location) = val;
                 } else {
-                    auto uv = std::make_shared<UpVal>();
+                    auto uv = GcHeap::get().allocate<ObjUpVal>();
                     uv->closed = val;
                     uv->location = &uv->closed;
                     ns->fields[key] = { uv, false };
@@ -3904,14 +3919,10 @@ namespace jc {
                 }
                 if (setitemMethod) {
                     if (setitemMethod->isBytecode()) {
-                        std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> captures = nullptr;
-                        if (setitemMethod->hasCaptures())
-                            captures = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(setitemMethod->capturedEnv);
-
                         eraseStack(2); // remove obj, idx. val shifts to peek(0)
                         pop(); // remove val
                         
-                        callVMFunction(setitemMethod->compiledFnIndex, { idx, val }, captures, Value(inst), Value(inst->classDef));
+                        callVMFunction(setitemMethod->compiledFnIndex, { idx, val }, setitemMethod, Value(inst), Value(inst->classDef));
                         push(val); push(obj); return; // ★ 绝对返回防线！
                     }
                     else if (setitemMethod->isNative()) {
@@ -5055,8 +5066,8 @@ namespace jc {
 
         frames[frameCount - 1].selfContext = Value::none();
         frames[frameCount - 1].classContext = Value::none();
-        frames[frameCount - 1].upvalues = nullptr;
-        frames[frameCount - 1].refParams.clear();
+        frames[frameCount - 1].closure = nullptr;
+        frames[frameCount - 1].refParamsBase = -1;
         frameCount--;
 
         // ★ 退出判定
@@ -5297,11 +5308,7 @@ namespace jc {
                 setStackSize(base + newLocalCount);
                 frame().function = fnDef.get();
                 frame().ip = 0;
-                if (method->hasCaptures()) {
-                    frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
-                } else {
-                    frame().upvalues = nullptr;
-                }
+                frame().closure = method;
                 frame().selfContext = obj;
                 frame().classContext = owningClass ? Value(owningClass) : Value::none();
                 populateRefParams(frame(), fnDef.get());
@@ -5311,10 +5318,7 @@ namespace jc {
             newFrame.function = fnDef.get();
             newFrame.ip = 0;
             newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
-            if (method->hasCaptures()) {
-                newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(
-                    method->capturedEnv);
-            }
+            newFrame.closure = method;
             populateRefParams(newFrame, fnDef.get());
             if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
             frames[frameCount++] = newFrame;
@@ -5510,11 +5514,7 @@ namespace jc {
                 setStackSize(base + newLocalCount);
                 frame().function = fnDef.get();
                 frame().ip = 0;
-                if (method->hasCaptures()) {
-                    frame().upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
-                } else {
-                    frame().upvalues = nullptr;
-                }
+                frame().closure = method;
                 frame().selfContext = Value(inst);
                 frame().classContext = Value(owningClass);
                 populateRefParams(frame(), fnDef.get());
@@ -5524,10 +5524,7 @@ namespace jc {
             newFrame.function = fnDef.get();
             newFrame.ip = 0;
             newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
-            if (method->hasCaptures()) {
-                newFrame.upvalues = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(
-                    method->capturedEnv);
-            }
+            newFrame.closure = method;
             populateRefParams(newFrame, fnDef.get());
             if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
             frames[frameCount++] = newFrame;

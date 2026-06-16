@@ -306,9 +306,7 @@ int main(int argc, char* argv[]) {
             jc::helpers::nativeClassStack.pop_back();
             return result;
         } else if (closure->isBytecode()) {
-            std::shared_ptr<std::vector<std::shared_ptr<jc::UpVal>>> captures = nullptr;
-            if (closure->hasCaptures()) captures = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<jc::UpVal>>>>(closure->capturedEnv);
-            return vm.callVMFunction(closure->compiledFnIndex, args, captures, closure->boundSelf, closure->boundClass);
+            return vm.callVMFunction(closure->compiledFnIndex, args, closure, closure->boundSelf, closure->boundClass);
         }
         throw std::runtime_error("Runtime Error: Invalid closure.");
     };

@@ -86,7 +86,7 @@ namespace jc {
     struct ObjSuper;
     struct ObjSym;
     struct ObjNamespace;
-    struct UpVal;
+    struct ObjUpVal;
     struct NamespaceField;
 
     ObjString* internString(const std::string& str);
@@ -512,15 +512,18 @@ namespace jc {
         }
     }; // class Value
 
-    struct UpVal {
+    struct ObjUpVal : public Obj {
         Value* location = nullptr;
         Value closed;
         int stackIndex = -1;
+        ObjUpVal* nextOpen = nullptr;
+        ObjUpVal() { type = ObjType::UPVALUE; }
+        void clearTotal() override { closed = Value::none(); location = nullptr; }
     };
 
     struct NamespaceField {
-        std::shared_ptr<UpVal> upval;
-        bool isConst;
+        ObjUpVal* upval = nullptr;
+        bool isConst = false;
     };
 
     struct ObjNamespace : public Obj {
@@ -1212,7 +1215,11 @@ namespace jc {
         std::vector<bool> isRef;
         std::string rawBody;
         std::shared_ptr<Expr> body;
-        std::any capturedEnv;
+        
+        // ★ 扁平化存储上值，彻底抛弃 std::vector 和 std::shared_ptr
+        ObjUpVal** upvalues = nullptr;
+        int upvalueCount = 0;
+
         std::any nativeFn;
         int compiledFnIndex = -1;
         std::vector<Value> defaultValues;
@@ -1231,7 +1238,7 @@ namespace jc {
         int maxArgs() const { return static_cast<int>(paramNames.size()); }
         bool acceptsArgCount(int n) const { return n >= minArgs() && (hasRestParam || n <= maxArgs()); }
         bool hasRef() const { for (bool b : isRef) if (b) return true; return false; }
-        bool hasCaptures() const { return capturedEnv.has_value(); }
+        bool hasCaptures() const { return upvalueCount > 0; }
         bool isNative() const { return nativeFn.has_value(); }
         bool isBytecode() const { return compiledFnIndex >= 0; }
 
@@ -1241,21 +1248,17 @@ namespace jc {
             rawBody(std::move(rawBody)), body(std::move(body)), hasRestParam(hasRestParam) {
             type = ObjType::CLOSURE;
         }
-        ObjClosure(std::vector<std::string> paramNames, std::vector<bool> isRef,
-            std::string rawBody, std::shared_ptr<Expr> body,
-            std::any capturedEnv, bool hasRestParam = false)
-            : paramNames(std::move(paramNames)), isRef(std::move(isRef)),
-            rawBody(std::move(rawBody)), body(std::move(body)),
-            capturedEnv(std::move(capturedEnv)), hasRestParam(hasRestParam) {
-            type = ObjType::CLOSURE;
+
+        ~ObjClosure() {
+            if (upvalues) delete[] upvalues;
         }
 
         void clear() override {
             boundSelf = Value();
             boundClass = Value();
             defaultValues.clear();
-            capturedEnv.reset();
             nativeFn.reset();
+            // 注意：upvalues 数组的清理交给析构函数，这里不需要清空，GC 会处理 ObjUpVal
         }
 
         std::string toString() const {
@@ -1300,6 +1303,7 @@ namespace jc {
             case ObjType::CLOSURE:
             case ObjType::NAMESPACE:
             case ObjType::SUPER_PROXY:
+            case ObjType::UPVALUE:
                 return true;
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
@@ -1521,6 +1525,7 @@ namespace jc {
                 case ObjType::CLOSURE:
                 case ObjType::CLASS:
                 case ObjType::NAMESPACE:
+                case ObjType::UPVALUE:
                     return false; // Pointer equality already checked
                 case ObjType::SUPER_PROXY: {
                     auto sp1 = static_cast<ObjSuper*>(lobj);
@@ -1625,6 +1630,7 @@ namespace jc {
             case ObjType::SUPER_PROXY: return "super";
             case ObjType::SYMBOLIC: return "symbolic";
             case ObjType::NAMESPACE: return "namespace";
+            case ObjType::UPVALUE: return "upvalue";
         }
         return "unknown";
     }
@@ -1942,6 +1948,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         case ObjType::CLASS: os << "<class " << static_cast<ObjClass*>(obj)->name << ">"; break;
         case ObjType::SUPER_PROXY: os << "<super>"; break;
         case ObjType::NAMESPACE: os << "<namespace " << static_cast<ObjNamespace*>(obj)->name << ">"; break;
+        case ObjType::UPVALUE: os << "<upvalue>"; break;
         case ObjType::LIST: {
             ObjList* list = static_cast<ObjList*>(obj);
             RecursionGuard guard(visited, list);

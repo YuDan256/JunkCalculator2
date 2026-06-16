@@ -69,10 +69,7 @@ namespace jc {
             return {true, result};
         }
         else if (method->isBytecode()) {
-            std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> captures = nullptr;
-            if (method->hasCaptures())
-                captures = std::any_cast<std::shared_ptr<std::vector<std::shared_ptr<UpVal>>>>(method->capturedEnv);
-            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, captures, Value(inst), Value(inst->classDef))};
+            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef))};
         }
         return {false, Value::none()};
     }
@@ -1664,7 +1661,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 Value newVal(newNs);
                 visited[ns] = newVal;
                 for (const auto& [k, field] : ns->fields) {
-                    auto uv = std::make_shared<UpVal>();
+                    auto uv = GcHeap::get().allocate<ObjUpVal>();
                     uv->closed = deepCopy(*(field.upval->location));
                     uv->location = &uv->closed;
                     newNs->fields[k] = { uv, field.isConst };
@@ -1751,7 +1748,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 Value newVal(newNs);
                 visited[ns] = newVal;
                 for (const auto& [k, field] : ns->fields) {
-                    auto uv = std::make_shared<UpVal>();
+                    auto uv = GcHeap::get().allocate<ObjUpVal>();
                     uv->closed = deepCopyExact(*(field.upval->location));
                     uv->location = &uv->closed;
                     newNs->fields[k] = { uv, field.isConst };
@@ -1839,7 +1836,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 Value newVal(newNs);
                 visited[ns] = newVal;
                 for (const auto& [k, field] : ns->fields) {
-                    auto uv = std::make_shared<UpVal>();
+                    auto uv = GcHeap::get().allocate<ObjUpVal>();
                     uv->closed = deepCopyAndFreeze(*(field.upval->location));
                     uv->location = &uv->closed;
                     newNs->fields[k] = { uv, field.isConst };
@@ -2093,7 +2090,7 @@ void BuiltinRegistry::registerControlFlow() {
                 if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
                 *(it->second.upval->location) = args[2];
             } else {
-                auto uv = std::make_shared<UpVal>();
+                auto uv = GcHeap::get().allocate<ObjUpVal>();
                 uv->closed = args[2];
                 uv->location = &uv->closed;
                 ns->fields[key] = { uv, false };
@@ -3013,7 +3010,7 @@ void BuiltinRegistry::registerDictFunctions() {
                     if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
                     *(it->second.upval->location) = v;
                 } else {
-                    auto uv = std::make_shared<UpVal>();
+                    auto uv = GcHeap::get().allocate<ObjUpVal>();
                     uv->closed = v;
                     uv->location = &uv->closed;
                     ns->fields[key] = { uv, false };

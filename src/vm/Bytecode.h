@@ -680,8 +680,10 @@ namespace jc {
         const CompiledFunction* function = nullptr;
         int ip = 0;
         int stackBase = 0;
-        std::shared_ptr<std::vector<std::shared_ptr<UpVal>>> upvalues;
-        std::vector<std::shared_ptr<UpVal>> refParams; // ★ 新增：动态注入的引用参数
+        
+        // ★ 彻底抛弃 shared_ptr 和 vector
+        ObjClosure* closure = nullptr; // 直接持有闭包指针以访问 upvalues
+        int refParamsBase = -1;        // 引用参数在全局 stack 上的起始索引
 
         // ★ 新增：独立与当前调用帧绑定的物理上下文寄存器！
         Value selfContext = Value::none();

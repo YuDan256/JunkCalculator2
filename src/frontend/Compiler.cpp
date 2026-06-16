@@ -121,10 +121,10 @@ namespace jc {
             if (i < static_cast<int>(defaultExprs.size()) && defaultExprs[i]) {
                 if (current().locals[i].isRefParam) {
                     emit(OpCode::OP_GET_REF_PARAM, lastLine);
-                    emit16(static_cast<uint16_t>(current().locals[i].refParamIndex), lastLine);
+                    emit16(static_cast<uint32_t>(current().locals[i].refParamIndex), lastLine);
                 } else {
                     emit(OpCode::OP_GET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(i), lastLine);
+                    emit16(static_cast<uint32_t>(i), lastLine);
                 }
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_EQUAL, lastLine);
@@ -135,10 +135,10 @@ namespace jc {
                 compileNode(defaultExprs[i].get());
                 if (current().locals[i].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
-                    emit16(static_cast<uint16_t>(current().locals[i].refParamIndex), lastLine);
+                    emit16(static_cast<uint32_t>(current().locals[i].refParamIndex), lastLine);
                 } else {
                     emit(OpCode::OP_SET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(i), lastLine);
+                    emit16(static_cast<uint32_t>(i), lastLine);
                 }
                 emit(OpCode::OP_POP, lastLine);
 
@@ -159,17 +159,17 @@ namespace jc {
                 current().locals[slot].isInitialized = true;
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
-                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                    emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), lastLine);
                 } else {
                     emit(OpCode::OP_SET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(slot), lastLine);
+                    emit16(static_cast<uint32_t>(slot), lastLine);
                 }
             }
             else {
                 int upvalue = resolveUpvalue(name);
                 if (upvalue != -1) {
                     emit(OpCode::OP_SET_UPVALUE, lastLine);
-                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                    emit16(static_cast<uint32_t>(upvalue), lastLine);
                 }
                 else {
                     uint32_t nameIdx = identifierConstant(name);
@@ -190,13 +190,13 @@ namespace jc {
         addLocal("", current().scopeDepth);
         int valTmpIdx = static_cast<int>(current().locals.size()) - 1;
         emit(OpCode::OP_SET_LOCAL, lastLine);
-        emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+        emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
 
         if (auto* dot = dynamic_cast<DotAccess*>(target)) {
             compileNode(dot->object.get());
 
             emit(OpCode::OP_GET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
 
             uint32_t fieldIdx = identifierConstant(dot->field.lexeme);
             emit(OpCode::OP_SET_PROPERTY, lastLine);
@@ -220,7 +220,7 @@ namespace jc {
                 compileNode(i.get());
 
             emit(OpCode::OP_GET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
 
             emit(OpCode::OP_INDEX_SET, lastLine);
             emit(dimCount, lastLine);
@@ -261,7 +261,7 @@ namespace jc {
             addLocal("<comp_val>", current().scopeDepth);
             int valSlot = static_cast<int>(current().locals.size()) - 1;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit16(static_cast<uint32_t>(valSlot), lastLine);
             emit(OpCode::OP_POP, lastLine);
 
             std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
@@ -295,7 +295,7 @@ namespace jc {
             }
             current().locals[slot].isInitialized = true;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(slot), lastLine);
+            emit16(static_cast<uint32_t>(slot), lastLine);
             emit(OpCode::OP_POP, lastLine);
         }
 
@@ -447,7 +447,7 @@ namespace jc {
             uint32_t nsNameIdx = identifierConstant(moduleName);
             emit(OpCode::OP_BUILD_NAMESPACE, lastLine);
             emit16(nsNameIdx, lastLine);
-            emit16(static_cast<uint16_t>(count), lastLine);
+            emit16(static_cast<uint32_t>(count), lastLine);
             emit(OpCode::OP_RETURN, lastLine);
             
             topLevelLocalCount = current().maxLocals;
@@ -531,17 +531,17 @@ namespace jc {
         if (slot != -1 && current().captures.count(name) == 0) {
             if (current().locals[slot].isRefParam) {
                 emit(OpCode::OP_GET_REF_PARAM, expr->name.line);
-                emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), expr->name.line);
+                emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), expr->name.line);
             } else {
                 emit(OpCode::OP_GET_LOCAL, expr->name.line);
-                emit16(static_cast<uint16_t>(slot), expr->name.line);
+                emit16(static_cast<uint32_t>(slot), expr->name.line);
             }
         }
         else {
             int upvalue = resolveUpvalue(name);
             if (upvalue != -1) {
                 emit(OpCode::OP_GET_UPVALUE, expr->name.line);
-                emit16(static_cast<uint16_t>(upvalue), expr->name.line);
+                emit16(static_cast<uint32_t>(upvalue), expr->name.line);
             }
             else {
                 uint32_t idx = identifierConstant(name);
@@ -599,7 +599,7 @@ namespace jc {
             int upvalue = resolveUpvalue(name);
             if (upvalue != -1) {
                 emit(OpCode::OP_GET_UPVALUE, expr->name.line);
-                emit16(static_cast<uint16_t>(upvalue), expr->name.line);
+                emit16(static_cast<uint32_t>(upvalue), expr->name.line);
                 emit(OpCode::OP_IS_UNINIT, expr->name.line);
                 
                 int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, expr->name.line);
@@ -615,14 +615,14 @@ namespace jc {
                 current().captures[name] = tempMod;
 
                 emit(OpCode::OP_SET_UPVALUE, expr->name.line);
-                emit16(static_cast<uint16_t>(upvalue), expr->name.line);
+                emit16(static_cast<uint32_t>(upvalue), expr->name.line);
                 
                 int endJump = chunk()->emitJump(OpCode::OP_JUMP, expr->name.line);
                 
                 chunk()->patchJump(skipJump);
                 emit(OpCode::OP_POP, expr->name.line); // pop boolean
                 emit(OpCode::OP_GET_UPVALUE, expr->name.line);
-                emit16(static_cast<uint16_t>(upvalue), expr->name.line);
+                emit16(static_cast<uint32_t>(upvalue), expr->name.line);
                 
                 chunk()->patchJump(endJump);
                 return;
@@ -661,17 +661,17 @@ namespace jc {
             current().locals[slot].isInitialized = true;
             if (current().locals[slot].isRefParam) {
                 emit(OpCode::OP_SET_REF_PARAM, expr->name.line);
-                emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), expr->name.line);
+                emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), expr->name.line);
             } else {
                 emit(OpCode::OP_SET_LOCAL, expr->name.line);
-                emit16(static_cast<uint16_t>(slot), expr->name.line);
+                emit16(static_cast<uint32_t>(slot), expr->name.line);
             }
         }
         else {
             if (upvalue == -1) upvalue = resolveUpvalue(name);
             if (upvalue != -1) {
                 emit(OpCode::OP_SET_UPVALUE, expr->name.line);
-                emit16(static_cast<uint16_t>(upvalue), expr->name.line);
+                emit16(static_cast<uint32_t>(upvalue), expr->name.line);
             }
             else {
                 uint32_t idx = identifierConstant(name);
@@ -930,13 +930,13 @@ namespace jc {
         int slot = resolveLocal(name);
         if (slot != -1 && !isBuiltin) {
             emit(OpCode::OP_GET_LOCAL, expr->callee.line);
-            emit16(static_cast<uint16_t>(slot), expr->callee.line);
+            emit16(static_cast<uint32_t>(slot), expr->callee.line);
         }
         else {
             int upvalue = resolveUpvalue(name);
             if (upvalue != -1 && !isBuiltin) {
                 emit(OpCode::OP_GET_UPVALUE, expr->callee.line);
-                emit16(static_cast<uint16_t>(upvalue), expr->callee.line);
+                emit16(static_cast<uint32_t>(upvalue), expr->callee.line);
             }
             else {
                 // ★ 关键重构：将全局级别调用的目标变成字符串文字，把解析交接给 VM 的 OP_CALL 晚绑定操作
@@ -1200,10 +1200,10 @@ namespace jc {
                 int slot = resolveLocal(expr->params[i].lexeme);
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_GET_REF_PARAM, lastLine); 
-                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                    emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), lastLine);
                 } else {
                     emit(OpCode::OP_GET_LOCAL, lastLine); 
-                    emit16(static_cast<uint16_t>(slot), lastLine);
+                    emit16(static_cast<uint32_t>(slot), lastLine);
                 }
 
                 uint32_t typeIdx = identifierConstant(expr->paramTypes[i]);
@@ -1456,17 +1456,17 @@ namespace jc {
             if (slot != -1 && current().captures.count(name) == 0) {
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_GET_REF_PARAM, lastLine);
-                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                    emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), lastLine);
                 } else {
                     emit(OpCode::OP_GET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(slot), lastLine);
+                    emit16(static_cast<uint32_t>(slot), lastLine);
                 }
             }
             else {
                 if (upvalue == -1) upvalue = resolveUpvalue(name);
                 if (upvalue != -1) {
                     emit(OpCode::OP_GET_UPVALUE, lastLine);
-                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                    emit16(static_cast<uint32_t>(upvalue), lastLine);
                 }
                 else {
                     uint32_t idx = identifierConstant(name);
@@ -1489,17 +1489,17 @@ namespace jc {
                 current().locals[slot].isInitialized = true;
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
-                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                    emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), lastLine);
                 } else {
                     emit(OpCode::OP_SET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(slot), lastLine);
+                    emit16(static_cast<uint32_t>(slot), lastLine);
                 }
             }
             else {
                 if (upvalue == -1) upvalue = resolveUpvalue(name);
                 if (upvalue != -1) {
                     emit(OpCode::OP_SET_UPVALUE, lastLine);
-                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                    emit16(static_cast<uint32_t>(upvalue), lastLine);
                 }
                 else {
                     uint32_t idx = identifierConstant(name);
@@ -1515,11 +1515,11 @@ namespace jc {
             addLocal("", current().scopeDepth);
             int objTmpIdx = static_cast<int>(current().locals.size()) - 1;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(objTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(objTmpIdx), lastLine);
             emit(OpCode::OP_POP, lastLine);
             
             emit(OpCode::OP_GET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(objTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(objTmpIdx), lastLine);
             uint32_t nameIdx = identifierConstant(dot->field.lexeme);
             emit(OpCode::OP_GET_PROPERTY, lastLine);
             emit16(chunk()->addInlineCache(nameIdx), lastLine);
@@ -1530,13 +1530,13 @@ namespace jc {
             addLocal("", current().scopeDepth);
             int valTmpIdx = static_cast<int>(current().locals.size()) - 1;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
             emit(OpCode::OP_POP, lastLine);
             
             emit(OpCode::OP_GET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(objTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(objTmpIdx), lastLine);
             emit(OpCode::OP_GET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
             emit(OpCode::OP_SET_PROPERTY, lastLine);
             emit16(chunk()->addInlineCache(nameIdx), lastLine);
             
@@ -1570,7 +1570,7 @@ namespace jc {
             addLocal("", current().scopeDepth);
             int rootTmpIdx = static_cast<int>(current().locals.size()) - 1;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(rootTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(rootTmpIdx), lastLine);
             emit(OpCode::OP_POP, lastLine);
             
             std::vector<std::vector<int>> indicesTmp(chain.size());
@@ -1580,7 +1580,7 @@ namespace jc {
                     addLocal("", current().scopeDepth);
                     int tmpIdx = static_cast<int>(current().locals.size()) - 1;
                     emit(OpCode::OP_SET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(tmpIdx), lastLine);
+                    emit16(static_cast<uint32_t>(tmpIdx), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     indicesTmp[i].push_back(tmpIdx);
                 }
@@ -1588,13 +1588,13 @@ namespace jc {
             
             auto emitLoadRoot = [&]() {
                 emit(OpCode::OP_GET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(rootTmpIdx), lastLine);
+                emit16(static_cast<uint32_t>(rootTmpIdx), lastLine);
             };
             
             auto emitLoadIndices = [&](int level) {
                 for (int tmpIdx : indicesTmp[level]) {
                     emit(OpCode::OP_GET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(tmpIdx), lastLine);
+                    emit16(static_cast<uint32_t>(tmpIdx), lastLine);
                 }
             };
             
@@ -1611,14 +1611,14 @@ namespace jc {
             addLocal("", current().scopeDepth);
             int valTmpIdx = static_cast<int>(current().locals.size()) - 1;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
             emit(OpCode::OP_POP, lastLine);
             
             int depth = static_cast<int>(chain.size());
             if (depth == 1) {
                 emitLoadRoot();
                 emitLoadIndices(0);
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
                 emit(OpCode::OP_INDEX_SET, lastLine);
                 emit(static_cast<uint8_t>(chain[0]->indices.size()), lastLine);
                 
@@ -1630,7 +1630,7 @@ namespace jc {
                 addLocal("", current().scopeDepth);
                 int chainTmpIdx = static_cast<int>(current().locals.size()) - 1;
                 emit(OpCode::OP_SET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(chainTmpIdx), lastLine);
+                emit16(static_cast<uint32_t>(chainTmpIdx), lastLine);
                 emit(OpCode::OP_POP, lastLine);
 
                 emitLoadRoot();
@@ -1640,12 +1640,12 @@ namespace jc {
                     emit(static_cast<uint8_t>(chain[level]->indices.size()), lastLine);
                 }
                 emitLoadIndices(depth - 1);
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
                 emit(OpCode::OP_INDEX_SET, lastLine);
                 emit(static_cast<uint8_t>(chain[depth - 1]->indices.size()), lastLine);
 
                 for (int level = depth - 2; level >= 0; --level) {
-                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(chainTmpIdx), lastLine); 
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(chainTmpIdx), lastLine); 
                     emit(OpCode::OP_POP, lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     
@@ -1655,7 +1655,7 @@ namespace jc {
                         emit(OpCode::OP_INDEX_GET, lastLine); emit(static_cast<uint8_t>(chain[l]->indices.size()), lastLine);
                     }
                     emitLoadIndices(level);
-                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(chainTmpIdx), lastLine);
+                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(chainTmpIdx), lastLine);
                     emit(OpCode::OP_INDEX_SET, lastLine); emit(static_cast<uint8_t>(chain[level]->indices.size()), lastLine);
                 }
                 emitStoreTarget(chain[0]->object.get());
@@ -1666,7 +1666,7 @@ namespace jc {
             }
             
             emit(OpCode::OP_GET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
             
             current().locals.pop_back();
             for (auto it = indicesTmp.rbegin(); it != indicesTmp.rend(); ++it) {
@@ -1697,7 +1697,7 @@ namespace jc {
             addLocal("<forin_val>", current().scopeDepth);
             int valSlot = static_cast<int>(current().locals.size()) - 1;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit16(static_cast<uint32_t>(valSlot), lastLine);
             emit(OpCode::OP_POP, lastLine);
 
             std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
@@ -1813,7 +1813,7 @@ namespace jc {
             }
             if (slot != -1) { 
                 current().locals[slot].isInitialized = true;
-                emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); 
+                emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(slot), lastLine); 
             }
             else { 
                 uint32_t idx = identifierConstant(varName); 
@@ -1870,7 +1870,7 @@ namespace jc {
                     compileNode(expr->elements[0][j].get());
                 }
                 emit(OpCode::OP_BUILD_LIST, lastLine);
-                emit16(static_cast<uint16_t>(cols), lastLine);
+                emit16(static_cast<uint32_t>(cols), lastLine);
             } else {
                 if (rows > 65535) throw std::runtime_error("Compiler Error: Too many rows in list literal (max 65535).");
                 for (int i = 0; i < rows; ++i) {
@@ -1880,10 +1880,10 @@ namespace jc {
                         compileNode(expr->elements[i][j].get());
                     }
                     emit(OpCode::OP_BUILD_LIST, lastLine);
-                    emit16(static_cast<uint16_t>(cols), lastLine);
+                    emit16(static_cast<uint32_t>(cols), lastLine);
                 }
                 emit(OpCode::OP_BUILD_LIST, lastLine);
-                emit16(static_cast<uint16_t>(rows), lastLine);
+                emit16(static_cast<uint32_t>(rows), lastLine);
             }
             return;
         }
@@ -1971,7 +1971,7 @@ namespace jc {
         addLocal("", current().scopeDepth);
         int valTmpIdx = static_cast<int>(current().locals.size()) - 1;
         emit(OpCode::OP_SET_LOCAL, lastLine);
-        emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+        emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
         emit(OpCode::OP_POP, lastLine);
 
         // 2. 编译 root object 并保存到临时变量
@@ -1981,7 +1981,7 @@ namespace jc {
             addLocal("", current().scopeDepth);
             rootTmpIdx = static_cast<int>(current().locals.size()) - 1;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(rootTmpIdx), lastLine);
+            emit16(static_cast<uint32_t>(rootTmpIdx), lastLine);
             emit(OpCode::OP_POP, lastLine);
         }
 
@@ -2003,7 +2003,7 @@ namespace jc {
                         addLocal("", current().scopeDepth);
                         tmp.sliceStartIdx = static_cast<int>(current().locals.size()) - 1;
                         emit(OpCode::OP_SET_LOCAL, lastLine);
-                        emit16(static_cast<uint16_t>(tmp.sliceStartIdx), lastLine);
+                        emit16(static_cast<uint32_t>(tmp.sliceStartIdx), lastLine);
                         emit(OpCode::OP_POP, lastLine);
                     }
                     if (slice->end) {
@@ -2011,7 +2011,7 @@ namespace jc {
                         addLocal("", current().scopeDepth);
                         tmp.sliceEndIdx = static_cast<int>(current().locals.size()) - 1;
                         emit(OpCode::OP_SET_LOCAL, lastLine);
-                        emit16(static_cast<uint16_t>(tmp.sliceEndIdx), lastLine);
+                        emit16(static_cast<uint32_t>(tmp.sliceEndIdx), lastLine);
                         emit(OpCode::OP_POP, lastLine);
                     }
                     if (slice->step) {
@@ -2019,7 +2019,7 @@ namespace jc {
                         addLocal("", current().scopeDepth);
                         tmp.sliceStepIdx = static_cast<int>(current().locals.size()) - 1;
                         emit(OpCode::OP_SET_LOCAL, lastLine);
-                        emit16(static_cast<uint16_t>(tmp.sliceStepIdx), lastLine);
+                        emit16(static_cast<uint32_t>(tmp.sliceStepIdx), lastLine);
                         emit(OpCode::OP_POP, lastLine);
                     }
                 } else {
@@ -2027,7 +2027,7 @@ namespace jc {
                     addLocal("", current().scopeDepth);
                     tmp.normalIdx = static_cast<int>(current().locals.size()) - 1;
                     emit(OpCode::OP_SET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(tmp.normalIdx), lastLine);
+                    emit16(static_cast<uint32_t>(tmp.normalIdx), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                 }
                 indicesTmp[i].push_back(tmp);
@@ -2037,14 +2037,14 @@ namespace jc {
         auto emitLoadRoot = [&]() {
             if (expr->hasObjectExpr()) {
                 emit(OpCode::OP_GET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(rootTmpIdx), lastLine);
+                emit16(static_cast<uint32_t>(rootTmpIdx), lastLine);
             }
             else {
                 int slot = resolveLocal(expr->name.lexeme);
-                if (slot != -1) { emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); }
+                if (slot != -1) { emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(slot), lastLine); }
                 else {
                     int upvalue = resolveUpvalue(expr->name.lexeme);
-                    if (upvalue != -1) { emit(OpCode::OP_GET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(upvalue), lastLine); }
+                    if (upvalue != -1) { emit(OpCode::OP_GET_UPVALUE, lastLine); emit16(static_cast<uint32_t>(upvalue), lastLine); }
                     else { uint32_t nameIdx = identifierConstant(expr->name.lexeme); emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(nameIdx, lastLine); }
                 }
             }
@@ -2053,10 +2053,10 @@ namespace jc {
         auto emitStoreRoot = [&]() {
             if (!expr->hasObjectExpr()) {
                 int slot = resolveLocal(expr->name.lexeme);
-                if (slot != -1) { emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); }
+                if (slot != -1) { emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(slot), lastLine); }
                 else {
                     int upvalue = resolveUpvalue(expr->name.lexeme);
-                    if (upvalue != -1) { emit(OpCode::OP_SET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(upvalue), lastLine); }
+                    if (upvalue != -1) { emit(OpCode::OP_SET_UPVALUE, lastLine); emit16(static_cast<uint32_t>(upvalue), lastLine); }
                     else { 
                         uint32_t nameIdx = identifierConstant(expr->name.lexeme); 
                         auto it = current().captures.find(expr->name.lexeme);
@@ -2084,21 +2084,21 @@ namespace jc {
                 if (tmp.normalIdx == -1) {
                     if (tmp.sliceStartIdx != -1) {
                         emit(OpCode::OP_GET_LOCAL, lastLine);
-                        emit16(static_cast<uint16_t>(tmp.sliceStartIdx), lastLine);
+                        emit16(static_cast<uint32_t>(tmp.sliceStartIdx), lastLine);
                     } else emit(OpCode::OP_NONE, lastLine);
                     
                     if (tmp.sliceEndIdx != -1) {
                         emit(OpCode::OP_GET_LOCAL, lastLine);
-                        emit16(static_cast<uint16_t>(tmp.sliceEndIdx), lastLine);
+                        emit16(static_cast<uint32_t>(tmp.sliceEndIdx), lastLine);
                     } else emit(OpCode::OP_NONE, lastLine);
                     
                     if (tmp.sliceStepIdx != -1) {
                         emit(OpCode::OP_GET_LOCAL, lastLine);
-                        emit16(static_cast<uint16_t>(tmp.sliceStepIdx), lastLine);
+                        emit16(static_cast<uint32_t>(tmp.sliceStepIdx), lastLine);
                     } else emit(OpCode::OP_NONE, lastLine);
                 } else {
                     emit(OpCode::OP_GET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(tmp.normalIdx), lastLine);
+                    emit16(static_cast<uint32_t>(tmp.normalIdx), lastLine);
                     if (hasSlice) {
                         emit(OpCode::OP_NONE, lastLine);
                         chunk()->emitConstant(Value(0.0), lastLine);
@@ -2111,7 +2111,7 @@ namespace jc {
             emitLoadRoot();
             emitLoadIndices(0);
 
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
             emit(OpCode::OP_SLICE_SET, lastLine);
             emit(static_cast<uint8_t>(expr->indexChain[0].size()), lastLine);
             
@@ -2123,7 +2123,7 @@ namespace jc {
             if (depth == 1) {
                 emitLoadRoot();
                 emitLoadIndices(0);
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
                 emit(OpCode::OP_INDEX_SET, lastLine);
                 emit(static_cast<uint8_t>(expr->indexChain[0].size()), lastLine);
                 
@@ -2136,7 +2136,7 @@ namespace jc {
                 addLocal("", current().scopeDepth);
                 int chainTmpIdx = static_cast<int>(current().locals.size()) - 1;
                 emit(OpCode::OP_SET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(chainTmpIdx), lastLine);
+                emit16(static_cast<uint32_t>(chainTmpIdx), lastLine);
                 emit(OpCode::OP_POP, lastLine);
 
                 emitLoadRoot();
@@ -2146,12 +2146,12 @@ namespace jc {
                     emit(static_cast<uint8_t>(expr->indexChain[level].size()), lastLine);
                 }
                 emitLoadIndices(depth - 1);
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
                 emit(OpCode::OP_INDEX_SET, lastLine);
                 emit(static_cast<uint8_t>(expr->indexChain[depth - 1].size()), lastLine);
 
                 for (int level = depth - 2; level >= 0; --level) {
-                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(chainTmpIdx), lastLine); 
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(chainTmpIdx), lastLine); 
                     emit(OpCode::OP_POP, lastLine); // pop obj_new
                     emit(OpCode::OP_POP, lastLine); // pop VAL
                     
@@ -2161,7 +2161,7 @@ namespace jc {
                         emit(OpCode::OP_INDEX_GET, lastLine); emit(static_cast<uint8_t>(expr->indexChain[l].size()), lastLine);
                     }
                     emitLoadIndices(level);
-                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(chainTmpIdx), lastLine);
+                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(chainTmpIdx), lastLine);
                     emit(OpCode::OP_INDEX_SET, lastLine); emit(static_cast<uint8_t>(expr->indexChain[level].size()), lastLine);
                 }
                 emitStoreRoot();
@@ -2174,7 +2174,7 @@ namespace jc {
 
         // 恢复 val 到栈顶
         emit(OpCode::OP_GET_LOCAL, lastLine);
-        emit16(static_cast<uint16_t>(valTmpIdx), lastLine);
+        emit16(static_cast<uint32_t>(valTmpIdx), lastLine);
 
         // 清理所有的临时变量
         for (auto it = indicesTmp.rbegin(); it != indicesTmp.rend(); ++it) {
@@ -2278,31 +2278,31 @@ namespace jc {
                 throw std::runtime_error("Compiler Error: Dynamic expression assertions must be enclosed in parentheses '()'.");
             }
             compileNode(lit->literal.get());
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             emit(OpCode::OP_EQUAL, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
         } else if (auto* dynPat = dynamic_cast<DynamicAssertPattern*>(p)) {
             compileNode(dynPat->expr.get());
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             emit(OpCode::OP_EQUAL, lastLine);
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
             emit(OpCode::OP_POP, lastLine);
         } else if (auto* var = dynamic_cast<VariablePattern*>(p)) {
             if (var->name.lexeme != "_") {
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                 
                 if (var->modifier == ScopeModifier::State || isStateInit) {
                     int upvalue = resolveUpvalue(var->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         emit(OpCode::OP_IS_UNINIT, lastLine);
                         int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                         emit(OpCode::OP_POP, lastLine); // pop boolean
                         
                         emit(OpCode::OP_SET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         
                         int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                         chunk()->patchJump(skipJump);
@@ -2316,7 +2316,7 @@ namespace jc {
                 emit(OpCode::OP_POP, lastLine);
             }
         } else if (auto* exprPat = dynamic_cast<ExprPattern*>(p)) {
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             emitStoreTarget(exprPat->expr.get(), isConst);
             emit(OpCode::OP_POP, lastLine);
         } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
@@ -2343,7 +2343,7 @@ namespace jc {
             uint32_t maxCols = hasRest ? 0xFFFFFFFF : static_cast<uint32_t>(lp->elements.size());
             uint8_t exactMask = 2; // 1D pattern
 
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             uint32_t shapeIdx = chunk()->addShapePattern(1, 1, static_cast<uint32_t>(minCols), maxCols, exactMask);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
             emit16(shapeIdx, lastLine);
@@ -2365,7 +2365,7 @@ namespace jc {
                 if (auto* restPat = dynamic_cast<RestPattern*>(lp->elements[i].get())) {
                     afterRest = true;
                     if (restPat->name.lexeme != "_") {
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                         emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
                         if (rightOffset > 0) {
                             emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-rightOffset))), lastLine);
@@ -2379,12 +2379,12 @@ namespace jc {
                             int upvalue = resolveUpvalue(restPat->name.lexeme);
                             if (upvalue != -1) {
                                 emit(OpCode::OP_GET_UPVALUE, lastLine);
-                                emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                emit16(static_cast<uint32_t>(upvalue), lastLine);
                                 emit(OpCode::OP_IS_UNINIT, lastLine);
                                 int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                                 emit(OpCode::OP_POP, lastLine);
                                 emit(OpCode::OP_SET_UPVALUE, lastLine);
-                                emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                emit16(static_cast<uint32_t>(upvalue), lastLine);
                                 int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                                 chunk()->patchJump(skipJump);
                                 emit(OpCode::OP_POP, lastLine);
@@ -2412,7 +2412,7 @@ namespace jc {
                     int baseIp = static_cast<int>(chunk()->code.size());
                     current().tryDepth++;
 
-                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                    emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                     if (afterRest) {
                         emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-currentRightOffset))), lastLine);
                         currentRightOffset--;
@@ -2456,7 +2456,7 @@ namespace jc {
 
                     addLocal("<pat_tmp>", current().scopeDepth);
                     int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     
                     compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
@@ -2465,7 +2465,7 @@ namespace jc {
             }
 
             if (lp->rest && lp->rest->name.lexeme != "_") {
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                 emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(c_idx))), lastLine);
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_NONE, lastLine);
@@ -2475,12 +2475,12 @@ namespace jc {
                     int upvalue = resolveUpvalue(lp->rest->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         emit(OpCode::OP_IS_UNINIT, lastLine);
                         int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                         emit(OpCode::OP_POP, lastLine);
                         emit(OpCode::OP_SET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                         chunk()->patchJump(skipJump);
                         emit(OpCode::OP_POP, lastLine);
@@ -2577,7 +2577,7 @@ namespace jc {
 
             uint8_t exactMask = 0;
             
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             uint32_t shapeIdx = chunk()->addShapePattern(minRows, maxRows, static_cast<uint32_t>(minCols), maxCols, exactMask);
             emit(OpCode::OP_MATCH_SHAPE, lastLine);
             emit16(shapeIdx, lastLine);
@@ -2601,7 +2601,7 @@ namespace jc {
                     if (auto* restPat = dynamic_cast<RestPattern*>(e.get())) {
                         afterRest = true;
                         if (restPat->name.lexeme != "_") {
-                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                             emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r))), lastLine);
                             emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r + 1))), lastLine);
                             emit(OpCode::OP_NONE, lastLine);
@@ -2618,12 +2618,12 @@ namespace jc {
                                 int upvalue = resolveUpvalue(restPat->name.lexeme);
                                 if (upvalue != -1) {
                                     emit(OpCode::OP_GET_UPVALUE, lastLine);
-                                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                    emit16(static_cast<uint32_t>(upvalue), lastLine);
                                     emit(OpCode::OP_IS_UNINIT, lastLine);
                                     int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                                     emit(OpCode::OP_POP, lastLine);
                                     emit(OpCode::OP_SET_UPVALUE, lastLine);
-                                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                                    emit16(static_cast<uint32_t>(upvalue), lastLine);
                                     int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                                     chunk()->patchJump(skipJump);
                                     emit(OpCode::OP_POP, lastLine);
@@ -2651,7 +2651,7 @@ namespace jc {
                         int baseIp = static_cast<int>(chunk()->code.size());
                         current().tryDepth++;
 
-                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                        emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                         emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(r))), lastLine);
                         if (afterRest) {
                             emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(-currentRightOffset))), lastLine);
@@ -2696,7 +2696,7 @@ namespace jc {
 
                         addLocal("<pat_tmp>", current().scopeDepth);
                         int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                        emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                        emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(tmpSlot), lastLine);
                         emit(OpCode::OP_POP, lastLine);
                         
                         compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
@@ -2706,7 +2706,7 @@ namespace jc {
             }
 
             if (mp->restRow && mp->restRow->name.lexeme != "_") {
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                 emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(static_cast<double>(rows))), lastLine);
                 emit(OpCode::OP_NONE, lastLine);
                 emit(OpCode::OP_NONE, lastLine);
@@ -2719,12 +2719,12 @@ namespace jc {
                     int upvalue = resolveUpvalue(mp->restRow->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         emit(OpCode::OP_IS_UNINIT, lastLine);
                         int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                         emit(OpCode::OP_POP, lastLine);
                         emit(OpCode::OP_SET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                         chunk()->patchJump(skipJump);
                         emit(OpCode::OP_POP, lastLine);
@@ -2737,14 +2737,14 @@ namespace jc {
                 emit(OpCode::OP_POP, lastLine);
             }
         } else if (auto* dictPat = dynamic_cast<DictPattern*>(p)) {
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("dict"), lastLine);
             
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("instance"), lastLine);
             emit(OpCode::OP_BIT_OR, lastLine);
 
-            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+            emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
             emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("namespace"), lastLine);
             emit(OpCode::OP_BIT_OR, lastLine);
             
@@ -2759,7 +2759,7 @@ namespace jc {
                     defExpr = dp_inner->defaultExpr.get();
                 }
 
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                 emit(OpCode::OP_TRY_GET_PROPERTY, lastLine);
                 emit16(chunk()->addInlineCache(identifierConstant(entry.first)), lastLine);
                 
@@ -2777,7 +2777,7 @@ namespace jc {
                     
                     addLocal("<pat_tmp>", current().scopeDepth);
                     int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                     
                     compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
@@ -2789,7 +2789,7 @@ namespace jc {
                     emit(OpCode::OP_POP, lastLine); // pop true
                     addLocal("<pat_tmp>", current().scopeDepth);
                     int tmpSlot = static_cast<int>(current().locals.size()) - 1;
-                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(tmpSlot), lastLine);
+                    emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(tmpSlot), lastLine);
                     emit(OpCode::OP_POP, lastLine); // pop the value
                     
                     compilePatternMatch(actualPat, tmpSlot, failJumps, isConst, isStateInit);
@@ -2812,23 +2812,23 @@ namespace jc {
                 if (dictPat->entries.size() > 65535) {
                     throw std::runtime_error("Compiler Error: Too many entries in dictionary pattern (max 65535).");
                 }
-                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(valSlot), lastLine);
+                emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
                 for (auto& entry : dictPat->entries) {
                     emit(OpCode::OP_CONSTANT, lastLine); emit16(makeConstant(Value(entry.first)), lastLine);
                 }
                 emit(OpCode::OP_DICT_REST, lastLine);
-                emit16(static_cast<uint16_t>(dictPat->entries.size()), lastLine);
+                emit16(static_cast<uint32_t>(dictPat->entries.size()), lastLine);
                 
                 if (dictPat->rest->modifier == ScopeModifier::State || isStateInit) {
                     int upvalue = resolveUpvalue(dictPat->rest->name.lexeme);
                     if (upvalue != -1) {
                         emit(OpCode::OP_GET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         emit(OpCode::OP_IS_UNINIT, lastLine);
                         int skipJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                         emit(OpCode::OP_POP, lastLine);
                         emit(OpCode::OP_SET_UPVALUE, lastLine);
-                        emit16(static_cast<uint16_t>(upvalue), lastLine);
+                        emit16(static_cast<uint32_t>(upvalue), lastLine);
                         int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                         chunk()->patchJump(skipJump);
                         emit(OpCode::OP_POP, lastLine);
@@ -2877,7 +2877,7 @@ namespace jc {
             int upvalue = resolveUpvalue(tempStateNames[0]);
             if (upvalue != -1) {
                 emit(OpCode::OP_GET_UPVALUE, lastLine);
-                emit16(static_cast<uint16_t>(upvalue), lastLine);
+                emit16(static_cast<uint32_t>(upvalue), lastLine);
                 emit(OpCode::OP_IS_UNINIT, lastLine);
                 skipAllJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                 emit(OpCode::OP_POP, lastLine); // pop boolean
@@ -2901,7 +2901,7 @@ namespace jc {
         addLocal("<destruct_val>", current().scopeDepth);
         int valSlot = static_cast<int>(current().locals.size()) - 1;
         emit(OpCode::OP_SET_LOCAL, lastLine);
-        emit16(static_cast<uint16_t>(valSlot), lastLine);
+        emit16(static_cast<uint32_t>(valSlot), lastLine);
         emit(OpCode::OP_POP, lastLine);
 
         // 4. Register locals for bound variables
@@ -2965,7 +2965,7 @@ namespace jc {
 
         // 7. Restore RHS value to stack top
         emit(OpCode::OP_GET_LOCAL, lastLine);
-        emit16(static_cast<uint16_t>(valSlot), lastLine);
+        emit16(static_cast<uint32_t>(valSlot), lastLine);
 
         if (skipAllJump != -1) {
             int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
@@ -3052,7 +3052,7 @@ namespace jc {
         if (slot != -1) {
             current().locals[slot].isInitialized = true;
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(slot), lastLine);
+            emit16(static_cast<uint32_t>(slot), lastLine);
         }
         else {
             // ★ 修复：在这里补充未定义的 nameIdx
@@ -3085,7 +3085,7 @@ namespace jc {
             compileNode(valExpr.get());
         }
         emit(OpCode::OP_BUILD_DICT, lastLine);
-        emit16(static_cast<uint16_t>(expr->entries.size()), lastLine);
+        emit16(static_cast<uint32_t>(expr->entries.size()), lastLine);
         return;
     }
 
@@ -3097,7 +3097,7 @@ namespace jc {
             compileNode(elemExpr.get());
         }
         emit(OpCode::OP_BUILD_SET, lastLine);
-        emit16(static_cast<uint16_t>(expr->elements.size()), lastLine);
+        emit16(static_cast<uint32_t>(expr->elements.size()), lastLine);
         return;
     }
 
@@ -3112,7 +3112,7 @@ namespace jc {
         
         if (upvalue != -1) {
             emit(OpCode::OP_GET_UPVALUE, lastLine);
-            emit16(static_cast<uint16_t>(upvalue), lastLine);
+            emit16(static_cast<uint32_t>(upvalue), lastLine);
         } else {
             uint32_t idx = identifierConstant(name);
             emit(OpCode::OP_GET_GLOBAL, lastLine);
@@ -3133,7 +3133,7 @@ namespace jc {
         
         if (upvalue != -1) {
             emit(OpCode::OP_GET_UPVALUE, lastLine);
-            emit16(static_cast<uint16_t>(upvalue), lastLine);
+            emit16(static_cast<uint32_t>(upvalue), lastLine);
         } else {
             uint32_t idx = identifierConstant(name);
             emit(OpCode::OP_GET_GLOBAL, lastLine);
@@ -3167,14 +3167,14 @@ namespace jc {
         if (outerSlot != -1) {
             if (current().locals[outerSlot].isRefParam) {
                 emit(OpCode::OP_GET_REF_PARAM, lastLine);
-                emit16(static_cast<uint16_t>(current().locals[outerSlot].refParamIndex), lastLine);
+                emit16(static_cast<uint32_t>(current().locals[outerSlot].refParamIndex), lastLine);
             } else {
                 emit(OpCode::OP_GET_LOCAL, lastLine);
-                emit16(static_cast<uint16_t>(outerSlot), lastLine);
+                emit16(static_cast<uint32_t>(outerSlot), lastLine);
             }
         } else if (upvalue != -1) {
             emit(OpCode::OP_GET_UPVALUE, lastLine);
-            emit16(static_cast<uint16_t>(upvalue), lastLine);
+            emit16(static_cast<uint32_t>(upvalue), lastLine);
         } else {
             uint32_t idx = identifierConstant(name);
             emit(OpCode::OP_GET_GLOBAL, lastLine);
@@ -3188,7 +3188,7 @@ namespace jc {
         }
         current().locals[slot].isInitialized = true;
         emit(OpCode::OP_SET_LOCAL, lastLine);
-        emit16(static_cast<uint16_t>(slot), lastLine);
+        emit16(static_cast<uint32_t>(slot), lastLine);
         return;
     }
 
@@ -3208,10 +3208,10 @@ namespace jc {
                 emit(OpCode::OP_NONE, lastLine);
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
-                    emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
+                    emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), lastLine);
                 } else {
                     emit(OpCode::OP_SET_LOCAL, lastLine);
-                    emit16(static_cast<uint16_t>(slot), lastLine);
+                    emit16(static_cast<uint32_t>(slot), lastLine);
                 }
                 emit(OpCode::OP_POP, lastLine);
             } else {
@@ -3223,7 +3223,7 @@ namespace jc {
                     }
                     emit(OpCode::OP_NONE, lastLine);
                     emit(OpCode::OP_SET_UPVALUE, lastLine);
-                    emit16(static_cast<uint16_t>(upvalue), lastLine);
+                    emit16(static_cast<uint32_t>(upvalue), lastLine);
                     emit(OpCode::OP_POP, lastLine);
                 } else {
                     uint32_t nameIdx = identifierConstant(name);
@@ -3262,7 +3262,7 @@ namespace jc {
             throw std::runtime_error("Compiler Error: Too many parts in f-string (max 65535).");
         }
         emit(OpCode::OP_CONCAT_STRINGS, lastLine);
-        emit16(static_cast<uint16_t>(partCount), lastLine);
+        emit16(static_cast<uint32_t>(partCount), lastLine);
         return;
     }
 
@@ -3330,7 +3330,7 @@ namespace jc {
         uint32_t nsNameIdx = identifierConstant(expr->name.lexeme);
         emit(OpCode::OP_BUILD_NAMESPACE, lastLine);
         emit16(nsNameIdx, lastLine);
-        emit16(static_cast<uint16_t>(count), lastLine);
+        emit16(static_cast<uint32_t>(count), lastLine);
         emit(OpCode::OP_RETURN, lastLine);
 
         fn->localCount = current().maxLocals;
@@ -3355,12 +3355,12 @@ namespace jc {
 
         if (slot != -1) {
             emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint16_t>(slot), lastLine);
+            emit16(static_cast<uint32_t>(slot), lastLine);
         } else {
             int upvalue = resolveUpvalue(name);
             if (upvalue != -1) {
                 emit(OpCode::OP_SET_UPVALUE, lastLine);
-                emit16(static_cast<uint16_t>(upvalue), lastLine);
+                emit16(static_cast<uint32_t>(upvalue), lastLine);
             } else {
                 uint32_t nameIdx = identifierConstant(name);
                 auto it = current().captures.find(name);
@@ -3392,11 +3392,11 @@ namespace jc {
             slot = resolveLocal(className);
         }
         if (slot != -1) {
-            emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine);
+            emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint32_t>(slot), lastLine);
         }
         else {
             int upvalue = resolveUpvalue(className);
-            if (upvalue != -1) { emit(OpCode::OP_SET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(upvalue), lastLine); }
+            if (upvalue != -1) { emit(OpCode::OP_SET_UPVALUE, lastLine); emit16(static_cast<uint32_t>(upvalue), lastLine); }
             else { 
                 auto it = current().captures.find(className);
                 if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
@@ -3410,10 +3410,10 @@ namespace jc {
 
         // ★ 智能加载宏：无论这个类在何处，精准找到它
         auto emitLoadClass = [&]() {
-            if (slot != -1) { emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); }
+            if (slot != -1) { emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(slot), lastLine); }
             else {
                 int upvalue = resolveUpvalue(className);
-                if (upvalue != -1) { emit(OpCode::OP_GET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(upvalue), lastLine); }
+                if (upvalue != -1) { emit(OpCode::OP_GET_UPVALUE, lastLine); emit16(static_cast<uint32_t>(upvalue), lastLine); }
                 else { emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(chunk()->addInlineCache(nameIdx), lastLine); }
             }
             };
@@ -3470,10 +3470,10 @@ namespace jc {
                     int paramSlot = resolveLocal(md.params[i].lexeme);
                     if (current().locals[paramSlot].isRefParam) {
                         emit(OpCode::OP_GET_REF_PARAM, lastLine);
-                        emit16(static_cast<uint16_t>(current().locals[paramSlot].refParamIndex), lastLine);
+                        emit16(static_cast<uint32_t>(current().locals[paramSlot].refParamIndex), lastLine);
                     } else {
                         emit(OpCode::OP_GET_LOCAL, lastLine);
-                        emit16(static_cast<uint16_t>(paramSlot), lastLine);
+                        emit16(static_cast<uint32_t>(paramSlot), lastLine);
                     }
 
                     uint32_t paramTypeIdx = identifierConstant(md.paramTypes[i]);
@@ -3614,14 +3614,14 @@ namespace jc {
                     int localSlot = resolveLocal(varExpr->name.lexeme);
                     if (localSlot != -1) {
                         if (current().locals[localSlot].isRefParam) {
-                            sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint16_t>(current().locals[localSlot].refParamIndex) });
+                            sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint32_t>(current().locals[localSlot].refParamIndex) });
                         } else {
-                            sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint16_t>(localSlot) });
+                            sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint32_t>(localSlot) });
                         }
                     }
                     else {
                         int uv = resolveUpvalue(varExpr->name.lexeme);
-                        if (uv != -1) sources.push_back({ static_cast<uint8_t>(i), 3, static_cast<uint16_t>(uv) });
+                        if (uv != -1) sources.push_back({ static_cast<uint8_t>(i), 3, static_cast<uint32_t>(uv) });
                         else sources.push_back({ static_cast<uint8_t>(i), 1, identifierConstant(varExpr->name.lexeme) });
                     }
                 }
@@ -3687,7 +3687,7 @@ namespace jc {
         addLocal("<match_subject>", current().scopeDepth);
         int subjectSlot = static_cast<int>(current().locals.size()) - 1;
         emit(OpCode::OP_SET_LOCAL, lastLine);
-        emit16(static_cast<uint16_t>(subjectSlot), lastLine);
+        emit16(static_cast<uint32_t>(subjectSlot), lastLine);
         emit(OpCode::OP_POP, lastLine);
 
         std::vector<int> endJumps;

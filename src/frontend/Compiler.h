@@ -20,6 +20,7 @@ namespace jc {
         bool isRefParam = false; // ★ 新增
         int refParamIndex = -1;  // ★ 新增
         bool isFunction = false; // ★ 新增：标记是否为预声明的函数
+        bool isInitialized = false; // ★ 新增：标记是否已初始化
     };
 
     enum class CaptureType {

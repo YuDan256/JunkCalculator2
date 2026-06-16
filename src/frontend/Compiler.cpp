@@ -137,6 +137,7 @@ namespace jc {
             int slot = resolveLocal(name);
 
             if (slot != -1 && current().captures.count(name) == 0) {
+                current().locals[slot].isInitialized = true;
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
                     emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
@@ -273,6 +274,7 @@ namespace jc {
                 addLocal(varName, current().scopeDepth);
                 slot = resolveLocal(varName);
             }
+            current().locals[slot].isInitialized = true;
             emit(OpCode::OP_SET_LOCAL, lastLine);
             emit16(static_cast<uint16_t>(slot), lastLine);
             emit(OpCode::OP_POP, lastLine);
@@ -308,7 +310,7 @@ namespace jc {
     }
 
     void Compiler::addLocal(const std::string& name, int depth, bool isConst, bool isFunction) {
-        current().locals.push_back({ name, depth, false, isConst, false, -1, isFunction });
+        current().locals.push_back({ name, depth, false, isConst, false, -1, isFunction, false });
         // ★ 跟踪峰值容量
         if (static_cast<int>(current().locals.size()) > current().maxLocals) {
             current().maxLocals = static_cast<int>(current().locals.size());
@@ -532,7 +534,7 @@ namespace jc {
         const std::string& name = expr->name.lexeme;
 
         int existingSlot = resolveLocal(name);
-        if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+        if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].isInitialized) {
             if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
                 throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
             }
@@ -633,6 +635,7 @@ namespace jc {
         }
 
         if (slot != -1 && current().captures.count(name) == 0) {
+            current().locals[slot].isInitialized = true;
             if (current().locals[slot].isRefParam) {
                 emit(OpCode::OP_SET_REF_PARAM, expr->name.line);
                 emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), expr->name.line);
@@ -1153,6 +1156,7 @@ namespace jc {
         int refIdx = 0;
         for (size_t i = 0; i < expr->params.size(); ++i) {
             addLocal(expr->params[i].lexeme, current().scopeDepth);
+            current().locals.back().isInitialized = true;
             if (expr->paramIsRef[i]) {
                 current().locals.back().isRefParam = true;
                 current().locals.back().refParamIndex = refIdx++;
@@ -1381,7 +1385,7 @@ namespace jc {
             const std::string& name = var->name.lexeme;
             
             int existingSlot = resolveLocal(name);
-            if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+            if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].isInitialized) {
                 if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
                     throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                 }
@@ -1452,6 +1456,7 @@ namespace jc {
             }
 
             if (slot != -1 && current().captures.count(name) == 0) {
+                current().locals[slot].isInitialized = true;
                 if (current().locals[slot].isRefParam) {
                     emit(OpCode::OP_SET_REF_PARAM, lastLine);
                     emit16(static_cast<uint16_t>(current().locals[slot].refParamIndex), lastLine);
@@ -1704,7 +1709,7 @@ namespace jc {
                 if (name == "_") continue;
                 
                 int existingSlot = resolveLocal(name);
-                if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+                if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].isInitialized) {
                     if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
                         throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                     }
@@ -1748,7 +1753,7 @@ namespace jc {
         else {
             const std::string& varName = expr->varName.lexeme;
             int existingSlot = resolveLocal(varName);
-            if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+            if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].isInitialized) {
                 if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
                     throw std::runtime_error("Compiler Error: Cannot modify const variable '" + varName + "'.");
                 }
@@ -1776,7 +1781,10 @@ namespace jc {
                     current().locals[slot].isConst = expr->isConst;
                 }
             }
-            if (slot != -1) { emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); }
+            if (slot != -1) { 
+                current().locals[slot].isInitialized = true;
+                emit(OpCode::OP_SET_LOCAL, lastLine); emit16(static_cast<uint16_t>(slot), lastLine); 
+            }
             else { 
                 uint16_t idx = identifierConstant(varName); 
                 auto it = current().captures.find(varName);
@@ -2857,7 +2865,7 @@ namespace jc {
             }
             
             int existingSlot = resolveLocal(name);
-            if (existingSlot != -1 && current().locals[existingSlot].isConst) {
+            if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].isInitialized) {
                 if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
                     throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                 }
@@ -2990,6 +2998,7 @@ namespace jc {
             slot = resolveLocal(expr->catchName.lexeme);
         }
         if (slot != -1) {
+            current().locals[slot].isInitialized = true;
             emit(OpCode::OP_SET_LOCAL, lastLine);
             emit16(static_cast<uint16_t>(slot), lastLine);
         }
@@ -3119,6 +3128,7 @@ namespace jc {
             addLocal(name, current().scopeDepth, expr->isConst);
             slot = resolveLocal(name);
         }
+        current().locals[slot].isInitialized = true;
         emit(OpCode::OP_SET_LOCAL, lastLine);
         emit16(static_cast<uint16_t>(slot), lastLine);
         return;
@@ -3376,6 +3386,7 @@ namespace jc {
             int refIdx = 0;
             for (size_t i = 0; i < md.params.size(); ++i) {
                 addLocal(md.params[i].lexeme, current().scopeDepth);
+                current().locals.back().isInitialized = true;
                 if (md.paramIsRef[i]) {
                     current().locals.back().isRefParam = true;
                     current().locals.back().refParamIndex = refIdx++;

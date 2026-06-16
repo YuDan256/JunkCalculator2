@@ -1856,19 +1856,17 @@ namespace jc {
             return;
         }
 
-        std::vector<int> rowCols;
+        std::vector<uint16_t> rowCols;
         for (int i = 0; i < rows; ++i) {
-            int cols = static_cast<int>(expr->elements[i].size());
+            uint16_t cols = static_cast<uint16_t>(expr->elements[i].size());
             rowCols.push_back(cols);
             for (int j = 0; j < cols; ++j) {
                 compileNode(expr->elements[i][j].get());
             }
         }
+        uint16_t shapeIdx = chunk()->addMatrixShape(static_cast<uint16_t>(rows), rowCols);
         emit(OpCode::OP_BUILD_MATRIX, lastLine);
-        emit16(static_cast<uint16_t>(rows), lastLine);
-        for (int c : rowCols) {
-            emit16(static_cast<uint16_t>(c), lastLine);
-        }
+        emit16(shapeIdx, lastLine);
         return;
     }
 

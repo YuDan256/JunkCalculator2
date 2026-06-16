@@ -1845,10 +1845,8 @@ namespace jc {
                 }
 
                 case OpCode::OP_BUILD_MATRIX: {
-                    uint16_t rows = readShort();
-                    std::vector<uint16_t> rowCols(rows);
-                    for (int i = 0; i < rows; ++i) rowCols[i] = readShort();
-                    execBuildMatrix(rows, rowCols);
+                    uint16_t shapeIdx = readShort();
+                    execBuildMatrix(shapeIdx);
                     break;
                 }
 
@@ -4683,7 +4681,11 @@ namespace jc {
         return;
     }
 
-    void VM::execBuildMatrix(uint16_t rows, const std::vector<uint16_t>& rowCols) {
+    void VM::execBuildMatrix(uint16_t shapeIdx) {
+        const auto& shape = frame().function->chunk.matrixShapes[shapeIdx];
+        uint16_t rows = shape.rows;
+        const std::vector<uint16_t>& rowCols = shape.rowCols;
+
         int total = 0;
         for (uint16_t c : rowCols) total += c;
 

@@ -77,7 +77,7 @@ namespace jc {
 
         // 字符串/矩阵
         OP_BUILD_LIST,      // [count:16bit]
-        OP_BUILD_MATRIX,    // [rows:16bit, cols_1:16bit, ..., cols_n:16bit]
+        OP_BUILD_MATRIX,    // [shape_idx:16bit]
 
         // 函数（扩展）
         OP_CLOSURE,         // 创建闭包: [func_idx:16bit]
@@ -269,6 +269,11 @@ namespace jc {
         uint8_t exactMask;
     };
 
+    struct MatrixShape {
+        uint16_t rows;
+        std::vector<uint16_t> rowCols;
+    };
+
     // ═══════════════════════════════════════════
     // 字节码块 (Chunk)
     // 存储一段编译后的字节码 + 常量池 + 行号信息
@@ -280,6 +285,7 @@ namespace jc {
         std::vector<int> lines;         // 每条指令对应的源码行号
         std::vector<InlineCache> inlineCaches; // ★ 内联缓存池
         std::vector<ShapePattern> shapePatterns; // ★ 形状匹配模式池
+        std::vector<MatrixShape> matrixShapes;   // ★ 矩阵形状池
 
         // ── 写入接口 ──
 
@@ -331,6 +337,12 @@ namespace jc {
             shapePatterns.push_back({minR, maxR, minC, maxC, mask});
             if (shapePatterns.size() > 65535) throw std::runtime_error("Compiler Error: Too many shape patterns.");
             return static_cast<uint16_t>(shapePatterns.size() - 1);
+        }
+
+        uint16_t addMatrixShape(uint16_t rows, const std::vector<uint16_t>& rowCols) {
+            matrixShapes.push_back({rows, rowCols});
+            if (matrixShapes.size() > 65535) throw std::runtime_error("Compiler Error: Too many matrix shapes.");
+            return static_cast<uint16_t>(matrixShapes.size() - 1);
         }
 
         // 生成跳转指令，返回需要回填的偏移位置
@@ -532,6 +544,18 @@ namespace jc {
                 std::cout << count << " items" << std::endl;
                 return offset + 3;
             }
+            case OpCode::OP_BUILD_MATRIX: {
+                uint16_t idx = read16(offset + 1);
+                if (idx < matrixShapes.size()) {
+                    const auto& shape = matrixShapes[idx];
+                    std::cout << "shape_idx:" << idx << " (" << shape.rows << " rows: ";
+                    for (uint16_t c : shape.rowCols) std::cout << c << " ";
+                    std::cout << ")" << std::endl;
+                } else {
+                    std::cout << "INVALID_SHAPE_IDX" << std::endl;
+                }
+                return offset + 3;
+            }
             case OpCode::OP_BUILD_NAMESPACE: {
                 uint16_t nameIdx = read16(offset + 1);
                 uint16_t count = read16(offset + 3);
@@ -596,17 +620,6 @@ namespace jc {
             // ============================================
             // 格式 6: 变长复合参数
             // ============================================
-            case OpCode::OP_BUILD_MATRIX: {
-                uint16_t r = read16(offset + 1);
-                std::cout << r << " rows: ";
-                int pos = offset + 3;
-                for (int i = 0; i < r; ++i) {
-                    std::cout << read16(pos) << " ";
-                    pos += 2;
-                }
-                std::cout << std::endl;
-                return pos;
-            }
             case OpCode::OP_PASS_REFS: {
                 uint8_t count = code[offset + 1];
                 std::cout << static_cast<int>(count) << " source(s)" << std::endl;

@@ -6,8 +6,62 @@
 #include <stdexcept>   // ★ std::runtime_error
 #include <string>
 #include <vector>
+#include <new>
 
 namespace jc {
+
+    class ExprAllocator {
+    private:
+        struct Block {
+            static constexpr size_t SIZE = 256 * 1024; // 256KB per block
+            char data[SIZE];
+            size_t offset = 0;
+            Block* next = nullptr;
+        };
+        Block* head = nullptr;
+        std::vector<void*> freeLists[65]; // 8-byte aligned, up to 512 bytes
+
+    public:
+        static ExprAllocator& get() {
+            static thread_local ExprAllocator instance;
+            return instance;
+        }
+
+        void* allocate(size_t size) {
+            if (size > 512) return ::operator new(size);
+            size_t index = (size + 7) / 8;
+            if (!freeLists[index].empty()) {
+                void* ptr = freeLists[index].back();
+                freeLists[index].pop_back();
+                return ptr;
+            }
+            if (!head || head->offset + size > Block::SIZE) {
+                Block* newBlock = new Block();
+                newBlock->next = head;
+                head = newBlock;
+            }
+            void* ptr = head->data + head->offset;
+            head->offset += (size + 7) & ~7; // 8-byte align
+            return ptr;
+        }
+
+        void deallocate(void* ptr, size_t size) {
+            if (size > 512) {
+                ::operator delete(ptr);
+                return;
+            }
+            size_t index = (size + 7) / 8;
+            freeLists[index].push_back(ptr);
+        }
+
+        ~ExprAllocator() {
+            while (head) {
+                Block* next = head->next;
+                delete head;
+                head = next;
+            }
+        }
+    };
 
     struct Expr;
 
@@ -63,6 +117,13 @@ namespace jc {
 
     struct Pattern {
         virtual ~Pattern() = default;
+
+        static void* operator new(size_t size) {
+            return ExprAllocator::get().allocate(size);
+        }
+        static void operator delete(void* ptr, size_t size) {
+            ExprAllocator::get().deallocate(ptr, size);
+        }
     };
 
     enum class ScopeModifier { None, Local, Ref, State };
@@ -185,6 +246,13 @@ namespace jc {
     struct Expr {
         virtual ~Expr() = default;
         virtual void accept(ExprVisitor& visitor) = 0;
+
+        static void* operator new(size_t size) {
+            return ExprAllocator::get().allocate(size);
+        }
+        static void operator delete(void* ptr, size_t size) {
+            ExprAllocator::get().deallocate(ptr, size);
+        }
     };
 
     // ======== 原有节点 (不变) ========

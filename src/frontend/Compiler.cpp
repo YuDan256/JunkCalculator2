@@ -963,10 +963,10 @@ namespace jc {
         bool mayHaveRef = false;
         if (hasVariableArgs) {
             bool foundDef = false;
-            for (auto& fn : compiledFunctions) {
-                if (fn->name == name) {
+            for (auto it = compiledFunctions.rbegin(); it != compiledFunctions.rend(); ++it) {
+                if ((*it)->name == name) {
                     foundDef = true;
-                    for (bool r : fn->paramIsRef) {
+                    for (bool r : (*it)->paramIsRef) {
                         if (r) { mayHaveRef = true; break; }
                     }
                     break;
@@ -1005,7 +1005,7 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition;
+        bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
 
         if (!sources.empty()) {
             uint32_t sigIdx = chunk()->addCallSignature(sources);
@@ -2225,7 +2225,7 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition;
+        bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
 
         if (!sources.empty()) {
             uint32_t sigIdx = chunk()->addCallSignature(sources);
@@ -3576,7 +3576,7 @@ namespace jc {
                 }
             }
 
-            bool actualTailCall = inTailPosition;
+            bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
 
             if (!sources.empty()) {
                 uint32_t sigIdx = chunk()->addCallSignature(sources);
@@ -3628,7 +3628,7 @@ namespace jc {
             }
         }
 
-        bool actualTailCall = inTailPosition;
+        bool actualTailCall = inTailPosition && sources.empty(); // ★ 如果有引用传递，绝对禁止尾调用，防止悬垂指针！
 
         if (!sources.empty()) {
             uint32_t sigIdx = chunk()->addCallSignature(sources);

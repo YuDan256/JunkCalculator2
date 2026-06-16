@@ -35,7 +35,7 @@ namespace jc {
         static constexpr int MAX_STACK = 65536;
 
         std::vector<Value> globalValues;
-        std::unordered_map<std::string, uint16_t> globalNamesToSlots;
+        std::unordered_map<std::string, uint32_t> globalNamesToSlots;
         std::unordered_map<std::string, NativeCallable> nativeBuiltins;
         std::unordered_map<std::string, Value> builtinClosures;    // ★ 新增：内置函数闭包缓存
         std::unordered_set<std::string> constGlobals;              // ★ 新增：const 变量追踪
@@ -117,8 +117,8 @@ namespace jc {
             const std::vector<Value>& args);
 
         // ★ 类型检查冷路径：让繁重的字符串操作离开核心循环
-        [[noreturn]] void triggerParamTypeError(const Value& val, uint16_t typeIdx, uint16_t nameIdx);
-        [[noreturn]] void triggerReturnTypeError(const Value& val, uint16_t typeIdx);
+        [[noreturn]] void triggerParamTypeError(const Value& val, uint32_t typeIdx, uint32_t nameIdx);
+        [[noreturn]] void triggerReturnTypeError(const Value& val, uint32_t typeIdx);
 
         std::string getTypeName(const Value& val);
         bool checkValueType(const Value& val, const std::string& typeStr);
@@ -162,14 +162,14 @@ namespace jc {
         void execIndexSet(uint8_t dims);
         void execSliceGet(uint8_t dims);
         void execSliceSet(uint8_t dims);
-        void execBuildMatrix(uint16_t shapeIdx);
+        void execBuildMatrix(uint32_t shapeIdx);
         void execIn();
         Value execReturn(bool& shouldExit);
         void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
-        void execInvoke(uint8_t argc, uint16_t icIdx, bool isTailCall = false);
-        void execSuperInvoke(uint16_t nameIdx, uint8_t argc, bool isTailCall = false);
-        void execAssertParamType(const Value& val, uint16_t typeIdx, uint16_t nameIdx);
-        void execAssertReturnType(const Value& val, uint16_t typeIdx);
+        void execInvoke(uint8_t argc, uint32_t icIdx, bool isTailCall = false);
+        void execSuperInvoke(uint32_t nameIdx, uint8_t argc, bool isTailCall = false);
+        void execAssertParamType(const Value& val, uint32_t typeIdx, uint32_t nameIdx);
+        void execAssertReturnType(const Value& val, uint32_t typeIdx);
 
     public:
         VM();

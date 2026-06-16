@@ -145,6 +145,8 @@ namespace jc {
 
         OP_MATCH_TYPE,          // [type_idx:16bit] 检查栈顶类型，返回 bool
         OP_MATCH_SHAPE,         // [shape_idx:16bit] 检查栈顶形状，返回 bool
+
+        OP_EXTEND,              // ★ 新增：扩展下一个操作数为 32 位 [high16:16bit]
     };
 
     // =================================================================
@@ -239,12 +241,13 @@ namespace jc {
         case OpCode::OP_TAIL_CALL: return "OP_TAIL_CALL";
         case OpCode::OP_TAIL_INVOKE: return "OP_TAIL_INVOKE";
         case OpCode::OP_TAIL_SUPER_INVOKE: return "OP_TAIL_SUPER_INVOKE";
+        case OpCode::OP_EXTEND: return "OP_EXTEND";
         default: return "UNKNOWN_OP";
         }
     }
 
     struct InlineCache {
-        uint16_t nameIdx = 0;
+        uint32_t nameIdx = 0;
         ObjClass* cachedClass = nullptr;
         ObjClosure* cachedMethod = nullptr;
         int cachedFieldIndex = -1;
@@ -267,7 +270,7 @@ namespace jc {
     struct ArgSource {
         uint8_t argIndex;
         uint8_t sourceType;
-        uint16_t sourceRef;
+        uint32_t sourceRef;
     };
 
     struct CallSignature {
@@ -306,42 +309,41 @@ namespace jc {
         }
 
         // 添加常量到常量池，返回索引
-        uint16_t addConstant(const Value& val) {
+        uint32_t addConstant(const Value& val) {
             constants.push_back(val);
-            if (constants.size() > 65535)
-                throw std::runtime_error("Compiler Error: Too many constants in one chunk (max 65535).");
-            return static_cast<uint16_t>(constants.size() - 1);
+            return static_cast<uint32_t>(constants.size() - 1);
         }
 
         // 添加常量并生成 OP_CONSTANT 指令
         void emitConstant(const Value& val, int line) {
-            uint16_t idx = addConstant(val);
+            uint32_t idx = addConstant(val);
+            if (idx > 0xFFFF) {
+                write(OpCode::OP_EXTEND, line);
+                write(0, line); // opIdx = 0
+                write16(static_cast<uint16_t>(idx >> 16), line);
+            }
             write(OpCode::OP_CONSTANT, line);
-            write16(idx, line);
+            write16(static_cast<uint16_t>(idx & 0xFFFF), line);
         }
 
-        uint16_t addInlineCache(uint16_t nameIdx) {
-            inlineCaches.push_back(InlineCache{nameIdx, nullptr, nullptr, -1});
-            if (inlineCaches.size() > 65535) throw std::runtime_error("Compiler Error: Too many inline caches.");
-            return static_cast<uint16_t>(inlineCaches.size() - 1);
+        uint32_t addInlineCache(uint32_t nameIdx) {
+            inlineCaches.push_back(InlineCache{nameIdx, nullptr, nullptr, -1, -1});
+            return static_cast<uint32_t>(inlineCaches.size() - 1);
         }
 
-        uint16_t addShapePattern(uint32_t minR, uint32_t maxR, uint32_t minC, uint32_t maxC, uint8_t mask) {
+        uint32_t addShapePattern(uint32_t minR, uint32_t maxR, uint32_t minC, uint32_t maxC, uint8_t mask) {
             shapePatterns.push_back({minR, maxR, minC, maxC, mask});
-            if (shapePatterns.size() > 65535) throw std::runtime_error("Compiler Error: Too many shape patterns.");
-            return static_cast<uint16_t>(shapePatterns.size() - 1);
+            return static_cast<uint32_t>(shapePatterns.size() - 1);
         }
 
-        uint16_t addMatrixShape(uint16_t rows, const std::vector<uint16_t>& rowCols) {
+        uint32_t addMatrixShape(uint16_t rows, const std::vector<uint16_t>& rowCols) {
             matrixShapes.push_back({rows, rowCols});
-            if (matrixShapes.size() > 65535) throw std::runtime_error("Compiler Error: Too many matrix shapes.");
-            return static_cast<uint16_t>(matrixShapes.size() - 1);
+            return static_cast<uint32_t>(matrixShapes.size() - 1);
         }
 
-        uint16_t addCallSignature(const std::vector<ArgSource>& refs) {
+        uint32_t addCallSignature(const std::vector<ArgSource>& refs) {
             callSignatures.push_back({refs});
-            if (callSignatures.size() > 65535) throw std::runtime_error("Compiler Error: Too many call signatures.");
-            return static_cast<uint16_t>(callSignatures.size() - 1);
+            return static_cast<uint32_t>(callSignatures.size() - 1);
         }
 
         // 生成跳转指令，返回需要回填的偏移位置
@@ -380,13 +382,15 @@ namespace jc {
         void disassemble(const std::string& name) const {
             std::cout << "=== " << name << " ===" << std::endl;
             int offset = 0;
+            uint32_t extensionMap[4] = {0};
+            uint8_t currentOpIdx = 0;
             while (offset < static_cast<int>(code.size())) {
-                offset = disassembleInstruction(offset);
+                offset = disassembleInstruction(offset, extensionMap, currentOpIdx);
             }
             std::cout << "==================" << std::endl;
         }
 
-        int disassembleInstruction(int offset) const {
+        int disassembleInstruction(int offset, uint32_t* extensionMap, uint8_t& currentOpIdx) const {
             std::cout << std::right << std::setw(4) << std::setfill('0') << offset << "  " << std::setfill(' ');
 
             if (offset > 0 && lines[offset] == lines[offset - 1])
@@ -395,6 +399,7 @@ namespace jc {
                 std::cout << std::right << std::setw(4) << lines[offset] << " ";
 
             auto op = static_cast<OpCode>(code[offset]);
+            if (op != OpCode::OP_EXTEND) currentOpIdx = 0;
 
             // ★ 一键提取并左对齐 18 个字符宽，告别过去那种拼凑空格的痛苦
             std::string opName = opCodeToString(op);
@@ -445,6 +450,14 @@ namespace jc {
                 return offset + 2;
             }
 
+            case OpCode::OP_EXTEND: {
+                uint8_t opIdx = code[offset + 1];
+                uint16_t high16 = read16(offset + 2);
+                if (opIdx < 4) extensionMap[opIdx] = static_cast<uint32_t>(high16) << 16;
+                std::cout << "opIdx:" << static_cast<int>(opIdx) << " high16:" << high16 << std::endl;
+                return offset + 4;
+            }
+
             // ============================================
             // 格式 2: 1 个 uint16_t 常量池引用 (3 字节)
             // ============================================
@@ -456,7 +469,7 @@ namespace jc {
             case OpCode::OP_ASSERT_RETURN_TYPE:
             case OpCode::OP_MATCH_TYPE:
             case OpCode::OP_MATCH_SHAPE: {
-                uint16_t idx = read16(offset + 1);
+                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 if (op == OpCode::OP_MATCH_SHAPE) {
                     if (idx < shapePatterns.size()) {
                         const auto& sp = shapePatterns[idx];
@@ -486,10 +499,10 @@ namespace jc {
             case OpCode::OP_GET_PROPERTY:
             case OpCode::OP_TRY_GET_PROPERTY:
             case OpCode::OP_SET_PROPERTY: {
-                uint16_t icIdx = read16(offset + 1);
+                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 std::cout << "[IC:" << icIdx << "]";
                 if (icIdx < inlineCaches.size()) {
-                    uint16_t nameIdx = inlineCaches[icIdx].nameIdx;
+                    uint32_t nameIdx = inlineCaches[icIdx].nameIdx;
                     std::cout << " -> " << nameIdx << " (";
                     if (nameIdx < constants.size() && constants[nameIdx].isString())
                         std::cout << constants[nameIdx].asString();
@@ -506,18 +519,18 @@ namespace jc {
             case OpCode::OP_SET_LOCAL:
             case OpCode::OP_GET_UPVALUE:
             case OpCode::OP_SET_UPVALUE: {
-                uint16_t slot = read16(offset + 1);
+                uint32_t slot = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 std::cout << "slot " << slot << std::endl;
                 return offset + 3;
             }
             case OpCode::OP_GET_REF_PARAM:
             case OpCode::OP_SET_REF_PARAM: {
-                uint16_t idx = read16(offset + 1);
+                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 std::cout << "idx " << idx << std::endl;
                 return offset + 3;
             }
             case OpCode::OP_PASS_REFS: {
-                uint16_t idx = read16(offset + 1);
+                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 std::cout << "sig_idx:" << idx;
                 if (idx < callSignatures.size()) {
                     const auto& sig = callSignatures[idx];
@@ -549,12 +562,12 @@ namespace jc {
             case OpCode::OP_BUILD_DICT:
             case OpCode::OP_DICT_REST:
             case OpCode::OP_BUILD_SET: {
-                uint16_t count = read16(offset + 1);
+                uint32_t count = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 std::cout << count << " items" << std::endl;
                 return offset + 3;
             }
             case OpCode::OP_BUILD_MATRIX: {
-                uint16_t idx = read16(offset + 1);
+                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 if (idx < matrixShapes.size()) {
                     const auto& shape = matrixShapes[idx];
                     std::cout << "shape_idx:" << idx << " (" << shape.rows << " rows: ";
@@ -566,8 +579,8 @@ namespace jc {
                 return offset + 3;
             }
             case OpCode::OP_BUILD_NAMESPACE: {
-                uint16_t nameIdx = read16(offset + 1);
-                uint16_t count = read16(offset + 3);
+                uint32_t nameIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
+                uint32_t count = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 3);
                 std::cout << nameIdx << " (";
                 if (nameIdx < constants.size() && constants[nameIdx].isString())
                     std::cout << constants[nameIdx].asString();
@@ -577,7 +590,7 @@ namespace jc {
             case OpCode::OP_CLOSURE:
             case OpCode::OP_FORMAT_STRING:
             case OpCode::OP_LIST_APPEND: {
-                uint16_t idx = read16(offset + 1);
+                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 std::cout << idx << std::endl;
                 return offset + 3;
             }
@@ -587,7 +600,7 @@ namespace jc {
             // ============================================
             case OpCode::OP_SUPER_INVOKE:
             case OpCode::OP_TAIL_SUPER_INVOKE: {
-                uint16_t idx = read16(offset + 1);
+                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 uint8_t argc = code[offset + 3];
                 std::cout << idx << " (";
                 if (idx < constants.size() && constants[idx].isString())
@@ -598,10 +611,10 @@ namespace jc {
             case OpCode::OP_INVOKE:
             case OpCode::OP_TAIL_INVOKE: {
                 uint8_t argc = code[offset + 1];
-                uint16_t icIdx = read16(offset + 2);
+                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 2);
                 std::cout << static_cast<int>(argc) << " args [IC:" << icIdx << "]";
                 if (icIdx < inlineCaches.size()) {
-                    uint16_t nameIdx = inlineCaches[icIdx].nameIdx;
+                    uint32_t nameIdx = inlineCaches[icIdx].nameIdx;
                     std::cout << " -> " << nameIdx << " (";
                     if (nameIdx < constants.size() && constants[nameIdx].isString())
                         std::cout << constants[nameIdx].asString();
@@ -615,8 +628,8 @@ namespace jc {
             // 格式 5: 定长双短参数 (5 字节)
             // ============================================
             case OpCode::OP_TRY_BEGIN: {
-                uint16_t jump = read16(offset + 1);
-                uint16_t nameIdx = read16(offset + 3);
+                uint32_t nameIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
+                uint32_t jump = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 3);
                 std::cout << "catch -> " << (offset + 5 + jump);
                 if (nameIdx < constants.size() && constants[nameIdx].isString())
                     std::cout << " (var: " << constants[nameIdx].asString() << ")";
@@ -624,8 +637,8 @@ namespace jc {
                 return offset + 5;
             }
             case OpCode::OP_ASSERT_PARAM_TYPE: {      // ★ 新增一整块
-                uint16_t typeIdx = read16(offset + 1);
-                uint16_t nameIdx = read16(offset + 3);
+                uint32_t typeIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
+                uint32_t nameIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 3);
                 std::cout << "typeConst: " << typeIdx << ", nameConst: " << nameIdx << std::endl;
                 return offset + 5;
             }

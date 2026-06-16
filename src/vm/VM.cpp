@@ -121,14 +121,14 @@ namespace jc {
         return val.typeName();
     }
 
-    void VM::triggerParamTypeError(const Value& val, uint16_t typeIdx, uint16_t nameIdx) {
+    void VM::triggerParamTypeError(const Value& val, uint32_t typeIdx, uint32_t nameIdx) {
         const std::string& expectedType = currentChunk().constants[typeIdx].asString();
         const std::string& paramName = currentChunk().constants[nameIdx].asString();
         throw std::runtime_error("TypeError: Parameter '" + paramName +
             "' expected type '" + expectedType +
             "', got '" + getTypeName(val) + "'.");
     }
-    void VM::triggerReturnTypeError(const Value& val, uint16_t typeIdx) {
+    void VM::triggerReturnTypeError(const Value& val, uint32_t typeIdx) {
         const std::string& expectedType = currentChunk().constants[typeIdx].asString();
         throw std::runtime_error("TypeError: Function '" + frame().function->name +
             "' expected to return '" + expectedType +
@@ -481,8 +481,7 @@ namespace jc {
         if (it != globalNamesToSlots.end()) {
             globalValues[it->second] = val;
         } else {
-            if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
-            globalNamesToSlots[name] = static_cast<uint16_t>(globalValues.size());
+            globalNamesToSlots[name] = static_cast<uint32_t>(globalValues.size());
             globalValues.push_back(val);
         }
     }
@@ -666,6 +665,9 @@ namespace jc {
                 codeSize = static_cast<int>(chunk->code.size()); \
             } while(false)
 
+        uint32_t extensionMap[4] = {0};
+        uint8_t currentOpIdx = 0;
+
         while (true) {
             // ═══ GC 自动触发探针与中断探针 ═══
             if (++gcInstructionCounter_ >= 2048) {
@@ -724,14 +726,24 @@ namespace jc {
 			}
 
             #define readByte() (codeData[currentFrame->ip++])
-            #define readShort() (currentFrame->ip += 2, static_cast<uint16_t>((codeData[currentFrame->ip - 2] << 8) | codeData[currentFrame->ip - 1]))
+            #define readOperand() (currentFrame->ip += 2, \
+                (std::exchange(extensionMap[currentOpIdx++], 0) | static_cast<uint32_t>((codeData[currentFrame->ip - 2] << 8) | codeData[currentFrame->ip - 1])))
 
             try {
+                if (op != OpCode::OP_EXTEND) currentOpIdx = 0;
 
                 switch (op) {
 
+                case OpCode::OP_EXTEND: {
+                    uint8_t opIdx = codeData[currentFrame->ip++];
+                    uint32_t high = static_cast<uint32_t>((codeData[currentFrame->ip] << 8) | codeData[currentFrame->ip + 1]);
+                    currentFrame->ip += 2;
+                    if (opIdx < 4) extensionMap[opIdx] = high << 16;
+                    break;
+                }
+
                 case OpCode::OP_CONSTANT: {
-                    uint16_t idx = readShort();
+                    uint32_t idx = readOperand();
                     push(chunk->constants[idx]);
                     break;
                 }
@@ -920,21 +932,21 @@ namespace jc {
                 }
 
                 case OpCode::OP_ASSERT_PARAM_TYPE: {
-                    uint16_t typeIdx = readShort();
-                    uint16_t nameIdx = readShort();
+                    uint32_t typeIdx = readOperand();
+                    uint32_t nameIdx = readOperand();
                     Value val = pop();
                     execAssertParamType(val, typeIdx, nameIdx);
                     break;
                 }
 
                 case OpCode::OP_ASSERT_RETURN_TYPE: {
-                    uint16_t typeIdx = readShort();
+                    uint32_t typeIdx = readOperand();
                     execAssertReturnType(peek(0), typeIdx);
                     break;
                 }
 
                 case OpCode::OP_MATCH_TYPE: {
-                    uint16_t typeIdx = readShort();
+                    uint32_t typeIdx = readOperand();
                     const std::string& typeStr = chunk->constants[typeIdx].asString();
                     Value val = pop();
                     push(Value(checkValueType(val, typeStr)));
@@ -942,7 +954,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_MATCH_SHAPE: {
-                    uint16_t shapeIdx = readShort();
+                    uint32_t shapeIdx = readOperand();
                     const auto& sp = chunk->shapePatterns[shapeIdx];
                     uint32_t minRows = sp.minRows;
                     uint32_t maxRows = sp.maxRows;
@@ -967,7 +979,7 @@ namespace jc {
                     } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && (maxCols == 0xFFFFFFFF || 0 <= maxCols));
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
                             else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                         } else {
                             bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
@@ -978,7 +990,7 @@ namespace jc {
                     } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && (maxCols == 0xFFFFFFFF || 0 <= maxCols));
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
                             else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                         } else {
                             bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
@@ -989,7 +1001,7 @@ namespace jc {
                     } else if (val.isObjType(ObjType::STRING_MATRIX)) {
                         const auto& m = static_cast<ObjStringMatrix*>(val.asObj())->mat;
                         if (is1DPattern) {
-                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0 >= minCols && (maxCols == 0xFFFFFFFF || 0 <= maxCols));
+                            if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
                             else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
                         } else {
                             bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
@@ -1007,13 +1019,13 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_GLOBAL: {
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
                     if (ic.cachedGlobalSlot != -1) {
                         push(globalValues[ic.cachedGlobalSlot]);
                         break;
                     }
-                    uint16_t nameIdx = ic.nameIdx;
+                    uint32_t nameIdx = ic.nameIdx;
                     const std::string& name = chunk->constants[nameIdx].asString();
 
                     // ★ 虚拟机级别拦截：遇到 '__class__'，直接去它该在的物理寄存器里拿！
@@ -1041,9 +1053,9 @@ namespace jc {
                 }
                 case OpCode::OP_SET_GLOBAL:
                 case OpCode::OP_SET_GLOBAL_REF: {
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
-                    uint16_t nameIdx = ic.nameIdx;
+                    uint32_t nameIdx = ic.nameIdx;
                     const std::string& name = chunk->constants[nameIdx].asString();
 
                     // ★ 关键字保护：绝不许改写上下文关键字 !
@@ -1094,18 +1106,17 @@ namespace jc {
                             ic.cachedGlobalSlot = it->second;
                             globalValues[it->second] = val;
                         } else {
-                            if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
                             ic.cachedGlobalSlot = static_cast<int>(globalValues.size());
-                            globalNamesToSlots[name] = static_cast<uint16_t>(ic.cachedGlobalSlot);
+                            globalNamesToSlots[name] = static_cast<uint32_t>(ic.cachedGlobalSlot);
                             globalValues.push_back(val);
                         }
                     }
                     break;
                 }
                 case OpCode::OP_DEFINE_CONST_GLOBAL: {
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
-                    uint16_t nameIdx = ic.nameIdx;
+                    uint32_t nameIdx = ic.nameIdx;
                     const std::string& name = chunk->constants[nameIdx].asString();
                     if (constGlobals.count(name)) {
                         throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
@@ -1119,9 +1130,8 @@ namespace jc {
                             ic.cachedGlobalSlot = it->second;
                             globalValues[it->second] = peek(0);
                         } else {
-                            if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
                             ic.cachedGlobalSlot = static_cast<int>(globalValues.size());
-                            globalNamesToSlots[name] = static_cast<uint16_t>(ic.cachedGlobalSlot);
+                            globalNamesToSlots[name] = static_cast<uint32_t>(ic.cachedGlobalSlot);
                             globalValues.push_back(peek(0));
                         }
                     }
@@ -1129,7 +1139,7 @@ namespace jc {
                     break;
                 }
                 case OpCode::OP_DELETE_GLOBAL: {
-                    uint16_t nameIdx = readShort();
+                    uint32_t nameIdx = readOperand();
                     const std::string& name = chunk->constants[nameIdx].asString();
                     if (constGlobals.count(name))
                         throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
@@ -1143,39 +1153,39 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_LOCAL: {
-                    uint16_t slot = readShort();
+                    uint32_t slot = readOperand();
                     push(stack[currentFrame->stackBase + slot]);
                     break;
                 }
                 case OpCode::OP_SET_LOCAL: {
-                    uint16_t slot = readShort();
+                    uint32_t slot = readOperand();
                     stack[currentFrame->stackBase + slot] = peek(0);
                     break;
                 }
 
                 case OpCode::OP_JUMP: {
-                    uint16_t offset = readShort();
+                    uint32_t offset = readOperand();
                     currentFrame->ip += offset;
                     break;
                 }
                 case OpCode::OP_JUMP_IF_FALSE: {
-                    uint16_t offset = readShort();
+                    uint32_t offset = readOperand();
                     if (!peek(0).truthy()) currentFrame->ip += offset;
                     break;
                 }
                 case OpCode::OP_JUMP_IF_TRUE: {
-                    uint16_t offset = readShort();
+                    uint32_t offset = readOperand();
                     if (peek(0).truthy()) currentFrame->ip += offset;
                     break;
                 }
                 case OpCode::OP_LOOP: {
-                    uint16_t offset = readShort();
+                    uint32_t offset = readOperand();
                     currentFrame->ip -= offset;
                     break;
                 }
 
                 case OpCode::OP_CLOSURE: {
-                    uint16_t fnConstIdx = readShort();
+                    uint32_t fnConstIdx = readOperand();
                     int idx = static_cast<int>(std::round(
                         chunk->constants[fnConstIdx].asDouble()));
                     if (idx < 0 || idx >= static_cast<int>(compiledFunctions.size()))
@@ -1217,8 +1227,7 @@ namespace jc {
                                             if (it != globalNamesToSlots.end()) {
                                                 dummy->location = &globalValues[it->second];
                                             } else {
-                                                if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
-                                                globalNamesToSlots[uv.name] = static_cast<uint16_t>(globalValues.size());
+                                                globalNamesToSlots[uv.name] = static_cast<uint32_t>(globalValues.size());
                                                 globalValues.push_back(Value::uninit());
                                                 dummy->location = &globalValues.back();
                                             }
@@ -1358,8 +1367,8 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_UPVALUE: {
-                    uint16_t idx = readShort();
-                    if (!currentFrame->closure || idx >= currentFrame->closure->upvalueCount)
+                    uint32_t idx = readOperand();
+                    if (!currentFrame->closure || idx >= static_cast<uint32_t>(currentFrame->closure->upvalueCount))
                         throw std::runtime_error("VM Error: Invalid upvalue index " +
                             std::to_string(idx) + ".");
                     push(*(currentFrame->closure->upvalues[idx]->location));
@@ -1367,8 +1376,8 @@ namespace jc {
                 }
 
                 case OpCode::OP_SET_UPVALUE: {
-                    uint16_t idx = readShort();
-                    if (!currentFrame->closure || idx >= currentFrame->closure->upvalueCount)
+                    uint32_t idx = readOperand();
+                    if (!currentFrame->closure || idx >= static_cast<uint32_t>(currentFrame->closure->upvalueCount))
                         throw std::runtime_error("VM Error: Invalid upvalue index " +
                             std::to_string(idx) + ".");
                     *(currentFrame->closure->upvalues[idx]->location) = peek(0);
@@ -1376,7 +1385,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_SUPER_INVOKE: {
-                    uint16_t nameIdx = readShort();
+                    uint32_t nameIdx = readOperand();
                     uint8_t argc = readByte();
                     execSuperInvoke(nameIdx, argc);
                     UPDATE_FRAME();
@@ -1384,7 +1393,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_TAIL_SUPER_INVOKE: {
-                    uint16_t nameIdx = readShort();
+                    uint32_t nameIdx = readOperand();
                     uint8_t argc = readByte();
                     int prevIp = currentFrame->ip;
                     execSuperInvoke(nameIdx, argc, true);
@@ -1398,7 +1407,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_SUPER: {
-                    uint16_t nameIdx = readShort();
+                    uint32_t nameIdx = readOperand();
                     const std::string& field = chunk->constants[nameIdx].asString();
 
                     Value selfVal = peek(0);
@@ -1462,13 +1471,13 @@ namespace jc {
                 }
 
                 case OpCode::OP_PASS_REFS: {
-                    uint16_t sigIdx = readShort();
+                    uint32_t sigIdx = readOperand();
                     const auto& sig = chunk->callSignatures[sigIdx];
                     pendingCallRefs.clear();
                     for (const auto& ref : sig.refs) {
                         uint8_t argIndex = ref.argIndex;
                         uint8_t sourceType = ref.sourceType;
-                        uint16_t sourceRef = ref.sourceRef;
+                        uint32_t sourceRef = ref.sourceRef;
 
                         ObjUpVal* upval = nullptr;
                         switch (sourceType) {
@@ -1477,8 +1486,7 @@ namespace jc {
                             upval = GcHeap::get().allocate<ObjUpVal>();
                             auto it = globalNamesToSlots.find(name);
                             if (it == globalNamesToSlots.end()) {
-                                if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
-                                globalNamesToSlots[name] = static_cast<uint16_t>(globalValues.size());
+                                globalNamesToSlots[name] = static_cast<uint32_t>(globalValues.size());
                                 globalValues.push_back(Value::none());
                             }
                             upval->location = &globalValues[globalNamesToSlots[name]];
@@ -1490,7 +1498,7 @@ namespace jc {
                             break;
                         }
                         case 3: {
-                            if (currentFrame->closure && sourceRef < currentFrame->closure->upvalueCount) {
+                            if (currentFrame->closure && sourceRef < static_cast<uint32_t>(currentFrame->closure->upvalueCount)) {
                                 upval = currentFrame->closure->upvalues[sourceRef];
                             }
                             break;
@@ -1510,7 +1518,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_REF_PARAM: {
-                    uint16_t idx = readShort();
+                    uint32_t idx = readOperand();
                     if (currentFrame->refParamsBase == -1)
                         throw std::runtime_error("VM Error: Invalid ref param index.");
                     push(*(static_cast<ObjUpVal*>(stack[currentFrame->refParamsBase + idx].asObj())->location));
@@ -1518,7 +1526,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_SET_REF_PARAM: {
-                    uint16_t idx = readShort();
+                    uint32_t idx = readOperand();
                     if (currentFrame->refParamsBase == -1)
                         throw std::runtime_error("VM Error: Invalid ref param index.");
                     *(static_cast<ObjUpVal*>(stack[currentFrame->refParamsBase + idx].asObj())->location) = peek(0);
@@ -1557,11 +1565,11 @@ namespace jc {
                 }
 
                 case OpCode::OP_CONCAT_STRINGS: {
-                    uint16_t count = readShort();
+                    uint32_t count = readOperand();
                     std::vector<std::string> parts(count);
                     size_t totalLen = 0;
                     stackTop -= count;
-                    for (int i = 0; i < count; ++i) {
+                    for (uint32_t i = 0; i < count; ++i) {
                         Value& v = stackTop[i];
                         if (v.isString()) {
                             parts[i] = v.asString();
@@ -1587,8 +1595,8 @@ namespace jc {
                 }
 
                 case OpCode::OP_TRY_BEGIN: {
-                    uint16_t catchRelOffset = readShort();
-                    uint16_t catchNameIdx = readShort();
+                    uint32_t catchNameIdx = readOperand();
+                    uint32_t catchRelOffset = readOperand();
                     (void)catchNameIdx;
 
                     ExceptionHandler handler;
@@ -1620,12 +1628,12 @@ namespace jc {
                 } 
 
                 case OpCode::OP_BUILD_NAMESPACE: {
-                    uint16_t nameIdx = readShort();
-                    uint16_t count = readShort();
+                    uint32_t nameIdx = readOperand();
+                    uint32_t count = readOperand();
                     std::string nsName = chunk->constants[nameIdx].asString();
                     ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
                     ns->name = nsName;
-                    for (int j = 0; j < count; ++j) {
+                    for (uint32_t j = 0; j < count; ++j) {
                         bool isConst = pop().truthy();
                         int slot = static_cast<int>(pop().asDouble());
                         std::string key = pop().asString();
@@ -1639,12 +1647,12 @@ namespace jc {
                 }
 
                 case OpCode::OP_BUILD_DICT: {
-                    uint16_t count = readShort();
+                    uint32_t count = readOperand();
                     ObjDict* d = GcHeap::get().allocate<ObjDict>();
                     d->elements.reserve(count);
                     d->keyMap.reserve(count);
                     stackTop -= (count * 2);
-                    for (int i = 0; i < count; ++i) {
+                    for (uint32_t i = 0; i < count; ++i) {
                         d->set(std::move(stackTop[i * 2]), std::move(stackTop[i * 2 + 1]));
                     }
                     push(Value(d));
@@ -1652,12 +1660,12 @@ namespace jc {
                 }
 
                 case OpCode::OP_BUILD_SET: {
-                    uint16_t count = readShort();
+                    uint32_t count = readOperand();
                     ObjSet* s = GcHeap::get().allocate<ObjSet>();
                     s->elements.reserve(count);
                     s->keys.reserve(count);
                     stackTop -= count;
-                    for (int i = 0; i < count; ++i) {
+                    for (uint32_t i = 0; i < count; ++i) {
                         s->add(std::move(stackTop[i]));
                     }
                     push(Value(s));
@@ -1665,9 +1673,9 @@ namespace jc {
                 }
 
                 case OpCode::OP_DICT_REST: {
-                    uint16_t count = readShort();
+                    uint32_t count = readOperand();
                     std::unordered_set<std::string> excludeKeys;
-                    for (int i = 0; i < count; ++i) {
+                    for (uint32_t i = 0; i < count; ++i) {
                         excludeKeys.insert(pop().asString());
                     }
                     Value obj = peek(0);
@@ -1837,7 +1845,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_ITER_NEXT: {
-                    uint16_t offset = readShort();
+                    uint32_t offset = readOperand();
                     Value idxVal = peek(0);
                     
                     if (idxVal.isNone()) {
@@ -1870,11 +1878,11 @@ namespace jc {
                 }
 
                 case OpCode::OP_BUILD_LIST: {
-                    uint16_t count = readShort();
+                    uint32_t count = readOperand();
                     ObjList* list = GcHeap::get().allocate<ObjList>();
                     list->vec.resize(count);
                     stackTop -= count;
-                    for (int i = 0; i < count; ++i) {
+                    for (uint32_t i = 0; i < count; ++i) {
                         list->vec[i] = std::move(stackTop[i]);
                     }
                     push(Value(list));
@@ -1882,7 +1890,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_BUILD_MATRIX: {
-                    uint16_t shapeIdx = readShort();
+                    uint32_t shapeIdx = readOperand();
                     execBuildMatrix(shapeIdx);
                     break;
                 }
@@ -1913,7 +1921,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_FORMAT_STRING: {
-                    uint16_t specIdx = readShort();
+                    uint32_t specIdx = readOperand();
                     const std::string& spec = chunk->constants[specIdx].asString();
                     Value val = pop();
 
@@ -1963,7 +1971,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_LIST_APPEND: {
-                    uint16_t depth = readShort();
+                    uint32_t depth = readOperand();
                     Value elem = pop();
                     int listIdx = static_cast<int>(getStackSize()) - 1 - static_cast<int>(depth);
                     if (listIdx >= 0 && stack[listIdx].isObjType(ObjType::LIST)) {
@@ -2241,7 +2249,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_CLASS: {
-                    uint16_t nameIdx = readShort();
+                    uint32_t nameIdx = readOperand();
                     const std::string& name = chunk->constants[nameIdx].asString();
                     auto cls = GcHeap::get().allocate<ObjClass>();
                     cls->name = name;
@@ -2250,7 +2258,7 @@ namespace jc {
                 }
 
                 case OpCode::OP_METHOD: {
-                    uint16_t nameIdx = readShort();
+                    uint32_t nameIdx = readOperand();
                     const std::string& methodName = chunk->constants[nameIdx].asString();
                     Value closureVal = peek(0);
                     Value& classVal = peek(1);
@@ -2302,9 +2310,9 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_PROPERTY: {
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
-                    uint16_t nameIdx = ic.nameIdx;
+                    uint32_t nameIdx = ic.nameIdx;
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value obj = peek(0);
                     bool found = false;
@@ -2523,9 +2531,9 @@ namespace jc {
                 }
 
                 case OpCode::OP_TRY_GET_PROPERTY: {
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
-                    uint16_t nameIdx = ic.nameIdx;
+                    uint32_t nameIdx = ic.nameIdx;
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value obj = peek(0);
                     bool found = false;
@@ -2594,9 +2602,9 @@ namespace jc {
                 }
 
                 case OpCode::OP_SET_PROPERTY: {
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
-                    uint16_t nameIdx = ic.nameIdx;
+                    uint32_t nameIdx = ic.nameIdx;
                     const std::string& field = chunk->constants[nameIdx].asString();
                     Value val = peek(0);
                     Value obj = peek(1);
@@ -2662,7 +2670,7 @@ namespace jc {
 
                 case OpCode::OP_INVOKE: {
                     uint8_t argc = readByte();
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     execInvoke(argc, icIdx);
                     UPDATE_FRAME();
                     break;
@@ -2670,7 +2678,7 @@ namespace jc {
 
                 case OpCode::OP_TAIL_INVOKE: {
                     uint8_t argc = readByte();
-                    uint16_t icIdx = readShort();
+                    uint32_t icIdx = readOperand();
                     int prevIp = currentFrame->ip;
                     execInvoke(argc, icIdx, true);
                     if (currentFrame->ip == prevIp) {
@@ -2717,7 +2725,7 @@ namespace jc {
         }
         #undef UPDATE_FRAME
         #undef readByte
-        #undef readShort
+        #undef readOperand
     }
 
     void VM::debugPrompt() {
@@ -3122,7 +3130,7 @@ namespace jc {
         // ======== [1] 字符串动态调用 (晚绑定) ========
         if (callee.isString()) {
             const std::string& tag = callee.asString();
-            if (tag.size() >= 5 && tag.substr(0, 5) == "__fn:") {
+            if (tag.size() >= 5ULL && tag.substr(0, 5) == "__fn:") {
                 int fnIdx = std::stoi(tag.substr(5));
                 auto& fn = compiledFunctions[fnIdx];
                 if (static_cast<int>(argc) < fn->arity || static_cast<int>(argc) > fn->maxArity)
@@ -3161,7 +3169,7 @@ namespace jc {
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                 frames[frameCount++] = newFrame; return;
             }
-            if (tag.size() >= 10 && tag.substr(0, 10) == "__builtin:") {
+            if (tag.size() >= 10ULL && tag.substr(0, 10) == "__builtin:") {
                 std::string fnName = tag.substr(10); std::vector<Value> args(argc);
                 for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
                 Value result = nativeBuiltins.find(fnName)->second(args);
@@ -3413,8 +3421,8 @@ namespace jc {
                         throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
                             "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
                     }
-                } else if (closure->maxArgs() > 0 && !closure->hasRestParam) {
-                    if (static_cast<int>(argc) < closure->minArgs() || static_cast<int>(argc) > closure->maxArgs()) {
+                } else if (static_cast<int>(closure->maxArgs()) > 0 && !closure->hasRestParam) {
+                    if (static_cast<int>(argc) < static_cast<int>(closure->minArgs()) || static_cast<int>(argc) > static_cast<int>(closure->maxArgs())) {
                         throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
                             "' expects " + std::to_string(closure->minArgs()) + " to " + 
                             std::to_string(closure->maxArgs()) + " arguments, got " + 
@@ -3449,7 +3457,7 @@ namespace jc {
         if (callee.isString()) {
             const std::string& tag = callee.asString();
 
-            if (tag.size() >= 5 && tag.substr(0, 5) == "__fn:") {
+            if (tag.size() >= 5ULL && tag.substr(0, 5) == "__fn:") {
                 int fnIdx = std::stoi(tag.substr(5));
                 auto& fn = compiledFunctions[fnIdx];
 
@@ -3515,7 +3523,7 @@ namespace jc {
                 frames[frameCount++] = newFrame; return;
             }
 
-            if (tag.size() >= 10 && tag.substr(0, 10) == "__builtin:") {
+            if (tag.size() >= 10ULL && tag.substr(0, 10) == "__builtin:") {
                 std::string fnName = tag.substr(10);
                 std::vector<Value> argsVec(argc);
                 for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
@@ -4732,7 +4740,7 @@ namespace jc {
         return;
     }
 
-    void VM::execBuildMatrix(uint16_t shapeIdx) {
+    void VM::execBuildMatrix(uint32_t shapeIdx) {
         const auto& shape = frame().function->chunk.matrixShapes[shapeIdx];
         uint16_t rows = shape.rows;
         const std::vector<uint16_t>& rowCols = shape.rowCols;
@@ -5097,10 +5105,10 @@ namespace jc {
         return Value::none();
     }
 
-    void VM::execInvoke(uint8_t argc, uint16_t icIdx, bool isTailCall) {
+    void VM::execInvoke(uint8_t argc, uint32_t icIdx, bool isTailCall) {
         struct CallRefGuard { VM* vm; ~CallRefGuard() { vm->pendingCallRefs.clear(); } } guard{this};
         InlineCache& ic = const_cast<InlineCache&>(frame().function->chunk.inlineCaches[icIdx]);
-        uint16_t nameIdx = ic.nameIdx;
+        uint32_t nameIdx = ic.nameIdx;
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value obj = stack[getStackSize() - 1 - argc];
 
@@ -5328,7 +5336,7 @@ namespace jc {
             // ★ 修复：检查 nativeFn 是否为晚绑定字符串标签
             if (method->nativeFn.type() == typeid(std::string)) {
                 const std::string& tag = std::any_cast<std::string>(method->nativeFn);
-                if (tag.size() >= 5 && tag.substr(0, 5) == "__fn:") {
+                if (tag.size() >= 5ULL && tag.substr(0, 5) == "__fn:") {
                     int fnIdx = std::stoi(tag.substr(5));
                     auto& fnDef = compiledFunctions[fnIdx];
 
@@ -5372,7 +5380,7 @@ namespace jc {
                     frames[frameCount++] = newFrame;
                     return;
                 }
-                if (tag.size() >= 10 && tag.substr(0, 10) == "__builtin:") {
+                if (tag.size() >= 10ULL && tag.substr(0, 10) == "__builtin:") {
                     std::string fnName = tag.substr(10);
                     std::vector<Value> argsVec(argc);
                     for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
@@ -5387,8 +5395,8 @@ namespace jc {
             }
 
             // ★ 修复：检查原生方法的参数数量
-            if (method->maxArgs() > 0 && !method->hasRestParam) {
-                if (static_cast<int>(argc) < method->minArgs() || static_cast<int>(argc) > method->maxArgs()) {
+            if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
+                if (static_cast<int>(argc) < static_cast<int>(method->minArgs()) || static_cast<int>(argc) > static_cast<int>(method->maxArgs())) {
                     throw std::runtime_error("Runtime Error: Method '" + methodName + 
                         "' expects " + std::to_string(method->minArgs()) + " to " + 
                         std::to_string(method->maxArgs()) + " arguments, got " + 
@@ -5421,7 +5429,7 @@ namespace jc {
             "' has no callable implementation.");
     }
 
-    void VM::execSuperInvoke(uint16_t nameIdx, uint8_t argc, bool isTailCall) {
+    void VM::execSuperInvoke(uint32_t nameIdx, uint8_t argc, bool isTailCall) {
         struct CallRefGuard { VM* vm; ~CallRefGuard() { vm->pendingCallRefs.clear(); } } guard{this};
         const std::string& methodName = frame().function->chunk.constants[nameIdx].asString();
         Value selfVal = stack[getStackSize() - 1 - argc];
@@ -5532,8 +5540,8 @@ namespace jc {
         }
         else if (method->isNative()) {
             // ★ 修复：检查原生方法的参数数量
-            if (method->maxArgs() > 0 && !method->hasRestParam) {
-                if (static_cast<int>(argc) < method->minArgs() || static_cast<int>(argc) > method->maxArgs()) {
+            if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
+                if (static_cast<int>(argc) < static_cast<int>(method->minArgs()) || static_cast<int>(argc) > static_cast<int>(method->maxArgs())) {
                     throw std::runtime_error("Runtime Error: Super method '" + methodName + 
                         "' expects " + std::to_string(method->minArgs()) + " to " + 
                         std::to_string(method->maxArgs()) + " arguments, got " + 
@@ -5566,7 +5574,7 @@ namespace jc {
             "' has no callable implementation.");
     }
 
-    void VM::execAssertParamType(const Value& val, uint16_t typeIdx, uint16_t nameIdx) {
+    void VM::execAssertParamType(const Value& val, uint32_t typeIdx, uint32_t nameIdx) {
         const std::string& expectedType = frame().function->chunk.constants[typeIdx].asString();
 
         if (!checkValueType(val, expectedType)) {
@@ -5577,7 +5585,7 @@ namespace jc {
         }
     }
 
-    void VM::execAssertReturnType(const Value& val, uint16_t typeIdx) {
+    void VM::execAssertReturnType(const Value& val, uint32_t typeIdx) {
         const std::string& expectedType = frame().function->chunk.constants[typeIdx].asString();
 
         if (!checkValueType(val, expectedType)) {

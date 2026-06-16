@@ -36,6 +36,9 @@ namespace jc {
 
     class Compiler : public ExprVisitor {
     private:
+        size_t lastOpcodeOffset = std::string::npos;
+        uint8_t operandCountSinceOpcode = 0;
+
         struct CompilerState {
             CompiledFunction* function = nullptr;
             int scopeDepth = 0;
@@ -73,9 +76,10 @@ namespace jc {
 
         void emit(OpCode op, int line = 0);
         void emit(uint8_t byte, int line = 0);
-        void emit16(uint16_t val, int line = 0);
-        uint16_t makeConstant(const Value& val);
-        uint16_t identifierConstant(const std::string& name);
+        void emit16Raw(uint16_t val, int line = 0);
+        void emit16(uint32_t val, int line = 0);
+        uint32_t makeConstant(const Value& val);
+        uint32_t identifierConstant(const std::string& name);
 
         void beginScope();
         void endScope();

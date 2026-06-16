@@ -1114,12 +1114,13 @@ namespace jc {
                 case OpCode::OP_DELETE_GLOBAL: {
                     uint16_t nameIdx = readShort();
                     const std::string& name = chunk->constants[nameIdx].asString();
+                    if (constGlobals.count(name))
+                        throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
                     auto it = globalNamesToSlots.find(name);
                     if (it == globalNamesToSlots.end())
                         throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
                     globalValues[it->second] = Value::none();
                     globalNamesToSlots.erase(it);
-                    constGlobals.erase(name);
                     clearAllGlobalICs();
                     break;
                 }

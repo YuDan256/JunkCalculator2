@@ -548,7 +548,7 @@ namespace jc {
                     std::cout << " (" << sig.refs.size() << " refs)";
                     for (const auto& ref : sig.refs) {
                         std::string typeName = (ref.sourceType == 1) ? "global" : ((ref.sourceType == 2) ? "local" : ((ref.sourceType == 3) ? "upvalue" : "refparam"));
-                        std::cout << "\n         |                 arg " << static_cast<int>(ref.argIndex)
+                        std::cout << "\n         |                  arg " << static_cast<int>(ref.argIndex)
                             << " -> " << typeName << " " << ref.sourceRef;
                     }
                 }

@@ -925,7 +925,10 @@ namespace jc {
                     break;
                 }
             }
-            if (!foundDef) mayHaveRef = true;
+            if (!foundDef) {
+                if (isBuiltin) mayHaveRef = false; // ★ 内置函数明确没有引用参数，消除保守策略带来的冗余指令
+                else mayHaveRef = true;
+            }
         }
 
         std::vector<ArgSource> sources;

@@ -508,21 +508,13 @@ namespace jc {
         int existingSlot = resolveLocal(name);
         if (existingSlot != -1 && current().locals[existingSlot].isConst) {
             if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
-                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                emit(OpCode::OP_CONSTANT, lastLine);
-                emit16(msgIdx, lastLine);
-                emit(OpCode::OP_THROW, lastLine);
-                return;
+                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
             }
         }
         auto capIt = current().captures.find(name);
         if (capIt != current().captures.end() && capIt->second.isConst) {
             if (!expr->isLocal) {
-                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                emit(OpCode::OP_CONSTANT, lastLine);
-                emit16(msgIdx, lastLine);
-                emit(OpCode::OP_THROW, lastLine);
-                return;
+                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
             }
         }
 
@@ -1365,21 +1357,13 @@ namespace jc {
             int existingSlot = resolveLocal(name);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                 if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
-                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                    emit(OpCode::OP_CONSTANT, lastLine);
-                    emit16(msgIdx, lastLine);
-                    emit(OpCode::OP_THROW, lastLine);
-                    return;
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                 }
             }
             auto capIt = current().captures.find(name);
             if (capIt != current().captures.end() && capIt->second.isConst) {
                 if (!expr->isLocal) {
-                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                    emit(OpCode::OP_CONSTANT, lastLine);
-                    emit16(msgIdx, lastLine);
-                    emit(OpCode::OP_THROW, lastLine);
-                    return;
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                 }
             }
 
@@ -1696,21 +1680,13 @@ namespace jc {
                 int existingSlot = resolveLocal(name);
                 if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                     if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
-                        uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                        emit(OpCode::OP_CONSTANT, lastLine);
-                        emit16(msgIdx, lastLine);
-                        emit(OpCode::OP_THROW, lastLine);
-                        continue;
+                        throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                     }
                 }
                 auto capIt = current().captures.find(name);
                 if (capIt != current().captures.end() && capIt->second.isConst) {
                     if (mod != ScopeModifier::Local) {
-                        uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                        emit(OpCode::OP_CONSTANT, lastLine);
-                        emit16(msgIdx, lastLine);
-                        emit(OpCode::OP_THROW, lastLine);
-                        continue;
+                        throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                     }
                 }
                 if (stateStack.size() == 1) knownGlobals.insert(name);
@@ -1748,19 +1724,13 @@ namespace jc {
             int existingSlot = resolveLocal(varName);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                 if (!expr->isLocal || current().locals[existingSlot].depth == current().scopeDepth) {
-                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + varName + "'.");
-                    emit(OpCode::OP_CONSTANT, lastLine);
-                    emit16(msgIdx, lastLine);
-                    emit(OpCode::OP_THROW, lastLine);
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + varName + "'.");
                 }
             }
             auto capIt = current().captures.find(varName);
             if (capIt != current().captures.end() && capIt->second.isConst) {
                 if (!expr->isLocal) {
-                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + varName + "'.");
-                    emit(OpCode::OP_CONSTANT, lastLine);
-                    emit16(msgIdx, lastLine);
-                    emit(OpCode::OP_THROW, lastLine);
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + varName + "'.");
                 }
             }
             
@@ -1903,19 +1873,11 @@ namespace jc {
         if (!expr->hasObjectExpr()) {
             int existingSlot = resolveLocal(expr->name.lexeme);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
-                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + expr->name.lexeme + "'.");
-                emit(OpCode::OP_CONSTANT, lastLine);
-                emit16(msgIdx, lastLine);
-                emit(OpCode::OP_THROW, lastLine);
-                return;
+                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + expr->name.lexeme + "'.");
             }
             auto capIt = current().captures.find(expr->name.lexeme);
             if (capIt != current().captures.end() && capIt->second.isConst) {
-                uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + expr->name.lexeme + "'.");
-                emit(OpCode::OP_CONSTANT, lastLine);
-                emit16(msgIdx, lastLine);
-                emit(OpCode::OP_THROW, lastLine);
-                return;
+                throw std::runtime_error("Compiler Error: Cannot modify const variable '" + expr->name.lexeme + "'.");
             }
         }
 
@@ -2871,21 +2833,13 @@ namespace jc {
             int existingSlot = resolveLocal(name);
             if (existingSlot != -1 && current().locals[existingSlot].isConst) {
                 if (mod != ScopeModifier::Local || current().locals[existingSlot].depth == current().scopeDepth) {
-                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                    emit(OpCode::OP_CONSTANT, lastLine);
-                    emit16(msgIdx, lastLine);
-                    emit(OpCode::OP_THROW, lastLine);
-                    continue;
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                 }
             }
             auto capIt = current().captures.find(name);
             if (capIt != current().captures.end() && capIt->second.isConst) {
                 if (mod != ScopeModifier::Local) {
-                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + name + "'.");
-                    emit(OpCode::OP_CONSTANT, lastLine);
-                    emit16(msgIdx, lastLine);
-                    emit(OpCode::OP_THROW, lastLine);
-                    continue;
+                    throw std::runtime_error("Compiler Error: Cannot modify const variable '" + name + "'.");
                 }
             }
             if (stateStack.size() == 1) knownGlobals.insert(name);
@@ -2999,11 +2953,7 @@ namespace jc {
 
         int existingSlot = resolveLocal(expr->catchName.lexeme);
         if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].depth == current().scopeDepth) {
-            uint16_t msgIdx = identifierConstant("Runtime Error: Cannot modify const variable '" + expr->catchName.lexeme + "'.");
-            emit(OpCode::OP_CONSTANT, lastLine);
-            emit16(msgIdx, lastLine);
-            emit(OpCode::OP_THROW, lastLine);
-            return;
+            throw std::runtime_error("Compiler Error: Cannot modify const variable '" + expr->catchName.lexeme + "'.");
         }
 
         if (stateStack.size() == 1) knownGlobals.insert(expr->catchName.lexeme);
@@ -3159,11 +3109,7 @@ namespace jc {
             
             if (slot != -1) {
                 if (current().locals[slot].isConst) {
-                    uint16_t msgIdx = identifierConstant("Runtime Error: Cannot delete const variable '" + name + "'.");
-                    emit(OpCode::OP_CONSTANT, lastLine);
-                    emit16(msgIdx, lastLine);
-                    emit(OpCode::OP_THROW, lastLine);
-                    continue;
+                    throw std::runtime_error("Compiler Error: Cannot delete const variable '" + name + "'.");
                 }
                 emit(OpCode::OP_NONE, lastLine);
                 if (current().locals[slot].isRefParam) {
@@ -3179,11 +3125,7 @@ namespace jc {
                 if (upvalue != -1) {
                     auto capIt = current().captures.find(name);
                     if (capIt != current().captures.end() && capIt->second.isConst) {
-                        uint16_t msgIdx = identifierConstant("Runtime Error: Cannot delete const variable '" + name + "'.");
-                        emit(OpCode::OP_CONSTANT, lastLine);
-                        emit16(msgIdx, lastLine);
-                        emit(OpCode::OP_THROW, lastLine);
-                        continue;
+                        throw std::runtime_error("Compiler Error: Cannot delete const variable '" + name + "'.");
                     }
                     emit(OpCode::OP_NONE, lastLine);
                     emit(OpCode::OP_SET_UPVALUE, lastLine);

@@ -34,7 +34,8 @@ namespace jc {
         Value* stackLimit = nullptr;
         static constexpr int MAX_STACK = 65536;
 
-        std::unordered_map<std::string, Value> globals;
+        std::vector<Value> globalValues;
+        std::unordered_map<std::string, uint16_t> globalNamesToSlots;
         std::unordered_map<std::string, NativeCallable> nativeBuiltins;
         std::unordered_map<std::string, Value> builtinClosures;    // ★ 新增：内置函数闭包缓存
         std::unordered_set<std::string> constGlobals;              // ★ 新增：const 变量追踪
@@ -189,22 +190,40 @@ namespace jc {
 
         Value execute(const Chunk& mainChunk);
 
-        const std::unordered_map<std::string, Value>& getGlobals() const { return globals; }
+        std::unordered_map<std::string, Value> getGlobals() const {
+            std::unordered_map<std::string, Value> res;
+            for (const auto& [k, v] : globalNamesToSlots) res[k] = globalValues[v];
+            return res;
+        }
+        void clearAllGlobalICs() {
+            for (auto& fn : compiledFunctions) {
+                for (auto& ic : fn->chunk.inlineCaches) {
+                    ic.cachedGlobalSlot = -1;
+                }
+            }
+        }
         void clearGlobals() {
-            globals.clear();
+            globalValues.clear();
+            globalNamesToSlots.clear();
             constGlobals.clear();
             importedModules.clear(); // ★ 核心修复：彻底粉碎模块导入的防环缓存！
             loadedModules.clear();
             openUpvalues.clear();
+            clearAllGlobalICs();
             // ★ 贴心修复：清理全局变量后，自动把系统必不可少的基础常量重新注入环境
-            globals["PI"] = Value(3.14159265358979323846);
-            globals["E"] = Value(2.71828182845904523536);
-            globals["i"] = Value(Complex(0.0, 1.0));
-            globals["I"] = Value(Complex(0.0, 1.0));
+            setGlobal("PI", Value(3.14159265358979323846));
+            setGlobal("E", Value(2.71828182845904523536));
+            setGlobal("i", Value(Complex(0.0, 1.0)));
+            setGlobal("I", Value(Complex(0.0, 1.0)));
         }
         void removeGlobal(const std::string& name) {
-            globals.erase(name);
+            auto it = globalNamesToSlots.find(name);
+            if (it != globalNamesToSlots.end()) {
+                globalValues[it->second] = Value::none();
+                globalNamesToSlots.erase(it);
+            }
             constGlobals.erase(name);
+            clearAllGlobalICs();
         }
 
         void triggerDebugger() {

@@ -257,9 +257,9 @@ namespace jc {
             size_t dotPos = typeStr.find('.');
             if (dotPos != std::string::npos) {
                 std::string currentName = typeStr.substr(0, dotPos);
-                auto it = globals.find(currentName);
-                if (it != globals.end()) {
-                    Value currentVal = it->second;
+                auto it = globalNamesToSlots.find(currentName);
+                if (it != globalNamesToSlots.end()) {
+                    Value currentVal = globalValues[it->second];
                     size_t start = dotPos + 1;
                     while (start < typeStr.size()) {
                         size_t nextDot = typeStr.find('.', start);
@@ -285,8 +285,8 @@ namespace jc {
                     typeVal = currentVal;
                 }
             } else {
-                auto it = globals.find(typeStr);
-                if (it != globals.end()) typeVal = it->second;
+                auto it = globalNamesToSlots.find(typeStr);
+                if (it != globalNamesToSlots.end()) typeVal = globalValues[it->second];
             }
 
             // 如果找到了真实的类对象，进行严格的指针比对！
@@ -396,14 +396,16 @@ namespace jc {
                 return frames[frameCount - 1].classContext;
             }
             // 3. 最后才是普通的全局变量
-            auto it = globals.find(name);
-            return it != globals.end() ? it->second : Value::none();
+            auto it = globalNamesToSlots.find(name);
+            return it != globalNamesToSlots.end() ? globalValues[it->second] : Value::none();
             };
 
-        globals["PI"] = Value(3.14159265358979323846);
-        globals["E"] = Value(2.71828182845904523536);
-        globals["i"] = Value(Complex(0.0, 1.0));
-        globals["I"] = Value(Complex(0.0, 1.0));
+        globalValues.reserve(65536);
+
+        setGlobal("PI", Value(3.14159265358979323846));
+        setGlobal("E", Value(2.71828182845904523536));
+        setGlobal("i", Value(Complex(0.0, 1.0)));
+        setGlobal("I", Value(Complex(0.0, 1.0)));
 
         registerBuiltin("__vm_delete__", [this](const std::vector<Value>& args) -> Value {
             if (args.size() != 1 || !args[0].isString())
@@ -412,11 +414,13 @@ namespace jc {
 
             // ★ 允许删除所有变量（包括 const 和系统常量）
             // 用户可通过 resetConst() 或 pi() 等函数恢复
-            auto it = globals.find(name);
-            if (it == globals.end())
+            auto it = globalNamesToSlots.find(name);
+            if (it == globalNamesToSlots.end())
                 throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
-            globals.erase(it);
+            globalValues[it->second] = Value::none();
+            globalNamesToSlots.erase(it);
             constGlobals.erase(name);  // 同步清除 const 标记
+            clearAllGlobalICs();
             
             return Value::none();
             }, { 1 });
@@ -470,7 +474,14 @@ namespace jc {
     }
 
     void VM::setGlobal(const std::string& name, const Value& val) {
-        globals[name] = val;
+        auto it = globalNamesToSlots.find(name);
+        if (it != globalNamesToSlots.end()) {
+            globalValues[it->second] = val;
+        } else {
+            if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
+            globalNamesToSlots[name] = static_cast<uint16_t>(globalValues.size());
+            globalValues.push_back(val);
+        }
     }
 
     Value VM::execute(const Chunk& c) {
@@ -997,8 +1008,14 @@ namespace jc {
                 }
 
                 case OpCode::OP_GET_GLOBAL: {
-                    uint16_t idx = readShort();
-                    const std::string& name = chunk->constants[idx].asString();
+                    uint16_t icIdx = readShort();
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+                    if (ic.cachedGlobalSlot != -1) {
+                        push(globalValues[ic.cachedGlobalSlot]);
+                        break;
+                    }
+                    uint16_t nameIdx = ic.nameIdx;
+                    const std::string& name = chunk->constants[nameIdx].asString();
 
                     // ★ 虚拟机级别拦截：遇到 '__class__'，直接去它该在的物理寄存器里拿！
                     if (name == "__class__") {
@@ -1007,9 +1024,10 @@ namespace jc {
                         break;
                     }
 
-                    auto it = globals.find(name);
-                    if (it != globals.end()) {
-                        push(it->second);
+                    auto it = globalNamesToSlots.find(name);
+                    if (it != globalNamesToSlots.end()) {
+                        ic.cachedGlobalSlot = it->second;
+                        push(globalValues[it->second]);
                     }
                     else {
                         Value builtinVal = getBuiltinClosure(name);
@@ -1024,8 +1042,10 @@ namespace jc {
                 }
                 case OpCode::OP_SET_GLOBAL:
                 case OpCode::OP_SET_GLOBAL_REF: {
-                    uint16_t idx = readShort();
-                    const std::string& name = chunk->constants[idx].asString();
+                    uint16_t icIdx = readShort();
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+                    uint16_t nameIdx = ic.nameIdx;
+                    const std::string& name = chunk->constants[nameIdx].asString();
 
                     // ★ 关键字保护：绝不许改写上下文关键字 !
                     if (name == "__class__")
@@ -1035,7 +1055,7 @@ namespace jc {
                         throw std::runtime_error("Runtime Error: Cannot modify const variable '" + name + "'.");
 
                     if (op == OpCode::OP_SET_GLOBAL_REF) {
-                        if (globals.find(name) == globals.end() && nativeBuiltins.find(name) == nativeBuiltins.end()) {
+                        if (globalNamesToSlots.find(name) == globalNamesToSlots.end() && nativeBuiltins.find(name) == nativeBuiltins.end()) {
                             throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
                         }
                     }
@@ -1067,16 +1087,45 @@ namespace jc {
                         }
                     }
 
-                    globals[name] = peek(0);
+                    if (ic.cachedGlobalSlot != -1) {
+                        globalValues[ic.cachedGlobalSlot] = val;
+                    } else {
+                        auto it = globalNamesToSlots.find(name);
+                        if (it != globalNamesToSlots.end()) {
+                            ic.cachedGlobalSlot = it->second;
+                            globalValues[it->second] = val;
+                        } else {
+                            if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
+                            ic.cachedGlobalSlot = static_cast<int>(globalValues.size());
+                            globalNamesToSlots[name] = ic.cachedGlobalSlot;
+                            globalValues.push_back(val);
+                        }
+                    }
                     break;
                 }
                 case OpCode::OP_DEFINE_CONST_GLOBAL: {
-                    uint16_t idx = readShort();
-                    const std::string& name = chunk->constants[idx].asString();
+                    uint16_t icIdx = readShort();
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+                    uint16_t nameIdx = ic.nameIdx;
+                    const std::string& name = chunk->constants[nameIdx].asString();
                     if (constGlobals.count(name)) {
                         throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
                     }
-                    globals[name] = peek(0);
+                    
+                    if (ic.cachedGlobalSlot != -1) {
+                        globalValues[ic.cachedGlobalSlot] = peek(0);
+                    } else {
+                        auto it = globalNamesToSlots.find(name);
+                        if (it != globalNamesToSlots.end()) {
+                            ic.cachedGlobalSlot = it->second;
+                            globalValues[it->second] = peek(0);
+                        } else {
+                            if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
+                            ic.cachedGlobalSlot = static_cast<int>(globalValues.size());
+                            globalNamesToSlots[name] = ic.cachedGlobalSlot;
+                            globalValues.push_back(peek(0));
+                        }
+                    }
                     constGlobals.insert(name);
                     break;
                 }
@@ -1168,9 +1217,9 @@ namespace jc {
                                 auto dummy = std::make_shared<UpVal>();
                                 if (uv.isGlobal) {
                                     if (!uv.isExplicitState) {
-                                        auto it = globals.find(uv.name);
-                                        if (it != globals.end()) {
-                                            dummy->closed = it->second;
+                                        auto it = globalNamesToSlots.find(uv.name);
+                                        if (it != globalNamesToSlots.end()) {
+                                            dummy->closed = globalValues[it->second];
                                         } else {
                                             Value builtinVal = getBuiltinClosure(uv.name);
                                             if (!builtinVal.isNone()) {
@@ -1416,7 +1465,13 @@ namespace jc {
                         case 1: {
                             std::string name = currentChunk().constants[sourceRef].asString();
                             upval = std::make_shared<UpVal>();
-                            upval->location = &globals[name];
+                            auto it = globalNamesToSlots.find(name);
+                            if (it == globalNamesToSlots.end()) {
+                                if (globalValues.size() >= 65535) throw std::runtime_error("VM Error: Too many global variables.");
+                                globalNamesToSlots[name] = static_cast<uint16_t>(globalValues.size());
+                                globalValues.push_back(Value::none());
+                            }
+                            upval->location = &globalValues[globalNamesToSlots[name]];
                             break;
                         }
                         case 2: {
@@ -2421,13 +2476,13 @@ namespace jc {
                             result = Value(bound);
                             found = true;
                         } else {
-                            auto gIt = globals.find(field);
-                            if (gIt != globals.end() && gIt->second.isFunctionClosure()) {
+                            auto gIt = globalNamesToSlots.find(field);
+                            if (gIt != globalNamesToSlots.end() && globalValues[gIt->second].isFunctionClosure()) {
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
                                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );
                                 bound->boundSelf = obj;
-                                ObjClosure* targetFn = gIt->second.asFunction();
+                                ObjClosure* targetFn = globalValues[gIt->second].asFunction();
                             
                                 if (targetFn->isBytecode()) {
                                     bound->compiledFnIndex = targetFn->compiledFnIndex;
@@ -2702,9 +2757,9 @@ namespace jc {
                 size_t vs = varName.find_first_not_of(" \t");
                 if (vs != std::string::npos) varName = varName.substr(vs);
                 // 探查全局变量
-                auto it = globals.find(varName);
-                if (it != globals.end()) {
-                    std::cout << varName << " = " << it->second << "\n";
+                auto it = globalNamesToSlots.find(varName);
+                if (it != globalNamesToSlots.end()) {
+                    std::cout << varName << " = " << globalValues[it->second] << "\n";
                 }
                 else {
                     std::cout << "Variable '" << varName << "' not found in global scope.\n";
@@ -2882,7 +2937,7 @@ namespace jc {
         // ═══ Phase 1: MARK ═══
 
         // 根集合 1: 全局变量
-        for (const auto& [name, val] : globals)
+        for (const auto& val : globalValues)
             markValue(val);
 
         // 根集合 1.5: 已加载的模块缓存
@@ -2953,7 +3008,7 @@ namespace jc {
     }
 
     int VM::runGC() {
-        for (const auto& [name, val] : globals)  markValue(val);
+        for (const auto& val : globalValues)  markValue(val);
         for (const auto& [name, val] : loadedModules) markValue(val);
         for (const auto& [name, val] : builtinClosures) markValue(val);
         for (Value* p = stack; p < stackTop; ++p) markValue(*p);
@@ -3102,9 +3157,9 @@ namespace jc {
                 }
             }
 
-            auto it = globals.find(tag);
-            if (it != globals.end()) {
-                callee = it->second;
+            auto it = globalNamesToSlots.find(tag);
+            if (it != globalNamesToSlots.end()) {
+                callee = globalValues[it->second];
                 stack[getStackSize() - 1 - argc] = callee;
             }
             else {
@@ -5177,10 +5232,10 @@ namespace jc {
                 push(result);
                 return;
             }
-            auto gIt = globals.find(methodName);
-            if (gIt != globals.end() && gIt->second.isFunctionClosure()) {
+            auto gIt = globalNamesToSlots.find(methodName);
+            if (gIt != globalNamesToSlots.end() && globalValues[gIt->second].isFunctionClosure()) {
                 if (static_cast<int>(getStackSize()) >= MAX_STACK) throw std::runtime_error("VM Error: Stack overflow.");
-                insertStack(argc + 1, gIt->second); // ★ FIX: 插入点上方有 argc + 1 个元素 (obj + args)
+                insertStack(argc + 1, globalValues[gIt->second]); // ★ FIX: 插入点上方有 argc + 1 个元素 (obj + args)
                 for (auto& pr : pendingCallRefs) pr.first += 1; // ★ UFCS 引用参数索引右移
                 execCall(argc + 1);
                 return;

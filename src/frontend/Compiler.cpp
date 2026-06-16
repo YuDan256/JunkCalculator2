@@ -159,7 +159,7 @@ namespace jc {
                     } else {
                         emit(OpCode::OP_SET_GLOBAL, lastLine);
                     }
-                    emit16(nameIdx, lastLine);
+                    emit16(chunk()->addInlineCache(nameIdx), lastLine);
                 }
             }
             return;
@@ -495,7 +495,7 @@ namespace jc {
             else {
                 uint16_t idx = identifierConstant(name);
                 emit(OpCode::OP_GET_GLOBAL, expr->name.line);
-                emit16(idx, expr->name.line);
+                emit16(chunk()->addInlineCache(idx), expr->name.line);
             }
         }
         return;
@@ -639,7 +639,7 @@ namespace jc {
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, expr->name.line);
                 }
-                emit16(idx, expr->name.line);
+                emit16(chunk()->addInlineCache(idx), expr->name.line);
             }
         }
         return;
@@ -1427,7 +1427,7 @@ namespace jc {
                 else {
                     uint16_t idx = identifierConstant(name);
                     emit(OpCode::OP_GET_GLOBAL, lastLine);
-                    emit16(idx, lastLine);
+                    emit16(chunk()->addInlineCache(idx), lastLine);
                 }
             }
 
@@ -1459,7 +1459,7 @@ namespace jc {
                 else {
                     uint16_t idx = identifierConstant(name);
                     emit(OpCode::OP_SET_GLOBAL, lastLine);
-                    emit16(idx, lastLine);
+                    emit16(chunk()->addInlineCache(idx), lastLine);
                 }
             }
             return;
@@ -3026,7 +3026,7 @@ namespace jc {
             } else {
                 emit(OpCode::OP_SET_GLOBAL, lastLine);
             }
-            emit16(nameIdx, lastLine);
+            emit16(chunk()->addInlineCache(nameIdx), lastLine);
         }
         emit(OpCode::OP_POP, lastLine);
 
@@ -3073,7 +3073,7 @@ namespace jc {
         } else {
             uint16_t idx = identifierConstant(name);
             emit(OpCode::OP_GET_GLOBAL, lastLine);
-            emit16(idx, lastLine);
+            emit16(chunk()->addInlineCache(idx), lastLine);
         }
         return;
     }
@@ -3094,7 +3094,7 @@ namespace jc {
         } else {
             uint16_t idx = identifierConstant(name);
             emit(OpCode::OP_GET_GLOBAL, lastLine);
-            emit16(idx, lastLine);
+            emit16(chunk()->addInlineCache(idx), lastLine);
         }
         return;
     }
@@ -3135,7 +3135,7 @@ namespace jc {
         } else {
             uint16_t idx = identifierConstant(name);
             emit(OpCode::OP_GET_GLOBAL, lastLine);
-            emit16(idx, lastLine);
+            emit16(chunk()->addInlineCache(idx), lastLine);
         }
 
         int slot = resolveLocal(name);
@@ -3292,7 +3292,7 @@ namespace jc {
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, lastLine);
                 }
-                emit16(nameIdx, lastLine);
+                emit16(chunk()->addInlineCache(nameIdx), lastLine);
             }
         }
 
@@ -3327,7 +3327,7 @@ namespace jc {
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, lastLine); 
                 }
-                emit16(nameIdx, lastLine); 
+                emit16(chunk()->addInlineCache(nameIdx), lastLine); 
             }
         }
 
@@ -3337,7 +3337,7 @@ namespace jc {
             else {
                 int upvalue = resolveUpvalue(className);
                 if (upvalue != -1) { emit(OpCode::OP_GET_UPVALUE, lastLine); emit16(static_cast<uint16_t>(upvalue), lastLine); }
-                else { emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(nameIdx, lastLine); }
+                else { emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(chunk()->addInlineCache(nameIdx), lastLine); }
             }
             };
 

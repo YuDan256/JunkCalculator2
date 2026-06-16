@@ -47,10 +47,10 @@ namespace jc {
         OP_GREATER_EQUAL,
 
         // 全局变量
-        OP_GET_GLOBAL,      // [name_idx:16bit]
-        OP_SET_GLOBAL,      // [name_idx:16bit]
-        OP_SET_GLOBAL_REF,  // [name_idx:16bit] ★ 新增
-        OP_DEFINE_CONST_GLOBAL, // [name_idx:16bit]
+        OP_GET_GLOBAL,      // [ic_idx:16bit]
+        OP_SET_GLOBAL,      // [ic_idx:16bit]
+        OP_SET_GLOBAL_REF,  // [ic_idx:16bit]
+        OP_DEFINE_CONST_GLOBAL, // [ic_idx:16bit]
         OP_IS_UNINIT,       // 检查栈顶是否为 UNINIT，返回 bool
 
         // 局部变量
@@ -246,6 +246,7 @@ namespace jc {
         ObjClass* cachedClass = nullptr;
         ObjClosure* cachedMethod = nullptr;
         int cachedFieldIndex = -1;
+        int cachedGlobalSlot = -1;
     };
 
     struct ShapePattern {
@@ -459,10 +460,6 @@ namespace jc {
             // 格式 2: 1 个 uint16_t 常量池引用 (3 字节)
             // ============================================
             case OpCode::OP_CONSTANT:
-            case OpCode::OP_GET_GLOBAL:
-            case OpCode::OP_SET_GLOBAL:
-            case OpCode::OP_SET_GLOBAL_REF:
-            case OpCode::OP_DEFINE_CONST_GLOBAL:
             case OpCode::OP_CLASS:
             case OpCode::OP_METHOD:
             case OpCode::OP_GET_SUPER: 
@@ -492,6 +489,10 @@ namespace jc {
                 return offset + 3;
             }
 
+            case OpCode::OP_GET_GLOBAL:
+            case OpCode::OP_SET_GLOBAL:
+            case OpCode::OP_SET_GLOBAL_REF:
+            case OpCode::OP_DEFINE_CONST_GLOBAL:
             case OpCode::OP_GET_PROPERTY:
             case OpCode::OP_TRY_GET_PROPERTY:
             case OpCode::OP_SET_PROPERTY: {

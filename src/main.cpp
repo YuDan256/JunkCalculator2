@@ -598,6 +598,14 @@ int main(int argc, char* argv[]) {
             }
             if (input.substr(0, 6) == "/save ") { saveWorkspace(input.substr(6)); continue; }
             if (input.substr(0, 6) == "/load ") { loadWorkspace(input.substr(6)); continue; }
+            if (input.substr(0, 8) == "/delete ") {
+                std::string varName = input.substr(8);
+                size_t s = varName.find_first_not_of(" \t");
+                if (s != std::string::npos) varName = varName.substr(s);
+                vm.removeGlobal(varName);
+                std::cout << "Variable '" << varName << "' forcefully deleted.\n";
+                continue;
+            }
             if (input == "/about") {
                 std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "===========================================================\n"
                           << jc::col(jc::Ansi::BOLD) << jc::col(jc::Ansi::WHITE) 

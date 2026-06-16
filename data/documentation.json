@@ -8,6 +8,7 @@
       "    /help                  Show this overview",
       "    /help <topic>          Dive into a specific topic (see list below)",
       "    /clear                 Wipe all user-defined variables",
+      "    /delete <var>          Forcefully delete a specific variable (even const)",
       "    /cls                   Clear the console screen and reprint banner",
       "    /exit | /quit          Leave the calculator",
       "    /version               Show current version",
@@ -361,14 +362,14 @@
       "",
       "  Built-in Constants & Constant Factory Functions",
       "  ──────────────────────",
-      "    PI          3.14159265358979…        (overridable, deletable)",
-      "    E           2.71828182845904…        (overridable, deletable)",
-      "    i  /  I     Imaginary unit (i² = −1) (overridable, deletable)",
+      "    PI          3.14159265358979…        (ordinary global, overridable, deletable)",
+      "    E           2.71828182845904…        (ordinary global, overridable, deletable)",
+      "    i  /  I     Imaginary unit (i² = −1) (ordinary global, overridable, deletable)",
       "    true / false                          (keywords, act as 1.0 and 0.0 in math)",
       "    none        None value                (keyword, immutable)",
       "",
-      "    PI, E, i, I are ordinary global variables — you CAN overwrite or delete",
-      "    them. To restore them, use any of:",
+      "    Note: PI, E, i, I are intentionally NOT declared as `const`. They are ordinary",
+      "    global variables — you CAN overwrite or delete them. To restore them, use any of:",
       "      resetConst()      Restores all 4: PI, E, i, I",
       "      PI = pi()         Restore individually via factory function",
       "      E = e()",
@@ -1537,7 +1538,8 @@
       "",
       "  Constants & Built-ins",
       "  ──────────────────────",
-      "    • const: `const G = 9.81`. Cannot reassign, but can `delete`.",
+      "    • const: `const G = 9.81`. Strictly immutable. Cannot be reassigned AND",
+      "      cannot be deleted using the `delete` keyword.",
       "      Can be combined with scope modifiers:",
       "        `const local x = 1` : Block-scoped constant.",
       "        `const ref x`       : Read-only view of an outer variable.",
@@ -1552,7 +1554,7 @@
       "    Entity            Overwrite?   Delete?    Recover?",
       "    ─────────────────────────────────────────────────────────",
       "    User variable     ✓            ✓          —",
-      "    const variable    ✗            ✓          —",
+      "    const variable    ✗            ✗          —",
       "    System constant   ✓            ✓          resetConst() / pi()",
       "    Built-in func     overload*    user only  automatic",
       "    ",
@@ -6605,22 +6607,24 @@
     "const": {
       "signature": "const name = expr",
       "desc": [
-        "Declares an immutable constant. Any attempt to reassign the variable",
-        "will throw a runtime error. Can still be removed with `delete`.",
+        "Declares a strictly immutable constant. Any attempt to reassign or",
+        "delete the variable using the `delete` keyword will throw a runtime error.",
         "Constants declared inside functions or namespaces are locally scoped.",
+        "Note: In the REPL, you can forcefully wipe a const using the `/delete` command.",
         "See also: /help scope"
       ],
       "examples": [
         "const G = 9.81",
         "G = 10             // ✗ Error: Cannot modify const",
-        "delete G           // ✓ Permitted"
+        "delete G           // ✗ Error: Cannot delete const"
       ]
     },
     "delete": {
       "signature": "delete variable",
       "desc": [
-        "Removes a variable from the global scope entirely.",
-        "Works on any variable, including `const` and system constants.",
+        "Removes a variable from the current scope entirely.",
+        "Works on ordinary variables and system constants (like PI, E).",
+        "Cannot be used to delete variables declared with `const`.",
         "For user function overloads, removes only the user-defined overload.",
         "See also: /help scope"
       ],

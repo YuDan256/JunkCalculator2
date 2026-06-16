@@ -1403,12 +1403,13 @@ namespace jc {
                 }
 
                 case OpCode::OP_PASS_REFS: {
-                    uint8_t count = readByte();
+                    uint16_t sigIdx = readShort();
+                    const auto& sig = chunk->callSignatures[sigIdx];
                     pendingCallRefs.clear();
-                    for (int k = 0; k < count; ++k) {
-                        uint8_t argIndex = readByte();
-                        uint8_t sourceType = readByte();
-                        uint16_t sourceRef = readShort();
+                    for (const auto& ref : sig.refs) {
+                        uint8_t argIndex = ref.argIndex;
+                        uint8_t sourceType = ref.sourceType;
+                        uint16_t sourceRef = ref.sourceRef;
 
                         std::shared_ptr<UpVal> upval = nullptr;
                         switch (sourceType) {

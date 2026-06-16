@@ -146,7 +146,7 @@ namespace jc {
         OP_SLICE_SET,
         OP_GET_REF_PARAM,   // [idx:16bit] ★ 新增
         OP_SET_REF_PARAM,   // [idx:16bit] ★ 新增
-        OP_PASS_REFS,       // [count:8bit, (argIdx:8bit, type:8bit, ref:16bit)...] ★ 新增
+        OP_PASS_REFS,       // [sig_idx:16bit] ★ 新增
 
         OP_ASSERT_PARAM_TYPE,   // 参数断言：[type_idx:16bit, name_idx:16bit]
         OP_ASSERT_RETURN_TYPE,  // 返回值断言：[type_idx:16bit]
@@ -275,6 +275,16 @@ namespace jc {
         std::vector<uint16_t> rowCols;
     };
 
+    struct ArgSource {
+        uint8_t argIndex;
+        uint8_t sourceType;
+        uint16_t sourceRef;
+    };
+
+    struct CallSignature {
+        std::vector<ArgSource> refs;
+    };
+
     // ═══════════════════════════════════════════
     // 字节码块 (Chunk)
     // 存储一段编译后的字节码 + 常量池 + 行号信息
@@ -287,6 +297,7 @@ namespace jc {
         std::vector<InlineCache> inlineCaches; // ★ 内联缓存池
         std::vector<ShapePattern> shapePatterns; // ★ 形状匹配模式池
         std::vector<MatrixShape> matrixShapes;   // ★ 矩阵形状池
+        std::vector<CallSignature> callSignatures; // ★ 调用签名池
 
         // ── 写入接口 ──
 
@@ -344,6 +355,12 @@ namespace jc {
             matrixShapes.push_back({rows, rowCols});
             if (matrixShapes.size() > 65535) throw std::runtime_error("Compiler Error: Too many matrix shapes.");
             return static_cast<uint16_t>(matrixShapes.size() - 1);
+        }
+
+        uint16_t addCallSignature(const std::vector<ArgSource>& refs) {
+            callSignatures.push_back({refs});
+            if (callSignatures.size() > 65535) throw std::runtime_error("Compiler Error: Too many call signatures.");
+            return static_cast<uint16_t>(callSignatures.size() - 1);
         }
 
         // 生成跳转指令，返回需要回填的偏移位置
@@ -523,6 +540,21 @@ namespace jc {
                 std::cout << "idx " << idx << std::endl;
                 return offset + 3;
             }
+            case OpCode::OP_PASS_REFS: {
+                uint16_t idx = read16(offset + 1);
+                std::cout << "sig_idx:" << idx;
+                if (idx < callSignatures.size()) {
+                    const auto& sig = callSignatures[idx];
+                    std::cout << " (" << sig.refs.size() << " refs)";
+                    for (const auto& ref : sig.refs) {
+                        std::string typeName = (ref.sourceType == 1) ? "global" : ((ref.sourceType == 2) ? "local" : ((ref.sourceType == 3) ? "upvalue" : "refparam"));
+                        std::cout << "\n         |                 arg " << static_cast<int>(ref.argIndex)
+                            << " -> " << typeName << " " << ref.sourceRef;
+                    }
+                }
+                std::cout << std::endl;
+                return offset + 3;
+            }
             case OpCode::OP_JUMP:
             case OpCode::OP_JUMP_IF_FALSE:
             case OpCode::OP_JUMP_IF_TRUE:
@@ -620,27 +652,6 @@ namespace jc {
                 uint16_t nameIdx = read16(offset + 3);
                 std::cout << "typeConst: " << typeIdx << ", nameConst: " << nameIdx << std::endl;
                 return offset + 5;
-            }
-
-            // ============================================
-            // 格式 6: 变长复合参数
-            // ============================================
-            case OpCode::OP_PASS_REFS: {
-                uint8_t count = code[offset + 1];
-                std::cout << static_cast<int>(count) << " source(s)" << std::endl;
-                int pos = offset + 2;
-                for (int k = 0; k < count; ++k) {
-                    uint8_t argIdx = code[pos];
-                    uint8_t srcType = code[pos + 1];
-                    uint16_t srcRef = static_cast<uint16_t>((code[pos + 2] << 8) | code[pos + 3]);
-                    std::string typeName = (srcType == 1) ? "global" : ((srcType == 2) ? "local" : ((srcType == 3) ? "upvalue" : "refparam"));
-
-                    // 绘制下划线树形结构，方便透视查看
-                    std::cout << "         |                 arg " << static_cast<int>(argIdx)
-                        << " -> " << typeName << " " << srcRef << std::endl;
-                    pos += 4;
-                }
-                return pos;
             }
 
             default:

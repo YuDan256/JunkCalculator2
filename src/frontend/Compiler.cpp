@@ -928,7 +928,6 @@ namespace jc {
             if (!foundDef) mayHaveRef = true;
         }
 
-        struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
         std::vector<ArgSource> sources;
 
         if (mayHaveRef) {
@@ -959,13 +958,9 @@ namespace jc {
         bool actualTailCall = inTailPosition;
 
         if (!sources.empty()) {
+            uint16_t sigIdx = chunk()->addCallSignature(sources);
             emit(OpCode::OP_PASS_REFS, expr->callee.line);
-            emit(static_cast<uint8_t>(sources.size()), expr->callee.line);
-            for (auto& s : sources) {
-                emit(s.argIndex, expr->callee.line);
-                emit(s.sourceType, expr->callee.line);
-                emit16(s.sourceRef, expr->callee.line);
-            }
+            emit16(sigIdx, expr->callee.line);
         }
 
         if (actualTailCall) {
@@ -2165,7 +2160,6 @@ namespace jc {
             if (dynamic_cast<Variable*>(argExpr.get())) { hasVariableArgs = true; break; }
         }
 
-        struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
         std::vector<ArgSource> sources;
 
         if (hasVariableArgs) {
@@ -2191,9 +2185,9 @@ namespace jc {
         bool actualTailCall = inTailPosition;
 
         if (!sources.empty()) {
+            uint16_t sigIdx = chunk()->addCallSignature(sources);
             emit(OpCode::OP_PASS_REFS, lastLine);
-            emit(static_cast<uint8_t>(sources.size()), lastLine);
-            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
+            emit16(sigIdx, lastLine);
         }
 
         if (actualTailCall) {
@@ -3473,7 +3467,6 @@ namespace jc {
                 if (dynamic_cast<Variable*>(argExpr.get())) { hasVariableArgs = true; break; }
             }
 
-            struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
             std::vector<ArgSource> sources;
 
             if (hasVariableArgs) {
@@ -3499,9 +3492,9 @@ namespace jc {
             bool actualTailCall = inTailPosition;
 
             if (!sources.empty()) {
+                uint16_t sigIdx = chunk()->addCallSignature(sources);
                 emit(OpCode::OP_PASS_REFS, lastLine);
-                emit(static_cast<uint8_t>(sources.size()), lastLine);
-                for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
+                emit16(sigIdx, lastLine);
             }
 
             if (actualTailCall) {
@@ -3526,7 +3519,6 @@ namespace jc {
             if (dynamic_cast<Variable*>(argExpr.get())) { hasVariableArgs = true; break; }
         }
 
-        struct ArgSource { uint8_t argIndex; uint8_t sourceType; uint16_t sourceRef; };
         std::vector<ArgSource> sources;
 
         if (hasVariableArgs) {
@@ -3552,9 +3544,9 @@ namespace jc {
         bool actualTailCall = inTailPosition;
 
         if (!sources.empty()) {
+            uint16_t sigIdx = chunk()->addCallSignature(sources);
             emit(OpCode::OP_PASS_REFS, lastLine);
-            emit(static_cast<uint8_t>(sources.size()), lastLine);
-            for (auto& s : sources) { emit(s.argIndex, lastLine); emit(s.sourceType, lastLine); emit16(s.sourceRef, lastLine); }
+            emit16(sigIdx, lastLine);
         }
 
         if (actualTailCall) {

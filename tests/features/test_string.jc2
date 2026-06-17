@@ -28,7 +28,7 @@ test_string_methods()
 
 test_string_split_join() = {
     parts = split("a,b,c", ",")
-    assert(parts == ["a", "b", "c"], "split() failed")
+    assert(parts == @["a", "b", "c"], "split() failed")
     
     joined = join(parts, "-")
     assert(joined == "a-b-c", "join() failed")

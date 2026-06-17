@@ -40,7 +40,6 @@ namespace jc {
         size_t lastInstructionStart = std::string::npos;
         size_t lastOpcodeOffset = std::string::npos;
         uint8_t operandCountSinceOpcode = 0;
-        size_t noOptimizeBoundary = 0; // ★ 窥孔优化安全边界
 
         struct CompilerState {
             CompiledFunction* function = nullptr;

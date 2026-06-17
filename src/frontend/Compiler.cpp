@@ -8,37 +8,9 @@ namespace jc {
 
     void Compiler::patchJump(int offset) {
         chunk()->patchJump(offset);
-        noOptimizeBoundary = chunk()->code.size();
     }
 
     void Compiler::emit(OpCode op, int line) {
-        if (op == OpCode::OP_POP) {
-            if (lastInstructionStart != std::string::npos && lastOpcodeOffset != std::string::npos) {
-                if (lastInstructionStart >= noOptimizeBoundary) { // ★ 确保要删除的指令不在跳转目标边界之前
-                    OpCode lastOp = static_cast<OpCode>(chunk()->code[lastOpcodeOffset]);
-                    if (lastOp == OpCode::OP_CONSTANT || lastOp == OpCode::OP_TRUE || 
-                        lastOp == OpCode::OP_FALSE || lastOp == OpCode::OP_NONE || 
-                        lastOp == OpCode::OP_GET_LOCAL) {
-                        
-                        chunk()->code.resize(lastInstructionStart);
-                        chunk()->lines.resize(lastInstructionStart);
-                        lastOpcodeOffset = std::string::npos;
-                        lastInstructionStart = std::string::npos;
-                        return; // ★ 安全的窥孔优化：抵消无副作用的压栈指令
-                    }
-                }
-            }
-        } else if (op == OpCode::OP_RETURN) {
-            if (lastInstructionStart != std::string::npos && lastOpcodeOffset != std::string::npos) {
-                if (lastInstructionStart >= noOptimizeBoundary) {
-                    OpCode lastOp = static_cast<OpCode>(chunk()->code[lastOpcodeOffset]);
-                    if (lastOp == OpCode::OP_RETURN) {
-                        return; // ★ 消除连续的 OP_RETURN
-                    }
-                }
-            }
-        }
-
         lastInstructionStart = chunk()->code.size();
         lastOpcodeOffset = chunk()->code.size();
         operandCountSinceOpcode = 0;
@@ -389,7 +361,6 @@ namespace jc {
 
     void Compiler::beginLoop(int loopStart) {
         loopStack.push_back({ loopStart, {}, {}, current().scopeDepth, current().tryDepth });
-        noOptimizeBoundary = chunk()->code.size();
     }
 
     void Compiler::endLoop() {
@@ -2585,7 +2556,6 @@ namespace jc {
                     int relOffset = catchAddr - baseIp;
                     chunk()->code[catchOffsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
                     chunk()->code[catchOffsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
-                    noOptimizeBoundary = chunk()->code.size();
 
                     emit(OpCode::OP_POP, lastLine); // pop error
                     emit(OpCode::OP_NONE, lastLine); // dummy value
@@ -2826,7 +2796,6 @@ namespace jc {
                         int relOffset = catchAddr - baseIp;
                         chunk()->code[catchOffsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
                         chunk()->code[catchOffsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
-                        noOptimizeBoundary = chunk()->code.size();
 
                         emit(OpCode::OP_POP, lastLine); // pop error
                         emit(OpCode::OP_NONE, lastLine); // dummy value
@@ -3192,7 +3161,6 @@ namespace jc {
         int relOffset = catchAddr - baseIp;
         chunk()->code[offsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
         chunk()->code[offsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
-        noOptimizeBoundary = chunk()->code.size();
 
         int existingSlot = resolveLocal(expr->catchName.lexeme);
         if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].depth == current().scopeDepth) {

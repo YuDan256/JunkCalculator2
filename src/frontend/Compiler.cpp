@@ -7,6 +7,30 @@
 namespace jc {
 
     void Compiler::emit(OpCode op, int line) {
+        if (op == OpCode::OP_POP) {
+            if (lastInstructionStart != std::string::npos && lastOpcodeOffset != std::string::npos) {
+                OpCode lastOp = static_cast<OpCode>(chunk()->code[lastOpcodeOffset]);
+                if (lastOp == OpCode::OP_CONSTANT || lastOp == OpCode::OP_TRUE || 
+                    lastOp == OpCode::OP_FALSE || lastOp == OpCode::OP_NONE || 
+                    lastOp == OpCode::OP_GET_LOCAL) {
+                    
+                    chunk()->code.resize(lastInstructionStart);
+                    chunk()->lines.resize(lastInstructionStart);
+                    lastOpcodeOffset = std::string::npos;
+                    lastInstructionStart = std::string::npos;
+                    return; // ★ 窥孔优化：抵消无副作用的压栈指令
+                }
+            }
+        } else if (op == OpCode::OP_RETURN) {
+            if (lastInstructionStart != std::string::npos && lastOpcodeOffset != std::string::npos) {
+                OpCode lastOp = static_cast<OpCode>(chunk()->code[lastOpcodeOffset]);
+                if (lastOp == OpCode::OP_RETURN) {
+                    return; // ★ 窥孔优化：消除连续的 OP_RETURN
+                }
+            }
+        }
+
+        lastInstructionStart = chunk()->code.size();
         lastOpcodeOffset = chunk()->code.size();
         operandCountSinceOpcode = 0;
         chunk()->write(op, line);

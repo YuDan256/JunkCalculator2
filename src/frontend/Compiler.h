@@ -37,6 +37,7 @@ namespace jc {
 
     class Compiler : public ExprVisitor {
     private:
+        size_t lastInstructionStart = std::string::npos;
         size_t lastOpcodeOffset = std::string::npos;
         uint8_t operandCountSinceOpcode = 0;
 

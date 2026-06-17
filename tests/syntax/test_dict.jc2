@@ -82,11 +82,11 @@ test_computed_keys() = {
 test_computed_keys()
 
 test_destructuring_modifiers() = {
+    y = 0
     f9() = {
         {local x, ref y, const z} = {x: 1, y: 2, z: 3}
         return x + y + z
     }
-    y = 0
     assert(f9() == 6 && y == 2, "Destructuring dict pattern with modifiers failed")
 }
 test_destructuring_modifiers()

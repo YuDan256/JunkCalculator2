@@ -2286,7 +2286,7 @@ namespace jc {
                         helpers::g_scriptDirStack.push_back(scriptDir);
                         Value nsVal;
                         try {
-                            nsVal = callVMFunction(modFnIdx, {});
+                            nsVal = callVMFunction(modFnIdx, nullptr, 0);
                         } catch (...) {
                             helpers::g_scriptDirStack.pop_back();
                             throw;
@@ -3987,7 +3987,8 @@ namespace jc {
                         eraseStack(2); // remove obj, idx. val shifts to peek(0)
                         pop(); // remove val
                         
-                        callVMFunction(setitemMethod->compiledFnIndex, { idx, val }, setitemMethod, Value(inst), Value(inst->classDef));
+                        Value args[2] = { idx, val };
+                        callVMFunction(setitemMethod->compiledFnIndex, args, 2, setitemMethod, Value(inst), Value(inst->classDef));
                         push(val); push(obj); return; // ★ 绝对返回防线！
                     }
                     else if (setitemMethod->isNative()) {

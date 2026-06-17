@@ -180,7 +180,7 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
         }
     } cleanup{vm, evalFn};
 
-    return vm.callVMFunction(evalIdx, {});
+    return vm.callVMFunction(evalIdx, nullptr, 0);
 }
 
 void runScript(const std::string& filepath, bool isImport = false) {

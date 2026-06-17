@@ -361,7 +361,7 @@ namespace jc {
     }
 
     Value VM::callDunder(const Value& obj, const std::string& name,
-        const std::vector<Value>& args)
+        const Value* args, size_t argc)
     {
         auto inst = obj.asInstance();
         auto method = findDunder(obj, name);
@@ -373,7 +373,8 @@ namespace jc {
             Value result;
             try {
                 auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
-                result = fn(args);
+                std::vector<Value> vecArgs(args, args + argc);
+                result = fn(vecArgs);
             }
             catch (...) {
                 helpers::nativeSelfStack.pop_back(); helpers::nativeClassStack.pop_back();
@@ -384,7 +385,7 @@ namespace jc {
         }
         else if (method->isBytecode()) {
             // ★ 无污染传参：直接送入 VM CallFrame 的 boundSelf
-            return callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef));
+            return callVMFunction(method->compiledFnIndex, args, argc, method, Value(inst), Value(inst->classDef));
         }
         else {
             throw std::runtime_error(std::string("VM Error: No callable dunder '") + name + "'.");
@@ -545,6 +546,12 @@ namespace jc {
     Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args,
         ObjClosure* closure,
         Value boundSelf, Value boundClass) {
+        return callVMFunction(fnIdx, args.data(), args.size(), closure, boundSelf, boundClass);
+    }
+
+    Value VM::callVMFunction(int fnIdx, const Value* args, size_t argCount,
+        ObjClosure* closure,
+        Value boundSelf, Value boundClass) {
         if (fnIdx < 0 || fnIdx >= static_cast<int>(compiledFunctions.size()))
             throw std::runtime_error("VM Error: Invalid function index in callback.");
         auto fn = compiledFunctions[fnIdx]; // ★ 拷贝 shared_ptr，防止 run 期间 compiledFunctions 重新分配导致悬空引用
@@ -556,10 +563,10 @@ namespace jc {
         helpers::nativeSelfStack.push_back(boundSelf);
         helpers::nativeClassStack.push_back(boundClass);
 
-        for (const auto& arg : args)
-            push(arg);
+        for (size_t i = 0; i < argCount; ++i)
+            push(args[i]);
 
-        uint8_t argc = static_cast<uint8_t>(args.size());
+        uint8_t argc = static_cast<uint8_t>(argCount);
         if (fn->hasRestParam) {
             int fixedMax = fn->maxArity - 1;
             if (static_cast<int>(argc) < fn->arity) {
@@ -802,8 +809,8 @@ namespace jc {
                         int64_t res = static_cast<int64_t>(a.asInt32()) + b.asInt32();
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_ADD)) { Value res = callDunder(a, DUNDER_ADD, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RADD)) { Value res = callDunder(b, DUNDER_RADD, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_ADD)) { Value res = callDunder(a, DUNDER_ADD, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RADD)) { Value res = callDunder(b, DUNDER_RADD, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a + b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_SUBTRACT: {
@@ -813,8 +820,8 @@ namespace jc {
                         int64_t res = static_cast<int64_t>(a.asInt32()) - b.asInt32();
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_SUB)) { Value res = callDunder(a, DUNDER_SUB, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RSUB)) { Value res = callDunder(b, DUNDER_RSUB, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_SUB)) { Value res = callDunder(a, DUNDER_SUB, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RSUB)) { Value res = callDunder(b, DUNDER_RSUB, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a - b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_MULTIPLY: {
@@ -824,38 +831,38 @@ namespace jc {
                         int64_t res = static_cast<int64_t>(a.asInt32()) * b.asInt32();
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_MUL)) { Value res = callDunder(a, DUNDER_MUL, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RMUL)) { Value res = callDunder(b, DUNDER_RMUL, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_MUL)) { Value res = callDunder(a, DUNDER_MUL, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RMUL)) { Value res = callDunder(b, DUNDER_RMUL, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a * b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_DIVIDE: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() / b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_DIV)) { Value res = callDunder(a, DUNDER_DIV, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RDIV)) { Value res = callDunder(b, DUNDER_RDIV, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_DIV)) { Value res = callDunder(a, DUNDER_DIV, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RDIV)) { Value res = callDunder(b, DUNDER_RDIV, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a / b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_LEFT_DIVIDE: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_LDIV)) { Value res = callDunder(a, DUNDER_LDIV, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RLDIV)) { Value res = callDunder(b, DUNDER_RLDIV, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_LDIV)) { Value res = callDunder(a, DUNDER_LDIV, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RLDIV)) { Value res = callDunder(b, DUNDER_RLDIV, &a, 1); pop(); peek(0) = res; break; }
                     Value res = ldivide(a, b); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_MODULO: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_MOD)) { Value res = callDunder(a, DUNDER_MOD, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RMOD)) { Value res = callDunder(b, DUNDER_RMOD, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_MOD)) { Value res = callDunder(a, DUNDER_MOD, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RMOD)) { Value res = callDunder(b, DUNDER_RMOD, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a % b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_POWER: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_POW)) { Value res = callDunder(a, DUNDER_POW, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RPOW)) { Value res = callDunder(b, DUNDER_RPOW, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_POW)) { Value res = callDunder(a, DUNDER_POW, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RPOW)) { Value res = callDunder(b, DUNDER_RPOW, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a ^ b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_NEGATE: {
                     Value& a = peek(0);
-                    if (a.isInstance() && findDunder(a, DUNDER_NEG)) { Value res = callDunder(a, DUNDER_NEG, {}); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_NEG)) { Value res = callDunder(a, DUNDER_NEG, nullptr, 0); peek(0) = res; break; }
                     Value res = -a; peek(0) = res; break;
                 }
                 case OpCode::OP_NOT: { 
@@ -863,38 +870,38 @@ namespace jc {
                 }
                 case OpCode::OP_BIT_NOT: {
                     Value& a = peek(0);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITNOT)) { Value res = callDunder(a, DUNDER_BITNOT, {}); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_BITNOT)) { Value res = callDunder(a, DUNDER_BITNOT, nullptr, 0); peek(0) = res; break; }
                     Value res = ~a; peek(0) = res; break;
                 }
 
                 case OpCode::OP_BIT_AND: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITAND)) { Value res = callDunder(a, DUNDER_BITAND, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RBITAND)) { Value res = callDunder(b, DUNDER_RBITAND, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_BITAND)) { Value res = callDunder(a, DUNDER_BITAND, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RBITAND)) { Value res = callDunder(b, DUNDER_RBITAND, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a & b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_OR: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITOR)) { Value res = callDunder(a, DUNDER_BITOR, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RBITOR)) { Value res = callDunder(b, DUNDER_RBITOR, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_BITOR)) { Value res = callDunder(a, DUNDER_BITOR, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RBITOR)) { Value res = callDunder(b, DUNDER_RBITOR, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a | b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_XOR: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITXOR)) { Value res = callDunder(a, DUNDER_BITXOR, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RBITXOR)) { Value res = callDunder(b, DUNDER_RBITXOR, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_BITXOR)) { Value res = callDunder(a, DUNDER_BITXOR, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RBITXOR)) { Value res = callDunder(b, DUNDER_RBITXOR, &a, 1); pop(); peek(0) = res; break; }
                     Value res = bitXor(a, b); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_SHIFT_LEFT: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_LSHIFT)) { Value res = callDunder(a, DUNDER_LSHIFT, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RLSHIFT)) { Value res = callDunder(b, DUNDER_RLSHIFT, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_LSHIFT)) { Value res = callDunder(a, DUNDER_LSHIFT, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RLSHIFT)) { Value res = callDunder(b, DUNDER_RLSHIFT, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a << b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_SHIFT_RIGHT: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_RSHIFT)) { Value res = callDunder(a, DUNDER_RSHIFT, { b }); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RRSHIFT)) { Value res = callDunder(b, DUNDER_RRSHIFT, { a }); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_RSHIFT)) { Value res = callDunder(a, DUNDER_RSHIFT, &b, 1); pop(); peek(0) = res; break; }
+                    if (b.isInstance() && findDunder(b, DUNDER_RRSHIFT)) { Value res = callDunder(b, DUNDER_RRSHIFT, &a, 1); pop(); peek(0) = res; break; }
                     Value res = a >> b; pop(); peek(0) = res; break;
                 }
 
@@ -902,22 +909,22 @@ namespace jc {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() == b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() == b.asInt32(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(callDunder(a, DUNDER_EQ, { b }).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(callDunder(a, DUNDER_EQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res = Value(Value::equals(a, b)); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_NOT_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() != b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() != b.asInt32(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_NEQ)) { Value res = Value(callDunder(a, DUNDER_NEQ, { b }).truthy()); pop(); peek(0) = res; break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(!callDunder(a, DUNDER_EQ, { b }).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_NEQ)) { Value res = Value(callDunder(a, DUNDER_NEQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(!callDunder(a, DUNDER_EQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res = Value(!Value::equals(a, b)); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_LESS: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() < b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() < b.asInt32(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_LT)) { Value res = Value(callDunder(a, DUNDER_LT, { b }).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_LT)) { Value res = Value(callDunder(a, DUNDER_LT, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() < b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac < static_cast<ObjFraction*>(b.asObj())->frac);
@@ -929,7 +936,7 @@ namespace jc {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() <= b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() <= b.asInt32(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_LE)) { Value res = Value(callDunder(a, DUNDER_LE, { b }).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_LE)) { Value res = Value(callDunder(a, DUNDER_LE, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() <= b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac <= static_cast<ObjFraction*>(b.asObj())->frac);
@@ -941,7 +948,7 @@ namespace jc {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() > b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() > b.asInt32(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_GT)) { Value res = Value(callDunder(a, DUNDER_GT, { b }).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_GT)) { Value res = Value(callDunder(a, DUNDER_GT, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() > b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac > static_cast<ObjFraction*>(b.asObj())->frac);
@@ -953,7 +960,7 @@ namespace jc {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() >= b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
                     if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() >= b.asInt32(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_GE)) { Value res = Value(callDunder(a, DUNDER_GE, { b }).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance() && findDunder(a, DUNDER_GE)) { Value res = Value(callDunder(a, DUNDER_GE, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
                     if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() >= b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac >= static_cast<ObjFraction*>(b.asObj())->frac);
@@ -1584,7 +1591,7 @@ namespace jc {
                     else {
                         auto d = findDunder(v, DUNDER_STR);
                         if (d) {
-                            Value res = callDunder(v, DUNDER_STR, {});
+                            Value res = callDunder(v, DUNDER_STR, nullptr, 0);
                             pop();
                             push(res);
                         }
@@ -1860,7 +1867,7 @@ namespace jc {
                     else if (iterable.isInstance()) {
                         auto method = findDunder(iterable, DUNDER_ITER);
                         if (method) {
-                            Value iterObj = callDunder(iterable, DUNDER_ITER, {});
+                            Value iterObj = callDunder(iterable, DUNDER_ITER, nullptr, 0);
                             pop();
                             push(iterObj);
                             push(Value::none()); // 使用 none 作为自定义迭代器的索引标记
@@ -1903,7 +1910,7 @@ namespace jc {
                         auto method = findDunder(iterObj, DUNDER_NEXT);
                         if (!method) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
                         
-                        Value nextVal = callDunder(iterObj, DUNDER_NEXT, {});
+                        Value nextVal = callDunder(iterObj, DUNDER_NEXT, nullptr, 0);
                         if (nextVal.isNone()) {
                             currentFrame->ip += offset; // 迭代结束
                         } else {
@@ -2466,7 +2473,8 @@ namespace jc {
                                 } else {
                                     auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
                                     if (getattrMethod) {
-                                        result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                                        Value fv = Value(field);
+                                        result = callDunder(obj, DUNDER_GETATTR, &fv, 1);
                                         found = true;
                                     }
                                 }
@@ -2613,7 +2621,8 @@ namespace jc {
                                 auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
                                 if (getattrMethod) {
                                     try {
-                                        result = callDunder(obj, DUNDER_GETATTR, { Value(field) });
+                                        Value fv = Value(field);
+                                        result = callDunder(obj, DUNDER_GETATTR, &fv, 1);
                                         found = true;
                                     } catch (...) {
                                         found = false;
@@ -2663,7 +2672,8 @@ namespace jc {
                         inst->checkModify();
                         auto setattrMethod = findDunder(obj, DUNDER_SETATTR);
                         if (setattrMethod) {
-                            callDunder(obj, DUNDER_SETATTR, { Value(field), val });
+                            Value args[2] = {Value(field), val};
+                            callDunder(obj, DUNDER_SETATTR, args, 2);
                         } else {
                             if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                             
@@ -5100,7 +5110,7 @@ namespace jc {
         else if (haystack.isInstance()) {
             auto method = findDunder(haystack, DUNDER_CONTAINS);
             if (method) {
-                found = callDunder(haystack, DUNDER_CONTAINS, { needle }).truthy();
+                found = callDunder(haystack, DUNDER_CONTAINS, &needle, 1).truthy();
             } else {
                 auto inst = haystack.asInstance();
                 if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
@@ -5119,7 +5129,7 @@ namespace jc {
                         auto getattrMethod = findDunder(haystack, DUNDER_GETATTR);
                         if (getattrMethod) {
                             try {
-                                callDunder(haystack, DUNDER_GETATTR, { needle });
+                                callDunder(haystack, DUNDER_GETATTR, &needle, 1);
                                 found = true;
                             } catch (...) {
                                 // Fall through to false
@@ -5287,7 +5297,8 @@ namespace jc {
                 if (!method) {
                     auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
                     if (getattrMethod) {
-                        Value fv = callDunder(obj, DUNDER_GETATTR, { Value(methodName) });
+                        Value mv = Value(methodName);
+                        Value fv = callDunder(obj, DUNDER_GETATTR, &mv, 1);
                         if (fv.isFunctionClosure()) {
                             method = fv.asFunction();
                             owningClass = inst->classDef;

@@ -115,7 +115,7 @@ namespace jc {
         bool handleExceptionUnwind(std::string& msg);
         std::string buildStackTrace(const std::string& errorMsg);
         Value callDunder(const Value& obj, const std::string& name,
-            const std::vector<Value>& args);
+            const Value* args, size_t argc);
 
         // ★ 类型检查冷路径：让繁重的字符串操作离开核心循环
         [[noreturn]] void triggerParamTypeError(const Value& val, uint32_t icIdx, uint32_t nameIdx);
@@ -190,6 +190,9 @@ namespace jc {
         }
 
         Value callVMFunction(int fnIdx, const std::vector<Value>& args,
+            ObjClosure* closure = nullptr,
+            Value boundSelf = Value::none(), Value boundClass = Value::none());
+        Value callVMFunction(int fnIdx, const Value* args, size_t argc,
             ObjClosure* closure = nullptr,
             Value boundSelf = Value::none(), Value boundClass = Value::none());
         const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }

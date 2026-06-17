@@ -40,6 +40,7 @@ namespace jc {
         size_t lastInstructionStart = std::string::npos;
         size_t lastOpcodeOffset = std::string::npos;
         uint8_t operandCountSinceOpcode = 0;
+        size_t noOptimizeBoundary = 0; // ★ 窥孔优化安全边界
 
         struct CompilerState {
             CompiledFunction* function = nullptr;
@@ -84,6 +85,7 @@ namespace jc {
         void emitConstant(const Value& val, int line = 0);
         uint32_t makeConstant(const Value& val);
         uint32_t identifierConstant(const std::string& name);
+        void patchJump(int offset); // ★ 封装 patchJump 以更新边界
 
         void beginScope();
         void endScope();

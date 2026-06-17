@@ -6,7 +6,39 @@
 
 namespace jc {
 
+    void Compiler::patchJump(int offset) {
+        chunk()->patchJump(offset);
+        noOptimizeBoundary = chunk()->code.size();
+    }
+
     void Compiler::emit(OpCode op, int line) {
+        if (op == OpCode::OP_POP) {
+            if (lastInstructionStart != std::string::npos && lastOpcodeOffset != std::string::npos) {
+                if (lastInstructionStart >= noOptimizeBoundary) { // ★ 确保要删除的指令不在跳转目标边界之前
+                    OpCode lastOp = static_cast<OpCode>(chunk()->code[lastOpcodeOffset]);
+                    if (lastOp == OpCode::OP_CONSTANT || lastOp == OpCode::OP_TRUE || 
+                        lastOp == OpCode::OP_FALSE || lastOp == OpCode::OP_NONE || 
+                        lastOp == OpCode::OP_GET_LOCAL) {
+                        
+                        chunk()->code.resize(lastInstructionStart);
+                        chunk()->lines.resize(lastInstructionStart);
+                        lastOpcodeOffset = std::string::npos;
+                        lastInstructionStart = std::string::npos;
+                        return; // ★ 安全的窥孔优化：抵消无副作用的压栈指令
+                    }
+                }
+            }
+        } else if (op == OpCode::OP_RETURN) {
+            if (lastInstructionStart != std::string::npos && lastOpcodeOffset != std::string::npos) {
+                if (lastInstructionStart >= noOptimizeBoundary) {
+                    OpCode lastOp = static_cast<OpCode>(chunk()->code[lastOpcodeOffset]);
+                    if (lastOp == OpCode::OP_RETURN) {
+                        return; // ★ 消除连续的 OP_RETURN
+                    }
+                }
+            }
+        }
+
         lastInstructionStart = chunk()->code.size();
         lastOpcodeOffset = chunk()->code.size();
         operandCountSinceOpcode = 0;
@@ -149,9 +181,9 @@ namespace jc {
                 emit(OpCode::OP_POP, lastLine);
 
                 int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                chunk()->patchJump(skipJump);
+                patchJump(skipJump);
                 emit(OpCode::OP_POP, lastLine);
-                chunk()->patchJump(endJump);
+                patchJump(endJump);
             }
         }
     }
@@ -286,10 +318,10 @@ namespace jc {
 
             if (!failJumps.empty()) {
                 int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                for (int fj : failJumps) chunk()->patchJump(fj);
+                for (int fj : failJumps) patchJump(fj);
                 emit(OpCode::OP_POP, lastLine); // pop boolean
                 skipMatchJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                chunk()->patchJump(successJump);
+                patchJump(successJump);
             }
         }
         else {
@@ -317,14 +349,14 @@ namespace jc {
         if (!condJumps.empty()) {
             int successSkip = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
             for (int cj : condJumps) {
-                chunk()->patchJump(cj);
+                patchJump(cj);
             }
             emit(OpCode::OP_POP, lastLine); // pop false boolean
-            chunk()->patchJump(successSkip);
+            patchJump(successSkip);
         }
 
         if (skipMatchJump != -1) {
-            chunk()->patchJump(skipMatchJump);
+            patchJump(skipMatchJump);
         }
 
         chunk()->emitLoop(loopStart, lastLine);
@@ -357,6 +389,7 @@ namespace jc {
 
     void Compiler::beginLoop(int loopStart) {
         loopStack.push_back({ loopStart, {}, {}, current().scopeDepth, current().tryDepth });
+        noOptimizeBoundary = chunk()->code.size();
     }
 
     void Compiler::endLoop() {
@@ -365,7 +398,7 @@ namespace jc {
 
     void Compiler::emitBreakJumps() {
         for (int offset : loopStack.back().breakJumps) {
-            chunk()->patchJump(offset);
+            patchJump(offset);
         }
     }
 
@@ -657,12 +690,12 @@ namespace jc {
                 
                 int endJump = chunk()->emitJump(OpCode::OP_JUMP, expr->name.line);
                 
-                chunk()->patchJump(skipJump);
+                patchJump(skipJump);
                 emit(OpCode::OP_POP, expr->name.line); // pop boolean
                 emit(OpCode::OP_GET_UPVALUE, expr->name.line);
                 emit16(static_cast<uint32_t>(upvalue), expr->name.line);
                 
-                chunk()->patchJump(endJump);
+                patchJump(endJump);
                 return;
             }
         }
@@ -931,7 +964,7 @@ namespace jc {
             int jump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, expr->op.line);
             emit(OpCode::OP_POP, expr->op.line);
             compileNode(expr->right.get());
-            chunk()->patchJump(jump);
+            patchJump(jump);
             return;
         }
         if (expr->op.type == TokenType::OR_OR) {
@@ -951,10 +984,10 @@ namespace jc {
             compileNode(expr->left.get());
             int elseJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, expr->op.line);
             int endJump = chunk()->emitJump(OpCode::OP_JUMP, expr->op.line);
-            chunk()->patchJump(elseJump);
+            patchJump(elseJump);
             emit(OpCode::OP_POP, expr->op.line);
             compileNode(expr->right.get());
-            chunk()->patchJump(endJump);
+            patchJump(endJump);
             return;
         }
 
@@ -1161,7 +1194,7 @@ namespace jc {
         emit(OpCode::OP_POP, lastLine);
         compileNode(expr->thenBranch.get());
         int elseJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-        chunk()->patchJump(thenJump);
+        patchJump(thenJump);
         emit(OpCode::OP_POP, lastLine);
         if (expr->elseBranch) {
             compileNode(expr->elseBranch.get());
@@ -1169,7 +1202,7 @@ namespace jc {
         else {
             emit(OpCode::OP_NONE, lastLine);
         }
-        chunk()->patchJump(elseJump);
+        patchJump(elseJump);
         endScope(); // ★
         return;
     }
@@ -1198,14 +1231,14 @@ namespace jc {
 
         // ★ continue 跳转目标：就在 POP body result 之前
         for (int offset : loopStack.back().continueJumps) {
-            chunk()->patchJump(offset);
+            patchJump(offset);
         }
 
         emit(OpCode::OP_POP, lastLine);   // POP body result（或 continue 填充的 NONE）
         chunk()->emitLoop(loopStart, lastLine);
 
         if (exitJump != -1) {
-            chunk()->patchJump(exitJump);
+            patchJump(exitJump);
             emit(OpCode::OP_POP, lastLine);
         }
 
@@ -1246,7 +1279,7 @@ namespace jc {
 
         // ★ continue 跳转目标：POP body result，然后执行 update
         for (int offset : loopStack.back().continueJumps) {
-            chunk()->patchJump(offset);
+            patchJump(offset);
         }
 
         emit(OpCode::OP_POP, lastLine);   // POP body result
@@ -1255,7 +1288,7 @@ namespace jc {
         chunk()->emitLoop(loopStart, lastLine);
 
         if (exitJump != -1) {
-            chunk()->patchJump(exitJump);
+            patchJump(exitJump);
             emit(OpCode::OP_POP, lastLine);
         }
 
@@ -1887,11 +1920,11 @@ namespace jc {
 
             if (!failJumps.empty()) {
                 int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                for (int fj : failJumps) chunk()->patchJump(fj);
+                for (int fj : failJumps) patchJump(fj);
                 emit(OpCode::OP_POP, lastLine); // pop boolean
                 emit(OpCode::OP_NONE, lastLine); // push dummy body result for the loop end POP
                 loopStack.back().continueJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
-                chunk()->patchJump(successJump);
+                patchJump(successJump);
             }
         }
         else {
@@ -1948,12 +1981,12 @@ namespace jc {
 
         // ★ continue 跳转目标：POP body result
         for (int offset : loopStack.back().continueJumps) {
-            chunk()->patchJump(offset);
+            patchJump(offset);
         }
 
         emit(OpCode::OP_POP, lastLine);   // POP body result
         chunk()->emitLoop(loopStart, lastLine);
-        chunk()->patchJump(exitJump);
+        patchJump(exitJump);
 
         emitBreakJumps();
         endLoop();
@@ -2426,9 +2459,9 @@ namespace jc {
                         emit16(static_cast<uint32_t>(upvalue), lastLine);
                         
                         int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                        chunk()->patchJump(skipJump);
+                        patchJump(skipJump);
                         emit(OpCode::OP_POP, lastLine); // pop boolean
-                        chunk()->patchJump(endJump);
+                        patchJump(endJump);
                     }
                 } else {
                     Variable v(var->name);
@@ -2552,12 +2585,13 @@ namespace jc {
                     int relOffset = catchAddr - baseIp;
                     chunk()->code[catchOffsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
                     chunk()->code[catchOffsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
+                    noOptimizeBoundary = chunk()->code.size();
 
                     emit(OpCode::OP_POP, lastLine); // pop error
                     emit(OpCode::OP_NONE, lastLine); // dummy value
                     emit(OpCode::OP_FALSE, lastLine);
 
-                    chunk()->patchJump(skipCatch);
+                    patchJump(skipCatch);
 
                     if (defExpr) {
                         int hasValJump = chunk()->emitJump(OpCode::OP_JUMP_IF_TRUE, lastLine);
@@ -2566,10 +2600,10 @@ namespace jc {
                         compileNode(defExpr);
                         int endDefJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
 
-                        chunk()->patchJump(hasValJump);
+                        patchJump(hasValJump);
                         emit(OpCode::OP_POP, lastLine); // pop true
 
-                        chunk()->patchJump(endDefJump);
+                        patchJump(endDefJump);
                     } else {
                         failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
                         emit(OpCode::OP_POP, lastLine); // pop true
@@ -2603,9 +2637,9 @@ namespace jc {
                         emit(OpCode::OP_SET_UPVALUE, lastLine);
                         emit16(static_cast<uint32_t>(upvalue), lastLine);
                         int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                        chunk()->patchJump(skipJump);
+                        patchJump(skipJump);
                         emit(OpCode::OP_POP, lastLine);
-                        chunk()->patchJump(endJump);
+                        patchJump(endJump);
                     }
                 } else {
                     Variable v(lp->rest->name);
@@ -2746,9 +2780,9 @@ namespace jc {
                                     emit(OpCode::OP_SET_UPVALUE, lastLine);
                                     emit16(static_cast<uint32_t>(upvalue), lastLine);
                                     int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                                    chunk()->patchJump(skipJump);
+                                    patchJump(skipJump);
                                     emit(OpCode::OP_POP, lastLine);
-                                    chunk()->patchJump(endJump);
+                                    patchJump(endJump);
                                 }
                             } else {
                                 Variable v(restPat->name);
@@ -2792,12 +2826,13 @@ namespace jc {
                         int relOffset = catchAddr - baseIp;
                         chunk()->code[catchOffsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
                         chunk()->code[catchOffsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
+                        noOptimizeBoundary = chunk()->code.size();
 
                         emit(OpCode::OP_POP, lastLine); // pop error
                         emit(OpCode::OP_NONE, lastLine); // dummy value
                         emit(OpCode::OP_FALSE, lastLine);
 
-                        chunk()->patchJump(skipCatch);
+                        patchJump(skipCatch);
 
                         if (defExpr) {
                             int hasValJump = chunk()->emitJump(OpCode::OP_JUMP_IF_TRUE, lastLine);
@@ -2806,10 +2841,10 @@ namespace jc {
                             compileNode(defExpr);
                             int endDefJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
 
-                            chunk()->patchJump(hasValJump);
+                            patchJump(hasValJump);
                             emit(OpCode::OP_POP, lastLine); // pop true
 
-                            chunk()->patchJump(endDefJump);
+                            patchJump(endDefJump);
                         } else {
                             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
                             emit(OpCode::OP_POP, lastLine); // pop true
@@ -2891,10 +2926,10 @@ namespace jc {
                     compileNode(defExpr);
                     int endDefJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                     
-                    chunk()->patchJump(hasValJump);
+                    patchJump(hasValJump);
                     emit(OpCode::OP_POP, lastLine); // pop true
                     
-                    chunk()->patchJump(endDefJump);
+                    patchJump(endDefJump);
                     
                     addLocal("<pat_tmp>", current().scopeDepth);
                     int tmpSlot = static_cast<int>(current().locals.size()) - 1;
@@ -2919,13 +2954,13 @@ namespace jc {
                     int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                     
                     // Fail path:
-                    chunk()->patchJump(failJump);
+                    patchJump(failJump);
                     emit(OpCode::OP_POP, lastLine); // pop false
                     emit(OpCode::OP_POP, lastLine); // pop none
                     emit(OpCode::OP_FALSE, lastLine); // push false for the outer failJumps handler
                     failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
                     
-                    chunk()->patchJump(endJump);
+                    patchJump(endJump);
                 }
             }
 
@@ -3074,14 +3109,14 @@ namespace jc {
         if (!failJumps.empty()) {
             int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
             for (int fj : failJumps) {
-                chunk()->patchJump(fj);
+                patchJump(fj);
             }
             emit(OpCode::OP_POP, lastLine); // pop the boolean from match failure
             uint32_t msgIdx = identifierConstant("TypeError: Destructuring pattern match failed.");
             emit(OpCode::OP_CONSTANT, lastLine);
             emit16(msgIdx, lastLine);
             emit(OpCode::OP_THROW, lastLine);
-            chunk()->patchJump(successJump);
+            patchJump(successJump);
         }
 
         // 7. Restore RHS value to stack top
@@ -3090,10 +3125,10 @@ namespace jc {
 
         if (skipAllJump != -1) {
             int endJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-            chunk()->patchJump(skipAllJump);
+            patchJump(skipAllJump);
             emit(OpCode::OP_POP, lastLine); // pop boolean
             emit(OpCode::OP_NONE, lastLine); // push none when skipped
-            chunk()->patchJump(endJump);
+            patchJump(endJump);
         }
 
         return;
@@ -3115,22 +3150,22 @@ namespace jc {
                 emit(OpCode::OP_POP, lastLine);
                 int toBody = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
                 bodyJumps.push_back(toBody);
-                chunk()->patchJump(matchJump);
+                patchJump(matchJump);
                 emit(OpCode::OP_POP, lastLine);
             }
 
             noMatchJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-            for (int bj : bodyJumps) chunk()->patchJump(bj);
+            for (int bj : bodyJumps) patchJump(bj);
             emit(OpCode::OP_POP, lastLine); // 弹出 subject
             compileNode(body.get()); // 执行 body，压入 body 结果
             endJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
-            chunk()->patchJump(noMatchJump);
+            patchJump(noMatchJump);
         }
         emit(OpCode::OP_POP, lastLine); // 弹出 subject
         if (expr->defaultBody) compileNode(expr->defaultBody.get());
         else emit(OpCode::OP_NONE, lastLine);
 
-        for (int ej : endJumps) chunk()->patchJump(ej);
+        for (int ej : endJumps) patchJump(ej);
         return;
     }
 
@@ -3157,6 +3192,7 @@ namespace jc {
         int relOffset = catchAddr - baseIp;
         chunk()->code[offsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
         chunk()->code[offsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
+        noOptimizeBoundary = chunk()->code.size();
 
         int existingSlot = resolveLocal(expr->catchName.lexeme);
         if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].depth == current().scopeDepth) {
@@ -3189,7 +3225,7 @@ namespace jc {
         emit(OpCode::OP_POP, lastLine);
 
         compileNode(expr->catchBody.get());
-        chunk()->patchJump(skipCatch);
+        patchJump(skipCatch);
         return;
     }
 
@@ -3920,7 +3956,7 @@ namespace jc {
                 bodyJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
 
                 for (int fj : failJumps) {
-                    chunk()->patchJump(fj);
+                    patchJump(fj);
                 }
                 if (!failJumps.empty()) {
                     emit(OpCode::OP_POP, lastLine);
@@ -3930,27 +3966,27 @@ namespace jc {
             nextBranchJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
 
             for (int bj : bodyJumps) {
-                chunk()->patchJump(bj);
+                patchJump(bj);
             }
 
             if (branch.guard) {
                 compileNode(branch.guard.get());
                 int guardFailJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
                 emit(OpCode::OP_POP, lastLine);
-                
+            
                 compileNode(branch.body.get());
                 endJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
 
-                chunk()->patchJump(guardFailJump);
+                patchJump(guardFailJump);
                 emit(OpCode::OP_POP, lastLine);
-                
+            
                 int guardToNextBranch = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
-                chunk()->patchJump(nextBranchJump);
-                chunk()->patchJump(guardToNextBranch);
+                patchJump(nextBranchJump);
+                patchJump(guardToNextBranch);
             } else {
                 compileNode(branch.body.get());
                 endJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP, lastLine));
-                chunk()->patchJump(nextBranchJump);
+                patchJump(nextBranchJump);
             }
 
             endScope();
@@ -3959,7 +3995,7 @@ namespace jc {
         emit(OpCode::OP_NONE, lastLine);
 
         for (int ej : endJumps) {
-            chunk()->patchJump(ej);
+            patchJump(ej);
         }
 
         return;

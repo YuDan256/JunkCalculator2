@@ -1,0 +1,30 @@
+test_pipe() = {
+    res = [1, 2, 3] |> sum
+    assert(res == 6, "Basic pipe operator failed")
+    
+    res2 = [3, 1, 2] |> sort |> first
+    assert(res2 == 1, "Chained pipe operator failed")
+}
+test_pipe()
+
+test_curry() = {
+    my_add(a, b) = a + b
+    add_five = my_add(_, 5)
+    assert(add_five(10) == 15, "Auto-currying (placeholder) failed")
+    
+    // Higher-order currying
+    double_all = map(_, (x) => x * 2)
+    res = double_all([1, 2, 3])
+    assert(res == [2, 4, 6], "Higher-order currying failed")
+}
+test_curry()
+
+test_ufcs() = {
+    // Uniform Function Call Syntax
+    res = [1, 2, 3].sum()
+    assert(res == 6, "UFCS basic failed")
+    
+    res2 = "hello".upper().reverse()
+    assert(res2 == "OLLEH", "UFCS chained failed")
+}
+test_ufcs()

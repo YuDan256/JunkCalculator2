@@ -1,0 +1,39 @@
+test_namespace_basic() = {
+    namespace MathUtils {
+        const PI_APPROX = 3.14
+        add(a, b) = a + b
+        local hidden = 42
+    }
+    
+    assert(MathUtils.PI_APPROX == 3.14, "Namespace const access failed")
+    assert(MathUtils.add(2, 3) == 5, "Namespace method call failed")
+    assert(!hasKey(MathUtils, "hidden"), "Namespace local hiding failed")
+}
+test_namespace_basic()
+
+test_namespace_dynamic() = {
+    namespace Dyn {}
+    
+    Dyn.val = 100
+    assert(Dyn.val == 100, "Namespace dynamic assignment failed")
+    
+    Dyn.mul = (x) => x * 2
+    assert(Dyn.mul(5) == 10, "Namespace dynamic method failed")
+}
+test_namespace_dynamic()
+
+test_namespace_freeze() = {
+    namespace Locked {
+        val = 1
+    }
+    freeze(Locked)
+    
+    caught = false
+    try {
+        Locked.val = 2
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "Namespace freeze failed to protect")
+}
+test_namespace_freeze()

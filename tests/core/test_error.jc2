@@ -1,0 +1,38 @@
+test_try_catch() = {
+    res = try {
+        throw "custom error"
+        0
+    } catch (e) {
+        1
+    }
+    assert(res == 1, "try/catch expression failed")
+    
+    res2 = try {
+        42
+    } catch (e) {
+        -1
+    }
+    assert(res2 == 42, "try/catch success path failed")
+}
+test_try_catch()
+
+test_pcall() = {
+    res = pcall(() => 1 / 0)
+    assert(isError(res), "pcall error detection failed")
+    
+    res2 = pcall(() => 99)
+    assert(!isError(res2) && res2[1] == 99, "pcall success path failed")
+}
+test_pcall()
+
+test_assert() = {
+    caught = false
+    try {
+        assert(1 == 2, "Math is broken")
+    } catch (e) {
+        caught = true
+        assert("Math is broken" in e, "assert message mismatch")
+    }
+    assert(caught, "assert failed to throw")
+}
+test_assert()

@@ -39,10 +39,10 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::logicalAnd() {
-        auto expr = bitwiseOr();  // ★ 从 comparison 改为 bitwiseOr
+        auto expr = comparison();
         while (match({ TokenType::AND_AND })) {
             Token op = previous();
-            auto right = bitwiseOr(); // ★
+            auto right = comparison();
             expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
         }
         return expr;
@@ -72,10 +72,10 @@ namespace jc {
 
     // ★ 新增层级 2：位与 (交集)
     std::unique_ptr<Expr> Parser::bitwiseAnd() {
-        auto expr = comparison(); // ★ 衔接原来的 comparison
+        auto expr = shift();
         while (match({ TokenType::BIT_AND })) {
             Token op = previous();
-            auto right = comparison();
+            auto right = shift();
             expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
         }
         return expr;
@@ -446,13 +446,13 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::comparison() {
-        auto expr = shift();
+        auto expr = bitwiseOr();
         if (match({ TokenType::EQUAL, TokenType::BANG_EQUAL,
                     TokenType::LESS, TokenType::LESS_EQUAL,
                     TokenType::GREATER, TokenType::GREATER_EQUAL,
                     TokenType::IN })) {
             Token op = previous();
-            auto right = shift();
+            auto right = bitwiseOr();
             
             if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                 check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
@@ -474,7 +474,7 @@ namespace jc {
                                TokenType::GREATER, TokenType::GREATER_EQUAL,
                                TokenType::IN })) {
                     Token nextOp = previous();
-                    auto nextRight = shift();
+                    auto nextRight = bitwiseOr();
                     
                     if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                         check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||

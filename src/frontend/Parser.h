@@ -18,7 +18,12 @@ namespace jc {
         // --- 文法规则 (优先级从低到高) ---
         std::unique_ptr<Expr> expression();
         std::unique_ptr<Expr> assignment();
+        std::unique_ptr<Expr> logicalOr();
+        std::unique_ptr<Expr> logicalAnd();
         std::unique_ptr<Expr> comparison();
+        std::unique_ptr<Expr> bitwiseOr();
+        std::unique_ptr<Expr> bitwiseXor();
+        std::unique_ptr<Expr> bitwiseAnd();
         std::unique_ptr<Expr> shift();
         std::unique_ptr<Expr> addition();
         std::unique_ptr<Expr> multiplication();
@@ -26,11 +31,6 @@ namespace jc {
         std::unique_ptr<Expr> unary();
         std::unique_ptr<Expr> call();
         std::unique_ptr<Expr> primary();
-        std::unique_ptr<Expr> logicalOr();       // ★ 新增
-        std::unique_ptr<Expr> logicalAnd();      // ★ 新增
-        std::unique_ptr<Expr> bitwiseOr();       // ★ 新增
-        std::unique_ptr<Expr> bitwiseXor();      // ★ 新增
-        std::unique_ptr<Expr> bitwiseAnd();      // ★ 新增
         std::unique_ptr<Expr> ternary();
 
         // ★ 新增：控制流解析

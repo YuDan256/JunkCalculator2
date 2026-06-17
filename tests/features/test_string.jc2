@@ -1,0 +1,36 @@
+test_fstring() = {
+    x = 10
+    s = f"Value: {x * 2}"
+    assert(s == "Value: 20", "f-string basic failed")
+    
+    pi_str = f"PI: {PI::.2f}"
+    assert(pi_str == "PI: 3.14", "f-string formatting failed")
+}
+test_fstring()
+
+test_rstring() = {
+    s = r"C:\new\folder"
+    assert(len(s) == 13, "r-string length failed (should not escape)")
+    
+    s2 = r"TAG(nested \n \t)TAG"
+    assert(len(s2) == 12, "r-string custom delimiter failed")
+}
+test_rstring()
+
+test_string_methods() = {
+    s = "hello"
+    assert(upper(s) == "HELLO", "upper() failed")
+    assert(replace(s, "l", "w") == "hewwo", "replace() failed")
+    assert(s[::-1] == "olleh", "string reverse slice failed")
+    assert(s[1:4] == "ell", "string slicing failed")
+}
+test_string_methods()
+
+test_string_split_join() = {
+    parts = split("a,b,c", ",")
+    assert(parts == ["a", "b", "c"], "split() failed")
+    
+    joined = join(parts, "-")
+    assert(joined == "a-b-c", "join() failed")
+}
+test_string_split_join()

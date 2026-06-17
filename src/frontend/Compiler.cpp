@@ -44,6 +44,11 @@ namespace jc {
         chunk()->write16(val, line);
         if (line > 0) lastLine = line; // ★ 新增同步点
     }
+    void Compiler::emitConstant(const Value& val, int line) {
+        uint32_t idx = makeConstant(val);
+        emit(OpCode::OP_CONSTANT, line);
+        emit16(idx, line);
+    }
     void Compiler::emit16(uint32_t val, int line) {
         if (val > 0xFFFF) {
             if (lastOpcodeOffset != std::string::npos) {
@@ -455,10 +460,10 @@ namespace jc {
                     emit16(keyIdx, lastLine);
 
                     int slot = resolveLocal(local.name);
-                    chunk()->emitConstant(Value(static_cast<double>(slot)), lastLine);
+                    emitConstant(Value(static_cast<double>(slot)), lastLine);
 
                     bool isConst = local.isConst;
-                    chunk()->emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
+                    emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
 
                     count++;
                 }
@@ -500,7 +505,7 @@ namespace jc {
             else if (expr->value == "none") emit(OpCode::OP_NONE, lastLine);
         }
         else if (expr->isString) {
-            chunk()->emitConstant(Value(expr->value), lastLine);
+            emitConstant(Value(expr->value), lastLine);
         }
         else if (expr->isImaginary) {
             const std::string& s = expr->value;
@@ -519,7 +524,7 @@ namespace jc {
             } else {
                 imagPart = std::stod(s);
             }
-            chunk()->emitConstant(Value(Complex(0.0, imagPart)), lastLine);
+            emitConstant(Value(Complex(0.0, imagPart)), lastLine);
         }
         else {
             const std::string& s = expr->value;
@@ -530,7 +535,7 @@ namespace jc {
                 else if (s[1] == 'o' || s[1] == 'O') base = 8;
                 std::string numPart = s.substr(2);
                 try {
-                    chunk()->emitConstant(Value(BaseNum::fromString(numPart, base).getValue()), lastLine);
+                    emitConstant(Value(BaseNum::fromString(numPart, base).getValue()), lastLine);
                 } catch (...) {
                     throw std::runtime_error("Compiler Error: Invalid integer literal '" + s + "'.");
                 }
@@ -538,11 +543,11 @@ namespace jc {
             else if (s.find('.') == std::string::npos &&
                 s.find('e') == std::string::npos &&
                 s.find('E') == std::string::npos) {
-                try { chunk()->emitConstant(Value(BigInt(s)), lastLine); }
-                catch (...) { chunk()->emitConstant(Value(std::stod(s)), lastLine); }
+                try { emitConstant(Value(BigInt(s)), lastLine); }
+                catch (...) { emitConstant(Value(std::stod(s)), lastLine); }
             }
             else {
-                chunk()->emitConstant(Value(std::stod(s)), lastLine);
+                emitConstant(Value(std::stod(s)), lastLine);
             }
         }
         return;
@@ -1991,7 +1996,7 @@ namespace jc {
             if (expr->forceList) {
                 emit(OpCode::OP_LIST_INIT, lastLine);
             } else {
-                chunk()->emitConstant(Value(RealMatrix(0, 0)), lastLine);
+                emitConstant(Value(RealMatrix(0, 0)), lastLine);
             }
             return;
         }
@@ -2059,7 +2064,7 @@ namespace jc {
                 else {
                     compileNode(idx.get());
                     emit(OpCode::OP_NONE, lastLine);       // end = none
-                    chunk()->emitConstant(Value(0.0), lastLine);  // ★ step = 0 (点索引标记)
+                    emitConstant(Value(0.0), lastLine);  // ★ step = 0 (点索引标记)
                 }
             }
             emit(OpCode::OP_SLICE_GET, lastLine);
@@ -2235,7 +2240,7 @@ namespace jc {
                     emit16(static_cast<uint32_t>(tmp.normalIdx), lastLine);
                     if (hasSlice) {
                         emit(OpCode::OP_NONE, lastLine);
-                        chunk()->emitConstant(Value(0.0), lastLine);
+                        emitConstant(Value(0.0), lastLine);
                     }
                 }
             }
@@ -3381,7 +3386,7 @@ namespace jc {
         int partCount = 0;
         for (size_t i = 0; i < expr->exprs.size(); ++i) {
             if (!expr->literals[i].empty()) {
-                chunk()->emitConstant(Value(expr->literals[i]), lastLine);
+                emitConstant(Value(expr->literals[i]), lastLine);
                 partCount++;
             }
             compileNode(expr->exprs[i].get());
@@ -3396,7 +3401,7 @@ namespace jc {
             partCount++;
         }
         if (!expr->literals.back().empty()) {
-            chunk()->emitConstant(Value(expr->literals.back()), lastLine);
+            emitConstant(Value(expr->literals.back()), lastLine);
             partCount++;
         }
         if (partCount > 65535) {
@@ -3455,10 +3460,10 @@ namespace jc {
                 emit16(keyIdx, lastLine);
 
                 int slot = resolveLocal(local.name);
-                chunk()->emitConstant(Value(static_cast<double>(slot)), lastLine);
+                emitConstant(Value(static_cast<double>(slot)), lastLine);
 
                 bool isConst = local.isConst;
-                chunk()->emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
+                emitConstant(Value(isConst ? 1.0 : 0.0), lastLine);
 
                 count++;
             }

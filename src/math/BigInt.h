@@ -53,8 +53,13 @@ namespace jc {
                 int64_t sum = carry;
                 if (i < a.data.size()) sum += a.data[i];
                 if (i < b.data.size()) sum += b.data[i];
-                result.data[i] = static_cast<int32_t>(sum % BASE);
-                carry = sum / BASE;
+                if (sum >= BASE) {
+                    sum -= BASE;
+                    carry = 1;
+                } else {
+                    carry = 0;
+                }
+                result.data[i] = static_cast<int32_t>(sum);
             }
             if (carry > 0) result.data.push_back(static_cast<int32_t>(carry));
             return result;
@@ -91,16 +96,17 @@ namespace jc {
 
             BigInt q;
             q.data.resize(data.size(), 0);
-            int64_t rem = 0;
+            uint64_t rem = 0;
             for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
-                int64_t cur = rem * BASE + data[i];
-                q.data[i] = static_cast<int32_t>(cur / static_cast<int64_t>(d));
-                rem = cur % static_cast<int64_t>(d);
+                uint64_t cur = rem * BASE + data[i];
+                q.data[i] = static_cast<int32_t>(cur / d);
+                rem = cur % d;
             }
             q.negative = (negative != divNeg);
             q.trim();
-            if (negative) rem = -rem;
-            return { q, rem };
+            int64_t final_rem = static_cast<int64_t>(rem);
+            if (negative) final_rem = -final_rem;
+            return { q, final_rem };
         }
 
         static std::pair<BigInt, BigInt> divmod(const BigInt& a, const BigInt& b) {
@@ -136,8 +142,8 @@ namespace jc {
                 int64_t carry = 0;
                 for (size_t i = 0; i < num.data.size(); ++i) {
                     int64_t prod = static_cast<int64_t>(num.data[i]) * scalar + carry;
-                    res.data[i] = static_cast<int32_t>(prod % BASE);
                     carry = prod / BASE;
+                    res.data[i] = static_cast<int32_t>(prod - carry * BASE);
                 }
                 if (carry > 0) res.data.push_back(static_cast<int32_t>(carry));
                 return res;
@@ -165,13 +171,18 @@ namespace jc {
                     if (r_hat >= BASE) break;
                 }
 
+                if (q_hat == 0) {
+                    quotient.data[j] = 0;
+                    continue;
+                }
+
                 // 乘法并减去 (u[j..j+m] -= q_hat * v)
                 int64_t carry = 0;
                 int64_t borrow = 0;
                 for (int i = 0; i < m; ++i) {
                     int64_t prod = q_hat * v.data[i] + carry;
                     carry = prod / BASE;
-                    int64_t diff = static_cast<int64_t>(u.data[j + i]) - (prod % BASE) - borrow;
+                    int64_t diff = static_cast<int64_t>(u.data[j + i]) - (prod - carry * BASE) - borrow;
                     if (diff < 0) {
                         diff += BASE;
                         borrow = 1;
@@ -197,10 +208,11 @@ namespace jc {
                     int64_t carry_add = 0;
                     for (int i = 0; i < m; ++i) {
                         int64_t sum = static_cast<int64_t>(u.data[j + i]) + v.data[i] + carry_add;
-                        u.data[j + i] = static_cast<int32_t>(sum % BASE);
                         carry_add = sum / BASE;
+                        u.data[j + i] = static_cast<int32_t>(sum - carry_add * BASE);
                     }
-                    u.data[j + m] = static_cast<int32_t>((static_cast<int64_t>(u.data[j + m]) + carry_add) % BASE);
+                    int64_t sum_last = static_cast<int64_t>(u.data[j + m]) + carry_add;
+                    u.data[j + m] = static_cast<int32_t>(sum_last - (sum_last / BASE) * BASE);
                 }
             }
 
@@ -210,11 +222,12 @@ namespace jc {
             // 还原余数 (r = u / d)
             BigInt remainder;
             remainder.data.resize(m, 0);
-            int64_t rem = 0;
+            uint64_t rem = 0;
+            uint64_t ud = static_cast<uint64_t>(d);
             for (int i = m - 1; i >= 0; --i) {
-                int64_t cur = rem * BASE + u.data[i];
-                remainder.data[i] = static_cast<int32_t>(cur / d);
-                rem = cur % d;
+                uint64_t cur = rem * BASE + u.data[i];
+                remainder.data[i] = static_cast<int32_t>(cur / ud);
+                rem = cur % ud;
             }
             remainder.negative = a.negative;
             remainder.trim();
@@ -537,11 +550,13 @@ namespace jc {
             BigInt result;
             result.data.assign(n + m, 0);
             for (size_t i = 0; i < n; ++i) {
+                if (data[i] == 0) continue; // 优化：跳过 0 乘
                 int64_t carry = 0;
+                int64_t d_i = data[i];
                 for (size_t j = 0; j < m; ++j) {
-                    int64_t prod = static_cast<int64_t>(data[i]) * other.data[j] + result.data[i + j] + carry;
-                    result.data[i + j] = static_cast<int32_t>(prod % BASE);
+                    int64_t prod = d_i * other.data[j] + result.data[i + j] + carry;
                     carry = prod / BASE;
+                    result.data[i + j] = static_cast<int32_t>(prod - carry * BASE);
                 }
                 if (carry > 0) result.data[i + m] += static_cast<int32_t>(carry);
             }

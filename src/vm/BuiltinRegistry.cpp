@@ -40,26 +40,27 @@ namespace jc {
     // =================================================================
     // 跨模块 Dunder 调用桥梁
     // =================================================================
-    static const std::string DUNDER_HASH = "__hash__";
-    static const std::string DUNDER_ABS = "__abs__";
-    static const std::string DUNDER_STR = "__str__";
-    static const std::string DUNDER_BOOL = "__bool__";
-    static const std::string DUNDER_LEN = "__len__";
-    static const std::string DUNDER_ADD = "__add__";
-    static const std::string DUNDER_SUB = "__sub__";
-    static const std::string DUNDER_MUL = "__mul__";
-    static const std::string DUNDER_DIV = "__div__";
-    static const std::string DUNDER_LDIV = "__ldiv__";
-    static const std::string DUNDER_ITER = "__iter__";
-    static const std::string DUNDER_NEXT = "__next__";
-    static const std::string DUNDER_CALL = "__call__";
-    static const std::string DUNDER_GETITEM = "__getitem__";
+    static const char* DUNDER_HASH = "__hash__";
+    static const char* DUNDER_ABS = "__abs__";
+    static const char* DUNDER_STR = "__str__";
+    static const char* DUNDER_BOOL = "__bool__";
+    static const char* DUNDER_LEN = "__len__";
+    static const char* DUNDER_ADD = "__add__";
+    static const char* DUNDER_SUB = "__sub__";
+    static const char* DUNDER_MUL = "__mul__";
+    static const char* DUNDER_DIV = "__div__";
+    static const char* DUNDER_LDIV = "__ldiv__";
+    static const char* DUNDER_ITER = "__iter__";
+    static const char* DUNDER_NEXT = "__next__";
+    static const char* DUNDER_CALL = "__call__";
+    static const char* DUNDER_GETITEM = "__getitem__";
 
-    std::pair<bool, Value> invokeDunder(ObjInstance* inst, const std::string& methodName, const std::vector<Value>& args) {
+    std::pair<bool, Value> invokeDunder(ObjInstance* inst, const char* methodName, const std::vector<Value>& args) {
         ObjClosure* method = nullptr;
         ObjClass* c = inst->classDef;
+        std::string sname(methodName);
         while (c) {
-            auto it = c->methods.find(methodName);
+            auto it = c->methods.find(sname);
             if (it != c->methods.end()) {
                 method = it->second;
                 break;

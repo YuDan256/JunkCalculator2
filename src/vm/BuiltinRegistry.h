@@ -141,12 +141,13 @@ namespace helpers {
 
     inline std::pair<bool, Value> tryCallDunder(
         ObjInstance* inst,
-        const std::string& methodName,
+        const char* methodName,
         const std::vector<Value>& args = {})
     {
         auto c = inst->classDef;
+        std::string sname(methodName);
         while (c) {
-            auto it = c->methods.find(methodName);
+            auto it = c->methods.find(sname);
             if (it != c->methods.end()) {
                 // ★ 启用原生无污染栈压入环境 (避开污染 globals! )
                 nativeSelfStack.push_back(Value(inst));

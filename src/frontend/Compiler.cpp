@@ -661,7 +661,13 @@ namespace jc {
             }
         }
 
-        compileNode(expr->value.get());
+        if (foldedVal) {
+            uint32_t idx = makeConstant(*foldedVal);
+            emit(OpCode::OP_CONSTANT, expr->name.line);
+            emit16(idx, expr->name.line);
+        } else {
+            compileNode(expr->value.get());
+        }
 
         if (stateStack.size() == 1 && current().scopeDepth == 0) {
             knownGlobals.insert(name);
@@ -691,15 +697,19 @@ namespace jc {
 
         if (slot != -1 && current().captures.count(name) == 0) {
             current().locals[slot].isInitialized = true;
-            if (expr->isConst && foldedVal) current().locals[slot].constValue = foldedVal;
-            else current().locals[slot].constValue = std::nullopt;
-
-            if (current().locals[slot].isRefParam) {
-                emit(OpCode::OP_SET_REF_PARAM, expr->name.line);
-                emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), expr->name.line);
+            if (expr->isConst && foldedVal) {
+                current().locals[slot].constValue = foldedVal;
+                // ★ 终极优化：局部常量且已折叠，彻底省略 OP_SET_LOCAL！
+                // 因为后续读取会被直接替换为 OP_CONSTANT，且我们已禁止 const 变量作为引用传递。
             } else {
-                emit(OpCode::OP_SET_LOCAL, expr->name.line);
-                emit16(static_cast<uint32_t>(slot), expr->name.line);
+                current().locals[slot].constValue = std::nullopt;
+                if (current().locals[slot].isRefParam) {
+                    emit(OpCode::OP_SET_REF_PARAM, expr->name.line);
+                    emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), expr->name.line);
+                } else {
+                    emit(OpCode::OP_SET_LOCAL, expr->name.line);
+                    emit16(static_cast<uint32_t>(slot), expr->name.line);
+                }
             }
         }
         else {
@@ -1022,8 +1032,11 @@ namespace jc {
         if (mayHaveRef) {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
+                    if (getConstValueOfVariable(varExpr->name.lexeme)) continue; // ★ 常量折叠的变量按值传递，保护 const 语义
+                    
                     int localSlot = resolveLocal(varExpr->name.lexeme);
                     if (localSlot != -1) {
+                        if (current().locals[localSlot].isConst) continue; // ★ 局部 const 变量按值传递
                         if (current().locals[localSlot].isRefParam) {
                             sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint32_t>(current().locals[localSlot].refParamIndex) });
                         } else {
@@ -2253,8 +2266,11 @@ namespace jc {
         if (hasVariableArgs) {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
+                    if (getConstValueOfVariable(varExpr->name.lexeme)) continue;
+                    
                     int localSlot = resolveLocal(varExpr->name.lexeme);
                     if (localSlot != -1) {
+                        if (current().locals[localSlot].isConst) continue;
                         if (current().locals[localSlot].isRefParam) {
                             sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint32_t>(current().locals[localSlot].refParamIndex) });
                         } else {
@@ -3610,8 +3626,11 @@ namespace jc {
             if (hasVariableArgs) {
                 for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                     if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
+                        if (getConstValueOfVariable(varExpr->name.lexeme)) continue;
+                        
                         int localSlot = resolveLocal(varExpr->name.lexeme);
                         if (localSlot != -1) {
+                            if (current().locals[localSlot].isConst) continue;
                             if (current().locals[localSlot].isRefParam) {
                                 sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint32_t>(current().locals[localSlot].refParamIndex) });
                             } else {
@@ -3685,8 +3704,11 @@ namespace jc {
         if (hasVariableArgs) {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
+                    if (getConstValueOfVariable(varExpr->name.lexeme)) continue;
+                    
                     int argLocalSlot = resolveLocal(varExpr->name.lexeme);
                     if (argLocalSlot != -1) {
+                        if (current().locals[argLocalSlot].isConst) continue;
                         if (current().locals[argLocalSlot].isRefParam) {
                             sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint32_t>(current().locals[argLocalSlot].refParamIndex) });
                         } else {

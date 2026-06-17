@@ -21,6 +21,7 @@ namespace jc {
         int refParamIndex = -1;  // ★ 新增
         bool isFunction = false; // ★ 新增：标记是否为预声明的函数
         bool isInitialized = false; // ★ 新增：标记是否已初始化
+        std::optional<Value> constValue = std::nullopt; // ★ 新增：常量传播的值
     };
 
     enum class CaptureType {
@@ -70,6 +71,7 @@ namespace jc {
         int topLevelLocalCount = 0;
         std::string currentSourceFile;
         std::unordered_set<std::string> knownGlobals; // ★ 跟踪已知的全局变量
+        std::unordered_map<std::string, Value> knownConstGlobals; // ★ 跟踪已知的 const 全局变量的值
 
         CompilerState& current() { return stateStack.back(); }
         Chunk* chunk() { return &current().function->chunk; }
@@ -96,6 +98,7 @@ namespace jc {
         int resolveUpvalueAt(int level, const std::string& name, bool isRef, bool isState);
         int addUpvalue(int level, const std::string& name, bool isLocal, int index, bool isRef, bool isGlobal = false, bool isExplicitState = false, bool isRefParam = false);
         void emitStoreTarget(Expr* target, bool isConst = false);
+        std::optional<Value> getConstValueOfVariable(const std::string& name);
         std::optional<Value> tryFoldConstant(Expr* expr);
         void compilePatternMatch(Pattern* p, int valSlot, std::vector<int>& failJumps, bool isConst = false, bool isStateInit = false);
         void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars);

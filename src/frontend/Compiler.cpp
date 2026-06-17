@@ -524,9 +524,39 @@ namespace jc {
         return;
     }
 
+    std::optional<Value> Compiler::getConstValueOfVariable(const std::string& name) {
+        for (int level = static_cast<int>(stateStack.size()) - 1; level >= 0; --level) {
+            auto& locals = stateStack[level].locals;
+            for (int i = static_cast<int>(locals.size()) - 1; i >= 0; --i) {
+                if (locals[i].name == name) {
+                    if (locals[i].isConst && locals[i].constValue) {
+                        return locals[i].constValue;
+                    }
+                    return std::nullopt;
+                }
+            }
+            if (stateStack[level].captures.count(name) > 0) {
+                return std::nullopt;
+            }
+        }
+        auto it = knownConstGlobals.find(name);
+        if (it != knownConstGlobals.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
     void Compiler::visitVariable(Variable* expr) {
         lastLine = expr->name.line;
         const std::string& name = expr->name.lexeme;
+
+        if (auto constVal = getConstValueOfVariable(name)) {
+            uint32_t idx = makeConstant(*constVal);
+            emit(OpCode::OP_CONSTANT, expr->name.line);
+            emit16(idx, expr->name.line);
+            return;
+        }
+
         int slot = resolveLocal(name);
         if (slot != -1 && current().captures.count(name) == 0) {
             if (current().locals[slot].isRefParam) {
@@ -594,6 +624,8 @@ namespace jc {
             }
         }
 
+        auto foldedVal = tryFoldConstant(expr->value.get());
+
         // ★ State initialization: only assign if the upvalue is currently UNINIT
         if (expr->isState) {
             int upvalue = resolveUpvalue(name);
@@ -659,6 +691,9 @@ namespace jc {
 
         if (slot != -1 && current().captures.count(name) == 0) {
             current().locals[slot].isInitialized = true;
+            if (expr->isConst && foldedVal) current().locals[slot].constValue = foldedVal;
+            else current().locals[slot].constValue = std::nullopt;
+
             if (current().locals[slot].isRefParam) {
                 emit(OpCode::OP_SET_REF_PARAM, expr->name.line);
                 emit16(static_cast<uint32_t>(current().locals[slot].refParamIndex), expr->name.line);
@@ -680,6 +715,7 @@ namespace jc {
                     emit(OpCode::OP_SET_GLOBAL_REF, expr->name.line);
                 } else if (expr->isConst) {
                     emit(OpCode::OP_DEFINE_CONST_GLOBAL, expr->name.line);
+                    if (foldedVal) knownConstGlobals[name] = *foldedVal;
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, expr->name.line);
                 }
@@ -690,6 +726,9 @@ namespace jc {
     }
 
     std::optional<Value> Compiler::tryFoldConstant(Expr* expr) {
+        if (auto* var = dynamic_cast<Variable*>(expr)) {
+            return getConstValueOfVariable(var->name.lexeme);
+        }
         if (auto* lit = dynamic_cast<Literal*>(expr)) {
             if (lit->isKeyword) {
                 if (lit->value == "true") return Value(true);

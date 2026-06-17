@@ -1,0 +1,126 @@
+test_basic_1d() = {
+    [a, b, c] = [10, 20, 30]
+    assert(a == 10 && b == 20 && c == 30, "1D Array Destructuring Failed")
+    [la, lb] = list("hello", "world")
+    assert(la == "hello" && lb == "world", "List Destructuring Failed")
+    [s1, s2, s3] = "ABC"
+    assert(s1 == "A" && s2 == "B" && s3 == "C", "String Destructuring Failed")
+}
+test_basic_1d()
+
+test_matrix_2d() = {
+    [m1, m2; m3, m4] = [1, 2; 3, 4]
+    assert(m1 == 1 && m2 == 2 && m3 == 3 && m4 == 4, "2D Matrix Destructuring Failed")
+}
+test_matrix_2d()
+
+test_rest_1d() = {
+    [head, ...tail] = [1, 2, 3, 4]
+    assert(head == 1 && tail == [2, 3, 4], "1D Tail Rest Failed")
+    [first, ...mid, last] = [1, 2, 3, 4, 5]
+    assert(first == 1 && mid == [2, 3, 4] && last == 5, "1D Middle Rest Failed")
+    [...all] = [7, 8, 9]
+    assert(all == [7, 8, 9], "1D Full Rest Failed")
+}
+test_rest_1d()
+
+test_rest_2d() = {
+    [tl, ...top_right; ...bottom_rows] = [1, 2, 3; 4, 5, 6; 7, 8, 9]
+    assert(tl == 1, "2D Rest TL Failed")
+    assert(top_right == [2, 3], "2D Rest Top Right Failed")
+    assert(bottom_rows == [4, 5, 6; 7, 8, 9], "2D Rest Bottom Rows Failed")
+}
+test_rest_2d()
+
+test_dict() = {
+    obj = {x: 100, y: 200, z: 300, w: 400}
+    {x, y: y_val, ...dict_rest} = obj
+    assert(x == 100, "Dict Shorthand Destructuring Failed")
+    assert(y_val == 200, "Dict Alias Destructuring Failed")
+    assert(dict_rest.z == 300 && dict_rest.w == 400, "Dict Rest Failed")
+}
+test_dict()
+
+test_complex_lvalues() = {
+    arr = [0, 0]
+    target = {val: 0}
+    [arr[0], target.val] = [99, 88]
+    assert(arr[0] == 99 && target.val == 88, "Complex L-Value Destructuring Failed")
+}
+test_complex_lvalues()
+
+global_counter = 0
+test_modifiers() = {
+    inner() = {
+        [local a, ref global_counter, state c] = [10, 20, 30]
+        c += 5
+        return c
+    }
+    res1 = inner()
+    res2 = inner()
+    assert(global_counter == 20, "Ref Modifier Failed")
+    assert(res1 == 35 && res2 == 40, "State Modifier Failed")
+}
+test_modifiers()
+
+test_forin() = {
+    sum_keys = ""
+    sum_vals = 0
+    for ([k, v] in {A: 1, B: 2, C: 3}) {
+        sum_keys += k
+        sum_vals += v
+    }
+    assert(sum_keys == "ABC" && sum_vals == 6, "For-In Dict Destructuring Failed")
+
+    row_sum = 0
+    for ([r1, ...r_rest] in [1, 2, 3; 4, 5, 6]) {
+        row_sum += r1 + sum(r_rest)
+    }
+    assert(row_sum == 21, "For-In Matrix Rest Destructuring Failed")
+}
+test_forin()
+
+test_comprehension() = {
+    comp_res = [x * y for ([x, y] in [1, 2; 3, 4; 5, 6])]
+    assert(comp_res == [2, 12, 30], "List Comprehension Destructuring Failed")
+
+    comp_dict = [k + str(v) for ({k, v} in [{k: "X", v: 1}, {k: "Y", v: 2}])]
+    assert(comp_dict == ["X1", "Y2"], "List Comprehension Dict Destructuring Failed")
+}
+test_comprehension()
+
+test_match() = {
+    match_test(val) = {
+        return match (val) {
+            [a, b; c, d] => a + d,
+            [head, ...tail] if (head == 99) => sum(tail),
+            {type: t, ...data} => t + str(data.id),
+            _ => -1
+        }
+    }
+    assert(match_test([1, 2; 3, 4]) == 5, "Match 2D Failed")
+    assert(match_test([99, 10, 20]) == 30, "Match 1D Rest + Guard Failed")
+    assert(match_test({type: "User", id: 42, active: true}) == "User42", "Match Dict Failed")
+    assert(match_test("unknown") == -1, "Match Fallback Failed")
+}
+test_match()
+
+test_strict_shape() = {
+    try { [a, b, c] = [1, 2]; assert(false, "Should fail") } catch (e) {}
+    try { [a, b] = [1, 2, 3]; assert(false, "Should fail") } catch (e) {}
+    try { [a; b] = [1, 2]; assert(false, "Should fail") } catch (e) {}
+}
+test_strict_shape()
+
+test_edge_cases() = {
+    [] = []
+    assert(true, "Empty Matrix Destructuring Failed")
+    
+    block_res = {
+        a = 10
+        b = 20
+        a + b
+    }
+    assert(block_res == 30, "Block vs Dict Ambiguity Failed")
+}
+test_edge_cases()

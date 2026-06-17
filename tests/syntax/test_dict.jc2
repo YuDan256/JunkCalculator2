@@ -1,0 +1,92 @@
+test_empty_dict() = {
+    d1 = {}
+    assert(isdict(d1) && len(d1) == 0, "Empty dict failed")
+}
+test_empty_dict()
+
+test_standard_dict() = {
+    d2 = {a: 1, b: 2}
+    assert(isdict(d2) && d2.a == 1 && d2.b == 2, "Standard dict failed")
+}
+test_standard_dict()
+
+test_shorthand_dict() = {
+    a = 10
+    d3 = {a}
+    assert(isdict(d3) && d3.a == 10, "Single shorthand dict failed")
+
+    b = 20
+    d4 = {a, b}
+    assert(isdict(d4) && d4.a == 10 && d4.b == 20, "Multiple shorthand dict failed")
+}
+test_shorthand_dict()
+
+test_block_ambiguity() = {
+    f1() = { x = 1; {x} }
+    assert(isdict(f1()) && f1().x == 1, "Block returning shorthand dict failed")
+
+    f2() = { x = 1; }
+    assert(f2() == 1, "Block with semicolon failed")
+
+    f3() = { c = 3 }
+    assert(f3() == 3, "Block with assignment failed")
+
+    f4() = { true ? 4 : 5 }
+    assert(f4() == 4, "Block with ternary failed")
+
+    f5() = { a = 10; b = 20; a + b }
+    assert(f5() == 30, "Block with complex expression failed")
+
+    f6() = { 1, 2 }
+    assert(f6() == 2, "Block with comma expression failed")
+}
+test_block_ambiguity()
+
+test_multiline() = {
+    f7() = {
+        x = 1
+        y = 2
+        x + y
+    }
+    assert(f7() == 3, "Multi-line block failed")
+
+    a = 10
+    b = 20
+    d5 = {
+        a,
+        b
+    }
+    assert(isdict(d5) && d5.a == 10 && d5.b == 20, "Multi-line shorthand dict failed")
+
+    f8() = {
+        a = 10
+        b = 20
+    }
+    assert(f8() == 20, "Multi-line block with identifiers failed")
+}
+test_multiline()
+
+test_computed_keys() = {
+    d6 = {"a": 1, "b": 2}
+    assert(isdict(d6) && d6["a"] == 1, "Dict with string keys failed")
+
+    d7 = {(10): 100}
+    assert(isdict(d7) && d7[10] == 100, "Dict with computed keys failed")
+
+    d8 = {a: true ? 1 : 2}
+    assert(isdict(d8) && d8.a == 1, "Dict with ternary value failed")
+
+    d9 = {a: c = 99}
+    assert(isdict(d9) && d9.a == 99 && c == 99, "Dict with assignment value failed")
+}
+test_computed_keys()
+
+test_destructuring_modifiers() = {
+    f9() = {
+        {local x, ref y, const z} = {x: 1, y: 2, z: 3}
+        return x + y + z
+    }
+    y = 0
+    assert(f9() == 6 && y == 2, "Destructuring dict pattern with modifiers failed")
+}
+test_destructuring_modifiers()

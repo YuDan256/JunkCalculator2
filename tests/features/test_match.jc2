@@ -1,0 +1,71 @@
+test_literal() = {
+    f(code) = match(code) {
+        200, 201 => "OK",
+        404 => "Not Found",
+        _ => "Unknown"
+    }
+    assert(f(201) == "OK", "Literal match OR failed")
+    assert(f(500) == "Unknown", "Literal match fallback failed")
+}
+test_literal()
+
+test_guard() = {
+    f(val) = match(val) {
+        n if (isint(n)) => "Int: " + str(n),
+        s if (isstring(s)) => "Str: " + s,
+        _ => "Other"
+    }
+    assert(f(42) == "Int: 42", "Guard int failed")
+    assert(f("JC2") == "Str: JC2", "Guard string failed")
+}
+test_guard()
+
+test_middle() = {
+    f(arr) = match(arr) {
+        [first, ...mid, last] => str(first) + "|" + str(mid) + "|" + str(last),
+        _ => "Fail"
+    }
+    assert(f([1, 2, 3, 4]) == "1.0|[2.0, 3.0]|4.0", "Middle rest failed")
+    assert(f([9, 8]) == "9.0|[]|8.0", "Middle rest empty failed")
+}
+test_middle()
+
+test_matrix_slice() = {
+    f(m) = match(m) {
+        [topleft, ...rest_col; ...rest_rows] => str(topleft) + "&" + str(rest_col) + "&" + str(rest_rows),
+        _ => "Fail"
+    }
+    mat3x3 = [1, 2, 3; 4, 5, 6; 7, 8, 9]
+    assert(f(mat3x3) == "1.0&[2.0, 3.0]&[4.0, 5.0, 6.0; 7.0, 8.0, 9.0]", "Matrix slice failed")
+}
+test_matrix_slice()
+
+test_strict_rows() = {
+    f(m) = match(m) {
+        [...r1; ...r2;] => "Exactly 2 rows",
+        _ => "Other"
+    }
+    assert(f([1, 2; 3, 4]) == "Exactly 2 rows", "Strict rows match failed")
+    assert(f([1, 2, 3; 4, 5, 6; 7, 8, 9]) == "Other", "Strict rows mismatch failed")
+}
+test_strict_rows()
+
+test_dict() = {
+    f(d) = match(d) {
+        {name, ...extras} => name + "&" + str(extras),
+        {} => "Empty",
+        _ => "Fail"
+    }
+    assert(f({"name": "JC2", "ver": 2}) == "JC2&{ver: 2}", "Dict shorthand failed")
+}
+test_dict()
+
+test_deep() = {
+    f(data) = match(data) {
+        {"users": [{id, name}, ..._]} => str(id) + ":" + name,
+        _ => "Fail"
+    }
+    payload = {"users": [{"id": 101, "name": "Admin"}, {"id": 102, "name": "Guest"}]}
+    assert(f(payload) == "101:Admin", "Deep nesting failed")
+}
+test_deep()

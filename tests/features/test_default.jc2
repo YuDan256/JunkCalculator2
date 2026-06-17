@@ -1,0 +1,70 @@
+test_dict_defaults() = {
+    {a, b = 20, c: d = 30} = {a: 10}
+    assert(a == 10 && b == 20 && d == 30, "Dict Default Failed")
+
+    {x = 99, y = 88} = {x: 1, y: 88}
+    assert(x == 1 && y == 88, "Dict Default (Existing Key) Failed")
+}
+test_dict_defaults()
+
+test_list_defaults() = {
+    [l1, l2 = 2, l3 = 3] = [10]
+    assert(l1 == 10 && l2 == 2 && l3 == 3, "List Default Failed")
+
+    [l4 = 4, l5 = 5] = [40, 50]
+    assert(l4 == 40 && l5 == 50, "List Default (Existing Index) Failed")
+}
+test_list_defaults()
+
+test_matrix_defaults() = {
+    [m1, m2 = 2; m3 = 3, m4 = 4] = [10]
+    assert(m1 == 10 && m2 == 2 && m3 == 3 && m4 == 4, "Matrix Default Failed")
+}
+test_matrix_defaults()
+
+test_lazy_eval() = {
+    side_effect_count = 0
+    get_default() = {
+        ref side_effect_count += 1
+        return 999
+    }
+
+    {val1 = get_default()} = {val1: 1}
+    assert(val1 == 1 && side_effect_count == 0, "Lazy Eval (Dict Existing) Failed")
+
+    {val2 = get_default()} = {}
+    assert(val2 == 999 && side_effect_count == 1, "Lazy Eval (Dict Missing) Failed")
+
+    [val3 = get_default()] = [1]
+    assert(val3 == 1 && side_effect_count == 1, "Lazy Eval (List Existing) Failed")
+
+    [val4, val5 = get_default()] = [1]
+    assert(val5 == 999 && side_effect_count == 2, "Lazy Eval (List Missing) Failed")
+}
+test_lazy_eval()
+
+test_modifiers_defaults() = {
+    outer_var = 0
+    inner() = {
+        [local ma = 10, ref outer_var = 20, const mc = 30] = []
+        return @[ma, outer_var, mc]
+    }
+    res = inner()
+    assert(res[0] == 10 && res[1] == 20 && res[2] == 30, "Modifiers with Defaults Failed")
+}
+test_modifiers_defaults()
+
+test_rest_defaults() = {
+    [ra = 1, rb = 2, ...r_rest] = [99]
+    assert(ra == 99 && rb == 2 && r_rest == [], "Rest Pattern with Defaults Failed")
+}
+test_rest_defaults()
+
+test_nested_defaults() = {
+    [[na, nb = 2] = [1], nc = 3] = []
+    assert(na == 1 && nb == 2 && nc == 3, "Nested Destructuring Defaults Failed")
+
+    {nested: {nx, ny = 20} = {nx: 10}} = {}
+    assert(nx == 10 && ny == 20, "Nested Dict Destructuring Defaults Failed")
+}
+test_nested_defaults()

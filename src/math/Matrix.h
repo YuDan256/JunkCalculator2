@@ -4,6 +4,7 @@
 #include "Complex.h"
 #include "Tolerance.h"
 #include <cmath>
+#include <future>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -110,7 +111,7 @@ namespace jc {
         }
 
         // Strassen 递归核心 (要求 A, B 是 2^k x 2^k 的方阵)
-        static Matrix strassenCore(const Matrix& A, const Matrix& B) {
+        static Matrix strassenCore(const Matrix& A, const Matrix& B, int depth = 0) {
             int n = A.rows;
             if (n <= 64) return multiplyBase(A, B); // 阈值：小矩阵使用基础乘法
 
@@ -132,13 +133,31 @@ namespace jc {
                 }
             }
 
-            Matrix M1 = strassenCore(A11 + A22, B11 + B22);
-            Matrix M2 = strassenCore(A21 + A22, B11);
-            Matrix M3 = strassenCore(A11, B12 - B22);
-            Matrix M4 = strassenCore(A22, B21 - B11);
-            Matrix M5 = strassenCore(A11 + A12, B22);
-            Matrix M6 = strassenCore(A21 - A11, B11 + B12);
-            Matrix M7 = strassenCore(A12 - A22, B21 + B22);
+            Matrix M1, M2, M3, M4, M5, M6, M7;
+
+            // 限制并发深度，防止线程爆炸 (最大深度设为 2，最多产生 1 + 7 + 49 = 57 个任务)
+            if (depth < 2) {
+                auto f1 = std::async(std::launch::async, [&]() { return strassenCore(A11 + A22, B11 + B22, depth + 1); });
+                auto f2 = std::async(std::launch::async, [&]() { return strassenCore(A21 + A22, B11, depth + 1); });
+                auto f3 = std::async(std::launch::async, [&]() { return strassenCore(A11, B12 - B22, depth + 1); });
+                auto f4 = std::async(std::launch::async, [&]() { return strassenCore(A22, B21 - B11, depth + 1); });
+                auto f5 = std::async(std::launch::async, [&]() { return strassenCore(A11 + A12, B22, depth + 1); });
+                auto f6 = std::async(std::launch::async, [&]() { return strassenCore(A21 - A11, B11 + B12, depth + 1); });
+                
+                // 最后一个任务直接在当前线程执行，充分利用资源
+                M7 = strassenCore(A12 - A22, B21 + B22, depth + 1);
+
+                M1 = f1.get(); M2 = f2.get(); M3 = f3.get();
+                M4 = f4.get(); M5 = f5.get(); M6 = f6.get();
+            } else {
+                M1 = strassenCore(A11 + A22, B11 + B22, depth + 1);
+                M2 = strassenCore(A21 + A22, B11, depth + 1);
+                M3 = strassenCore(A11, B12 - B22, depth + 1);
+                M4 = strassenCore(A22, B21 - B11, depth + 1);
+                M5 = strassenCore(A11 + A12, B22, depth + 1);
+                M6 = strassenCore(A21 - A11, B11 + B12, depth + 1);
+                M7 = strassenCore(A12 - A22, B21 + B22, depth + 1);
+            }
 
             Matrix C11 = M1 + M4 - M5 + M7;
             Matrix C12 = M3 + M5;

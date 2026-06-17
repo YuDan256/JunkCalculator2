@@ -378,7 +378,33 @@ namespace jc {
                 case '\\': value += '\\'; break;
                 case '"':  value += '"';  break;
                 case '\'': value += '\''; break;
-                case '0':  value += '\0'; break;
+                case '0': case '1': case '2': case '3':
+                case '4': case '5': case '6': case '7': {
+                    std::string octStr;
+                    octStr += esc;
+                    if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                        octStr += source[current++];
+                        if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                            octStr += source[current++];
+                        }
+                    }
+                    value += static_cast<char>(std::stoi(octStr, nullptr, 8));
+                    break;
+                }
+                case 'a':  value += '\a'; break;
+                case 'b':  value += '\b'; break;
+                case 'f':  value += '\f'; break;
+                case 'v':  value += '\v'; break;
+                case 'x': {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                        std::string hexStr = source.substr(current, 2);
+                        value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
+                        current += 2;
+                    } else {
+                        value += "\\x";
+                    }
+                    break;
+                }
                 case '\n': line++; break; // 忽略反斜杠加换行
                 default:
                     value += '\\';
@@ -412,7 +438,33 @@ namespace jc {
                 case '\\': value += '\\'; break;
                 case '"':  value += '"';  break;
                 case '\'': value += '\''; break; // ★ 支持单引号转义
-                case '0':  value += '\0'; break;
+                case '0': case '1': case '2': case '3':
+                case '4': case '5': case '6': case '7': {
+                    std::string octStr;
+                    octStr += esc;
+                    if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                        octStr += source[current++];
+                        if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                            octStr += source[current++];
+                        }
+                    }
+                    value += static_cast<char>(std::stoi(octStr, nullptr, 8));
+                    break;
+                }
+                case 'a':  value += '\a'; break;
+                case 'b':  value += '\b'; break;
+                case 'f':  value += '\f'; break;
+                case 'v':  value += '\v'; break;
+                case 'x': {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                        std::string hexStr = source.substr(current, 2);
+                        value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
+                        current += 2;
+                    } else {
+                        value += "\\x";
+                    }
+                    break;
+                }
                 default:
                     value += '\\';
                     value += esc;
@@ -479,7 +531,33 @@ namespace jc {
                 case '\\': value += '\\'; break;
                 case '"':  value += '"';  break;
                 case '\'': value += '\''; break;
-                case '0':  value += '\0'; break;
+                case '0': case '1': case '2': case '3':
+                case '4': case '5': case '6': case '7': {
+                    std::string octStr;
+                    octStr += esc;
+                    if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                        octStr += source[current++];
+                        if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                            octStr += source[current++];
+                        }
+                    }
+                    value += static_cast<char>(std::stoi(octStr, nullptr, 8));
+                    break;
+                }
+                case 'a':  value += '\a'; break;
+                case 'b':  value += '\b'; break;
+                case 'f':  value += '\f'; break;
+                case 'v':  value += '\v'; break;
+                case 'x': {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                        std::string hexStr = source.substr(current, 2);
+                        value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
+                        current += 2;
+                    } else {
+                        value += "\\x";
+                    }
+                    break;
+                }
                 case '\n': line++; break;
                 default:   value += '\\'; value += esc; break;
                 }
@@ -545,7 +623,33 @@ namespace jc {
                 case '\\': value += '\\'; break;
                 case '"':  value += '"';  break;
                 case '\'': value += '\''; break; // ★
-                case '0':  value += '\0'; break;
+                case '0': case '1': case '2': case '3':
+                case '4': case '5': case '6': case '7': {
+                    std::string octStr;
+                    octStr += esc;
+                    if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                        octStr += source[current++];
+                        if (current < static_cast<int>(source.length()) && source[current] >= '0' && source[current] <= '7') {
+                            octStr += source[current++];
+                        }
+                    }
+                    value += static_cast<char>(std::stoi(octStr, nullptr, 8));
+                    break;
+                }
+                case 'a':  value += '\a'; break;
+                case 'b':  value += '\b'; break;
+                case 'f':  value += '\f'; break;
+                case 'v':  value += '\v'; break;
+                case 'x': {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                        std::string hexStr = source.substr(current, 2);
+                        value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
+                        current += 2;
+                    } else {
+                        value += "\\x";
+                    }
+                    break;
+                }
                 default:   value += '\\'; value += esc; break;
                 }
             }

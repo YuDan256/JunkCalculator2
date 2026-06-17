@@ -1588,7 +1588,7 @@
       "",
       "  Escape Sequences",
       "  ──────────────────────",
-      "    \\n  \\t  \\\\  \\\"  \\'  \\r  \\0",
+      "    \\n  \\t  \\\\  \\\"  \\'  \\r  \\0  \\a  \\b  \\f  \\v  \\xNN  \\nnn (octal)",
       "",
       "  Length & Indexing (0-based, negative safely wraps)",
       "  ──────────────────────",

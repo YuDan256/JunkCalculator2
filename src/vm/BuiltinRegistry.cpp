@@ -40,7 +40,22 @@ namespace jc {
     // =================================================================
     // 跨模块 Dunder 调用桥梁
     // =================================================================
-    std::pair<bool, Value> invokeDunder(ObjInstance* inst, const char* methodName, const std::vector<Value>& args) {
+    static const std::string DUNDER_HASH = "__hash__";
+    static const std::string DUNDER_ABS = "__abs__";
+    static const std::string DUNDER_STR = "__str__";
+    static const std::string DUNDER_BOOL = "__bool__";
+    static const std::string DUNDER_LEN = "__len__";
+    static const std::string DUNDER_ADD = "__add__";
+    static const std::string DUNDER_SUB = "__sub__";
+    static const std::string DUNDER_MUL = "__mul__";
+    static const std::string DUNDER_DIV = "__div__";
+    static const std::string DUNDER_LDIV = "__ldiv__";
+    static const std::string DUNDER_ITER = "__iter__";
+    static const std::string DUNDER_NEXT = "__next__";
+    static const std::string DUNDER_CALL = "__call__";
+    static const std::string DUNDER_GETITEM = "__getitem__";
+
+    std::pair<bool, Value> invokeDunder(ObjInstance* inst, const std::string& methodName, const std::vector<Value>& args) {
         ObjClosure* method = nullptr;
         ObjClass* c = inst->classDef;
         while (c) {
@@ -123,7 +138,7 @@ namespace jc {
         }
         else if (v.isInstance()) {
             auto inst = v.asInstance();
-            auto [found, res] = invokeDunder(inst, "__hash__", {});
+            auto [found, res] = invokeDunder(inst, DUNDER_HASH, {});
             if (found) {
                 oss << res.toString();
             } else {
@@ -732,7 +747,7 @@ void BuiltinRegistry::registerMath() {
         // ★ Dunder 钩子: __abs__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = invokeDunder(inst, "__abs__", {});
+            auto [found, result] = invokeDunder(inst, DUNDER_ABS, {});
             if (found) return result;
         }
         if (args[0].isObjType(ObjType::BIGINT)) return Value(static_cast<ObjBigInt*>(args[0].asObj())->num.abs());
@@ -1965,7 +1980,7 @@ void BuiltinRegistry::registerControlFlow() {
             // ★ Dunder 钩子: __str__
             if (args[i].isInstance()) {
                 auto inst = args[i].asInstance();
-                auto [found, result] = invokeDunder(inst, "__str__", {});
+                auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
                 if (found) { std::cout << result; continue; }
             }
             std::cout << args[i];
@@ -1978,7 +1993,7 @@ void BuiltinRegistry::registerControlFlow() {
             // ★ Dunder 钩子: __str__
             if (args[i].isInstance()) {
                 auto inst = args[i].asInstance();
-                auto [found, result] = invokeDunder(inst, "__str__", {});
+                auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
                 if (found) { std::cout << result; continue; }
             }
             std::cout << args[i];
@@ -1989,7 +2004,7 @@ void BuiltinRegistry::registerControlFlow() {
         // ★ Dunder 钩子: __bool__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = invokeDunder(inst, "__bool__", {});
+            auto [found, result] = invokeDunder(inst, DUNDER_BOOL, {});
             if (found) return Value(result.truthy());
         }
         return Value(args[0].truthy());
@@ -2188,7 +2203,7 @@ void BuiltinRegistry::registerStringFunctions() {
         // ★ Dunder 钩子: __str__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = invokeDunder(inst, "__str__", {});
+            auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
             if (found) return result;
         }
         if (args[0].isString()) return args[0];
@@ -2200,7 +2215,7 @@ void BuiltinRegistry::registerStringFunctions() {
         // ★ Dunder 钩子: __len__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            auto [found, result] = invokeDunder(inst, "__len__", {});
+            auto [found, result] = invokeDunder(inst, DUNDER_LEN, {});
             if (found) return result;
             return Value(static_cast<double>(inst->fields->elements.size()));
         }
@@ -3340,7 +3355,7 @@ void BuiltinRegistry::registerFormatType() {
         for (size_t i = 1; i < paList->vec.size(); ++i) {
             if (paList->vec[i].isInstance()) {
                 auto inst = paList->vec[i].asInstance();
-                auto [found, result] = invokeDunder(inst, "__str__", {});
+                auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
                 if (found) paList->vec[i] = result;
             }
         }
@@ -4381,8 +4396,8 @@ void BuiltinRegistry::registerTypeChecks() {
             val.isComplex() || val.isObjType(ObjType::BASENUM)) return Value(true);
         if (val.isInstance()) {
             auto inst = val.asInstance();
-            return Value(invokeDunder(inst, "__add__").first || invokeDunder(inst, "__mul__").first ||
-                         invokeDunder(inst, "__sub__").first || invokeDunder(inst, "__div__").first || invokeDunder(inst, "__ldiv__").first);
+            return Value(invokeDunder(inst, DUNDER_ADD).first || invokeDunder(inst, DUNDER_MUL).first ||
+                         invokeDunder(inst, DUNDER_SUB).first || invokeDunder(inst, DUNDER_DIV).first || invokeDunder(inst, DUNDER_LDIV).first);
         }
         return Value(false);
         });
@@ -4487,7 +4502,7 @@ void BuiltinRegistry::registerTypeChecks() {
             val.isObjType(ObjType::STRING_MATRIX)) return Value(true);
         if (val.isInstance()) {
             auto inst = val.asInstance();
-            return Value(invokeDunder(inst, "__iter__").first || invokeDunder(inst, "__next__").first);
+            return Value(invokeDunder(inst, DUNDER_ITER).first || invokeDunder(inst, DUNDER_NEXT).first);
         }
         return Value(false);
         });
@@ -4495,7 +4510,7 @@ void BuiltinRegistry::registerTypeChecks() {
     reg("iscallable", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& val = args[0];
         if (val.isFunctionClosure() || val.isClass() || val.isString()) return Value(true);
-        if (val.isInstance()) return Value(invokeDunder(val.asInstance(), "__call__").first);
+        if (val.isInstance()) return Value(invokeDunder(val.asInstance(), DUNDER_CALL).first);
         return Value(false);
         });
 
@@ -4504,7 +4519,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
             val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
             val.isObjType(ObjType::STRING_MATRIX)) return Value(true);
-        if (val.isInstance()) return Value(invokeDunder(val.asInstance(), "__getitem__").first);
+        if (val.isInstance()) return Value(invokeDunder(val.asInstance(), DUNDER_GETITEM).first);
         return Value(false);
         });
 

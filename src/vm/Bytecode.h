@@ -681,6 +681,7 @@ namespace jc {
         };
         std::vector<UpvalueInfo> upvalues;
         std::vector<bool> paramIsRef;
+        int refCount = 0; // ★ 新增：预计算的引用参数数量
     };
 
     // ═══════════════════════════════════════════

@@ -1196,6 +1196,8 @@ namespace jc {
             }
         }
         fn->paramIsRef = expr->paramIsRef; // ★ Transfer ref info
+        fn->refCount = 0;
+        for (bool isRef : fn->paramIsRef) if (isRef) fn->refCount++;
         emitDefaultPreamble(expr->defaultExprs, fn->maxArity);
 
 
@@ -3469,6 +3471,8 @@ namespace jc {
                 }
             }
             fn->paramIsRef = md.paramIsRef;
+            fn->refCount = 0;
+            for (bool isRef : fn->paramIsRef) if (isRef) fn->refCount++;
 
             emitDefaultPreamble(md.defaultExprs, fn->maxArity);
 

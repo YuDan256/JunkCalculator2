@@ -3142,20 +3142,14 @@ namespace jc {
     }
 
     void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
-        int refCount = 0;
-        for (int i = 0; i < fn->maxArity; ++i) {
-            if (i < static_cast<int>(fn->paramIsRef.size()) && fn->paramIsRef[i]) {
-                refCount++;
-            }
-        }
-        if (refCount == 0) {
+        if (fn->refCount == 0) {
             newFrame.refParamsBase = -1;
             pendingCallRefs.clear();
             return;
         }
 
         newFrame.refParamsBase = static_cast<int>(getStackSize());
-        for (int i = 0; i < refCount; ++i) {
+        for (int i = 0; i < fn->refCount; ++i) {
             push(Value::none()); // 占位
         }
 

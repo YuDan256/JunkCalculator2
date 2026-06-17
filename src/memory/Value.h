@@ -641,8 +641,12 @@ namespace jc {
 
 
     inline Value operator*(const Value& lhs, const Value& rhs) {
-        if (lhs.isInt32() && rhs.isInt32()) {
-            int64_t prod = static_cast<int64_t>(lhs.asInt32()) * rhs.asInt32();
+        bool lIsInt = lhs.isInt32() || lhs.isBool();
+        bool rIsInt = rhs.isInt32() || rhs.isBool();
+        if (lIsInt && rIsInt) {
+            int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
+            int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
+            int64_t prod = static_cast<int64_t>(a) * b;
             if (prod >= -2147483648LL && prod <= 2147483647LL) return Value::fromInt32(static_cast<int32_t>(prod));
             return Value(BigInt(prod));
         }
@@ -725,8 +729,11 @@ namespace jc {
     }
 
     inline Value operator/(const Value& lhs, const Value& rhs) {
-        if (lhs.isInt32() && rhs.isInt32()) {
-            int32_t a = lhs.asInt32(), b = rhs.asInt32();
+        bool lIsInt = lhs.isInt32() || lhs.isBool();
+        bool rIsInt = rhs.isInt32() || rhs.isBool();
+        if (lIsInt && rIsInt) {
+            int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
+            int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
             if (b == 0) throw std::runtime_error("Math Error: Division by zero.");
             if (a % b == 0) {
                 if (a == -2147483648 && b == -1) return Value(BigInt(2147483648LL));
@@ -831,6 +838,9 @@ namespace jc {
             } else if (rhs.isInt32()) {
                 rhsIsExactInt = true;
                 rhsInt = BigInt(rhs.asInt32());
+            } else if (rhs.isBool()) {
+                rhsIsExactInt = true;
+                rhsInt = BigInt(rhs.asBool() ? 1 : 0);
             } else if (rhs.isDouble()) {
                 double d = rhs.asDoubleRaw();
                 if (std::isfinite(d) && d == std::floor(d) && std::abs(d) < 9e18) {
@@ -863,7 +873,7 @@ namespace jc {
                 }
             }
 
-            if (lhs.isObjType(ObjType::BIGINT) || lhs.isObjType(ObjType::FRACTION) || lhs.isInt32()) {
+            if (lhs.isObjType(ObjType::BIGINT) || lhs.isObjType(ObjType::FRACTION) || lhs.isInt32() || lhs.isBool()) {
                 if (rhs.isObjType(ObjType::FRACTION)) {
                     Fraction b = static_cast<ObjFraction*>(rhs.asObj())->frac;
                     BigInt aNum = lhs.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(lhs.asObj())->frac.getNum() : lhs.asBigInt();
@@ -899,8 +909,11 @@ namespace jc {
     }
 
     inline Value operator%(const Value& lhs, const Value& rhs) {
-        if (lhs.isInt32() && rhs.isInt32()) {
-            int32_t a = lhs.asInt32(), b = rhs.asInt32();
+        bool lIsInt = lhs.isInt32() || lhs.isBool();
+        bool rIsInt = rhs.isInt32() || rhs.isBool();
+        if (lIsInt && rIsInt) {
+            int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
+            int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
             if (b == 0) throw std::runtime_error("Math Error: Modulo by zero.");
             if (a == -2147483648 && b == -1) return Value::fromInt32(0);
             return Value::fromInt32(a % b);
@@ -1413,7 +1426,13 @@ namespace jc {
         // 防循环递归锁
         static thread_local std::vector<std::pair<const void*, const void*>> comparingPairs;
 
-        if (lhs.isInt32() && rhs.isInt32()) return lhs.asInt32() == rhs.asInt32();
+        bool lIsInt = lhs.isInt32() || lhs.isBool();
+        bool rIsInt = rhs.isInt32() || rhs.isBool();
+        if (lIsInt && rIsInt) {
+            int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
+            int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
+            return a == b;
+        }
         if (lhs.isNumber() && rhs.isNumber()) return lhs.asNumber() == rhs.asNumber();
         if (lhs.isNone() || rhs.isNone()) return false;
         if (lhs.isUninit() || rhs.isUninit()) return false;
@@ -1652,8 +1671,8 @@ namespace jc {
             if (v == -2147483648) return Value(BigInt(2147483648LL));
             return Value::fromInt32(-v);
         }
+        if (isBool()) return Value::fromInt32(asBool() ? -1 : 0);
         if (isDouble()) return Value(-asDoubleRaw());
-        if (isBool()) return Value(asBool() ? -1.0 : -0.0);
         if (isObj()) {
             Obj* obj = asObj();
             switch (obj->type) {
@@ -1671,8 +1690,12 @@ namespace jc {
     }
 
     inline Value operator+(const Value& lhs, const Value& rhs) {
-        if (lhs.isInt32() && rhs.isInt32()) {
-            int64_t sum = static_cast<int64_t>(lhs.asInt32()) + rhs.asInt32();
+        bool lIsInt = lhs.isInt32() || lhs.isBool();
+        bool rIsInt = rhs.isInt32() || rhs.isBool();
+        if (lIsInt && rIsInt) {
+            int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
+            int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
+            int64_t sum = static_cast<int64_t>(a) + b;
             if (sum >= -2147483648LL && sum <= 2147483647LL) return Value::fromInt32(static_cast<int32_t>(sum));
             return Value(BigInt(sum));
         }
@@ -1773,8 +1796,12 @@ namespace jc {
     }
 
     inline Value operator-(const Value& lhs, const Value& rhs) {
-        if (lhs.isInt32() && rhs.isInt32()) {
-            int64_t diff = static_cast<int64_t>(lhs.asInt32()) - rhs.asInt32();
+        bool lIsInt = lhs.isInt32() || lhs.isBool();
+        bool rIsInt = rhs.isInt32() || rhs.isBool();
+        if (lIsInt && rIsInt) {
+            int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
+            int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
+            int64_t diff = static_cast<int64_t>(a) - b;
             if (diff >= -2147483648LL && diff <= 2147483647LL) return Value::fromInt32(static_cast<int32_t>(diff));
             return Value(BigInt(diff));
         }

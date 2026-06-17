@@ -365,7 +365,7 @@
       "    PI          3.14159265358979…        (ordinary global, overridable, deletable)",
       "    E           2.71828182845904…        (ordinary global, overridable, deletable)",
       "    i  /  I     Imaginary unit (i² = −1) (ordinary global, overridable, deletable)",
-      "    true / false                          (keywords, act as 1.0 and 0.0 in math)",
+      "    true / false                          (keywords, act as 1 and 0 in math)",
       "    none        None value                (keyword, immutable)",
       "",
       "    Note: PI, E, i, I are intentionally NOT declared as `const`. They are ordinary",
@@ -6692,7 +6692,7 @@
     "true": {
       "signature": "true",
       "desc": [
-        "Native boolean constant, acts as 1.0 in math.",
+        "Native boolean constant, acts as 1 in math.",
         "It is a language keyword and cannot be overwritten or deleted.",
         "See also: /help scope, /help control"
       ],
@@ -6703,7 +6703,7 @@
     "false": {
       "signature": "false",
       "desc": [
-        "Native boolean constant, acts as 0.0 in math.",
+        "Native boolean constant, acts as 0 in math.",
         "It is a language keyword and cannot be overwritten or deleted.",
         "See also: /help scope, /help control"
       ],

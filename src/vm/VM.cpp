@@ -218,12 +218,12 @@ namespace jc {
     bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr) {
         switch (btype) {
             case BuiltinType::ANY: return true;
-            case BuiltinType::INT: return val.isInt32() || val.isObjType(ObjType::BIGINT);
+            case BuiltinType::INT: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool();
             case BuiltinType::FLOAT: return val.isDouble();
             case BuiltinType::REAL: return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || (val.isComplex() && val.asComplex().imag == 0.0);
             case BuiltinType::NUMBER: return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isComplex();
-            case BuiltinType::WHOLE: return val.isInt32() || val.isObjType(ObjType::BIGINT) || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real));
-            case BuiltinType::EXACT: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isObjType(ObjType::SYMBOLIC);
+            case BuiltinType::WHOLE: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real));
+            case BuiltinType::EXACT: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isObjType(ObjType::SYMBOLIC);
             case BuiltinType::STRING: return val.isString();
             case BuiltinType::BOOL: return val.isBool();
             case BuiltinType::BINARY: {
@@ -805,8 +805,12 @@ namespace jc {
                 case OpCode::OP_ADD: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() + b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) {
-                        int64_t res = static_cast<int64_t>(a.asInt32()) + b.asInt32();
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        int64_t res = static_cast<int64_t>(va) + vb;
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
                     if (a.isInstance() && findDunder(a, DUNDER_ADD)) { Value res = callDunder(a, DUNDER_ADD, &b, 1); pop(); peek(0) = res; break; }
@@ -816,8 +820,12 @@ namespace jc {
                 case OpCode::OP_SUBTRACT: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() - b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) {
-                        int64_t res = static_cast<int64_t>(a.asInt32()) - b.asInt32();
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        int64_t res = static_cast<int64_t>(va) - vb;
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
                     if (a.isInstance() && findDunder(a, DUNDER_SUB)) { Value res = callDunder(a, DUNDER_SUB, &b, 1); pop(); peek(0) = res; break; }
@@ -827,8 +835,12 @@ namespace jc {
                 case OpCode::OP_MULTIPLY: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() * b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) {
-                        int64_t res = static_cast<int64_t>(a.asInt32()) * b.asInt32();
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        int64_t res = static_cast<int64_t>(va) * vb;
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
                     if (a.isInstance() && findDunder(a, DUNDER_MUL)) { Value res = callDunder(a, DUNDER_MUL, &b, 1); pop(); peek(0) = res; break; }
@@ -908,14 +920,26 @@ namespace jc {
                 case OpCode::OP_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() == b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() == b.asInt32(); pop(); peek(0) = Value(res); break; }
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        bool res = va == vb; pop(); peek(0) = Value(res); break;
+                    }
                     if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(callDunder(a, DUNDER_EQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res = Value(Value::equals(a, b)); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_NOT_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() != b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() != b.asInt32(); pop(); peek(0) = Value(res); break; }
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        bool res = va != vb; pop(); peek(0) = Value(res); break;
+                    }
                     if (a.isInstance() && findDunder(a, DUNDER_NEQ)) { Value res = Value(callDunder(a, DUNDER_NEQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(!callDunder(a, DUNDER_EQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res = Value(!Value::equals(a, b)); pop(); peek(0) = res; break;
@@ -923,10 +947,16 @@ namespace jc {
                 case OpCode::OP_LESS: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() < b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() < b.asInt32(); pop(); peek(0) = Value(res); break; }
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        bool res = va < vb; pop(); peek(0) = Value(res); break;
+                    }
                     if (a.isInstance() && findDunder(a, DUNDER_LT)) { Value res = Value(callDunder(a, DUNDER_LT, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
-                    if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() < b.asBigInt());
+                    if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() < b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac < static_cast<ObjFraction*>(b.asObj())->frac);
                     else if (a.isString() && b.isString()) res = Value(a.asString() < b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da < db); }
@@ -935,10 +965,16 @@ namespace jc {
                 case OpCode::OP_LESS_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() <= b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() <= b.asInt32(); pop(); peek(0) = Value(res); break; }
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        bool res = va <= vb; pop(); peek(0) = Value(res); break;
+                    }
                     if (a.isInstance() && findDunder(a, DUNDER_LE)) { Value res = Value(callDunder(a, DUNDER_LE, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
-                    if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() <= b.asBigInt());
+                    if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() <= b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac <= static_cast<ObjFraction*>(b.asObj())->frac);
                     else if (a.isString() && b.isString()) res = Value(a.asString() <= b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da <= db); }
@@ -947,10 +983,16 @@ namespace jc {
                 case OpCode::OP_GREATER: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() > b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() > b.asInt32(); pop(); peek(0) = Value(res); break; }
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        bool res = va > vb; pop(); peek(0) = Value(res); break;
+                    }
                     if (a.isInstance() && findDunder(a, DUNDER_GT)) { Value res = Value(callDunder(a, DUNDER_GT, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
-                    if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() > b.asBigInt());
+                    if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() > b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac > static_cast<ObjFraction*>(b.asObj())->frac);
                     else if (a.isString() && b.isString()) res = Value(a.asString() > b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da > db); }
@@ -959,10 +1001,16 @@ namespace jc {
                 case OpCode::OP_GREATER_EQUAL: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { bool res = a.asDoubleRaw() >= b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInt32() && b.isInt32()) { bool res = a.asInt32() >= b.asInt32(); pop(); peek(0) = Value(res); break; }
+                    bool aIsInt = a.isInt32() || a.isBool();
+                    bool bIsInt = b.isInt32() || b.isBool();
+                    if (aIsInt && bIsInt) {
+                        int32_t va = a.isInt32() ? a.asInt32() : (a.asBool() ? 1 : 0);
+                        int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
+                        bool res = va >= vb; pop(); peek(0) = Value(res); break;
+                    }
                     if (a.isInstance() && findDunder(a, DUNDER_GE)) { Value res = Value(callDunder(a, DUNDER_GE, &b, 1).truthy()); pop(); peek(0) = res; break; }
                     Value res;
-                    if ((a.isBigInt() || a.isInt32()) && (b.isBigInt() || b.isInt32())) res = Value(a.asBigInt() >= b.asBigInt());
+                    if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() >= b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac >= static_cast<ObjFraction*>(b.asObj())->frac);
                     else if (a.isString() && b.isString()) res = Value(a.asString() >= b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da >= db); }

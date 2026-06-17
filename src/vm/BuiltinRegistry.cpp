@@ -4365,14 +4365,14 @@ void BuiltinRegistry::registerTypeChecks() {
         });
 
     reg("isint", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isInt32() || args[0].isBigInt()) return Value(true);
+        if (args[0].isInt32() || args[0].isBigInt() || args[0].isBool()) return Value(true);
         if (args[0].isObjType(ObjType::FRACTION))
             return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getDen() == BigInt(1));
         return Value(false);
         });
 
     reg("iswhole", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isInt32() || args[0].isBigInt()) return Value(true);
+        if (args[0].isInt32() || args[0].isBigInt() || args[0].isBool()) return Value(true);
         if (args[0].isDouble()) {
             double v = args[0].asDoubleRaw();
             return Value(std::isfinite(v) && v == std::floor(v));
@@ -4430,7 +4430,7 @@ void BuiltinRegistry::registerTypeChecks() {
         });
 
     reg("isexact", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isInt32() || args[0].isBigInt() || args[0].isObjType(ObjType::FRACTION) || args[0].isObjType(ObjType::BASENUM) || args[0].isObjType(ObjType::SYMBOLIC));
+        return Value(args[0].isInt32() || args[0].isBigInt() || args[0].isBool() || args[0].isObjType(ObjType::FRACTION) || args[0].isObjType(ObjType::BASENUM) || args[0].isObjType(ObjType::SYMBOLIC));
         });
 
     reg("isbinary", { 1 }, [](const std::vector<Value>& args) -> Value {

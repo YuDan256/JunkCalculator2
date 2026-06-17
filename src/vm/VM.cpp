@@ -116,20 +116,55 @@ namespace jc {
         return oss.str();
     }
 
+    static BuiltinType parseBuiltinType(const std::string& typeStr) {
+        if (typeStr == "any" || typeStr.empty()) return BuiltinType::ANY;
+        if (typeStr == "int") return BuiltinType::INT;
+        if (typeStr == "float" || typeStr == "double") return BuiltinType::FLOAT;
+        if (typeStr == "real") return BuiltinType::REAL;
+        if (typeStr == "number") return BuiltinType::NUMBER;
+        if (typeStr == "whole") return BuiltinType::WHOLE;
+        if (typeStr == "exact") return BuiltinType::EXACT;
+        if (typeStr == "string" || typeStr == "str") return BuiltinType::STRING;
+        if (typeStr == "bool") return BuiltinType::BOOL;
+        if (typeStr == "binary" || typeStr == "bool_like") return BuiltinType::BINARY;
+        if (typeStr == "none") return BuiltinType::NONE_TYPE;
+        if (typeStr == "list") return BuiltinType::LIST;
+        if (typeStr == "dict") return BuiltinType::DICT;
+        if (typeStr == "set") return BuiltinType::SET;
+        if (typeStr == "fraction") return BuiltinType::FRACTION;
+        if (typeStr == "complex") return BuiltinType::COMPLEX;
+        if (typeStr == "basenum") return BuiltinType::BASENUM;
+        if (typeStr == "symbolic" || typeStr == "symbol" || typeStr == "expr") return BuiltinType::SYMBOLIC;
+        if (typeStr == "realmat") return BuiltinType::REALMAT;
+        if (typeStr == "complexmat") return BuiltinType::COMPLEXMAT;
+        if (typeStr == "stringmat") return BuiltinType::STRINGMAT;
+        if (typeStr == "matrix") return BuiltinType::MATRIX;
+        if (typeStr == "func" || typeStr == "function") return BuiltinType::FUNC;
+        if (typeStr == "class") return BuiltinType::CLASS;
+        if (typeStr == "instance") return BuiltinType::INSTANCE;
+        if (typeStr == "namespace") return BuiltinType::NAMESPACE;
+        if (typeStr == "iterable") return BuiltinType::ITERABLE;
+        if (typeStr == "callable") return BuiltinType::CALLABLE;
+        if (typeStr == "indexable") return BuiltinType::INDEXABLE;
+        if (typeStr == "hashable") return BuiltinType::HASHABLE;
+        if (typeStr == "numeric") return BuiltinType::NUMERIC;
+        return BuiltinType::CUSTOM_CLASS;
+    }
+
     std::string VM::getTypeName(const Value& val) {
         if (val.isUninit()) return "Uninitialized";
         return val.typeName();
     }
 
-    void VM::triggerParamTypeError(const Value& val, uint32_t typeIdx, uint32_t nameIdx) {
-        const std::string& expectedType = currentChunk().constants[typeIdx].asString();
+    void VM::triggerParamTypeError(const Value& val, uint32_t icIdx, uint32_t nameIdx) {
+        const std::string& expectedType = currentChunk().constants[currentChunk().inlineCaches[icIdx].nameIdx].asString();
         const std::string& paramName = currentChunk().constants[nameIdx].asString();
         throw std::runtime_error("TypeError: Parameter '" + paramName +
             "' expected type '" + expectedType +
             "', got '" + getTypeName(val) + "'.");
     }
-    void VM::triggerReturnTypeError(const Value& val, uint32_t typeIdx) {
-        const std::string& expectedType = currentChunk().constants[typeIdx].asString();
+    void VM::triggerReturnTypeError(const Value& val, uint32_t icIdx) {
+        const std::string& expectedType = currentChunk().constants[currentChunk().inlineCaches[icIdx].nameIdx].asString();
         throw std::runtime_error("TypeError: Function '" + frame().function->name +
             "' expected to return '" + expectedType +
             "', but returned '" + getTypeName(val) + "'.");
@@ -180,71 +215,69 @@ namespace jc {
     static const std::string DUNDER_BOOL = "__bool__";
     static const std::string DUNDER_CONTAINS = "__contains__";
 
-    bool VM::checkValueType(const Value& val, const std::string& typeStr) {
-        if (typeStr == "any" || typeStr.empty()) return true;
-
-        // 1. 精确类型 & 联合类型
-        if (typeStr == "int") return val.isInt32() || val.isObjType(ObjType::BIGINT);
-        if (typeStr == "float" || typeStr == "double") return val.isDouble();
-        if (typeStr == "real") return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || (val.isComplex() && val.asComplex().imag == 0.0);
-        if (typeStr == "number") return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isComplex();
-        if (typeStr == "whole") return val.isInt32() || val.isObjType(ObjType::BIGINT) || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real));
-        if (typeStr == "exact") return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isObjType(ObjType::SYMBOLIC);
-        if (typeStr == "string" || typeStr == "str") return val.isString();
-        if (typeStr == "bool") return val.isBool();
-        if (typeStr == "binary" || typeStr == "bool_like") {
-            if (val.isBool()) return true;
-            try {
-                double d = val.asDouble();
-                if (d == 0.0 || d == 1.0) return true;
-            } catch (...) {}
-            return false;
-        }
-        if (typeStr == "none") return val.isNone();
-        if (typeStr == "list") return val.isObjType(ObjType::LIST);
-        if (typeStr == "dict") return val.isObjType(ObjType::DICT);
-        if (typeStr == "set") return val.isObjType(ObjType::SET);
-        if (typeStr == "fraction") return val.isObjType(ObjType::FRACTION);
-        if (typeStr == "complex") return val.isObjType(ObjType::COMPLEX);
-        if (typeStr == "basenum") return val.isObjType(ObjType::BASENUM);
-        if (typeStr == "symbolic" || typeStr == "symbol" || typeStr == "expr") return val.isObjType(ObjType::SYMBOLIC);
-        if (typeStr == "realmat") return val.isObjType(ObjType::REAL_MATRIX);
-        if (typeStr == "complexmat") return val.isObjType(ObjType::COMPLEX_MATRIX);
-        if (typeStr == "stringmat") return val.isObjType(ObjType::STRING_MATRIX);
-        if (typeStr == "matrix") return val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX);
-        if (typeStr == "func" || typeStr == "function") return val.isFunctionClosure();
-        if (typeStr == "class") return val.isClass();
-        if (typeStr == "instance") return val.isInstance();
-        if (typeStr == "namespace") return val.isObjType(ObjType::NAMESPACE);
-
-        // 2. 鸭子类型 / 接口类型
-        if (typeStr == "iterable") {
-            if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
-                val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                val.isObjType(ObjType::STRING_MATRIX)) return true;
-            if (val.isInstance()) return findDunder(val, "__iter__") || findDunder(val, "__next__");
-            return false;
-        }
-        if (typeStr == "callable") {
-            if (val.isFunctionClosure() || val.isClass() || val.isString()) return true;
-            if (val.isInstance()) return findDunder(val, "__call__") != nullptr;
-            return false;
-        }
-        if (typeStr == "indexable") {
-            if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
-                val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                val.isObjType(ObjType::STRING_MATRIX)) return true;
-            if (val.isInstance()) return findDunder(val, "__getitem__") != nullptr;
-            return false;
-        }
-        if (typeStr == "hashable") return val.isHashable();
-        if (typeStr == "numeric") {
-            if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
-                val.isObjType(ObjType::COMPLEX) || val.isObjType(ObjType::BASENUM)) return true;
-            if (val.isInstance()) {
-                return findDunder(val, "__add__") || findDunder(val, "__mul__") || findDunder(val, "__sub__") || findDunder(val, "__div__") || findDunder(val, "__ldiv__");
+    bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr) {
+        switch (btype) {
+            case BuiltinType::ANY: return true;
+            case BuiltinType::INT: return val.isInt32() || val.isObjType(ObjType::BIGINT);
+            case BuiltinType::FLOAT: return val.isDouble();
+            case BuiltinType::REAL: return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || (val.isComplex() && val.asComplex().imag == 0.0);
+            case BuiltinType::NUMBER: return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isComplex();
+            case BuiltinType::WHOLE: return val.isInt32() || val.isObjType(ObjType::BIGINT) || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real));
+            case BuiltinType::EXACT: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isObjType(ObjType::SYMBOLIC);
+            case BuiltinType::STRING: return val.isString();
+            case BuiltinType::BOOL: return val.isBool();
+            case BuiltinType::BINARY: {
+                if (val.isBool()) return true;
+                try { double d = val.asDouble(); if (d == 0.0 || d == 1.0) return true; } catch (...) {}
+                return false;
             }
-            return false;
+            case BuiltinType::NONE_TYPE: return val.isNone();
+            case BuiltinType::LIST: return val.isObjType(ObjType::LIST);
+            case BuiltinType::DICT: return val.isObjType(ObjType::DICT);
+            case BuiltinType::SET: return val.isObjType(ObjType::SET);
+            case BuiltinType::FRACTION: return val.isObjType(ObjType::FRACTION);
+            case BuiltinType::COMPLEX: return val.isObjType(ObjType::COMPLEX);
+            case BuiltinType::BASENUM: return val.isObjType(ObjType::BASENUM);
+            case BuiltinType::SYMBOLIC: return val.isObjType(ObjType::SYMBOLIC);
+            case BuiltinType::REALMAT: return val.isObjType(ObjType::REAL_MATRIX);
+            case BuiltinType::COMPLEXMAT: return val.isObjType(ObjType::COMPLEX_MATRIX);
+            case BuiltinType::STRINGMAT: return val.isObjType(ObjType::STRING_MATRIX);
+            case BuiltinType::MATRIX: return val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX);
+            case BuiltinType::FUNC: return val.isFunctionClosure();
+            case BuiltinType::CLASS: return val.isClass();
+            case BuiltinType::INSTANCE: return val.isInstance();
+            case BuiltinType::NAMESPACE: return val.isObjType(ObjType::NAMESPACE);
+            case BuiltinType::ITERABLE: {
+                if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
+                    val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
+                    val.isObjType(ObjType::STRING_MATRIX)) return true;
+                if (val.isInstance()) return findDunder(val, "__iter__") || findDunder(val, "__next__");
+                return false;
+            }
+            case BuiltinType::CALLABLE: {
+                if (val.isFunctionClosure() || val.isClass() || val.isString()) return true;
+                if (val.isInstance()) return findDunder(val, "__call__") != nullptr;
+                return false;
+            }
+            case BuiltinType::INDEXABLE: {
+                if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
+                    val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
+                    val.isObjType(ObjType::STRING_MATRIX)) return true;
+                if (val.isInstance()) return findDunder(val, "__getitem__") != nullptr;
+                return false;
+            }
+            case BuiltinType::HASHABLE: return val.isHashable();
+            case BuiltinType::NUMERIC: {
+                if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
+                    val.isObjType(ObjType::COMPLEX) || val.isObjType(ObjType::BASENUM)) return true;
+                if (val.isInstance()) {
+                    return findDunder(val, "__add__") || findDunder(val, "__mul__") || findDunder(val, "__sub__") || findDunder(val, "__div__") || findDunder(val, "__ldiv__");
+                }
+                return false;
+            }
+            case BuiltinType::CUSTOM_CLASS:
+            default:
+                break; // Fallthrough to custom class logic
         }
 
         // 3. 面向对象标称类型
@@ -932,24 +965,28 @@ namespace jc {
                 }
 
                 case OpCode::OP_ASSERT_PARAM_TYPE: {
-                    uint32_t typeIdx = readOperand();
+                    uint32_t icIdx = readOperand();
                     uint32_t nameIdx = readOperand();
                     Value val = pop();
-                    execAssertParamType(val, typeIdx, nameIdx);
+                    execAssertParamType(val, icIdx, nameIdx);
                     break;
                 }
 
                 case OpCode::OP_ASSERT_RETURN_TYPE: {
-                    uint32_t typeIdx = readOperand();
-                    execAssertReturnType(peek(0), typeIdx);
+                    uint32_t icIdx = readOperand();
+                    execAssertReturnType(peek(0), icIdx);
                     break;
                 }
 
                 case OpCode::OP_MATCH_TYPE: {
-                    uint32_t typeIdx = readOperand();
-                    const std::string& typeStr = chunk->constants[typeIdx].asString();
+                    uint32_t icIdx = readOperand();
+                    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+                    if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
+                        ic.cachedBuiltinType = parseBuiltinType(chunk->constants[ic.nameIdx].asString());
+                    }
+                    const std::string& typeStr = chunk->constants[ic.nameIdx].asString();
                     Value val = pop();
-                    push(Value(checkValueType(val, typeStr)));
+                    push(Value(checkValueType(val, ic.cachedBuiltinType, typeStr)));
                     break;
                 }
 
@@ -5574,10 +5611,14 @@ namespace jc {
             "' has no callable implementation.");
     }
 
-    void VM::execAssertParamType(const Value& val, uint32_t typeIdx, uint32_t nameIdx) {
-        const std::string& expectedType = frame().function->chunk.constants[typeIdx].asString();
+    void VM::execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx) {
+        InlineCache& ic = const_cast<InlineCache&>(frame().function->chunk.inlineCaches[icIdx]);
+        if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
+            ic.cachedBuiltinType = parseBuiltinType(frame().function->chunk.constants[ic.nameIdx].asString());
+        }
+        const std::string& expectedType = frame().function->chunk.constants[ic.nameIdx].asString();
 
-        if (!checkValueType(val, expectedType)) {
+        if (!checkValueType(val, ic.cachedBuiltinType, expectedType)) {
             const std::string& paramName = frame().function->chunk.constants[nameIdx].asString();
             throw std::runtime_error("TypeError: Parameter '" + paramName +
                 "' expected type '" + expectedType +
@@ -5585,10 +5626,14 @@ namespace jc {
         }
     }
 
-    void VM::execAssertReturnType(const Value& val, uint32_t typeIdx) {
-        const std::string& expectedType = frame().function->chunk.constants[typeIdx].asString();
+    void VM::execAssertReturnType(const Value& val, uint32_t icIdx) {
+        InlineCache& ic = const_cast<InlineCache&>(frame().function->chunk.inlineCaches[icIdx]);
+        if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
+            ic.cachedBuiltinType = parseBuiltinType(frame().function->chunk.constants[ic.nameIdx].asString());
+        }
+        const std::string& expectedType = frame().function->chunk.constants[ic.nameIdx].asString();
 
-        if (!checkValueType(val, expectedType)) {
+        if (!checkValueType(val, ic.cachedBuiltinType, expectedType)) {
             throw std::runtime_error("TypeError: Function '" + frame().function->name +
                 "' expected to return '" + expectedType +
                 "', but returned '" + getTypeName(val) + "'.");

@@ -117,11 +117,11 @@ namespace jc {
             const std::vector<Value>& args);
 
         // ★ 类型检查冷路径：让繁重的字符串操作离开核心循环
-        [[noreturn]] void triggerParamTypeError(const Value& val, uint32_t typeIdx, uint32_t nameIdx);
-        [[noreturn]] void triggerReturnTypeError(const Value& val, uint32_t typeIdx);
+        [[noreturn]] void triggerParamTypeError(const Value& val, uint32_t icIdx, uint32_t nameIdx);
+        [[noreturn]] void triggerReturnTypeError(const Value& val, uint32_t icIdx);
 
         std::string getTypeName(const Value& val);
-        bool checkValueType(const Value& val, const std::string& typeStr);
+        bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
 
         std::unordered_map<std::string, std::set<int>> builtinArity;  // ★ 新增
         std::unordered_set<std::string> importedModules;               // ★ 防重复导入
@@ -168,8 +168,8 @@ namespace jc {
         void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
         void execInvoke(uint8_t argc, uint32_t icIdx, bool isTailCall = false);
         void execSuperInvoke(uint32_t nameIdx, uint8_t argc, bool isTailCall = false);
-        void execAssertParamType(const Value& val, uint32_t typeIdx, uint32_t nameIdx);
-        void execAssertReturnType(const Value& val, uint32_t typeIdx);
+        void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
+        void execAssertReturnType(const Value& val, uint32_t icIdx);
 
     public:
         VM();

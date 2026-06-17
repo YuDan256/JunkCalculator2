@@ -1213,7 +1213,7 @@ namespace jc {
                 uint32_t typeIdx = identifierConstant(expr->paramTypes[i]);
                 uint32_t nameIdx = identifierConstant(expr->params[i].lexeme);
                 emit(OpCode::OP_ASSERT_PARAM_TYPE, lastLine);
-                emit16(typeIdx, lastLine);
+                emit16(chunk()->addInlineCache(typeIdx), lastLine);
                 emit16(nameIdx, lastLine);
             }
         }
@@ -1222,7 +1222,7 @@ namespace jc {
         if (!expr->returnType.empty()) {
             uint32_t typeIdx = identifierConstant(expr->returnType);
             emit(OpCode::OP_ASSERT_RETURN_TYPE, lastLine);
-            emit16(typeIdx, lastLine);
+            emit16(chunk()->addInlineCache(typeIdx), lastLine);
         }
         emit(OpCode::OP_RETURN, lastLine);
 
@@ -1366,7 +1366,7 @@ namespace jc {
         if (!current().expectedReturnType.empty()) {
             uint32_t typeIdx = identifierConstant(current().expectedReturnType);
             emit(OpCode::OP_ASSERT_RETURN_TYPE, lastLine);
-            emit16(typeIdx, lastLine);
+            emit16(chunk()->addInlineCache(typeIdx), lastLine);
         }
 
         for (int i = 0; i < current().tryDepth; ++i) emit(OpCode::OP_TRY_END, lastLine);
@@ -2746,14 +2746,14 @@ namespace jc {
             }
         } else if (auto* dictPat = dynamic_cast<DictPattern*>(p)) {
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
-            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("dict"), lastLine);
+            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(chunk()->addInlineCache(identifierConstant("dict")), lastLine);
             
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
-            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("instance"), lastLine);
+            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(chunk()->addInlineCache(identifierConstant("instance")), lastLine);
             emit(OpCode::OP_BIT_OR, lastLine);
 
             emit(OpCode::OP_GET_LOCAL, lastLine); emit16(static_cast<uint32_t>(valSlot), lastLine);
-            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(identifierConstant("namespace"), lastLine);
+            emit(OpCode::OP_MATCH_TYPE, lastLine); emit16(chunk()->addInlineCache(identifierConstant("namespace")), lastLine);
             emit(OpCode::OP_BIT_OR, lastLine);
             
             failJumps.push_back(chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine));
@@ -3487,7 +3487,7 @@ namespace jc {
                     uint32_t paramTypeIdx = identifierConstant(md.paramTypes[i]);
                     uint32_t paramNameIdx = identifierConstant(md.params[i].lexeme);
                     emit(OpCode::OP_ASSERT_PARAM_TYPE, lastLine);
-                    emit16(paramTypeIdx, lastLine);
+                    emit16(chunk()->addInlineCache(paramTypeIdx), lastLine);
                     emit16(paramNameIdx, lastLine);
                 }
             }
@@ -3496,7 +3496,7 @@ namespace jc {
             if (!md.returnType.empty()) {
                 uint32_t retTypeIdx = identifierConstant(md.returnType);
                 emit(OpCode::OP_ASSERT_RETURN_TYPE, lastLine);
-                emit16(retTypeIdx, lastLine);
+                emit16(chunk()->addInlineCache(retTypeIdx), lastLine);
             }
             emit(OpCode::OP_RETURN, lastLine); // (不用动)
 

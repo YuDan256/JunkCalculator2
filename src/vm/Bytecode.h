@@ -246,12 +246,22 @@ namespace jc {
         }
     }
 
+    enum class BuiltinType : int8_t {
+        UNKNOWN = -1,
+        ANY, INT, FLOAT, REAL, NUMBER, WHOLE, EXACT, STRING, BOOL, BINARY, NONE_TYPE,
+        LIST, DICT, SET, FRACTION, COMPLEX, BASENUM, SYMBOLIC,
+        REALMAT, COMPLEXMAT, STRINGMAT, MATRIX, FUNC, CLASS, INSTANCE, NAMESPACE,
+        ITERABLE, CALLABLE, INDEXABLE, HASHABLE, NUMERIC,
+        CUSTOM_CLASS
+    };
+
     struct InlineCache {
         uint32_t nameIdx = 0;
         ObjClass* cachedClass = nullptr;
         ObjClosure* cachedMethod = nullptr;
         int cachedFieldIndex = -1;
         int cachedGlobalSlot = -1;
+        BuiltinType cachedBuiltinType = BuiltinType::UNKNOWN;
     };
 
     struct ShapePattern {
@@ -327,7 +337,7 @@ namespace jc {
         }
 
         uint32_t addInlineCache(uint32_t nameIdx) {
-            inlineCaches.push_back(InlineCache{nameIdx, nullptr, nullptr, -1, -1});
+            inlineCaches.push_back(InlineCache{nameIdx, nullptr, nullptr, -1, -1, BuiltinType::UNKNOWN});
             return static_cast<uint32_t>(inlineCaches.size() - 1);
         }
 
@@ -466,8 +476,6 @@ namespace jc {
             case OpCode::OP_METHOD:
             case OpCode::OP_DELETE_GLOBAL:
             case OpCode::OP_GET_SUPER: 
-            case OpCode::OP_ASSERT_RETURN_TYPE:
-            case OpCode::OP_MATCH_TYPE:
             case OpCode::OP_MATCH_SHAPE: {
                 uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 if (op == OpCode::OP_MATCH_SHAPE) {
@@ -498,7 +506,9 @@ namespace jc {
             case OpCode::OP_DEFINE_CONST_GLOBAL:
             case OpCode::OP_GET_PROPERTY:
             case OpCode::OP_TRY_GET_PROPERTY:
-            case OpCode::OP_SET_PROPERTY: {
+            case OpCode::OP_SET_PROPERTY:
+            case OpCode::OP_ASSERT_RETURN_TYPE:
+            case OpCode::OP_MATCH_TYPE: {
                 uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 std::cout << "[IC:" << icIdx << "]";
                 if (icIdx < inlineCaches.size()) {
@@ -637,9 +647,9 @@ namespace jc {
                 return offset + 5;
             }
             case OpCode::OP_ASSERT_PARAM_TYPE: {      // ★ 新增一整块
-                uint32_t typeIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
+                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
                 uint32_t nameIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 3);
-                std::cout << "typeConst: " << typeIdx << ", nameConst: " << nameIdx << std::endl;
+                std::cout << "typeIC: " << icIdx << ", nameConst: " << nameIdx << std::endl;
                 return offset + 5;
             }
 

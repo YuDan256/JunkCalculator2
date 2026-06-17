@@ -94,23 +94,101 @@ namespace jc {
             return result;
         }
 
-        // 最核心的 i-k-j 工业级高速缓存乘法
+        // 基础 O(N^3) 乘法 (i-k-j 缓存优化)
+        static Matrix multiplyBase(const Matrix& A, const Matrix& B) {
+            Matrix result(A.rows, B.cols);
+            for (int i = 0; i < A.rows; ++i) {
+                checkInterrupt();
+                for (int k = 0; k < A.cols; ++k) {
+                    T r = A(i, k);
+                    for (int j = 0; j < B.cols; ++j) {
+                        result(i, j) = result(i, j) + r * B(k, j);
+                    }
+                }
+            }
+            return result;
+        }
+
+        // Strassen 递归核心 (要求 A, B 是 2^k x 2^k 的方阵)
+        static Matrix strassenCore(const Matrix& A, const Matrix& B) {
+            int n = A.rows;
+            if (n <= 64) return multiplyBase(A, B); // 阈值：小矩阵使用基础乘法
+
+            int half = n / 2;
+            Matrix A11(half, half), A12(half, half), A21(half, half), A22(half, half);
+            Matrix B11(half, half), B12(half, half), B21(half, half), B22(half, half);
+
+            for (int i = 0; i < half; ++i) {
+                for (int j = 0; j < half; ++j) {
+                    A11(i, j) = A(i, j);
+                    A12(i, j) = A(i, j + half);
+                    A21(i, j) = A(i + half, j);
+                    A22(i, j) = A(i + half, j + half);
+
+                    B11(i, j) = B(i, j);
+                    B12(i, j) = B(i, j + half);
+                    B21(i, j) = B(i + half, j);
+                    B22(i, j) = B(i + half, j + half);
+                }
+            }
+
+            Matrix M1 = strassenCore(A11 + A22, B11 + B22);
+            Matrix M2 = strassenCore(A21 + A22, B11);
+            Matrix M3 = strassenCore(A11, B12 - B22);
+            Matrix M4 = strassenCore(A22, B21 - B11);
+            Matrix M5 = strassenCore(A11 + A12, B22);
+            Matrix M6 = strassenCore(A21 - A11, B11 + B12);
+            Matrix M7 = strassenCore(A12 - A22, B21 + B22);
+
+            Matrix C11 = M1 + M4 - M5 + M7;
+            Matrix C12 = M3 + M5;
+            Matrix C21 = M2 + M4;
+            Matrix C22 = M1 - M2 + M3 + M6;
+
+            Matrix C(n, n);
+            for (int i = 0; i < half; ++i) {
+                for (int j = 0; j < half; ++j) {
+                    C(i, j) = C11(i, j);
+                    C(i, j + half) = C12(i, j);
+                    C(i + half, j) = C21(i, j);
+                    C(i + half, j + half) = C22(i, j);
+                }
+            }
+            return C;
+        }
+
+        // 智能矩阵乘法入口
         Matrix operator*(const Matrix& other) const {
             if (rows == 1 && cols == 1) return other * data[0];
             if (other.rows == 1 && other.cols == 1) return (*this) * other.data[0];
             if (cols != other.rows) throw std::invalid_argument("Matrix Error: Cols must equal rows (*).");
 
-            Matrix result(rows, other.cols);
-            for (int i = 0; i < rows; ++i) {
-                checkInterrupt();
-                for (int k = 0; k < cols; ++k) {
-                    T r = (*this)(i, k);
-                    for (int j = 0; j < other.cols; ++j) {
-                        result(i, j) = result(i, j) + r * other(k, j); // 注意这里用 + 和 = 分开，防止某些类没有覆盖 +=
-                    }
-                }
+            int maxDim = std::max({rows, cols, other.cols});
+            // 当矩阵维度较大时，启用 Strassen 算法 (O(N^2.81))
+            if (maxDim > 64) {
+                int m = 1;
+                while (m < maxDim) m *= 2;
+
+                Matrix A_pad(m, m), B_pad(m, m);
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        A_pad(i, j) = (*this)(i, j);
+
+                for (int i = 0; i < other.rows; ++i)
+                    for (int j = 0; j < other.cols; ++j)
+                        B_pad(i, j) = other(i, j);
+
+                Matrix C_pad = strassenCore(A_pad, B_pad);
+
+                Matrix result(rows, other.cols);
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < other.cols; ++j)
+                        result(i, j) = C_pad(i, j);
+
+                return result;
             }
-            return result;
+
+            return multiplyBase(*this, other);
         }
 
         // ==== 纯数学流派：标量加减变成 A ± c*I ====

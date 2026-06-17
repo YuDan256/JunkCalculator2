@@ -2051,7 +2051,7 @@ namespace jc {
                 else {
                     int upvalue = resolveUpvalue(expr->name.lexeme);
                     if (upvalue != -1) { emit(OpCode::OP_GET_UPVALUE, lastLine); emit16(static_cast<uint32_t>(upvalue), lastLine); }
-                    else { uint32_t nameIdx = identifierConstant(expr->name.lexeme); emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(nameIdx, lastLine); }
+                    else { uint32_t nameIdx = identifierConstant(expr->name.lexeme); emit(OpCode::OP_GET_GLOBAL, lastLine); emit16(chunk()->addInlineCache(nameIdx), lastLine); }
                 }
             }
         };
@@ -2071,7 +2071,7 @@ namespace jc {
                         } else {
                             emit(OpCode::OP_SET_GLOBAL, lastLine); 
                         }
-                        emit16(nameIdx, lastLine); 
+                        emit16(chunk()->addInlineCache(nameIdx), lastLine); 
                     }
                 }
             }

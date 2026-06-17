@@ -262,6 +262,101 @@ void loadWorkspace(const std::string& filename) {
     runScript(path);
 }
 
+int runTestSuite(const std::string& testPath, const std::string& exeDir) {
+    namespace fs = std::filesystem;
+    fs::path targetPath = testPath.empty() ? fs::path(exeDir) / "tests" : fs::path(testPath);
+
+    if (!fs::exists(targetPath) || !fs::is_directory(targetPath)) {
+        std::cerr << jc::col(jc::Ansi::BRIGHT_RED) << "Test Error: Directory not found -> " << targetPath.string() << jc::col(jc::Ansi::RESET) << std::endl;
+        return 1;
+    }
+
+    std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "=========================================\n"
+              << "JC2 Test Suite Started\n"
+              << "Target: " << targetPath.string() << "\n"
+              << "=========================================\n" << jc::col(jc::Ansi::RESET);
+
+    int total = 0;
+    int passed = 0;
+    int failed = 0;
+    std::vector<std::string> failedFiles;
+
+    // 收集所有测试文件以保证顺序稳定
+    std::vector<fs::path> testFiles;
+    for (const auto& entry : fs::recursive_directory_iterator(targetPath)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".jc2") {
+            testFiles.push_back(entry.path());
+        }
+    }
+    std::sort(testFiles.begin(), testFiles.end());
+
+    for (const auto& path : testFiles) {
+        total++;
+        std::string filepath = path.string();
+        std::string filename = path.filename().string();
+
+        // Reset Environment
+        vm.clearGlobals();
+        vm.setGlobal("PI", jc::Value(3.14159265358979323846));
+        vm.setGlobal("E", jc::Value(2.71828182845904523536));
+        vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
+        vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
+        vm.setGlobal("ANS", jc::Value::none());
+        jc::helpers::g_scriptDirStack.clear();
+
+        std::cout << jc::col(jc::Ansi::BRIGHT_BLUE) << "\n[TEST] Running " << filename << "..." << jc::col(jc::Ansi::RESET) << std::endl;
+
+        std::ifstream file(filepath);
+        if (!file.is_open()) {
+            std::cout << jc::col(jc::Ansi::BRIGHT_RED) << "  -> [FAIL] (IO Error)" << jc::col(jc::Ansi::RESET) << std::endl;
+            failed++;
+            failedFiles.push_back(filename + " (IO Error)");
+            continue;
+        }
+
+        std::string code, line;
+        while (std::getline(file, line)) code += line + "\n";
+        file.close();
+
+        jc::helpers::g_scriptDirStack.push_back(path.parent_path().string());
+
+        try {
+            evalCode(code, filepath, true);
+            std::cout << jc::col(jc::Ansi::BRIGHT_GREEN) << "  -> [PASS] " << filename << jc::col(jc::Ansi::RESET) << std::endl;
+            passed++;
+        } catch (const std::exception& ex) {
+            std::cout << jc::col(jc::Ansi::BRIGHT_RED) << "  -> [FAIL] " << filename << jc::col(jc::Ansi::RESET) << std::endl;
+            std::cerr << "     Error: " << ex.what() << std::endl;
+            failed++;
+            failedFiles.push_back(filename);
+        } catch (...) {
+            std::cout << jc::col(jc::Ansi::BRIGHT_RED) << "  -> [FAIL] " << filename << jc::col(jc::Ansi::RESET) << std::endl;
+            std::cerr << "     Error: Unknown Exception" << std::endl;
+            failed++;
+            failedFiles.push_back(filename);
+        }
+        jc::helpers::g_scriptDirStack.clear();
+    }
+
+    std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "\n=========================================\n"
+              << "JC2 Test Suite Summary\n"
+              << "=========================================\n" << jc::col(jc::Ansi::RESET);
+    std::cout << "Total Tests : " << total << "\n";
+    std::cout << jc::col(jc::Ansi::BRIGHT_GREEN) << "Passed      : " << passed << jc::col(jc::Ansi::RESET) << "\n";
+    if (failed > 0) {
+        std::cout << jc::col(jc::Ansi::BRIGHT_RED) << "Failed      : " << failed << jc::col(jc::Ansi::RESET) << "\n\n";
+        std::cout << "Failed Tests:\n";
+        for (const auto& f : failedFiles) {
+            std::cout << "  - " << f << "\n";
+        }
+    } else {
+        std::cout << jc::col(jc::Ansi::BRIGHT_GREEN) << "\nAll tests passed successfully! 🎉" << jc::col(jc::Ansi::RESET) << "\n";
+    }
+    std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "=========================================\n" << jc::col(jc::Ansi::RESET);
+
+    return failed > 0 ? 1 : 0;
+}
+
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
     std::system("chcp 65001 > nul");
@@ -328,6 +423,8 @@ int main(int argc, char* argv[]) {
     // ★ 清洁版命令行参数解析
     std::string scriptPath = "";
     std::string evalStr = "";
+    bool runTests = false;
+    std::string testPath = "";
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "-e" || arg == "--eval") {
@@ -369,6 +466,12 @@ int main(int argc, char* argv[]) {
             g_profile = true;
             vm.enableProfiler(true);
         }
+        else if (arg == "--test") {
+            runTests = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                testPath = argv[++i];
+            }
+        }
         else {
             if (scriptPath.empty()) {
                 scriptPath = arg;
@@ -378,6 +481,11 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         }
+    }
+
+    // 如果有 --test 参数，则执行测试套件并退出
+    if (runTests) {
+        return runTestSuite(testPath, exeDir);
     }
 
     // 如果有 --eval 参数，则直接执行并退出

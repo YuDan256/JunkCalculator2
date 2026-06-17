@@ -1,0 +1,60 @@
+test_basic_class() = {
+    class Point {
+        init(x, y) = {
+            self.x = x
+            self.y = y
+        }
+        move(dx, dy) = {
+            self.x += dx
+            self.y += dy
+        }
+    }
+    p = Point(10, 20)
+    assert(p.x == 10 && p.y == 20, "Class init failed")
+    
+    p.move(5, -5)
+    assert(p.x == 15 && p.y == 15, "Class method failed")
+}
+test_basic_class()
+
+test_inheritance() = {
+    class Animal {
+        speak() = "..."
+    }
+    class Dog extends Animal {
+        speak() = "Woof"
+    }
+    a = Animal()
+    d = Dog()
+    assert(a.speak() == "...", "Base method failed")
+    assert(d.speak() == "Woof", "Overridden method failed")
+}
+test_inheritance()
+
+test_dunder_methods() = {
+    class Vector {
+        init(x, y) = { 
+            self.x = x
+            self.y = y 
+        }
+        __add__(other) = Vector(self.x + other.x, self.y + other.y)
+        __eq__(other) = self.x == other.x && self.y == other.y
+    }
+    v1 = Vector(1, 2)
+    v2 = Vector(3, 4)
+    v3 = v1 + v2
+    assert(v3 == Vector(4, 6), "Dunder __add__ or __eq__ failed")
+}
+test_dunder_methods()
+
+test_super_call() = {
+    class Base {
+        greet() = "Hello from Base"
+    }
+    class Derived extends Base {
+        greet() = super.greet() + " and Derived"
+    }
+    obj = Derived()
+    assert(obj.greet() == "Hello from Base and Derived", "Super method call failed")
+}
+test_super_call()

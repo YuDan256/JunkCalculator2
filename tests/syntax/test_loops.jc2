@@ -1,0 +1,38 @@
+test_while_loop() = {
+    i = 0
+    sum = 0
+    while (i < 5) {
+        i += 1
+        if (i == 3) continue
+        sum += i
+    }
+    // 1 + 2 + 4 + 5 = 12
+    assert(sum == 12, "While loop with continue failed")
+}
+test_while_loop()
+
+test_for_loop() = {
+    sum = 0
+    for (i = 0; i < 5; i += 1) {
+        if (i == 3) break
+        sum += i
+    }
+    // 0 + 1 + 2 = 3
+    assert(sum == 3, "For loop with break failed")
+}
+test_for_loop()
+
+test_for_in_loop() = {
+    sum = 0
+    for (x in [10, 20, 30]) {
+        sum += x
+    }
+    assert(sum == 60, "For-in loop over list failed")
+    
+    str_concat = ""
+    for (c in "JC2") {
+        str_concat += c
+    }
+    assert(str_concat == "JC2", "For-in loop over string failed")
+}
+test_for_in_loop()

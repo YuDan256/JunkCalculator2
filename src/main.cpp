@@ -599,7 +599,9 @@ int main(int argc, char* argv[]) {
             if (input.substr(0, 8) == "/delete ") {
                 std::string varName = input.substr(8);
                 size_t s = varName.find_first_not_of(" \t");
-                if (s != std::string::npos) varName = varName.substr(s);
+                size_t e = varName.find_last_not_of(" \t");
+                if (s != std::string::npos) varName = varName.substr(s, e - s + 1);
+                else varName = "";
                 vm.removeGlobal(varName);
                 std::cout << "Variable '" << varName << "' forcefully deleted.\n";
                 continue;

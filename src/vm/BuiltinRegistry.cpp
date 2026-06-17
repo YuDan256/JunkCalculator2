@@ -818,7 +818,7 @@ void BuiltinRegistry::registerMath() {
     regMath("ceil", { 1, 2 }, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "ceil", [](double x) { return std::ceil(x); }); });
     regMath("trunc", { 1, 2 }, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "trunc", [](double x) { return std::trunc(x); }); });
 
-    regMath("sgn", { 1 }, [](const std::vector<Value>& args) -> Value { double x = args[0].asDouble(); return Value(x > 0 ? 1.0 : (x < 0 ? -1.0 : 0.0)); });
+    regMath("sgn", { 1 }, [](const std::vector<Value>& args) -> Value { double x = args[0].asDouble(); return Value::fromInt32(x > 0 ? 1 : (x < 0 ? -1 : 0)); });
     regMath("deg", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / Complex::PI * 180.0); });
     regMath("rad", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / 180.0 * Complex::PI); });
     
@@ -830,7 +830,7 @@ void BuiltinRegistry::registerMath() {
         }
         double a = args[0].asDouble(), b = args[1].asDouble();
         if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
-        return Value(std::trunc(a / b));
+        return Value(BigInt(static_cast<int64_t>(std::trunc(a / b))));
     });
 
 }
@@ -957,7 +957,7 @@ void BuiltinRegistry::registerMatrixOps() {
             }
             double da = a.asDouble(), db = b.asDouble();
             if (db == 0.0) throw std::runtime_error("Math Error: Division by zero.");
-            return Value(std::trunc(da / db));
+            return Value(BigInt(static_cast<int64_t>(std::trunc(da / db))));
         }); 
     });
     reg("powE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "powE", [](const Value& a, const Value& b) { return a ^ b; }); });
@@ -976,17 +976,17 @@ void BuiltinRegistry::registerMatrixOps() {
             return a % b; 
         }); 
     });
-    reg("eqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "eqE", [](const Value& a, const Value& b) { return Value(helpers::checkEqual(a, b) ? 1.0 : 0.0); }); });
-    reg("neqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "neqE", [](const Value& a, const Value& b) { return Value(!helpers::checkEqual(a, b) ? 1.0 : 0.0); }); });
-    reg("ltE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "ltE", [](const Value& a, const Value& b) { return Value(helpers::checkLess(a, b) ? 1.0 : 0.0); }); });
-    reg("leE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "leE", [](const Value& a, const Value& b) { return Value(!helpers::checkGreater(a, b) ? 1.0 : 0.0); }); });
-    reg("gtE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "gtE", [](const Value& a, const Value& b) { return Value(helpers::checkGreater(a, b) ? 1.0 : 0.0); }); });
-    reg("geE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "geE", [](const Value& a, const Value& b) { return Value(!helpers::checkLess(a, b) ? 1.0 : 0.0); }); });
+    reg("eqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "eqE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkEqual(a, b) ? 1 : 0); }); });
+    reg("neqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "neqE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkEqual(a, b) ? 1 : 0); }); });
+    reg("ltE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "ltE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkLess(a, b) ? 1 : 0); }); });
+    reg("leE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "leE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkGreater(a, b) ? 1 : 0); }); });
+    reg("gtE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "gtE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkGreater(a, b) ? 1 : 0); }); });
+    reg("geE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "geE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkLess(a, b) ? 1 : 0); }); });
     reg("maxE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "maxE", [](const Value& a, const Value& b) { return helpers::checkGreater(a, b) ? a : b; }); });
     reg("minE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "minE", [](const Value& a, const Value& b) { return helpers::checkLess(a, b) ? a : b; }); });
-    reg("andE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "andE", [](const Value& a, const Value& b) { return Value((a.truthy() && b.truthy()) ? 1.0 : 0.0); }); });
-    reg("orE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "orE", [](const Value& a, const Value& b) { return Value((a.truthy() || b.truthy()) ? 1.0 : 0.0); }); });
-    reg("xorE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "xorE", [](const Value& a, const Value& b) { return Value((a.truthy() != b.truthy()) ? 1.0 : 0.0); }); });
+    reg("andE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "andE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() && b.truthy()) ? 1 : 0); }); });
+    reg("orE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "orE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() || b.truthy()) ? 1 : 0); }); });
+    reg("xorE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "xorE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() != b.truthy()) ? 1 : 0); }); });
     reg("atan2E", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "atan2E", [](const Value& a, const Value& b) { return Value(std::atan2(a.asDouble(), b.asDouble())); }); });
     reg("hypotE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asDouble(), b.asDouble())); }); });
     reg("whereE", { 3 }, [](const std::vector<Value>& args) -> Value {
@@ -1051,7 +1051,7 @@ void BuiltinRegistry::registerMatrixOps() {
     reg("trans", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.transpose()); throw std::runtime_error("Type Error: trans() requires a matrix."); });
     reg("gauss", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.gaussianElimination().first); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.gaussianElimination().first); throw std::runtime_error("Type Error: gauss() requires a matrix."); });
 
-    reg("rank", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return static_cast<double>(m.rank()); }); });
+    reg("rank", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return Value::fromInt32(m.rank()); }); });
     reg("tr", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.trace(); }); });
     reg("norm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.norm(); }); });
     reg("cond", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.condition(); }); });
@@ -1089,15 +1089,15 @@ void BuiltinRegistry::registerMatrixOps() {
 
     // --- 维度 ---
     reg("row", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<double>(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows()));
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<double>(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows()));
-        if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<double>(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getRows()));
+        if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows());
+        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows());
+        if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getRows());
         throw std::runtime_error("Type Error: row() requires a matrix.");
     });
     reg("col", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<double>(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getCols()));
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<double>(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getCols()));
-        if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<double>(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getCols()));
+        if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getCols());
+        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getCols());
+        if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getCols());
         throw std::runtime_error("Type Error: col() requires a matrix.");
     });
     reg("rows", builtinArity["row"], builtins["row"]);
@@ -1256,11 +1256,11 @@ void BuiltinRegistry::registerVectors() {
 
     reg("dim", { 1 }, [assertVec](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST))
-            return Value(static_cast<double>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
+            return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
         assertVec(args[0], "dim");
         if (args[0].isObjType(ObjType::REAL_MATRIX))
-            return Value(static_cast<double>(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows()));
-        return Value(static_cast<double>(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows()));
+            return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows());
+        return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows());
         });    
     reg("dot", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "dot"); assertVec(args[1], "dot"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); if (a.getRows() != b.getRows()) throw std::runtime_error("Math Error: Dimension mismatch."); return Value((a.conjugateTranspose() * b)(0, 0)); });
     reg("vnorm", { 1 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "vnorm"); ComplexMatrix v = args[0].asComplexMatrix(); return Value(std::sqrt((v.conjugateTranspose() * v)(0, 0).real)); });
@@ -1295,8 +1295,8 @@ void BuiltinRegistry::registerNumberTheory() {
     reg("gcd", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::gcd(toBigInt(args[0]), toBigInt(args[1]))); });
     reg("lcm", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::lcm(toBigInt(args[0]), toBigInt(args[1]))); });
     reg("digits", { 1 }, [](const std::vector<Value>& args) -> Value { 
-        if (args[0].isInt32()) return Value(static_cast<double>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
-        if (args[0].isBigInt()) return Value(static_cast<double>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
+        if (args[0].isInt32()) return Value::fromInt32(static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
+        if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
         throw std::runtime_error("Type Error: expects an integer."); 
     });
     reg("isPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPrime()); });
@@ -1528,7 +1528,7 @@ void BuiltinRegistry::registerStatistics() {
 // =================================================================
 void BuiltinRegistry::registerRandom() {
     reg("rand", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); if (args.size()==0) return Value(std::uniform_real_distribution<double>(0,1)(gen)); double lo = args[0].asDouble(), hi = args[1].asDouble(); return Value(std::uniform_real_distribution<double>(lo, hi)(gen)); });
-    reg("randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value(static_cast<double>(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asDouble())), static_cast<int>(std::round(args[1].asDouble())))(gen))); });
+    reg("randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value::fromInt32(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asDouble())), static_cast<int>(std::round(args[1].asDouble())))(gen)); });
     reg("randc", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); double lo=0,hi=1; if (args.size()==2){lo=args[0].asDouble();hi=args[1].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); return Value(Complex(dist(gen),dist(gen))); });
     reg("randmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=dist(gen); return Value(RealMatrix(r,c,d)); });
     reg("randimat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c,lo=0,hi=10; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=static_cast<int>(std::round(args[2].asDouble()));hi=static_cast<int>(std::round(args[3].asDouble()));} std::uniform_int_distribution<int> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=static_cast<double>(dist(gen)); return Value(RealMatrix(r,c,d)); });
@@ -1560,7 +1560,7 @@ void BuiltinRegistry::registerSystemUtils() {
 
         std::cout << "[GC] Collected " << freed << " unreachable object(s). "
             << "Tracked: " << GcHeap::get().trackedCount() << std::endl;
-        return Value(static_cast<double>(freed));
+        return Value::fromInt32(freed);
         });
 
     reg("gcinfo", { 0 }, [](const std::vector<Value>&) -> Value {
@@ -1873,10 +1873,10 @@ void BuiltinRegistry::registerSystemUtils() {
                 d->keyMap[key] = d->elements.size();
                 d->elements.push_back({key, v});
             };
-            setField("maxExpandTerms", Value(static_cast<double>(SymConfig::maxExpandTerms)));
-            setField("maxAstNodes", Value(static_cast<double>(SymConfig::maxAstNodes)));
-            setField("maxIterations", Value(static_cast<double>(SymConfig::maxIterations)));
-            setField("maxDepth", Value(static_cast<double>(SymConfig::maxDepth)));
+            setField("maxExpandTerms", Value(BigInt(SymConfig::maxExpandTerms)));
+            setField("maxAstNodes", Value::fromInt32(SymConfig::maxAstNodes));
+            setField("maxIterations", Value::fromInt32(SymConfig::maxIterations));
+            setField("maxDepth", Value::fromInt32(SymConfig::maxDepth));
             setField("debugIntegration", Value(SymConfig::debugIntegration));
             return Value(d);
         }
@@ -2218,16 +2218,16 @@ void BuiltinRegistry::registerStringFunctions() {
             auto inst = args[0].asInstance();
             auto [found, result] = invokeDunder(inst, DUNDER_LEN, {});
             if (found) return result;
-            return Value(static_cast<double>(inst->fields->elements.size()));
+            return Value::fromInt32(static_cast<int32_t>(inst->fields->elements.size()));
         }
-        if (args[0].isString()) return Value(static_cast<double>(args[0].asString().size()));
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value(static_cast<double>(m.getRows())); if (m.getRows() == 1) return Value(static_cast<double>(m.getCols())); return Value(static_cast<double>(m.getRows() * m.getCols())); }
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value(static_cast<double>(m.getRows())); if (m.getRows() == 1) return Value(static_cast<double>(m.getCols())); return Value(static_cast<double>(m.getRows() * m.getCols())); }
-        if (args[0].isObjType(ObjType::STRING_MATRIX)) { const auto& m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; return Value(static_cast<double>(m.getRows() * m.getCols())); }
-        if (args[0].isObjType(ObjType::DICT)) return Value(static_cast<double>(static_cast<ObjDict*>(args[0].asObj())->elements.size()));
-        if (args[0].isObjType(ObjType::LIST)) return Value(static_cast<double>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
-        if (args[0].isObjType(ObjType::SET)) return Value(static_cast<double>(static_cast<ObjSet*>(args[0].asObj())->elements.size()));
-        if (args[0].isObjType(ObjType::NAMESPACE)) return Value(static_cast<double>(static_cast<ObjNamespace*>(args[0].asObj())->fields.size()));
+        if (args[0].isString()) return Value::fromInt32(static_cast<int32_t>(args[0].asString().size()));
+        if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value::fromInt32(m.getRows()); if (m.getRows() == 1) return Value::fromInt32(m.getCols()); return Value::fromInt32(m.getRows() * m.getCols()); }
+        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value::fromInt32(m.getRows()); if (m.getRows() == 1) return Value::fromInt32(m.getCols()); return Value::fromInt32(m.getRows() * m.getCols()); }
+        if (args[0].isObjType(ObjType::STRING_MATRIX)) { const auto& m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
+        if (args[0].isObjType(ObjType::DICT)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjDict*>(args[0].asObj())->elements.size()));
+        if (args[0].isObjType(ObjType::LIST)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
+        if (args[0].isObjType(ObjType::SET)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjSet*>(args[0].asObj())->elements.size()));
+        if (args[0].isObjType(ObjType::NAMESPACE)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjNamespace*>(args[0].asObj())->fields.size()));
         throw std::runtime_error("Type Error: len() expects a string, vector, matrix, dict, list, set, or namespace.");
         });
     reg("length", builtinArity["len"], builtins["len"]);
@@ -2246,7 +2246,7 @@ void BuiltinRegistry::registerStringFunctions() {
     reg("upper", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: upper() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::toupper(c)); }); return Value(s); });
     reg("lower", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: lower() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); }); return Value(s); });
     reg("trim", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: trim() expects a string."); std::string s = args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); size_t b=s.find_last_not_of(" \t\r\n"); if (a==std::string::npos) return Value(std::string("")); return Value(s.substr(a, b-a+1)); });
-    reg("find", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: find() expects two strings."); const std::string& s=args[0].asString(); const std::string& sub=args[1].asString(); size_t start=0; if (args.size()==3) start=static_cast<size_t>(std::round(args[2].asDouble())); size_t pos=s.find(sub, start); return Value(pos==std::string::npos?-1.0:static_cast<double>(pos)); });
+    reg("find", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: find() expects two strings."); const std::string& s=args[0].asString(); const std::string& sub=args[1].asString(); size_t start=0; if (args.size()==3) start=static_cast<size_t>(std::round(args[2].asDouble())); size_t pos=s.find(sub, start); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(pos)); });
     reg("contains", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: contains() expects two strings."); return Value(args[0].asString().find(args[1].asString())!=std::string::npos); });
     reg("replace", { 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()||!args[2].isString()) throw std::runtime_error("Type Error: replace() expects three strings."); std::string s=args[0].asString(); const std::string& from=args[1].asString(); const std::string& to=args[2].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); });
     reg("repeat", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: repeat() expects a string."); const std::string& s = args[0].asString(); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); });
@@ -2270,7 +2270,7 @@ void BuiltinRegistry::registerStringFunctions() {
     reg("startsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: startsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& prefix=args[1].asString(); return Value(s.size()>=prefix.size()&&s.compare(0,prefix.size(),prefix)==0); });
     reg("endsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: endsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& suffix=args[1].asString(); return Value(s.size()>=suffix.size()&&s.compare(s.size()-suffix.size(),suffix.size(),suffix)==0); });
     reg("split", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: split() expects two strings."); const std::string& s=args[0].asString(); const std::string& delim=args[1].asString(); if (delim.empty()) throw std::runtime_error("Runtime Error: split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(result); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); });
-    reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: ord() expects a string."); const std::string& s=args[0].asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value(static_cast<double>(static_cast<unsigned char>(s[0]))); });
+    reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: ord() expects a string."); const std::string& s=args[0].asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value::fromInt32(static_cast<unsigned char>(s[0])); });
     reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>127) throw std::runtime_error("Runtime Error: chr() code must be 0–127."); return Value(std::string(1, static_cast<char>(code))); });
     reg("parseNum", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: parseNum() expects a string."); const std::string& s=args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) throw std::runtime_error("Math Error: Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { throw std::runtime_error("Math Error: Cannot parse '"+trimmed+"' as a number."); } });
 }
@@ -2716,31 +2716,31 @@ void BuiltinRegistry::registerArrayFunctions() {
         if (arg.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(arg.asObj());
             for (size_t i = 0; i < l->vec.size(); ++i) {
-                if (Value::equals(l->vec[i], args[1])) return Value(static_cast<double>(i));
+                if (Value::equals(l->vec[i], args[1])) return Value::fromInt32(static_cast<int32_t>(i));
             }
-            return Value(-1.0);
+            return Value::fromInt32(-1);
         } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
             auto& m = static_cast<ObjRealMatrix*>(arg.asObj())->mat;
             try {
                 double target = args[1].asDouble();
                 auto v = m.rawData();
-                for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value(static_cast<double>(i));
+                for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value::fromInt32(static_cast<int32_t>(i));
             } catch (...) {}
-            return Value(-1.0);
+            return Value::fromInt32(-1);
         } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto& m = static_cast<ObjComplexMatrix*>(arg.asObj())->mat;
             try {
                 Complex target = args[1].asComplex();
                 auto v = m.rawData();
-                for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value(static_cast<double>(i));
+                for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value::fromInt32(static_cast<int32_t>(i));
             } catch (...) {}
-            return Value(-1.0);
+            return Value::fromInt32(-1);
         } else if (arg.isObjType(ObjType::STRING_MATRIX)) {
             auto& m = static_cast<ObjStringMatrix*>(arg.asObj())->mat;
             std::string target = args[1].isString() ? args[1].asString() : args[1].toString();
             auto v = m.rawData();
-            for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value(static_cast<double>(i));
-            return Value(-1.0);
+            for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value::fromInt32(static_cast<int32_t>(i));
+            return Value::fromInt32(-1);
         }
         return expectContainer("indexOf");
         });
@@ -2751,7 +2751,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             auto l = static_cast<ObjList*>(arg.asObj());
             int c = 0;
             for (const auto& e : l->vec) { if (Value::equals(e, args[1])) c++; }
-            return Value(static_cast<double>(c));
+            return Value::fromInt32(c);
         } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
             auto& m = static_cast<ObjRealMatrix*>(arg.asObj())->mat;
             int c = 0;
@@ -2759,7 +2759,7 @@ void BuiltinRegistry::registerArrayFunctions() {
                 double target = args[1].asDouble();
                 for (const auto& x : m.rawData()) if (x == target) c++;
             } catch (...) {}
-            return Value(static_cast<double>(c));
+            return Value::fromInt32(c);
         } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto& m = static_cast<ObjComplexMatrix*>(arg.asObj())->mat;
             int c = 0;
@@ -2767,13 +2767,13 @@ void BuiltinRegistry::registerArrayFunctions() {
                 Complex target = args[1].asComplex();
                 for (const auto& x : m.rawData()) if (x == target) c++;
             } catch (...) {}
-            return Value(static_cast<double>(c));
+            return Value::fromInt32(c);
         } else if (arg.isObjType(ObjType::STRING_MATRIX)) {
             auto& m = static_cast<ObjStringMatrix*>(arg.asObj())->mat;
             int c = 0;
             std::string target = args[1].isString() ? args[1].asString() : args[1].toString();
             for (const auto& x : m.rawData()) if (x == target) c++;
-            return Value(static_cast<double>(c));
+            return Value::fromInt32(c);
         }
         return expectContainer("count");
         });
@@ -2912,7 +2912,7 @@ void BuiltinRegistry::registerStringMatrix() {
     reg("strvec", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(static_cast<int>(flat.size()),1,flat)); });
     reg("strrow", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(1,static_cast<int>(flat.size()),flat)); });
     reg("strfill", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: strfill() expects a string and count."); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: strfill() count must be non-negative."); return Value(StringMatrix(1,n,std::vector<std::string>(n,args[0].asString()))); });
-    reg("strfind", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strfind() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& target=args[1].asString(); for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) if (m(i,j)==target) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)})); return Value(-1.0); });
+    reg("strfind", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strfind() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& target=args[1].asString(); for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) if (m(i,j)==target) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)})); return Value::fromInt32(-1); });
     reg("strjoin", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strjoin() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& delim=args[1].asString(); std::string result; bool first=true; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { if (!first) result+=delim; result+=m(i,j); first=false; } return Value(result); });
     reg("strsort", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)) throw std::runtime_error("Type Error: strsort() expects a StringMatrix."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat=m.rawData(); std::sort(flat.begin(),flat.end()); return Value(StringMatrix(m.getRows(),m.getCols(),flat)); });
     reg("toStrMat", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::STRING_MATRIX)) return args[0]; if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m=static_cast<ObjRealMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m=static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } throw std::runtime_error("Type Error: toStrMat() expects a matrix."); });
@@ -2996,9 +2996,9 @@ void BuiltinRegistry::registerDictFunctions() {
     reg("dictSize", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            return Value(static_cast<double>(ns->fields.size()));
+            return Value::fromInt32(static_cast<int32_t>(ns->fields.size()));
         }
-        ObjDict* d = helpers::getDictMap(args[0], "dictSize"); return Value(static_cast<double>(d->elements.size()));
+        ObjDict* d = helpers::getDictMap(args[0], "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
         });
 
     reg("dictMerge", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -3698,7 +3698,7 @@ void BuiltinRegistry::registerHigherOrder() {
         } else {
             throw std::runtime_error("Type Error: countIf() expects a vector/list.");
         }
-        return Value(static_cast<double>(c));
+        return Value::fromInt32(c);
     };
 
     reg("countIf", { 1, 2 }, [countIfCore](const std::vector<Value>& args) -> Value {
@@ -3962,7 +3962,7 @@ void BuiltinRegistry::registerFileIO() {
         std::string path = safeResolvePath(args[0].asString());
         if (!std::filesystem::exists(path))
             throw std::runtime_error("IO Error: File '" + path + "' does not exist.");
-        return Value(static_cast<double>(std::filesystem::file_size(path)));
+        return Value(BigInt(static_cast<int64_t>(std::filesystem::file_size(path))));
         });
 
     reg("listDir", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
@@ -5265,7 +5265,7 @@ void BuiltinRegistry::registerCAS() {
         GcObjGuard guard(d);
         for (const auto& f : factors) {
             Value k(f.first);
-            Value v(static_cast<double>(f.second));
+            Value v = Value::fromInt32(f.second);
             d->keyMap[k] = d->elements.size();
             d->elements.push_back({k, v});
         }

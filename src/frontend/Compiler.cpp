@@ -1831,7 +1831,7 @@ namespace jc {
                 } else {
                     emit(OpCode::OP_SET_GLOBAL, lastLine); 
                 }
-                emit16(idx, lastLine); 
+                emit16(chunk()->addInlineCache(idx), lastLine); 
             }
             emit(OpCode::OP_POP, lastLine);
         }

@@ -11,6 +11,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <cstring>
 
 namespace jc {
 
@@ -74,16 +75,16 @@ namespace jc {
         }
         inline void eraseStack(int indexFromTop) {
             Value* target = stackTop - 1 - indexFromTop;
-            for (Value* p = target; p < stackTop - 1; ++p) {
-                *p = std::move(*(p + 1));
+            if (target < stackTop - 1) {
+                std::memmove(target, target + 1, (stackTop - 1 - target) * sizeof(Value));
             }
             stackTop--;
             *stackTop = Value::none();
         }
         inline void insertStack(int indexFromTop, const Value& val) {
-            Value* target = stackTop - indexFromTop; // ★ FIX: 移除多余的 -1，精准定位插入点
-            for (Value* p = stackTop; p > target; --p) {
-                *p = std::move(*(p - 1));
+            Value* target = stackTop - indexFromTop;
+            if (target < stackTop) {
+                std::memmove(target + 1, target, (stackTop - target) * sizeof(Value));
             }
             *target = val;
             stackTop++;

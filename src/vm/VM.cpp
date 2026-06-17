@@ -569,12 +569,10 @@ namespace jc {
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (static_cast<int>(argc) > fixedMax) {
                 int restCount = static_cast<int>(argc) - fixedMax;
-                std::vector<Value> tempValues(restCount);
+                restList->vec.resize(restCount);
+                stackTop -= restCount;
                 for (int j = 0; j < restCount; j++) {
-                    tempValues[restCount - 1 - j] = pop();
-                }
-                for (int j = 0; j < restCount; j++) {
-                    restList->vec.push_back(tempValues[j]);
+                    restList->vec[j] = stackTop[j];
                 }
                 argc = static_cast<uint8_t>(fixedMax);
             }
@@ -1603,24 +1601,38 @@ namespace jc {
 
                 case OpCode::OP_CONCAT_STRINGS: {
                     uint32_t count = readOperand();
-                    std::vector<std::string> parts(count);
-                    size_t totalLen = 0;
                     stackTop -= count;
+                    
+                    bool allStrings = true;
+                    size_t totalLen = 0;
                     for (uint32_t i = 0; i < count; ++i) {
-                        Value& v = stackTop[i];
-                        if (v.isString()) {
-                            parts[i] = v.asString();
+                        if (stackTop[i].isString()) {
+                            totalLen += stackTop[i].asString().size();
                         } else {
-                            std::ostringstream oss;
-                            if (v.isUninit()) oss << "Uninitialized";
-                            else oss << v;
-                            parts[i] = oss.str();
+                            allStrings = false;
+                            break;
                         }
-                        totalLen += parts[i].size();
                     }
+                    
                     std::string result;
-                    result.reserve(totalLen);
-                    for (const auto& p : parts) result += p;
+                    if (allStrings) {
+                        result.reserve(totalLen);
+                        for (uint32_t i = 0; i < count; ++i) {
+                            result += stackTop[i].asString();
+                        }
+                    } else {
+                        for (uint32_t i = 0; i < count; ++i) {
+                            Value& v = stackTop[i];
+                            if (v.isString()) {
+                                result += v.asString();
+                            } else {
+                                std::ostringstream oss;
+                                if (v.isUninit()) oss << "Uninitialized";
+                                else oss << v;
+                                result += oss.str();
+                            }
+                        }
+                    }
                     push(Value(result));
                     break;
                 }
@@ -3384,12 +3396,10 @@ namespace jc {
                     ObjList* restList = GcHeap::get().allocate<ObjList>();
                     if (static_cast<int>(argc) > fixedMax) {
                         int restCount = static_cast<int>(argc) - fixedMax;
-                        std::vector<Value> tempValues(restCount);
+                        restList->vec.resize(restCount);
+                        stackTop -= restCount;
                         for (int j = 0; j < restCount; j++) {
-                            tempValues[restCount - 1 - j] = pop();
-                        }
-                        for (int j = 0; j < restCount; j++) {
-                            restList->vec.push_back(tempValues[j]);
+                            restList->vec[j] = stackTop[j];
                         }
                         argc = static_cast<uint8_t>(fixedMax);
                     }
@@ -3509,12 +3519,10 @@ namespace jc {
                     ObjList* restList = GcHeap::get().allocate<ObjList>();
                     if (static_cast<int>(argc) > fixedMax) {
                         int restCount = static_cast<int>(argc) - fixedMax;
-                        std::vector<Value> tempValues(restCount);
+                        restList->vec.resize(restCount);
+                        stackTop -= restCount;
                         for (int j = 0; j < restCount; j++) {
-                            tempValues[restCount - 1 - j] = pop();
-                        }
-                        for (int j = 0; j < restCount; j++) {
-                            restList->vec.push_back(tempValues[j]);
+                            restList->vec[j] = stackTop[j];
                         }
                         argc = static_cast<uint8_t>(fixedMax);
                     }
@@ -3602,9 +3610,11 @@ namespace jc {
                         ObjList* restList = GcHeap::get().allocate<ObjList>();
                         if (static_cast<int>(argc) > fixedMax) {
                             int restCount = static_cast<int>(argc) - fixedMax;
-                            std::vector<Value> tempValues(restCount);
-                            for (int j = 0; j < restCount; j++) tempValues[restCount - 1 - j] = pop();
-                            for (int j = 0; j < restCount; j++) restList->vec.push_back(tempValues[j]);
+                            restList->vec.resize(restCount);
+                            stackTop -= restCount;
+                            for (int j = 0; j < restCount; j++) {
+                                restList->vec[j] = stackTop[j];
+                            }
                             argc = static_cast<uint8_t>(fixedMax);
                         }
                         int padCount = fixedMax - static_cast<int>(argc);
@@ -5318,9 +5328,11 @@ namespace jc {
                 ObjList* restList = GcHeap::get().allocate<ObjList>();
                 if (static_cast<int>(argc) > fixedMax) {
                     int restCount = static_cast<int>(argc) - fixedMax;
-                    std::vector<Value> tempValues(restCount);
-                    for (int j = 0; j < restCount; j++) tempValues[restCount - 1 - j] = pop();
-                    for (int j = 0; j < restCount; j++) restList->vec.push_back(tempValues[j]);
+                    restList->vec.resize(restCount);
+                    stackTop -= restCount;
+                    for (int j = 0; j < restCount; j++) {
+                        restList->vec[j] = stackTop[j];
+                    }
                     argc = static_cast<uint8_t>(fixedMax);
                 }
 
@@ -5385,9 +5397,11 @@ namespace jc {
                         ObjList* restList = GcHeap::get().allocate<ObjList>();
                         if (static_cast<int>(argc) > fixedMax) {
                             int restCount = static_cast<int>(argc) - fixedMax;
-                            std::vector<Value> tempValues(restCount);
-                            for (int j = 0; j < restCount; j++) tempValues[restCount - 1 - j] = pop();
-                            for (int j = 0; j < restCount; j++) restList->vec.push_back(tempValues[j]);
+                            restList->vec.resize(restCount);
+                            stackTop -= restCount;
+                            for (int j = 0; j < restCount; j++) {
+                                restList->vec[j] = stackTop[j];
+                            }
                             argc = static_cast<uint8_t>(fixedMax);
                         }
                         int padCount = fixedMax - static_cast<int>(argc);
@@ -5520,12 +5534,10 @@ namespace jc {
                 ObjList* restList = GcHeap::get().allocate<ObjList>();
                 if (static_cast<int>(argc) > fixedMax) {
                     int restCount = static_cast<int>(argc) - fixedMax;
-                    std::vector<Value> tempValues(restCount);
+                    restList->vec.resize(restCount);
+                    stackTop -= restCount;
                     for (int j = 0; j < restCount; j++) {
-                        tempValues[restCount - 1 - j] = pop();
-                    }
-                    for (int j = 0; j < restCount; j++) {
-                        restList->vec.push_back(tempValues[j]);
+                        restList->vec[j] = stackTop[j];
                     }
                     argc = static_cast<uint8_t>(fixedMax);
                 }

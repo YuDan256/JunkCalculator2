@@ -199,15 +199,15 @@ namespace jc {
             int m = static_cast<int>(absB.data.size());
 
             // 归一化因子 d，使得除数最高位 >= BASE / 2
-            int64_t d = BASE / (static_cast<int64_t>(absB.data.back()) + 1);
+            uint64_t d = BASE / (static_cast<uint64_t>(absB.data.back()) + 1);
 
-            auto mul_scalar = [](const BigInt& num, int64_t scalar) {
+            auto mul_scalar = [](const BigInt& num, uint64_t scalar) {
                 if (scalar == 1) return num;
                 BigInt res;
                 res.data.resize(num.data.size(), 0);
-                int64_t carry = 0;
+                uint64_t carry = 0;
                 for (size_t i = 0; i < num.data.size(); ++i) {
-                    int64_t prod = static_cast<int64_t>(num.data[i]) * scalar + carry;
+                    uint64_t prod = static_cast<uint64_t>(num.data[i]) * scalar + carry;
                     carry = prod / BASE;
                     res.data[i] = static_cast<int32_t>(prod - carry * BASE);
                 }
@@ -226,15 +226,22 @@ namespace jc {
 
             for (int j = n_orig - m; j >= 0; --j) {
                 // 估算商 q_hat
-                int64_t num = static_cast<int64_t>(u.data[j + m]) * BASE + u.data[j + m - 1];
-                int64_t q_hat = num / v.data[m - 1];
-                int64_t r_hat = num % v.data[m - 1];
+                uint64_t num = static_cast<uint64_t>(u.data[j + m]) * BASE + u.data[j + m - 1];
+                uint64_t v_m1 = v.data[m - 1];
+                uint64_t q_hat = num / v_m1;
+                uint64_t r_hat = num % v_m1;
 
                 // 修正 q_hat
-                while (q_hat == BASE || (m >= 2 && q_hat * v.data[m - 2] > BASE * r_hat + u.data[j + m - 2])) {
-                    q_hat--;
-                    r_hat += v.data[m - 1];
-                    if (r_hat >= BASE) break;
+                if (m >= 2) {
+                    uint64_t v_m2 = v.data[m - 2];
+                    uint64_t u_jm2 = u.data[j + m - 2];
+                    while (q_hat == BASE || q_hat * v_m2 > BASE * r_hat + u_jm2) {
+                        q_hat--;
+                        r_hat += v_m1;
+                        if (r_hat >= BASE) break;
+                    }
+                } else {
+                    if (q_hat == BASE) q_hat--;
                 }
 
                 if (q_hat == 0) {
@@ -243,42 +250,41 @@ namespace jc {
                 }
 
                 // 乘法并减去 (u[j..j+m] -= q_hat * v)
-                int64_t carry = 0;
-                int64_t borrow = 0;
+                // 优化：将乘法进位和减法借位合并为无符号运算，消除分支和有符号开销
+                uint64_t carry = 0;
                 for (int i = 0; i < m; ++i) {
-                    int64_t prod = q_hat * v.data[i] + carry;
-                    carry = prod / BASE;
-                    int64_t diff = static_cast<int64_t>(u.data[j + i]) - (prod - carry * BASE) - borrow;
-                    if (diff < 0) {
-                        diff += BASE;
-                        borrow = 1;
+                    uint64_t prod = q_hat * v.data[i] + carry;
+                    uint64_t carry_prod = prod / BASE;
+                    uint64_t p_digit = prod - carry_prod * BASE;
+                    
+                    if (static_cast<uint64_t>(u.data[j + i]) < p_digit) {
+                        u.data[j + i] = static_cast<int32_t>(u.data[j + i] + BASE - p_digit);
+                        carry = carry_prod + 1;
                     } else {
-                        borrow = 0;
+                        u.data[j + i] = static_cast<int32_t>(u.data[j + i] - p_digit);
+                        carry = carry_prod;
                     }
-                    u.data[j + i] = static_cast<int32_t>(diff);
                 }
-                int64_t diff = static_cast<int64_t>(u.data[j + m]) - carry - borrow;
-                if (diff < 0) {
-                    diff += BASE;
-                    borrow = 1;
+                
+                bool is_borrow = static_cast<uint64_t>(u.data[j + m]) < carry;
+                if (is_borrow) {
+                    u.data[j + m] = static_cast<int32_t>(u.data[j + m] + BASE - carry);
                 } else {
-                    borrow = 0;
+                    u.data[j + m] = static_cast<int32_t>(u.data[j + m] - carry);
                 }
-                u.data[j + m] = static_cast<int32_t>(diff);
 
                 quotient.data[j] = static_cast<int32_t>(q_hat);
 
                 // 如果减多了，加回来 (极少发生)
-                if (borrow) {
+                if (is_borrow) {
                     quotient.data[j]--;
-                    int64_t carry_add = 0;
+                    uint64_t carry_add = 0;
                     for (int i = 0; i < m; ++i) {
-                        int64_t sum = static_cast<int64_t>(u.data[j + i]) + v.data[i] + carry_add;
+                        uint64_t sum = static_cast<uint64_t>(u.data[j + i]) + v.data[i] + carry_add;
                         carry_add = sum / BASE;
                         u.data[j + i] = static_cast<int32_t>(sum - carry_add * BASE);
                     }
-                    int64_t sum_last = static_cast<int64_t>(u.data[j + m]) + carry_add;
-                    u.data[j + m] = static_cast<int32_t>(sum_last - (sum_last / BASE) * BASE);
+                    u.data[j + m] = static_cast<int32_t>(u.data[j + m] + carry_add - ((u.data[j + m] + carry_add >= BASE) ? BASE : 0));
                 }
             }
 

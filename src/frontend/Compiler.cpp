@@ -3646,12 +3646,12 @@ namespace jc {
         if (hasVariableArgs) {
             for (int i = 0; i < static_cast<int>(expr->arguments.size()); ++i) {
                 if (auto* varExpr = dynamic_cast<Variable*>(expr->arguments[i].get())) {
-                    int localSlot = resolveLocal(varExpr->name.lexeme);
-                    if (localSlot != -1) {
-                        if (current().locals[localSlot].isRefParam) {
-                            sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint32_t>(current().locals[localSlot].refParamIndex) });
+                    int argLocalSlot = resolveLocal(varExpr->name.lexeme);
+                    if (argLocalSlot != -1) {
+                        if (current().locals[argLocalSlot].isRefParam) {
+                            sources.push_back({ static_cast<uint8_t>(i), 4, static_cast<uint32_t>(current().locals[argLocalSlot].refParamIndex) });
                         } else {
-                            sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint32_t>(localSlot) });
+                            sources.push_back({ static_cast<uint8_t>(i), 2, static_cast<uint32_t>(argLocalSlot) });
                         }
                     }
                     else {

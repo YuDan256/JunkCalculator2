@@ -4230,9 +4230,10 @@ namespace jc {
             return { true, static_cast<int>(std::round(v.asDouble())) };
             };
 
-        auto buildSliceIndices = [](int dimSize, std::pair<bool, int> start,
+        struct SliceInfo { int start; int step; int count; };
+        auto buildSliceInfo = [](int dimSize, std::pair<bool, int> start,
             std::pair<bool, int> end,
-            std::pair<bool, int> step) -> std::vector<int> {
+            std::pair<bool, int> step) -> SliceInfo {
                 int sp = step.first ? step.second : 1;
 
                 // ★ 点索引标记：step 被显式设置为 0
@@ -4241,7 +4242,7 @@ namespace jc {
                     if (idx < 0) idx = dimSize + idx;
                     if (idx < 0 || idx >= dimSize)
                         throw std::out_of_range("VM Error: Index out of bounds.");
-                    return { idx };
+                    return { idx, 0, 1 };
                 }
 
                 int st, en;
@@ -4266,14 +4267,14 @@ namespace jc {
                     en = std::max(-1, std::min(dimSize - 1, en));
                 }
 
-                std::vector<int> ids;
+                int count = 0;
                 if (sp > 0) {
-                    for (int i = st; i < en; i += sp) ids.push_back(i);
+                    if (en > st) count = (en - st + sp - 1) / sp;
                 }
                 else {
-                    for (int i = st; i > en; i += sp) ids.push_back(i);
+                    if (en < st) count = (st - en - sp - 1) / (-sp);
                 }
-                return ids;
+                return { st, sp, count };
             };
 
         if (dims == 1) {
@@ -4284,9 +4285,10 @@ namespace jc {
 
             if (obj.isString()) {
                 const auto& s = obj.asString();
-                auto ids = buildSliceIndices(static_cast<int>(s.size()), start, end, step);
+                auto info = buildSliceInfo(static_cast<int>(s.size()), start, end, step);
                 std::string result;
-                for (int id : ids) result += s[id];
+                result.reserve(info.count);
+                for (int i = 0; i < info.count; ++i) result += s[info.start + i * info.step];
                 for (int i = 0; i < popCount; ++i) pop();
                 push(Value(result));
                 return;
@@ -4295,26 +4297,29 @@ namespace jc {
             if (obj.isObjType(ObjType::REAL_MATRIX)) {
                 const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                 int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-                auto ids = buildSliceIndices(n, start, end, step);
+                auto info = buildSliceInfo(n, start, end, step);
                 std::vector<double> result;
+                result.reserve(info.count);
                 if (m.getRows() == 1) {
-                    for (int id : ids) result.push_back(m(0, id));
+                    for (int i = 0; i < info.count; ++i) result.push_back(m(0, info.start + i * info.step));
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(RealMatrix(1, static_cast<int>(result.size()), result)));
+                    push(Value(RealMatrix(1, info.count, result)));
                 }
                 else if (m.getCols() == 1) {
-                    for (int id : ids) result.push_back(m(id, 0));
+                    for (int i = 0; i < info.count; ++i) result.push_back(m(info.start + i * info.step, 0));
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(RealMatrix(static_cast<int>(result.size()), 1, result)));
+                    push(Value(RealMatrix(info.count, 1, result)));
                 }
                 else {
-                    int rc = static_cast<int>(ids.size());
                     std::vector<double> flat;
-                    for (int id : ids)
+                    flat.reserve(info.count * m.getCols());
+                    for (int i = 0; i < info.count; ++i) {
+                        int id = info.start + i * info.step;
                         for (int j = 0; j < m.getCols(); ++j)
                             flat.push_back(m(id, j));
+                    }
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(RealMatrix(rc, m.getCols(), flat)));
+                    push(Value(RealMatrix(info.count, m.getCols(), flat)));
                 }
                 return;
             }
@@ -4322,27 +4327,31 @@ namespace jc {
             if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                 int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-                auto ids = buildSliceIndices(n, start, end, step);
+                auto info = buildSliceInfo(n, start, end, step);
                 if (m.getRows() == 1) {
                     std::vector<Complex> result;
-                    for (int id : ids) result.push_back(m(0, id));
+                    result.reserve(info.count);
+                    for (int i = 0; i < info.count; ++i) result.push_back(m(0, info.start + i * info.step));
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(ComplexMatrix(1, static_cast<int>(result.size()), result)));
+                    push(Value(ComplexMatrix(1, info.count, result)));
                 }
                 else if (m.getCols() == 1) {
                     std::vector<Complex> result;
-                    for (int id : ids) result.push_back(m(id, 0));
+                    result.reserve(info.count);
+                    for (int i = 0; i < info.count; ++i) result.push_back(m(info.start + i * info.step, 0));
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(ComplexMatrix(static_cast<int>(result.size()), 1, result)));
+                    push(Value(ComplexMatrix(info.count, 1, result)));
                 }
                 else {
-                    int rc = static_cast<int>(ids.size());
                     std::vector<Complex> flat;
-                    for (int id : ids)
+                    flat.reserve(info.count * m.getCols());
+                    for (int i = 0; i < info.count; ++i) {
+                        int id = info.start + i * info.step;
                         for (int j = 0; j < m.getCols(); ++j)
                             flat.push_back(m(id, j));
+                    }
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(ComplexMatrix(rc, m.getCols(), flat)));
+                    push(Value(ComplexMatrix(info.count, m.getCols(), flat)));
                 }
                 return;
             }
@@ -4350,36 +4359,41 @@ namespace jc {
             if (obj.isObjType(ObjType::STRING_MATRIX)) {
                 const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                 int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-                auto ids = buildSliceIndices(n, start, end, step);
+                auto info = buildSliceInfo(n, start, end, step);
                 if (m.getRows() == 1) {
                     std::vector<std::string> result;
-                    for (int id : ids) result.push_back(m(0, id));
+                    result.reserve(info.count);
+                    for (int i = 0; i < info.count; ++i) result.push_back(m(0, info.start + i * info.step));
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(StringMatrix(1, static_cast<int>(result.size()), result)));
+                    push(Value(StringMatrix(1, info.count, result)));
                 }
                 else if (m.getCols() == 1) {
                     std::vector<std::string> result;
-                    for (int id : ids) result.push_back(m(id, 0));
+                    result.reserve(info.count);
+                    for (int i = 0; i < info.count; ++i) result.push_back(m(info.start + i * info.step, 0));
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(StringMatrix(static_cast<int>(result.size()), 1, result)));
+                    push(Value(StringMatrix(info.count, 1, result)));
                 }
                 else {
-                    int rc = static_cast<int>(ids.size());
                     std::vector<std::string> flat;
-                    for (int id : ids)
+                    flat.reserve(info.count * m.getCols());
+                    for (int i = 0; i < info.count; ++i) {
+                        int id = info.start + i * info.step;
                         for (int j = 0; j < m.getCols(); ++j)
                             flat.push_back(m(id, j));
+                    }
                     for (int i = 0; i < popCount; ++i) pop();
-                    push(Value(StringMatrix(rc, m.getCols(), flat)));
+                    push(Value(StringMatrix(info.count, m.getCols(), flat)));
                 }
                 return;
             }
 
             if (obj.isObjType(ObjType::LIST)) {
                 const auto& L = static_cast<ObjList*>(obj.asObj())->vec;
-                auto ids = buildSliceIndices(static_cast<int>(L.size()), start, end, step);
+                auto info = buildSliceInfo(static_cast<int>(L.size()), start, end, step);
                 ObjList* result = GcHeap::get().allocate<ObjList>();
-                for (int id : ids) result->vec.push_back(L[id]);
+                result->vec.reserve(info.count);
+                for (int i = 0; i < info.count; ++i) result->vec.push_back(L[info.start + i * info.step]);
                 for (int i = 0; i < popCount; ++i) pop();
                 push(Value(result));
                 return;
@@ -4397,18 +4411,22 @@ namespace jc {
             Value obj = peek(popCount++);
 
             auto processMatSlice = [&](const auto& m) {
-                auto rIds = buildSliceIndices(m.getRows(), rStart, rEnd, rStep);
-                auto cIds = buildSliceIndices(m.getCols(), cStart, cEnd, cStep);
+                auto rInfo = buildSliceInfo(m.getRows(), rStart, rEnd, rStep);
+                auto cInfo = buildSliceInfo(m.getCols(), cStart, cEnd, cStep);
 
                 using MatType = std::decay_t<decltype(m)>;
                 using ElemType = std::decay_t<decltype(m(0, 0))>;
                 std::vector<ElemType> flat;
-                for (int ri : rIds)
-                    for (int ci : cIds)
+                flat.reserve(rInfo.count * cInfo.count);
+                for (int i = 0; i < rInfo.count; ++i) {
+                    int ri = rInfo.start + i * rInfo.step;
+                    for (int j = 0; j < cInfo.count; ++j) {
+                        int ci = cInfo.start + j * cInfo.step;
                         flat.push_back(m(ri, ci));
+                    }
+                }
                 for (int i = 0; i < popCount; ++i) pop();
-                push(Value(MatType(static_cast<int>(rIds.size()),
-                    static_cast<int>(cIds.size()), flat)));
+                push(Value(MatType(rInfo.count, cInfo.count, flat)));
                 };
 
             if (obj.isObjType(ObjType::REAL_MATRIX)) {
@@ -4438,9 +4456,10 @@ namespace jc {
             return { true, static_cast<int>(std::round(v.asDouble())) };
             };
 
-        auto buildSliceIndices = [](int dimSize, std::pair<bool, int> start,
+        struct SliceInfo { int start; int step; int count; };
+        auto buildSliceInfo = [](int dimSize, std::pair<bool, int> start,
             std::pair<bool, int> end,
-            std::pair<bool, int> step) -> std::vector<int> {
+            std::pair<bool, int> step) -> SliceInfo {
                 int sp = step.first ? step.second : 1;
 
                 // ★ 点索引标记：step 被显式设置为 0
@@ -4449,7 +4468,7 @@ namespace jc {
                     if (idx < 0) idx = dimSize + idx;
                     if (idx < 0 || idx >= dimSize)
                         throw std::out_of_range("VM Error: Index out of bounds.");
-                    return { idx };
+                    return { idx, 0, 1 };
                 }
 
                 int st, en;
@@ -4474,14 +4493,14 @@ namespace jc {
                     en = std::max(-1, std::min(dimSize - 1, en));
                 }
 
-                std::vector<int> ids;
+                int count = 0;
                 if (sp > 0) {
-                    for (int i = st; i < en; i += sp) ids.push_back(i);
+                    if (en > st) count = (en - st + sp - 1) / sp;
                 }
                 else {
-                    for (int i = st; i > en; i += sp) ids.push_back(i);
+                    if (en < st) count = (st - en - sp - 1) / (-sp);
                 }
-                return ids;
+                return { st, sp, count };
             };
 
         if (dims == 1) {
@@ -4495,20 +4514,22 @@ namespace jc {
                 if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
                 auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                 int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-                auto ids = buildSliceIndices(n, start, end, step);
+                auto info = buildSliceInfo(n, start, end, step);
 
                 if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION)) {
                     double v = val.asDouble();
                     if (m.getRows() == 1) {
-                        for (int id : ids) m(0, id) = v;
+                        for (int i = 0; i < info.count; ++i) m(0, info.start + i * info.step) = v;
                     }
                     else if (m.getCols() == 1) {
-                        for (int id : ids) m(id, 0) = v;
+                        for (int i = 0; i < info.count; ++i) m(info.start + i * info.step, 0) = v;
                     }
                     else {
                         // ★ 广播到这几行的所有列！
-                        for (int id : ids)
+                        for (int i = 0; i < info.count; ++i) {
+                            int id = info.start + i * info.step;
                             for (int j = 0; j < m.getCols(); ++j) m(id, j) = v;
+                        }
                     }
                 }
                 else if (val.isObjType(ObjType::REAL_MATRIX)) {
@@ -4517,22 +4538,23 @@ namespace jc {
 
                     if (m.getRows() == 1 || m.getCols() == 1) {
                         // 纯向量赋值
-                        if (static_cast<int>(srcFlat.size()) != static_cast<int>(ids.size()))
+                        if (static_cast<int>(srcFlat.size()) != info.count)
                             throw std::runtime_error("VM Error: Slice assignment size mismatch.");
                         if (m.getRows() == 1) {
-                            for (size_t k = 0; k < ids.size(); ++k) m(0, ids[k]) = srcFlat[k];
+                            for (int k = 0; k < info.count; ++k) m(0, info.start + k * info.step) = srcFlat[k];
                         }
                         else {
-                            for (size_t k = 0; k < ids.size(); ++k) m(ids[k], 0) = srcFlat[k];
+                            for (int k = 0; k < info.count; ++k) m(info.start + k * info.step, 0) = srcFlat[k];
                         }
                     }
                     else {
                         // 2D 矩阵的单维整行赋值（M[0:1] 意味着替换第0行的所有列）
-                        if (static_cast<int>(srcFlat.size()) != static_cast<int>(ids.size()) * m.getCols())
+                        if (static_cast<int>(srcFlat.size()) != info.count * m.getCols())
                             throw std::runtime_error("VM Error: Slice assignment size mismatch for matrix row.");
-                        for (size_t k = 0; k < ids.size(); ++k) {
+                        for (int k = 0; k < info.count; ++k) {
+                            int id = info.start + k * info.step;
                             for (int j = 0; j < m.getCols(); ++j) {
-                                m(ids[k], j) = srcFlat[k * m.getCols() + j];
+                                m(id, j) = srcFlat[k * m.getCols() + j];
                             }
                         }
                     }
@@ -4543,54 +4565,55 @@ namespace jc {
             }
             else if (obj.isObjType(ObjType::LIST)) {
                 auto list = static_cast<ObjList*>(obj.asObj());
-                auto ids = buildSliceIndices(static_cast<int>(list->vec.size()), start, end, step);
+                auto info = buildSliceInfo(static_cast<int>(list->vec.size()), start, end, step);
                 if (val.isObjType(ObjType::LIST)) {
                     const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
-                    if (srcL.size() != ids.size())
+                    if (static_cast<int>(srcL.size()) != info.count)
                         throw std::runtime_error("VM Error: Slice assignment size mismatch.");
-                    for (size_t k = 0; k < ids.size(); ++k)
-                        list->mut()[ids[k]] = srcL[k];
+                    for (int k = 0; k < info.count; ++k)
+                        list->mut()[info.start + k * info.step] = srcL[k];
                 }
                 else {
-                    for (int id : ids)
-                        list->mut()[id] = val;
+                    for (int i = 0; i < info.count; ++i)
+                        list->mut()[info.start + i * info.step] = val;
                 }
             }
             else if (obj.isString()) {
                 std::string s = obj.asString();
-                auto ids = buildSliceIndices(static_cast<int>(s.size()), start, end, step);
+                auto info = buildSliceInfo(static_cast<int>(s.size()), start, end, step);
                 if (!val.isString())
                     throw std::runtime_error("VM Error: String slice assignment requires a string.");
                 const auto& src = val.asString();
-                if (static_cast<int>(src.size()) != static_cast<int>(ids.size()))
+                if (static_cast<int>(src.size()) != info.count)
                     throw std::runtime_error("VM Error: String slice assignment size mismatch.");
-                for (size_t k = 0; k < ids.size(); ++k) s[ids[k]] = src[k];
+                for (int k = 0; k < info.count; ++k) s[info.start + k * info.step] = src[k];
                 obj = Value(s);
             }
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                 auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                 int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-                auto ids = buildSliceIndices(n, start, end, step);
+                auto info = buildSliceInfo(n, start, end, step);
                 if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                     auto srcFlat = static_cast<ObjComplexMatrix*>(val.asObj())->mat.rawData();
 
                     if (m.getRows() == 1 || m.getCols() == 1) {
-                        if (static_cast<int>(srcFlat.size()) != static_cast<int>(ids.size()))
+                        if (static_cast<int>(srcFlat.size()) != info.count)
                             throw std::runtime_error("VM Error: Slice assignment size mismatch.");
                         if (m.getRows() == 1) {
-                            for (size_t k = 0; k < ids.size(); ++k) m(0, ids[k]) = srcFlat[k];
+                            for (int k = 0; k < info.count; ++k) m(0, info.start + k * info.step) = srcFlat[k];
                         }
                         else {
-                            for (size_t k = 0; k < ids.size(); ++k) m(ids[k], 0) = srcFlat[k];
+                            for (int k = 0; k < info.count; ++k) m(info.start + k * info.step, 0) = srcFlat[k];
                         }
                     }
                     else {
-                        if (static_cast<int>(srcFlat.size()) != static_cast<int>(ids.size()) * m.getCols())
+                        if (static_cast<int>(srcFlat.size()) != info.count * m.getCols())
                             throw std::runtime_error("VM Error: Slice assignment size mismatch for matrix row.");
-                        for (size_t k = 0; k < ids.size(); ++k) {
+                        for (int k = 0; k < info.count; ++k) {
+                            int id = info.start + k * info.step;
                             for (int j = 0; j < m.getCols(); ++j) {
-                                m(ids[k], j) = srcFlat[k * m.getCols() + j];
+                                m(id, j) = srcFlat[k * m.getCols() + j];
                             }
                         }
                     }
@@ -4598,14 +4621,16 @@ namespace jc {
                 else {
                     Complex cv = val.asComplex();
                     if (m.getRows() == 1) {
-                        for (int id : ids) m(0, id) = cv;
+                        for (int i = 0; i < info.count; ++i) m(0, info.start + i * info.step) = cv;
                     }
                     else if (m.getCols() == 1) {
-                        for (int id : ids) m(id, 0) = cv;
+                        for (int i = 0; i < info.count; ++i) m(info.start + i * info.step, 0) = cv;
                     }
                     else {
-                        for (int id : ids)
+                        for (int i = 0; i < info.count; ++i) {
+                            int id = info.start + i * info.step;
                             for (int j = 0; j < m.getCols(); ++j) m(id, j) = cv;
+                        }
                     }
                 }
             }
@@ -4613,26 +4638,27 @@ namespace jc {
                 if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
                 auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                 int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-                auto ids = buildSliceIndices(n, start, end, step);
+                auto info = buildSliceInfo(n, start, end, step);
                 if (val.isObjType(ObjType::STRING_MATRIX)) {
                     auto srcFlat = static_cast<ObjStringMatrix*>(val.asObj())->mat.rawData();
 
                     if (m.getRows() == 1 || m.getCols() == 1) {
-                        if (static_cast<int>(srcFlat.size()) != static_cast<int>(ids.size()))
+                        if (static_cast<int>(srcFlat.size()) != info.count)
                             throw std::runtime_error("VM Error: Slice assignment size mismatch.");
                         if (m.getRows() == 1) {
-                            for (size_t k = 0; k < ids.size(); ++k) m(0, ids[k]) = srcFlat[k];
+                            for (int k = 0; k < info.count; ++k) m(0, info.start + k * info.step) = srcFlat[k];
                         }
                         else {
-                            for (size_t k = 0; k < ids.size(); ++k) m(ids[k], 0) = srcFlat[k];
+                            for (int k = 0; k < info.count; ++k) m(info.start + k * info.step, 0) = srcFlat[k];
                         }
                     }
                     else {
-                        if (static_cast<int>(srcFlat.size()) != static_cast<int>(ids.size()) * m.getCols())
+                        if (static_cast<int>(srcFlat.size()) != info.count * m.getCols())
                             throw std::runtime_error("VM Error: Slice assignment size mismatch for matrix row.");
-                        for (size_t k = 0; k < ids.size(); ++k) {
+                        for (int k = 0; k < info.count; ++k) {
+                            int id = info.start + k * info.step;
                             for (int j = 0; j < m.getCols(); ++j) {
-                                m(ids[k], j) = srcFlat[k * m.getCols() + j];
+                                m(id, j) = srcFlat[k * m.getCols() + j];
                             }
                         }
                     }
@@ -4648,14 +4674,16 @@ namespace jc {
                     }
 
                     if (m.getRows() == 1) {
-                        for (int id : ids) m(0, id) = sv;
+                        for (int i = 0; i < info.count; ++i) m(0, info.start + i * info.step) = sv;
                     }
                     else if (m.getCols() == 1) {
-                        for (int id : ids) m(id, 0) = sv;
+                        for (int i = 0; i < info.count; ++i) m(info.start + i * info.step, 0) = sv;
                     }
                     else {
-                        for (int id : ids)
+                        for (int i = 0; i < info.count; ++i) {
+                            int id = info.start + i * info.step;
                             for (int j = 0; j < m.getCols(); ++j) m(id, j) = sv;
+                        }
                     }
                 }
             }
@@ -4677,10 +4705,10 @@ namespace jc {
             Value obj = peek(popCount++);
 
             auto processMatSliceSet = [&](auto& m) {
-                auto rIds = buildSliceIndices(m.getRows(), rStart, rEnd, rStep);
-                auto cIds = buildSliceIndices(m.getCols(), cStart, cEnd, cStep);
-                int dstR = static_cast<int>(rIds.size());
-                int dstC = static_cast<int>(cIds.size());
+                auto rInfo = buildSliceInfo(m.getRows(), rStart, rEnd, rStep);
+                auto cInfo = buildSliceInfo(m.getCols(), cStart, cEnd, cStep);
+                int dstR = rInfo.count;
+                int dstC = cInfo.count;
 
                 using ElemType = std::decay_t<decltype(m(0, 0))>;
 
@@ -4708,18 +4736,20 @@ namespace jc {
                         throw std::runtime_error("VM Error: Slice assignment size mismatch.");
 
                     for (int i = 0; i < dstR; ++i) {
+                        int ri = rInfo.start + i * rInfo.step;
                         for (int j = 0; j < dstC; ++j) {
+                            int ci = cInfo.start + j * cInfo.step;
                             if constexpr (std::is_same_v<ElemType, double>) {
                                 if (val.isObjType(ObjType::REAL_MATRIX))
-                                    m(rIds[i], cIds[j]) = static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j);
+                                    m(ri, ci) = static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j);
                                 else
                                     throw std::runtime_error("VM Error: Cannot assign complex/string matrix to real matrix slice.");
                             }
                             else if constexpr (std::is_same_v<ElemType, Complex>) {
                                 if (val.isObjType(ObjType::COMPLEX_MATRIX))
-                                    m(rIds[i], cIds[j]) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j);
+                                    m(ri, ci) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j);
                                 else if (val.isObjType(ObjType::REAL_MATRIX))
-                                    m(rIds[i], cIds[j]) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
+                                    m(ri, ci) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
                                 else
                                     throw std::runtime_error("VM Error: Cannot assign string matrix to complex matrix slice.");
                             }
@@ -4731,7 +4761,7 @@ namespace jc {
                                     oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j));
                                 else
                                     oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
-                                m(rIds[i], cIds[j]) = oss.str();
+                                m(ri, ci) = oss.str();
                             }
                         }
                     }
@@ -4756,9 +4786,13 @@ namespace jc {
                         }
                     }
 
-                    for (int ri : rIds)
-                        for (int ci : cIds)
+                    for (int i = 0; i < rInfo.count; ++i) {
+                        int ri = rInfo.start + i * rInfo.step;
+                        for (int j = 0; j < cInfo.count; ++j) {
+                            int ci = cInfo.start + j * cInfo.step;
                             m(ri, ci) = scalarVal;
+                        }
+                    }
                 }
                 };
 

@@ -2331,20 +2331,6 @@ namespace jc {
                         break;
                     }
 
-                    if (closureVal.isString()) {
-                        const std::string& tag = closureVal.asString();
-                        auto fc = GcHeap::get().allocate<ObjClosure>(
-                            std::vector<std::string>{},
-                            std::vector<bool>{},
-                            methodName,
-                            nullptr
-                        );
-                        fc->nativeFn = std::make_any<std::string>(tag);
-                        cls->methods[methodName] = fc;
-                        pop();
-                        break;
-                    }
-
                     throw std::runtime_error("VM Error: Invalid closure type for method '" +
                         methodName + "'.");
                 }
@@ -3183,52 +3169,6 @@ namespace jc {
         // ======== [1] 字符串动态调用 (晚绑定) ========
         if (callee.isString()) {
             const std::string& tag = callee.asString();
-            if (tag.size() >= 5ULL && tag.substr(0, 5) == "__fn:") {
-                int fnIdx = std::stoi(tag.substr(5));
-                auto& fn = compiledFunctions[fnIdx];
-                if (static_cast<int>(argc) < fn->arity || static_cast<int>(argc) > fn->maxArity)
-                    throw std::runtime_error("VM Error: '" + fn->name + "' expects args mismatch.");
-                
-                int padCount = fn->maxArity - static_cast<int>(argc);
-                for (int j = 0; j < padCount; ++j) push(Value::none());
-                int reserveCount = fn->localCount - fn->maxArity;
-                for (int j = 0; j < reserveCount; ++j) push(Value::none());
-                
-                eraseStack(fn->localCount); // ★ FIX: 延迟移除 callee，保护其在可能触发的 GC 中存活
-                
-                if (isTailCall) {
-                    int base = frame().stackBase;
-                    closeUpvalues(base);
-                    int newLocalCount = fn->localCount;
-                    int argStart = static_cast<int>(getStackSize()) - newLocalCount;
-                    if (base != argStart) {
-                        for (int i = 0; i < newLocalCount; ++i) {
-                            stack[base + i] = std::move(stack[argStart + i]);
-                        }
-                    }
-                    setStackSize(base + newLocalCount);
-                    frame().function = fn.get();
-                    frame().ip = 0;
-                    frame().closure = nullptr;
-                    frame().selfContext = Value::none();
-                    frame().classContext = Value::none();
-                    populateRefParams(frame(), fn.get());
-                    return;
-                }
-
-                CallFrame newFrame; newFrame.function = fn.get(); newFrame.ip = 0;
-                newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
-                populateRefParams(newFrame, fn.get());
-                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
-                frames[frameCount++] = newFrame; return;
-            }
-            if (tag.size() >= 10ULL && tag.substr(0, 10) == "__builtin:") {
-                std::string fnName = tag.substr(10); std::vector<Value> args(argc);
-                for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
-                Value result = nativeBuiltins.find(fnName)->second(args);
-                for (int j = 0; j <= argc; ++j) pop();
-                push(result); return;
-            }
             auto nIt = nativeBuiltins.find(tag);
             if (nIt != nativeBuiltins.end()) {
                 auto arityIt = builtinArity.find(tag);
@@ -3504,89 +3444,7 @@ namespace jc {
             throw std::runtime_error("VM Error: Invalid closure.");
         } // 结束 if (holds_function)
 
-        // ======== [4] String Tag fallback ========
-        if (callee.isString()) {
-            const std::string& tag = callee.asString();
-
-            if (tag.size() >= 5ULL && tag.substr(0, 5) == "__fn:") {
-                int fnIdx = std::stoi(tag.substr(5));
-                auto& fn = compiledFunctions[fnIdx];
-
-                eraseStack(argc); // ★ FIX: 先安全移除 callee
-
-                if (fn->hasRestParam) {
-                    int fixedMax = fn->maxArity - 1;
-                    if (static_cast<int>(argc) < fn->arity) {
-                        throw std::runtime_error("VM Error: '" + fn->name + "' requires at least " + std::to_string(fn->arity) + " arguments.");
-                    }
-
-                    ObjList* restList = GcHeap::get().allocate<ObjList>();
-                    if (static_cast<int>(argc) > fixedMax) {
-                        int restCount = static_cast<int>(argc) - fixedMax;
-                        restList->vec.resize(restCount);
-                        stackTop -= restCount;
-                        for (int j = 0; j < restCount; j++) {
-                            restList->vec[j] = stackTop[j];
-                        }
-                        argc = static_cast<uint8_t>(fixedMax);
-                    }
-
-                    int padCount = fixedMax - static_cast<int>(argc);
-                    for (int j = 0; j < padCount; ++j) push(Value::none());
-                    push(Value(restList));
-                }
-                else {
-                    if (static_cast<int>(argc) < fn->arity || static_cast<int>(argc) > fn->maxArity)
-                        throw std::runtime_error("VM Error: '" + fn->name + "' expects " + std::to_string(fn->arity) + " to " + std::to_string(fn->maxArity) + " arguments, got " + std::to_string(argc) + ".");
-                    int padCount = fn->maxArity - static_cast<int>(argc);
-                    for (int j = 0; j < padCount; ++j) push(Value::none());
-                }
-
-                int reserveCount = fn->localCount - fn->maxArity;
-                for (int j = 0; j < reserveCount; ++j) push(Value::none());
-
-                if (isTailCall) {
-                    int base = frame().stackBase;
-                    closeUpvalues(base);
-                    int newLocalCount = fn->localCount;
-                    int argStart = static_cast<int>(getStackSize()) - newLocalCount;
-                    if (base != argStart) {
-                        for (int i = 0; i < newLocalCount; ++i) {
-                            stack[base + i] = std::move(stack[argStart + i]);
-                        }
-                    }
-                    setStackSize(base + newLocalCount);
-                    frame().function = fn.get();
-                    frame().ip = 0;
-                    frame().closure = nullptr;
-                    frame().selfContext = Value::none();
-                    frame().classContext = Value::none();
-                    populateRefParams(frame(), fn.get());
-                    return;
-                }
-
-                CallFrame newFrame; newFrame.function = fn.get(); newFrame.ip = 0;
-                newFrame.stackBase = static_cast<int>(getStackSize()) - fn->localCount;
-                populateRefParams(newFrame, fn.get());
-                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
-                frames[frameCount++] = newFrame; return;
-            }
-
-            if (tag.size() >= 10ULL && tag.substr(0, 10) == "__builtin:") {
-                std::string fnName = tag.substr(10);
-                std::vector<Value> argsVec(argc);
-                for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
-                auto nit = nativeBuiltins.find(fnName);
-                if (nit == nativeBuiltins.end())
-                    throw std::runtime_error("VM Error: Unknown builtin '" + fnName + "'.");
-                Value result = nit->second(argsVec);
-                for (int j = 0; j <= argc; ++j) pop();
-                push(result);
-                return;
-            }
-        } // 结束 if (fallback string tag)
-
-        // ======== [5] 实例的 __call__ 魔术方法 ========
+        // ======== [4] 实例的 __call__ 魔术方法 ========
         if (callee.isInstance()) {
             auto inst = callee.asInstance();
             ObjClosure* method = nullptr;
@@ -5422,69 +5280,6 @@ namespace jc {
             return;
         }
         else if (method->isNative()) {
-            // ★ 修复：检查 nativeFn 是否为晚绑定字符串标签
-            if (method->nativeFn.type() == typeid(std::string)) {
-                const std::string& tag = std::any_cast<std::string>(method->nativeFn);
-                if (tag.size() >= 5ULL && tag.substr(0, 5) == "__fn:") {
-                    int fnIdx = std::stoi(tag.substr(5));
-                    auto& fnDef = compiledFunctions[fnIdx];
-
-                    if (fnDef->hasRestParam) {
-                        int fixedMax = fnDef->maxArity - 1;
-                        if (static_cast<int>(argc) < fnDef->arity) {
-                            throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
-                        }
-                        ObjList* restList = GcHeap::get().allocate<ObjList>();
-                        if (static_cast<int>(argc) > fixedMax) {
-                            int restCount = static_cast<int>(argc) - fixedMax;
-                            restList->vec.resize(restCount);
-                            stackTop -= restCount;
-                            for (int j = 0; j < restCount; j++) {
-                                restList->vec[j] = stackTop[j];
-                            }
-                            argc = static_cast<uint8_t>(fixedMax);
-                        }
-                        int padCount = fixedMax - static_cast<int>(argc);
-                        for (int j = 0; j < padCount; ++j) push(Value::none());
-                        push(Value(restList));
-                    }
-                    else {
-                        if (static_cast<int>(argc) < fnDef->arity || static_cast<int>(argc) > fnDef->maxArity)
-                            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(argc) + ".");
-                        int padCount = fnDef->maxArity - static_cast<int>(argc);
-                        for (int j = 0; j < padCount; ++j) push(Value::none());
-                    }
-
-                    int reserveCount = fnDef->localCount - fnDef->maxArity;
-                    for (int j = 0; j < reserveCount; ++j) push(Value::none());
-
-                    eraseStack(fnDef->localCount); // ★ FIX: 延迟移除 obj，保护其在可能触发的 GC 中存活
-
-                    CallFrame newFrame;
-                    newFrame.function = fnDef.get();
-                    newFrame.ip = 0;
-                    newFrame.stackBase = static_cast<int>(getStackSize()) - fnDef->localCount;
-                    newFrame.selfContext = obj;
-                    newFrame.classContext = owningClass ? Value(owningClass) : Value::none();
-                    populateRefParams(newFrame, fnDef.get());
-                    if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
-                    frames[frameCount++] = newFrame;
-                    return;
-                }
-                if (tag.size() >= 10ULL && tag.substr(0, 10) == "__builtin:") {
-                    std::string fnName = tag.substr(10);
-                    std::vector<Value> argsVec(argc);
-                    for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
-                    auto nit = nativeBuiltins.find(fnName);
-                    if (nit == nativeBuiltins.end()) throw std::runtime_error("VM Error: Unknown builtin '" + fnName + "'.");
-                    Value result = nit->second(argsVec);
-                    for (int j = 0; j <= argc; ++j) pop();
-                    push(result);
-                    return;
-                }
-                throw std::runtime_error("VM Error: Invalid string tag in method.");
-            }
-
             // ★ 修复：检查原生方法的参数数量
             if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
                 if (static_cast<int>(argc) < static_cast<int>(method->minArgs()) || static_cast<int>(argc) > static_cast<int>(method->maxArgs())) {

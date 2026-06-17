@@ -129,6 +129,8 @@ namespace jc {
         OP_TAIL_CALL,       // [arg_count:8bit]
         OP_TAIL_INVOKE,     // [argc:8bit, ic_idx:16bit]
         OP_TAIL_SUPER_INVOKE, // [name_idx:16bit, argc:8bit]
+        OP_INVOKE_FALLBACK, // [argc:8bit, ic_idx:16bit] ★ 新增
+        OP_TAIL_INVOKE_FALLBACK, // [argc:8bit, ic_idx:16bit] ★ 新增
 
         // 导入
         OP_IMPORT,          // [path_idx:16bit]
@@ -241,6 +243,8 @@ namespace jc {
         case OpCode::OP_TAIL_CALL: return "OP_TAIL_CALL";
         case OpCode::OP_TAIL_INVOKE: return "OP_TAIL_INVOKE";
         case OpCode::OP_TAIL_SUPER_INVOKE: return "OP_TAIL_SUPER_INVOKE";
+        case OpCode::OP_INVOKE_FALLBACK: return "OP_INVOKE_FALLBACK";
+        case OpCode::OP_TAIL_INVOKE_FALLBACK: return "OP_TAIL_INVOKE_FALLBACK";
         case OpCode::OP_EXTEND: return "OP_EXTEND";
         default: return "UNKNOWN_OP";
         }
@@ -632,6 +636,23 @@ namespace jc {
                 }
                 std::cout << std::endl;
                 return offset + 4;
+            }
+            case OpCode::OP_INVOKE_FALLBACK:
+            case OpCode::OP_TAIL_INVOKE_FALLBACK: {
+                uint8_t argc = code[offset + 1];
+                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 2);
+                uint8_t fbType = code[offset + 4];
+                uint32_t fbIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 5);
+                std::cout << static_cast<int>(argc) << " args [IC:" << icIdx << "] FB:" << static_cast<int>(fbType) << ":" << fbIdx;
+                if (icIdx < inlineCaches.size()) {
+                    uint32_t nameIdx = inlineCaches[icIdx].nameIdx;
+                    std::cout << " -> " << nameIdx << " (";
+                    if (nameIdx < constants.size() && constants[nameIdx].isString())
+                        std::cout << constants[nameIdx].asString();
+                    std::cout << ")";
+                }
+                std::cout << std::endl;
+                return offset + 7;
             }
 
             // ============================================

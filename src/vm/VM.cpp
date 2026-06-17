@@ -2782,6 +2782,32 @@ namespace jc {
                     break;
                 }
 
+                case OpCode::OP_INVOKE_FALLBACK: {
+                    uint8_t argc = readByte();
+                    uint32_t icIdx = readOperand();
+                    uint8_t fbType = readByte();
+                    uint32_t fbIdx = readOperand();
+                    execInvoke(argc, icIdx, false, fbType, fbIdx);
+                    UPDATE_FRAME();
+                    break;
+                }
+
+                case OpCode::OP_TAIL_INVOKE_FALLBACK: {
+                    uint8_t argc = readByte();
+                    uint32_t icIdx = readOperand();
+                    uint8_t fbType = readByte();
+                    uint32_t fbIdx = readOperand();
+                    int prevIp = currentFrame->ip;
+                    execInvoke(argc, icIdx, true, fbType, fbIdx);
+                    if (currentFrame->ip == prevIp) {
+                        bool shouldExit = false;
+                        Value result = execReturn(shouldExit);
+                        if (shouldExit) return result;
+                    }
+                    UPDATE_FRAME();
+                    break;
+                }
+
                 default:
                     throw std::runtime_error("VM Error: Unknown opcode " +
                         std::to_string(static_cast<int>(op)));
@@ -5102,7 +5128,7 @@ namespace jc {
         return Value::none();
     }
 
-    void VM::execInvoke(uint8_t argc, uint32_t icIdx, bool isTailCall) {
+    void VM::execInvoke(uint8_t argc, uint32_t icIdx, bool isTailCall, int fbType, uint32_t fbIdx) {
         struct CallRefGuard { VM* vm; ~CallRefGuard() { vm->pendingCallRefs.clear(); } } guard{this};
         InlineCache& ic = const_cast<InlineCache&>(frame().function->chunk.inlineCaches[icIdx]);
         uint32_t nameIdx = ic.nameIdx;
@@ -5223,6 +5249,22 @@ namespace jc {
         // ★ UFCS Fallback: 允许内置类型像对象一样调用全局函数
         // ==============================================================
         if (!method) {
+            if (fbType != -1) {
+                Value fallbackVal;
+                if (fbType == 0) {
+                    fallbackVal = stack[frame().stackBase + fbIdx];
+                } else if (fbType == 1) {
+                    fallbackVal = *(frame().closure->upvalues[fbIdx]->location);
+                } else if (fbType == 2) {
+                    fallbackVal = *(static_cast<ObjUpVal*>(stack[frame().refParamsBase + fbIdx].asObj())->location);
+                }
+                
+                if (static_cast<int>(getStackSize()) >= MAX_STACK) throw std::runtime_error("VM Error: Stack overflow.");
+                insertStack(argc + 1, fallbackVal);
+                for (auto& pr : pendingCallRefs) pr.first += 1;
+                execCall(argc + 1, isTailCall);
+                return;
+            }
             auto nIt = nativeBuiltins.find(methodName);
             if (nIt != nativeBuiltins.end()) {
                 auto ait = builtinArity.find(methodName);

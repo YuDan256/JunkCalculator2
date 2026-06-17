@@ -3613,6 +3613,25 @@ namespace jc {
             return;
         }
 
+        int localSlot = resolveLocal(expr->method.lexeme);
+        int upvalue = -1;
+        if (localSlot == -1) upvalue = resolveUpvalue(expr->method.lexeme);
+
+        int fbType = -1;
+        uint32_t fbIdx = 0;
+        if (localSlot != -1) {
+            if (current().locals[localSlot].isRefParam) {
+                fbType = 2;
+                fbIdx = static_cast<uint32_t>(current().locals[localSlot].refParamIndex);
+            } else {
+                fbType = 0;
+                fbIdx = static_cast<uint32_t>(localSlot);
+            }
+        } else if (upvalue != -1) {
+            fbType = 1;
+            fbIdx = static_cast<uint32_t>(upvalue);
+        }
+
         compileNode(expr->object.get());
         for (auto& arg : expr->arguments) compileNode(arg.get());
         uint32_t nameIdx = identifierConstant(expr->method.lexeme);
@@ -3657,15 +3676,32 @@ namespace jc {
         }
 
         uint32_t icIdx = chunk()->addInlineCache(nameIdx);
-        if (actualTailCall) {
-            emit(OpCode::OP_TAIL_INVOKE, lastLine);
-            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-            emit16(icIdx, lastLine);
-            tailCallEmitted = true;
+        if (fbType != -1) {
+            if (actualTailCall) {
+                emit(OpCode::OP_TAIL_INVOKE_FALLBACK, lastLine);
+                emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+                emit16(icIdx, lastLine);
+                emit(static_cast<uint8_t>(fbType), lastLine);
+                emit16(fbIdx, lastLine);
+                tailCallEmitted = true;
+            } else {
+                emit(OpCode::OP_INVOKE_FALLBACK, lastLine);
+                emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+                emit16(icIdx, lastLine);
+                emit(static_cast<uint8_t>(fbType), lastLine);
+                emit16(fbIdx, lastLine);
+            }
         } else {
-            emit(OpCode::OP_INVOKE, lastLine);
-            emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
-            emit16(icIdx, lastLine);
+            if (actualTailCall) {
+                emit(OpCode::OP_TAIL_INVOKE, lastLine);
+                emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+                emit16(icIdx, lastLine);
+                tailCallEmitted = true;
+            } else {
+                emit(OpCode::OP_INVOKE, lastLine);
+                emit(static_cast<uint8_t>(expr->arguments.size()), lastLine);
+                emit16(icIdx, lastLine);
+            }
         }
         return;
     }

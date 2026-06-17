@@ -910,6 +910,19 @@ namespace jc {
         }
 
         if (expr->op.type == TokenType::AND_AND) {
+            if (auto leftVal = tryFoldConstant(expr->left.get())) {
+                if (!leftVal->truthy()) {
+                    // ★ 死代码消除：左侧为 false，右侧永远不执行
+                    uint32_t idx = makeConstant(*leftVal);
+                    emit(OpCode::OP_CONSTANT, expr->op.line);
+                    emit16(idx, expr->op.line);
+                    return;
+                } else {
+                    // 左侧为 true，结果完全取决于右侧
+                    compileNode(expr->right.get());
+                    return;
+                }
+            }
             compileNode(expr->left.get());
             int jump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, expr->op.line);
             emit(OpCode::OP_POP, expr->op.line);
@@ -918,6 +931,19 @@ namespace jc {
             return;
         }
         if (expr->op.type == TokenType::OR_OR) {
+            if (auto leftVal = tryFoldConstant(expr->left.get())) {
+                if (leftVal->truthy()) {
+                    // ★ 死代码消除：左侧为 true，右侧永远不执行
+                    uint32_t idx = makeConstant(*leftVal);
+                    emit(OpCode::OP_CONSTANT, expr->op.line);
+                    emit16(idx, expr->op.line);
+                    return;
+                } else {
+                    // 左侧为 false，结果完全取决于右侧
+                    compileNode(expr->right.get());
+                    return;
+                }
+            }
             compileNode(expr->left.get());
             int elseJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, expr->op.line);
             int endJump = chunk()->emitJump(OpCode::OP_JUMP, expr->op.line);
@@ -1089,7 +1115,17 @@ namespace jc {
         else {
             for (size_t i = 0; i < expr->statements.size(); ++i) {
                 compileNode(expr->statements[i].get());
+                
+                bool isTerminal = dynamic_cast<ReturnExpr*>(expr->statements[i].get()) ||
+                                  dynamic_cast<BreakExpr*>(expr->statements[i].get()) ||
+                                  dynamic_cast<ContinueExpr*>(expr->statements[i].get()) ||
+                                  dynamic_cast<ThrowExpr*>(expr->statements[i].get());
+
                 if (i < expr->statements.size() - 1) {
+                    if (isTerminal) {
+                        // ★ 死代码消除：遇到绝对中断控制流的语句，直接丢弃后续所有语句
+                        break;
+                    }
                     emit(OpCode::OP_POP, lastLine);
                 }
             }
@@ -1182,12 +1218,26 @@ namespace jc {
         compileNode(expr->initializer.get());
         emit(OpCode::OP_POP, lastLine);
 
+        auto condVal = tryFoldConstant(expr->condition.get());
+        if (condVal && !condVal->truthy()) {
+            // ★ 死代码消除：条件永远为 false，直接跳过循环体和更新语句
+            emit(OpCode::OP_NONE, lastLine);
+            endScope();
+            return;
+        }
+
         int loopStart = static_cast<int>(chunk()->code.size());
         beginLoop(loopStart);
 
-        compileNode(expr->condition.get());
-        int exitJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
-        emit(OpCode::OP_POP, lastLine);
+        int exitJump = -1;
+        if (condVal && condVal->truthy()) {
+            // Infinite loop, no condition check needed
+        } else {
+            compileNode(expr->condition.get());
+            exitJump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, lastLine);
+            emit(OpCode::OP_POP, lastLine);
+        }
+
         compileNode(expr->body.get());
 
         // ★ continue 跳转目标：POP body result，然后执行 update
@@ -1200,8 +1250,10 @@ namespace jc {
         emit(OpCode::OP_POP, lastLine);   // POP update result
         chunk()->emitLoop(loopStart, lastLine);
 
-        chunk()->patchJump(exitJump);
-        emit(OpCode::OP_POP, lastLine);
+        if (exitJump != -1) {
+            chunk()->patchJump(exitJump);
+            emit(OpCode::OP_POP, lastLine);
+        }
 
         emitBreakJumps();
         endLoop();
@@ -3784,8 +3836,17 @@ namespace jc {
         for (size_t i = 0; i < expr->expressions.size(); ++i) {
             compileNode(expr->expressions[i].get());
 
+            bool isTerminal = dynamic_cast<ReturnExpr*>(expr->expressions[i].get()) ||
+                              dynamic_cast<BreakExpr*>(expr->expressions[i].get()) ||
+                              dynamic_cast<ContinueExpr*>(expr->expressions[i].get()) ||
+                              dynamic_cast<ThrowExpr*>(expr->expressions[i].get());
+
             // 除了最后一个表达式，其余的执行完后都要清理栈（丢弃结果）
             if (i < expr->expressions.size() - 1) {
+                if (isTerminal) {
+                    // ★ 死代码消除：遇到绝对中断控制流的语句，直接丢弃后续所有语句
+                    break;
+                }
                 emit(OpCode::OP_POP, lastLine);
             }
         }

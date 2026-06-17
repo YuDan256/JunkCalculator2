@@ -1896,7 +1896,7 @@ namespace jc {
                     }
                     pop();
                     push(Value(elements));
-                    push(Value(0.0));
+                    push(Value::fromInt32(0));
                     break;
                 }
 
@@ -1918,15 +1918,14 @@ namespace jc {
                         }
                     } else {
                         // 原生 List 迭代分支
-                        double idx = idxVal.asDouble();
+                        int i = idxVal.isInt32() ? idxVal.asInt32() : static_cast<int>(idxVal.asDouble());
                         const auto& elems = static_cast<ObjList*>(peek(1).asObj())->vec;
-                        int i = static_cast<int>(idx);
                         if (i >= static_cast<int>(elems.size())) {
                             currentFrame->ip += offset;
                         }
                         else {
                             Value elem = elems[i];
-                            stack[getStackSize() - 1] = Value(idx + 1);
+                            stack[getStackSize() - 1] = Value::fromInt32(i + 1);
                             push(elem);
                         }
                     }
@@ -3181,8 +3180,7 @@ namespace jc {
                 }
 
                 if (arityMatched) {
-                    std::vector<Value> args(argc);
-                    for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
+                    std::vector<Value> args(stackTop - argc, stackTop);
                     Value result = nIt->second(args);
                     for (int j = 0; j <= argc; ++j) pop();
                     push(result);
@@ -3279,8 +3277,7 @@ namespace jc {
                     helpers::nativeSelfStack.push_back(Value(instance));
                     helpers::nativeClassStack.push_back(Value(initOwner));
 
-                    std::vector<Value> args(argc);
-                    for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
+                    std::vector<Value> args(stackTop - argc, stackTop);
 
                     try {
                         auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
@@ -3421,8 +3418,7 @@ namespace jc {
                     }
                 }
 
-                std::vector<Value> args(argc);
-                for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
+                std::vector<Value> args(stackTop - argc, stackTop);
 
                 // ★ NEW：C++ 原生闭包也进隔离池
                 helpers::nativeSelfStack.push_back(closure->boundSelf);
@@ -3529,8 +3525,7 @@ namespace jc {
                     frames[frameCount++] = newFrame;
                     return;
                 } else if (method->isNative()) {
-                    std::vector<Value> argsVec(argc);
-                    for (int j = 0; j < argc; ++j) argsVec[j] = peek(argc - 1 - j);
+                    std::vector<Value> argsVec(stackTop - argc, stackTop);
 
                     helpers::nativeSelfStack.push_back(callee);
                     helpers::nativeClassStack.push_back(Value(owningClass));
@@ -3666,10 +3661,13 @@ namespace jc {
                 }
 
                 int i = 0;
-                try {
+                if (idx.isInt32()) {
+                    i = idx.asInt32();
+                } else if (idx.isDouble()) {
+                    i = static_cast<int>(std::round(idx.asDoubleRaw()));
+                } else if (idx.isBigInt() || idx.isObjType(ObjType::FRACTION)) {
                     i = static_cast<int>(std::round(idx.asDouble()));
-                }
-                catch (...) {
+                } else {
                     throw std::runtime_error("TypeError: Array or List index must be a number, got '" + getTypeName(idx) + "'.");
                 }
 
@@ -3879,10 +3877,13 @@ namespace jc {
             }
 
             int i = 0;
-            try {
+            if (idx.isInt32()) {
+                i = idx.asInt32();
+            } else if (idx.isDouble()) {
+                i = static_cast<int>(std::round(idx.asDoubleRaw()));
+            } else if (idx.isBigInt() || idx.isObjType(ObjType::FRACTION)) {
                 i = static_cast<int>(std::round(idx.asDouble()));
-            }
-            catch (...) {
+            } else {
                 throw std::runtime_error("TypeError: Array or List index must be a number, got '" + getTypeName(idx) + "'.");
             }
 
@@ -4090,6 +4091,8 @@ namespace jc {
         auto readOptionalInt = [this, &popCount]() -> std::pair<bool, int> {
             Value v = peek(popCount++);
             if (v.isNone()) return { false, 0 };
+            if (v.isInt32()) return { true, v.asInt32() };
+            if (v.isDouble()) return { true, static_cast<int>(std::round(v.asDoubleRaw())) };
             return { true, static_cast<int>(std::round(v.asDouble())) };
             };
 
@@ -4316,6 +4319,8 @@ namespace jc {
         auto readOptionalInt = [this, &popCount]() -> std::pair<bool, int> {
             Value v = peek(popCount++);
             if (v.isNone()) return { false, 0 };
+            if (v.isInt32()) return { true, v.asInt32() };
+            if (v.isDouble()) return { true, static_cast<int>(std::round(v.asDoubleRaw())) };
             return { true, static_cast<int>(std::round(v.asDouble())) };
             };
 
@@ -5183,9 +5188,10 @@ namespace jc {
                     throw std::runtime_error("Runtime Error: Method '" + methodName + "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
                 }
 
-                std::vector<Value> argsVec(totalArgs);
-                for (int j = 0; j < argc; ++j) argsVec[j + 1] = peek(argc - 1 - j);
-                argsVec[0] = peek(argc); // obj
+                std::vector<Value> argsVec;
+                argsVec.reserve(totalArgs);
+                argsVec.push_back(peek(argc)); // obj
+                argsVec.insert(argsVec.end(), stackTop - argc, stackTop);
                 Value result = nIt->second(argsVec);
                 for (int j = 0; j <= argc; ++j) pop();
                 push(result);
@@ -5294,8 +5300,7 @@ namespace jc {
             helpers::nativeSelfStack.push_back(obj);
             helpers::nativeClassStack.push_back(owningClass ? Value(owningClass) : Value::none());
 
-            std::vector<Value> args(argc);
-            for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
+            std::vector<Value> args(stackTop - argc, stackTop);
             Value result;
             try {
                 auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
@@ -5437,8 +5442,7 @@ namespace jc {
             helpers::nativeSelfStack.push_back(Value(inst));
             helpers::nativeClassStack.push_back(Value(owningClass));
 
-            std::vector<Value> args(argc);
-            for (int j = 0; j < argc; ++j) args[j] = peek(argc - 1 - j);
+            std::vector<Value> args(stackTop - argc, stackTop);
             Value result;
             try {
                 auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);

@@ -81,6 +81,72 @@ namespace jc {
             return result;
         }
 
+        // 基础 O(N^2) 乘法
+        static BigInt mul_basecase(const BigInt& a, const BigInt& b) {
+            size_t n = a.data.size(), m = b.data.size();
+            BigInt result;
+            result.data.assign(n + m, 0);
+            for (size_t i = 0; i < n; ++i) {
+                if (a.data[i] == 0) continue;
+                int64_t carry = 0;
+                int64_t d_i = a.data[i];
+                for (size_t j = 0; j < m; ++j) {
+                    int64_t prod = d_i * b.data[j] + result.data[i + j] + carry;
+                    carry = prod / BASE;
+                    result.data[i + j] = static_cast<int32_t>(prod - carry * BASE);
+                }
+                if (carry > 0) result.data[i + m] += static_cast<int32_t>(carry);
+            }
+            result.trim();
+            return result;
+        }
+
+        // Karatsuba O(N^1.585) 乘法
+        static BigInt karatsuba(const BigInt& a, const BigInt& b) {
+            size_t n = a.data.size();
+            size_t m = b.data.size();
+            // 当 limb 数量较小时，使用基础乘法更快（32 limbs 约 288 位十进制）
+            if (n < 32 || m < 32) return mul_basecase(a, b);
+
+            size_t half = std::max(n, m) / 2;
+
+            auto split = [half](const BigInt& num, BigInt& low, BigInt& high) {
+                if (num.data.size() <= half) {
+                    low = num;
+                    high = BigInt(0);
+                } else {
+                    low.data.assign(num.data.begin(), num.data.begin() + half);
+                    high.data.assign(num.data.begin() + half, num.data.end());
+                    low.trim();
+                    high.trim();
+                }
+            };
+
+            BigInt a0, a1, b0, b1;
+            split(a, a0, a1);
+            split(b, b0, b1);
+
+            BigInt z0 = karatsuba(a0, b0);
+            BigInt z2 = karatsuba(a1, b1);
+            BigInt z1 = karatsuba(absAdd(a0, a1), absAdd(b0, b1));
+            z1 = absSub(absSub(z1, z2), z0);
+
+            BigInt result = z0;
+            if (!z1.isZero()) {
+                BigInt z1_shifted = z1;
+                z1_shifted.data.insert(z1_shifted.data.begin(), half, 0);
+                result = absAdd(result, z1_shifted);
+            }
+            if (!z2.isZero()) {
+                BigInt z2_shifted = z2;
+                z2_shifted.data.insert(z2_shifted.data.begin(), 2 * half, 0);
+                result = absAdd(result, z2_shifted);
+            }
+
+            result.trim();
+            return result;
+        }
+
         // 单个 limb(块) 的除法/取模
         std::pair<BigInt, int64_t> divmod_small(int64_t divisor) const {
             if (divisor == 0) throw std::runtime_error("Math Error: Division by zero.");
@@ -546,22 +612,9 @@ namespace jc {
         BigInt operator-(const BigInt& other) const { return *this + (-other); }
 
         BigInt operator*(const BigInt& other) const {
-            size_t n = data.size(), m = other.data.size();
-            BigInt result;
-            result.data.assign(n + m, 0);
-            for (size_t i = 0; i < n; ++i) {
-                if (data[i] == 0) continue; // 优化：跳过 0 乘
-                int64_t carry = 0;
-                int64_t d_i = data[i];
-                for (size_t j = 0; j < m; ++j) {
-                    int64_t prod = d_i * other.data[j] + result.data[i + j] + carry;
-                    carry = prod / BASE;
-                    result.data[i + j] = static_cast<int32_t>(prod - carry * BASE);
-                }
-                if (carry > 0) result.data[i + m] += static_cast<int32_t>(carry);
-            }
+            BigInt result = karatsuba(*this, other);
             result.negative = (negative != other.negative);
-            result.trim();
+            if (result.isZero()) result.negative = false;
             return result;
         }
 

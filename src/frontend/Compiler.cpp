@@ -925,10 +925,6 @@ namespace jc {
                     emit(OpCode::OP_CONSTANT, expr->op.line);
                     emit16(idx, expr->op.line);
                     return;
-                } else {
-                    // 左侧为 true，结果完全取决于右侧
-                    compileNode(expr->right.get());
-                    return;
                 }
             }
             compileNode(expr->left.get());
@@ -945,10 +941,6 @@ namespace jc {
                     uint32_t idx = makeConstant(*leftVal);
                     emit(OpCode::OP_CONSTANT, expr->op.line);
                     emit16(idx, expr->op.line);
-                    return;
-                } else {
-                    // 左侧为 false，结果完全取决于右侧
-                    compileNode(expr->right.get());
                     return;
                 }
             }

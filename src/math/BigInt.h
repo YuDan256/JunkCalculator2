@@ -735,9 +735,23 @@ namespace jc {
             if (n < 0) throw std::runtime_error("Math Error: Fibonacci undefined for negative.");
             if (n == 0) return BigInt(0);
             if (n == 1) return BigInt(1);
-            BigInt a(0), b(1);
-            for (int64_t i = 2; i <= n; ++i) { BigInt c = a + b; a = b; b = c; }
-            return b;
+            BigInt a(0); 
+            BigInt b(1); 
+            int msb = 62;
+            while (msb >= 0 && !((n >> msb) & 1)) msb--;          
+            for (int i = msb; i >= 0; --i) {
+                BigInt c = a * (b * 2 - a);
+                BigInt d = (a * a) + (b * b);
+                if ((n >> i) & 1) {
+                    a = d;          
+                    b = c + d;      
+                }
+                else {
+                    a = c;         
+                    b = d;          
+                }
+            }
+            return a;
         }
 
         static BigInt modPow(BigInt base, BigInt exp, const BigInt& mod) {

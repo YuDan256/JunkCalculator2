@@ -2289,11 +2289,11 @@ namespace jc {
                     } else {
                         // ★ 脚本模块：使用真正的 Namespace 编译机制，彻底告别老掉牙的 diff！
                         std::string resolved = helpers::safeResolvePath(name);
-                        if (!std::filesystem::exists(resolved)) {
+                        if (!std::filesystem::is_regular_file(resolved)) {
                             resolved = helpers::safeResolvePath(name + ".jc2");
                         }
 
-                        if (!std::filesystem::exists(resolved)) {
+                        if (!std::filesystem::is_regular_file(resolved)) {
                             throw std::runtime_error("VM Error: Cannot find module '" + name + "'.");
                         }
 

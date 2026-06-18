@@ -111,70 +111,212 @@ namespace jc {
             return result;
         }
 
-        // Strassen 递归核心 (要求 A, B 是 2^k x 2^k 的方阵)
-        static Matrix strassenCore(const Matrix& A, const Matrix& B, int depth = 0) {
-            int n = A.rows;
-            if (n <= 64) return multiplyBase(A, B); // 阈值：小矩阵使用基础乘法
-
-            int half = n / 2;
-            Matrix A11(half, half), A12(half, half), A21(half, half), A22(half, half);
-            Matrix B11(half, half), B12(half, half), B21(half, half), B22(half, half);
-
-            for (int i = 0; i < half; ++i) {
-                for (int j = 0; j < half; ++j) {
-                    A11(i, j) = A(i, j);
-                    A12(i, j) = A(i, j + half);
-                    A21(i, j) = A(i + half, j);
-                    A22(i, j) = A(i + half, j + half);
-
-                    B11(i, j) = B(i, j);
-                    B12(i, j) = B(i, j + half);
-                    B21(i, j) = B(i + half, j);
-                    B22(i, j) = B(i + half, j + half);
+        // 零拷贝视图基础乘法
+        static void multiplyBaseView(
+            const T* A, int strideA,
+            const T* B, int strideB,
+            T* C, int strideC,
+            int m, int k_dim, int n) 
+        {
+            for (int i = 0; i < m; ++i) {
+                for (int j = 0; j < n; ++j) {
+                    C[i * strideC + j] = T(0);
                 }
             }
+            for (int i = 0; i < m; ++i) {
+                checkInterrupt();
+                for (int k = 0; k < k_dim; ++k) {
+                    T r = A[i * strideA + k];
+                    if (isEssentiallyZero(r)) continue;
+                    for (int j = 0; j < n; ++j) {
+                        C[i * strideC + j] = C[i * strideC + j] + r * B[k * strideB + j];
+                    }
+                }
+            }
+        }
 
-            Matrix M1, M2, M3, M4, M5, M6, M7;
+        static void addView(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int m, int n) {
+            for (int i = 0; i < m; ++i)
+                for (int j = 0; j < n; ++j)
+                    C[i * strideC + j] = A[i * strideA + j] + B[i * strideB + j];
+        }
 
-            // 限制并发深度，防止线程爆炸 (最大深度设为 2，最多产生 1 + 7 + 49 = 57 个任务)
+        static void subView(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int m, int n) {
+            for (int i = 0; i < m; ++i)
+                for (int j = 0; j < n; ++j)
+                    C[i * strideC + j] = A[i * strideA + j] - B[i * strideB + j];
+        }
+
+        // 零拷贝 + 动态裁剪的 Strassen 核心
+        static void strassenView(
+            const T* A, int strideA,
+            const T* B, int strideB,
+            T* C, int strideC,
+            int n, int depth)
+        {
+            if (n <= 64) {
+                multiplyBaseView(A, strideA, B, strideB, C, strideC, n, n, n);
+                return;
+            }
+
+            int odd = n % 2;
+            int even_n = n - odd;
+            int half = even_n / 2;
+
+            // 预分配当前层的连续内存块，避免碎片
+            std::vector<T> workspace(9 * half * half);
+            T* M1 = workspace.data();
+            T* M2 = M1 + half * half;
+            T* M3 = M2 + half * half;
+            T* M4 = M3 + half * half;
+            T* M5 = M4 + half * half;
+            T* M6 = M5 + half * half;
+            T* M7 = M6 + half * half;
+            T* T1 = M7 + half * half;
+            T* T2 = T1 + half * half;
+
+            const T* A11 = A;
+            const T* A12 = A + half;
+            const T* A21 = A + half * strideA;
+            const T* A22 = A + half * strideA + half;
+
+            const T* B11 = B;
+            const T* B12 = B + half;
+            const T* B21 = B + half * strideB;
+            const T* B22 = B + half * strideB + half;
+
+            T* C11 = C;
+            T* C12 = C + half;
+            T* C21 = C + half * strideC;
+            T* C22 = C + half * strideC + half;
+
             if (depth < 2) {
-                auto f1 = std::async(std::launch::async, [&]() { return strassenCore(A11 + A22, B11 + B22, depth + 1); });
-                auto f2 = std::async(std::launch::async, [&]() { return strassenCore(A21 + A22, B11, depth + 1); });
-                auto f3 = std::async(std::launch::async, [&]() { return strassenCore(A11, B12 - B22, depth + 1); });
-                auto f4 = std::async(std::launch::async, [&]() { return strassenCore(A22, B21 - B11, depth + 1); });
-                auto f5 = std::async(std::launch::async, [&]() { return strassenCore(A11 + A12, B22, depth + 1); });
-                auto f6 = std::async(std::launch::async, [&]() { return strassenCore(A21 - A11, B11 + B12, depth + 1); });
+                auto f1 = std::async(std::launch::async, [&]() {
+                    std::vector<T> localT(2 * half * half);
+                    T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
+                    addView(A11, strideA, A22, strideA, lT1, half, half, half);
+                    addView(B11, strideB, B22, strideB, lT2, half, half, half);
+                    strassenView(lT1, half, lT2, half, M1, half, depth + 1);
+                });
+                auto f2 = std::async(std::launch::async, [&]() {
+                    std::vector<T> localT(half * half);
+                    T* lT1 = localT.data();
+                    addView(A21, strideA, A22, strideA, lT1, half, half, half);
+                    strassenView(lT1, half, B11, strideB, M2, half, depth + 1);
+                });
+                auto f3 = std::async(std::launch::async, [&]() {
+                    std::vector<T> localT(half * half);
+                    T* lT2 = localT.data();
+                    subView(B12, strideB, B22, strideB, lT2, half, half, half);
+                    strassenView(A11, strideA, lT2, half, M3, half, depth + 1);
+                });
+                auto f4 = std::async(std::launch::async, [&]() {
+                    std::vector<T> localT(half * half);
+                    T* lT2 = localT.data();
+                    subView(B21, strideB, B11, strideB, lT2, half, half, half);
+                    strassenView(A22, strideA, lT2, half, M4, half, depth + 1);
+                });
+                auto f5 = std::async(std::launch::async, [&]() {
+                    std::vector<T> localT(half * half);
+                    T* lT1 = localT.data();
+                    addView(A11, strideA, A12, strideA, lT1, half, half, half);
+                    strassenView(lT1, half, B22, strideB, M5, half, depth + 1);
+                });
+                auto f6 = std::async(std::launch::async, [&]() {
+                    std::vector<T> localT(2 * half * half);
+                    T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
+                    subView(A21, strideA, A11, strideA, lT1, half, half, half);
+                    addView(B11, strideB, B12, strideB, lT2, half, half, half);
+                    strassenView(lT1, half, lT2, half, M6, half, depth + 1);
+                });
                 
-                // 最后一个任务直接在当前线程执行，充分利用资源
-                M7 = strassenCore(A12 - A22, B21 + B22, depth + 1);
+                std::vector<T> localT(2 * half * half);
+                T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
+                subView(A12, strideA, A22, strideA, lT1, half, half, half);
+                addView(B21, strideB, B22, strideB, lT2, half, half, half);
+                strassenView(lT1, half, lT2, half, M7, half, depth + 1);
 
-                M1 = f1.get(); M2 = f2.get(); M3 = f3.get();
-                M4 = f4.get(); M5 = f5.get(); M6 = f6.get();
+                f1.wait(); f2.wait(); f3.wait(); f4.wait(); f5.wait(); f6.wait();
             } else {
-                M1 = strassenCore(A11 + A22, B11 + B22, depth + 1);
-                M2 = strassenCore(A21 + A22, B11, depth + 1);
-                M3 = strassenCore(A11, B12 - B22, depth + 1);
-                M4 = strassenCore(A22, B21 - B11, depth + 1);
-                M5 = strassenCore(A11 + A12, B22, depth + 1);
-                M6 = strassenCore(A21 - A11, B11 + B12, depth + 1);
-                M7 = strassenCore(A12 - A22, B21 + B22, depth + 1);
+                // M1 = (A11 + A22)(B11 + B22)
+                addView(A11, strideA, A22, strideA, T1, half, half, half);
+                addView(B11, strideB, B22, strideB, T2, half, half, half);
+                strassenView(T1, half, T2, half, M1, half, depth + 1);
+
+                // M2 = (A21 + A22)B11
+                addView(A21, strideA, A22, strideA, T1, half, half, half);
+                strassenView(T1, half, B11, strideB, M2, half, depth + 1);
+
+                // M3 = A11(B12 - B22)
+                subView(B12, strideB, B22, strideB, T2, half, half, half);
+                strassenView(A11, strideA, T2, half, M3, half, depth + 1);
+
+                // M4 = A22(B21 - B11)
+                subView(B21, strideB, B11, strideB, T2, half, half, half);
+                strassenView(A22, strideA, T2, half, M4, half, depth + 1);
+
+                // M5 = (A11 + A12)B22
+                addView(A11, strideA, A12, strideA, T1, half, half, half);
+                strassenView(T1, half, B22, strideB, M5, half, depth + 1);
+
+                // M6 = (A21 - A11)(B11 + B12)
+                subView(A21, strideA, A11, strideA, T1, half, half, half);
+                addView(B11, strideB, B12, strideB, T2, half, half, half);
+                strassenView(T1, half, T2, half, M6, half, depth + 1);
+
+                // M7 = (A12 - A22)(B21 + B22)
+                subView(A12, strideA, A22, strideA, T1, half, half, half);
+                addView(B21, strideB, B22, strideB, T2, half, half, half);
+                strassenView(T1, half, T2, half, M7, half, depth + 1);
             }
 
-            Matrix C11 = M1 + M4 - M5 + M7;
-            Matrix C12 = M3 + M5;
-            Matrix C21 = M2 + M4;
-            Matrix C22 = M1 - M2 + M3 + M6;
-
-            Matrix C(n, n);
+            // C11 = M1 + M4 - M5 + M7
             for (int i = 0; i < half; ++i) {
                 for (int j = 0; j < half; ++j) {
-                    C(i, j) = C11(i, j);
-                    C(i, j + half) = C12(i, j);
-                    C(i + half, j) = C21(i, j);
-                    C(i + half, j + half) = C22(i, j);
+                    C11[i * strideC + j] = M1[i * half + j] + M4[i * half + j] - M5[i * half + j] + M7[i * half + j];
+                    C12[i * strideC + j] = M3[i * half + j] + M5[i * half + j];
+                    C21[i * strideC + j] = M2[i * half + j] + M4[i * half + j];
+                    C22[i * strideC + j] = M1[i * half + j] - M2[i * half + j] + M3[i * half + j] + M6[i * half + j];
                 }
             }
-            return C;
+
+            // ★ 动态裁剪 (Dynamic Peeling)：处理奇数边缘
+            if (odd) {
+                // 1. C(0..even_n-1, even_n) = A(0..even_n-1, 0..n-1) * B(0..n-1, even_n)
+                for (int i = 0; i < even_n; ++i) {
+                    T sum = T(0);
+                    for (int k = 0; k < n; ++k) {
+                        sum = sum + A[i * strideA + k] * B[k * strideB + even_n];
+                    }
+                    C[i * strideC + even_n] = sum;
+                }
+
+                // 2. C(even_n, 0..even_n-1) = A(even_n, 0..n-1) * B(0..n-1, 0..even_n-1)
+                for (int j = 0; j < even_n; ++j) {
+                    T sum = T(0);
+                    for (int k = 0; k < n; ++k) {
+                        sum = sum + A[even_n * strideA + k] * B[k * strideB + j];
+                    }
+                    C[even_n * strideC + j] = sum;
+                }
+
+                // 3. C(even_n, even_n) = A(even_n, 0..n-1) * B(0..n-1, even_n)
+                T sum = T(0);
+                for (int k = 0; k < n; ++k) {
+                    sum = sum + A[even_n * strideA + k] * B[k * strideB + even_n];
+                }
+                C[even_n * strideC + even_n] = sum;
+
+                // 4. 补齐 C(0..even_n-1, 0..even_n-1) 缺失的 A(0..even_n-1, even_n) * B(even_n, 0..even_n-1)
+                for (int i = 0; i < even_n; ++i) {
+                    T a_edge = A[i * strideA + even_n];
+                    if (!isEssentiallyZero(a_edge)) {
+                        for (int j = 0; j < even_n; ++j) {
+                            C[i * strideC + j] = C[i * strideC + j] + a_edge * B[even_n * strideB + j];
+                        }
+                    }
+                }
+            }
         }
 
         // 智能矩阵乘法入口
@@ -183,29 +325,49 @@ namespace jc {
             if (other.rows == 1 && other.cols == 1) return (*this) * other.data[0];
             if (cols != other.rows) throw std::invalid_argument("Matrix Error: Cols must equal rows (*).");
 
+            int minDim = std::min({rows, cols, other.cols});
             int maxDim = std::max({rows, cols, other.cols});
-            // 当矩阵维度较大时，启用 Strassen 算法 (O(N^2.81))
-            if (maxDim > 64) {
-                int m = 1;
-                while (m < maxDim) m *= 2;
+            
+            // 当矩阵维度较大，且不是极度狭长的矩阵时，启用 Strassen 算法
+            if (minDim > 64 && maxDim < minDim * 4) {
+                int n = maxDim;
 
-                Matrix A_pad(m, m), B_pad(m, m);
-                for (int i = 0; i < rows; ++i)
-                    for (int j = 0; j < cols; ++j)
-                        A_pad(i, j) = (*this)(i, j);
+                Matrix A_pad(n, n), B_pad(n, n);
+                bool needPadA = (rows != n || cols != n);
+                bool needPadB = (other.rows != n || other.cols != n);
+                
+                const T* ptrA = data.data();
+                int strideA = cols;
+                if (needPadA) {
+                    for (int i = 0; i < rows; ++i)
+                        for (int j = 0; j < cols; ++j)
+                            A_pad(i, j) = (*this)(i, j);
+                    ptrA = A_pad.data.data();
+                    strideA = n;
+                }
 
-                for (int i = 0; i < other.rows; ++i)
-                    for (int j = 0; j < other.cols; ++j)
-                        B_pad(i, j) = other(i, j);
+                const T* ptrB = other.data.data();
+                int strideB = other.cols;
+                if (needPadB) {
+                    for (int i = 0; i < other.rows; ++i)
+                        for (int j = 0; j < other.cols; ++j)
+                            B_pad(i, j) = other(i, j);
+                    ptrB = B_pad.data.data();
+                    strideB = n;
+                }
 
-                Matrix C_pad = strassenCore(A_pad, B_pad);
+                Matrix C_pad(n, n);
+                strassenView(ptrA, strideA, ptrB, strideB, C_pad.data.data(), n, n, 0);
 
-                Matrix result(rows, other.cols);
-                for (int i = 0; i < rows; ++i)
-                    for (int j = 0; j < other.cols; ++j)
-                        result(i, j) = C_pad(i, j);
-
-                return result;
+                if (rows == n && other.cols == n) {
+                    return C_pad;
+                } else {
+                    Matrix result(rows, other.cols);
+                    for (int i = 0; i < rows; ++i)
+                        for (int j = 0; j < other.cols; ++j)
+                            result(i, j) = C_pad(i, j);
+                    return result;
+                }
             }
 
             return multiplyBase(*this, other);

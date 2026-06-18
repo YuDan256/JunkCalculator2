@@ -740,7 +740,7 @@ namespace jc {
             int msb = 62;
             while (msb >= 0 && !((n >> msb) & 1)) msb--;          
             for (int i = msb; i >= 0; --i) {
-                BigInt c = a * (b * 2 - a);
+                BigInt c = a * (b * BigInt(2) - a);
                 BigInt d = (a * a) + (b * b);
                 if ((n >> i) & 1) {
                     a = d;          

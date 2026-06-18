@@ -196,78 +196,78 @@ namespace jc {
                     T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
                     addView(A11, strideA, A22, strideA, lT1, half, half, half);
                     addView(B11, strideB, B22, strideB, lT2, half, half, half);
-                    strassenView(lT1, half, lT2, half, M1, half, depth + 1);
+                    strassenView(lT1, half, lT2, half, M1, half, half, depth + 1);
                 });
                 auto f2 = std::async(std::launch::async, [&]() {
                     std::vector<T> localT(half * half);
                     T* lT1 = localT.data();
                     addView(A21, strideA, A22, strideA, lT1, half, half, half);
-                    strassenView(lT1, half, B11, strideB, M2, half, depth + 1);
+                    strassenView(lT1, half, B11, strideB, M2, half, half, depth + 1);
                 });
                 auto f3 = std::async(std::launch::async, [&]() {
                     std::vector<T> localT(half * half);
                     T* lT2 = localT.data();
                     subView(B12, strideB, B22, strideB, lT2, half, half, half);
-                    strassenView(A11, strideA, lT2, half, M3, half, depth + 1);
+                    strassenView(A11, strideA, lT2, half, M3, half, half, depth + 1);
                 });
                 auto f4 = std::async(std::launch::async, [&]() {
                     std::vector<T> localT(half * half);
                     T* lT2 = localT.data();
                     subView(B21, strideB, B11, strideB, lT2, half, half, half);
-                    strassenView(A22, strideA, lT2, half, M4, half, depth + 1);
+                    strassenView(A22, strideA, lT2, half, M4, half, half, depth + 1);
                 });
                 auto f5 = std::async(std::launch::async, [&]() {
                     std::vector<T> localT(half * half);
                     T* lT1 = localT.data();
                     addView(A11, strideA, A12, strideA, lT1, half, half, half);
-                    strassenView(lT1, half, B22, strideB, M5, half, depth + 1);
+                    strassenView(lT1, half, B22, strideB, M5, half, half, depth + 1);
                 });
                 auto f6 = std::async(std::launch::async, [&]() {
                     std::vector<T> localT(2 * half * half);
                     T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
                     subView(A21, strideA, A11, strideA, lT1, half, half, half);
                     addView(B11, strideB, B12, strideB, lT2, half, half, half);
-                    strassenView(lT1, half, lT2, half, M6, half, depth + 1);
+                    strassenView(lT1, half, lT2, half, M6, half, half, depth + 1);
                 });
                 
                 std::vector<T> localT(2 * half * half);
                 T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
                 subView(A12, strideA, A22, strideA, lT1, half, half, half);
                 addView(B21, strideB, B22, strideB, lT2, half, half, half);
-                strassenView(lT1, half, lT2, half, M7, half, depth + 1);
+                strassenView(lT1, half, lT2, half, M7, half, half, depth + 1);
 
                 f1.wait(); f2.wait(); f3.wait(); f4.wait(); f5.wait(); f6.wait();
             } else {
                 // M1 = (A11 + A22)(B11 + B22)
                 addView(A11, strideA, A22, strideA, T1, half, half, half);
                 addView(B11, strideB, B22, strideB, T2, half, half, half);
-                strassenView(T1, half, T2, half, M1, half, depth + 1);
+                strassenView(T1, half, T2, half, M1, half, half, depth + 1);
 
                 // M2 = (A21 + A22)B11
                 addView(A21, strideA, A22, strideA, T1, half, half, half);
-                strassenView(T1, half, B11, strideB, M2, half, depth + 1);
+                strassenView(T1, half, B11, strideB, M2, half, half, depth + 1);
 
                 // M3 = A11(B12 - B22)
                 subView(B12, strideB, B22, strideB, T2, half, half, half);
-                strassenView(A11, strideA, T2, half, M3, half, depth + 1);
+                strassenView(A11, strideA, T2, half, M3, half, half, depth + 1);
 
                 // M4 = A22(B21 - B11)
                 subView(B21, strideB, B11, strideB, T2, half, half, half);
-                strassenView(A22, strideA, T2, half, M4, half, depth + 1);
+                strassenView(A22, strideA, T2, half, M4, half, half, depth + 1);
 
                 // M5 = (A11 + A12)B22
                 addView(A11, strideA, A12, strideA, T1, half, half, half);
-                strassenView(T1, half, B22, strideB, M5, half, depth + 1);
+                strassenView(T1, half, B22, strideB, M5, half, half, depth + 1);
 
                 // M6 = (A21 - A11)(B11 + B12)
                 subView(A21, strideA, A11, strideA, T1, half, half, half);
                 addView(B11, strideB, B12, strideB, T2, half, half, half);
-                strassenView(T1, half, T2, half, M6, half, depth + 1);
+                strassenView(T1, half, T2, half, M6, half, half, depth + 1);
 
                 // M7 = (A12 - A22)(B21 + B22)
                 subView(A12, strideA, A22, strideA, T1, half, half, half);
                 addView(B21, strideB, B22, strideB, T2, half, half, half);
-                strassenView(T1, half, T2, half, M7, half, depth + 1);
+                strassenView(T1, half, T2, half, M7, half, half, depth + 1);
             }
 
             // C11 = M1 + M4 - M5 + M7

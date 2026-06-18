@@ -716,7 +716,19 @@ namespace jc {
 
         static BigInt gcd(BigInt a, BigInt b) {
             a = a.abs(); b = b.abs();
-            while (!b.isZero()) { BigInt temp = b; b = a % b; a = temp; }
+            auto gcd_int = [](int64_t x, int64_t y) {
+                while (y != 0) { int64_t t = y; y = x % y; x = t; }
+                return x;
+            };
+            while (!b.isZero()) {
+                if (b.data.size() == 1) {
+                    int64_t small_b = b.data[0];
+                    if (small_b == 0) return a;
+                    int64_t rem = a.divmod_small(small_b).second;
+                    return BigInt(gcd_int(small_b, rem));
+                }
+                BigInt temp = b; b = a % b; a = temp;
+            }
             return a;
         }
 
@@ -725,11 +737,20 @@ namespace jc {
             return (a.abs() / gcd(a, b)) * b.abs();
         }
 
+    private:
+        static BigInt factorialRange(int64_t left, int64_t right) {
+            if (left > right) return BigInt(1);
+            if (left == right) return BigInt(left);
+            if (right - left == 1) return BigInt(left) * BigInt(right);
+            int64_t mid = left + (right - left) / 2;
+            return factorialRange(left, mid) * factorialRange(mid + 1, right);
+        }
+
+    public:
         static BigInt factorial(int64_t n) {
             if (n < 0) throw std::runtime_error("Math Error: Factorial undefined for negative numbers.");
-            BigInt result(1);
-            for (int64_t i = 2; i <= n; ++i) result = result * BigInt(i);
-            return result;
+            if (n == 0 || n == 1) return BigInt(1);
+            return factorialRange(2, n);
         }
 
         static BigInt fibonacci(int64_t n) {
@@ -765,8 +786,19 @@ namespace jc {
             while (!exp.isZero()) {
                 if (exp.data[0] & 1)
                     result = mathMod(result * base, mod);
-                exp = exp.divmod_small(2).first;
-                base = mathMod(base * base, mod);
+                
+                // 原地除以 2，避免每次循环创建新的 BigInt 对象
+                uint64_t rem = 0;
+                for (int i = static_cast<int>(exp.data.size()) - 1; i >= 0; --i) {
+                    uint64_t cur = rem * static_cast<uint64_t>(BASE) + static_cast<uint64_t>(exp.data[i]);
+                    exp.data[i] = static_cast<int32_t>(cur / 2);
+                    rem = cur % 2;
+                }
+                exp.trim();
+
+                if (!exp.isZero()) {
+                    base = mathMod(base * base, mod);
+                }
             }
             return result;
         }

@@ -95,13 +95,14 @@ namespace jc {
             return result;
         }
 
-        // 基础 O(N^3) 乘法 (i-k-j 缓存优化)
+        // 基础 O(N^3) 乘法 (i-k-j 缓存优化 + 稀疏跳跃)
         static Matrix multiplyBase(const Matrix& A, const Matrix& B) {
             Matrix result(A.rows, B.cols);
             for (int i = 0; i < A.rows; ++i) {
                 checkInterrupt();
                 for (int k = 0; k < A.cols; ++k) {
                     T r = A(i, k);
+                    if (isEssentiallyZero(r)) continue; // ★ 稀疏优化：若乘数为0，直接跳过整行遍历，大幅加速稀疏/对角矩阵
                     for (int j = 0; j < B.cols; ++j) {
                         result(i, j) = result(i, j) + r * B(k, j);
                     }
@@ -324,18 +325,18 @@ namespace jc {
             }
         }
         // [2] 初等行变换：某行乘以非零常数
-        void multiplyRow(int row, T scalar) {
+        void multiplyRow(int row, T scalar, int startCol = 0) {
             if (row < 0 || row >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
             // 利用标准库判定 0 的通用写法 (兼容 double, Complex 等类型的比较)
             if (scalar == T(0)) throw std::invalid_argument("Matrix Error: Cannot multiply a row by zero.");
-            for (int j = 0; j < cols; ++j) {
+            for (int j = startCol; j < cols; ++j) {
                 (*this)(row, j) = (*this)(row, j) * scalar;
             }
         }
         // [3] 初等行变换：将 row2 的 scalar 倍加到 row1 上 ( row1 = row1 + scalar * row2 )
-        void addRows(int row1, int row2, T scalar) {
+        void addRows(int row1, int row2, T scalar, int startCol = 0) {
             if (row1 < 0 || row1 >= rows || row2 < 0 || row2 >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
-            for (int j = 0; j < cols; ++j) {
+            for (int j = startCol; j < cols; ++j) {
                 (*this)(row1, j) = (*this)(row1, j) + scalar * (*this)(row2, j);
             }
         }
@@ -395,13 +396,15 @@ namespace jc {
                     swapCount++;
                 }
                 T pivot = result(currentRow, j);
-                result.multiplyRow(currentRow, T(1) / pivot);
+                // ★ 优化：左侧已经是 0，无需参与乘法，直接从 j 开始
+                result.multiplyRow(currentRow, T(1) / pivot, j);
                 for (int i = 0; i < rows; ++i) {
                     if (i != currentRow) {
                         T factor = result(i, j);
                         // ★ 浮点清扫同样只参考本行
                         if (Tol::clean(magnitudeOf(factor), rowScale[i]) != 0.0) {
-                            result.addRows(i, currentRow, -factor);
+                            result.addRows(i, currentRow, -factor, j + 1);
+                            result(i, j) = T(0); // ★ 显式置零，消除浮点误差并砍掉冗余计算
                         }
                         else {
                             result(i, j) = T(0);
@@ -457,7 +460,8 @@ namespace jc {
                 T pivot = temp(i, i);
                 for (int j = i + 1; j < rows; ++j) {
                     T factor = temp(j, i) / pivot;
-                    for (int k = i; k < cols; ++k) {
+                    temp(j, i) = T(0); // ★ 显式置零，跳过无意义计算
+                    for (int k = i + 1; k < cols; ++k) {
                         temp(j, k) = temp(j, k) - factor * temp(i, k);
                     }
                 }
@@ -738,6 +742,18 @@ namespace jc {
         Matrix<T> adjugate() const {
             if (rows != cols) throw std::invalid_argument("Math Error: Adjugate requires a square matrix.");
             if (rows == 1) { Matrix<T> r(1, 1); r(0, 0) = T(1); return r; }
+            
+            // ★ 算法级降维打击：利用 adj(A) = det(A) * A^-1，将复杂度从 O(N^5) 降至 O(N^3)
+            T det = determinant();
+            if (!isEssentiallyZero(det)) {
+                try {
+                    return inverse() * det;
+                } catch (...) {
+                    // 浮点误差导致 inverse 判定为奇异矩阵时，静默退化为余子式法
+                }
+            }
+
+            // 仅当矩阵不可逆 (det == 0) 时，才退化为 O(N^5) 的代数余子式定义法
             Matrix<T> result(rows, cols);
             for (int i = 0; i < rows; ++i)
                 for (int j = 0; j < cols; ++j)
@@ -1046,7 +1062,8 @@ namespace jc {
                 for (int i = k + 1; i < n; ++i) {
                     T factor = U(i, k) / pivot;
                     L(i, k) = factor;
-                    for (int j = k; j < n; ++j)
+                    U(i, k) = T(0); // ★ 显式置零，跳过无意义计算
+                    for (int j = k + 1; j < n; ++j)
                         U(i, j) = U(i, j) - factor * U(k, j);
                 }
             }

@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <map>
 
 // 引入复数以支持与复数的隐式混合运算提升
 #include "Complex.h"
@@ -811,10 +812,36 @@ namespace jc {
             BigInt d = n - BigInt(1);
             int r = 0;
             while (d.data[0] % 2 == 0) { d = d.divmod_small(2).first; r++; }
-            std::vector<int64_t> witnesses = { 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37 };
+            
+            // 前 12 个素数作为基，在数学上已证明对 3.18 * 10^24 (约 81 bits) 以内的数是 100% 准确的
+            std::vector<BigInt> witnesses;
+            for (int64_t p : { 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37 }) {
+                witnesses.push_back(BigInt(p));
+            }
+            
             BigInt nMinus1 = n - BigInt(1);
-            for (int64_t a : witnesses) {
-                BigInt aBI(a);
+            
+            // 如果数字超过了 81 bits (data.size() >= 3，因为 10^27 > 2^81)，
+            // 我们追加 28 轮随机基测试，总计 40 轮，将误判率降低到密码学安全级别 (4^-40)
+            if (n.data.size() >= 3) {
+                uint64_t state = 0x123456789ABCDEFULL ^ static_cast<uint64_t>(n.data[0]);
+                for (int k = 0; k < 28; ++k) {
+                    BigInt randBase;
+                    randBase.data.resize(n.data.size());
+                    for (size_t i = 0; i < randBase.data.size(); ++i) {
+                        state ^= state >> 12;
+                        state ^= state << 25;
+                        state ^= state >> 27;
+                        randBase.data[i] = static_cast<int32_t>((state * 2685821657736338717ULL) % BASE);
+                    }
+                    randBase.trim();
+                    if (randBase < BigInt(2)) randBase = randBase + BigInt(2);
+                    if (randBase >= nMinus1) randBase = randBase % (nMinus1 - BigInt(2)) + BigInt(2);
+                    witnesses.push_back(randBase);
+                }
+            }
+
+            for (const BigInt& aBI : witnesses) {
                 if (aBI >= n) continue;
                 BigInt x = modPow(aBI, d, n);
                 if (x == BigInt(1) || x == nMinus1) continue;
@@ -1005,6 +1032,37 @@ namespace jc {
             return count;
         }
 
+    private:
+        static BigInt pollardRho(const BigInt& n, int64_t c_val = 1) {
+            if (n.data[0] % 2 == 0) return BigInt(2);
+            BigInt x(2), y(2), d(1), c(c_val);
+            auto f = [&](const BigInt& x_val) {
+                return mathMod(x_val * x_val + c, n);
+            };
+            while (d == BigInt(1)) {
+                x = f(x);
+                y = f(f(y));
+                BigInt diff = (x > y) ? x - y : y - x;
+                d = gcd(diff, n);
+                if (d == n) {
+                    return pollardRho(n, c_val + 1);
+                }
+            }
+            return d;
+        }
+
+        static void factorizeRecursive(BigInt n, std::map<BigInt, int>& factors) {
+            if (n <= BigInt(1)) return;
+            if (n.isPrime()) {
+                factors[n]++;
+                return;
+            }
+            BigInt divisor = pollardRho(n);
+            factorizeRecursive(divisor, factors);
+            factorizeRecursive(n / divisor, factors);
+        }
+
+    public:
         std::vector<std::pair<BigInt, int>> factorize() const {
             BigInt n = this->abs();
             if (n <= BigInt(1)) throw std::runtime_error("Math Error: Factorization requires n > 1.");
@@ -1071,7 +1129,6 @@ namespace jc {
             }
 
             if (n > BigInt(1)) {
-                BigInt i = lastP > 0 ? (lastP == 2 ? BigInt(3) : BigInt(lastP) + BigInt(2)) : BigInt(3);
                 if (lastP == 0) {
                     int count = 0;
                     while (true) {
@@ -1083,20 +1140,25 @@ namespace jc {
                     if (count > 0) factors.push_back({ BigInt(2), count });
                 }
 
-                while (true) {
-                    BigInt sq = i * i;
-                    if (sq > n) break;
-                    int count = 0;
-                    while (true) {
-                        auto [q, rem] = divmod(n, i);
-                        if (!rem.isZero()) break;
-                        n = q;
-                        count++;
-                    }
-                    if (count > 0) factors.push_back({ i, count });
-                    i = i + BigInt(2);
+                std::map<BigInt, int> remainingFactors;
+                factorizeRecursive(n, remainingFactors);
+                for (const auto& [p, count] : remainingFactors) {
+                    factors.push_back({ p, count });
                 }
-                if (n > BigInt(1)) factors.push_back({ n, 1 });
+
+                std::sort(factors.begin(), factors.end(), [](const auto& a, const auto& b) {
+                    return a.first < b.first;
+                });
+
+                std::vector<std::pair<BigInt, int>> mergedFactors;
+                for (const auto& f : factors) {
+                    if (!mergedFactors.empty() && mergedFactors.back().first == f.first) {
+                        mergedFactors.back().second += f.second;
+                    } else {
+                        mergedFactors.push_back(f);
+                    }
+                }
+                return mergedFactors;
             }
             return factors;
         }

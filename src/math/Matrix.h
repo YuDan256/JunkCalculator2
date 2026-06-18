@@ -236,7 +236,8 @@ namespace jc {
                 addView(B21, strideB, B22, strideB, lT2, half, half, half);
                 strassenView(lT1, half, lT2, half, M7, half, half, depth + 1);
 
-                f1.wait(); f2.wait(); f3.wait(); f4.wait(); f5.wait(); f6.wait();
+                // ★ 必须使用 get() 而不是 wait()，否则 EngineInterruptError 异常会被吞噬，导致计算出垃圾值
+                f1.get(); f2.get(); f3.get(); f4.get(); f5.get(); f6.get();
             } else {
                 // M1 = (A11 + A22)(B11 + B22)
                 addView(A11, strideA, A22, strideA, T1, half, half, half);
@@ -332,13 +333,15 @@ namespace jc {
             if (minDim > 64 && maxDim < minDim * 4) {
                 int n = maxDim;
 
-                Matrix A_pad(n, n), B_pad(n, n);
+                // ★ 延迟分配：不要无条件初始化 n*n 的矩阵，否则会破坏方阵的零拷贝初衷
+                Matrix A_pad, B_pad;
                 bool needPadA = (rows != n || cols != n);
                 bool needPadB = (other.rows != n || other.cols != n);
                 
                 const T* ptrA = data.data();
                 int strideA = cols;
                 if (needPadA) {
+                    A_pad = Matrix(n, n);
                     for (int i = 0; i < rows; ++i)
                         for (int j = 0; j < cols; ++j)
                             A_pad(i, j) = (*this)(i, j);
@@ -349,6 +352,7 @@ namespace jc {
                 const T* ptrB = other.data.data();
                 int strideB = other.cols;
                 if (needPadB) {
+                    B_pad = Matrix(n, n);
                     for (int i = 0; i < other.rows; ++i)
                         for (int j = 0; j < other.cols; ++j)
                             B_pad(i, j) = other(i, j);

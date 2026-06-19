@@ -295,6 +295,7 @@ namespace jc {
 
                     std::vector<Token> params;
                     std::vector<bool> paramIsRef;
+                    std::vector<bool> paramIsConst;
                     std::vector<std::shared_ptr<Expr>> defaultExprs;
                     std::vector<std::string> paramTypes;  // ★
                     bool hasRestParam = false;
@@ -307,7 +308,19 @@ namespace jc {
                             while (match({ TokenType::NEWLINE })) {}
                             if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
 
-                            bool isParamRef = match({ TokenType::REF });
+                            bool isParamRef = false;
+                            bool isParamConst = false;
+                            while (true) {
+                                if (match({ TokenType::REF })) {
+                                    if (isParamRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                                    isParamRef = true;
+                                } else if (match({ TokenType::CONST })) {
+                                    if (isParamConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                                    isParamConst = true;
+                                } else {
+                                    break;
+                                }
+                            }
 
                             Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
                             bool isRest = false;
@@ -331,6 +344,7 @@ namespace jc {
 
                             params.push_back(paramTok);
                             paramIsRef.push_back(isParamRef);
+                            paramIsConst.push_back(isParamConst);
 
                             std::string pType = "";
                             if (match({ TokenType::COLON })) {
@@ -350,7 +364,7 @@ namespace jc {
 
                             if (isDestruct) {
                                 auto rhs = std::make_unique<Variable>(paramTok);
-                                destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
+                                destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst));
                             }
                         } while (match({ TokenType::COMMA }));
                     }
@@ -391,7 +405,7 @@ namespace jc {
                     }
 
                     auto lambda = std::make_unique<LambdaExpr>(
-                        funcName.lexeme, params, paramIsRef, defaultExprs, hasRestParam,
+                        funcName.lexeme, params, paramIsRef, paramIsConst, defaultExprs, hasRestParam,
                         paramTypes, retType, rawBodyStr, std::move(finalBody)
                     );
 
@@ -680,8 +694,9 @@ namespace jc {
 
                     if (isPartial) {
                         std::vector<bool> phIsRef(phParams.size(), false);
+                        std::vector<bool> phIsConst(phParams.size(), false);
                         expr = std::make_unique<LambdaExpr>(
-                            "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phDefaults), false,
+                            "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
                             std::vector<std::string>(phParams.size(), ""), "",  // ★★★ 补上: 空参数类型数组，空返回类型
                             "<partial_method>", std::shared_ptr<Expr>(methodNode.release())
                         );
@@ -725,8 +740,9 @@ namespace jc {
                 }
                 if (isPartial) {
                     std::vector<bool> phIsRef(phParams.size(), false);
+                    std::vector<bool> phIsConst(phParams.size(), false);
                     expr = std::make_unique<LambdaExpr>(
-                        "<partial_apply>", std::move(phParams), std::move(phIsRef), std::move(phDefaults), false,
+                        "<partial_apply>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
                         std::vector<std::string>(phParams.size(), ""), "", // ★★★ 补上: 空参数类型数组，空返回类型
                         "<partial_apply>", std::shared_ptr<Expr>(callNode.release())
                     );
@@ -1156,6 +1172,7 @@ namespace jc {
                 current = savedPos; // 回退，开启真正无坚不摧的 Lambda 解析！
                 std::vector<Token> lambdaParams;
                 std::vector<bool> lambdaParamIsRef;
+                std::vector<bool> lambdaParamIsConst;
                 std::vector<std::shared_ptr<Expr>> lambdaDefaults;
                 std::vector<std::string> paramTypes; // ★
                 bool hasRestParam = false;
@@ -1167,7 +1184,19 @@ namespace jc {
                     do {
                         if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
 
-                        bool isRef = match({ TokenType::REF });
+                        bool isRef = false;
+                        bool isConst = false;
+                        while (true) {
+                            if (match({ TokenType::REF })) {
+                                if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                                isRef = true;
+                            } else if (match({ TokenType::CONST })) {
+                                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                                isConst = true;
+                            } else {
+                                break;
+                            }
+                        }
                         
                         Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
                         bool isRest = false;
@@ -1191,6 +1220,7 @@ namespace jc {
 
                         lambdaParams.push_back(paramTok);
                         lambdaParamIsRef.push_back(isRef);
+                        lambdaParamIsConst.push_back(isConst);
 
                         std::string pType = "";
                         if (match({ TokenType::COLON })) {
@@ -1211,7 +1241,7 @@ namespace jc {
 
                         if (isDestruct) {
                             auto rhs = std::make_unique<Variable>(paramTok);
-                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
+                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst));
                         }
                     } while (match({ TokenType::COMMA }));
                 }
@@ -1254,6 +1284,7 @@ namespace jc {
                     "<lambda>",
                     std::move(lambdaParams),
                     std::move(lambdaParamIsRef),
+                    std::move(lambdaParamIsConst),
                     std::move(lambdaDefaults),
                     hasRestParam,
                     paramTypes, retType,  // ★
@@ -1683,6 +1714,7 @@ namespace jc {
 
             std::vector<Token> params;
             std::vector<bool> paramIsRef;
+            std::vector<bool> paramIsConst;
             std::vector<std::shared_ptr<Expr>> defaultExprs;
             std::vector<std::string> paramTypes; // ★
             bool hasRestParam = false;
@@ -1694,7 +1726,18 @@ namespace jc {
                 do {
                     if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
                     bool isRef = false;
-                    if (match({ TokenType::REF })) isRef = true;
+                    bool isConst = false;
+                    while (true) {
+                        if (match({ TokenType::REF })) {
+                            if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                            isRef = true;
+                        } else if (match({ TokenType::CONST })) {
+                            if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                            isConst = true;
+                        } else {
+                            break;
+                        }
+                    }
 
                     Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
                     bool isRest = false;
@@ -1718,6 +1761,7 @@ namespace jc {
 
                     params.push_back(paramTok);
                     paramIsRef.push_back(isRef);
+                    paramIsConst.push_back(isConst);
 
                     std::string pType = "";
                     if (match({ TokenType::COLON })) {
@@ -1738,7 +1782,7 @@ namespace jc {
 
                     if (isDestruct) {
                         auto rhs = std::make_unique<Variable>(paramTok);
-                        destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
+                        destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst));
                     }
                 } while (match({ TokenType::COMMA }));
             }
@@ -1782,6 +1826,7 @@ namespace jc {
                 methodName,
                 std::move(params),
                 std::move(paramIsRef),
+                std::move(paramIsConst),
                 std::move(defaultExprs),
                 hasRestParam,
                 paramTypes, retType, // ★ 加载进入结构体

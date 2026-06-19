@@ -1304,7 +1304,7 @@ namespace jc {
 
         int refIdx = 0;
         for (size_t i = 0; i < expr->params.size(); ++i) {
-            addLocal(expr->params[i].lexeme, current().scopeDepth);
+            addLocal(expr->params[i].lexeme, current().scopeDepth, expr->paramIsConst[i]);
             current().locals.back().isInitialized = true;
             if (expr->paramIsRef[i]) {
                 current().locals.back().isRefParam = true;
@@ -1312,6 +1312,7 @@ namespace jc {
             }
         }
         fn->paramIsRef = expr->paramIsRef; // ★ Transfer ref info
+        fn->paramIsConst = expr->paramIsConst;
         fn->refCount = 0;
         for (bool isRef : fn->paramIsRef) if (isRef) fn->refCount++;
         emitDefaultPreamble(expr->defaultExprs, fn->maxArity);
@@ -3560,7 +3561,7 @@ namespace jc {
             beginScope();
             int refIdx = 0;
             for (size_t i = 0; i < md.params.size(); ++i) {
-                addLocal(md.params[i].lexeme, current().scopeDepth);
+                addLocal(md.params[i].lexeme, current().scopeDepth, md.paramIsConst[i]);
                 current().locals.back().isInitialized = true;
                 if (md.paramIsRef[i]) {
                     current().locals.back().isRefParam = true;
@@ -3568,6 +3569,7 @@ namespace jc {
                 }
             }
             fn->paramIsRef = md.paramIsRef;
+            fn->paramIsConst = md.paramIsConst;
             fn->refCount = 0;
             for (bool isRef : fn->paramIsRef) if (isRef) fn->refCount++;
 

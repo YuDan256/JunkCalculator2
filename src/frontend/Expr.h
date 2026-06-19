@@ -478,6 +478,7 @@ namespace jc {
         std::string name;
         std::vector<Token> params;
         std::vector<bool> paramIsRef;
+        std::vector<bool> paramIsConst; // ★ 新增
         std::vector<std::shared_ptr<Expr>> defaultExprs;
         bool hasRestParam;
 
@@ -487,11 +488,11 @@ namespace jc {
         std::string rawBody;
         std::shared_ptr<Expr> body;
 
-        LambdaExpr(std::string name, std::vector<Token> params, std::vector<bool> paramIsRef,
+        LambdaExpr(std::string name, std::vector<Token> params, std::vector<bool> paramIsRef, std::vector<bool> paramIsConst,
             std::vector<std::shared_ptr<Expr>> defaultExprs, bool hasRestParam,
             std::vector<std::string> paramTypes, std::string returnType, // ★ 新增
             std::string rawBody, std::shared_ptr<Expr> body)
-            : name(std::move(name)), params(std::move(params)), paramIsRef(std::move(paramIsRef)),
+            : name(std::move(name)), params(std::move(params)), paramIsRef(std::move(paramIsRef)), paramIsConst(std::move(paramIsConst)),
             defaultExprs(std::move(defaultExprs)),
             hasRestParam(hasRestParam),
             paramTypes(std::move(paramTypes)), returnType(std::move(returnType)), // ★ 新增
@@ -584,6 +585,7 @@ namespace jc {
             Token name;
             std::vector<Token> params;
             std::vector<bool> paramIsRef;
+            std::vector<bool> paramIsConst; // ★ 新增
             std::vector<std::shared_ptr<Expr>> defaultExprs;
             bool hasRestParam;
 

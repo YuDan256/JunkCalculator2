@@ -945,7 +945,6 @@ namespace jc {
         }
 
         // ★ 统一尝试解析 for-in 模式
-        int savedPos2 = current;
         try {
             auto pat = parsePrimaryPattern();
             if (check(TokenType::IN)) {

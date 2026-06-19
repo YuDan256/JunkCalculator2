@@ -23,6 +23,14 @@
                 {
                     "name": "comment.line.double-slash.jc2",
                     "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.jc2",
+                    "begin": "/\\*",
+                    "end": "\\*/",
+                    "patterns": [
+                        { "include": "#comments" }
+                    ]
                 }
             ]
         },

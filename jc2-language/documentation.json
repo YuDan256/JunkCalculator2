@@ -156,6 +156,9 @@
     "frac": {
       "signature": "frac(n, d)"
     },
+    "toFrac": {
+      "signature": "toFrac(x)"
+    },
     "num": {
       "signature": "num(f)"
     },
@@ -1656,10 +1659,10 @@
       "signature": "delete variable"
     },
     "try": {
-      "signature": "try { body } catch (var) { handler }"
+      "signature": "try { body } catch (pattern) { handler }"
     },
     "catch": {
-      "signature": "catch (variable) { handler }"
+      "signature": "catch (pattern) { handler }"
     },
     "throw": {
       "signature": "throw expr"

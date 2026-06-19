@@ -147,6 +147,8 @@
       "  Comments",
       "  ──────────────────────",
       "    // text              Everything after // is ignored until end of line.",
+      "    /* text */           Multi-line comments. Can span multiple lines.",
+      "                         Multi-line comments can also be nested!",
       "                         Works in expressions, blocks, functions, and scripts.",
       "",
       "   Arithmetic Operators",

@@ -159,6 +159,10 @@ namespace jc {
                 // 单行注释
                 while (!isAtEnd() && peek() != '\n') advance();
             }
+            else if (match('*')) {
+                // 多行注释
+                multilineComment();
+            }
             else if (match('=')) {
                 addToken(TokenType::SLASH_ASSIGN);
             }
@@ -732,6 +736,29 @@ namespace jc {
             if (isAtEnd()) throwError("Unterminated raw string.");
             advance();
             tokens.emplace_back(TokenType::RSTRING, value, start);
+        }
+    }
+
+    void Lexer::multilineComment() {
+        int nesting = 1;
+        while (nesting > 0 && !isAtEnd()) {
+            if (peek() == '\n') {
+                line++;
+                advance();
+            } else if (peek() == '/' && peekNext() == '*') {
+                advance();
+                advance();
+                nesting++;
+            } else if (peek() == '*' && peekNext() == '/') {
+                advance();
+                advance();
+                nesting--;
+            } else {
+                advance();
+            }
+        }
+        if (nesting > 0) {
+            throwError("Unterminated multiline comment.");
         }
     }
 } // namespace jc

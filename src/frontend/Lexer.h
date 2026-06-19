@@ -42,6 +42,8 @@ namespace jc {
         void rstringLiteral(char quoteChar);  // ★
         void rmultilineStringLiteral(char quoteChar);
 
+        void multilineComment();
+
         void throwError(const std::string& msg);
 
     public:

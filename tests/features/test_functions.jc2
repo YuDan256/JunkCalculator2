@@ -1,0 +1,41 @@
+println("=== Testing Functions ===")
+
+check(name, actual, expected) = {
+    assert(str(actual) == str(expected), f"[{name}] Expected {expected}, got {actual}")
+}
+
+test_const_params() = {
+    f(const x) = {
+        try {
+            x = 2
+            assert(false, "Should throw when modifying const param")
+        } catch (e) {
+            assert("Cannot modify const variable" in str(e), "Wrong error for const param")
+        }
+    }
+    f(1)
+}
+test_const_params()
+
+test_destruct_params() = {
+    // 测试函数参数直接解构
+    get_info(const {name, age=20}) = f"{name} is {age}"
+    
+    assert(get_info({name: "Bob"}) == "Bob is 20", "Destruct param with default")
+    assert(get_info({name: "Charlie", age: 30}) == "Charlie is 30", "Destruct param provided")
+}
+test_destruct_params()
+
+test_partial_application() = {
+    add(a, b) = a + b
+    add_five = add(5, _)
+    assert(add_five(10) == 15, "Basic partial application failed")
+
+    // 深层占位符测试
+    get_slice(arr) = arr[1:_]
+    check("Deep partial slice", get_slice([1, 2, 3, 4])(3), [2, 3])
+    
+    make_dict(val) = {data: _}
+    check("Deep partial dict", make_dict()(42), {data: 42})
+}
+test_partial_application()

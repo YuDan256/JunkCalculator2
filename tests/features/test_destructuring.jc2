@@ -124,3 +124,47 @@ test_edge_cases() = {
     assert(block_res == 30, "Block vs Dict Ambiguity Failed")
 }
 test_edge_cases()
+
+check(name, actual, expected) = {
+    assert(str(actual) == str(expected), f"[{name}] Expected {expected}, got {actual}")
+}
+
+test_list_destruct() = {
+    [a, b, ...rest] = [1, 2, 3, 4, 5]
+    assert(a == 1, "List destruct a")
+    assert(b == 2, "List destruct b")
+    check("List destruct rest", rest, [3, 4, 5])
+    
+    // 默认值测试
+    [x, y=10] = [1]
+    assert(x == 1, "List destruct x")
+    assert(y == 10, "List destruct default y")
+}
+test_list_destruct()
+
+test_dict_destruct() = {
+    {name, age=18, ...other} = {name: "Alice", city: "Wonderland"}
+    assert(name == "Alice", "Dict destruct name")
+    assert(age == 18, "Dict destruct default age")
+    check("Dict destruct rest", other, {city: "Wonderland"})
+}
+test_dict_destruct()
+
+test_nested_destruct() = {
+    {user: {id, role="guest"}} = {user: {id: 42}}
+    assert(id == 42, "Nested destruct id")
+    assert(role == "guest", "Nested destruct default role")
+}
+test_nested_destruct()
+
+test_destruct_const() = {
+    try {
+        const {a, b} = {a: 1, b: 2}
+        a = 10
+        assert(false, "Should throw when modifying const destructured variable")
+    } catch (e) {
+        assert("Cannot modify const variable" in str(e), "Wrong error for const destruct")
+    }
+}
+test_destruct_const()
+

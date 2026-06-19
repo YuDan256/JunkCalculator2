@@ -854,6 +854,18 @@ void BuiltinRegistry::registerFraction() {
         BigInt d = args[1].isBigInt() ? args[1].asBigInt() : BigInt(static_cast<int64_t>(std::round(args[1].asDouble())));
         return Value(Fraction(n, d));
     });
+    reg("toFrac", { 1 }, [](const std::vector<Value>& args) -> Value {
+        Value v = args[0];
+        if (v.isInt32() || v.isBigInt()) return v;
+        Fraction f;
+        if (v.isObjType(ObjType::FRACTION)) {
+            f = static_cast<ObjFraction*>(v.asObj())->frac;
+        } else {
+            f = Fraction::fromDouble(v.asDouble());
+        }
+        if (f.getDen() == BigInt(1)) return Value(f.getNum());
+        return Value(f);
+    });
     reg("num", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getNum()); return args[0]; });
     reg("den", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getDen()); return Value(1.0); });
 }

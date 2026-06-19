@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.4.4.2
+# Junk Calculator 2.4.4.3
 
-![Version](https://img.shields.io/badge/Version-v2.4.4.2-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.4.3-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,22 +68,66 @@
 
 ---
 
-## v2.4.4.2 版本更新说明
+## v2.4.4.3 版本更新说明
 
-### 编译器与模式匹配修复
-- **显式传递状态初始化标志**：修复了解构赋值中 `state` 关键字标志污染的问题。现在通过显式传递 `isStateInit` 参数给 `compilePatternMatch`，确保普通的解构赋值（如 `[a, b] = [b, a + b]`）不会被错误地当作状态初始化语句，从而避免了错误发射 `OP_IS_UNINIT` 指令。
-- **顶层状态声明限制**：禁止在顶层（全局作用域）声明 `state` 状态变量，因为该修饰符的语义是闭包私有持久化状态。
-- **局部变量捕获语义**：独立声明的 `local a`（无显式赋值）现在会正确地按值捕获外层同名变量，若全局均未找到则严格抛出 `Undefined variable` 异常。
-- **复合赋值的自动局部变量遮蔽 (Auto-Local Shadowing)**：修复了隐式捕获的外部变量在参与复合赋值（如 `x += 1`）时，会错误地直接修改外部变量的问题。现在它与普通赋值（`x = 1`）行为完全一致，会正确触发变量遮蔽，在当前作用域内创建自动局部变量。
-- **全局变量捕获逻辑重构**：移除了闭包对全局变量多余的上值 (Upvalue) 捕获逻辑。全局变量的访问现在严格回归纯粹的晚绑定 (`OP_GET_GLOBAL`/`OP_SET_GLOBAL`)，这不仅让闭包环境更加干净，还完美保障了全局函数的相互递归调用。
+### 语言特性与语法
+- **模式匹配与解构增强**：
+  - 将 `for-in` 循环和列表推导式 (List Comprehension) 的绑定逻辑统一至 Pattern 引擎。
+  - 支持在 `catch` 异常绑定中使用模式解构。
+  - 允许在解构模式和剩余参数 (`...rest`) 上使用类型注解和默认值。
+  - 支持在类方法参数中使用解构。
+  - 允许解构参数接受实例 (Instance) 和矩阵 (Matrix) 类型。
+  - 实现了占位符穿透与模式修饰符绑定的深度正交化，并将占位符 `_` 严格限制为仅用于直接函数调用参数。
+- **常量语义强化**：
+  - 支持在函数参数和解构模式上使用 `const` 修饰符。
+  - 对 `const` 变量的非法赋值现在会在编译时直接抛出错误，而不是生成运行时异常。
+  - 防止通过 `delete` 命令删除全局常量。
+- **异常处理增强**：允许在 `throw` 和 `catch` 中抛出和捕获任意 `Value` 类型，不再局限于特定错误对象。
+- **运算符与字面量**：
+  - 提升了位运算符和集合运算符的优先级，使其高于比较运算符。
+  - 字符串字面量现在支持完整的 C 风格和八进制转义序列。
+  - 在算术上下文中，布尔值 `true` 和 `false` 现在被视为精确的整数 `1` 和 `0`。
+- **UFCS 词法回退**：实现了统一函数调用语法 (UFCS) 方法语法的词法回退机制。
 
-### 前端与解析器
-- **字典与代码块歧义解析**：改进了前瞻扫描器，以精准区分简写字典字面量与代码块。简写字典现在严格要求元素之间使用逗号显式分隔，且仅允许包含标识符、展开符和作用域修饰符。彻底解决了 `{1, 2}` 等逗号表达式或缺逗号的多行代码块被误判为字典的问题。
+### 编译器与前端优化
+- **死代码消除与常量传播**：
+  - 实现了针对代码块、循环和短路操作符的死代码消除 (Dead Code Elimination)。
+  - 实现了 `const` 变量的常量传播 (Constant Propagation)，并在编译时省略常量的 `OP_SET_LOCAL` 指令。
+- **安全的窥孔优化**：重新引入了带有跳转边界保护的安全窥孔优化，消除了冗余的 `OP_CONSTANT` + `OP_POP` 指令对。
+- **AST 内存分配器**：为 AST 节点实现了基于碰撞指针 (Bump Pointer) 和空闲链表 (Free List) 的 Arena 内存分配器，大幅提升解析性能。
+- **编译时错误信息**：编译时错误现在包含精确的文件名和行号。
+- **字节码操作数扩展**：引入了 `OP_EXTEND` 前缀指令，按需支持 32 位操作数，并添加了编译时操作数溢出检查。
 
-### 虚拟机与尾调用优化 (TCO)
-- **全面启用尾调用优化**：移除了编译器中对尾调用时“可能存在引用传递”的保守限制。由于虚拟机在处理尾调用（`OP_TAIL_CALL`）时会先安全地闭包化局部变量（`closeUpvalues`），即使被调用的函数需要引用参数，传递的也是安全的闭包化引用。此更新恢复了完整的尾递归优化，彻底解决了互相尾递归场景下的栈溢出问题。
-- **类实例化的尾调用优化**：修复了在尾调用位置实例化类（例如 `return MyClass()`）时，由于未正确复用调用帧导致 `init` 构造函数字节码被跳过的严重 Bug。现在虚拟机能够正确处理构造函数的尾调用优化。
-- **无限模式匹配**：将模式匹配指令 `OP_MATCH_SHAPE` 的操作数升级为 32 位，使变长模式 (`...rest`) 的最大匹配长度限制扩展至无穷大 (4,294,967,295)。
+### 虚拟机与内存管理
+- **闭包内存泄漏修复**：使用 GC 管理的 `ObjUpVal` 替换了基于 `std::shared_ptr` 的 `UpVal`，彻底修复了循环引用闭包导致的内存泄漏问题。
+- **全局变量访问优化**：将全局变量存储从 `std::unordered_map` 替换为 `std::vector`，并在内联缓存 (Inline Cache) 中直接缓存槽索引，大幅提升全局变量访问速度。
+- **指令压缩**：
+  - 通过将 `nameIdx` 移入缓存槽，压缩了内联缓存指令。
+  - 使用调用签名池 (Call Signature Pool) 将 `OP_PASS_REFS` 压缩为固定的 3 字节指令。
+  - 使用矩阵形状池 (Matrix Shape Pool) 将 `OP_BUILD_MATRIX` 压缩为固定的 3 字节指令。
+  - 使用形状模式池 (Shape Pattern Pool) 将 `OP_MATCH_SHAPE` 压缩为 3 字节指令。
+- **堆分配消除**：
+  - 预计算引用计数，消除了内置 dunder 调用中的字符串分配。
+  - 消除了 `invokeDunder`、`callVMFunction`、`callDunder` 参数打包以及切片索引构建中的隐式 `std::vector` 和堆分配。
+  - 使用 `memmove` 优化栈操作，进一步减少堆分配。
+- **尾调用优化修正**：细化了尾调用禁用条件，仅在传递局部变量的引用 (`ref`) 时禁用尾调用优化。
+
+### 数学与 CAS 引擎
+- **Strassen 矩阵乘法**：
+  - 实现了带有回退阈值的 Strassen 矩阵乘法算法。
+  - 通过深度限制的并发机制实现了 Strassen 子矩阵乘法的并行化。
+  - 使用零拷贝视图 (Zero-copy Views) 和动态剥离 (Dynamic Peeling) 减少了 Strassen 算法中的矩阵内存分配。
+- **大整数算法优化**：
+  - 实现了 Karatsuba 大整数乘法算法。
+  - 使用无符号合并和分支消除优化了 BigInt 除法 (Knuth D 算法)。
+  - 优化了 BigInt 的阶乘、GCD 和模幂 (modPow) 算法。
+- **其他数学优化**：
+  - 使用位扫描快速倍增算法 (Bit-scanning Fast Doubling) 优化了斐波那契数列计算。
+  - 改进了 Miller-Rabin 素性测试，对 ≤81 位数使用确定性基底，对更大数使用随机基底。
+
+### 测试框架
+- **测试运行器**：引入了具备隔离执行和汇总报告功能的全新测试运行器。
+- **测试套件重构**：将测试用例重新组织为 `core`、`modules`、`features` 和 `syntax` 目录，并添加了 `TEST_SPEC.md` 以标准化测试套件。
 
 ---
 

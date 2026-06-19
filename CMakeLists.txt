@@ -1,6 +1,6 @@
 # ==============================================================================
 # Junk Calculator 2 - Ultimate CMake Build Script
-# Version: 2.4.4.2
+# Version: 2.4.4.3
 # ==============================================================================
 cmake_minimum_required(VERSION 3.15)
 
@@ -11,7 +11,7 @@ cmake_policy(SET CMP0091 NEW)
 # This permanently eliminates the "missing VCRUNTIME140.dll" error on target machines!
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(JunkCalculator2 VERSION 2.4.4.2 LANGUAGES CXX)
+project(JunkCalculator2 VERSION 2.4.4.3 LANGUAGES CXX)
 
 # Enforce C++ 20 Standard
 set(CMAKE_CXX_STANDARD 20)
@@ -114,11 +114,17 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
     set(SYNC_CMD_EXAMPLES COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/examples" "$<TARGET_FILE_DIR:JunkCalculator2>/examples")
 endif()
 
+set(SYNC_CMD_TESTS "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    set(SYNC_CMD_TESTS COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/tests" "$<TARGET_FILE_DIR:JunkCalculator2>/tests")
+endif()
+
 add_custom_target(SyncResources ALL
     ${SYNC_CMD_DATA}
     ${SYNC_CMD_LIB}
     ${SYNC_CMD_EXAMPLES}
-    COMMENT "Syncing resource directories (data, lib, examples) to build output..."
+    ${SYNC_CMD_TESTS}
+    COMMENT "Syncing resource directories (data, lib, examples, tests) to build output..."
 )
 add_dependencies(SyncResources JunkCalculator2)
 
@@ -142,6 +148,10 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/examples" DESTINATION bin)
 endif()
+# ★ Make sure tests are included in the released ZIP!
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests" DESTINATION bin)
+endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md" DESTINATION .)
@@ -152,7 +162,7 @@ endif()
 
 set(CPACK_GENERATOR "ZIP")
 set(CPACK_PACKAGE_NAME "JunkCalculator2")
-set(CPACK_PACKAGE_VERSION "2.4.4.2")
+set(CPACK_PACKAGE_VERSION "2.4.4.3")
 set(CPACK_PACKAGE_VENDOR "Yu Liangyang")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-Windows-x64")
 include(CPack)

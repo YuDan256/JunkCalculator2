@@ -459,7 +459,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         else if (arg == "--version" || arg == "-v") {
-            std::cout << "Junk Calculator 2.4.4.2\n";
+            std::cout << "Junk Calculator 2.4.4.3\n";
             return 0;
         }
         else if (arg == "--profile") {
@@ -512,7 +512,7 @@ int main(int argc, char* argv[]) {
     auto printBanner = []() {
         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN)
             << "=================================================\n"
-            << "   Junk Calculator 2.4.4.2\n"
+            << "   Junk Calculator 2.4.4.3\n"
             << "   Developed by Yu Liangyang, Tsinghua University\n"
             << "=================================================\n" << jc::col(jc::Ansi::RESET)
             << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;

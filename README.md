@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.4.2
+# Junk Calculator 2.4.4.3
 
-![Version](https://img.shields.io/badge/Version-v2.4.4.2-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.4.3-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,22 +68,66 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.4.2
+## What's New in v2.4.4.3
 
-### Compiler & Pattern Matching Fixes
-- **Explicit State Initialization Flag**: Fixed an issue where the `state` keyword flag in destructuring assignments could pollute subsequent normal destructuring assignments. By explicitly passing the `isStateInit` parameter to `compilePatternMatch`, normal destructuring assignments (e.g., `[a, b] = [b, a + b]`) are no longer mistakenly treated as state initialization statements, preventing the erroneous emission of `OP_IS_UNINIT` instructions.
-- **Top-Level State Declaration**: Disallowed `state` declarations at the top level (global scope) since they are meant for closure-private persistent state.
-- **Local Variable Capture**: Independent `local a` declarations (without explicit initialization) now correctly capture outer variables by value or throw an `Undefined variable` exception if not found.
-- **Auto-Local Shadowing in Compound Assignments**: Fixed an inconsistency where compound assignments (e.g., `x += 1`) on implicitly captured outer variables would incorrectly mutate the outer variable instead of creating a local shadow. It now correctly mirrors simple assignment (`x = 1`) by creating an auto-local variable.
-- **Global Variable Capture Refactoring**: Removed redundant upvalue captures for global variables. Global variables are now strictly accessed via late-binding (`OP_GET_GLOBAL`/`OP_SET_GLOBAL`), which perfectly preserves mutual recursion for global functions while keeping closure environments clean.
+### Language Features & Syntax
+- **Pattern Matching & Destructuring Enhancements**:
+  - Unified `for-in` and list comprehension bindings with the Pattern engine.
+  - Supported pattern destructuring in `catch` bindings.
+  - Allowed type annotations and default values on destructuring and rest parameters (`...rest`).
+  - Supported destructuring parameters in class methods.
+  - Allowed destructuring parameters to accept `Instance` and `Matrix` types.
+  - Implemented deep orthogonalization of placeholder penetration and pattern modifier binding, restricting the placeholder `_` to direct function call arguments only.
+- **Const Semantics Enforcement**:
+  - Supported the `const` modifier on function parameters and destructuring patterns.
+  - Const assignment violations now throw compile-time errors instead of generating runtime exceptions.
+  - Prevented the deletion of global constants via the `delete` command.
+- **Exception Handling**: Allowed arbitrary `Value` types to be thrown and caught in exception handling, no longer restricted to specific error objects.
+- **Operators & Literals**:
+  - Elevated the precedence of bitwise and set operators above comparison operators.
+  - Added full C-style and octal escape sequences in string literals.
+  - Booleans `true` and `false` are now treated as exact integers `1` and `0` in arithmetic contexts.
+- **UFCS Lexical Fallback**: Implemented a lexical fallback mechanism for Uniform Function Call Syntax (UFCS) method resolution.
 
-### Frontend & Parsing
-- **Dictionary vs. Block Resolution**: Improved the lookahead scanner to accurately distinguish between shorthand dictionary literals and code blocks. Shorthand dictionaries now strictly require commas between elements and only allow identifiers, rest operators, and scope modifiers. This prevents comma expressions like `{1, 2}` or multi-line blocks from being misparsed as dictionaries.
+### Compiler & Frontend Optimizations
+- **Dead Code Elimination & Constant Propagation**:
+  - Implemented Dead Code Elimination (DCE) for blocks, loops, and short-circuit operators.
+  - Implemented constant propagation for `const` variables, omitting `OP_SET_LOCAL` instructions for compile-time constants.
+- **Safe Peephole Optimization**: Reintroduced safe peephole optimization with jump boundary guards, eliminating redundant `OP_CONSTANT` + `OP_POP` instruction pairs.
+- **AST Arena Allocator**: Implemented an arena allocator for AST nodes using a bump pointer and free list, significantly improving parsing performance.
+- **Compile-time Errors**: Compile-time errors now include precise file names and line numbers.
+- **Bytecode Operand Extension**: Introduced the `OP_EXTEND` prefix instruction to support 32-bit operands on demand, along with compile-time overflow checks for bytecode operand limits.
 
-### Virtual Machine & Tail Call Optimization (TCO)
-- **Full Tail Call Optimization Enabled**: Removed the conservative restriction in the compiler that disabled TCO when cross-function calls might involve reference passing. Since the VM safely closes over local variables (`closeUpvalues`) before executing a tail call (`OP_TAIL_CALL`), passing references during tail calls is perfectly safe. This update restores full tail recursion optimization, completely resolving stack overflow issues in mutually tail-recursive scenarios.
-- **TCO for Class Instantiation**: Fixed a critical bug where tail-calling a class constructor (e.g., `return MyClass()`) would bypass the `init` method's bytecode execution. The VM now correctly reuses the call frame for class instantiations in tail positions.
-- **Infinite Pattern Matching**: Upgraded `OP_MATCH_SHAPE` operands to 32-bit, extending the maximum pattern matching limit to infinity (4,294,967,295) for rest patterns (`...rest`).
+### Virtual Machine & Memory Management
+- **Closure Memory Leak Fix**: Replaced `std::shared_ptr`-based `UpVal` with GC-managed `ObjUpVal`, completely fixing memory leaks caused by cyclic closure references.
+- **Global Variable Access Optimization**: Replaced the global variable `std::unordered_map` with a `std::vector` and cached slot indices directly in the Inline Cache (IC), drastically improving global variable access speed.
+- **Instruction Compression**:
+  - Compressed inline cache instructions by moving `nameIdx` into the cache slot.
+  - Compressed `OP_PASS_REFS` to a fixed 3-byte instruction using a call signature pool.
+  - Compressed `OP_BUILD_MATRIX` to a fixed 3-byte instruction using a matrix shape pool.
+  - Compressed `OP_MATCH_SHAPE` to 3 bytes using a shape pattern pool.
+- **Heap Allocation Elimination**:
+  - Precomputed reference counts to eliminate string allocations in built-in dunder calls.
+  - Eliminated implicit `std::vector` and heap allocations in `invokeDunder`, `callVMFunction`, `callDunder` parameter packing, and slice index building.
+  - Reduced heap allocations and optimized stack operations using `memmove`.
+- **TCO Refinement**: Refined the Tail Call Optimization (TCO) disable condition to only block TCO when references (`ref`) to local variables are passed.
+
+### Mathematics & CAS Engine
+- **Strassen Matrix Multiplication**:
+  - Implemented the Strassen algorithm for matrix multiplication with a fallback threshold.
+  - Parallelized Strassen sub-matrix multiplications with depth-limited concurrency.
+  - Reduced matrix allocations in Strassen using zero-copy views and dynamic peeling.
+- **BigInt Algorithmic Improvements**:
+  - Implemented the Karatsuba algorithm for BigInt multiplication.
+  - Optimized BigInt division (Knuth D) with unsigned merging and branch elimination.
+  - Optimized BigInt factorial, GCD, and modular exponentiation (`modPow`) algorithms.
+- **Other Math Optimizations**:
+  - Optimized Fibonacci sequence generation using the bit-scanning fast doubling algorithm.
+  - Improved the Miller-Rabin primality test to use deterministic bases for ≤81-bit numbers and random bases for larger numbers.
+
+### Test Framework
+- **Test Runner**: Added a new test runner with isolated execution and summary reporting.
+- **Test Suite Refactoring**: Reorganized tests into `core`, `modules`, `features`, and `syntax` directories, and added `TEST_SPEC.md` to standardize the test suite.
 
 ---
 

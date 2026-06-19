@@ -547,10 +547,10 @@ namespace jc {
     // ★ try { ... } catch (e) { ... }
     struct TryCatchExpr : public Expr {
         std::unique_ptr<Expr> tryBody;
-        Token catchName;
+        std::unique_ptr<Pattern> catchPattern;
         std::unique_ptr<Expr> catchBody;
-        TryCatchExpr(std::unique_ptr<Expr> tryBody, Token catchName, std::unique_ptr<Expr> catchBody)
-            : tryBody(std::move(tryBody)), catchName(std::move(catchName)), catchBody(std::move(catchBody)) {
+        TryCatchExpr(std::unique_ptr<Expr> tryBody, std::unique_ptr<Pattern> catchPattern, std::unique_ptr<Expr> catchBody)
+            : tryBody(std::move(tryBody)), catchPattern(std::move(catchPattern)), catchBody(std::move(catchBody)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitTryCatchExpr(this); }
     };

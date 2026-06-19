@@ -3137,7 +3137,7 @@ namespace jc {
     }
 
     void Compiler::visitTryCatchExpr(TryCatchExpr* expr) {
-        uint32_t catchNameIdx = identifierConstant(expr->catchName.lexeme);
+        uint32_t catchNameIdx = identifierConstant("");
         emit(OpCode::OP_TRY_BEGIN, lastLine);
         emit16(catchNameIdx, lastLine);
         int offsetSlot = static_cast<int>(chunk()->code.size());
@@ -3154,37 +3154,67 @@ namespace jc {
         chunk()->code[offsetSlot] = static_cast<uint8_t>((relOffset >> 8) & 0xFF);
         chunk()->code[offsetSlot + 1] = static_cast<uint8_t>(relOffset & 0xFF);
 
-        int existingSlot = resolveLocal(expr->catchName.lexeme);
-        if (existingSlot != -1 && current().locals[existingSlot].isConst && current().locals[existingSlot].depth == current().scopeDepth) {
-            throw std::runtime_error("Compiler Error: Cannot modify const variable '" + expr->catchName.lexeme + "'.");
-        }
+        beginScope();
 
-        if (stateStack.size() == 1) knownGlobals.insert(expr->catchName.lexeme);
-
-        int slot = resolveLocal(expr->catchName.lexeme);
-        if (stateStack.size() > 1 && slot == -1 && current().captures.count(expr->catchName.lexeme) == 0) {
-            addLocal(expr->catchName.lexeme, current().scopeDepth); // catch 变量严格块级
-            slot = resolveLocal(expr->catchName.lexeme);
-        }
-        if (slot != -1) {
-            current().locals[slot].isInitialized = true;
-            emit(OpCode::OP_SET_LOCAL, lastLine);
-            emit16(static_cast<uint32_t>(slot), lastLine);
-        }
-        else {
-            // ★ 修复：在这里补充未定义的 nameIdx
-            uint32_t nameIdx = identifierConstant(expr->catchName.lexeme);
-            auto it = current().captures.find(expr->catchName.lexeme);
-            if (it != current().captures.end() && it->second.type == CaptureType::Ref) {
-                emit(OpCode::OP_SET_GLOBAL_REF, lastLine);
-            } else {
-                emit(OpCode::OP_SET_GLOBAL, lastLine);
-            }
-            emit16(chunk()->addInlineCache(nameIdx), lastLine);
-        }
+        addLocal("<catch_err>", current().scopeDepth);
+        int errSlot = static_cast<int>(current().locals.size()) - 1;
+        emit(OpCode::OP_SET_LOCAL, lastLine);
+        emit16(static_cast<uint32_t>(errSlot), lastLine);
         emit(OpCode::OP_POP, lastLine);
 
+        std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+        collectPatternVars(expr->catchPattern.get(), boundVars);
+
+        for (const auto& varTuple : boundVars) {
+            const std::string& name = std::get<0>(varTuple);
+            ScopeModifier mod = std::get<1>(varTuple);
+            bool isConst = std::get<2>(varTuple);
+            if (name == "_") continue;
+
+            if (mod == ScopeModifier::None) mod = ScopeModifier::Local;
+
+            if (mod == ScopeModifier::Local) {
+                if (current().captures.count(name) > 0) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'local' and 'ref'/'state'.");
+            } else if (mod == ScopeModifier::Ref) {
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().captures[name] = {CaptureType::Ref, isConst, false};
+            } else if (mod == ScopeModifier::State) {
+                if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().captures[name] = {CaptureType::State, isConst, true};
+            }
+
+            int slot = resolveLocal(name);
+            if (mod == ScopeModifier::Local) {
+                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                    addLocal(name, current().scopeDepth, isConst);
+                }
+            } else if (mod == ScopeModifier::None) {
+                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                    addLocal(name, current().scopeDepth, isConst);
+                }
+            }
+        }
+
+        std::vector<int> failJumps;
+        compilePatternMatch(expr->catchPattern.get(), errSlot, failJumps, false, false);
+
+        if (!failJumps.empty()) {
+            int successJump = chunk()->emitJump(OpCode::OP_JUMP, lastLine);
+            for (int fj : failJumps) patchJump(fj);
+            emit(OpCode::OP_POP, lastLine); // pop boolean
+            
+            emit(OpCode::OP_GET_LOCAL, lastLine);
+            emit16(static_cast<uint32_t>(errSlot), lastLine);
+            emit(OpCode::OP_THROW, lastLine);
+
+            patchJump(successJump);
+        }
+
         compileNode(expr->catchBody.get());
+        
+        endScope();
+
         patchJump(skipCatch);
         return;
     }

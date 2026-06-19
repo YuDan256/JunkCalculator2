@@ -39,7 +39,6 @@ namespace jc {
         std::unique_ptr<Expr> ifExpr();
         std::unique_ptr<Expr> whileExpr();
         std::unique_ptr<Expr> forExpr();
-        std::unique_ptr<Expr> forInExpr(Token varName);
         std::unique_ptr<Expr> switchExpr();
         std::unique_ptr<Expr> matchExpr();     // ★
         std::unique_ptr<Pattern> parsePrimaryPattern(); // ★

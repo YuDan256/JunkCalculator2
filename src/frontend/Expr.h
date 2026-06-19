@@ -510,25 +510,15 @@ namespace jc {
     };
 
     struct ForInExpr : public Expr {
-        Token varName;
-        std::unique_ptr<Pattern> pattern;  // ★ non-null = destructured
+        std::unique_ptr<Pattern> pattern;
         std::unique_ptr<Expr> iterable;
         std::unique_ptr<Expr> body;
-        bool isLocal; // ★ 新增
-        bool isConst; // ★ 新增
+        bool isLocal;
+        bool isConst;
 
-        bool isDestruct() const { return pattern != nullptr; }
-
-        // Single variable: for (x in ...)
-        ForInExpr(Token varName, std::unique_ptr<Expr> iterable, std::unique_ptr<Expr> body, bool isLocal = false, bool isConst = false)
-            : varName(std::move(varName)), pattern(nullptr), iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal), isConst(isConst) {
-        }
-
-        // ★ Destructured: for ([a, b] in ...)
         ForInExpr(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> iterable,
             std::unique_ptr<Expr> body, bool isLocal = false, bool isConst = false)
-            : varName(Token(TokenType::IDENTIFIER, "", 0)),
-            pattern(std::move(pattern)),
+            : pattern(std::move(pattern)),
             iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal), isConst(isConst) {
         }
 
@@ -686,17 +676,12 @@ namespace jc {
     // ★ [expr for (var in iterable) if (condition)]
     struct ListCompExpr : public Expr {
         struct CompClause {
-            Token varName;
             std::unique_ptr<Pattern> pattern;
             std::shared_ptr<Expr> iterable;
             std::vector<std::shared_ptr<Expr>> conditions;
-            bool isDestruct() const { return pattern != nullptr; }
-            CompClause(Token var, std::shared_ptr<Expr> iter)
-                : varName(std::move(var)), pattern(nullptr), iterable(std::move(iter)) {
-            }
+            
             CompClause(std::unique_ptr<Pattern> pat, std::shared_ptr<Expr> iter)
-                : varName(Token(TokenType::IDENTIFIER, "", 0)),
-                pattern(std::move(pat)), iterable(std::move(iter)) {
+                : pattern(std::move(pat)), iterable(std::move(iter)) {
             }
         };
 

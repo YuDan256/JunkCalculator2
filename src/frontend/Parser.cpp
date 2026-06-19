@@ -944,36 +944,21 @@ namespace jc {
             }
         }
 
-        // ★ 解构 for-in: for ([a, b, ...] in iterable) or for ({a, b} in iterable)
-        if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
-            int savedPos2 = current;
-            try {
-                auto pat = parsePrimaryPattern();
-                if (check(TokenType::IN)) {
-                    advance(); // consume 'in'
-                    auto iterable = expression();
-                    consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
-                    auto body = parseStatementOrBlock();
-                    return std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal, isConst);
-                }
-            } catch (...) {
-                // Fall through to normal for loop parsing
+        // ★ 统一尝试解析 for-in 模式
+        int savedPos2 = current;
+        try {
+            auto pat = parsePrimaryPattern();
+            if (check(TokenType::IN)) {
+                advance(); // consume 'in'
+                auto iterable = expression();
+                consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
+                auto body = parseStatementOrBlock();
+                return std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal, isConst);
             }
-            current = savedPos2;
+        } catch (...) {
+            // Fall through to normal for loop parsing
         }
-
-        // ★ 推测性检查：for (IDENTIFIER in ...) 还是 for (init; cond; update)
-        if (check(TokenType::IDENTIFIER) &&
-            current + 1 < static_cast<int>(tokens.size()) &&
-            tokens[current + 1].type == TokenType::IN) {
-            Token varName = advance(); // 消费标识符
-            advance();                  // 消费 'in'
-            auto iterable = expression();
-            consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
-            auto body = parseStatementOrBlock();
-            return std::make_unique<ForInExpr>(std::move(varName), std::move(iterable), std::move(body), isLocal, isConst);
-        }
-
+        
         // 不是 for-in，回退到 '(' 之后，让 expression() 正常解析 init
         current = savedPos;
 
@@ -986,13 +971,6 @@ namespace jc {
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-clauses.");
         auto body = parseStatementOrBlock();
         return std::make_unique<ForExpr>(std::move(init), std::move(cond), std::move(update), std::move(body));
-    }
-
-    std::unique_ptr<Expr> Parser::forInExpr(Token varName) {
-        auto iterable = expression();
-        consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
-        auto body = parseStatementOrBlock();
-        return std::make_unique<ForInExpr>(std::move(varName), std::move(iterable), std::move(body));
     }
 
     // =================================================================
@@ -1872,23 +1850,10 @@ namespace jc {
             consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'for' in list comprehension.");
             match({ TokenType::LOCAL }); // ★ 允许并忽略可选的 local 关键字（推导式变量默认就是 local 的）
 
-            // ★ 解构模式：for ([a, b] in ...) or for ({a, b} in ...)
-            if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
-                auto pat = parsePrimaryPattern();
-                consume(TokenType::IN, "Parser Error: Expect 'in' after pattern in list comprehension.");
-                auto iterable = expression();
-                clauses.emplace_back(std::move(pat), std::shared_ptr<Expr>(iterable.release()));
-            }
-            // ★ 单变量模式：for (x in ...)
-            else {
-                Token varName = consume(TokenType::IDENTIFIER,
-                    "Parser Error: Expect variable name after 'for' in list comprehension.");
-                consume(TokenType::IN,
-                    "Parser Error: Expect 'in' after variable in list comprehension.");
-                auto iterable = expression();
-                clauses.emplace_back(varName,
-                    std::shared_ptr<Expr>(iterable.release()));
-            }
+            auto pat = parsePrimaryPattern();
+            consume(TokenType::IN, "Parser Error: Expect 'in' after pattern in list comprehension.");
+            auto iterable = expression();
+            clauses.emplace_back(std::move(pat), std::shared_ptr<Expr>(iterable.release()));
             consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable in list comprehension.");
 
             // ★ 可选的 if 过滤条件 (可以有多个)

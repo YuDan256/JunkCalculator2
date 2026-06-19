@@ -40,7 +40,7 @@ test_try_catch_destruct()
 test_match_expr() = {
     process(data) = match (data) {
         {type: "user", id} => f"User {id}"
-        {type: "admin", ...} => "Admin"
+        {type: "admin", ..._} => "Admin"
         [a, b] if (a > b) => "Descending"
         _ => "Unknown"
     }

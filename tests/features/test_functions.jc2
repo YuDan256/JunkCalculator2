@@ -24,8 +24,8 @@ test_destruct_params() = {
 test_destruct_params()
 
 test_partial_application() = {
-    add(a, b) = a + b
-    add_five = add(5, _)
+    my_add(a, b) = a + b
+    add_five = my_add(5, _)
     assert(add_five(10) == 15, "Basic partial application failed")
 
     // 深层占位符测试

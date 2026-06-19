@@ -141,9 +141,9 @@ namespace jc {
         if (typeStr == "complex") return BuiltinType::COMPLEX;
         if (typeStr == "basenum") return BuiltinType::BASENUM;
         if (typeStr == "symbolic" || typeStr == "symbol" || typeStr == "expr") return BuiltinType::SYMBOLIC;
-        if (typeStr == "realmat") return BuiltinType::REALMAT;
-        if (typeStr == "complexmat") return BuiltinType::COMPLEXMAT;
-        if (typeStr == "stringmat") return BuiltinType::STRINGMAT;
+        if (typeStr == "realmat" || typeStr == "realmatrix") return BuiltinType::REALMAT;
+        if (typeStr == "complexmat" || typeStr == "complexmatrix") return BuiltinType::COMPLEXMAT;
+        if (typeStr == "stringmat" || typeStr == "stringmatrix") return BuiltinType::STRINGMAT;
         if (typeStr == "matrix") return BuiltinType::MATRIX;
         if (typeStr == "func" || typeStr == "function") return BuiltinType::FUNC;
         if (typeStr == "class") return BuiltinType::CLASS;

@@ -1714,12 +1714,12 @@ namespace jc {
         switch (obj->type) {
             case ObjType::STRING: return "string";
             case ObjType::BIGINT: return "int";
-            case ObjType::FRACTION: return "Fraction";
-            case ObjType::COMPLEX: return "Complex";
-            case ObjType::BASENUM: return "BaseNum";
-            case ObjType::REAL_MATRIX: return "RealMatrix";
-            case ObjType::COMPLEX_MATRIX: return "ComplexMatrix";
-            case ObjType::STRING_MATRIX: return "StringMatrix";
+            case ObjType::FRACTION: return "fraction";
+            case ObjType::COMPLEX: return "complex";
+            case ObjType::BASENUM: return "basenum";
+            case ObjType::REAL_MATRIX: return "realmatrix";
+            case ObjType::COMPLEX_MATRIX: return "complexmatrix";
+            case ObjType::STRING_MATRIX: return "stringmatrix";
             case ObjType::LIST: return "list";
             case ObjType::DICT: return "dict";
             case ObjType::SET: return "set";

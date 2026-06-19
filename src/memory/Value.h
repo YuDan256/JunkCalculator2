@@ -1589,10 +1589,35 @@ namespace jc {
                 if (v.isNumber()) return Complex(v.asNumber());
                 if (v.isBool()) return Complex(v.asBool() ? 1.0 : 0.0);
                 if (v.isObjType(ObjType::COMPLEX)) return static_cast<ObjComplex*>(v.asObj())->comp;
-                if (v.isObjType(ObjType::FRACTION)) return Complex(static_cast<ObjFraction*>(v.asObj())->frac.toDouble());
             } catch (...) {}
             return std::nullopt;
         };
+
+        auto fractionEqualsDouble = [](const Fraction& f, double d) -> bool {
+            if (!std::isfinite(d)) return false;
+            try {
+                return Fraction::fromDouble(d) == f;
+            } catch (...) { return false; }
+        };
+
+        if (lhs.isObjType(ObjType::FRACTION) && !rhs.isObjType(ObjType::FRACTION)) {
+            const Fraction& f = static_cast<ObjFraction*>(lhs.asObj())->frac;
+            if (rhs.isNumber()) return fractionEqualsDouble(f, rhs.asNumber());
+            if (rhs.isBool()) return fractionEqualsDouble(f, rhs.asBool() ? 1.0 : 0.0);
+            if (rhs.isObjType(ObjType::COMPLEX)) {
+                const auto& c = static_cast<ObjComplex*>(rhs.asObj())->comp;
+                return c.imag == 0.0 && fractionEqualsDouble(f, c.real);
+            }
+        }
+        if (rhs.isObjType(ObjType::FRACTION) && !lhs.isObjType(ObjType::FRACTION)) {
+            const Fraction& f = static_cast<ObjFraction*>(rhs.asObj())->frac;
+            if (lhs.isNumber()) return fractionEqualsDouble(f, lhs.asNumber());
+            if (lhs.isBool()) return fractionEqualsDouble(f, lhs.asBool() ? 1.0 : 0.0);
+            if (lhs.isObjType(ObjType::COMPLEX)) {
+                const auto& c = static_cast<ObjComplex*>(lhs.asObj())->comp;
+                return c.imag == 0.0 && fractionEqualsDouble(f, c.real);
+            }
+        }
 
         auto numL = getNumeric(lhs);
         auto numR = getNumeric(rhs);
@@ -2086,8 +2111,10 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             try {
                 double d = fr.toDouble();
                 if (std::isfinite(d)) {
-                    if (d == 0.0) d = 0.0;
-                    return std::hash<double>{}(d);
+                    if (Fraction::fromDouble(d == 0.0 ? 0.0 : d) == fr) {
+                        if (d == 0.0) d = 0.0;
+                        return std::hash<double>{}(d);
+                    }
                 }
             } catch (...) {}
             size_t h1 = std::hash<std::string>{}(fr.getNum().toString());

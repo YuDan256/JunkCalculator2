@@ -50,6 +50,30 @@ namespace jc {
         explicit Fraction(int64_t n) : num(n), den(1) {}
         Fraction(const Fraction& other) : num(other.num), den(other.den) {}
 
+        // --- 从 double 精确还原分数 ---
+        static Fraction fromDouble(double d) {
+            if (!std::isfinite(d)) throw std::runtime_error("Math Error: Cannot convert non-finite double to Fraction.");
+            if (d == 0.0) return Fraction(BigInt(0));
+            bool neg = d < 0;
+            if (neg) d = -d;
+            int exp;
+            double mantissa = std::frexp(d, &exp);
+            // mantissa in [0.5, 1.0), d = mantissa * 2^exp
+            // mantissa * 2^53 是精确整数
+            int64_t significand = static_cast<int64_t>(std::ldexp(mantissa, 53));
+            // d = significand * 2^(exp - 53)
+            int shift = exp - 53;
+            BigInt n(significand);
+            BigInt one(1);
+            Fraction result;
+            if (shift >= 0) {
+                result = Fraction(n * BigInt(2).pow(shift), one);
+            } else {
+                result = Fraction(n, BigInt(2).pow(-shift));
+            }
+            return neg ? -result : result;
+        }
+
         // --- 属性访问 ---
         BigInt getNum() const { return num; }
         BigInt getDen() const { return den; }

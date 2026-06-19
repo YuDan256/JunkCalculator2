@@ -4,107 +4,6 @@
 
 namespace jc {
 
-    bool Parser::replacePlaceholders(std::unique_ptr<Expr>& expr, std::vector<Token>& phParams, std::vector<std::shared_ptr<Expr>>& phDefaults, int& phCount) {
-        if (!expr) return false;
-        if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-            if (var->name.lexeme == "_") {
-                Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
-                phParams.push_back(phTok);
-                phDefaults.push_back(nullptr);
-                expr = std::make_unique<Variable>(phTok);
-                return true;
-            }
-            return false;
-        }
-        bool found = false;
-        if (auto* bin = dynamic_cast<Binary*>(expr.get())) {
-            found |= replacePlaceholders(bin->left, phParams, phDefaults, phCount);
-            found |= replacePlaceholders(bin->right, phParams, phDefaults, phCount);
-        } else if (auto* un = dynamic_cast<Unary*>(expr.get())) {
-            found |= replacePlaceholders(un->right, phParams, phDefaults, phCount);
-        } else if (auto* dict = dynamic_cast<DictLiteral*>(expr.get())) {
-            for (auto& entry : dict->entries) {
-                found |= replacePlaceholders(entry.first, phParams, phDefaults, phCount);
-                found |= replacePlaceholders(entry.second, phParams, phDefaults, phCount);
-            }
-        } else if (auto* set = dynamic_cast<SetLiteral*>(expr.get())) {
-            for (auto& e : set->elements) found |= replacePlaceholders(e, phParams, phDefaults, phCount);
-        } else if (auto* mat = dynamic_cast<MatrixNode*>(expr.get())) {
-            for (auto& row : mat->elements) {
-                for (auto& e : row) found |= replacePlaceholders(e, phParams, phDefaults, phCount);
-            }
-        } else if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
-            for (auto& e : seq->expressions) found |= replacePlaceholders(e, phParams, phDefaults, phCount);
-        } else if (auto* call = dynamic_cast<Call*>(expr.get())) {
-            for (auto& arg : call->arguments) found |= replacePlaceholders(arg, phParams, phDefaults, phCount);
-        } else if (auto* inv = dynamic_cast<InvokeExpr*>(expr.get())) {
-            found |= replacePlaceholders(inv->callee, phParams, phDefaults, phCount);
-            for (auto& arg : inv->arguments) found |= replacePlaceholders(arg, phParams, phDefaults, phCount);
-        } else if (auto* mcall = dynamic_cast<MethodCallExpr*>(expr.get())) {
-            found |= replacePlaceholders(mcall->object, phParams, phDefaults, phCount);
-            for (auto& arg : mcall->arguments) found |= replacePlaceholders(arg, phParams, phDefaults, phCount);
-        } else if (auto* idx = dynamic_cast<IndexAccess*>(expr.get())) {
-            found |= replacePlaceholders(idx->object, phParams, phDefaults, phCount);
-            for (auto& i : idx->indices) found |= replacePlaceholders(i, phParams, phDefaults, phCount);
-        } else if (auto* dot = dynamic_cast<DotAccess*>(expr.get())) {
-            found |= replacePlaceholders(dot->object, phParams, phDefaults, phCount);
-        } else if (auto* grp = dynamic_cast<GroupingExpr*>(expr.get())) {
-            found |= replacePlaceholders(grp->expression, phParams, phDefaults, phCount);
-        } else if (auto* ife = dynamic_cast<IfExpr*>(expr.get())) {
-            found |= replacePlaceholders(ife->condition, phParams, phDefaults, phCount);
-            found |= replacePlaceholders(ife->thenBranch, phParams, phDefaults, phCount);
-            if (ife->elseBranch) found |= replacePlaceholders(ife->elseBranch, phParams, phDefaults, phCount);
-        } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
-            found |= replacePlaceholders(assign->value, phParams, phDefaults, phCount);
-        } else if (auto* slice = dynamic_cast<SliceExpr*>(expr.get())) {
-            if (slice->start) found |= replacePlaceholders(slice->start, phParams, phDefaults, phCount);
-            if (slice->end) found |= replacePlaceholders(slice->end, phParams, phDefaults, phCount);
-            if (slice->step) found |= replacePlaceholders(slice->step, phParams, phDefaults, phCount);
-        } else if (auto* fstr = dynamic_cast<FStringExpr*>(expr.get())) {
-            for (auto& e : fstr->exprs) found |= replacePlaceholders(e, phParams, phDefaults, phCount);
-        } else if (auto* comp = dynamic_cast<ListCompExpr*>(expr.get())) {
-            found |= replacePlaceholders(comp->valueExpr, phParams, phDefaults, phCount);
-            for (auto& clause : comp->clauses) {
-                found |= replacePlaceholdersShared(clause.iterable, phParams, phDefaults, phCount);
-                for (auto& cond : clause.conditions) {
-                    found |= replacePlaceholdersShared(cond, phParams, phDefaults, phCount);
-                }
-            }
-        } else if (auto* matchE = dynamic_cast<MatchExpr*>(expr.get())) {
-            found |= replacePlaceholders(matchE->subject, phParams, phDefaults, phCount);
-            for (auto& branch : matchE->branches) {
-                if (branch.guard) found |= replacePlaceholders(branch.guard, phParams, phDefaults, phCount);
-                found |= replacePlaceholders(branch.body, phParams, phDefaults, phCount);
-            }
-        } else if (auto* switchE = dynamic_cast<SwitchExpr*>(expr.get())) {
-            found |= replacePlaceholders(switchE->subject, phParams, phDefaults, phCount);
-            for (auto& casePair : switchE->cases) {
-                for (auto& v : casePair.first) found |= replacePlaceholders(v, phParams, phDefaults, phCount);
-                found |= replacePlaceholders(casePair.second, phParams, phDefaults, phCount);
-            }
-            if (switchE->defaultBody) found |= replacePlaceholders(switchE->defaultBody, phParams, phDefaults, phCount);
-        }
-        return found;
-    }
-
-    bool Parser::replacePlaceholdersShared(std::shared_ptr<Expr>& expr, std::vector<Token>& phParams, std::vector<std::shared_ptr<Expr>>& phDefaults, int& phCount) {
-        if (!expr) return false;
-        if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-            if (var->name.lexeme == "_") {
-                Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
-                phParams.push_back(phTok);
-                phDefaults.push_back(nullptr);
-                expr = std::make_shared<Variable>(phTok);
-                return true;
-            }
-            return false;
-        }
-        std::unique_ptr<Expr> dummy(expr.get());
-        bool found = replacePlaceholders(dummy, phParams, phDefaults, phCount);
-        dummy.release();
-        return found;
-    }
-
     std::unique_ptr<Expr> Parser::expression() {
         auto expr = assignment();
         if (match({ TokenType::COMMA })) {
@@ -688,7 +587,15 @@ namespace jc {
                     std::vector<std::shared_ptr<Expr>> phDefaults;
                     int phCount = 0;
                     for (auto& arg : args) {
-                        isPartial |= replacePlaceholders(arg, phParams, phDefaults, phCount);
+                        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+                            if (var->name.lexeme == "_") {
+                                isPartial = true;
+                                Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
+                                phParams.push_back(phTok);
+                                phDefaults.push_back(nullptr);
+                                arg = std::make_unique<Variable>(phTok);
+                            }
+                        }
                     }
                     std::unique_ptr<Expr> methodNode = std::make_unique<MethodCallExpr>(std::move(expr), field, std::move(args));
 
@@ -729,7 +636,15 @@ namespace jc {
                 std::vector<std::shared_ptr<Expr>> phDefaults;
                 int phCount = 0;
                 for (auto& arg : args) {
-                    isPartial |= replacePlaceholders(arg, phParams, phDefaults, phCount);
+                    if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+                        if (var->name.lexeme == "_") {
+                            isPartial = true;
+                            Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
+                            phParams.push_back(phTok);
+                            phDefaults.push_back(nullptr);
+                            arg = std::make_unique<Variable>(phTok);
+                        }
+                    }
                 }
                 std::unique_ptr<Expr> callNode;
                 if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {

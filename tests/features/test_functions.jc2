@@ -28,12 +28,5 @@ test_partial_application() = {
     add_five = my_add(5, _)
     assert(add_five(10) == 15, "Basic partial application failed")
 
-    // 深层占位符测试
-    id_fn(x) = x
-    get_slice(arr) = id_fn(arr[1:_])
-    check("Deep partial slice", get_slice([1, 2, 3, 4])(3), [2, 3])
-    
-    make_dict = id_fn({data: _})
-    check("Deep partial dict", make_dict(42), {data: 42})
 }
 test_partial_application()

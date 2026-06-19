@@ -6,19 +6,19 @@ check(name, actual, expected) = {
 
 test_list_comp_destruct() = {
     // 字典解构推导
-    res1 = [f"{k}:{v}" for {k, v} in {a: 1, b: 2}]
-    assert("a:1" in res1 and "b:2" in res1, "List comp dict destruct failed")
+    res1 = [f"{k}:{v}" for ({k, v} in {a: 1, b: 2})]
+    assert("a:1" in res1 && "b:2" in res1, "List comp dict destruct failed")
     
     // 列表解构推导带条件
     points = [[1, 2], [3, 4], [5, 6]]
-    res2 = [x + y for [x, y] in points if (x > 2)]
+    res2 = [x + y for ([x, y] in points) if (x > 2)]
     check("List comp list destruct with condition", res2, [7, 11])
 }
 test_list_comp_destruct()
 
 test_list_comp_partial() = {
     // 结合偏函数占位符
-    funcs = [x * _ for x in [1, 2, 3]]
+    funcs = [x * _ for (x in [1, 2, 3])]
     res = [f(10) for f in funcs]
     check("List comp with partial application", res, [10, 20, 30])
 }

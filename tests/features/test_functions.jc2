@@ -5,15 +5,12 @@ check(name, actual, expected) = {
 }
 
 test_const_params() = {
-    f(const x) = {
-        try {
-            x = 2
-            assert(false, "Should throw when modifying const param")
-        } catch (e) {
-            assert("Cannot modify const variable" in str(e), "Wrong error for const param")
-        }
+    try {
+        compileCode("f(const x) = { x = 2 }; f(1)")
+        assert(false, "Should throw when modifying const param")
+    } catch (e) {
+        assert("Cannot modify const variable" in str(e), "Wrong error for const param")
     }
-    f(1)
 }
 test_const_params()
 
@@ -35,7 +32,7 @@ test_partial_application() = {
     get_slice(arr) = arr[1:_]
     check("Deep partial slice", get_slice([1, 2, 3, 4])(3), [2, 3])
     
-    make_dict(val) = {data: _}
-    check("Deep partial dict", make_dict()(42), {data: 42})
+    make_dict = {data: _}
+    check("Deep partial dict", make_dict(42), {data: 42})
 }
 test_partial_application()

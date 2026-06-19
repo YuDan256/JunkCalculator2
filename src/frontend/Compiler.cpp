@@ -287,10 +287,26 @@ namespace jc {
         collectPatternVars(clause.pattern.get(), boundVars);
         for (const auto& varTuple : boundVars) {
             const std::string& name = std::get<0>(varTuple);
+            ScopeModifier mod = std::get<1>(varTuple);
+            bool isConst = std::get<2>(varTuple);
             if (name == "_") continue;
+            
+            if (mod == ScopeModifier::Ref) {
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::Ref) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().captures[name] = {CaptureType::Ref, isConst, false};
+            } else if (mod == ScopeModifier::State) {
+                if (stateStack.size() == 1) throw std::runtime_error("Compiler Error: 'state' modifier cannot be used at the top level.");
+                if (current().captures.count(name) > 0 && current().captures[name].type != CaptureType::State) throw std::runtime_error("Compiler Error: Cannot declare variable as both 'ref' and 'state'.");
+                current().captures[name] = {CaptureType::State, isConst, true};
+            }
+
             int slot = resolveLocal(name);
-            if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                addLocal(name, current().scopeDepth);
+            if (mod == ScopeModifier::Local || mod == ScopeModifier::None) {
+                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
+                    addLocal(name, current().scopeDepth, isConst);
+                } else {
+                    current().locals[slot].isConst = isConst;
+                }
             }
         }
 
@@ -3131,13 +3147,11 @@ namespace jc {
             }
 
             int slot = resolveLocal(name);
-            if (mod == ScopeModifier::Local) {
+            if (mod == ScopeModifier::Local || mod == ScopeModifier::None) {
                 if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
                     addLocal(name, current().scopeDepth, isConst);
-                }
-            } else if (mod == ScopeModifier::None) {
-                if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                    addLocal(name, current().scopeDepth, isConst);
+                } else {
+                    current().locals[slot].isConst = isConst;
                 }
             }
         }
@@ -3869,13 +3883,11 @@ namespace jc {
                 }
 
                 int slot = resolveLocal(var);
-                if (mod == ScopeModifier::Local) {
+                if (mod == ScopeModifier::Local || mod == ScopeModifier::None) {
                     if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
                         addLocal(var, current().scopeDepth, isConst);
-                    }
-                } else if (mod == ScopeModifier::None) {
-                    if (slot == -1 || current().locals[slot].depth < current().scopeDepth) {
-                        addLocal(var, current().scopeDepth, isConst);
+                    } else {
+                        current().locals[slot].isConst = isConst;
                     }
                 }
             }

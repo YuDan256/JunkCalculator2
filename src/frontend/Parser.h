@@ -54,6 +54,7 @@ namespace jc {
 
         bool isDictLiteralLookahead(int startPos);
         bool replacePlaceholders(std::unique_ptr<Expr>& expr, std::vector<Token>& phParams, std::vector<std::shared_ptr<Expr>>& phDefaults, int& phCount);
+        bool replacePlaceholdersShared(std::shared_ptr<Expr>& expr, std::vector<Token>& phParams, std::vector<std::shared_ptr<Expr>>& phDefaults, int& phCount);
 
         // --- 游标工具 ---
         inline bool match(std::initializer_list<TokenType> types) { for (auto t : types) if (check(t)) { advance(); return true; } return false; }

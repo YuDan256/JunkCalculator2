@@ -56,7 +56,52 @@ namespace jc {
             if (ife->elseBranch) found |= replacePlaceholders(ife->elseBranch, phParams, phDefaults, phCount);
         } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
             found |= replacePlaceholders(assign->value, phParams, phDefaults, phCount);
+        } else if (auto* slice = dynamic_cast<SliceExpr*>(expr.get())) {
+            if (slice->start) found |= replacePlaceholders(slice->start, phParams, phDefaults, phCount);
+            if (slice->end) found |= replacePlaceholders(slice->end, phParams, phDefaults, phCount);
+            if (slice->step) found |= replacePlaceholders(slice->step, phParams, phDefaults, phCount);
+        } else if (auto* fstr = dynamic_cast<FStringExpr*>(expr.get())) {
+            for (auto& e : fstr->exprs) found |= replacePlaceholders(e, phParams, phDefaults, phCount);
+        } else if (auto* comp = dynamic_cast<ListCompExpr*>(expr.get())) {
+            found |= replacePlaceholders(comp->valueExpr, phParams, phDefaults, phCount);
+            for (auto& clause : comp->clauses) {
+                found |= replacePlaceholdersShared(clause.iterable, phParams, phDefaults, phCount);
+                for (auto& cond : clause.conditions) {
+                    found |= replacePlaceholdersShared(cond, phParams, phDefaults, phCount);
+                }
+            }
+        } else if (auto* matchE = dynamic_cast<MatchExpr*>(expr.get())) {
+            found |= replacePlaceholders(matchE->subject, phParams, phDefaults, phCount);
+            for (auto& branch : matchE->branches) {
+                if (branch.guard) found |= replacePlaceholders(branch.guard, phParams, phDefaults, phCount);
+                found |= replacePlaceholders(branch.body, phParams, phDefaults, phCount);
+            }
+        } else if (auto* switchE = dynamic_cast<SwitchExpr*>(expr.get())) {
+            found |= replacePlaceholders(switchE->subject, phParams, phDefaults, phCount);
+            for (auto& casePair : switchE->cases) {
+                for (auto& v : casePair.first) found |= replacePlaceholders(v, phParams, phDefaults, phCount);
+                found |= replacePlaceholders(casePair.second, phParams, phDefaults, phCount);
+            }
+            if (switchE->defaultBody) found |= replacePlaceholders(switchE->defaultBody, phParams, phDefaults, phCount);
         }
+        return found;
+    }
+
+    bool Parser::replacePlaceholdersShared(std::shared_ptr<Expr>& expr, std::vector<Token>& phParams, std::vector<std::shared_ptr<Expr>>& phDefaults, int& phCount) {
+        if (!expr) return false;
+        if (auto* var = dynamic_cast<Variable*>(expr.get())) {
+            if (var->name.lexeme == "_") {
+                Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
+                phParams.push_back(phTok);
+                phDefaults.push_back(nullptr);
+                expr = std::make_shared<Variable>(phTok);
+                return true;
+            }
+            return false;
+        }
+        std::unique_ptr<Expr> dummy(expr.get());
+        bool found = replacePlaceholders(dummy, phParams, phDefaults, phCount);
+        dummy.release();
         return found;
     }
 

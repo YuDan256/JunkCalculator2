@@ -11,6 +11,7 @@
 #include "frontend/Lexer.h"
 #include "frontend/Parser.h"
 #include "memory/Value.h"
+#include "memory/SipHash.h"
 #include "vm/HelpRouter.h"
 #include "frontend/Highlight.h"
 #include "frontend/Compiler.h"
@@ -361,6 +362,7 @@ int main(int argc, char* argv[]) {
 #ifdef _WIN32
     std::system("chcp 65001 > nul");
 #endif
+    jc::initSipHashSeed();
     jc::enableAnsiColors();
     std::signal(SIGINT, sigintHandler);
     std::string exeDir = getExecutableDir();

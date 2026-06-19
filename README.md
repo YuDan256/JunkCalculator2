@@ -93,7 +93,6 @@ JC2 standard libraries loaded via `import`:
 - **Dead Code Elimination & Constant Propagation**:
   - Implemented Dead Code Elimination (DCE) for blocks, loops, and short-circuit operators.
   - Implemented constant propagation for `const` variables, omitting `OP_SET_LOCAL` instructions for compile-time constants.
-- **Safe Peephole Optimization**: Reintroduced safe peephole optimization with jump boundary guards, eliminating redundant `OP_CONSTANT` + `OP_POP` instruction pairs.
 - **AST Arena Allocator**: Implemented an arena allocator for AST nodes using a bump pointer and free list, significantly improving parsing performance.
 - **Compile-time Errors**: Compile-time errors now include precise file names and line numbers.
 - **Bytecode Operand Extension**: Introduced the `OP_EXTEND` prefix instruction to support 32-bit operands on demand, along with compile-time overflow checks for bytecode operand limits.

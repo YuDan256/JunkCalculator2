@@ -556,13 +556,22 @@ int main(int argc, char* argv[]) {
         if (start == std::string::npos) continue;
         input = input.substr(start, end - start + 1);
 
-        auto checkInputState = [](const std::string& s, int& braces, int& parens, int& brackets, bool& inStr, bool& isMulti) {
+        auto checkInputState = [](const std::string& s, int& braces, int& parens, int& brackets, bool& inStr, bool& isMulti, int& commentNesting) {
             braces = 0; parens = 0; brackets = 0;
-            inStr = false; isMulti = false;
+            inStr = false; isMulti = false; commentNesting = 0;
             char strQuote = '\0';
             for (size_t i = 0; i < s.length(); ++i) {
                 char c = s[i];
-                if (inStr) {
+                if (commentNesting > 0) {
+                    if (c == '/' && i + 1 < s.length() && s[i + 1] == '*') {
+                        commentNesting++;
+                        i++;
+                    } else if (c == '*' && i + 1 < s.length() && s[i + 1] == '/') {
+                        commentNesting--;
+                        i++;
+                    }
+                }
+                else if (inStr) {
                     if (c == '\\' && i + 1 < s.length()) {
                         i++;
                     }
@@ -580,7 +589,14 @@ int main(int argc, char* argv[]) {
                     }
                 }
                 else {
-                    if (c == '"' || c == '\'') {
+                    if (c == '/' && i + 1 < s.length() && s[i + 1] == '/') {
+                        while (i < s.length() && s[i] != '\n') i++;
+                    }
+                    else if (c == '/' && i + 1 < s.length() && s[i + 1] == '*') {
+                        commentNesting++;
+                        i++;
+                    }
+                    else if (c == '"' || c == '\'') {
                         inStr = true;
                         strQuote = c;
                         if (i + 2 < s.length() && s[i + 1] == c && s[i + 2] == c) {
@@ -601,13 +617,13 @@ int main(int argc, char* argv[]) {
             }
             };
 
-        int braces = 0, parens = 0, brackets = 0;
+        int braces = 0, parens = 0, brackets = 0, commentNesting = 0;
         bool inStr = false, isMulti = false;
-        checkInputState(input, braces, parens, brackets, inStr, isMulti);
+        checkInputState(input, braces, parens, brackets, inStr, isMulti, commentNesting);
 
         bool inputAborted = false;
         bool isEof = false;
-        while (braces > 0 || parens > 0 || brackets > 0 || (inStr && isMulti) || (!inStr && endsWithContinuation(input))) {
+        while (braces > 0 || parens > 0 || brackets > 0 || (inStr && isMulti) || commentNesting > 0 || (!inStr && commentNesting == 0 && endsWithContinuation(input))) {
             std::string line;
             if (!g_quiet) std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "...  " << jc::col(jc::Ansi::RESET);
             if (!std::getline(std::cin, line)) {
@@ -630,7 +646,7 @@ int main(int argc, char* argv[]) {
                 break;
             }
             input += "\n" + line;
-            checkInputState(input, braces, parens, brackets, inStr, isMulti);
+            checkInputState(input, braces, parens, brackets, inStr, isMulti, commentNesting);
         }
         if (inputAborted && isEof) {
             if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
@@ -640,7 +656,7 @@ int main(int argc, char* argv[]) {
 
         if (input.length() >= 2 && input[0] == '/' && input[1] == '/') continue;
 
-        if (!input.empty() && input[0] == '/') {
+        if (!input.empty() && input[0] == '/' && (input.length() == 1 || (input[1] != '/' && input[1] != '*'))) {
             if (input == "/color on") { jc::colorsEnabled = true; continue; }
             if (input == "/color off") { jc::colorsEnabled = false; continue; }
 

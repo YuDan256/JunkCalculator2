@@ -222,14 +222,13 @@ namespace jc {
                             // 2. 解构参数 {a, b} 或 [a, b]
                             if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
                                 if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
-                                bool isDict = check(TokenType::LBRACE);
                                 auto patNode = parsePrimaryPattern();
 
                                 std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
                                 Token phTok(TokenType::IDENTIFIER, phName, funcName.line);
                                 params.push_back(phTok);
                                 paramIsRef.push_back(false);
-                                paramTypes.push_back(isDict ? "dict" : "list"); // ★ 自动加上硬性类型约束！
+                                paramTypes.push_back(""); // ★ 去掉硬性类型约束，全面接入解构引擎
                                 
                                 if (match({ TokenType::ASSIGN })) {
                                     defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));

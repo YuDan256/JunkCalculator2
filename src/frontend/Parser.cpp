@@ -1609,6 +1609,9 @@ namespace jc {
             std::vector<std::string> paramTypes; // ★
             bool hasRestParam = false;
 
+            std::vector<std::unique_ptr<Expr>> destructStmts;
+            int destructCounter = 0;
+
             if (!check(TokenType::RPAREN)) {
                 do {
                     if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
@@ -1622,6 +1625,27 @@ namespace jc {
                         paramTypes.push_back("");
                         defaultExprs.push_back(nullptr);
                         hasRestParam = true;
+                        continue;
+                    }
+
+                    if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                        if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                        auto patNode = parsePrimaryPattern();
+
+                        std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
+                        Token phTok(TokenType::IDENTIFIER, phName, methodName.line);
+                        params.push_back(phTok);
+                        paramIsRef.push_back(false);
+                        paramTypes.push_back("");
+                        
+                        if (match({ TokenType::ASSIGN })) {
+                            defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
+                        } else {
+                            defaultExprs.push_back(nullptr);
+                        }
+
+                        auto rhs = std::make_unique<Variable>(phTok);
+                        destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
                         continue;
                     }
 
@@ -1672,6 +1696,15 @@ namespace jc {
                 if (i < bodyEnd - 1 && tokens[i + 1].type != TokenType::NEWLINE) rawBody += " ";
             }
 
+            std::shared_ptr<Expr> finalBody;
+            if (!destructStmts.empty()) {
+                destructStmts.push_back(std::move(body));
+                finalBody = std::make_shared<Block>(std::move(destructStmts));
+            }
+            else {
+                finalBody = std::shared_ptr<Expr>(body.release());
+            }
+
             methods.push_back(ClassDefExpr::MethodDef{
                 methodName,
                 std::move(params),
@@ -1680,7 +1713,7 @@ namespace jc {
                 hasRestParam,
                 paramTypes, retType, // ★ 加载进入结构体
                 std::move(rawBody),
-                std::shared_ptr<Expr>(body.release())
+                std::move(finalBody)
                 });
 
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {

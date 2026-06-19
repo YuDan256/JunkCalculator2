@@ -264,7 +264,7 @@ namespace jc {
 
                             bool isParamRef = match({ TokenType::REF });
 
-                            Token paramTok;
+                            Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
                             bool isRest = false;
                             bool isDestruct = false;
                             std::unique_ptr<Pattern> patNode = nullptr;
@@ -1147,7 +1147,7 @@ namespace jc {
 
                         bool isRef = match({ TokenType::REF });
                         
-                        Token paramTok;
+                        Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
                         bool isRest = false;
                         bool isDestruct = false;
                         std::unique_ptr<Pattern> patNode = nullptr;
@@ -1674,7 +1674,7 @@ namespace jc {
                     bool isRef = false;
                     if (match({ TokenType::REF })) isRef = true;
 
-                    Token paramTok;
+                    Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
                     bool isRest = false;
                     bool isDestruct = false;
                     std::unique_ptr<Pattern> patNode = nullptr;

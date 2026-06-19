@@ -1,5 +1,3 @@
-println("=== Testing Control Flow ===")
-
 test_for_in_destruct() = {
     sum = 0
     for ([k, v] in {a: 1, b: 2, c: 3}) {

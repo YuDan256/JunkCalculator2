@@ -1,5 +1,3 @@
-println("=== Testing List Comprehensions ===")
-
 check(name, actual, expected) = {
     assert(str(actual) == str(expected), f"[{name}] Expected {expected}, got {actual}")
 }

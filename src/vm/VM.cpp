@@ -964,6 +964,12 @@ namespace jc {
                     Value res;
                     if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() < b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac < static_cast<ObjFraction*>(b.asObj())->frac);
+                    else if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+                        try {
+                            auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                            res = Value(getF(a) < getF(b));
+                        } catch (...) { res = Value(a.asDouble() < b.asDouble()); }
+                    }
                     else if (a.isString() && b.isString()) res = Value(a.asString() < b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da < db); }
                     pop(); peek(0) = res; break;
@@ -982,6 +988,12 @@ namespace jc {
                     Value res;
                     if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() <= b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac <= static_cast<ObjFraction*>(b.asObj())->frac);
+                    else if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+                        try {
+                            auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                            res = Value(getF(a) <= getF(b));
+                        } catch (...) { res = Value(a.asDouble() <= b.asDouble()); }
+                    }
                     else if (a.isString() && b.isString()) res = Value(a.asString() <= b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da <= db); }
                     pop(); peek(0) = res; break;
@@ -1000,6 +1012,12 @@ namespace jc {
                     Value res;
                     if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() > b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac > static_cast<ObjFraction*>(b.asObj())->frac);
+                    else if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+                        try {
+                            auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                            res = Value(getF(a) > getF(b));
+                        } catch (...) { res = Value(a.asDouble() > b.asDouble()); }
+                    }
                     else if (a.isString() && b.isString()) res = Value(a.asString() > b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da > db); }
                     pop(); peek(0) = res; break;
@@ -1018,6 +1036,12 @@ namespace jc {
                     Value res;
                     if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) res = Value(a.asBigInt() >= b.asBigInt());
                     else if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) res = Value(static_cast<ObjFraction*>(a.asObj())->frac >= static_cast<ObjFraction*>(b.asObj())->frac);
+                    else if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+                        try {
+                            auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                            res = Value(getF(a) >= getF(b));
+                        } catch (...) { res = Value(a.asDouble() >= b.asDouble()); }
+                    }
                     else if (a.isString() && b.isString()) res = Value(a.asString() >= b.asString());
                     else { double da = a.asDouble(), db = b.asDouble(); res = Value(da >= db); }
                     pop(); peek(0) = res; break;

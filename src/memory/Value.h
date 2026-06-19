@@ -1606,6 +1606,8 @@ namespace jc {
             if (numR->imag != 0.0) return false;
             double d = numR->real;
             if (std::floor(d) != d) return false;
+            // ★ 2^53精度边界：超过此值的整数无法被double精确表示，禁止跨类型判等
+            if (std::abs(d) > 9007199254740992.0) return false;  // 2^53
             if (std::abs(d) < 9e15) return b == BigInt(static_cast<int64_t>(d));
             try { return b.toDouble() == d; } catch (...) { return false; }
         }
@@ -1614,6 +1616,8 @@ namespace jc {
             if (numL->imag != 0.0) return false;
             double d = numL->real;
             if (std::floor(d) != d) return false;
+            // ★ 2^53精度边界：超过此值的整数无法被double精确表示，禁止跨类型判等
+            if (std::abs(d) > 9007199254740992.0) return false;  // 2^53
             if (std::abs(d) < 9e15) return b == BigInt(static_cast<int64_t>(d));
             try { return b.toDouble() == d; } catch (...) { return false; }
         }

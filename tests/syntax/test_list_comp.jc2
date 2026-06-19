@@ -18,7 +18,8 @@ test_list_comp_destruct()
 
 test_list_comp_partial() = {
     // 结合偏函数占位符
-    funcs = [x * _ for (x in [1, 2, 3])]
+    id_fn(x) = x
+    funcs = [id_fn(x * _) for (x in [1, 2, 3])]
     res = [f(10) for (f in funcs)]
     check("List comp with partial application", res, [10, 20, 30])
 }

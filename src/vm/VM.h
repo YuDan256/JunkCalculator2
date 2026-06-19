@@ -17,6 +17,11 @@ namespace jc {
 
     using NativeCallable = std::function<Value(const std::vector<Value>&)>;
 
+    struct ValueException {
+        Value val;
+        explicit ValueException(Value v) : val(std::move(v)) {}
+    };
+
     class VM {
     private:
 
@@ -112,7 +117,7 @@ namespace jc {
         // ==============================================================
         // ★ 新增：干净统一的异常回滚处理与栈轨迹抓取 (Stack Trace)
         // ==============================================================
-        bool handleExceptionUnwind(std::string& msg);
+        bool handleExceptionUnwind(Value errVal);
         std::string buildStackTrace(const std::string& errorMsg);
         Value callDunder(const Value& obj, const std::string& name,
             const Value* args, size_t argc);

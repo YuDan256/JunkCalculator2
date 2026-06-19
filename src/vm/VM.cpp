@@ -36,7 +36,10 @@ namespace jc {
     // =======================================================
     // ★ 统一拦截与展开 Try-Catch 栈
     // =======================================================
-    bool VM::handleExceptionUnwind(std::string& msg) {
+    bool VM::handleExceptionUnwind(Value errVal) {
+        std::string msg;
+        if (errVal.isString()) msg = errVal.asString();
+        else { std::ostringstream oss; oss << errVal; msg = oss.str(); }
 #if JC2_DEBUG_VM_TRACE
         std::cout << "[VM TRACE] Exception Thrown: " << msg << "\n";
 #endif
@@ -61,12 +64,15 @@ namespace jc {
             setStackSize(handler.stackSize);
 
             // 向前兼容清洗（万一由内部某处带上了 [Line，强行剥离保证纯净赋给 e 变量）
-            if (msg.find("[Line ") == 0) {
-                size_t c = msg.find("] ");
-                if (c != std::string::npos) msg = msg.substr(c + 2);
+            if (errVal.isString()) {
+                std::string s = errVal.asString();
+                if (s.find("[Line ") == 0) {
+                    size_t c = s.find("] ");
+                    if (c != std::string::npos) errVal = Value(s.substr(c + 2));
+                }
             }
 
-            push(Value(msg));
+            push(errVal);
             frame().ip = handler.ip;
             return true; // 代表已经成功捕获，指示外层继续 run()
         }
@@ -1719,16 +1725,7 @@ namespace jc {
 
                 case OpCode::OP_THROW: {
                     Value errVal = pop();
-                    std::string msg;
-                    if (errVal.isString())
-                        msg = errVal.asString();
-                    else {
-                        std::ostringstream oss;
-                        if (errVal.isUninit()) oss << "Uninitialized";
-                        else oss << errVal;
-                        msg = oss.str();
-                    }
-                    throw ErrorSignal(msg);
+                    throw ValueException(errVal);
                 } 
 
                 case OpCode::OP_BUILD_NAMESPACE: {
@@ -2820,24 +2817,29 @@ namespace jc {
             catch (const EngineInterruptError&) {
                 throw; // 强行中断，无视 try-catch 拦截，不生成 Traceback
             }
+            catch (const ValueException& ex) {
+                if (handleExceptionUnwind(ex.val)) { UPDATE_FRAME(); continue; }
+                std::string msg;
+                if (ex.val.isString()) msg = ex.val.asString();
+                else { std::ostringstream oss; oss << ex.val; msg = oss.str(); }
+                throw StackTracedException(msg, buildStackTrace(msg));
+            }
             catch (const StackTracedException& ex) {
-                std::string msg = ex.rawMessage;
-                if (handleExceptionUnwind(msg)) { UPDATE_FRAME(); continue; }
+                if (handleExceptionUnwind(Value(ex.rawMessage))) { UPDATE_FRAME(); continue; }
                 throw;
             }
             catch (const ErrorSignal& sig) {
-                std::string msg = sig.message;
-                if (handleExceptionUnwind(msg)) { UPDATE_FRAME(); continue; }
-                throw StackTracedException(msg, buildStackTrace(msg));
+                if (handleExceptionUnwind(Value(sig.message))) { UPDATE_FRAME(); continue; }
+                throw StackTracedException(sig.message, buildStackTrace(sig.message));
             }
             catch (const std::exception& ex) {
                 std::string msg = ex.what();
-                if (handleExceptionUnwind(msg)) { UPDATE_FRAME(); continue; }
+                if (handleExceptionUnwind(Value(msg))) { UPDATE_FRAME(); continue; }
                 throw StackTracedException(msg, buildStackTrace(msg));
             }
             catch (...) {
                 std::string msg = "Unknown VM Error";
-                if (handleExceptionUnwind(msg)) { UPDATE_FRAME(); continue; }
+                if (handleExceptionUnwind(Value(msg))) { UPDATE_FRAME(); continue; }
                 throw StackTracedException(msg, buildStackTrace(msg));
             }
         }

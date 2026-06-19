@@ -208,42 +208,27 @@ namespace jc {
 
                             bool isParamRef = match({ TokenType::REF });
 
-                            // 1. 变长参数 ...args
+                            Token paramTok;
+                            bool isRest = false;
+                            bool isDestruct = false;
+                            std::unique_ptr<Pattern> patNode = nullptr;
+
                             if (match({ TokenType::ELLIPSIS })) {
                                 if (isParamRef) throw std::runtime_error("Parser Error: Rest parameter cannot be ref.");
-                                params.push_back(consume(TokenType::IDENTIFIER, "Expect parameter name."));
-                                paramIsRef.push_back(false);
-                                paramTypes.push_back(""); // 变长暂不强校验类型
-                                defaultExprs.push_back(nullptr);
+                                paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
+                                isRest = true;
                                 hasRestParam = true;
-                                continue;
-                            }
-
-                            // 2. 解构参数 {a, b} 或 [a, b]
-                            if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                            } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
                                 if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
-                                auto patNode = parsePrimaryPattern();
-
+                                patNode = parsePrimaryPattern();
                                 std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
-                                Token phTok(TokenType::IDENTIFIER, phName, funcName.line);
-                                params.push_back(phTok);
-                                paramIsRef.push_back(false);
-                                paramTypes.push_back(""); // ★ 去掉硬性类型约束，全面接入解构引擎
-                                
-                                if (match({ TokenType::ASSIGN })) {
-                                    defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
-                                } else {
-                                    defaultExprs.push_back(nullptr);
-                                }
-
-                                auto rhs = std::make_unique<Variable>(phTok);
-                                destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
-                                continue;
+                                paramTok = Token(TokenType::IDENTIFIER, phName, funcName.line);
+                                isDestruct = true;
+                            } else {
+                                paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
                             }
 
-                            // 3. 通规变量参数 x : int = 10
-                            Token paramName = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
-                            params.push_back(paramName);
+                            params.push_back(paramTok);
                             paramIsRef.push_back(isParamRef);
 
                             std::string pType = "";
@@ -253,13 +238,18 @@ namespace jc {
                                     pType += "." + consume(TokenType::IDENTIFIER, "Parser Error: Expect property name after '.'.").lexeme;
                                 }
                             }
-                            paramTypes.push_back(pType); // ★ 存入参数的类型
+                            paramTypes.push_back(pType);
 
                             if (match({ TokenType::ASSIGN })) {
+                                if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
                                 defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
-                            }
-                            else {
+                            } else {
                                 defaultExprs.push_back(nullptr);
+                            }
+
+                            if (isDestruct) {
+                                auto rhs = std::make_unique<Variable>(paramTok);
+                                destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
                             }
                         } while (match({ TokenType::COMMA }));
                     }
@@ -1108,25 +1098,36 @@ namespace jc {
                 std::vector<std::string> paramTypes; // ★
                 bool hasRestParam = false;
 
+                std::vector<std::unique_ptr<Expr>> destructStmts;
+                int destructCounter = 0;
+
                 if (!check(TokenType::RPAREN)) {
                     do {
                         if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
 
                         bool isRef = match({ TokenType::REF });
+                        
+                        Token paramTok;
+                        bool isRest = false;
+                        bool isDestruct = false;
+                        std::unique_ptr<Pattern> patNode = nullptr;
 
                         if (match({ TokenType::ELLIPSIS })) {
                             if (isRef) throw std::runtime_error("Parser Error: Rest parameter cannot be ref.");
-                            Token param = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'.");
-                            lambdaParams.push_back(param);
-                            lambdaParamIsRef.push_back(false);
-                            paramTypes.push_back("");
-                            lambdaDefaults.push_back(nullptr);
+                            paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'.");
+                            isRest = true;
                             hasRestParam = true;
-                            continue;
+                        } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                            if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                            patNode = parsePrimaryPattern();
+                            std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
+                            paramTok = Token(TokenType::IDENTIFIER, phName, previous().line);
+                            isDestruct = true;
+                        } else {
+                            paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
                         }
 
-                        Token param = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
-                        lambdaParams.push_back(param);
+                        lambdaParams.push_back(paramTok);
                         lambdaParamIsRef.push_back(isRef);
 
                         std::string pType = "";
@@ -1139,10 +1140,17 @@ namespace jc {
                         paramTypes.push_back(pType);
 
                         if (match({ TokenType::ASSIGN })) {
+                            if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
                             auto defExpr = ternary();
                             lambdaDefaults.push_back(std::shared_ptr<Expr>(defExpr.release()));
+                        } else {
+                            lambdaDefaults.push_back(nullptr);
                         }
-                        else lambdaDefaults.push_back(nullptr);
+
+                        if (isDestruct) {
+                            auto rhs = std::make_unique<Variable>(paramTok);
+                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
+                        }
                     } while (match({ TokenType::COMMA }));
                 }
 
@@ -1172,6 +1180,14 @@ namespace jc {
                     if (ii < bodyEnd - 1) rawBody += " ";
                 }
 
+                std::shared_ptr<Expr> finalBody;
+                if (!destructStmts.empty()) {
+                    destructStmts.push_back(std::move(body));
+                    finalBody = std::make_shared<Block>(std::move(destructStmts));
+                } else {
+                    finalBody = std::shared_ptr<Expr>(body.release());
+                }
+
                 return std::make_unique<LambdaExpr>(
                     "<lambda>",
                     std::move(lambdaParams),
@@ -1180,7 +1196,7 @@ namespace jc {
                     hasRestParam,
                     paramTypes, retType,  // ★
                     rawBody,
-                    std::shared_ptr<Expr>(body.release()));
+                    std::move(finalBody));
             }
             else {
                 current = savedPos;
@@ -1618,39 +1634,27 @@ namespace jc {
                     bool isRef = false;
                     if (match({ TokenType::REF })) isRef = true;
 
+                    Token paramTok;
+                    bool isRest = false;
+                    bool isDestruct = false;
+                    std::unique_ptr<Pattern> patNode = nullptr;
+
                     if (match({ TokenType::ELLIPSIS })) {
                         if (isRef) throw std::runtime_error("Parser Error: Rest parameter cannot be passed by ref.");
-                        params.push_back(consume(TokenType::IDENTIFIER, "Expect parameter name."));
-                        paramIsRef.push_back(false);
-                        paramTypes.push_back("");
-                        defaultExprs.push_back(nullptr);
+                        paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
+                        isRest = true;
                         hasRestParam = true;
-                        continue;
-                    }
-
-                    if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                    } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
                         if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
-                        auto patNode = parsePrimaryPattern();
-
+                        patNode = parsePrimaryPattern();
                         std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
-                        Token phTok(TokenType::IDENTIFIER, phName, methodName.line);
-                        params.push_back(phTok);
-                        paramIsRef.push_back(false);
-                        paramTypes.push_back("");
-                        
-                        if (match({ TokenType::ASSIGN })) {
-                            defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
-                        } else {
-                            defaultExprs.push_back(nullptr);
-                        }
-
-                        auto rhs = std::make_unique<Variable>(phTok);
-                        destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
-                        continue;
+                        paramTok = Token(TokenType::IDENTIFIER, phName, methodName.line);
+                        isDestruct = true;
+                    } else {
+                        paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
                     }
 
-                    Token param = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
-                    params.push_back(param);
+                    params.push_back(paramTok);
                     paramIsRef.push_back(isRef);
 
                     std::string pType = "";
@@ -1663,10 +1667,17 @@ namespace jc {
                     paramTypes.push_back(pType);
 
                     if (match({ TokenType::ASSIGN })) {
+                        if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
                         auto defExpr = ternary();
                         defaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
+                    } else {
+                        defaultExprs.push_back(nullptr);
                     }
-                    else defaultExprs.push_back(nullptr);
+
+                    if (isDestruct) {
+                        auto rhs = std::make_unique<Variable>(paramTok);
+                        destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs)));
+                    }
                 } while (match({ TokenType::COMMA }));
             }
             consume(TokenType::RPAREN, "Parser Error: Expect ')' after method parameters.");

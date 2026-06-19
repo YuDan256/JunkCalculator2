@@ -495,6 +495,11 @@ namespace jc {
 
         friend Value operator%(const Value& lhs, const Value& rhs);
 
+        friend bool operator<(const Value& lhs, const Value& rhs);
+        friend bool operator<=(const Value& lhs, const Value& rhs);
+        friend bool operator>(const Value& lhs, const Value& rhs);
+        friend bool operator>=(const Value& lhs, const Value& rhs);
+
         friend std::ostream& operator<<(std::ostream& os, const Value& val);
 
         friend Value operator&(const Value& lhs, const Value& rhs);
@@ -907,6 +912,58 @@ namespace jc {
             return Value(res);
 
         throw std::runtime_error("Type Error: Power operation not supported for these types.");
+    }
+
+    inline bool operator<(const Value& a, const Value& b) {
+        if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) return a.asBigInt() < b.asBigInt();
+        if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac < static_cast<ObjFraction*>(b.asObj())->frac;
+        if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+            try {
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                return getF(a) < getF(b);
+            } catch (...) { return a.asDouble() < b.asDouble(); }
+        }
+        if (a.isString() && b.isString()) return a.asString() < b.asString();
+        return a.asDouble() < b.asDouble();
+    }
+
+    inline bool operator<=(const Value& a, const Value& b) {
+        if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) return a.asBigInt() <= b.asBigInt();
+        if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac <= static_cast<ObjFraction*>(b.asObj())->frac;
+        if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+            try {
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                return getF(a) <= getF(b);
+            } catch (...) { return a.asDouble() <= b.asDouble(); }
+        }
+        if (a.isString() && b.isString()) return a.asString() <= b.asString();
+        return a.asDouble() <= b.asDouble();
+    }
+
+    inline bool operator>(const Value& a, const Value& b) {
+        if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) return a.asBigInt() > b.asBigInt();
+        if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac > static_cast<ObjFraction*>(b.asObj())->frac;
+        if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+            try {
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                return getF(a) > getF(b);
+            } catch (...) { return a.asDouble() > b.asDouble(); }
+        }
+        if (a.isString() && b.isString()) return a.asString() > b.asString();
+        return a.asDouble() > b.asDouble();
+    }
+
+    inline bool operator>=(const Value& a, const Value& b) {
+        if ((a.isBigInt() || a.isInt32() || a.isBool()) && (b.isBigInt() || b.isInt32() || b.isBool())) return a.asBigInt() >= b.asBigInt();
+        if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac >= static_cast<ObjFraction*>(b.asObj())->frac;
+        if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
+            try {
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                return getF(a) >= getF(b);
+            } catch (...) { return a.asDouble() >= b.asDouble(); }
+        }
+        if (a.isString() && b.isString()) return a.asString() >= b.asString();
+        return a.asDouble() >= b.asDouble();
     }
 
     inline Value operator%(const Value& lhs, const Value& rhs) {

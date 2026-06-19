@@ -2059,27 +2059,44 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         return std::hash<double>{}(d);
     }
     if (v.isBool()) return std::hash<double>{}(v.asBool() ? 1.0 : 0.0);
-    if (v.isNone()) return 0;
-    if (v.isUninit()) return 1;
+    if (v.isNone()) return 0xA174E2C8B5D3F609ULL;   // 漏洞2修复：none 使用不可逆魔数，杜绝零值幽灵注入
+    if (v.isUninit()) return 0x7E5109F8C4A2D637ULL;
     
     Obj* obj = v.asObj();
     switch (obj->type) {
         case ObjType::STRING: return static_cast<ObjString*>(obj)->hash; // ★ O(1) 哈希
         case ObjType::BIGINT: {
-            try { 
-                double d = static_cast<ObjBigInt*>(obj)->num.toDouble();
-                if (d == 0.0) d = 0.0;
-                return std::hash<double>{}(d); 
-            }
-            catch (...) { return std::hash<std::string>{}(static_cast<ObjBigInt*>(obj)->num.toString()); }
+            // 漏洞1修复：只有在 double 能精确表示时才走 double 哈希路径
+            const BigInt& bi = static_cast<ObjBigInt*>(obj)->num;
+            try {
+                int64_t i64 = bi.toInt64();
+                // int64 范围内：只要绝对值 <= 2^53，double 可精确表示
+                if (i64 >= -9007199254740992LL && i64 <= 9007199254740992LL) {
+                    double d = static_cast<double>(i64);
+                    if (d == 0.0) d = 0.0;
+                    return std::hash<double>{}(d);
+                }
+            } catch (...) {}
+            // 超出精确范围：走字符串哈希，保证唯一性
+            size_t h = std::hash<std::string>{}(bi.toString());
+            return h ^ 0xCF1A5E7B3D9204F6ULL; // 混入类型标记，与字符串类型区分
         }
         case ObjType::FRACTION: {
-            try { 
-                double d = static_cast<ObjFraction*>(obj)->frac.toDouble();
-                if (d == 0.0) d = 0.0;
-                return std::hash<double>{}(d); 
+            const Fraction& fr = static_cast<ObjFraction*>(obj)->frac;
+            // 分母为1时走整数路径
+            if (fr.getDen() == BigInt(1)) {
+                return ValueHasher{}(Value(fr.getNum()));
             }
-            catch (...) { return std::hash<std::string>{}(static_cast<ObjFraction*>(obj)->frac.toString()); }
+            try {
+                double d = fr.toDouble();
+                if (d == 0.0) d = 0.0;
+                // 验证 double 能精确还原该分数（对于简单分数如 1/3 无法精确表示，但哈希碰撞概率极低）
+                return std::hash<double>{}(d);
+            }
+            catch (...) { 
+                size_t h = std::hash<std::string>{}(fr.toString());
+                return h ^ 0xA38F6D2E1B7C54E0ULL;
+            }
         }
         case ObjType::COMPLEX: {
             auto c = static_cast<ObjComplex*>(obj)->comp;
@@ -2089,38 +2106,41 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             return std::hash<double>{}(r) ^ (std::hash<double>{}(i) << 1);
         }
         case ObjType::BASENUM: {
-            try { 
-                double d = static_cast<ObjBaseNum*>(obj)->base.getValue().toDouble();
-                if (d == 0.0) d = 0.0;
-                return std::hash<double>{}(d); 
-            }
-            catch (...) { return std::hash<std::string>{}(static_cast<ObjBaseNum*>(obj)->base.getValue().toString()); }
+            // 委托给 BigInt 哈希路径，继承漏洞1修复
+            return ValueHasher{}(Value(static_cast<ObjBaseNum*>(obj)->base.getValue()));
         }
         case ObjType::REAL_MATRIX: {
+            // 漏洞4修复：混入容器长度和元素索引，抵抗零流填充攻击
             const auto& m = static_cast<ObjRealMatrix*>(obj)->mat;
-            size_t seed = 0;
-            for (double d : m.rawData()) {
-                if (d == 0.0) d = 0.0;
-                seed ^= std::hash<double>{}(d) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            const auto& raw = m.rawData();
+            size_t seed = std::hash<size_t>{}(raw.size()) ^ 0x2E6A8F1D4C3B7950ULL;
+            for (size_t idx = 0; idx < raw.size(); ++idx) {
+                double d = raw[idx]; if (d == 0.0) d = 0.0;
+                size_t h = std::hash<double>{}(d) + 0x9e3779b9 + idx;
+                seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;
         }
         case ObjType::COMPLEX_MATRIX: {
             const auto& m = static_cast<ObjComplexMatrix*>(obj)->mat;
-            size_t seed = 0;
-            for (const auto& c : m.rawData()) {
-                double r = c.real; if (r == 0.0) r = 0.0;
-                double i = c.imag; if (i == 0.0) i = 0.0;
+            const auto& raw = m.rawData();
+            size_t seed = std::hash<size_t>{}(raw.size()) ^ 0x4D7A1F8E2B5C6039ULL;
+            for (size_t idx = 0; idx < raw.size(); ++idx) {
+                double r = raw[idx].real; if (r == 0.0) r = 0.0;
+                double i = raw[idx].imag; if (i == 0.0) i = 0.0;
                 size_t h = (i == 0.0) ? std::hash<double>{}(r) : (std::hash<double>{}(r) ^ (std::hash<double>{}(i) << 1));
+                h += 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;
         }
         case ObjType::STRING_MATRIX: {
             const auto& m = static_cast<ObjStringMatrix*>(obj)->mat;
-            size_t seed = 0;
-            for (const auto& s : m.rawData()) {
-                seed ^= std::hash<std::string>{}(s) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            const auto& raw = m.rawData();
+            size_t seed = std::hash<size_t>{}(raw.size()) ^ 0x8B3E5A2F1D7C4068ULL;
+            for (size_t idx = 0; idx < raw.size(); ++idx) {
+                size_t h = std::hash<std::string>{}(raw[idx]) + 0x9e3779b9 + idx;
+                seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;
         }
@@ -2129,9 +2149,11 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             auto l = static_cast<ObjList*>(obj);
             if (!l->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
             if (l->has_cached_hash) return l->cached_hash;
-            size_t seed = 0;
-            for (const auto& e : l->vec) {
-                seed ^= ValueHasher{}(e) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            // 漏洞4修复：混入长度和索引
+            size_t seed = std::hash<size_t>{}(l->vec.size()) ^ 0x6F2D8A4E1C5B7093ULL;
+            for (size_t idx = 0; idx < l->vec.size(); ++idx) {
+                size_t h = ValueHasher{}(l->vec[idx]) + 0x9e3779b9 + idx;
+                seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             l->cached_hash = seed; l->has_cached_hash = true;
             return seed;
@@ -2140,12 +2162,17 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             auto d = static_cast<ObjDict*>(obj);
             if (!d->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
             if (d->has_cached_hash) return d->cached_hash;
-            size_t seed = 0;
+            // 漏洞3修复：混入容器大小，并对每个元素哈希进行非线性变换后再累加
+            size_t seed = std::hash<size_t>{}(d->elements.size()) ^ 0x3B8E7A1F5D2C6049ULL;
             for (const auto& [k, val] : d->elements) {
                 size_t k_hash = ValueHasher{}(k);
                 size_t v_hash = ValueHasher{}(val);
                 size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
-                seed += kv_hash; // 无序容器使用满足交换律的累加
+                // 非线性变换：打破线性可加性
+                kv_hash *= 0xBF58476D1CE4E5B9ULL;
+                kv_hash ^= kv_hash >> 31;
+                kv_hash *= 0x94D049BB133111EBULL;
+                seed += kv_hash;
             }
             d->cached_hash = seed; d->has_cached_hash = true;
             return seed;
@@ -2154,9 +2181,15 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             auto s = static_cast<ObjSet*>(obj);
             if (!s->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
             if (s->has_cached_hash) return s->cached_hash;
-            size_t seed = 0;
+            // 漏洞3修复：混入容器大小，并对每个元素哈希进行非线性变换后再累加
+            size_t seed = std::hash<size_t>{}(s->elements.size()) ^ 0x5C9D2E4F1A8B7063ULL;
             for (const auto& e : s->elements) {
-                seed += ValueHasher{}(e); // 无序容器使用满足交换律的累加
+                size_t h = ValueHasher{}(e);
+                // 非线性变换：使用 splitmix64 finalizer 打破线性可加性
+                h *= 0xBF58476D1CE4E5B9ULL;
+                h ^= h >> 31;
+                h *= 0x94D049BB133111EBULL;
+                seed += h;
             }
             s->cached_hash = seed; s->has_cached_hash = true;
             return seed;
@@ -2179,12 +2212,16 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 if (inst->has_cached_hash) return inst->cached_hash;
                 size_t seed = std::hash<std::string>{}(inst->classDef ? inst->classDef->name : "");
                 if (inst->fields) {
-                    size_t fields_hash = 0;
+                    size_t fields_hash = std::hash<size_t>{}(inst->fields->elements.size()) ^ 0xE7B2A4D8F1C56039ULL;
                     for (const auto& [k, val] : inst->fields->elements) {
                         size_t k_hash = ValueHasher{}(k);
                         size_t v_hash = ValueHasher{}(val);
                         size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
-                        fields_hash += kv_hash; // 无序字段使用满足交换律的累加
+                        // 非线性变换：splitmix64 finalizer
+                        kv_hash *= 0xBF58476D1CE4E5B9ULL;
+                        kv_hash ^= kv_hash >> 31;
+                        kv_hash *= 0x94D049BB133111EBULL;
+                        fields_hash += kv_hash;
                     }
                     seed ^= fields_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                 }

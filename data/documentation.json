@@ -6670,10 +6670,10 @@
       ]
     },
     "try": {
-      "signature": "try { body } catch (var) { handler }",
+      "signature": "try { body } catch (pattern) { handler }",
       "desc": [
         "Error handling construct. Executes the body; if any error occurs,",
-        "execution jumps to the catch block with the error message in `var`.",
+        "execution jumps to the catch block, matching the thrown value against `pattern`.",
         "try/catch is an expression — returns the value of whichever branch runs.",
         "Control flow signals (break, continue, return) pass through unaffected.",
         "See also: /help error"
@@ -6684,29 +6684,32 @@
       ]
     },
     "catch": {
-      "signature": "catch (variable) { handler }",
+      "signature": "catch (pattern) { handler }",
       "desc": [
         "The error handler block of a `try` statement.",
-        "The variable receives the error message as a string.",
+        "The pattern receives the thrown value (can be of any type).",
+        "Supports full pattern matching and destructuring.",
+        "If the pattern match fails, the error is automatically re-thrown.",
         "You can re-throw the error with `throw e` to propagate it upward.",
         "Note: The `(` MUST be on the same line as `catch`.",
         "See also: /help try, /help error"
       ],
       "examples": [
-        "try { error(\"oops\") } catch (e) { print(e) }"
+        "try { error(\"oops\") } catch (e) { print(e) }",
+        "try { throw {code: 404} } catch ({code}) { print(code) }"
       ]
     },
     "throw": {
       "signature": "throw expr",
       "desc": [
-        "Throws a runtime error with the given value (usually a string).",
+        "Throws a runtime error with the given value (can be of any type).",
         "Unwinds the call stack until a `try/catch` block catches it.",
         "If uncaught, prints a full stack trace and terminates execution.",
         "See also: /help error"
       ],
       "examples": [
         "throw \"Invalid input\"",
-        "if (x < 0) throw f\"Expected positive, got {x}\""
+        "throw { code: 404, msg: \"Not Found\" }"
       ]
     },
     "import": {

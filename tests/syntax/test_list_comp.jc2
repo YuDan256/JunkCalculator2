@@ -6,7 +6,7 @@ check(name, actual, expected) = {
 
 test_list_comp_destruct() = {
     // 字典解构推导
-    res1 = [f"{k}:{v}" for ({k, v} in {a: 1, b: 2})]
+    res1 = [f"{k}:{v}" for ([k, v] in {a: 1, b: 2})]
     assert("a:1" in res1 && "b:2" in res1, "List comp dict destruct failed")
     
     // 列表解构推导带条件

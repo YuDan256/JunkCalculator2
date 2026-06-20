@@ -3058,10 +3058,6 @@ namespace jc {
         for (const auto& [name, val] : loadedModules)
             markValue(val);
 
-        // 根集合 1.6: 内置函数闭包缓存
-        for (const auto& [name, val] : builtinClosures)
-            markValue(val);
-
         // 根集合 2: 虚拟机求值栈
         for (Value* p = stack; p < stackTop; ++p)
             markValue(*p);
@@ -3124,6 +3120,15 @@ namespace jc {
             }
         }
 
+        // ★ 在 sweep 之前，清理未被标记的内置函数闭包缓存 (弱引用)
+        for (auto it = builtinClosures.begin(); it != builtinClosures.end(); ) {
+            if (it->second.isObj() && !it->second.asObj()->isMarked) {
+                it = builtinClosures.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
         // ═══ Phase 2: SWEEP ═══
         GcHeap::get().sweep();
     }
@@ -3131,7 +3136,6 @@ namespace jc {
     int VM::runGC() {
         for (const auto& val : globalValues)  markValue(val);
         for (const auto& [name, val] : loadedModules) markValue(val);
-        for (const auto& [name, val] : builtinClosures) markValue(val);
         for (Value* p = stack; p < stackTop; ++p) markValue(*p);
         for (int i = 0; i < frameCount; ++i) {
             const auto& f = frames[i];
@@ -3178,6 +3182,15 @@ namespace jc {
         for (auto it = g_internedStrings.begin(); it != g_internedStrings.end(); ) {
             if (!it->second->isMarked) {
                 it = g_internedStrings.erase(it);
+            } else {
+                ++it;
+            }
+        }
+
+        // ★ 在 sweep 之前，清理未被标记的内置函数闭包缓存 (弱引用)
+        for (auto it = builtinClosures.begin(); it != builtinClosures.end(); ) {
+            if (it->second.isObj() && !it->second.asObj()->isMarked) {
+                it = builtinClosures.erase(it);
             } else {
                 ++it;
             }

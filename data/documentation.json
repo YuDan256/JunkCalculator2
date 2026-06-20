@@ -1336,6 +1336,7 @@
       "    buildIndex()                 Build an O(1) anchor tree in RAM",
       "    extendPrimes(n)              Generate and append n new primes to the mounted file",
       "    convertPrimes(\"in\", \"out\")   Convert an old .txt prime table to JCP1 .bin format",
+      "    verifyPrimes()               Verify the integrity and accuracy of the mounted prime table",
       "",
       "  Garbage Collector (Mark-and-Sweep)",
       "  ──────────────────────",
@@ -5351,6 +5352,11 @@
       "signature": "convertPrimes(txtPath, binPath)",
       "desc": "Converts a legacy plain-text prime table (one prime per line) into the highly compressed JCP1 binary format.",
       "examples": ["convertPrimes(\"Prime.txt\", \"Prime.bin\")"]
+    },
+    "verifyPrimes": {
+      "signature": "verifyPrimes()",
+      "desc": "Verifies the integrity and mathematical accuracy of the currently mounted JCP1 prime table.",
+      "examples": ["verifyPrimes()"]
     },
     "sysinfo": {
       "signature": "sysinfo()",

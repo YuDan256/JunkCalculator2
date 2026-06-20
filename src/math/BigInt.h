@@ -17,6 +17,7 @@
 
 // 引入复数以支持与复数的隐式混合运算提升
 #include "Complex.h"
+#include "../vm/EngineInterrupt.h"
 
 namespace jc {
 
@@ -373,6 +374,41 @@ namespace jc {
             return p;
         }
 
+        static bool isPrimeFast(uint64_t n) {
+            if (n < 2) return false;
+            if (n == 2 || n == 3 || n == 5 || n == 7) return true;
+            if (n % 2 == 0 || n % 3 == 0 || n % 5 == 0) return false;
+            
+            if (n < 4294967295ULL) {
+                uint64_t d = n - 1;
+                int s = 0;
+                while ((d & 1) == 0) { d >>= 1; s++; }
+                
+                uint64_t bases[] = {2, 7, 61};
+                for (uint64_t a : bases) {
+                    if (n <= a) break;
+                    uint64_t res = 1;
+                    uint64_t base = a;
+                    uint64_t exp = d;
+                    while (exp > 0) {
+                        if (exp & 1) res = (res * base) % n;
+                        base = (base * base) % n;
+                        exp >>= 1;
+                    }
+                    uint64_t x = res;
+                    if (x == 1 || x == n - 1) continue;
+                    bool composite = true;
+                    for (int r = 1; r < s; ++r) {
+                        x = (x * x) % n;
+                        if (x == n - 1) { composite = false; break; }
+                    }
+                    if (composite) return false;
+                }
+                return true;
+            }
+            return BigInt(static_cast<int64_t>(n)).isPrime();
+        }
+
         // --- 扩展质数表 (JCP1 差分编码 + 极速分段筛法) ---
         static void extendPrimeTable(int64_t count) {
             if (customPrimePath.empty()) {
@@ -571,6 +607,96 @@ namespace jc {
             in.close();
             out.close();
             std::cout << "[System] Successfully converted " << currentTotal << " primes to JCP1 format: " << binPath << std::endl;
+        }
+
+        // --- 校验 JCP1 质数表完整性与准确性 ---
+        static bool verifyPrimeTable() {
+            if (customPrimePath.empty() || !fileIndexed) {
+                throw std::runtime_error("IO Error: No prime table mounted. Use mountPrimes() first.");
+            }
+            std::ifstream file(customPrimePath, std::ios::binary);
+            if (!file.is_open()) {
+                throw std::runtime_error("IO Error: Cannot open prime table for verification.");
+            }
+
+            PrimeHeader header = {};
+            if (!file.read(reinterpret_cast<char*>(&header), 24) || 
+                header.magic[0] != 'J' || header.magic[1] != 'C' || 
+                header.magic[2] != 'P' || header.magic[3] != '1') {
+                std::cout << "[Verify] Failed: Invalid JCP1 header magic." << std::endl;
+                return false;
+            }
+
+            uint64_t count = 0;
+            uint64_t lastP = 0;
+            int64_t totalBlocks = (header.totalPrimes + PRIMES_PER_BLOCK - 1) / PRIMES_PER_BLOCK;
+            std::vector<char> blockBuf(BLOCK_BYTES);
+
+            std::cout << "[Verify] Starting verification of " << header.totalPrimes << " primes..." << std::endl;
+
+            for (int64_t b = 0; b < totalBlocks; ++b) {
+                jc::checkInterrupt();
+                if (!file.read(blockBuf.data(), BLOCK_BYTES)) {
+                    std::cout << "[Verify] Failed: Unexpected EOF at block " << b << "." << std::endl;
+                    return false;
+                }
+
+                uint64_t p = 0;
+                std::memcpy(&p, blockBuf.data(), 8);
+
+                if (b > 0 && p <= lastP) {
+                    std::cout << "[Verify] Failed: Primes not strictly increasing at block " << b << ". Last: " << lastP << ", Current: " << p << std::endl;
+                    return false;
+                }
+                if (!isPrimeFast(p)) {
+                    std::cout << "[Verify] Failed: Invalid prime " << p << " at block " << b << " (BasePrime)." << std::endl;
+                    return false;
+                }
+
+                lastP = p;
+                count++;
+
+                int primesInThisBlock = (b == totalBlocks - 1) ? 
+                    ((header.totalPrimes - 1) % PRIMES_PER_BLOCK + 1) : PRIMES_PER_BLOCK;
+
+                for (int i = 0; i < primesInThisBlock - 1; ++i) {
+                    uint16_t gap = 0;
+                    std::memcpy(&gap, blockBuf.data() + 8 + i * 2, 2);
+                    
+                    if (gap == 0) {
+                        std::cout << "[Verify] Failed: Zero gap found after prime " << p << " at block " << b << "." << std::endl;
+                        return false;
+                    }
+                    
+                    p += gap;
+                    if (!isPrimeFast(p)) {
+                        std::cout << "[Verify] Failed: Invalid prime " << p << " at block " << b << ", offset " << i + 1 << "." << std::endl;
+                        return false;
+                    }
+                    if (p <= lastP) {
+                        std::cout << "[Verify] Failed: Primes not strictly increasing at block " << b << ", offset " << i + 1 << "." << std::endl;
+                        return false;
+                    }
+                    lastP = p;
+                    count++;
+                }
+                
+                if (count % 10000000 == 0) {
+                    std::cout << "[Verify] Checked " << count << " primes..." << std::endl;
+                }
+            }
+
+            if (count != header.totalPrimes) {
+                std::cout << "[Verify] Failed: Count mismatch. Header: " << header.totalPrimes << ", Actual: " << count << std::endl;
+                return false;
+            }
+            if (lastP != header.largestPrime) {
+                std::cout << "[Verify] Failed: Largest prime mismatch. Header: " << header.largestPrime << ", Actual: " << lastP << std::endl;
+                return false;
+            }
+
+            std::cout << "[Verify] Success: All " << count << " primes are valid and strictly increasing. Largest: " << lastP << std::endl;
+            return true;
         }
 
         // =================================================================================

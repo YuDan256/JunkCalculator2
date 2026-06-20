@@ -17,7 +17,7 @@ test_try_catch() = {
 test_try_catch()
 
 test_pcall() = {
-    res = pcall(() => 1 / 0)
+    res = pcall(() => eval("1 / 0"))
     assert(isError(res), "pcall error detection failed")
     
     res2 = pcall(() => 99)

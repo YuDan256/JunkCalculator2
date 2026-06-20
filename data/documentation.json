@@ -3961,9 +3961,10 @@
     },
     "digits": {
       "signature": "digits(n)",
-      "desc": "Returns the number of base-10 digits in an int.",
+      "desc": "Returns the number of digits in an integer (base-10) or a basenum (in its respective base).",
       "examples": [
-        "digits(factorial(100))"
+        "digits(factorial(100))",
+        "digits(base(255, 16))"
       ]
     },
     "isPrime": {
@@ -4316,10 +4317,12 @@
     },
     "len": {
       "signature": "len(x)",
-      "desc": "Returns the length or element count of a string, vector, matrix, dict, list, or set.",
+      "desc": "Returns the length or element count of a string, vector, matrix, dict, list, set, or the number of digits in an integer or basenum.",
       "examples": [
         "len(\"hello\")",
-        "len([1, 2, 3])"
+        "len([1, 2, 3])",
+        "len(12345)",
+        "len(base(255, 16))"
       ]
     },
     "substr": {

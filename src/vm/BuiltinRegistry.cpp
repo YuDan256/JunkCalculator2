@@ -1308,9 +1308,10 @@ void BuiltinRegistry::registerNumberTheory() {
     reg("gcd", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::gcd(toBigInt(args[0]), toBigInt(args[1]))); });
     reg("lcm", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::lcm(toBigInt(args[0]), toBigInt(args[1]))); });
     reg("digits", { 1 }, [](const std::vector<Value>& args) -> Value { 
-        if (args[0].isInt32()) return Value::fromInt32(static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
+        if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
         if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
-        throw std::runtime_error("Type Error: expects an integer."); 
+        if (args[0].isObjType(ObjType::BASENUM)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBaseNum*>(args[0].asObj())->base.digitCount()));
+        throw std::runtime_error("Type Error: expects an integer or basenum."); 
     });
     reg("isPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPrime()); });
     reg("nextPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).nextPrime()); });
@@ -2241,7 +2242,10 @@ void BuiltinRegistry::registerStringFunctions() {
         if (args[0].isObjType(ObjType::LIST)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
         if (args[0].isObjType(ObjType::SET)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjSet*>(args[0].asObj())->elements.size()));
         if (args[0].isObjType(ObjType::NAMESPACE)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjNamespace*>(args[0].asObj())->fields.size()));
-        throw std::runtime_error("Type Error: len() expects a string, vector, matrix, dict, list, set, or namespace.");
+        if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
+        if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
+        if (args[0].isObjType(ObjType::BASENUM)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBaseNum*>(args[0].asObj())->base.digitCount()));
+        throw std::runtime_error("Type Error: len() expects a string, vector, matrix, dict, list, set, namespace, integer, or basenum.");
         });
     reg("length", builtinArity["len"], builtins["len"]);
     reg("size", builtinArity["len"], builtins["len"]);

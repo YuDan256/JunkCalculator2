@@ -22,10 +22,7 @@ namespace jc {
 
     class BigInt {
     private:
-        static constexpr int64_t BASE = 1000000000LL; // 10^9 压位表示法
-        static constexpr int BASE_DIGITS = 9;
-
-        std::vector<int32_t> data; // 小端序：data[0] 存最低的 9 位数字
+        std::vector<uint32_t> data; // 小端序：data[0] 存最低的 32 位
         bool negative = false;
 
         // 清理前导零
@@ -49,20 +46,15 @@ namespace jc {
             BigInt result;
             size_t n = std::max(a.data.size(), b.data.size());
             result.data.resize(n, 0);
-            int64_t carry = 0;
+            uint64_t carry = 0;
             for (size_t i = 0; i < n; ++i) {
-                int64_t sum = carry;
+                uint64_t sum = carry;
                 if (i < a.data.size()) sum += a.data[i];
                 if (i < b.data.size()) sum += b.data[i];
-                if (sum >= BASE) {
-                    sum -= BASE;
-                    carry = 1;
-                } else {
-                    carry = 0;
-                }
-                result.data[i] = static_cast<int32_t>(sum);
+                result.data[i] = static_cast<uint32_t>(sum);
+                carry = sum >> 32;
             }
-            if (carry > 0) result.data.push_back(static_cast<int32_t>(carry));
+            if (carry > 0) result.data.push_back(static_cast<uint32_t>(carry));
             return result;
         }
 
@@ -70,13 +62,12 @@ namespace jc {
         static BigInt absSub(const BigInt& a, const BigInt& b) {
             BigInt result;
             result.data.resize(a.data.size(), 0);
-            int64_t borrow = 0;
+            uint64_t borrow = 0;
             for (size_t i = 0; i < a.data.size(); ++i) {
-                int64_t diff = static_cast<int64_t>(a.data[i]) - borrow;
+                uint64_t diff = static_cast<uint64_t>(a.data[i]) - borrow;
                 if (i < b.data.size()) diff -= b.data[i];
-                if (diff < 0) { diff += BASE; borrow = 1; }
-                else borrow = 0;
-                result.data[i] = static_cast<int32_t>(diff);
+                result.data[i] = static_cast<uint32_t>(diff);
+                borrow = (diff >> 32) & 1;
             }
             result.trim();
             return result;
@@ -89,14 +80,14 @@ namespace jc {
             result.data.assign(n + m, 0);
             for (size_t i = 0; i < n; ++i) {
                 if (a.data[i] == 0) continue;
-                int64_t carry = 0;
-                int64_t d_i = a.data[i];
+                uint64_t carry = 0;
+                uint64_t d_i = a.data[i];
                 for (size_t j = 0; j < m; ++j) {
-                    int64_t prod = d_i * b.data[j] + result.data[i + j] + carry;
-                    carry = prod / BASE;
-                    result.data[i + j] = static_cast<int32_t>(prod - carry * BASE);
+                    uint64_t prod = d_i * b.data[j] + result.data[i + j] + carry;
+                    result.data[i + j] = static_cast<uint32_t>(prod);
+                    carry = prod >> 32;
                 }
-                if (carry > 0) result.data[i + m] += static_cast<int32_t>(carry);
+                if (carry > 0) result.data[i + m] += static_cast<uint32_t>(carry);
             }
             result.trim();
             return result;
@@ -149,31 +140,20 @@ namespace jc {
         }
 
         // 单个 limb(块) 的除法/取模
-        std::pair<BigInt, int64_t> divmod_small(int64_t divisor) const {
+        std::pair<BigInt, uint32_t> divmod_small(uint32_t divisor) const {
             if (divisor == 0) throw std::runtime_error("Math Error: Division by zero.");
-
-            // ★ INT64_MIN 的绝对值无法用 int64_t 表示
-            // 且超出短除法的安全运算范围，拒绝处理
-            if (divisor == std::numeric_limits<int64_t>::min()) {
-                throw std::runtime_error("Math Error: Divisor magnitude too large for fast division. Use general division.");
-            }
-
-            bool divNeg = (divisor < 0);
-            uint64_t d = divNeg ? static_cast<uint64_t>(-divisor) : static_cast<uint64_t>(divisor);
 
             BigInt q;
             q.data.resize(data.size(), 0);
             uint64_t rem = 0;
             for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
-                uint64_t cur = rem * BASE + data[i];
-                q.data[i] = static_cast<int32_t>(cur / d);
-                rem = cur % d;
+                uint64_t cur = (rem << 32) | data[i];
+                q.data[i] = static_cast<uint32_t>(cur / divisor);
+                rem = cur % divisor;
             }
-            q.negative = (negative != divNeg);
+            q.negative = negative;
             q.trim();
-            int64_t final_rem = static_cast<int64_t>(rem);
-            if (negative) final_rem = -final_rem;
-            return { q, final_rem };
+            return { q, static_cast<uint32_t>(rem) };
         }
 
         static std::pair<BigInt, BigInt> divmod(const BigInt& a, const BigInt& b) {
@@ -187,9 +167,13 @@ namespace jc {
 
             // 对于小除数，走快速路径
             if (absB.data.size() == 1) {
-                auto [q, r] = a.divmod_small(
-                    b.negative ? -static_cast<int64_t>(b.data[0]) : b.data[0]);
-                return { q, BigInt(r) };
+                auto [q, r] = a.divmod_small(absB.data[0]);
+                q.negative = (a.negative != b.negative);
+                if (q.isZero()) q.negative = false;
+                BigInt remBI(r);
+                remBI.negative = a.negative;
+                if (remBI.isZero()) remBI.negative = false;
+                return { q, remBI };
             }
 
             // =============================================
@@ -200,19 +184,19 @@ namespace jc {
             int m = static_cast<int>(absB.data.size());
 
             // 归一化因子 d，使得除数最高位 >= BASE / 2
-            uint64_t d = BASE / (static_cast<uint64_t>(absB.data.back()) + 1);
+            uint32_t d = static_cast<uint32_t>((1ULL << 32) / (static_cast<uint64_t>(absB.data.back()) + 1));
 
-            auto mul_scalar = [](const BigInt& num, uint64_t scalar) {
+            auto mul_scalar = [](const BigInt& num, uint32_t scalar) {
                 if (scalar == 1) return num;
                 BigInt res;
                 res.data.resize(num.data.size(), 0);
                 uint64_t carry = 0;
                 for (size_t i = 0; i < num.data.size(); ++i) {
                     uint64_t prod = static_cast<uint64_t>(num.data[i]) * scalar + carry;
-                    carry = prod / BASE;
-                    res.data[i] = static_cast<int32_t>(prod - carry * BASE);
+                    res.data[i] = static_cast<uint32_t>(prod);
+                    carry = prod >> 32;
                 }
-                if (carry > 0) res.data.push_back(static_cast<int32_t>(carry));
+                if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
                 return res;
             };
 
@@ -227,7 +211,7 @@ namespace jc {
 
             for (int j = n_orig - m; j >= 0; --j) {
                 // 估算商 q_hat
-                uint64_t num = static_cast<uint64_t>(u.data[j + m]) * BASE + u.data[j + m - 1];
+                uint64_t num = (static_cast<uint64_t>(u.data[j + m]) << 32) | u.data[j + m - 1];
                 uint64_t v_m1 = v.data[m - 1];
                 uint64_t q_hat = num / v_m1;
                 uint64_t r_hat = num % v_m1;
@@ -236,13 +220,13 @@ namespace jc {
                 if (m >= 2) {
                     uint64_t v_m2 = v.data[m - 2];
                     uint64_t u_jm2 = u.data[j + m - 2];
-                    while (q_hat == BASE || q_hat * v_m2 > BASE * r_hat + u_jm2) {
+                    while (q_hat == (1ULL << 32) || q_hat * v_m2 > (r_hat << 32) + u_jm2) {
                         q_hat--;
                         r_hat += v_m1;
-                        if (r_hat >= BASE) break;
+                        if (r_hat >= (1ULL << 32)) break;
                     }
                 } else {
-                    if (q_hat == BASE) q_hat--;
+                    if (q_hat == (1ULL << 32)) q_hat--;
                 }
 
                 if (q_hat == 0) {
@@ -251,30 +235,24 @@ namespace jc {
                 }
 
                 // 乘法并减去 (u[j..j+m] -= q_hat * v)
-                // 优化：将乘法进位和减法借位合并为无符号运算，消除分支和有符号开销
                 uint64_t carry = 0;
                 for (int i = 0; i < m; ++i) {
                     uint64_t prod = q_hat * v.data[i] + carry;
-                    uint64_t carry_prod = prod / BASE;
-                    uint64_t p_digit = prod - carry_prod * BASE;
+                    uint32_t p_digit = static_cast<uint32_t>(prod);
+                    carry = prod >> 32;
                     
-                    if (static_cast<uint64_t>(u.data[j + i]) < p_digit) {
-                        u.data[j + i] = static_cast<int32_t>(u.data[j + i] + BASE - p_digit);
-                        carry = carry_prod + 1;
+                    if (u.data[j + i] < p_digit) {
+                        u.data[j + i] -= p_digit;
+                        carry++;
                     } else {
-                        u.data[j + i] = static_cast<int32_t>(u.data[j + i] - p_digit);
-                        carry = carry_prod;
+                        u.data[j + i] -= p_digit;
                     }
                 }
                 
-                bool is_borrow = static_cast<uint64_t>(u.data[j + m]) < carry;
-                if (is_borrow) {
-                    u.data[j + m] = static_cast<int32_t>(u.data[j + m] + BASE - carry);
-                } else {
-                    u.data[j + m] = static_cast<int32_t>(u.data[j + m] - carry);
-                }
+                bool is_borrow = u.data[j + m] < carry;
+                u.data[j + m] -= static_cast<uint32_t>(carry);
 
-                quotient.data[j] = static_cast<int32_t>(q_hat);
+                quotient.data[j] = static_cast<uint32_t>(q_hat);
 
                 // 如果减多了，加回来 (极少发生)
                 if (is_borrow) {
@@ -282,10 +260,10 @@ namespace jc {
                     uint64_t carry_add = 0;
                     for (int i = 0; i < m; ++i) {
                         uint64_t sum = static_cast<uint64_t>(u.data[j + i]) + v.data[i] + carry_add;
-                        carry_add = sum / BASE;
-                        u.data[j + i] = static_cast<int32_t>(sum - carry_add * BASE);
+                        u.data[j + i] = static_cast<uint32_t>(sum);
+                        carry_add = sum >> 32;
                     }
-                    u.data[j + m] = static_cast<int32_t>(u.data[j + m] + carry_add - ((u.data[j + m] + carry_add >= BASE) ? BASE : 0));
+                    u.data[j + m] += static_cast<uint32_t>(carry_add);
                 }
             }
 
@@ -296,11 +274,10 @@ namespace jc {
             BigInt remainder;
             remainder.data.resize(m, 0);
             uint64_t rem = 0;
-            uint64_t ud = static_cast<uint64_t>(d);
             for (int i = m - 1; i >= 0; --i) {
-                uint64_t cur = rem * BASE + u.data[i];
-                remainder.data[i] = static_cast<int32_t>(cur / ud);
-                rem = cur % ud;
+                uint64_t cur = (rem << 32) | u.data[i];
+                remainder.data[i] = static_cast<uint32_t>(cur / d);
+                rem = cur % d;
             }
             remainder.negative = a.negative;
             remainder.trim();
@@ -462,9 +439,38 @@ namespace jc {
             if (negative) v = 0ULL - v;
             if (v == 0) { data.push_back(0); return; }
             while (v > 0) {
-                data.push_back(static_cast<int32_t>(v % BASE));
-                v /= BASE;
+                data.push_back(static_cast<uint32_t>(v & 0xFFFFFFFFULL));
+                v >>= 32;
             }
+        }
+
+        BigInt mul_small(uint32_t v) const {
+            if (v == 0) return BigInt(0);
+            if (v == 1) return *this;
+            BigInt res;
+            res.data.resize(data.size(), 0);
+            uint64_t carry = 0;
+            for (size_t i = 0; i < data.size(); ++i) {
+                uint64_t prod = static_cast<uint64_t>(data[i]) * v + carry;
+                res.data[i] = static_cast<uint32_t>(prod);
+                carry = prod >> 32;
+            }
+            if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
+            res.negative = negative;
+            return res;
+        }
+
+        BigInt add_small(uint32_t v) const {
+            if (v == 0) return *this;
+            BigInt res = *this;
+            uint64_t carry = v;
+            for (size_t i = 0; i < res.data.size() && carry > 0; ++i) {
+                uint64_t sum = static_cast<uint64_t>(res.data[i]) + carry;
+                res.data[i] = static_cast<uint32_t>(sum);
+                carry = sum >> 32;
+            }
+            if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
+            return res;
         }
 
         explicit BigInt(const std::string& s) {
@@ -475,10 +481,15 @@ namespace jc {
             else if (s[0] == '+') { start = 1; }
             if (start == s.size()) throw std::invalid_argument("BigInt Error: No digits found.");
 
-            for (int i = static_cast<int>(s.size()); i > static_cast<int>(start); i -= BASE_DIGITS) {
-                int from = std::max(static_cast<int>(start), i - BASE_DIGITS);
-                std::string chunk = s.substr(from, i - from);
-                data.push_back(std::stoi(chunk));
+            data.push_back(0);
+            for (size_t i = start; i < s.size(); i += 9) {
+                size_t len = std::min<size_t>(9, s.size() - i);
+                uint32_t chunk = std::stoul(s.substr(i, len));
+                uint32_t multiplier = 1;
+                for (size_t j = 0; j < len; ++j) multiplier *= 10;
+                
+                *this = mul_small(multiplier);
+                *this = add_small(chunk);
             }
             trim();
         }
@@ -489,7 +500,7 @@ namespace jc {
         double toDouble() const {
             double result = 0.0;
             for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
-                result = result * static_cast<double>(BASE) + static_cast<double>(data[i]);
+                result = result * 4294967296.0 + static_cast<double>(data[i]);
                 if (!std::isfinite(result))
                     throw std::runtime_error("Math Error: BigInt too large to convert to double.");
             }
@@ -503,19 +514,19 @@ namespace jc {
             int n_size = static_cast<int>(num.data.size());
             int d_size = static_cast<int>(den.data.size());
 
-            // 如果两者都在 double 安全范围内 (34 * 9 = 306 位十进制)，直接计算
-            if (n_size <= 34 && d_size <= 34) {
+            // 如果两者都在 double 安全范围内 (32 * 9.6 = 307 位十进制)，直接计算
+            if (n_size <= 32 && d_size <= 32) {
                 return num.toDouble() / den.toDouble();
             }
 
-            // 否则，提取最高 3 个 limb (约 27 位十进制，足以覆盖 double 的 53 bits 精度)
+            // 否则，提取最高 3 个 limb (约 96 bits，足以覆盖 double 的 53 bits 精度)
             auto extract = [](const BigInt& b) -> std::pair<double, int> {
                 if (b.isZero()) return {0.0, 0};
                 int sz = static_cast<int>(b.data.size());
                 double res = 0.0;
                 int start = std::max(0, sz - 3);
                 for (int i = sz - 1; i >= start; --i) {
-                    res = res * BASE + b.data[i];
+                    res = res * 4294967296.0 + b.data[i];
                 }
                 if (b.negative) res = -res;
                 return {res, start};
@@ -528,7 +539,7 @@ namespace jc {
             int exp_diff = n_exp - d_exp;
 
             if (exp_diff != 0) {
-                ratio *= std::pow(static_cast<double>(BASE), exp_diff);
+                ratio *= std::pow(4294967296.0, exp_diff);
             }
             
             if (!std::isfinite(ratio)) {
@@ -543,15 +554,14 @@ namespace jc {
 
             // ★ 用 uint64_t 累加，避免中间步骤的有符号溢出
             uint64_t result = 0;
-            constexpr uint64_t UBASE = static_cast<uint64_t>(BASE);
             constexpr uint64_t LIMIT = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
 
             for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
-                if (result > (LIMIT - static_cast<uint64_t>(data[i])) / UBASE + 1)
-                    if (!(negative && i == 0 && result * UBASE + static_cast<uint64_t>(data[i])
+                if (result > (LIMIT - static_cast<uint64_t>(data[i])) >> 32)
+                    if (!(negative && i == 0 && (result << 32) + static_cast<uint64_t>(data[i])
                         == static_cast<uint64_t>(LIMIT) + 1ULL))
                         throw std::runtime_error("Overflow: BigInt too large for int64.");
-                result = result * UBASE + static_cast<uint64_t>(data[i]);
+                result = (result << 32) + static_cast<uint64_t>(data[i]);
             }
 
             if (!negative) {
@@ -570,14 +580,18 @@ namespace jc {
 
         std::string toString() const {
             if (isZero()) return "0";
+            BigInt temp = this->abs();
             std::string result;
-            if (negative) result += '-';
-            result += std::to_string(data.back());
-            for (int i = static_cast<int>(data.size()) - 2; i >= 0; --i) {
-                std::ostringstream oss;
-                oss << std::setw(BASE_DIGITS) << std::setfill('0') << data[i];
-                result += oss.str();
+            while (!temp.isZero()) {
+                auto [q, rem] = temp.divmod_small(1000000000);
+                temp = q;
+                std::string chunk = std::to_string(rem);
+                if (!temp.isZero()) {
+                    chunk = std::string(9 - chunk.length(), '0') + chunk;
+                }
+                result = chunk + result;
             }
+            if (negative) result = "-" + result;
             return result;
         }
 
@@ -662,6 +676,7 @@ namespace jc {
         }
 
         int digitCount() const {
+            if (isZero()) return 0;
             std::string s = toString();
             return static_cast<int>(negative ? s.size() - 1 : s.size());
         }
@@ -722,9 +737,9 @@ namespace jc {
             };
             while (!b.isZero()) {
                 if (b.data.size() == 1) {
-                    int64_t small_b = b.data[0];
+                    uint32_t small_b = b.data[0];
                     if (small_b == 0) return a;
-                    int64_t rem = a.divmod_small(small_b).second;
+                    uint32_t rem = a.divmod_small(small_b).second;
                     return BigInt(gcd_int(small_b, rem));
                 }
                 BigInt temp = b; b = a % b; a = temp;
@@ -788,11 +803,11 @@ namespace jc {
                     result = mathMod(result * base, mod);
                 
                 // 原地除以 2，避免每次循环创建新的 BigInt 对象
-                uint64_t rem = 0;
+                uint32_t rem = 0;
                 for (int i = static_cast<int>(exp.data.size()) - 1; i >= 0; --i) {
-                    uint64_t cur = rem * static_cast<uint64_t>(BASE) + static_cast<uint64_t>(exp.data[i]);
-                    exp.data[i] = static_cast<int32_t>(cur / 2);
-                    rem = cur % 2;
+                    uint64_t cur = (static_cast<uint64_t>(rem) << 32) | static_cast<uint64_t>(exp.data[i]);
+                    exp.data[i] = static_cast<uint32_t>(cur >> 1);
+                    rem = static_cast<uint32_t>(cur & 1);
                 }
                 exp.trim();
 
@@ -864,7 +879,7 @@ namespace jc {
                         state ^= state >> 12;
                         state ^= state << 25;
                         state ^= state >> 27;
-                        randBase.data[i] = static_cast<int32_t>((state * 2685821657736338717ULL) % BASE);
+                        randBase.data[i] = static_cast<uint32_t>(state * 2685821657736338717ULL);
                     }
                     randBase.trim();
                     if (randBase < BigInt(2)) randBase = randBase + BigInt(2);

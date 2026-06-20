@@ -268,6 +268,19 @@ namespace jc {
             return BaseNum(data / div, 2);
         }
 
+        int digitCount() const {
+            if (data.isZero()) return 0;
+            if (radix == 10) return data.digitCount();
+            BigInt temp = data.abs();
+            uint32_t r = static_cast<uint32_t>(radix);
+            int count = 0;
+            while (!temp.isZero()) {
+                temp = temp.divmod_small(r).first;
+                count++;
+            }
+            return count;
+        }
+
         // =================================================================================
         // 逆天打印输出
         // =================================================================================

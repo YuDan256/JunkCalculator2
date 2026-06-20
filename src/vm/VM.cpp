@@ -5227,7 +5227,7 @@ namespace jc {
                     auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
                     if (getattrMethod) {
                         Value mv = Value(methodName);
-                        Value fv = callDunder(obj, DUNDER_GETATTR, &mv, 1);
+                        Value fv = callDunder(obj, getattrMethod, &mv, 1);
                         if (fv.isFunctionClosure()) {
                             method = fv.asFunction();
                             owningClass = inst->classDef;

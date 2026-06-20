@@ -293,11 +293,6 @@ namespace jc {
 
         // --- 外部更换挂载路径接口 ---
         static void setPrimeFilePath(const std::string& newPath) {
-            namespace fs = std::filesystem;
-            if (!fs::exists(newPath) && newPath != "default") {
-                throw std::runtime_error("IO Error: Prime table file not found at " + newPath);
-            }
-
             if (newPath == "default") customPrimePath = "";
             else customPrimePath = newPath;
             
@@ -324,11 +319,11 @@ namespace jc {
             std::ifstream file(filepath, std::ios::binary);
             if (!file.is_open()) {
                 fileIndexed = true;
-                std::cout << "[System] Notice: Prime table not found at " << filepath << ". Using dynamic computation." << std::endl;
+                std::cout << "[System] Notice: Prime table not found at " << filepath << ". Using dynamic computation. Call extendPrimes(N) to generate it." << std::endl;
                 return;
             }
 
-            PrimeHeader header;
+            PrimeHeader header = {};
             if (file.read(reinterpret_cast<char*>(&header), 24) && 
                 header.magic[0] == 'J' && header.magic[1] == 'C' && 
                 header.magic[2] == 'P' && header.magic[3] == '1') {
@@ -387,7 +382,7 @@ namespace jc {
             
             std::fstream file(customPrimePath, std::ios::binary | std::ios::in | std::ios::out);
             bool valid = false;
-            PrimeHeader header;
+            PrimeHeader header = {};
             if (file.is_open()) {
                 if (file.read(reinterpret_cast<char*>(&header), 24) && 
                     header.magic[0] == 'J' && header.magic[1] == 'C' && 
@@ -460,6 +455,65 @@ namespace jc {
             totalPrimesInFile = header.totalPrimes;
             largestPrimeInFile = header.largestPrime;
             std::cout << "[System] Extended prime table by " << count << " primes. New total: " << totalPrimesInFile << std::endl;
+        }
+
+        // --- 转换旧版 TXT 质数表为 JCP1 格式 ---
+        static void convertTxtToJCP1(const std::string& txtPath, const std::string& binPath) {
+            std::ifstream in(txtPath);
+            if (!in.is_open()) throw std::runtime_error("IO Error: Cannot open source txt file '" + txtPath + "'.");
+            
+            std::ofstream out(binPath, std::ios::binary);
+            if (!out.is_open()) throw std::runtime_error("IO Error: Cannot create target bin file '" + binPath + "'.");
+            
+            PrimeHeader header = {{'J', 'C', 'P', '1'}, 0, 0, 0};
+            out.write(reinterpret_cast<char*>(&header), 24);
+            
+            std::vector<char> blockBuf(BLOCK_BYTES, 0);
+            int primesInBlock = 0;
+            uint64_t currentTotal = 0;
+            uint64_t lastP = 0;
+            
+            std::string line;
+            while (std::getline(in, line)) {
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (line.empty()) continue;
+                
+                uint64_t p = 0;
+                try { p = std::stoull(line); } catch (...) { continue; }
+                
+                if (primesInBlock == 0) {
+                    std::memcpy(blockBuf.data(), &p, 8);
+                    std::memset(blockBuf.data() + 8, 0, BLOCK_BYTES - 8);
+                    primesInBlock = 1;
+                } else {
+                    uint64_t gap = p - lastP;
+                    if (gap > 65535) throw std::runtime_error("Math Error: Prime gap exceeds 65535. Differential encoding failed.");
+                    uint16_t gap16 = static_cast<uint16_t>(gap);
+                    std::memcpy(blockBuf.data() + 8 + (primesInBlock - 1) * 2, &gap16, 2);
+                    primesInBlock++;
+                }
+                
+                lastP = p;
+                currentTotal++;
+                
+                if (primesInBlock == PRIMES_PER_BLOCK) {
+                    out.write(blockBuf.data(), BLOCK_BYTES);
+                    primesInBlock = 0;
+                }
+            }
+            
+            if (primesInBlock > 0) {
+                out.write(blockBuf.data(), BLOCK_BYTES);
+            }
+            
+            header.totalPrimes = currentTotal;
+            header.largestPrime = lastP;
+            out.seekp(0, std::ios::beg);
+            out.write(reinterpret_cast<char*>(&header), 24);
+            
+            in.close();
+            out.close();
+            std::cout << "[System] Successfully converted " << currentTotal << " primes to JCP1 format: " << binPath << std::endl;
         }
 
         // =================================================================================

@@ -270,11 +270,21 @@ namespace jc {
 
     public:
         // =================================================================================
-        // 纯流式外存与分页缓冲引擎 (Streaming I/O & Paged Cache Engine)
+        // 分块差分编码外存引擎 (Block-Differential Streaming Engine)
         // =================================================================================
         inline static bool fileIndexed = false;
         inline static int64_t totalPrimesInFile = 0;
         inline static int64_t largestPrimeInFile = 0;
+        inline static std::vector<uint64_t> blockAnchors; // ★ 内存级块首质数索引 (仅占极小内存)
+        static constexpr int PRIMES_PER_BLOCK = 4093;
+        static constexpr int BLOCK_BYTES = 8192;
+
+        struct PrimeHeader {
+            char magic[4];
+            uint32_t reserved;
+            uint64_t totalPrimes;
+            uint64_t largestPrime;
+        };
 
         inline static std::string customPrimePath = "";
         static std::string getPrimeFilePath() {
@@ -294,6 +304,7 @@ namespace jc {
             fileIndexed = false;
             totalPrimesInFile = 0;
             largestPrimeInFile = 0;
+            blockAnchors.clear();
 
             if (customPrimePath.empty()) {
                 std::cout << "[System] Prime engine remounted to dynamic computation." << std::endl;
@@ -303,93 +314,151 @@ namespace jc {
             }
         }
 
-        // --- 极速扫描建立文件索引 (二进制 uint64_t 格式) ---
+        // --- 极速扫描建立文件索引 (JCP1 差分格式) ---
         static void buildFileIndex() {
             if (fileIndexed) return;
 
             std::string filepath = getPrimeFilePath();
             if (filepath.empty()) return;
 
-            std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+            std::ifstream file(filepath, std::ios::binary);
             if (!file.is_open()) {
                 fileIndexed = true;
                 std::cout << "[System] Notice: Prime table not found at " << filepath << ". Using dynamic computation." << std::endl;
                 return;
             }
 
-            std::streamsize size = file.tellg();
-            totalPrimesInFile = size / sizeof(uint64_t);
-            
-            if (totalPrimesInFile > 0) {
-                file.seekg(-static_cast<std::streamoff>(sizeof(uint64_t)), std::ios::end);
-                uint64_t lastP = 0;
-                file.read(reinterpret_cast<char*>(&lastP), sizeof(uint64_t));
-                largestPrimeInFile = lastP;
+            PrimeHeader header;
+            if (file.read(reinterpret_cast<char*>(&header), 24) && 
+                header.magic[0] == 'J' && header.magic[1] == 'C' && 
+                header.magic[2] == 'P' && header.magic[3] == '1') {
+                totalPrimesInFile = header.totalPrimes;
+                largestPrimeInFile = header.largestPrime;
+                
+                int64_t totalBlocks = (totalPrimesInFile + PRIMES_PER_BLOCK - 1) / PRIMES_PER_BLOCK;
+                blockAnchors.resize(totalBlocks);
+                for (int64_t i = 0; i < totalBlocks; ++i) {
+                    file.seekg(24 + i * BLOCK_BYTES, std::ios::beg);
+                    file.read(reinterpret_cast<char*>(&blockAnchors[i]), 8);
+                }
+                
+                if (totalPrimesInFile > 0) {
+                    std::cout << "[System] Successfully mounted JCP1 diff-encoded prime table: " << totalPrimesInFile << " primes." << std::endl;
+                }
             } else {
+                totalPrimesInFile = 0;
                 largestPrimeInFile = 0;
+                std::cout << "[System] Warning: Invalid or old prime table format. Please rebuild." << std::endl;
             }
 
             fileIndexed = true;
             file.close();
-            if (totalPrimesInFile > 0) {
-                std::cout << "[System] Successfully mounted binary prime table: " << totalPrimesInFile << " primes." << std::endl;
-            }
         }
 
-        // --- O(1) 锚点空降 ---
+        // --- O(1) 块级空降与差分解码 ---
         static int64_t getPrimeAt(int64_t index) {
             if (!fileIndexed || index < 0 || index >= totalPrimesInFile) return -1;
             std::ifstream file(getPrimeFilePath(), std::ios::binary);
             if (!file) return -1;
-            file.seekg(index * sizeof(uint64_t), std::ios::beg);
-            uint64_t p = 0;
-            if (file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t))) return p;
-            return -1;
+            
+            int64_t blockIdx = index / PRIMES_PER_BLOCK;
+            int offset = index % PRIMES_PER_BLOCK;
+            
+            file.seekg(24 + blockIdx * BLOCK_BYTES, std::ios::beg);
+            uint64_t basePrime = 0;
+            file.read(reinterpret_cast<char*>(&basePrime), 8);
+            
+            if (offset == 0) return basePrime;
+            
+            std::vector<uint16_t> gaps(offset);
+            file.read(reinterpret_cast<char*>(gaps.data()), offset * 2);
+            
+            uint64_t p = basePrime;
+            for (int i = 0; i < offset; ++i) p += gaps[i];
+            return p;
         }
 
-        // --- 扩展质数表 ---
+        // --- 扩展质数表 (JCP1 差分编码) ---
         static void extendPrimeTable(int64_t count) {
             if (customPrimePath.empty()) {
                 throw std::runtime_error("IO Error: No prime table mounted. Use mountPrimes() first.");
             }
-            if (!fileIndexed) {
-                buildFileIndex();
+            if (!fileIndexed) buildFileIndex();
+            
+            std::fstream file(customPrimePath, std::ios::binary | std::ios::in | std::ios::out);
+            bool valid = false;
+            PrimeHeader header;
+            if (file.is_open()) {
+                if (file.read(reinterpret_cast<char*>(&header), 24) && 
+                    header.magic[0] == 'J' && header.magic[1] == 'C' && 
+                    header.magic[2] == 'P' && header.magic[3] == '1') {
+                    valid = true;
+                }
             }
-            std::ofstream file(customPrimePath, std::ios::binary | std::ios::app);
-            if (!file.is_open()) {
-                throw std::runtime_error("IO Error: Cannot open prime table for appending.");
+            if (!valid) {
+                file.close();
+                std::ofstream out(customPrimePath, std::ios::binary);
+                header = {{'J', 'C', 'P', '1'}, 0, 0, 0};
+                out.write(reinterpret_cast<char*>(&header), 24);
+                out.close();
+                file.open(customPrimePath, std::ios::binary | std::ios::in | std::ios::out);
             }
             
-            BigInt current = largestPrimeInFile > 0 ? BigInt(largestPrimeInFile) : BigInt(1);
+            int64_t currentTotal = header.totalPrimes;
+            BigInt currentP = currentTotal > 0 ? BigInt(header.largestPrime) : BigInt(1);
             
-            constexpr size_t BUFFER_SIZE = 8192;
-            std::vector<uint64_t> buffer;
-            buffer.reserve(BUFFER_SIZE);
+            std::vector<char> blockBuf(BLOCK_BYTES, 0);
+            int primesInLastBlock = 0;
+            int64_t lastBlockIdx = 0;
+            
+            if (currentTotal > 0) {
+                lastBlockIdx = (currentTotal - 1) / PRIMES_PER_BLOCK;
+                primesInLastBlock = (currentTotal - 1) % PRIMES_PER_BLOCK + 1;
+                file.seekg(24 + lastBlockIdx * BLOCK_BYTES, std::ios::beg);
+                file.read(blockBuf.data(), BLOCK_BYTES);
+            }
+            
+            file.seekp(24 + lastBlockIdx * BLOCK_BYTES, std::ios::beg);
             
             for (int64_t i = 0; i < count; ++i) {
-                current = current.nextPrime();
-                uint64_t p = 0;
-                try {
-                    p = static_cast<uint64_t>(current.toInt64());
-                } catch (...) {
-                    throw std::runtime_error("Math Error: Prime exceeded 64-bit limit during table extension.");
-                }
-                buffer.push_back(p);
+                BigInt nextP = currentP.nextPrime();
                 
-                if (buffer.size() >= BUFFER_SIZE) {
-                    file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(uint64_t));
-                    buffer.clear();
+                if (primesInLastBlock == 0) {
+                    uint64_t base = static_cast<uint64_t>(nextP.toInt64());
+                    std::memcpy(blockBuf.data(), &base, 8);
+                    std::memset(blockBuf.data() + 8, 0, BLOCK_BYTES - 8);
+                    primesInLastBlock = 1;
+                    blockAnchors.push_back(base);
+                } else {
+                    uint64_t gap = static_cast<uint64_t>((nextP - currentP).toInt64());
+                    if (gap > 65535) throw std::runtime_error("Math Error: Prime gap exceeds 65535. Differential encoding failed.");
+                    uint16_t gap16 = static_cast<uint16_t>(gap);
+                    std::memcpy(blockBuf.data() + 8 + (primesInLastBlock - 1) * 2, &gap16, 2);
+                    primesInLastBlock++;
                 }
+                
+                if (primesInLastBlock == PRIMES_PER_BLOCK) {
+                    file.write(blockBuf.data(), BLOCK_BYTES);
+                    primesInLastBlock = 0;
+                    lastBlockIdx++;
+                }
+                
+                currentP = nextP;
+                currentTotal++;
             }
             
-            if (!buffer.empty()) {
-                file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(uint64_t));
+            if (primesInLastBlock > 0) {
+                file.write(blockBuf.data(), BLOCK_BYTES);
             }
             
+            header.totalPrimes = currentTotal;
+            header.largestPrime = static_cast<uint64_t>(currentP.toInt64());
+            file.seekp(0, std::ios::beg);
+            file.write(reinterpret_cast<char*>(&header), 24);
             file.close();
             
-            totalPrimesInFile += count;
-            largestPrimeInFile = current.toInt64();
+            totalPrimesInFile = header.totalPrimes;
+            largestPrimeInFile = header.largestPrime;
             std::cout << "[System] Extended prime table by " << count << " primes. New total: " << totalPrimesInFile << std::endl;
         }
 
@@ -807,7 +876,7 @@ namespace jc {
             if (n.data[0] % 2 == 0) return false;
 
             // =========================================================
-            // [极速外存探针] (二进制二分查找)
+            // [极速外存探针] (内存索引 + 单次块读取)
             // =========================================================
             if (fileIndexed && n <= BigInt(largestPrimeInFile)) {
                 int64_t val = -1;
@@ -815,16 +884,31 @@ namespace jc {
                 catch (...) { /* 降级 */ }
 
                 if (val >= 0) {
-                    int64_t left = 0, right = totalPrimesInFile - 1;
-                    std::ifstream file(getPrimeFilePath(), std::ios::binary);
-                    while (left <= right) {
-                        int64_t mid = left + (right - left) / 2;
-                        file.seekg(mid * sizeof(uint64_t), std::ios::beg);
+                    uint64_t uval = static_cast<uint64_t>(val);
+                    auto it = std::upper_bound(blockAnchors.begin(), blockAnchors.end(), uval);
+                    if (it != blockAnchors.begin()) {
+                        int64_t targetBlock = std::distance(blockAnchors.begin(), it) - 1;
+                        
+                        std::ifstream file(getPrimeFilePath(), std::ios::binary);
+                        file.seekg(24 + targetBlock * BLOCK_BYTES, std::ios::beg);
+                        char blockBuf[BLOCK_BYTES];
+                        file.read(blockBuf, BLOCK_BYTES);
                         uint64_t p = 0;
-                        file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t));
-                        if (p == static_cast<uint64_t>(val)) return true;
-                        if (p < static_cast<uint64_t>(val)) left = mid + 1;
-                        else right = mid - 1;
+                        std::memcpy(&p, blockBuf, 8);
+                        
+                        if (p == uval) return true;
+                        
+                        int64_t totalBlocks = blockAnchors.size();
+                        int primesInThisBlock = (targetBlock == totalBlocks - 1) ? 
+                            ((totalPrimesInFile - 1) % PRIMES_PER_BLOCK + 1) : PRIMES_PER_BLOCK;
+                            
+                        for (int i = 0; i < primesInThisBlock - 1; ++i) {
+                            uint16_t gap = 0;
+                            std::memcpy(&gap, blockBuf + 8 + i * 2, 2);
+                            p += gap;
+                            if (p == uval) return true;
+                            if (p > uval) return false;
+                        }
                     }
                     return false;
                 }
@@ -884,7 +968,7 @@ namespace jc {
             if (n < BigInt(2)) return BigInt(2);
 
             // =========================================================
-            // [极速外存探针] (二进制二分查找)
+            // [极速外存探针] (内存索引 + 单次块读取)
             // =========================================================
             if (fileIndexed && n < BigInt(largestPrimeInFile)) {
                 int64_t val = -1;
@@ -892,22 +976,32 @@ namespace jc {
                 catch (...) { /* 降级 */ }
 
                 if (val >= 0) {
-                    int64_t left = 0, right = totalPrimesInFile - 1;
-                    int64_t ans = -1;
+                    uint64_t uval = static_cast<uint64_t>(val);
+                    auto it = std::upper_bound(blockAnchors.begin(), blockAnchors.end(), uval);
+                    int64_t targetBlock = (it == blockAnchors.begin()) ? 0 : std::distance(blockAnchors.begin(), it) - 1;
+                    
+                    int64_t totalBlocks = blockAnchors.size();
                     std::ifstream file(getPrimeFilePath(), std::ios::binary);
-                    while (left <= right) {
-                        int64_t mid = left + (right - left) / 2;
-                        file.seekg(mid * sizeof(uint64_t), std::ios::beg);
+                    
+                    for (int64_t b = targetBlock; b < totalBlocks; ++b) {
+                        file.seekg(24 + b * BLOCK_BYTES, std::ios::beg);
+                        char blockBuf[BLOCK_BYTES];
+                        file.read(blockBuf, BLOCK_BYTES);
                         uint64_t p = 0;
-                        file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t));
-                        if (p > static_cast<uint64_t>(val)) {
-                            ans = p;
-                            right = mid - 1;
-                        } else {
-                            left = mid + 1;
+                        std::memcpy(&p, blockBuf, 8);
+                        
+                        if (p > uval) return BigInt(p);
+                        
+                        int primesInThisBlock = (b == totalBlocks - 1) ? 
+                            ((totalPrimesInFile - 1) % PRIMES_PER_BLOCK + 1) : PRIMES_PER_BLOCK;
+                            
+                        for (int i = 0; i < primesInThisBlock - 1; ++i) {
+                            uint16_t gap = 0;
+                            std::memcpy(&gap, blockBuf + 8 + i * 2, 2);
+                            p += gap;
+                            if (p > uval) return BigInt(p);
                         }
                     }
-                    if (ans != -1) return BigInt(ans);
                 }
             }
 
@@ -965,20 +1059,30 @@ namespace jc {
                     count = totalPrimesInFile;
                     lastP = largestPrimeInFile;
                 } else {
-                    int64_t left = 0, right = totalPrimesInFile - 1;
-                    int64_t ans = 0;
+                    uint64_t un = static_cast<uint64_t>(n);
+                    auto it = std::upper_bound(blockAnchors.begin(), blockAnchors.end(), un);
+                    int64_t targetBlock = (it == blockAnchors.begin()) ? 0 : std::distance(blockAnchors.begin(), it) - 1;
+                    
                     std::ifstream file(getPrimeFilePath(), std::ios::binary);
-                    while (left <= right) {
-                        int64_t mid = left + (right - left) / 2;
-                        file.seekg(mid * sizeof(uint64_t), std::ios::beg);
-                        uint64_t p = 0;
-                        file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t));
-                        if (p <= static_cast<uint64_t>(n)) {
-                            ans = mid + 1;
-                            left = mid + 1;
-                        } else {
-                            right = mid - 1;
-                        }
+                    file.seekg(24 + targetBlock * BLOCK_BYTES, std::ios::beg);
+                    char blockBuf[BLOCK_BYTES];
+                    file.read(blockBuf, BLOCK_BYTES);
+                    uint64_t p = 0;
+                    std::memcpy(&p, blockBuf, 8);
+                    
+                    int64_t ans = targetBlock * PRIMES_PER_BLOCK;
+                    if (p <= un) ans++;
+                    
+                    int64_t totalBlocks = blockAnchors.size();
+                    int primesInThisBlock = (targetBlock == totalBlocks - 1) ? 
+                        ((totalPrimesInFile - 1) % PRIMES_PER_BLOCK + 1) : PRIMES_PER_BLOCK;
+                        
+                    for (int i = 0; i < primesInThisBlock - 1; ++i) {
+                        uint16_t gap = 0;
+                        std::memcpy(&gap, blockBuf + 8 + i * 2, 2);
+                        p += gap;
+                        if (p <= un) ans++;
+                        else break;
                     }
                     return ans;
                 }
@@ -1165,18 +1269,19 @@ namespace jc {
             if (!filepath.empty() && fileIndexed) {
                 std::ifstream file(filepath, std::ios::binary);
                 if (file.is_open()) {
-                    constexpr size_t BUFFER_SIZE = 65536; // 64KB
-                    std::vector<uint64_t> buffer(BUFFER_SIZE / sizeof(uint64_t));
+                    file.seekg(24, std::ios::beg);
+                    char blockBuf[BLOCK_BYTES];
                     bool done = false;
-
-                    while (!done && (file.read(reinterpret_cast<char*>(buffer.data()), BUFFER_SIZE) || file.gcount() > 0)) {
-                        size_t primesRead = static_cast<size_t>(file.gcount()) / sizeof(uint64_t);
-                        for (size_t i = 0; i < primesRead; ++i) {
-                            uint64_t p = buffer[i];
-                            lastP = p;
-                            BigInt pBI(p);
-                            if (pBI * pBI > n) { done = true; break; }
-
+                    int64_t primesRead = 0;
+                    
+                    while (!done && primesRead < totalPrimesInFile && file.read(blockBuf, BLOCK_BYTES)) {
+                        uint64_t p = 0;
+                        std::memcpy(&p, blockBuf, 8);
+                        
+                        auto processPrime = [&](uint64_t primeVal) {
+                            lastP = primeVal;
+                            BigInt pBI(primeVal);
+                            if (pBI * pBI > n) { done = true; return false; }
                             int count = 0;
                             while (true) {
                                 auto [q, rem] = divmod(n, pBI);
@@ -1185,6 +1290,21 @@ namespace jc {
                                 count++;
                             }
                             if (count > 0) factors.push_back({ pBI, count });
+                            return true;
+                        };
+                        
+                        if (!processPrime(p)) break;
+                        primesRead++;
+                        
+                        int primesInThisBlock = (totalPrimesInFile - primesRead >= PRIMES_PER_BLOCK - 1) ? 
+                            (PRIMES_PER_BLOCK - 1) : static_cast<int>(totalPrimesInFile - primesRead);
+                            
+                        for (int i = 0; i < primesInThisBlock; ++i) {
+                            uint16_t gap = 0;
+                            std::memcpy(&gap, blockBuf + 8 + i * 2, 2);
+                            p += gap;
+                            if (!processPrime(p)) break;
+                            primesRead++;
                         }
                     }
                     file.close();

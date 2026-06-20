@@ -373,6 +373,45 @@ namespace jc {
             return p;
         }
 
+        static bool isPrimeFast(uint64_t n) {
+            if (n < 2) return false;
+            if (n == 2 || n == 3 || n == 5 || n == 7) return true;
+            if (n % 2 == 0 || n % 3 == 0 || n % 5 == 0) return false;
+            
+            // 只要 n < 2^32 - 1，(n-1)^2 就绝对不会溢出 64 位无符号整数
+            // 我们可以 100% 榨干 CPU 的 64 位硬件乘法器，速度比 BigInt 快上百倍
+            if (n < 4294967295ULL) {
+                uint64_t d = n - 1;
+                int s = 0;
+                while ((d & 1) == 0) { d >>= 1; s++; }
+                
+                // 对于 32 位以内的数，仅需 2, 7, 61 这三个基即可 100% 准确判定
+                uint64_t bases[] = {2, 7, 61};
+                for (uint64_t a : bases) {
+                    if (n <= a) break;
+                    uint64_t res = 1;
+                    uint64_t base = a;
+                    uint64_t exp = d;
+                    while (exp > 0) {
+                        if (exp & 1) res = (res * base) % n;
+                        base = (base * base) % n;
+                        exp >>= 1;
+                    }
+                    uint64_t x = res;
+                    if (x == 1 || x == n - 1) continue;
+                    bool composite = true;
+                    for (int r = 1; r < s; ++r) {
+                        x = (x * x) % n;
+                        if (x == n - 1) { composite = false; break; }
+                    }
+                    if (composite) return false;
+                }
+                return true;
+            }
+            // 超过 32 位，平滑降级回 BigInt 算法
+            return BigInt(static_cast<int64_t>(n)).isPrime();
+        }
+
         // --- 扩展质数表 (JCP1 差分编码) ---
         static void extendPrimeTable(int64_t count) {
             if (customPrimePath.empty()) {
@@ -400,7 +439,8 @@ namespace jc {
             }
             
             int64_t currentTotal = header.totalPrimes;
-            BigInt currentP = currentTotal > 0 ? BigInt(header.largestPrime) : BigInt(1);
+            uint64_t currentP_val = currentTotal > 0 ? header.largestPrime : 1;
+            uint64_t lastP_val = currentP_val;
             
             std::vector<char> blockBuf(BLOCK_BYTES, 0);
             int primesInLastBlock = 0;
@@ -416,16 +456,21 @@ namespace jc {
             file.seekp(24 + lastBlockIdx * BLOCK_BYTES, std::ios::beg);
             
             for (int64_t i = 0; i < count; ++i) {
-                BigInt nextP = currentP.nextPrime();
+                if (currentP_val < 2) currentP_val = 2;
+                else if (currentP_val == 2) currentP_val = 3;
+                else {
+                    currentP_val += 2;
+                    while (!isPrimeFast(currentP_val)) currentP_val += 2;
+                }
                 
                 if (primesInLastBlock == 0) {
-                    uint64_t base = static_cast<uint64_t>(nextP.toInt64());
+                    uint64_t base = currentP_val;
                     std::memcpy(blockBuf.data(), &base, 8);
                     std::memset(blockBuf.data() + 8, 0, BLOCK_BYTES - 8);
                     primesInLastBlock = 1;
                     blockAnchors.push_back(base);
                 } else {
-                    uint64_t gap = static_cast<uint64_t>((nextP - currentP).toInt64());
+                    uint64_t gap = currentP_val - lastP_val;
                     if (gap > 65535) throw std::runtime_error("Math Error: Prime gap exceeds 65535. Differential encoding failed.");
                     uint16_t gap16 = static_cast<uint16_t>(gap);
                     std::memcpy(blockBuf.data() + 8 + (primesInLastBlock - 1) * 2, &gap16, 2);
@@ -438,7 +483,7 @@ namespace jc {
                     lastBlockIdx++;
                 }
                 
-                currentP = nextP;
+                lastP_val = currentP_val;
                 currentTotal++;
             }
             
@@ -447,7 +492,7 @@ namespace jc {
             }
             
             header.totalPrimes = currentTotal;
-            header.largestPrime = static_cast<uint64_t>(currentP.toInt64());
+            header.largestPrime = currentP_val;
             file.seekp(0, std::ios::beg);
             file.write(reinterpret_cast<char*>(&header), 24);
             file.close();

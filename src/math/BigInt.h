@@ -1082,18 +1082,42 @@ namespace jc {
     private:
         static BigInt pollardRho(const BigInt& n, int64_t c_val = 1) {
             if (n.data[0] % 2 == 0) return BigInt(2);
+            if (n.data[0] % 3 == 0) return BigInt(3);
+            if (n.data[0] % 5 == 0) return BigInt(5);
+
             BigInt x(2), y(2), d(1), c(c_val);
-            auto f = [&](const BigInt& x_val) {
-                return mathMod(x_val * x_val + c, n);
+            BigInt prod(1);
+            int64_t power = 1, lam = 1;
+            
+            auto f = [&](const BigInt& val) {
+                return mathMod(val * val + c, n);
             };
+            
+            // Brent's cycle finding with GCD batching
             while (d == BigInt(1)) {
-                x = f(x);
-                y = f(f(y));
-                BigInt diff = (x > y) ? x - y : y - x;
-                d = gcd(diff, n);
-                if (d == n) {
-                    return pollardRho(n, c_val + 1);
+                if (power == lam) {
+                    x = y;
+                    power *= 2;
+                    lam = 0;
                 }
+                y = f(y);
+                lam++;
+                
+                BigInt diff = (x > y) ? x - y : y - x;
+                prod = mathMod(prod * diff, n);
+                
+                if (lam % 64 == 0) {
+                    d = gcd(prod, n);
+                    if (d != BigInt(1)) break;
+                }
+            }
+            
+            if (d == BigInt(1)) {
+                d = gcd(prod, n);
+            }
+            
+            if (d == n) {
+                return pollardRho(n, c_val + 1);
             }
             return d;
         }
@@ -1177,14 +1201,36 @@ namespace jc {
 
             if (n > BigInt(1)) {
                 if (lastP == 0) {
-                    int count = 0;
-                    while (true) {
-                        auto [q, rem] = divmod(n, BigInt(2));
-                        if (!rem.isZero()) break;
-                        n = q;
-                        count++;
+                    const uint32_t small_primes[] = {
+                        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+                        73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
+                        157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233,
+                        239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317,
+                        331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419,
+                        421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503,
+                        509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607,
+                        613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701,
+                        709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811,
+                        821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911,
+                        919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997
+                    };
+                    for (uint32_t p : small_primes) {
+                        if (n < BigInt(static_cast<int64_t>(p) * p)) {
+                            if (n > BigInt(1)) {
+                                factors.push_back({ n, 1 });
+                                n = BigInt(1);
+                            }
+                            break;
+                        }
+                        int count = 0;
+                        while (true) {
+                            auto [q, rem] = n.divmod_small(p);
+                            if (rem != 0) break;
+                            n = q;
+                            count++;
+                        }
+                        if (count > 0) factors.push_back({ BigInt(p), count });
                     }
-                    if (count > 0) factors.push_back({ BigInt(2), count });
                 }
 
                 std::map<BigInt, int> remainingFactors;

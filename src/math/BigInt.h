@@ -654,7 +654,7 @@ namespace jc {
             std::cout << "[System] Successfully converted " << currentTotal << " primes to JCP1 format: " << binPath << std::endl;
         }
 
-        // --- 校验 JCP1 质数表完整性与准确性 ---
+        // --- 校验 JCP1 质数表完整性与准确性 (极速分段筛法) ---
         static bool verifyPrimeTable() {
             if (customPrimePath.empty() || !fileIndexed) {
                 throw std::runtime_error("IO Error: No prime table mounted. Use mountPrimes() first.");
@@ -672,75 +672,126 @@ namespace jc {
                 return false;
             }
 
-            uint64_t count = 0;
-            uint64_t lastP = 0;
+            if (header.totalPrimes == 0) {
+                std::cout << "[Verify] Success: 0 primes." << std::endl;
+                return true;
+            }
+
             int64_t totalBlocks = (header.totalPrimes + PRIMES_PER_BLOCK - 1) / PRIMES_PER_BLOCK;
             std::vector<char> blockBuf(BLOCK_BYTES);
 
-            std::cout << "[Verify] Starting verification of " << header.totalPrimes << " primes..." << std::endl;
+            std::cout << "[Verify] Starting high-speed verification of " << header.totalPrimes << " primes..." << std::endl;
 
-            for (int64_t b = 0; b < totalBlocks; ++b) {
-                jc::checkInterrupt();
-                if (!file.read(blockBuf.data(), BLOCK_BYTES)) {
-                    std::cout << "[Verify] Failed: Unexpected EOF at block " << b << "." << std::endl;
-                    return false;
+            uint32_t max_sqrt = static_cast<uint32_t>(std::sqrt(header.largestPrime)) + 1;
+            std::vector<uint32_t> base_primes;
+            std::vector<bool> is_p(max_sqrt + 1, true);
+            for (uint32_t p = 2; p * p <= max_sqrt; ++p) {
+                if (is_p[p]) {
+                    for (uint32_t i = p * p; i <= max_sqrt; i += p) is_p[i] = false;
                 }
+            }
+            for (uint32_t p = 2; p <= max_sqrt; ++p) {
+                if (is_p[p]) base_primes.push_back(p);
+            }
 
-                uint64_t p = 0;
-                std::memcpy(&p, blockBuf.data(), 8);
-
-                if (b > 0 && p <= lastP) {
-                    std::cout << "[Verify] Failed: Primes not strictly increasing at block " << b << ". Last: " << lastP << ", Current: " << p << std::endl;
-                    return false;
-                }
-                if (!isPrimeFast(p)) {
-                    std::cout << "[Verify] Failed: Invalid prime " << p << " at block " << b << " (BasePrime)." << std::endl;
-                    return false;
-                }
-
-                lastP = p;
-                count++;
-
-                int primesInThisBlock = (b == totalBlocks - 1) ? 
-                    ((header.totalPrimes - 1) % PRIMES_PER_BLOCK + 1) : PRIMES_PER_BLOCK;
-
-                for (int i = 0; i < primesInThisBlock - 1; ++i) {
+            const uint64_t S = 262144; // 256KB L2 Cache 友好
+            std::vector<uint8_t> sieve(S);
+            uint64_t low = 2;
+            
+            uint64_t primes_verified = 0;
+            uint64_t last_print = 0;
+            
+            int64_t current_block = 0;
+            int current_offset = 0;
+            uint64_t current_file_p = 0;
+            
+            auto get_next_file_prime = [&]() -> uint64_t {
+                if (current_offset == 0) {
+                    if (!file.read(blockBuf.data(), BLOCK_BYTES)) return 0;
+                    std::memcpy(&current_file_p, blockBuf.data(), 8);
+                    current_offset++;
+                    current_block++;
+                    int primesInThisBlock = (current_block == totalBlocks) ? 
+                        ((header.totalPrimes - 1) % PRIMES_PER_BLOCK + 1) : PRIMES_PER_BLOCK;
+                    if (current_offset >= primesInThisBlock) current_offset = 0;
+                    return current_file_p;
+                } else {
                     uint16_t gap = 0;
-                    std::memcpy(&gap, blockBuf.data() + 8 + i * 2, 2);
+                    std::memcpy(&gap, blockBuf.data() + 8 + (current_offset - 1) * 2, 2);
+                    if (gap == 0) return 0;
+                    current_file_p += gap;
+                    current_offset++;
+                    int primesInThisBlock = (current_block == totalBlocks) ? 
+                        ((header.totalPrimes - 1) % PRIMES_PER_BLOCK + 1) : PRIMES_PER_BLOCK;
+                    if (current_offset >= primesInThisBlock) current_offset = 0;
+                    return current_file_p;
+                }
+            };
+
+            uint64_t expected_p = get_next_file_prime();
+            if (expected_p != 2) {
+                std::cout << "[Verify] Failed: First prime is not 2. Got " << expected_p << std::endl;
+                return false;
+            }
+            primes_verified++;
+            
+            if (primes_verified < header.totalPrimes) {
+                expected_p = get_next_file_prime();
+            }
+            low = 3;
+
+            while (primes_verified < header.totalPrimes) {
+                jc::checkInterrupt();
+                std::fill(sieve.begin(), sieve.end(), static_cast<uint8_t>(1));
+                uint64_t high = low + S * 2 - 2;
+                
+                for (uint32_t p : base_primes) {
+                    if (p == 2) continue;
+                    uint64_t p2 = static_cast<uint64_t>(p) * p;
+                    if (p2 > high) break;
                     
-                    if (gap == 0) {
-                        std::cout << "[Verify] Failed: Zero gap found after prime " << p << " at block " << b << "." << std::endl;
-                        return false;
-                    }
+                    uint64_t start = (low / p) * p;
+                    if (start < low) start += p;
+                    if (start == p) start += p;
+                    if (start % 2 == 0) start += p;
                     
-                    p += gap;
-                    if (!isPrimeFast(p)) {
-                        std::cout << "[Verify] Failed: Invalid prime " << p << " at block " << b << ", offset " << i + 1 << "." << std::endl;
-                        return false;
+                    for (uint64_t j = start; j <= high; j += p * 2) {
+                        sieve[(j - low) / 2] = 0;
                     }
-                    if (p <= lastP) {
-                        std::cout << "[Verify] Failed: Primes not strictly increasing at block " << b << ", offset " << i + 1 << "." << std::endl;
-                        return false;
-                    }
-                    lastP = p;
-                    count++;
                 }
                 
-                if (count % 10000000 == 0) {
-                    std::cout << "[Verify] Checked " << count << " primes..." << std::endl;
+                for (uint64_t i = 0; i < S && primes_verified < header.totalPrimes; ++i) {
+                    if (sieve[i]) {
+                        uint64_t p = low + i * 2;
+                        if (p != expected_p) {
+                            std::cout << "[Verify] Failed: Mismatch at prime #" << primes_verified + 1 
+                                      << ". Expected " << p << ", got " << expected_p << std::endl;
+                            return false;
+                        }
+                        primes_verified++;
+                        if (primes_verified < header.totalPrimes) {
+                            expected_p = get_next_file_prime();
+                            if (expected_p == 0) {
+                                std::cout << "[Verify] Failed: Unexpected EOF or zero gap at prime #" << primes_verified + 1 << std::endl;
+                                return false;
+                            }
+                        }
+                    }
+                }
+                low += S * 2;
+                
+                if (primes_verified - last_print >= 10000000) {
+                    std::cout << "[Verify] Checked " << primes_verified << " primes..." << std::endl;
+                    last_print = primes_verified;
                 }
             }
 
-            if (count != header.totalPrimes) {
-                std::cout << "[Verify] Failed: Count mismatch. Header: " << header.totalPrimes << ", Actual: " << count << std::endl;
-                return false;
-            }
-            if (lastP != header.largestPrime) {
-                std::cout << "[Verify] Failed: Largest prime mismatch. Header: " << header.largestPrime << ", Actual: " << lastP << std::endl;
+            if (current_file_p != header.largestPrime) {
+                std::cout << "[Verify] Failed: Largest prime mismatch. Header: " << header.largestPrime << ", Actual: " << current_file_p << std::endl;
                 return false;
             }
 
-            std::cout << "[Verify] Success: All " << count << " primes are valid and strictly increasing. Largest: " << lastP << std::endl;
+            std::cout << "[Verify] Success: All " << primes_verified << " primes are valid and strictly increasing. Largest: " << current_file_p << std::endl;
             return true;
         }
 

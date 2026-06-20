@@ -824,6 +824,11 @@ namespace jc {
                 default: return std::nullopt;
                 }
             }
+            catch (const std::runtime_error& e) {
+                std::string msg = e.what();
+                if (msg.find("Math Error") != std::string::npos) throw;
+                return std::nullopt;
+            }
             catch (...) { return std::nullopt; }
         }
         else if (auto* group = dynamic_cast<GroupingExpr*>(expr)) {
@@ -874,6 +879,11 @@ namespace jc {
                 case TokenType::GREATER_EQUAL: return Value((*leftVal) >= (*rightVal));
                 default: return std::nullopt;
                 }
+            }
+            catch (const std::runtime_error& e) {
+                std::string msg = e.what();
+                if (msg.find("Math Error") != std::string::npos) throw;
+                return std::nullopt;
             }
             catch (...) { return std::nullopt; }
         }

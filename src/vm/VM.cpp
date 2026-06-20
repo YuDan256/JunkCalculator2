@@ -854,7 +854,10 @@ namespace jc {
                 }
                 case OpCode::OP_DIVIDE: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() / b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
+                    if (a.isDouble() && b.isDouble()) { 
+                        if (b.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+                        double res = a.asDoubleRaw() / b.asDoubleRaw(); pop(); peek(0) = Value(res); break; 
+                    }
                     if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_DIV)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
                     if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RDIV)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a / b; pop(); peek(0) = res; break;

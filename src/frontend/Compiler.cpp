@@ -1911,8 +1911,8 @@ namespace jc {
         emitBreakJumps();
         endLoop();
 
-        emit(OpCode::OP_POP, lastLine);   // pop iterator element
-        emit(OpCode::OP_POP, lastLine);   // pop List
+        emit(OpCode::OP_POP, lastLine);   // pop index
+        emit(OpCode::OP_POP, lastLine);   // pop iterable
         emit(OpCode::OP_NONE, lastLine);
         endScope(); // ★
         return;

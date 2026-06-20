@@ -847,8 +847,8 @@ namespace jc {
             int n_size = static_cast<int>(num.data.size());
             int d_size = static_cast<int>(den.data.size());
 
-            // 如果两者都在 double 安全范围内 (32 * 9.6 = 307 位十进制)，直接计算
-            if (n_size <= 32 && d_size <= 32) {
+            // 如果两者都在 double 安全范围内 (31 * 9.6 = 297 位十进制，绝对不会溢出 1024 bits)，直接计算
+            if (n_size <= 31 && d_size <= 31) {
                 return num.toDouble() / den.toDouble();
             }
 

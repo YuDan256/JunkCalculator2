@@ -120,6 +120,7 @@ bool g_autoDebug = false;
 bool g_profile = false;
 bool g_quiet = false;
 bool g_showNone = false;
+bool g_silentRepl = false;
 
 // ★ 执行一段任意多行/单行代码的统一接口
 jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool isFile = false) {
@@ -706,6 +707,16 @@ int main(int argc, char* argv[]) {
                 std::cout << "Show 'none' disabled.\n";
                 continue;
             }
+            if (input == "/silent on") {
+                g_silentRepl = true;
+                std::cout << "Silent REPL enabled. Return values will not be printed.\n";
+                continue;
+            }
+            if (input == "/silent off") {
+                g_silentRepl = false;
+                std::cout << "Silent REPL disabled.\n";
+                continue;
+            }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
             if (input == "/version") { std::cout << "Junk Calculator 2.4.4.2\n"; continue; }
@@ -785,8 +796,8 @@ int main(int argc, char* argv[]) {
 
         try {
             jc::Value result = evalCode(input, "REPL", false);
-            if (!result.isNone() || g_showNone) {
-                if (!result.isNone()) vm.setGlobal("ANS", result);
+            if (!result.isNone()) vm.setGlobal("ANS", result);
+            if (!g_silentRepl && (!result.isNone() || g_showNone)) {
                 std::string typeColor;
                 bool isTopLevelMatrix = false;
                 
@@ -819,9 +830,12 @@ int main(int argc, char* argv[]) {
                     typeColor = jc::col(jc::Ansi::WHITE); // SymExpr 等
                 }
 
+                struct MatrixPrintGuard {
+                    ~MatrixPrintGuard() { jc::g_printMatrix2D = false; }
+                } _guard;
+                
                 jc::g_printMatrix2D = isTopLevelMatrix;
                 std::cout << typeColor << result << jc::col(jc::Ansi::RESET) << std::endl;
-                jc::g_printMatrix2D = false;
             }
             if (g_profile && jc::VM::activeVM) {
                 jc::VM::activeVM->printProfileReport();

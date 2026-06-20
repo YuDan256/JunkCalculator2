@@ -1183,7 +1183,7 @@ namespace jc {
             for (uint32_t p = 2; p <= B1; ++p) {
                 if (is_p[p]) {
                     primes.push_back(p);
-                    for (uint32_t i = p * p; i <= B1; i += p) is_p[i] = false;
+                    for (uint64_t i = static_cast<uint64_t>(p) * p; i <= B1; i += p) is_p[i] = false;
                 }
             }
 
@@ -1225,8 +1225,8 @@ namespace jc {
                 uint32_t B1 = 2000;
                 while (divisor == BigInt(1) || divisor == n) {
                     divisor = ecm(n, B1, seed++);
-                    if (seed % 5 == 0) B1 *= 2; // Increase B1 every 5 curves
-                    if (B1 > 100000) {
+                    if (seed % 10 == 0) B1 *= 2; // Increase B1 every 10 curves
+                    if (B1 > 250000) {
                         // Fallback to unbounded Pollard's rho if ECM takes too long
                         divisor = pollardRho(n, c++, -1); 
                     }

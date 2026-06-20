@@ -6,6 +6,7 @@
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
 #include "../frontend/Compiler.h"
+#include "../frontend/Utf8.h"
 #include "../memory/GcHeap.h"
 #include "EngineInterrupt.h"
 #include <iostream>
@@ -1051,7 +1052,7 @@ namespace jc {
                         }
                     } else if (val.isString()) {
                         if (is1DPattern) {
-                            uint32_t len = static_cast<uint32_t>(val.asString().size());
+                            uint32_t len = static_cast<uint32_t>(val.asObjString()->charLength);
                             matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
                         }
                     } else if (val.isObjType(ObjType::REAL_MATRIX)) {
@@ -1848,8 +1849,15 @@ namespace jc {
                         elements->vec = static_cast<ObjList*>(iterable.asObj())->vec;
                     }
                     else if (iterable.isString()) {
-                        for (char c : iterable.asString())
-                            elements->vec.push_back(Value(std::string(1, c)));
+                        ObjString* objStr = iterable.asObjString();
+                        const std::string& s = objStr->str;
+                        if (objStr->isAscii) {
+                            for (char c : s) elements->vec.push_back(Value(std::string(1, c)));
+                        } else {
+                            size_t len = objStr->charLength;
+                            for (size_t i = 0; i < len; ++i)
+                                elements->vec.push_back(Value(utf8::substring(s, i, 1, false)));
+                        }
                     }
                     else if (iterable.isObjType(ObjType::DICT)) {
                         const auto* d = static_cast<ObjDict*>(iterable.asObj());
@@ -3804,11 +3812,13 @@ namespace jc {
                     result = list->vec[i];
                 }
                 else if (obj.isString()) {
-                    const auto& s = obj.asString();
-                    if (i < 0) i = static_cast<int>(s.size()) + i;
-                    if (i < 0 || i >= static_cast<int>(s.size()))
+                    ObjString* objStr = obj.asObjString();
+                    const auto& s = objStr->str;
+                    int len = static_cast<int>(objStr->charLength);
+                    if (i < 0) i = len + i;
+                    if (i < 0 || i >= len)
                         throw std::runtime_error("VM Error: String index out of bounds.");
-                    result = Value(std::string(1, s[i]));
+                    result = Value(utf8::substring(s, i, 1, objStr->isAscii));
                 }
             }
 
@@ -4090,13 +4100,20 @@ namespace jc {
                 list->mut()[i] = val;
             }
             else if (obj.isString()) {
-                std::string s = obj.asString();
-                if (i < 0) i = static_cast<int>(s.size()) + i;
-                if (i < 0 || i >= static_cast<int>(s.size()))
+                ObjString* objStr = obj.asObjString();
+                std::string s = objStr->str;
+                int len = static_cast<int>(objStr->charLength);
+                if (i < 0) i = len + i;
+                if (i < 0 || i >= len)
                     throw std::runtime_error("VM Error: String index out of bounds.");
-                if (!val.isString() || val.asString().size() != 1)
+                
+                ObjString* valStr = val.asObjString();
+                if (valStr->charLength != 1)
                     throw std::runtime_error("VM Error: String element assignment requires a single character.");
-                s[i] = val.asString()[0];
+                
+                size_t bStart = utf8::byteOffset(s, i, objStr->isAscii);
+                size_t bEnd = utf8::byteOffset(s, i + 1, objStr->isAscii);
+                s.replace(bStart, bEnd == std::string::npos ? s.length() - bStart : bEnd - bStart, valStr->str);
                 obj = Value(s);
             }
             pop(); pop(); pop();
@@ -4221,11 +4238,16 @@ namespace jc {
             Value obj = peek(popCount++);
 
             if (obj.isString()) {
-                const auto& s = obj.asString();
-                auto info = buildSliceInfo(static_cast<int>(s.size()), start, end, step);
+                ObjString* objStr = obj.asObjString();
+                const auto& s = objStr->str;
+                auto info = buildSliceInfo(static_cast<int>(objStr->charLength), start, end, step);
                 std::string result;
-                result.reserve(info.count);
-                for (int i = 0; i < info.count; ++i) result += s[info.start + i * info.step];
+                if (objStr->isAscii) {
+                    result.reserve(info.count);
+                    for (int i = 0; i < info.count; ++i) result += s[info.start + i * info.step];
+                } else {
+                    for (int i = 0; i < info.count; ++i) result += utf8::substring(s, info.start + i * info.step, 1, false);
+                }
                 for (int i = 0; i < popCount; ++i) pop();
                 push(Value(result));
                 return;
@@ -4518,14 +4540,32 @@ namespace jc {
                 }
             }
             else if (obj.isString()) {
-                std::string s = obj.asString();
-                auto info = buildSliceInfo(static_cast<int>(s.size()), start, end, step);
+                ObjString* objStr = obj.asObjString();
+                std::string s = objStr->str;
+                auto info = buildSliceInfo(static_cast<int>(objStr->charLength), start, end, step);
                 if (!val.isString())
                     throw std::runtime_error("VM Error: String slice assignment requires a string.");
-                const auto& src = val.asString();
-                if (static_cast<int>(src.size()) != info.count)
+                ObjString* srcStr = val.asObjString();
+                const auto& src = srcStr->str;
+                if (static_cast<int>(srcStr->charLength) != info.count)
                     throw std::runtime_error("VM Error: String slice assignment size mismatch.");
-                for (int k = 0; k < info.count; ++k) s[info.start + k * info.step] = src[k];
+                
+                if (info.step == 1) {
+                    size_t bStart = utf8::byteOffset(s, info.start, objStr->isAscii);
+                    size_t bEnd = utf8::byteOffset(s, info.start + info.count, objStr->isAscii);
+                    s.replace(bStart, bEnd == std::string::npos ? s.length() - bStart : bEnd - bStart, src);
+                } else {
+                    if (objStr->isAscii && srcStr->isAscii) {
+                        for (int k = 0; k < info.count; ++k) s[info.start + k * info.step] = src[k];
+                    } else {
+                        std::vector<std::string> chars;
+                        size_t len = objStr->charLength;
+                        for (size_t i = 0; i < len; ++i) chars.push_back(utf8::substring(s, i, 1, objStr->isAscii));
+                        for (int k = 0; k < info.count; ++k) chars[info.start + k * info.step] = utf8::substring(src, k, 1, srcStr->isAscii);
+                        s = "";
+                        for (const auto& c : chars) s += c;
+                    }
+                }
                 obj = Value(s);
             }
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {

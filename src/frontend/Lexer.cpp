@@ -1,4 +1,5 @@
 #include "Lexer.h"
+#include "Utf8.h"
 #include <cctype>
 #include <stdexcept>
 #include <unordered_map>   // ★ 新增
@@ -265,7 +266,7 @@ namespace jc {
                     rstringLiteral(quote);
                 }
             }
-            else if (std::isalpha(c) || c == '_') { identifier(); }
+            else if (utf8::isIdentifierStart(static_cast<unsigned char>(c))) { identifier(); }
             else {
                 throwError("Unexpected character '" + std::string(1, c) + "'.");
             }
@@ -275,7 +276,7 @@ namespace jc {
 
     // ★ 修改：扫描完标识符后查关键字表
     void Lexer::identifier() {
-        while (std::isalnum(peek()) || peek() == '_') {
+        while (utf8::isIdentifierPart(static_cast<unsigned char>(peek()))) {
             advance();
         }
         std::string_view text(source.data() + start, current - start);
@@ -350,7 +351,7 @@ namespace jc {
             }
         }
         
-        if (std::isalnum(peek()) || peek() == '_') {
+        if (utf8::isIdentifierPart(static_cast<unsigned char>(peek()))) {
             throwError("Invalid character '" + std::string(1, peek()) + "' in number literal.");
         }
 
@@ -693,7 +694,7 @@ namespace jc {
                 hasDelimiter = true;
                 break;
             }
-            else if (std::isalnum(c) || c == '_') {
+            else if (utf8::isIdentifierPart(static_cast<unsigned char>(c))) {
                 delimiter += c;
                 probePos++;
             }

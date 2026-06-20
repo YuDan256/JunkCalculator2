@@ -98,9 +98,18 @@ namespace jc {
     struct ObjString : public Obj {
         std::string str;
         size_t hash;
+        size_t charLength;
+        bool isAscii;
         ObjString(std::string s) : str(std::move(s)) { 
             hash = sipHash24String(str);
             type = ObjType::STRING; 
+            charLength = 0;
+            isAscii = true;
+            for (size_t i = 0; i < str.length(); ++i) {
+                unsigned char c = static_cast<unsigned char>(str[i]);
+                if (c >= 0x80) isAscii = false;
+                if ((c & 0xC0) != 0x80) charLength++;
+            }
         }
     };
     struct ObjBigInt : public Obj {
@@ -397,9 +406,13 @@ namespace jc {
 
         bool isFunctionClosure() const { return isObjType(ObjType::CLOSURE); }
         bool isString() const { return isObjType(ObjType::STRING); }
-        const std::string& asString() const {
-            if (isString()) return static_cast<ObjString*>(asObj())->str;
+        ObjString* asObjString() const {
+            if (isString()) return static_cast<ObjString*>(asObj());
             throw std::runtime_error("Type Error: Expected a string.");
+        }
+
+        const std::string& asString() const {
+            return asObjString()->str;
         }
 
         static Value none() { return Value(); }

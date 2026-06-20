@@ -3,6 +3,7 @@
 #include "../cas/Integration.h"
 #include "../cas/Factorization.h"
 #include "../frontend/Highlight.h"          // ★ highlightCode(), colorsEnabled
+#include "../frontend/Utf8.h"
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
 #include "../frontend/Compiler.h"
@@ -2232,7 +2233,7 @@ void BuiltinRegistry::registerStringFunctions() {
             if (found) return result;
             return Value::fromInt32(static_cast<int32_t>(inst->fields->elements.size()));
         }
-        if (args[0].isString()) return Value::fromInt32(static_cast<int32_t>(args[0].asString().size()));
+        if (args[0].isString()) return Value::fromInt32(static_cast<int32_t>(args[0].asObjString()->charLength));
         if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value::fromInt32(m.getRows()); if (m.getRows() == 1) return Value::fromInt32(m.getCols()); return Value::fromInt32(m.getRows() * m.getCols()); }
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value::fromInt32(m.getRows()); if (m.getRows() == 1) return Value::fromInt32(m.getCols()); return Value::fromInt32(m.getRows() * m.getCols()); }
         if (args[0].isObjType(ObjType::STRING_MATRIX)) { const auto& m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
@@ -2253,12 +2254,12 @@ void BuiltinRegistry::registerStringFunctions() {
         return evalCallback(args[0].asString());
         });
 
-    reg("substr", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: substr() expects a string."); const std::string& s = args[0].asString(); int n=static_cast<int>(s.size()); int start=static_cast<int>(std::round(args[1].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args.size()==2) return Value(s.substr(start)); int length=static_cast<int>(std::round(args[2].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(s.substr(start, length)); });
-    reg("charAt", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: charAt() expects a string."); const std::string& s = args[0].asString(); int n=static_cast<int>(s.size()); int idx=static_cast<int>(std::round(args[1].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) throw std::runtime_error("Runtime Error: charAt() index out of range."); return Value(std::string(1, s[idx])); });
+    reg("substr", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: substr() expects a string."); ObjString* objStr = args[0].asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[1].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args.size()==2) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[2].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); });
+    reg("charAt", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: charAt() expects a string."); ObjString* objStr = args[0].asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[1].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) throw std::runtime_error("Runtime Error: charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); });
     reg("upper", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: upper() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::toupper(c)); }); return Value(s); });
     reg("lower", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: lower() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); }); return Value(s); });
     reg("trim", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: trim() expects a string."); std::string s = args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); size_t b=s.find_last_not_of(" \t\r\n"); if (a==std::string::npos) return Value(std::string("")); return Value(s.substr(a, b-a+1)); });
-    reg("find", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: find() expects two strings."); const std::string& s=args[0].asString(); const std::string& sub=args[1].asString(); size_t start=0; if (args.size()==3) start=static_cast<size_t>(std::round(args[2].asDouble())); size_t pos=s.find(sub, start); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(pos)); });
+    reg("find", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: find() expects two strings."); ObjString* objStr = args[0].asObjString(); const std::string& s=objStr->str; const std::string& sub=args[1].asString(); size_t startChar=0; if (args.size()==3) startChar=static_cast<size_t>(std::round(args[2].asDouble())); size_t startByte = utf8::byteOffset(s, startChar, objStr->isAscii); if (startByte == std::string::npos) return Value::fromInt32(-1); size_t pos=s.find(sub, startByte); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(utf8::charIndex(s, pos, objStr->isAscii))); });
     reg("contains", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: contains() expects two strings."); return Value(args[0].asString().find(args[1].asString())!=std::string::npos); });
     reg("replace", { 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()||!args[2].isString()) throw std::runtime_error("Type Error: replace() expects three strings."); std::string s=args[0].asString(); const std::string& from=args[1].asString(); const std::string& to=args[2].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); });
     reg("repeat", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: repeat() expects a string."); const std::string& s = args[0].asString(); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); });
@@ -2282,8 +2283,8 @@ void BuiltinRegistry::registerStringFunctions() {
     reg("startsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: startsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& prefix=args[1].asString(); return Value(s.size()>=prefix.size()&&s.compare(0,prefix.size(),prefix)==0); });
     reg("endsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: endsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& suffix=args[1].asString(); return Value(s.size()>=suffix.size()&&s.compare(s.size()-suffix.size(),suffix.size(),suffix)==0); });
     reg("split", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: split() expects two strings."); const std::string& s=args[0].asString(); const std::string& delim=args[1].asString(); if (delim.empty()) throw std::runtime_error("Runtime Error: split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(result); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); });
-    reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: ord() expects a string."); const std::string& s=args[0].asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value::fromInt32(static_cast<unsigned char>(s[0])); });
-    reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>127) throw std::runtime_error("Runtime Error: chr() code must be 0–127."); return Value(std::string(1, static_cast<char>(code))); });
+    reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: ord() expects a string."); const std::string& s=args[0].asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value::fromInt32(utf8::codepoint(s, 0)); });
+    reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>0x10FFFF) throw std::runtime_error("Runtime Error: chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); });
     reg("parseNum", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: parseNum() expects a string."); const std::string& s=args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) throw std::runtime_error("Math Error: Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { throw std::runtime_error("Math Error: Cannot parse '"+trimmed+"' as a number."); } });
 }
 
@@ -2622,7 +2623,19 @@ void BuiltinRegistry::registerArrayFunctions() {
     reg("reverse", { 1 }, [expectContainer](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         if (arg.isString()) {
-            std::string s = arg.asString(); std::reverse(s.begin(), s.end()); return Value(s);
+            ObjString* objStr = arg.asObjString();
+            if (objStr->isAscii) {
+                std::string s = objStr->str;
+                std::reverse(s.begin(), s.end());
+                return Value(s);
+            }
+            std::string s = objStr->str;
+            std::string res;
+            size_t len = objStr->charLength;
+            for (size_t i = 0; i < len; ++i) {
+                res += utf8::substring(s, len - 1 - i, 1, false);
+            }
+            return Value(res);
         } else if (arg.isObjType(ObjType::LIST)) {
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
@@ -3145,7 +3158,14 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (arg.isString()) {
             ObjList* L = GcHeap::get().allocate<ObjList>();
-            for (char c : arg.asString()) L->vec.push_back(Value(std::string(1, c)));
+            ObjString* objStr = arg.asObjString();
+            const std::string& str = objStr->str;
+            if (objStr->isAscii) {
+                for (char c : str) L->vec.push_back(Value(std::string(1, c)));
+            } else {
+                size_t len = objStr->charLength;
+                for (size_t i = 0; i < len; ++i) L->vec.push_back(Value(utf8::substring(str, i, 1, false)));
+            }
             return Value(L);
         }
         if (arg.isObjType(ObjType::SET)) {
@@ -3412,7 +3432,14 @@ void BuiltinRegistry::registerHigherOrder() {
             if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: apply() expects 1D vector.");
             for (const auto& d : m.rawData()) unpackedList->vec.push_back(Value(d));
         } else if (argList.isString()) {
-            for (char c : argList.asString()) unpackedList->vec.push_back(Value(std::string(1, c)));
+            ObjString* objStr = argList.asObjString();
+            const std::string& str = objStr->str;
+            if (objStr->isAscii) {
+                for (char c : str) unpackedList->vec.push_back(Value(std::string(1, c)));
+            } else {
+                size_t len = objStr->charLength;
+                for (size_t i = 0; i < len; ++i) unpackedList->vec.push_back(Value(utf8::substring(str, i, 1, false)));
+            }
         } else {
             throw std::runtime_error("Type Error: apply() expects a function and an iterable argument list/vector.");
         }
@@ -4798,9 +4825,19 @@ void BuiltinRegistry::registerSetFunctions() {
             }
         }
         else if (args[0].isString()) {
-            for (char c : args[0].asString()) {
-                Value v(std::string(1, c));
-                if (s->keys.find(v) == s->keys.end()) { s->keys.insert(v); s->elements.push_back(v); }
+            ObjString* objStr = args[0].asObjString();
+            const std::string& str = objStr->str;
+            if (objStr->isAscii) {
+                for (char c : str) {
+                    Value v(std::string(1, c));
+                    if (s->keys.find(v) == s->keys.end()) { s->keys.insert(v); s->elements.push_back(v); }
+                }
+            } else {
+                size_t len = objStr->charLength;
+                for (size_t i = 0; i < len; ++i) {
+                    Value v(utf8::substring(str, i, 1, false));
+                    if (s->keys.find(v) == s->keys.end()) { s->keys.insert(v); s->elements.push_back(v); }
+                }
             }
         }
         else {

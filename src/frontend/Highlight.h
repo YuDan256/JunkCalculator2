@@ -76,6 +76,7 @@ namespace jc {
                 SetConsoleMode(hErr, mode);
             }
         }
+        SetConsoleOutputCP(CP_UTF8);
 #endif
     }
 

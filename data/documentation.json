@@ -1324,7 +1324,7 @@
       "",
       "  Prime Engine (Paged Streaming I/O)",
       "  ──────────────────────",
-      "    JC2 streams `Prime.txt` via 64 KB zero-RAM buffers.",
+      "    JC2 streams `Prime.bin` via 64 KB zero-RAM buffers.",
       "    sysinfo()                    Current prime database status",
       "    mountPrimes(\"path\")          Redirect the engine to a custom prime file",
       "    buildIndex()                 Build an O(1) anchor tree in RAM",
@@ -3986,7 +3986,7 @@
     },
     "nthPrime": {
       "signature": "nthPrime(k)",
-      "desc": "Returns the k-th prime number. Uses a mounted Prime.txt database if available, otherwise computes dynamically.",
+      "desc": "Returns the k-th prime number. Uses a mounted Prime.bin database if available, otherwise computes dynamically.",
       "examples": [
         "nthPrime(1000)"
       ]
@@ -5331,8 +5331,8 @@
     },
     "mountPrimes": {
       "signature": "mountPrimes(path)",
-      "desc": "Redirects the prime engine to a custom Prime.txt file.",
-      "examples": ["mountPrimes(\"Prime.txt\")"]
+      "desc": "Redirects the prime engine to a custom Prime.bin file.",
+      "examples": ["mountPrimes(\"Prime.bin\")"]
     },
     "sysinfo": {
       "signature": "sysinfo()",

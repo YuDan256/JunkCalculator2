@@ -272,17 +272,9 @@ namespace jc {
         // =================================================================================
         // 纯流式外存与分页缓冲引擎 (Streaming I/O & Paged Cache Engine)
         // =================================================================================
-        struct PrimeIndex {
-            int64_t indexNumber;
-            int64_t primeValue;
-            std::streampos offset;
-        };
-
-        inline static std::vector<PrimeIndex> primeFileIndex;
         inline static bool fileIndexed = false;
         inline static int64_t totalPrimesInFile = 0;
         inline static int64_t largestPrimeInFile = 0;
-        static constexpr int64_t BLOCK_SIZE = 10000;
 
         inline static std::string customPrimePath = "";
         static std::string getPrimeFilePath() {
@@ -291,7 +283,6 @@ namespace jc {
 
         // --- 外部更换挂载路径接口 ---
         static void setPrimeFilePath(const std::string& newPath) {
-            // 先检查更换的文件存不存在
             namespace fs = std::filesystem;
             if (!fs::exists(newPath) && newPath != "default") {
                 throw std::runtime_error("IO Error: Prime table file not found at " + newPath);
@@ -299,8 +290,7 @@ namespace jc {
 
             if (newPath == "default") customPrimePath = "";
             else customPrimePath = newPath;
-            // 路径变了，以前的旧锚点、旧索引全部作废，必须清空！
-            primeFileIndex.clear();
+            
             fileIndexed = false;
             totalPrimesInFile = 0;
             largestPrimeInFile = 0;
@@ -313,101 +303,47 @@ namespace jc {
             }
         }
 
-        // --- (可选加速) 极速扫描建立文件索引 (使用堆内存 buffer 防栈溢出) ---
+        // --- 极速扫描建立文件索引 (二进制 uint64_t 格式) ---
         static void buildFileIndex() {
             if (fileIndexed) return;
 
             std::string filepath = getPrimeFilePath();
             if (filepath.empty()) return;
 
-            std::ifstream file(filepath, std::ios::binary);
+            std::ifstream file(filepath, std::ios::binary | std::ios::ate);
             if (!file.is_open()) {
                 fileIndexed = true;
                 std::cout << "[System] Notice: Prime table not found at " << filepath << ". Using dynamic computation." << std::endl;
                 return;
             }
 
-            std::cout << "[System] Building prime index tree from " << filepath << "..." << std::endl;
-
-            primeFileIndex.clear();
-            int64_t count = 0;
-
-            constexpr size_t BUFFER_SIZE = 4194304; // 4MB
-            std::vector<char> buffer(BUFFER_SIZE);
-
-            std::streampos absolutePos = 0;
-            int64_t currentPrime = 0;
-            bool readingNumber = false;
-            std::streampos numberStartPos = 0;  // ★ 新增：正向记录每个数字的起始文件偏移
-
-            while (file.read(buffer.data(), BUFFER_SIZE) || file.gcount() > 0) {
-                size_t bytesRead = static_cast<size_t>(file.gcount());
-                for (size_t i = 0; i < bytesRead; ++i) {
-                    char c = buffer[i];
-                    if (c >= '0' && c <= '9') {
-                        if (!readingNumber) {
-                            // ★ 第一个数字字符出现时，立刻锁定绝对起始位置
-                            numberStartPos = absolutePos + static_cast<std::streampos>(i);
-                        }
-                        currentPrime = currentPrime * 10 + (c - '0');
-                        readingNumber = true;
-                    }
-                    else if (c == '\n' || c == '\r') {
-                        if (readingNumber) {
-                            count++;
-                            if (count % BLOCK_SIZE == 1 || count == 1) {
-                                // ★ 直接使用正向记录的位置，不再反算
-                                primeFileIndex.push_back({ count - 1, currentPrime, numberStartPos });
-                            }
-                            largestPrimeInFile = currentPrime;
-                            currentPrime = 0;
-                            readingNumber = false;
-                        }
-                    }
-                }
-                absolutePos += bytesRead;
+            std::streamsize size = file.tellg();
+            totalPrimesInFile = size / sizeof(uint64_t);
+            
+            if (totalPrimesInFile > 0) {
+                file.seekg(-static_cast<std::streamoff>(sizeof(uint64_t)), std::ios::end);
+                uint64_t lastP = 0;
+                file.read(reinterpret_cast<char*>(&lastP), sizeof(uint64_t));
+                largestPrimeInFile = lastP;
+            } else {
+                largestPrimeInFile = 0;
             }
 
-            // 处理文件末尾没有换行符的最后一个数字
-            if (readingNumber) {
-                count++;
-                if (count % BLOCK_SIZE == 1 || count == 1) {
-                    // ★ 同样使用正向记录的位置
-                    primeFileIndex.push_back({ count - 1, currentPrime, numberStartPos });
-                }
-                largestPrimeInFile = currentPrime;
-            }
-
-            totalPrimesInFile = count;
             fileIndexed = true;
             file.close();
             if (totalPrimesInFile > 0) {
-                std::cout << "[System] Successfully indexed " << totalPrimesInFile << " primes." << std::endl;
+                std::cout << "[System] Successfully mounted binary prime table: " << totalPrimesInFile << " primes." << std::endl;
             }
         }
 
-        // --- (可选加速) 锚点空降 ---
+        // --- O(1) 锚点空降 ---
         static int64_t getPrimeAt(int64_t index) {
-            if (!fileIndexed) return -1; // 没建索引拒绝服务
-            if (index < 0 || index >= totalPrimesInFile) return -1;
-
-            auto it = std::upper_bound(primeFileIndex.begin(), primeFileIndex.end(), index,
-                [](int64_t val, const PrimeIndex& anchor) { return val < anchor.indexNumber; });
-            if (it == primeFileIndex.begin()) it = primeFileIndex.begin();
-            else --it;
-
+            if (!fileIndexed || index < 0 || index >= totalPrimesInFile) return -1;
             std::ifstream file(getPrimeFilePath(), std::ios::binary);
-            file.seekg(it->offset);
-
-            int64_t currentIdx = it->indexNumber;
-            std::string line;
-            while (currentIdx <= index && std::getline(file, line)) {
-                if (!line.empty() && line.back() == '\r') line.pop_back();
-                if (line.empty()) continue;
-
-                if (currentIdx == index) return std::stoll(line);
-                currentIdx++;
-            }
+            if (!file) return -1;
+            file.seekg(index * sizeof(uint64_t), std::ios::beg);
+            uint64_t p = 0;
+            if (file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t))) return p;
             return -1;
         }
 
@@ -825,7 +761,7 @@ namespace jc {
             if (n.data[0] % 2 == 0) return false;
 
             // =========================================================
-            // [极速外存探针]
+            // [极速外存探针] (二进制二分查找)
             // =========================================================
             if (fileIndexed && n <= BigInt(largestPrimeInFile)) {
                 int64_t val = -1;
@@ -833,21 +769,16 @@ namespace jc {
                 catch (...) { /* 降级 */ }
 
                 if (val >= 0) {
-                    auto it = std::upper_bound(primeFileIndex.begin(), primeFileIndex.end(), val,
-                        [](int64_t v, const PrimeIndex& anchor) { return v < anchor.primeValue; });
-                    if (it == primeFileIndex.begin()) it = primeFileIndex.begin();
-                    else --it;
+                    int64_t left = 0, right = totalPrimesInFile - 1;
                     std::ifstream file(getPrimeFilePath(), std::ios::binary);
-                    file.seekg(it->offset);
-                    int64_t currentIdx = it->indexNumber;
-                    std::string line;
-                    while (currentIdx <= totalPrimesInFile && std::getline(file, line)) {
-                        if (!line.empty() && line.back() == '\r') line.pop_back();
-                        if (line.empty()) continue;
-                        int64_t p = std::stoll(line);
-                        if (p == val) return true;
-                        if (p > val) return false;
-                        currentIdx++;
+                    while (left <= right) {
+                        int64_t mid = left + (right - left) / 2;
+                        file.seekg(mid * sizeof(uint64_t), std::ios::beg);
+                        uint64_t p = 0;
+                        file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t));
+                        if (p == static_cast<uint64_t>(val)) return true;
+                        if (p < static_cast<uint64_t>(val)) left = mid + 1;
+                        else right = mid - 1;
                     }
                     return false;
                 }
@@ -907,7 +838,7 @@ namespace jc {
             if (n < BigInt(2)) return BigInt(2);
 
             // =========================================================
-            // [极速外存探针]
+            // [极速外存探针] (二进制二分查找)
             // =========================================================
             if (fileIndexed && n < BigInt(largestPrimeInFile)) {
                 int64_t val = -1;
@@ -915,23 +846,22 @@ namespace jc {
                 catch (...) { /* 降级 */ }
 
                 if (val >= 0) {
-                    auto it = std::upper_bound(primeFileIndex.begin(), primeFileIndex.end(), val,
-                        [](int64_t v, const PrimeIndex& anchor) { return v < anchor.primeValue; });
-                    if (it == primeFileIndex.begin()) it = primeFileIndex.begin();
-                    else --it;
-
+                    int64_t left = 0, right = totalPrimesInFile - 1;
+                    int64_t ans = -1;
                     std::ifstream file(getPrimeFilePath(), std::ios::binary);
-                    file.seekg(it->offset);
-
-                    int64_t currentIdx = it->indexNumber;
-                    std::string line;
-                    while (currentIdx <= totalPrimesInFile && std::getline(file, line)) {
-                        if (!line.empty() && line.back() == '\r') line.pop_back();
-                        if (line.empty()) continue;
-                        int64_t p = std::stoll(line);
-                        if (p > val) return BigInt(p);
-                        currentIdx++;
+                    while (left <= right) {
+                        int64_t mid = left + (right - left) / 2;
+                        file.seekg(mid * sizeof(uint64_t), std::ios::beg);
+                        uint64_t p = 0;
+                        file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t));
+                        if (p > static_cast<uint64_t>(val)) {
+                            ans = p;
+                            right = mid - 1;
+                        } else {
+                            left = mid + 1;
+                        }
                     }
+                    if (ans != -1) return BigInt(ans);
                 }
             }
 
@@ -948,60 +878,17 @@ namespace jc {
             return candidate;
         }
 
-        // --- 极速单向流读取版 (带堆内存防栈溢出缓冲) ---
+        // --- O(1) 索引空降与动态接力 ---
         static BigInt nthPrime(int64_t n) {
             if (n < 1) throw std::runtime_error("Math Error: nthPrime requires n >= 1.");
-            // 索引加速空降
+            
             if (fileIndexed && n <= totalPrimesInFile) {
                 int64_t p = getPrimeAt(n - 1);
                 if (p >= 2) return BigInt(p);
-                // ★ 空降失败，不直接报错，降级到流式扫描继续尝试
             }
 
-            int64_t count = 0;
-            int64_t lastP = 0;
-            std::string filepath = getPrimeFilePath();
-
-            if (!filepath.empty()) {
-                std::ifstream file(filepath, std::ios::binary);
-                if (file.is_open()) {
-                constexpr size_t BUFFER_SIZE = 65536;
-                std::vector<char> buffer(BUFFER_SIZE); // 使用堆内存防溢出
-                int64_t currentPrime = 0;
-                bool readingNumber = false;
-                bool done = false;
-
-                while (!done && (file.read(buffer.data(), BUFFER_SIZE) || file.gcount() > 0)) {
-                    size_t bytesRead = static_cast<size_t>(file.gcount());
-                    for (size_t i = 0; i < bytesRead; ++i) {
-                        char c = buffer[i];
-                        if (c >= '0' && c <= '9') {
-                            currentPrime = currentPrime * 10 + (c - '0');
-                            readingNumber = true;
-                        }
-                        else if (c == '\n' || c == '\r') {
-                            if (readingNumber) {
-                                count++;
-                                lastP = currentPrime;
-                                currentPrime = 0;
-                                readingNumber = false;
-
-                                if (count == n) {
-                                    file.close();
-                                    return BigInt(lastP);
-                                }
-                            }
-                        }
-                    }
-                }
-                    if (!done && readingNumber) {
-                        count++;
-                        lastP = currentPrime;
-                        if (count == n) { file.close(); return BigInt(lastP); }
-                    }
-                    file.close();
-                }
-            }
+            int64_t count = fileIndexed ? totalPrimesInFile : 0;
+            int64_t lastP = fileIndexed ? largestPrimeInFile : 0;
 
             BigInt candidate = count > 0 ? (lastP == 2 ? BigInt(3) : BigInt(lastP) + BigInt(2)) : BigInt(3);
             if (count == 0) {
@@ -1023,48 +910,31 @@ namespace jc {
             int64_t count = 0;
             int64_t lastP = 0;
 
-            // ★ 精确转换，失败则跳过文件扫描
             int64_t n = -1;
             try { n = nBI.toInt64(); }
             catch (...) { /* 超出 int64 范围 */ }
 
-            if (n >= 2) {
-                std::string filepath = getPrimeFilePath();
-                if (!filepath.empty()) {
-                    std::ifstream file(filepath, std::ios::binary);
-                    if (file.is_open()) {
-                    constexpr size_t BUFFER_SIZE = 65536;
-                    std::vector<char> buffer(BUFFER_SIZE);
-                    int64_t currentPrime = 0;
-                    bool readingNumber = false;
-                    bool done = false;
-
-                    while (!done && (file.read(buffer.data(), BUFFER_SIZE) || file.gcount() > 0)) {
-                        size_t bytesRead = static_cast<size_t>(file.gcount());
-                        for (size_t i = 0; i < bytesRead; ++i) {
-                            char c = buffer[i];
-                            if (c >= '0' && c <= '9') {
-                                currentPrime = currentPrime * 10 + (c - '0');
-                                readingNumber = true;
-                            }
-                            else if (c == '\n' || c == '\r') {
-                                if (readingNumber) {
-                                    if (currentPrime > n) { done = true; break; }
-                                    count++;
-                                    lastP = currentPrime;
-                                    currentPrime = 0;
-                                    readingNumber = false;
-                                }
-                            }
+            if (n >= 2 && fileIndexed) {
+                if (n >= largestPrimeInFile) {
+                    count = totalPrimesInFile;
+                    lastP = largestPrimeInFile;
+                } else {
+                    int64_t left = 0, right = totalPrimesInFile - 1;
+                    int64_t ans = 0;
+                    std::ifstream file(getPrimeFilePath(), std::ios::binary);
+                    while (left <= right) {
+                        int64_t mid = left + (right - left) / 2;
+                        file.seekg(mid * sizeof(uint64_t), std::ios::beg);
+                        uint64_t p = 0;
+                        file.read(reinterpret_cast<char*>(&p), sizeof(uint64_t));
+                        if (p <= static_cast<uint64_t>(n)) {
+                            ans = mid + 1;
+                            left = mid + 1;
+                        } else {
+                            right = mid - 1;
                         }
                     }
-                        if (!done && readingNumber && currentPrime <= n) {
-                            count++;
-                            lastP = currentPrime;
-                        }
-                        file.close();
-                        if (done) return count;
-                    }
+                    return ans;
                 }
             }
 
@@ -1246,49 +1116,21 @@ namespace jc {
             int64_t lastP = 0;
 
             std::string filepath = getPrimeFilePath();
-            if (!filepath.empty()) {
+            if (!filepath.empty() && fileIndexed) {
                 std::ifstream file(filepath, std::ios::binary);
                 if (file.is_open()) {
-                constexpr size_t BUFFER_SIZE = 65536;
-                std::vector<char> buffer(BUFFER_SIZE);
-                int64_t currentPrime = 0;
-                bool readingNumber = false;
-                bool done = false;
+                    constexpr size_t BUFFER_SIZE = 65536; // 64KB
+                    std::vector<uint64_t> buffer(BUFFER_SIZE / sizeof(uint64_t));
+                    bool done = false;
 
-                while (!done && (file.read(buffer.data(), BUFFER_SIZE) || file.gcount() > 0)) {
-                    size_t bytesRead = static_cast<size_t>(file.gcount());
-                    for (size_t i = 0; i < bytesRead; ++i) {
-                        char c = buffer[i];
-                        if (c >= '0' && c <= '9') {
-                            currentPrime = currentPrime * 10 + (c - '0');
-                            readingNumber = true;
-                        }
-                        else if (c == '\n' || c == '\r') {
-                            if (readingNumber) {
-                                int64_t p = currentPrime;
-                                lastP = currentPrime;
-                                currentPrime = 0;
-                                readingNumber = false;
+                    while (!done && (file.read(reinterpret_cast<char*>(buffer.data()), BUFFER_SIZE) || file.gcount() > 0)) {
+                        size_t primesRead = static_cast<size_t>(file.gcount()) / sizeof(uint64_t);
+                        for (size_t i = 0; i < primesRead; ++i) {
+                            uint64_t p = buffer[i];
+                            lastP = p;
+                            BigInt pBI(p);
+                            if (pBI * pBI > n) { done = true; break; }
 
-                                BigInt pBI(p);
-                                if (pBI * pBI > n) { done = true; break; }
-
-                                int count = 0;
-                                while (true) {
-                                    auto [q, rem] = divmod(n, pBI);
-                                    if (!rem.isZero()) break;
-                                    n = q;
-                                    count++;
-                                }
-                                if (count > 0) factors.push_back({ pBI, count });
-                            }
-                        }
-                    }
-                }
-                    if (!done && readingNumber) {
-                        BigInt pBI(currentPrime);
-                        lastP = currentPrime;
-                        if (pBI * pBI <= n) {
                             int count = 0;
                             while (true) {
                                 auto [q, rem] = divmod(n, pBI);

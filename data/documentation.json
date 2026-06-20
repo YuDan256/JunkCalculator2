@@ -1328,6 +1328,7 @@
       "    sysinfo()                    Current prime database status",
       "    mountPrimes(\"path\")          Redirect the engine to a custom prime file",
       "    buildIndex()                 Build an O(1) anchor tree in RAM",
+      "    extendPrimes(n)              Generate and append n new primes to the mounted file",
       "",
       "  Garbage Collector (Mark-and-Sweep)",
       "  ──────────────────────",
@@ -5333,6 +5334,11 @@
       "signature": "mountPrimes(path)",
       "desc": "Redirects the prime engine to a custom Prime.bin file.",
       "examples": ["mountPrimes(\"Prime.bin\")"]
+    },
+    "extendPrimes": {
+      "signature": "extendPrimes(n)",
+      "desc": "Generates and appends n new primes to the currently mounted Prime.bin file.",
+      "examples": ["extendPrimes(1000000)"]
     },
     "sysinfo": {
       "signature": "sysinfo()",

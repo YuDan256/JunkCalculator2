@@ -347,6 +347,52 @@ namespace jc {
             return -1;
         }
 
+        // --- 扩展质数表 ---
+        static void extendPrimeTable(int64_t count) {
+            if (customPrimePath.empty()) {
+                throw std::runtime_error("IO Error: No prime table mounted. Use mountPrimes() first.");
+            }
+            if (!fileIndexed) {
+                buildFileIndex();
+            }
+            std::ofstream file(customPrimePath, std::ios::binary | std::ios::app);
+            if (!file.is_open()) {
+                throw std::runtime_error("IO Error: Cannot open prime table for appending.");
+            }
+            
+            BigInt current = largestPrimeInFile > 0 ? BigInt(largestPrimeInFile) : BigInt(1);
+            
+            constexpr size_t BUFFER_SIZE = 8192;
+            std::vector<uint64_t> buffer;
+            buffer.reserve(BUFFER_SIZE);
+            
+            for (int64_t i = 0; i < count; ++i) {
+                current = current.nextPrime();
+                uint64_t p = 0;
+                try {
+                    p = static_cast<uint64_t>(current.toInt64());
+                } catch (...) {
+                    throw std::runtime_error("Math Error: Prime exceeded 64-bit limit during table extension.");
+                }
+                buffer.push_back(p);
+                
+                if (buffer.size() >= BUFFER_SIZE) {
+                    file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(uint64_t));
+                    buffer.clear();
+                }
+            }
+            
+            if (!buffer.empty()) {
+                file.write(reinterpret_cast<const char*>(buffer.data()), buffer.size() * sizeof(uint64_t));
+            }
+            
+            file.close();
+            
+            totalPrimesInFile += count;
+            largestPrimeInFile = current.toInt64();
+            std::cout << "[System] Extended prime table by " << count << " primes. New total: " << totalPrimesInFile << std::endl;
+        }
+
         // =================================================================================
         // 核心构造函数与基础操作
         // =================================================================================

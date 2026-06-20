@@ -1596,88 +1596,39 @@ namespace jc {
             if (n <= BigInt(1)) throw std::runtime_error("Math Error: Factorization requires n > 1.");
 
             std::vector<std::pair<BigInt, int>> factors;
-            int64_t lastP = 0;
 
-            std::string filepath = getPrimeFilePath();
-            if (!filepath.empty() && fileIndexed) {
-                std::ifstream file(filepath, std::ios::binary);
-                if (file.is_open()) {
-                    file.seekg(24, std::ios::beg);
-                    char blockBuf[BLOCK_BYTES];
-                    bool done = false;
-                    int64_t primesRead = 0;
-                    
-                    while (!done && primesRead < totalPrimesInFile && file.read(blockBuf, BLOCK_BYTES)) {
-                        uint64_t p = 0;
-                        std::memcpy(&p, blockBuf, 8);
-                        
-                        auto processPrime = [&](uint64_t primeVal) {
-                            lastP = primeVal;
-                            BigInt pBI(primeVal);
-                            if (pBI * pBI > n) { done = true; return false; }
-                            int count = 0;
-                            while (true) {
-                                auto [q, rem] = divmod(n, pBI);
-                                if (!rem.isZero()) break;
-                                n = q;
-                                count++;
-                            }
-                            if (count > 0) factors.push_back({ pBI, count });
-                            return true;
-                        };
-                        
-                        if (!processPrime(p)) break;
-                        primesRead++;
-                        
-                        int primesInThisBlock = (totalPrimesInFile - primesRead >= PRIMES_PER_BLOCK - 1) ? 
-                            (PRIMES_PER_BLOCK - 1) : static_cast<int>(totalPrimesInFile - primesRead);
-                            
-                        for (int i = 0; i < primesInThisBlock; ++i) {
-                            uint16_t gap = 0;
-                            std::memcpy(&gap, blockBuf + 8 + i * 2, 2);
-                            p += gap;
-                            if (!processPrime(p)) break;
-                            primesRead++;
-                        }
+            const uint32_t small_primes[] = {
+                2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+                73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
+                157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233,
+                239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317,
+                331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419,
+                421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503,
+                509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607,
+                613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701,
+                709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811,
+                821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911,
+                919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997
+            };
+            for (uint32_t p : small_primes) {
+                if (n < BigInt(static_cast<int64_t>(p) * p)) {
+                    if (n > BigInt(1)) {
+                        factors.push_back({ n, 1 });
+                        n = BigInt(1);
                     }
-                    file.close();
+                    break;
                 }
+                int count = 0;
+                while (true) {
+                    auto [q, rem] = n.divmod_small(p);
+                    if (rem != 0) break;
+                    n = q;
+                    count++;
+                }
+                if (count > 0) factors.push_back({ BigInt(p), count });
             }
 
             if (n > BigInt(1)) {
-                if (lastP == 0) {
-                    const uint32_t small_primes[] = {
-                        2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
-                        73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
-                        157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233,
-                        239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317,
-                        331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419,
-                        421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503,
-                        509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607,
-                        613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701,
-                        709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811,
-                        821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911,
-                        919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997
-                    };
-                    for (uint32_t p : small_primes) {
-                        if (n < BigInt(static_cast<int64_t>(p) * p)) {
-                            if (n > BigInt(1)) {
-                                factors.push_back({ n, 1 });
-                                n = BigInt(1);
-                            }
-                            break;
-                        }
-                        int count = 0;
-                        while (true) {
-                            auto [q, rem] = n.divmod_small(p);
-                            if (rem != 0) break;
-                            n = q;
-                            count++;
-                        }
-                        if (count > 0) factors.push_back({ BigInt(p), count });
-                    }
-                }
-
                 std::map<BigInt, int> remainingFactors;
                 factorizeRecursive(n, remainingFactors);
                 for (const auto& [p, count] : remainingFactors) {

@@ -1202,9 +1202,14 @@
       "",
       "    ★ Prime Engine Acceleration:",
       "      If a JCP1 prime database (Prime.bin) is mounted via mountPrimes(),",
-      "      isPrime, nextPrime, primePi, and factor will automatically use O(1)",
+      "      isPrime, nextPrime, and primePi will automatically use O(1)",
       "      disk lookups and binary streaming, making them thousands of times faster.",
       "      See `/help sys` for details on generating and mounting prime tables.",
+      "",
+      "    ★ Advanced Factorization:",
+      "      factor(n) uses a hybrid approach: trial division for small primes,",
+      "      followed by Pollard's rho and Lenstra Elliptic Curve Factorization (ECM)",
+      "      for extremely fast large integer factorization.",
       "",
       "  Arithmetic Functions & Modular Arithmetic",
       "  ──────────────────────",
@@ -5262,7 +5267,7 @@
     },
     "factor": {
       "signature": "factor(expr)",
-      "desc": "Factors a polynomial, or returns a dict of {Prime: Exponent} for an integer.",
+      "desc": "Factors a polynomial, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
       "examples": ["factor(x^4 - 1)", "factor(12)"]
     },
     "factorReal": {

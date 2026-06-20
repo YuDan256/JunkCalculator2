@@ -912,10 +912,7 @@ namespace jc {
         if (expr->op.type == TokenType::AND_AND) {
             if (auto leftVal = tryFoldConstant(expr->left.get())) {
                 if (!leftVal->truthy()) {
-                    // ★ 死代码消除：左侧为 false，右侧永远不执行
-                    uint32_t idx = makeConstant(*leftVal);
-                    emit(OpCode::OP_CONSTANT, expr->op.line);
-                    emit16(idx, expr->op.line);
+                    emit(OpCode::OP_FALSE, expr->op.line);
                     return;
                 }
             }
@@ -923,16 +920,18 @@ namespace jc {
             int jump = chunk()->emitJump(OpCode::OP_JUMP_IF_FALSE, expr->op.line);
             emit(OpCode::OP_POP, expr->op.line);
             compileNode(expr->right.get());
+            emit(OpCode::OP_TO_BOOL, expr->op.line);
+            int endJump = chunk()->emitJump(OpCode::OP_JUMP, expr->op.line);
             patchJump(jump);
+            emit(OpCode::OP_POP, expr->op.line);
+            emit(OpCode::OP_FALSE, expr->op.line);
+            patchJump(endJump);
             return;
         }
         if (expr->op.type == TokenType::OR_OR) {
             if (auto leftVal = tryFoldConstant(expr->left.get())) {
                 if (leftVal->truthy()) {
-                    // ★ 死代码消除：左侧为 true，右侧永远不执行
-                    uint32_t idx = makeConstant(*leftVal);
-                    emit(OpCode::OP_CONSTANT, expr->op.line);
-                    emit16(idx, expr->op.line);
+                    emit(OpCode::OP_TRUE, expr->op.line);
                     return;
                 }
             }
@@ -942,7 +941,12 @@ namespace jc {
             patchJump(elseJump);
             emit(OpCode::OP_POP, expr->op.line);
             compileNode(expr->right.get());
+            emit(OpCode::OP_TO_BOOL, expr->op.line);
+            int veryEndJump = chunk()->emitJump(OpCode::OP_JUMP, expr->op.line);
             patchJump(endJump);
+            emit(OpCode::OP_POP, expr->op.line);
+            emit(OpCode::OP_TRUE, expr->op.line);
+            patchJump(veryEndJump);
             return;
         }
 

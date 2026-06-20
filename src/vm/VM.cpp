@@ -885,6 +885,9 @@ namespace jc {
                 case OpCode::OP_NOT: { 
                     Value res = Value(!peek(0).truthy()); peek(0) = res; break; 
                 }
+                case OpCode::OP_TO_BOOL: {
+                    Value res = Value(peek(0).truthy()); peek(0) = res; break;
+                }
                 case OpCode::OP_BIT_NOT: {
                     Value& a = peek(0);
                     if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_BITNOT)) { Value res = callDunder(a, meth, nullptr, 0); peek(0) = res; break; } }

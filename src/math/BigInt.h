@@ -1080,7 +1080,7 @@ namespace jc {
         }
 
     private:
-        static BigInt pollardRho(const BigInt& n, int64_t c_val = 1) {
+        static BigInt pollardRho(const BigInt& n, int64_t c_val = 1, int64_t max_iter = -1) {
             if (n.data[0] % 2 == 0) return BigInt(2);
             if (n.data[0] % 3 == 0) return BigInt(3);
             if (n.data[0] % 5 == 0) return BigInt(5);
@@ -1110,6 +1110,7 @@ namespace jc {
                     d = gcd(prod, n);
                     if (d != BigInt(1)) break;
                 }
+                if (max_iter > 0 && lam > max_iter) return BigInt(1);
             }
             
             if (d == BigInt(1)) {
@@ -1117,9 +1118,88 @@ namespace jc {
             }
             
             if (d == n) {
-                return pollardRho(n, c_val + 1);
+                if (max_iter > 0) return BigInt(1);
+                return pollardRho(n, c_val + 1, max_iter);
             }
             return d;
+        }
+
+        // Lenstra Elliptic Curve Factorization (ECM)
+        static BigInt ecm(const BigInt& n, uint32_t B1, uint64_t seed) {
+            BigInt X(2), Z(1);
+            BigInt A24(seed % 10000 + 1); // A24 = (A+2)/4
+            
+            auto add = [&n](const BigInt& X1, const BigInt& Z1, const BigInt& X2, const BigInt& Z2, const BigInt& X_diff, const BigInt& Z_diff) -> std::pair<BigInt, BigInt> {
+                BigInt u = mathMod((X1 - Z1) * (X2 + Z2), n);
+                BigInt v = mathMod((X1 + Z1) * (X2 - Z2), n);
+                BigInt X_plus = mathMod(Z_diff * mathMod((u + v) * (u + v), n), n);
+                BigInt Z_plus = mathMod(X_diff * mathMod((u - v) * (u - v), n), n);
+                return {X_plus, Z_plus};
+            };
+
+            auto double_pt = [&n, &A24](const BigInt& X1, const BigInt& Z1) -> std::pair<BigInt, BigInt> {
+                BigInt u = mathMod(X1 + Z1, n);
+                BigInt v = mathMod(X1 - Z1, n);
+                u = mathMod(u * u, n);
+                v = mathMod(v * v, n);
+                BigInt diff = mathMod(u - v, n);
+                BigInt X2 = mathMod(u * v, n);
+                BigInt Z2 = mathMod(diff * mathMod(v + mathMod(A24 * diff, n), n), n);
+                return {X2, Z2};
+            };
+
+            auto multiply = [&add, &double_pt](uint32_t k, BigInt X_in, BigInt Z_in) -> std::pair<BigInt, BigInt> {
+                if (k == 0) return {BigInt(1), BigInt(0)};
+                if (k == 1) return {X_in, Z_in};
+                
+                std::vector<int> bits;
+                uint32_t temp = k;
+                while (temp > 0) {
+                    bits.push_back(temp & 1);
+                    temp >>= 1;
+                }
+                
+                BigInt x0 = X_in, z0 = Z_in;
+                auto [x1, z1] = double_pt(X_in, Z_in);
+                
+                for (int i = static_cast<int>(bits.size()) - 2; i >= 0; --i) {
+                    if (bits[i] == 0) {
+                        auto next_x1_z1 = add(x0, z0, x1, z1, X_in, Z_in);
+                        auto next_x0_z0 = double_pt(x0, z0);
+                        x1 = next_x1_z1.first; z1 = next_x1_z1.second;
+                        x0 = next_x0_z0.first; z0 = next_x0_z0.second;
+                    } else {
+                        auto next_x0_z0 = add(x0, z0, x1, z1, X_in, Z_in);
+                        auto next_x1_z1 = double_pt(x1, z1);
+                        x0 = next_x0_z0.first; z0 = next_x0_z0.second;
+                        x1 = next_x1_z1.first; z1 = next_x1_z1.second;
+                    }
+                }
+                return {x0, z0};
+            };
+
+            std::vector<uint32_t> primes;
+            std::vector<bool> is_p(B1 + 1, true);
+            for (uint32_t p = 2; p <= B1; ++p) {
+                if (is_p[p]) {
+                    primes.push_back(p);
+                    for (uint32_t i = p * p; i <= B1; i += p) is_p[i] = false;
+                }
+            }
+
+            for (uint32_t p : primes) {
+                uint32_t q = p;
+                uint32_t max_q = B1;
+                while (q <= max_q / p) q *= p;
+                
+                auto [nX, nZ] = multiply(q, X, Z);
+                X = nX; Z = nZ;
+                if (Z.isZero()) break;
+            }
+            
+            BigInt g = gcd(Z, n);
+            if (g > BigInt(1) && g < n) return g;
+            return BigInt(1);
         }
 
         static void factorizeRecursive(BigInt n, std::map<BigInt, int>& factors) {
@@ -1128,7 +1208,31 @@ namespace jc {
                 factors[n]++;
                 return;
             }
-            BigInt divisor = pollardRho(n);
+            
+            BigInt divisor(1);
+            
+            // 1. Pollard's rho (fast for small factors up to ~15 digits)
+            int64_t c = 1;
+            while (divisor == BigInt(1) || divisor == n) {
+                divisor = pollardRho(n, c++, 131072); // Limit iterations
+                if (divisor != BigInt(1) && divisor != n) break;
+                if (c > 3) break; // Try 3 different polynomials
+            }
+            
+            // 2. ECM (Lenstra Elliptic Curve Method) for larger factors
+            if (divisor == BigInt(1) || divisor == n) {
+                uint64_t seed = 1;
+                uint32_t B1 = 2000;
+                while (divisor == BigInt(1) || divisor == n) {
+                    divisor = ecm(n, B1, seed++);
+                    if (seed % 5 == 0) B1 *= 2; // Increase B1 every 5 curves
+                    if (B1 > 100000) {
+                        // Fallback to unbounded Pollard's rho if ECM takes too long
+                        divisor = pollardRho(n, c++, -1); 
+                    }
+                }
+            }
+            
             factorizeRecursive(divisor, factors);
             factorizeRecursive(n / divisor, factors);
         }

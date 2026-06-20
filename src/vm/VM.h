@@ -119,7 +119,7 @@ namespace jc {
         // ==============================================================
         bool handleExceptionUnwind(Value errVal);
         std::string buildStackTrace(const std::string& errorMsg);
-        Value callDunder(const Value& obj, const std::string& name,
+        Value callDunder(const Value& obj, ObjClosure* method,
             const Value* args, size_t argc);
 
         // ★ 类型检查冷路径：让繁重的字符串操作离开核心循环

@@ -366,12 +366,10 @@ namespace jc {
         return nullptr;
     }
 
-    Value VM::callDunder(const Value& obj, const std::string& name,
+    Value VM::callDunder(const Value& obj, ObjClosure* method,
         const Value* args, size_t argc)
     {
         auto inst = obj.asInstance();
-        auto method = findDunder(obj, name);
-        if (!method) throw std::runtime_error(std::string("VM Error: No callable dunder '") + name + "'.");
 
         if (method->isNative() && !method->isBytecode()) {
             helpers::nativeSelfStack.push_back(Value(inst));
@@ -394,7 +392,7 @@ namespace jc {
             return callVMFunction(method->compiledFnIndex, args, argc, method, Value(inst), Value(inst->classDef));
         }
         else {
-            throw std::runtime_error(std::string("VM Error: No callable dunder '") + name + "'.");
+            throw std::runtime_error("VM Error: Dunder method is not callable.");
         }
     }
 
@@ -819,8 +817,8 @@ namespace jc {
                         int64_t res = static_cast<int64_t>(va) + vb;
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_ADD)) { Value res = callDunder(a, DUNDER_ADD, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RADD)) { Value res = callDunder(b, DUNDER_RADD, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_ADD)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RADD)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a + b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_SUBTRACT: {
@@ -834,8 +832,8 @@ namespace jc {
                         int64_t res = static_cast<int64_t>(va) - vb;
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_SUB)) { Value res = callDunder(a, DUNDER_SUB, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RSUB)) { Value res = callDunder(b, DUNDER_RSUB, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_SUB)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RSUB)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a - b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_MULTIPLY: {
@@ -849,38 +847,38 @@ namespace jc {
                         int64_t res = static_cast<int64_t>(va) * vb;
                         if (res >= INT32_MIN && res <= INT32_MAX) { pop(); peek(0) = Value(static_cast<int32_t>(res)); break; }
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_MUL)) { Value res = callDunder(a, DUNDER_MUL, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RMUL)) { Value res = callDunder(b, DUNDER_RMUL, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_MUL)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RMUL)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a * b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_DIVIDE: {
                     Value& b = peek(0); Value& a = peek(1);
                     if (a.isDouble() && b.isDouble()) { double res = a.asDoubleRaw() / b.asDoubleRaw(); pop(); peek(0) = Value(res); break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_DIV)) { Value res = callDunder(a, DUNDER_DIV, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RDIV)) { Value res = callDunder(b, DUNDER_RDIV, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_DIV)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RDIV)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a / b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_LEFT_DIVIDE: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_LDIV)) { Value res = callDunder(a, DUNDER_LDIV, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RLDIV)) { Value res = callDunder(b, DUNDER_RLDIV, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_LDIV)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RLDIV)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = ldivide(a, b); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_MODULO: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_MOD)) { Value res = callDunder(a, DUNDER_MOD, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RMOD)) { Value res = callDunder(b, DUNDER_RMOD, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_MOD)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RMOD)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a % b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_POWER: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_POW)) { Value res = callDunder(a, DUNDER_POW, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RPOW)) { Value res = callDunder(b, DUNDER_RPOW, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_POW)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RPOW)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a ^ b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_NEGATE: {
                     Value& a = peek(0);
-                    if (a.isInstance() && findDunder(a, DUNDER_NEG)) { Value res = callDunder(a, DUNDER_NEG, nullptr, 0); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_NEG)) { Value res = callDunder(a, meth, nullptr, 0); peek(0) = res; break; } }
                     Value res = -a; peek(0) = res; break;
                 }
                 case OpCode::OP_NOT: { 
@@ -888,38 +886,38 @@ namespace jc {
                 }
                 case OpCode::OP_BIT_NOT: {
                     Value& a = peek(0);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITNOT)) { Value res = callDunder(a, DUNDER_BITNOT, nullptr, 0); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_BITNOT)) { Value res = callDunder(a, meth, nullptr, 0); peek(0) = res; break; } }
                     Value res = ~a; peek(0) = res; break;
                 }
 
                 case OpCode::OP_BIT_AND: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITAND)) { Value res = callDunder(a, DUNDER_BITAND, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RBITAND)) { Value res = callDunder(b, DUNDER_RBITAND, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_BITAND)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RBITAND)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a & b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_OR: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITOR)) { Value res = callDunder(a, DUNDER_BITOR, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RBITOR)) { Value res = callDunder(b, DUNDER_RBITOR, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_BITOR)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RBITOR)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a | b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_XOR: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_BITXOR)) { Value res = callDunder(a, DUNDER_BITXOR, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RBITXOR)) { Value res = callDunder(b, DUNDER_RBITXOR, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_BITXOR)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RBITXOR)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = bitXor(a, b); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_SHIFT_LEFT: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_LSHIFT)) { Value res = callDunder(a, DUNDER_LSHIFT, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RLSHIFT)) { Value res = callDunder(b, DUNDER_RLSHIFT, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_LSHIFT)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RLSHIFT)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a << b; pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_BIT_SHIFT_RIGHT: {
                     Value& b = peek(0); Value& a = peek(1);
-                    if (a.isInstance() && findDunder(a, DUNDER_RSHIFT)) { Value res = callDunder(a, DUNDER_RSHIFT, &b, 1); pop(); peek(0) = res; break; }
-                    if (b.isInstance() && findDunder(b, DUNDER_RRSHIFT)) { Value res = callDunder(b, DUNDER_RRSHIFT, &a, 1); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_RSHIFT)) { Value res = callDunder(a, meth, &b, 1); pop(); peek(0) = res; break; } }
+                    if (b.isInstance()) { if (auto meth = findDunder(b, DUNDER_RRSHIFT)) { Value res = callDunder(b, meth, &a, 1); pop(); peek(0) = res; break; } }
                     Value res = a >> b; pop(); peek(0) = res; break;
                 }
 
@@ -933,7 +931,7 @@ namespace jc {
                         int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
                         bool res = va == vb; pop(); peek(0) = Value(res); break;
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(callDunder(a, DUNDER_EQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_EQ)) { Value res = Value(callDunder(a, meth, &b, 1).truthy()); pop(); peek(0) = res; break; } }
                     Value res = Value(Value::equals(a, b)); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_NOT_EQUAL: {
@@ -946,8 +944,8 @@ namespace jc {
                         int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
                         bool res = va != vb; pop(); peek(0) = Value(res); break;
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_NEQ)) { Value res = Value(callDunder(a, DUNDER_NEQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
-                    if (a.isInstance() && findDunder(a, DUNDER_EQ)) { Value res = Value(!callDunder(a, DUNDER_EQ, &b, 1).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_NEQ)) { Value res = Value(callDunder(a, meth, &b, 1).truthy()); pop(); peek(0) = res; break; } }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_EQ)) { Value res = Value(!callDunder(a, meth, &b, 1).truthy()); pop(); peek(0) = res; break; } }
                     Value res = Value(!Value::equals(a, b)); pop(); peek(0) = res; break;
                 }
                 case OpCode::OP_LESS: {
@@ -960,7 +958,7 @@ namespace jc {
                         int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
                         bool res = va < vb; pop(); peek(0) = Value(res); break;
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_LT)) { Value res = Value(callDunder(a, DUNDER_LT, &b, 1).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_LT)) { Value res = Value(callDunder(a, meth, &b, 1).truthy()); pop(); peek(0) = res; break; } }
                     Value res = Value(a < b);
                     pop(); peek(0) = res; break;
                 }
@@ -974,7 +972,7 @@ namespace jc {
                         int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
                         bool res = va <= vb; pop(); peek(0) = Value(res); break;
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_LE)) { Value res = Value(callDunder(a, DUNDER_LE, &b, 1).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_LE)) { Value res = Value(callDunder(a, meth, &b, 1).truthy()); pop(); peek(0) = res; break; } }
                     Value res = Value(a <= b);
                     pop(); peek(0) = res; break;
                 }
@@ -988,7 +986,7 @@ namespace jc {
                         int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
                         bool res = va > vb; pop(); peek(0) = Value(res); break;
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_GT)) { Value res = Value(callDunder(a, DUNDER_GT, &b, 1).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_GT)) { Value res = Value(callDunder(a, meth, &b, 1).truthy()); pop(); peek(0) = res; break; } }
                     Value res = Value(a > b);
                     pop(); peek(0) = res; break;
                 }
@@ -1002,7 +1000,7 @@ namespace jc {
                         int32_t vb = b.isInt32() ? b.asInt32() : (b.asBool() ? 1 : 0);
                         bool res = va >= vb; pop(); peek(0) = Value(res); break;
                     }
-                    if (a.isInstance() && findDunder(a, DUNDER_GE)) { Value res = Value(callDunder(a, DUNDER_GE, &b, 1).truthy()); pop(); peek(0) = res; break; }
+                    if (a.isInstance()) { if (auto meth = findDunder(a, DUNDER_GE)) { Value res = Value(callDunder(a, meth, &b, 1).truthy()); pop(); peek(0) = res; break; } }
                     Value res = Value(a >= b);
                     pop(); peek(0) = res; break;
                 }
@@ -1629,7 +1627,7 @@ namespace jc {
                     else {
                         auto d = findDunder(v, DUNDER_STR);
                         if (d) {
-                            Value res = callDunder(v, DUNDER_STR, nullptr, 0);
+                            Value res = callDunder(v, d, nullptr, 0);
                             pop();
                             push(res);
                         }
@@ -1896,7 +1894,7 @@ namespace jc {
                     else if (iterable.isInstance()) {
                         auto method = findDunder(iterable, DUNDER_ITER);
                         if (method) {
-                            Value iterObj = callDunder(iterable, DUNDER_ITER, nullptr, 0);
+                            Value iterObj = callDunder(iterable, method, nullptr, 0);
                             pop();
                             push(iterObj);
                             push(Value::none()); // 使用 none 作为自定义迭代器的索引标记
@@ -1939,7 +1937,7 @@ namespace jc {
                         auto method = findDunder(iterObj, DUNDER_NEXT);
                         if (!method) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
                         
-                        Value nextVal = callDunder(iterObj, DUNDER_NEXT, nullptr, 0);
+                        Value nextVal = callDunder(iterObj, method, nullptr, 0);
                         if (nextVal.isNone()) {
                             currentFrame->ip += offset; // 迭代结束
                         } else {
@@ -2488,7 +2486,7 @@ namespace jc {
                                     auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
                                     if (getattrMethod) {
                                         Value fv = Value(field);
-                                        result = callDunder(obj, DUNDER_GETATTR, &fv, 1);
+                                        result = callDunder(obj, getattrMethod, &fv, 1);
                                         found = true;
                                     }
                                 }
@@ -2636,7 +2634,7 @@ namespace jc {
                                 if (getattrMethod) {
                                     try {
                                         Value fv = Value(field);
-                                        result = callDunder(obj, DUNDER_GETATTR, &fv, 1);
+                                        result = callDunder(obj, getattrMethod, &fv, 1);
                                         found = true;
                                     } catch (...) {
                                         found = false;
@@ -2687,7 +2685,7 @@ namespace jc {
                         auto setattrMethod = findDunder(obj, DUNDER_SETATTR);
                         if (setattrMethod) {
                             Value args[2] = {Value(field), val};
-                            callDunder(obj, DUNDER_SETATTR, args, 2);
+                            callDunder(obj, setattrMethod, args, 2);
                         } else {
                             if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                             
@@ -5041,7 +5039,7 @@ namespace jc {
         else if (haystack.isInstance()) {
             auto method = findDunder(haystack, DUNDER_CONTAINS);
             if (method) {
-                found = callDunder(haystack, DUNDER_CONTAINS, &needle, 1).truthy();
+                found = callDunder(haystack, method, &needle, 1).truthy();
             } else {
                 auto inst = haystack.asInstance();
                 if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
@@ -5060,7 +5058,7 @@ namespace jc {
                         auto getattrMethod = findDunder(haystack, DUNDER_GETATTR);
                         if (getattrMethod) {
                             try {
-                                callDunder(haystack, DUNDER_GETATTR, &needle, 1);
+                                callDunder(haystack, getattrMethod, &needle, 1);
                                 found = true;
                             } catch (...) {
                                 // Fall through to false

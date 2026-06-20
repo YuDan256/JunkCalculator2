@@ -471,7 +471,7 @@ namespace jc {
             if (low % 2 == 0) low++;
 
             while (primes_found < count) {
-                std::fill(sieve.begin(), sieve.end(), 1);
+                std::fill(sieve.begin(), sieve.end(), static_cast<uint8_t>(1));
                 uint64_t high = low + S * 2 - 2;
                 
                 for (uint32_t p : base_primes) {

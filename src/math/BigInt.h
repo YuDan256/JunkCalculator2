@@ -374,16 +374,47 @@ namespace jc {
             return p;
         }
 
+        static uint64_t mulMod64(uint64_t a, uint64_t b, uint64_t m) {
+#if defined(__SIZEOF_INT128__)
+            return static_cast<uint64_t>((static_cast<unsigned __int128>(a) * b) % m);
+#else
+            // 防溢出的 64 位俄罗斯乘法 (Russian Peasant Multiplication)
+            uint64_t res = 0;
+            a %= m;
+            while (b > 0) {
+                if (b & 1) {
+                    if (m - res > a) res += a;
+                    else res = res + a - m;
+                }
+                if (m - a > a) a <<= 1;
+                else a = a + a - m;
+                b >>= 1;
+            }
+            return res;
+#endif
+        }
+
+        static uint64_t powMod64(uint64_t base, uint64_t exp, uint64_t mod) {
+            uint64_t res = 1;
+            base %= mod;
+            while (exp > 0) {
+                if (exp & 1) res = mulMod64(res, base, mod);
+                base = mulMod64(base, base, mod);
+                exp >>= 1;
+            }
+            return res;
+        }
+
         static bool isPrimeFast(uint64_t n) {
             if (n < 2) return false;
             if (n == 2 || n == 3 || n == 5 || n == 7) return true;
             if (n % 2 == 0 || n % 3 == 0 || n % 5 == 0) return false;
             
+            uint64_t d = n - 1;
+            int s = 0;
+            while ((d & 1) == 0) { d >>= 1; s++; }
+            
             if (n < 4294967295ULL) {
-                uint64_t d = n - 1;
-                int s = 0;
-                while ((d & 1) == 0) { d >>= 1; s++; }
-                
                 uint64_t bases[] = {2, 7, 61};
                 for (uint64_t a : bases) {
                     if (n <= a) break;
@@ -405,8 +436,22 @@ namespace jc {
                     if (composite) return false;
                 }
                 return true;
+            } else {
+                // 64-bit deterministic bases for n < 2^64
+                uint64_t bases[] = {2, 325, 9375, 28178, 450775, 9780504, 1795265022};
+                for (uint64_t a : bases) {
+                    if (n <= a) break;
+                    uint64_t x = powMod64(a, d, n);
+                    if (x == 1 || x == n - 1) continue;
+                    bool composite = true;
+                    for (int r = 1; r < s; ++r) {
+                        x = mulMod64(x, x, n);
+                        if (x == n - 1) { composite = false; break; }
+                    }
+                    if (composite) return false;
+                }
+                return true;
             }
-            return BigInt(static_cast<int64_t>(n)).isPrime();
         }
 
         // --- 扩展质数表 (JCP1 差分编码 + 极速分段筛法) ---

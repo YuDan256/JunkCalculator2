@@ -139,23 +139,6 @@ namespace jc {
             return result;
         }
 
-        // 单个 limb(块) 的除法/取模
-        std::pair<BigInt, uint32_t> divmod_small(uint32_t divisor) const {
-            if (divisor == 0) throw std::runtime_error("Math Error: Division by zero.");
-
-            BigInt q;
-            q.data.resize(data.size(), 0);
-            uint64_t rem = 0;
-            for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
-                uint64_t cur = (rem << 32) | data[i];
-                q.data[i] = static_cast<uint32_t>(cur / divisor);
-                rem = cur % divisor;
-            }
-            q.negative = negative;
-            q.trim();
-            return { q, static_cast<uint32_t>(rem) };
-        }
-
         static std::pair<BigInt, BigInt> divmod(const BigInt& a, const BigInt& b) {
             if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
 
@@ -471,6 +454,23 @@ namespace jc {
             }
             if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
             return res;
+        }
+
+        // 单个 limb(块) 的除法/取模
+        std::pair<BigInt, uint32_t> divmod_small(uint32_t divisor) const {
+            if (divisor == 0) throw std::runtime_error("Math Error: Division by zero.");
+
+            BigInt q;
+            q.data.resize(data.size(), 0);
+            uint64_t rem = 0;
+            for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
+                uint64_t cur = (rem << 32) | data[i];
+                q.data[i] = static_cast<uint32_t>(cur / divisor);
+                rem = cur % divisor;
+            }
+            q.negative = negative;
+            q.trim();
+            return { q, static_cast<uint32_t>(rem) };
         }
 
         explicit BigInt(const std::string& s) {

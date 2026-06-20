@@ -373,46 +373,7 @@ namespace jc {
             return p;
         }
 
-        static bool isPrimeFast(uint64_t n) {
-            if (n < 2) return false;
-            if (n == 2 || n == 3 || n == 5 || n == 7) return true;
-            if (n % 2 == 0 || n % 3 == 0 || n % 5 == 0) return false;
-            
-            // 只要 n < 2^32 - 1，(n-1)^2 就绝对不会溢出 64 位无符号整数
-            // 我们可以 100% 榨干 CPU 的 64 位硬件乘法器，速度比 BigInt 快上百倍
-            if (n < 4294967295ULL) {
-                uint64_t d = n - 1;
-                int s = 0;
-                while ((d & 1) == 0) { d >>= 1; s++; }
-                
-                // 对于 32 位以内的数，仅需 2, 7, 61 这三个基即可 100% 准确判定
-                uint64_t bases[] = {2, 7, 61};
-                for (uint64_t a : bases) {
-                    if (n <= a) break;
-                    uint64_t res = 1;
-                    uint64_t base = a;
-                    uint64_t exp = d;
-                    while (exp > 0) {
-                        if (exp & 1) res = (res * base) % n;
-                        base = (base * base) % n;
-                        exp >>= 1;
-                    }
-                    uint64_t x = res;
-                    if (x == 1 || x == n - 1) continue;
-                    bool composite = true;
-                    for (int r = 1; r < s; ++r) {
-                        x = (x * x) % n;
-                        if (x == n - 1) { composite = false; break; }
-                    }
-                    if (composite) return false;
-                }
-                return true;
-            }
-            // 超过 32 位，平滑降级回 BigInt 算法
-            return BigInt(static_cast<int64_t>(n)).isPrime();
-        }
-
-        // --- 扩展质数表 (JCP1 差分编码) ---
+        // --- 扩展质数表 (JCP1 差分编码 + 极速分段筛法) ---
         static void extendPrimeTable(int64_t count) {
             if (customPrimePath.empty()) {
                 throw std::runtime_error("IO Error: No prime table mounted. Use mountPrimes() first.");
@@ -454,23 +415,37 @@ namespace jc {
             }
             
             file.seekp(24 + lastBlockIdx * BLOCK_BYTES, std::ios::beg);
-            
-            for (int64_t i = 0; i < count; ++i) {
-                if (currentP_val < 2) currentP_val = 2;
-                else if (currentP_val == 2) currentP_val = 3;
-                else {
-                    currentP_val += 2;
-                    while (!isPrimeFast(currentP_val)) currentP_val += 2;
+
+            // =========================================================
+            // 极速分段筛法 (Segmented Sieve of Eratosthenes)
+            // =========================================================
+            uint32_t max_sqrt = 1000000; // 覆盖到 10^12，足以生成 370 亿个质数
+            std::vector<uint32_t> base_primes;
+            std::vector<bool> is_p(max_sqrt + 1, true);
+            for (uint32_t p = 2; p * p <= max_sqrt; ++p) {
+                if (is_p[p]) {
+                    for (uint32_t i = p * p; i <= max_sqrt; i += p) is_p[i] = false;
                 }
-                
+            }
+            for (uint32_t p = 2; p <= max_sqrt; ++p) {
+                if (is_p[p]) base_primes.push_back(p);
+            }
+
+            const uint64_t S = 262144; // 256KB L2 Cache 友好
+            std::vector<uint8_t> sieve(S);
+            uint64_t low = currentP_val + 1;
+            
+            int64_t primes_found = 0;
+
+            auto add_prime = [&](uint64_t p_val) {
                 if (primesInLastBlock == 0) {
-                    uint64_t base = currentP_val;
+                    uint64_t base = p_val;
                     std::memcpy(blockBuf.data(), &base, 8);
                     std::memset(blockBuf.data() + 8, 0, BLOCK_BYTES - 8);
                     primesInLastBlock = 1;
                     blockAnchors.push_back(base);
                 } else {
-                    uint64_t gap = currentP_val - lastP_val;
+                    uint64_t gap = p_val - lastP_val;
                     if (gap > 65535) throw std::runtime_error("Math Error: Prime gap exceeds 65535. Differential encoding failed.");
                     uint16_t gap16 = static_cast<uint16_t>(gap);
                     std::memcpy(blockBuf.data() + 8 + (primesInLastBlock - 1) * 2, &gap16, 2);
@@ -483,8 +458,45 @@ namespace jc {
                     lastBlockIdx++;
                 }
                 
-                lastP_val = currentP_val;
+                lastP_val = p_val;
                 currentTotal++;
+                primes_found++;
+            };
+
+            if (low <= 2 && count > 0) {
+                add_prime(2);
+                currentP_val = 2;
+                low = 3;
+            }
+            if (low % 2 == 0) low++;
+
+            while (primes_found < count) {
+                std::fill(sieve.begin(), sieve.end(), 1);
+                uint64_t high = low + S * 2 - 2;
+                
+                for (uint32_t p : base_primes) {
+                    if (p == 2) continue;
+                    uint64_t p2 = static_cast<uint64_t>(p) * p;
+                    if (p2 > high) break;
+                    
+                    uint64_t start = (low / p) * p;
+                    if (start < low) start += p;
+                    if (start == p) start += p;
+                    if (start % 2 == 0) start += p;
+                    
+                    for (uint64_t j = start; j <= high; j += p * 2) {
+                        sieve[(j - low) / 2] = 0;
+                    }
+                }
+                
+                for (uint64_t i = 0; i < S && primes_found < count; ++i) {
+                    if (sieve[i]) {
+                        uint64_t p = low + i * 2;
+                        add_prime(p);
+                        currentP_val = p;
+                    }
+                }
+                low += S * 2;
             }
             
             if (primesInLastBlock > 0) {

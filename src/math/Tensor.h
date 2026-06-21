@@ -92,6 +92,51 @@ namespace jc {
         virtual void apply() = 0;
     };
 
+    template <typename T>
+    class SharedValue {
+    public:
+        SharedValue() : value_(std::make_shared<T>()) {}
+        explicit SharedValue(T value) : value_(std::make_shared<T>(std::move(value))) {}
+
+        SharedValue& operator=(T value) {
+            *value_ = std::move(value);
+            return *this;
+        }
+
+        operator const T&() const { return *value_; }
+        operator T&() { return *value_; }
+
+    private:
+        std::shared_ptr<T> value_;
+    };
+
+    template <typename T>
+    class SharedValue<std::shared_ptr<T>> {
+    public:
+        SharedValue() : value_(std::make_shared<std::shared_ptr<T>>()) {}
+        explicit SharedValue(std::shared_ptr<T> value)
+            : value_(std::make_shared<std::shared_ptr<T>>(std::move(value))) {}
+
+        SharedValue& operator=(std::shared_ptr<T> value) {
+            *value_ = std::move(value);
+            return *this;
+        }
+
+        SharedValue& operator=(std::nullptr_t) {
+            value_->reset();
+            return *this;
+        }
+
+        explicit operator bool() const { return static_cast<bool>(*value_); }
+
+        T& operator*() const { return **value_; }
+        T* operator->() const { return value_->get(); }
+        std::shared_ptr<T> get() const { return *value_; }
+
+    private:
+        std::shared_ptr<std::shared_ptr<T>> value_;
+    };
+
     // ========================================================================
     // 4. 辅助工具
     // ========================================================================
@@ -122,16 +167,17 @@ namespace jc {
         std::vector<int> strides;
 
         // Autograd 字段
-        bool requires_grad = false;
-        bool is_leaf = true;
-        std::shared_ptr<Tensor> grad;
-        std::shared_ptr<BackwardNode> grad_fn;
+        SharedValue<bool> requires_grad = SharedValue<bool>(false);
+        SharedValue<bool> is_leaf = SharedValue<bool>(true);
+        SharedValue<std::shared_ptr<Tensor>> grad;
+        SharedValue<std::shared_ptr<BackwardNode>> grad_fn;
 
         Tensor() = default;
 
         // 基础构造函数：创建全零张量
         Tensor(std::vector<int> s, DType type = DType::Float64, bool req_grad = false)
-            : shape(std::move(s)), requires_grad(req_grad) {
+            : shape(std::move(s)) {
+            requires_grad = req_grad;
             strides = calcStrides(shape);
             size_t total_elements = numel();
             switch (type) {
@@ -403,8 +449,8 @@ namespace jc {
             std::unordered_set<BackwardNode*> visited;
             std::function<void(Tensor*)> build_topo = [&](Tensor* t) {
                 if (!t->grad_fn) return;
-                if (visited.count(t->grad_fn.get())) return;
-                visited.insert(t->grad_fn.get());
+                if (visited.count(t->grad_fn.get().get())) return;
+                visited.insert(t->grad_fn.get().get());
                 topo.push_back(t);
             };
             build_topo(this);
@@ -427,7 +473,7 @@ namespace jc {
                 if (i + 1 < shape.size()) oss << ", ";
             }
             oss << "], dtype=" << dtypeToString(dtype());
-            if (requires_grad) oss << ", requires_grad=true";
+            if (static_cast<bool>(requires_grad)) oss << ", requires_grad=true";
             oss << ")";
             return oss.str();
         }

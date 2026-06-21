@@ -5380,6 +5380,39 @@ namespace jc {
     // 🚀 极限计算 (Limit) - 真正的工业级 Gruntz 算法 (True Gruntz Algorithm)
     // =================================================================
     
+    static SymExpr rewritePowToExp(const SymExpr& expr, const std::string& var) {
+        if (!expr.ptr) return expr;
+        switch (expr.ptr->getType()) {
+            case SymType::ADD: {
+                SymExpr res(BigInt(0));
+                for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args) res = res + rewritePowToExp(SymExpr(arg), var);
+                return res;
+            }
+            case SymType::MUL: {
+                SymExpr res(BigInt(1));
+                for (auto& arg : std::static_pointer_cast<SymMul>(expr.ptr)->args) res = res * rewritePowToExp(SymExpr(arg), var);
+                return res;
+            }
+            case SymType::POW: {
+                auto p = std::static_pointer_cast<SymPow>(expr.ptr);
+                SymExpr base = rewritePowToExp(SymExpr(p->base), var);
+                SymExpr exp = rewritePowToExp(SymExpr(p->exp), var);
+                if (containsVar(exp.ptr, var)) {
+                    SymExpr log_base(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{base.ptr}));
+                    return SymExpr(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{(exp * log_base).ptr}));
+                }
+                return base ^ exp;
+            }
+            case SymType::FUNC: {
+                auto f = std::static_pointer_cast<SymFunc>(expr.ptr);
+                std::vector<std::shared_ptr<SymNode>> newArgs;
+                for (auto& arg : f->args) newArgs.push_back(rewritePowToExp(SymExpr(arg), var).ptr);
+                return SymExpr(std::make_shared<SymFunc>(f->name, std::move(newArgs)));
+            }
+            default: return expr;
+        }
+    }
+
     static SymExpr gruntzInf(SymExpr expr, const std::string& var, int depth);
 
     static int compareGrowth(SymExpr f, SymExpr g, const std::string& var, int depth) {
@@ -5540,7 +5573,7 @@ namespace jc {
         if (depth > SymConfig::maxDepth * 3) throw std::runtime_error("Math Error: Gruntz limit depth exceeded.");
         if (!containsVar(expr.ptr, var)) return expr;
         
-        expr = simplifyCore(expr);
+        expr = simplifyCore(rewritePowToExp(expr, var));
         std::vector<SymExpr> omega = mrv(expr, var, depth);
         if (omega.empty()) return expr;
         
@@ -5559,6 +5592,26 @@ namespace jc {
         };
         
         if (omega.size() == 1 && omega[0].ptr->getType() == SymType::VAR) {
+            bool has_log = false;
+            std::function<void(const std::shared_ptr<SymNode>&)> check_log = [&](const std::shared_ptr<SymNode>& node) {
+                if (!node || has_log) return;
+                if (node->getType() == SymType::FUNC && std::static_pointer_cast<SymFunc>(node)->name == "log") {
+                    has_log = true;
+                    return;
+                }
+                if (node->getType() == SymType::ADD) for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args) check_log(arg);
+                else if (node->getType() == SymType::MUL) for (auto& arg : std::static_pointer_cast<SymMul>(node)->args) check_log(arg);
+                else if (node->getType() == SymType::POW) { check_log(std::static_pointer_cast<SymPow>(node)->base); check_log(std::static_pointer_cast<SymPow>(node)->exp); }
+                else if (node->getType() == SymType::FUNC) for (auto& arg : std::static_pointer_cast<SymFunc>(node)->args) check_log(arg);
+            };
+            check_log(expr.ptr);
+
+            if (has_log) {
+                SymExpr exp_var(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{SymExpr::makeVar(var).ptr}));
+                SymExpr new_expr = simplifyCore(subs(expr, var, exp_var));
+                return gruntzInf(new_expr, var, depth + 1);
+            }
+
             std::string t_var = "_t_inf";
             SymExpr t = SymExpr::makeVar(t_var);
             SymExpr expr_t = simplifyCore(subs(expr, var, SymExpr(BigInt(1)) / t));

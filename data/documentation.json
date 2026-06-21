@@ -3251,7 +3251,7 @@
       "    ptr = buffer.alloc(8)",
       "    time(ptr)              // ptr is automatically passed as void*",
       "    print(ptr.readI64())"
-    ]
+    ],
     "tensor": [
       "═══ N-Dimensional Tensor Engine with Autograd — Native Module ═══",
       "",

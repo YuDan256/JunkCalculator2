@@ -8,6 +8,11 @@
 #include <string>
 #include <functional>
 #include <iostream>
+#include <cmath>
+#include <sstream>
+#include <algorithm>
+#include <cassert>
+#include <unordered_set>
 
 namespace jc {
 
@@ -21,6 +26,24 @@ namespace jc {
         Int64
     };
 
+    inline std::string dtypeToString(DType d) {
+        switch (d) {
+            case DType::Float32: return "float32";
+            case DType::Float64: return "float64";
+            case DType::Int32:   return "int32";
+            case DType::Int64:   return "int64";
+        }
+        return "unknown";
+    }
+
+    inline DType stringToDType(const std::string& s) {
+        if (s == "float32" || s == "f32") return DType::Float32;
+        if (s == "float64" || s == "f64" || s == "double") return DType::Float64;
+        if (s == "int32" || s == "i32") return DType::Int32;
+        if (s == "int64" || s == "i64") return DType::Int64;
+        throw std::runtime_error("Tensor Error: Unknown dtype string '" + s + "'.");
+    }
+
     // ========================================================================
     // 2. 类型擦除的底层存储 (Type-erased Storage)
     // ========================================================================
@@ -28,41 +51,68 @@ namespace jc {
         virtual ~TensorStorageBase() = default;
         virtual DType dtype() const = 0;
         virtual void* data_ptr() = 0;
+        virtual const void* data_ptr() const = 0;
         virtual size_t element_size() const = 0;
+        virtual std::shared_ptr<TensorStorageBase> clone() const = 0;
+        virtual size_t size() const = 0;
     };
 
     template <typename T>
     struct TensorStorage : public TensorStorageBase {
         std::vector<T> data;
 
-        explicit TensorStorage(size_t size) : data(size, T(0)) {}
+        explicit TensorStorage(size_t sz) : data(sz, T(0)) {}
         explicit TensorStorage(const std::vector<T>& d) : data(d) {}
+        TensorStorage(size_t sz, T fill_val) : data(sz, fill_val) {}
 
         DType dtype() const override {
             if constexpr (std::is_same_v<T, float>) return DType::Float32;
             else if constexpr (std::is_same_v<T, double>) return DType::Float64;
             else if constexpr (std::is_same_v<T, int32_t>) return DType::Int32;
             else if constexpr (std::is_same_v<T, int64_t>) return DType::Int64;
-            throw std::runtime_error("Tensor Error: Unsupported DType.");
+            else throw std::runtime_error("Tensor Error: Unsupported DType.");
         }
 
         void* data_ptr() override { return data.data(); }
+        const void* data_ptr() const override { return data.data(); }
         size_t element_size() const override { return sizeof(T); }
+        size_t size() const override { return data.size(); }
+        std::shared_ptr<TensorStorageBase> clone() const override {
+            return std::make_shared<TensorStorage<T>>(data);
+        }
     };
 
     // ========================================================================
-    // 3. 动态计算图节点 (Autograd Node)
+    // 3. 前向声明
     // ========================================================================
-    class Tensor; // 前向声明
+    class Tensor;
 
     struct BackwardNode {
         virtual ~BackwardNode() = default;
-        // 反向传播接口：接收上游传来的梯度，计算当前节点的梯度并分发给子节点
-        virtual void apply() = 0; 
+        virtual void apply() = 0;
     };
 
     // ========================================================================
-    // 4. 张量句柄 (Tensor Handle) - 包含 Shape, Strides 和 Autograd 元数据
+    // 4. 辅助工具
+    // ========================================================================
+    inline std::vector<int> calcStrides(const std::vector<int>& s) {
+        if (s.empty()) return {};
+        std::vector<int> st(s.size(), 1);
+        for (int i = static_cast<int>(s.size()) - 2; i >= 0; --i) {
+            st[i] = st[i + 1] * s[i + 1];
+        }
+        return st;
+    }
+
+    inline size_t shapeToNumel(const std::vector<int>& shape) {
+        if (shape.empty()) return 0;
+        size_t n = 1;
+        for (int s : shape) n *= static_cast<size_t>(s);
+        return n;
+    }
+
+    // ========================================================================
+    // 5. 张量句柄 (Tensor Handle)
     // ========================================================================
     class Tensor {
     public:
@@ -79,27 +129,24 @@ namespace jc {
 
         Tensor() = default;
 
-        // 基础构造函数
-        Tensor(std::vector<int> s, DType type = DType::Float64, bool req_grad = false) 
+        // 基础构造函数：创建全零张量
+        Tensor(std::vector<int> s, DType type = DType::Float64, bool req_grad = false)
             : shape(std::move(s)), requires_grad(req_grad) {
             strides = calcStrides(shape);
             size_t total_elements = numel();
-            
-            if (type == DType::Float64) storage = std::make_shared<TensorStorage<double>>(total_elements);
-            else if (type == DType::Float32) storage = std::make_shared<TensorStorage<float>>(total_elements);
-            else if (type == DType::Int32) storage = std::make_shared<TensorStorage<int32_t>>(total_elements);
-            else if (type == DType::Int64) storage = std::make_shared<TensorStorage<int64_t>>(total_elements);
-            else throw std::runtime_error("Tensor Error: Unknown DType.");
+            switch (type) {
+                case DType::Float64: storage = std::make_shared<TensorStorage<double>>(total_elements); break;
+                case DType::Float32: storage = std::make_shared<TensorStorage<float>>(total_elements); break;
+                case DType::Int32:   storage = std::make_shared<TensorStorage<int32_t>>(total_elements); break;
+                case DType::Int64:   storage = std::make_shared<TensorStorage<int64_t>>(total_elements); break;
+            }
         }
 
         int dim() const { return static_cast<int>(shape.size()); }
-        
-        size_t numel() const {
-            if (shape.empty()) return 0;
-            size_t n = 1;
-            for (int s : shape) n *= s;
-            return n;
-        }
+
+        size_t numel() const { return shapeToNumel(shape); }
+
+        DType dtype() const { return storage ? storage->dtype() : DType::Float64; }
 
         bool is_contiguous() const {
             auto expected = calcStrides(shape);
@@ -107,19 +154,91 @@ namespace jc {
         }
 
         // ====================================================================
+        // 元素读写（仅支持 contiguous 的 double 快速路径；其他类型走通用路径）
+        // ====================================================================
+        double item() const {
+            if (numel() != 1) throw std::runtime_error("Tensor Error: item() requires exactly 1 element.");
+            return getFlat(0);
+        }
+
+        double getFlat(size_t linear_idx) const {
+            size_t idx = offset;
+            size_t remain = linear_idx;
+            for (int i = static_cast<int>(shape.size()) - 1; i >= 0; --i) {
+                size_t coord = remain % shape[i];
+                remain /= shape[i];
+                idx += coord * strides[i];
+            }
+            return getByAbsIdx(idx);
+        }
+
+        void setFlat(size_t linear_idx, double val) {
+            size_t idx = offset;
+            size_t remain = linear_idx;
+            for (int i = static_cast<int>(shape.size()) - 1; i >= 0; --i) {
+                size_t coord = remain % shape[i];
+                remain /= shape[i];
+                idx += coord * strides[i];
+            }
+            setByAbsIdx(idx, val);
+        }
+
+        double getByAbsIdx(size_t idx) const {
+            switch (storage->dtype()) {
+                case DType::Float64: return static_cast<const double*>(storage->data_ptr())[idx];
+                case DType::Float32: return static_cast<double>(static_cast<const float*>(storage->data_ptr())[idx]);
+                case DType::Int32:   return static_cast<double>(static_cast<const int32_t*>(storage->data_ptr())[idx]);
+                case DType::Int64:   return static_cast<double>(static_cast<const int64_t*>(storage->data_ptr())[idx]);
+            }
+            return 0.0;
+        }
+
+        void setByAbsIdx(size_t idx, double val) {
+            switch (storage->dtype()) {
+                case DType::Float64: static_cast<double*>(storage->data_ptr())[idx] = val; break;
+                case DType::Float32: static_cast<float*>(storage->data_ptr())[idx] = static_cast<float>(val); break;
+                case DType::Int32:   static_cast<int32_t*>(storage->data_ptr())[idx] = static_cast<int32_t>(val); break;
+                case DType::Int64:   static_cast<int64_t*>(storage->data_ptr())[idx] = static_cast<int64_t>(val); break;
+            }
+        }
+
+        // ====================================================================
+        // 填充
+        // ====================================================================
+        void fill_(double val) {
+            size_t n = numel();
+            for (size_t i = 0; i < n; ++i) setFlat(i, val);
+        }
+
+        // ====================================================================
+        // 深拷贝（解耦存储）
+        // ====================================================================
+        Tensor clone() const {
+            Tensor t(shape, dtype(), requires_grad);
+            size_t n = numel();
+            for (size_t i = 0; i < n; ++i) t.setFlat(i, getFlat(i));
+            t.is_leaf = true;
+            return t;
+        }
+
+        // 使张量连续化
+        Tensor contiguous() const {
+            if (is_contiguous()) return *this;
+            return clone();
+        }
+
+        // ====================================================================
         // 广播机制核心 (Broadcasting Core)
         // ====================================================================
         static std::vector<int> broadcastShapes(const std::vector<int>& shapeA, const std::vector<int>& shapeB) {
-            std::vector<int> out_shape;
             int ndimA = static_cast<int>(shapeA.size());
             int ndimB = static_cast<int>(shapeB.size());
             int ndimOut = std::max(ndimA, ndimB);
-            out_shape.resize(ndimOut);
-            
+            std::vector<int> out_shape(ndimOut);
+
             for (int i = 0; i < ndimOut; ++i) {
                 int dimA = (i < ndimOut - ndimA) ? 1 : shapeA[i - (ndimOut - ndimA)];
                 int dimB = (i < ndimOut - ndimB) ? 1 : shapeB[i - (ndimOut - ndimB)];
-                
                 if (dimA != dimB && dimA != 1 && dimB != 1) {
                     throw std::runtime_error("Tensor Error: Shapes are not broadcastable.");
                 }
@@ -132,124 +251,1070 @@ namespace jc {
             int ndimOrig = static_cast<int>(orig_shape.size());
             int ndimOut = static_cast<int>(out_shape.size());
             std::vector<int> new_strides(ndimOut, 0);
-            
+
             for (int i = 0; i < ndimOut; ++i) {
                 int orig_idx = i - (ndimOut - ndimOrig);
                 if (orig_idx >= 0) {
                     if (orig_shape[orig_idx] == out_shape[i]) {
                         new_strides[i] = orig_strides[orig_idx];
-                    } else if (orig_shape[orig_idx] == 1) {
-                        new_strides[i] = 0; // ★ 核心魔法：广播维度的步长设为 0，实现零拷贝原地踏步！
                     }
+                    // else: orig_shape[orig_idx] == 1 → stride stays 0 (broadcast!)
                 }
             }
             return new_strides;
         }
 
-        static size_t getFlatIndex(size_t linear_idx, const std::vector<int>& out_shape, const std::vector<int>& strides) {
+        static size_t getFlatIndex(size_t linear_idx, const std::vector<int>& out_shape, const std::vector<int>& bc_strides) {
             size_t flat_idx = 0;
             size_t remain = linear_idx;
             for (int i = static_cast<int>(out_shape.size()) - 1; i >= 0; --i) {
                 size_t coord = remain % out_shape[i];
                 remain /= out_shape[i];
-                flat_idx += coord * strides[i];
+                flat_idx += coord * bc_strides[i];
             }
             return flat_idx;
         }
 
+        // ====================================================================
         // 零拷贝视图 (Zero-copy View)
+        // ====================================================================
         Tensor view(const std::vector<int>& new_shape) const {
             if (!is_contiguous()) throw std::runtime_error("Tensor Error: view() requires a contiguous tensor.");
-            Tensor t = *this; // 浅拷贝句柄
+            size_t new_numel = shapeToNumel(new_shape);
+            if (new_numel != numel()) throw std::runtime_error("Tensor Error: Shape mismatch in view().");
+            Tensor t;
+            t.storage = storage;
+            t.offset = offset;
             t.shape = new_shape;
             t.strides = calcStrides(new_shape);
-            if (t.numel() != numel()) throw std::runtime_error("Tensor Error: Shape mismatch in view().");
+            t.requires_grad = requires_grad;
+            t.is_leaf = false;
             return t;
         }
 
+        // ====================================================================
+        // 转置 (Transpose) — 零拷贝
+        // ====================================================================
+        Tensor transpose(int dim0, int dim1) const {
+            if (dim0 < 0 || dim0 >= dim() || dim1 < 0 || dim1 >= dim())
+                throw std::runtime_error("Tensor Error: transpose dimension out of range.");
+            Tensor t;
+            t.storage = storage;
+            t.offset = offset;
+            t.shape = shape;
+            t.strides = strides;
+            t.requires_grad = requires_grad;
+            t.is_leaf = false;
+            std::swap(t.shape[dim0], t.shape[dim1]);
+            std::swap(t.strides[dim0], t.strides[dim1]);
+            return t;
+        }
+
+        Tensor T() const {
+            if (dim() < 2) throw std::runtime_error("Tensor Error: T() requires at least 2 dimensions.");
+            return transpose(dim() - 2, dim() - 1);
+        }
+
+        // ====================================================================
+        // 切片 — 返回子视图
+        // ====================================================================
+        Tensor select(int dimension, int index) const {
+            if (dimension < 0 || dimension >= dim())
+                throw std::runtime_error("Tensor Error: select dimension out of range.");
+            if (index < 0) index += shape[dimension];
+            if (index < 0 || index >= shape[dimension])
+                throw std::runtime_error("Tensor Error: select index out of range.");
+            Tensor t;
+            t.storage = storage;
+            t.offset = offset + index * strides[dimension];
+            for (int i = 0; i < dim(); ++i) {
+                if (i != dimension) {
+                    t.shape.push_back(shape[i]);
+                    t.strides.push_back(strides[i]);
+                }
+            }
+            t.requires_grad = requires_grad;
+            t.is_leaf = false;
+            return t;
+        }
+
+        // ====================================================================
+        // Squeeze / Unsqueeze
+        // ====================================================================
+        Tensor unsqueeze(int dimension) const {
+            if (dimension < 0) dimension += dim() + 1;
+            if (dimension < 0 || dimension > dim())
+                throw std::runtime_error("Tensor Error: unsqueeze dimension out of range.");
+            Tensor t;
+            t.storage = storage;
+            t.offset = offset;
+            t.shape = shape;
+            t.strides = strides;
+            t.shape.insert(t.shape.begin() + dimension, 1);
+            int stride_val = (dimension < static_cast<int>(strides.size())) ? strides[dimension] : 1;
+            t.strides.insert(t.strides.begin() + dimension, stride_val);
+            t.requires_grad = requires_grad;
+            t.is_leaf = false;
+            return t;
+        }
+
+        Tensor squeeze(int dimension = -1) const {
+            Tensor t;
+            t.storage = storage;
+            t.offset = offset;
+            t.requires_grad = requires_grad;
+            t.is_leaf = false;
+            if (dimension >= 0) {
+                if (dimension >= dim()) throw std::runtime_error("Tensor Error: squeeze dimension out of range.");
+                if (shape[dimension] == 1) {
+                    for (int i = 0; i < dim(); ++i) {
+                        if (i != dimension) {
+                            t.shape.push_back(shape[i]);
+                            t.strides.push_back(strides[i]);
+                        }
+                    }
+                } else {
+                    t.shape = shape;
+                    t.strides = strides;
+                }
+            } else {
+                for (int i = 0; i < dim(); ++i) {
+                    if (shape[i] != 1) {
+                        t.shape.push_back(shape[i]);
+                        t.strides.push_back(strides[i]);
+                    }
+                }
+            }
+            if (t.shape.empty()) { t.shape = {1}; t.strides = {1}; }
+            return t;
+        }
+
+        // ====================================================================
         // 触发反向传播
+        // ====================================================================
         void backward() {
             if (!requires_grad) throw std::runtime_error("Tensor Error: Tensor does not require grad.");
             if (!grad) {
-                // 默认初始梯度为 1.0
-                grad = std::make_shared<Tensor>(shape, storage->dtype(), false);
-                // TODO: Fill grad with 1.0
+                grad = std::make_shared<Tensor>(shape, dtype(), false);
+                grad->fill_(1.0);
             }
-            if (grad_fn) {
-                grad_fn->apply();
+            // 拓扑排序（反向 BFS）
+            std::vector<Tensor*> topo;
+            std::unordered_set<BackwardNode*> visited;
+            std::function<void(Tensor*)> build_topo = [&](Tensor* t) {
+                if (!t->grad_fn) return;
+                if (visited.count(t->grad_fn.get())) return;
+                visited.insert(t->grad_fn.get());
+                topo.push_back(t);
+            };
+            build_topo(this);
+            // 简化版：逐节点反向传播
+            for (auto* t : topo) {
+                if (t->grad_fn) t->grad_fn->apply();
             }
+        }
+
+        // ====================================================================
+        // 漂亮打印
+        // ====================================================================
+        std::string toString() const {
+            std::ostringstream oss;
+            oss << "Tensor(";
+            printRecursive(oss, 0, 0, 0);
+            oss << ", shape=[";
+            for (size_t i = 0; i < shape.size(); ++i) {
+                oss << shape[i];
+                if (i + 1 < shape.size()) oss << ", ";
+            }
+            oss << "], dtype=" << dtypeToString(dtype());
+            if (requires_grad) oss << ", requires_grad=true";
+            oss << ")";
+            return oss.str();
         }
 
     private:
-        static std::vector<int> calcStrides(const std::vector<int>& s) {
-            if (s.empty()) return {};
-            std::vector<int> st(s.size(), 1);
-            for (int i = static_cast<int>(s.size()) - 2; i >= 0; --i) {
-                st[i] = st[i + 1] * s[i + 1];
+        void printRecursive(std::ostringstream& oss, int cur_dim, size_t base_offset, int indent) const {
+            if (cur_dim == dim()) {
+                // 标量位置
+                oss << getByAbsIdx(base_offset);
+                return;
             }
-            return st;
+            oss << "[";
+            for (int i = 0; i < shape[cur_dim]; ++i) {
+                if (i > 0) {
+                    oss << ", ";
+                    if (cur_dim < dim() - 1) {
+                        oss << "\n";
+                        for (int j = 0; j < indent + cur_dim + 1; ++j) oss << " ";
+                    }
+                }
+                printRecursive(oss, cur_dim + 1, base_offset + i * strides[cur_dim], indent);
+            }
+            oss << "]";
         }
     };
 
     // ========================================================================
-    // 5. 算子示例：加法 (Forward + Backward)
+    // 6. Autograd 节点 (Backward Nodes)
     // ========================================================================
-    struct AddBackward : public BackwardNode {
-        Tensor a, b, out;
-        AddBackward(Tensor a, Tensor b, Tensor out) : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
-        
-        void apply() override {
-            // 链式法则：out 的梯度直接传递给 a 和 b
-            if (a.requires_grad) {
-                if (!a.grad) a.grad = std::make_shared<Tensor>(a.shape, a.storage->dtype());
-                // TODO: a.grad += out.grad (需要处理广播的逆运算 sum)
-            }
-            if (b.requires_grad) {
-                if (!b.grad) b.grad = std::make_shared<Tensor>(b.shape, b.storage->dtype());
-                // TODO: b.grad += out.grad
-            }
-            // 继续向上传播
-            if (a.grad_fn) a.grad_fn->apply();
-            if (b.grad_fn) b.grad_fn->apply();
-        }
-    };
 
-    template <typename T>
-    void tensor_add_impl(const Tensor& a, const Tensor& b, Tensor& out) {
-        const T* ptrA = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
-        const T* ptrB = static_cast<const T*>(b.storage->data_ptr()) + b.offset;
-        T* ptrOut = static_cast<T*>(out.storage->data_ptr()) + out.offset;
-        
-        auto stridesA = Tensor::broadcastStrides(a.shape, a.strides, out.shape);
-        auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out.shape);
-        
-        size_t total = out.numel();
-        for (size_t i = 0; i < total; ++i) {
-            size_t idxA = Tensor::getFlatIndex(i, out.shape, stridesA);
-            size_t idxB = Tensor::getFlatIndex(i, out.shape, stridesB);
-            ptrOut[i] = ptrA[idxA] + ptrB[idxB];
+    // ---- 辅助：将梯度从 broadcast 形状 reduce 回原始形状 ----
+    inline Tensor reduce_grad_for_broadcast(const Tensor& grad_out, const std::vector<int>& orig_shape) {
+        // grad_out 的 shape 可能比 orig_shape 维度多（因广播扩展），需要 sum 掉多出的维度
+        if (grad_out.shape == orig_shape) return grad_out;
+
+        int ndimOut = static_cast<int>(grad_out.shape.size());
+        int ndimOrig = static_cast<int>(orig_shape.size());
+
+        // 对齐到右侧
+        std::vector<int> axes_to_sum;
+        for (int i = 0; i < ndimOut; ++i) {
+            int orig_idx = i - (ndimOut - ndimOrig);
+            if (orig_idx < 0) {
+                axes_to_sum.push_back(i); // 多出的前导维度
+            } else if (orig_shape[orig_idx] == 1 && grad_out.shape[i] != 1) {
+                axes_to_sum.push_back(i); // 被广播的维度
+            }
+        }
+
+        // 逐轴 reduce-sum（从高轴到低轴以保持索引正确）
+        Tensor result = grad_out;
+        for (int ax_i = static_cast<int>(axes_to_sum.size()) - 1; ax_i >= 0; --ax_i) {
+            int axis = axes_to_sum[ax_i];
+            // sum along 'axis'
+            std::vector<int> new_shape;
+            for (int d = 0; d < result.dim(); ++d) {
+                if (d != axis) new_shape.push_back(result.shape[d]);
+            }
+            if (new_shape.empty()) new_shape = {1};
+            Tensor summed(new_shape, result.dtype(), false);
+            // iterate over output positions
+            size_t out_n = summed.numel();
+            for (size_t oi = 0; oi < out_n; ++oi) {
+                double acc = 0.0;
+                // reconstruct coords
+                std::vector<int> coords(summed.dim());
+                size_t remain = oi;
+                for (int d = summed.dim() - 1; d >= 0; --d) {
+                    coords[d] = remain % summed.shape[d];
+                    remain /= summed.shape[d];
+                }
+                // iterate along the summed axis
+                for (int k = 0; k < result.shape[axis]; ++k) {
+                    // build full coords for result
+                    std::vector<int> full_coords;
+                    int ci = 0;
+                    for (int d = 0; d < result.dim(); ++d) {
+                        if (d == axis) full_coords.push_back(k);
+                        else full_coords.push_back(coords[ci++]);
+                    }
+                    // compute flat index in result
+                    size_t flat = 0;
+                    for (int d = 0; d < result.dim(); ++d) {
+                        flat += full_coords[d] * result.strides[d];
+                    }
+                    acc += result.getByAbsIdx(result.offset + flat);
+                }
+                summed.setFlat(oi, acc);
+            }
+            result = summed;
+        }
+
+        // reshape back to orig_shape if needed
+        if (result.shape != orig_shape) {
+            result = result.view(orig_shape);
+        }
+        return result;
+    }
+
+    // ---- 辅助：张量逐元素累加 ----
+    inline void tensor_accumulate_grad(Tensor& target, const Tensor& source) {
+        size_t n = target.numel();
+        for (size_t i = 0; i < n; ++i) {
+            target.setFlat(i, target.getFlat(i) + source.getFlat(i));
         }
     }
 
-    inline Tensor tensor_add(const Tensor& a, const Tensor& b) {
-        if (a.storage->dtype() != b.storage->dtype()) {
-            throw std::runtime_error("Tensor Error: DType mismatch in add.");
+    // ---- AddBackward ----
+    struct AddBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, b, out;
+        AddBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+            : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
+
+        void apply() override {
+            if (!out->grad) return;
+            if (a->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out->grad, a->shape);
+                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+                tensor_accumulate_grad(*a->grad, g);
+                if (a->grad_fn) a->grad_fn->apply();
+            }
+            if (b->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out->grad, b->shape);
+                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
+                tensor_accumulate_grad(*b->grad, g);
+                if (b->grad_fn) b->grad_fn->apply();
+            }
         }
+    };
+
+    // ---- SubBackward ----
+    struct SubBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, b, out;
+        SubBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+            : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
+
+        void apply() override {
+            if (!out->grad) return;
+            if (a->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out->grad, a->shape);
+                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+                tensor_accumulate_grad(*a->grad, g);
+                if (a->grad_fn) a->grad_fn->apply();
+            }
+            if (b->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out->grad, b->shape);
+                // negate
+                Tensor neg_g(g.shape, g.dtype(), false);
+                for (size_t i = 0; i < neg_g.numel(); ++i) neg_g.setFlat(i, -g.getFlat(i));
+                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
+                tensor_accumulate_grad(*b->grad, neg_g);
+                if (b->grad_fn) b->grad_fn->apply();
+            }
+        }
+    };
+
+    // ---- MulBackward (element-wise) ----
+    struct MulBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, b, out;
+        MulBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+            : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
+
+        void apply() override {
+            if (!out->grad) return;
+            if (a->requires_grad) {
+                // da = grad_out * b
+                Tensor da(out->grad->shape, out->grad->dtype(), false);
+                auto stridesB = Tensor::broadcastStrides(b->shape, b->strides, out->grad->shape);
+                for (size_t i = 0; i < da.numel(); ++i) {
+                    size_t idxB = Tensor::getFlatIndex(i, out->grad->shape, stridesB);
+                    da.setFlat(i, out->grad->getFlat(i) * b->getByAbsIdx(b->offset + idxB));
+                }
+                Tensor g = reduce_grad_for_broadcast(da, a->shape);
+                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+                tensor_accumulate_grad(*a->grad, g);
+                if (a->grad_fn) a->grad_fn->apply();
+            }
+            if (b->requires_grad) {
+                // db = grad_out * a
+                Tensor db(out->grad->shape, out->grad->dtype(), false);
+                auto stridesA = Tensor::broadcastStrides(a->shape, a->strides, out->grad->shape);
+                for (size_t i = 0; i < db.numel(); ++i) {
+                    size_t idxA = Tensor::getFlatIndex(i, out->grad->shape, stridesA);
+                    db.setFlat(i, out->grad->getFlat(i) * a->getByAbsIdx(a->offset + idxA));
+                }
+                Tensor g = reduce_grad_for_broadcast(db, b->shape);
+                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
+                tensor_accumulate_grad(*b->grad, g);
+                if (b->grad_fn) b->grad_fn->apply();
+            }
+        }
+    };
+
+    // ---- DivBackward (element-wise a/b) ----
+    struct DivBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, b, out;
+        DivBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+            : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
+
+        void apply() override {
+            if (!out->grad) return;
+            if (a->requires_grad) {
+                // da = grad / b
+                Tensor da(out->grad->shape, out->grad->dtype(), false);
+                auto stridesB = Tensor::broadcastStrides(b->shape, b->strides, out->grad->shape);
+                for (size_t i = 0; i < da.numel(); ++i) {
+                    size_t idxB = Tensor::getFlatIndex(i, out->grad->shape, stridesB);
+                    da.setFlat(i, out->grad->getFlat(i) / b->getByAbsIdx(b->offset + idxB));
+                }
+                Tensor g = reduce_grad_for_broadcast(da, a->shape);
+                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+                tensor_accumulate_grad(*a->grad, g);
+                if (a->grad_fn) a->grad_fn->apply();
+            }
+            if (b->requires_grad) {
+                // db = -grad * a / b^2
+                Tensor db(out->grad->shape, out->grad->dtype(), false);
+                auto stridesA = Tensor::broadcastStrides(a->shape, a->strides, out->grad->shape);
+                auto stridesB = Tensor::broadcastStrides(b->shape, b->strides, out->grad->shape);
+                for (size_t i = 0; i < db.numel(); ++i) {
+                    size_t idxA = Tensor::getFlatIndex(i, out->grad->shape, stridesA);
+                    size_t idxB = Tensor::getFlatIndex(i, out->grad->shape, stridesB);
+                    double bv = b->getByAbsIdx(b->offset + idxB);
+                    double av = a->getByAbsIdx(a->offset + idxA);
+                    db.setFlat(i, -out->grad->getFlat(i) * av / (bv * bv));
+                }
+                Tensor g = reduce_grad_for_broadcast(db, b->shape);
+                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
+                tensor_accumulate_grad(*b->grad, g);
+                if (b->grad_fn) b->grad_fn->apply();
+            }
+        }
+    };
+
+    // ---- NegBackward ----
+    struct NegBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        NegBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            Tensor neg_g(out->grad->shape, out->grad->dtype(), false);
+            for (size_t i = 0; i < neg_g.numel(); ++i) neg_g.setFlat(i, -out->grad->getFlat(i));
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, neg_g);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- PowBackward (element-wise a^exponent, exponent is scalar) ----
+    struct PowScalarBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        double exponent;
+        PowScalarBackward(std::shared_ptr<Tensor> a, double exp, std::shared_ptr<Tensor> out)
+            : a(std::move(a)), out(std::move(out)), exponent(exp) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            Tensor da(a->shape, a->dtype(), false);
+            for (size_t i = 0; i < da.numel(); ++i) {
+                da.setFlat(i, out->grad->getFlat(i) * exponent * std::pow(a->getFlat(i), exponent - 1.0));
+            }
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- ExpBackward ----
+    struct ExpBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        ExpBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            Tensor da(a->shape, a->dtype(), false);
+            for (size_t i = 0; i < da.numel(); ++i) {
+                da.setFlat(i, out->grad->getFlat(i) * out->getFlat(i)); // d(exp(x))/dx = exp(x)
+            }
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- LogBackward ----
+    struct LogBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        LogBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            Tensor da(a->shape, a->dtype(), false);
+            for (size_t i = 0; i < da.numel(); ++i) {
+                da.setFlat(i, out->grad->getFlat(i) / a->getFlat(i));
+            }
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- SumBackward ----
+    struct SumBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        SumBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            double g = out->grad->getFlat(0); // scalar grad
+            Tensor da(a->shape, a->dtype(), false);
+            da.fill_(g);
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- MeanBackward ----
+    struct MeanBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        MeanBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            double g = out->grad->getFlat(0) / static_cast<double>(a->numel());
+            Tensor da(a->shape, a->dtype(), false);
+            da.fill_(g);
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- MatMulBackward ----
+    struct MatMulBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, b, out;
+        MatMulBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+            : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
+        void apply() override;  // 定义在 matmul 之后
+    };
+
+    // ---- ReluBackward ----
+    struct ReluBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        ReluBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            Tensor da(a->shape, a->dtype(), false);
+            for (size_t i = 0; i < da.numel(); ++i) {
+                da.setFlat(i, a->getFlat(i) > 0.0 ? out->grad->getFlat(i) : 0.0);
+            }
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- SigmoidBackward ----
+    struct SigmoidBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        SigmoidBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            Tensor da(a->shape, a->dtype(), false);
+            for (size_t i = 0; i < da.numel(); ++i) {
+                double s = out->getFlat(i); // sigmoid value
+                da.setFlat(i, out->grad->getFlat(i) * s * (1.0 - s));
+            }
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ---- TanhBackward ----
+    struct TanhBackward : public BackwardNode {
+        std::shared_ptr<Tensor> a, out;
+        TanhBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        void apply() override {
+            if (!out->grad || !a->requires_grad) return;
+            Tensor da(a->shape, a->dtype(), false);
+            for (size_t i = 0; i < da.numel(); ++i) {
+                double t = out->getFlat(i);
+                da.setFlat(i, out->grad->getFlat(i) * (1.0 - t * t));
+            }
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+    };
+
+    // ========================================================================
+    // 7. 前向算子 (Forward Operators)
+    // ========================================================================
+
+    // ---- 通用二元逐元素运算 ----
+    using BinaryOp = std::function<double(double, double)>;
+
+    inline Tensor tensor_binary_op(const Tensor& a, const Tensor& b, BinaryOp op,
+                                   bool req_grad, std::shared_ptr<BackwardNode> grad_fn_node = nullptr) {
+        if (a.dtype() != b.dtype())
+            throw std::runtime_error("Tensor Error: DType mismatch.");
 
         std::vector<int> out_shape = Tensor::broadcastShapes(a.shape, b.shape);
-        Tensor out(out_shape, a.storage->dtype(), a.requires_grad || b.requires_grad);
+        Tensor out(out_shape, a.dtype(), req_grad);
         out.is_leaf = false;
 
-        if (a.storage->dtype() == DType::Float64) tensor_add_impl<double>(a, b, out);
-        else if (a.storage->dtype() == DType::Float32) tensor_add_impl<float>(a, b, out);
-        else if (a.storage->dtype() == DType::Int32) tensor_add_impl<int32_t>(a, b, out);
-        else if (a.storage->dtype() == DType::Int64) tensor_add_impl<int64_t>(a, b, out);
+        auto stridesA = Tensor::broadcastStrides(a.shape, a.strides, out_shape);
+        auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out_shape);
 
-        // 构建计算图
-        if (out.requires_grad) {
-            out.grad_fn = std::make_shared<AddBackward>(a, b, out);
+        size_t total = out.numel();
+        for (size_t i = 0; i < total; ++i) {
+            size_t idxA = Tensor::getFlatIndex(i, out_shape, stridesA);
+            size_t idxB = Tensor::getFlatIndex(i, out_shape, stridesB);
+            out.setFlat(i, op(a.getByAbsIdx(a.offset + idxA), b.getByAbsIdx(b.offset + idxB)));
+        }
+
+        if (req_grad && grad_fn_node) out.grad_fn = grad_fn_node;
+        return out;
+    }
+
+    // ---- 加法 ----
+    inline Tensor tensor_add(const Tensor& a, const Tensor& b) {
+        bool rg = a.requires_grad || b.requires_grad;
+        auto pa = std::make_shared<Tensor>(a);
+        auto pb = std::make_shared<Tensor>(b);
+        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x + y; }, rg);
+        if (rg) {
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<AddBackward>(pa, pb, pout);
         }
         return out;
+    }
+
+    // ---- 减法 ----
+    inline Tensor tensor_sub(const Tensor& a, const Tensor& b) {
+        bool rg = a.requires_grad || b.requires_grad;
+        auto pa = std::make_shared<Tensor>(a);
+        auto pb = std::make_shared<Tensor>(b);
+        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x - y; }, rg);
+        if (rg) {
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<SubBackward>(pa, pb, pout);
+        }
+        return out;
+    }
+
+    // ---- 逐元素乘法 ----
+    inline Tensor tensor_mul(const Tensor& a, const Tensor& b) {
+        bool rg = a.requires_grad || b.requires_grad;
+        auto pa = std::make_shared<Tensor>(a);
+        auto pb = std::make_shared<Tensor>(b);
+        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x * y; }, rg);
+        if (rg) {
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<MulBackward>(pa, pb, pout);
+        }
+        return out;
+    }
+
+    // ---- 逐元素除法 ----
+    inline Tensor tensor_div(const Tensor& a, const Tensor& b) {
+        bool rg = a.requires_grad || b.requires_grad;
+        auto pa = std::make_shared<Tensor>(a);
+        auto pb = std::make_shared<Tensor>(b);
+        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x / y; }, rg);
+        if (rg) {
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<DivBackward>(pa, pb, pout);
+        }
+        return out;
+    }
+
+    // ---- 取负 ----
+    inline Tensor tensor_neg(const Tensor& a) {
+        Tensor out(a.shape, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, -a.getFlat(i));
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<NegBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    // ---- 逐元素乘方（标量指数）----
+    inline Tensor tensor_pow_scalar(const Tensor& a, double exponent) {
+        Tensor out(a.shape, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::pow(a.getFlat(i), exponent));
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<PowScalarBackward>(pa, exponent, pout);
+        }
+        return out;
+    }
+
+    // ---- 矩阵乘法 (2D) ----
+    inline Tensor tensor_matmul(const Tensor& a, const Tensor& b) {
+        if (a.dim() < 1 || b.dim() < 1)
+            throw std::runtime_error("Tensor Error: matmul requires at least 1D tensors.");
+
+        // 处理 batched matmul：取最后两个维度做矩阵乘法
+        // 简化版：只处理 2D
+        if (a.dim() != 2 || b.dim() != 2)
+            throw std::runtime_error("Tensor Error: matmul currently supports only 2D tensors.");
+
+        int M = a.shape[0], K = a.shape[1], K2 = b.shape[0], N = b.shape[1];
+        if (K != K2) throw std::runtime_error("Tensor Error: matmul shape mismatch (" +
+            std::to_string(K) + " vs " + std::to_string(K2) + ").");
+
+        bool rg = a.requires_grad || b.requires_grad;
+        Tensor out({M, N}, a.dtype(), rg);
+        out.is_leaf = false;
+
+        for (int i = 0; i < M; ++i) {
+            for (int j = 0; j < N; ++j) {
+                double sum = 0.0;
+                for (int k = 0; k < K; ++k) {
+                    double va = a.getByAbsIdx(a.offset + i * a.strides[0] + k * a.strides[1]);
+                    double vb = b.getByAbsIdx(b.offset + k * b.strides[0] + j * b.strides[1]);
+                    sum += va * vb;
+                }
+                out.setFlat(i * N + j, sum);
+            }
+        }
+
+        if (rg) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pb = std::make_shared<Tensor>(b);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<MatMulBackward>(pa, pb, pout);
+        }
+        return out;
+    }
+
+    // MatMulBackward::apply 实现
+    inline void MatMulBackward::apply() {
+        if (!out->grad) return;
+        // C = A @ B → dA = dC @ B^T, dB = A^T @ dC
+        if (a->requires_grad) {
+            Tensor bT = b->T().contiguous();
+            Tensor da = tensor_matmul(*out->grad, bT);
+            da.requires_grad = false;
+            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
+            tensor_accumulate_grad(*a->grad, da);
+            if (a->grad_fn) a->grad_fn->apply();
+        }
+        if (b->requires_grad) {
+            Tensor aT = a->T().contiguous();
+            Tensor db = tensor_matmul(aT, *out->grad);
+            db.requires_grad = false;
+            if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
+            tensor_accumulate_grad(*b->grad, db);
+            if (b->grad_fn) b->grad_fn->apply();
+        }
+    }
+
+    // ---- sum (全局规约) ----
+    inline Tensor tensor_sum(const Tensor& a) {
+        Tensor out({1}, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        double s = 0.0;
+        for (size_t i = 0; i < a.numel(); ++i) s += a.getFlat(i);
+        out.setFlat(0, s);
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<SumBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    // ---- mean (全局规约) ----
+    inline Tensor tensor_mean(const Tensor& a) {
+        Tensor out({1}, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        double s = 0.0;
+        for (size_t i = 0; i < a.numel(); ++i) s += a.getFlat(i);
+        out.setFlat(0, s / static_cast<double>(a.numel()));
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<MeanBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    // ---- max / min (全局规约，不带梯度) ----
+    inline Tensor tensor_max(const Tensor& a) {
+        Tensor out({1}, a.dtype(), false);
+        double m = a.getFlat(0);
+        for (size_t i = 1; i < a.numel(); ++i) { double v = a.getFlat(i); if (v > m) m = v; }
+        out.setFlat(0, m);
+        return out;
+    }
+
+    inline Tensor tensor_min(const Tensor& a) {
+        Tensor out({1}, a.dtype(), false);
+        double m = a.getFlat(0);
+        for (size_t i = 1; i < a.numel(); ++i) { double v = a.getFlat(i); if (v < m) m = v; }
+        out.setFlat(0, m);
+        return out;
+    }
+
+    // ---- 逐元素一元函数 ----
+    inline Tensor tensor_exp(const Tensor& a) {
+        Tensor out(a.shape, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::exp(a.getFlat(i)));
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<ExpBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    inline Tensor tensor_log(const Tensor& a) {
+        Tensor out(a.shape, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::log(a.getFlat(i)));
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<LogBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    inline Tensor tensor_sqrt(const Tensor& a) {
+        return tensor_pow_scalar(a, 0.5);
+    }
+
+    inline Tensor tensor_abs(const Tensor& a) {
+        Tensor out(a.shape, a.dtype(), false); // abs 的梯度在 0 处不可微，简化处理
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::abs(a.getFlat(i)));
+        return out;
+    }
+
+    // ---- 激活函数 ----
+    inline Tensor tensor_relu(const Tensor& a) {
+        Tensor out(a.shape, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) {
+            double v = a.getFlat(i);
+            out.setFlat(i, v > 0.0 ? v : 0.0);
+        }
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<ReluBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    inline Tensor tensor_sigmoid(const Tensor& a) {
+        Tensor out(a.shape, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) {
+            out.setFlat(i, 1.0 / (1.0 + std::exp(-a.getFlat(i))));
+        }
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<SigmoidBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    inline Tensor tensor_tanh(const Tensor& a) {
+        Tensor out(a.shape, a.dtype(), a.requires_grad);
+        out.is_leaf = false;
+        for (size_t i = 0; i < out.numel(); ++i) {
+            out.setFlat(i, std::tanh(a.getFlat(i)));
+        }
+        if (a.requires_grad) {
+            auto pa = std::make_shared<Tensor>(a);
+            auto pout = std::make_shared<Tensor>(out);
+            out.grad_fn = std::make_shared<TanhBackward>(pa, pout);
+        }
+        return out;
+    }
+
+    // ---- 比较运算（不带梯度）----
+    inline Tensor tensor_eq(const Tensor& a, const Tensor& b) {
+        return tensor_binary_op(a, b, [](double x, double y) { return x == y ? 1.0 : 0.0; }, false);
+    }
+    inline Tensor tensor_lt(const Tensor& a, const Tensor& b) {
+        return tensor_binary_op(a, b, [](double x, double y) { return x < y ? 1.0 : 0.0; }, false);
+    }
+    inline Tensor tensor_gt(const Tensor& a, const Tensor& b) {
+        return tensor_binary_op(a, b, [](double x, double y) { return x > y ? 1.0 : 0.0; }, false);
+    }
+    inline Tensor tensor_le(const Tensor& a, const Tensor& b) {
+        return tensor_binary_op(a, b, [](double x, double y) { return x <= y ? 1.0 : 0.0; }, false);
+    }
+    inline Tensor tensor_ge(const Tensor& a, const Tensor& b) {
+        return tensor_binary_op(a, b, [](double x, double y) { return x >= y ? 1.0 : 0.0; }, false);
+    }
+
+    // ---- 工厂函数 ----
+    inline Tensor tensor_full(const std::vector<int>& shape, double val, DType dt = DType::Float64, bool req_grad = false) {
+        Tensor t(shape, dt, req_grad);
+        t.fill_(val);
+        return t;
+    }
+
+    inline Tensor tensor_ones(const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
+        return tensor_full(shape, 1.0, dt, req_grad);
+    }
+
+    inline Tensor tensor_zeros(const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
+        return Tensor(shape, dt, req_grad);
+    }
+
+    inline Tensor tensor_arange(double start, double end, double step = 1.0, DType dt = DType::Float64) {
+        std::vector<int> s;
+        int n = static_cast<int>(std::ceil((end - start) / step));
+        if (n <= 0) n = 0;
+        s.push_back(n);
+        Tensor t(s, dt, false);
+        for (int i = 0; i < n; ++i) t.setFlat(i, start + i * step);
+        return t;
+    }
+
+    inline Tensor tensor_linspace(double start, double end, int steps, DType dt = DType::Float64) {
+        if (steps < 1) throw std::runtime_error("Tensor Error: linspace requires steps >= 1.");
+        Tensor t({steps}, dt, false);
+        if (steps == 1) { t.setFlat(0, start); return t; }
+        for (int i = 0; i < steps; ++i) {
+            t.setFlat(i, start + i * (end - start) / (steps - 1));
+        }
+        return t;
+    }
+
+    inline Tensor tensor_eye(int n, DType dt = DType::Float64) {
+        Tensor t({n, n}, dt, false);
+        for (int i = 0; i < n; ++i) t.setFlat(i * n + i, 1.0);
+        return t;
+    }
+
+    // 从 double 数组创建
+    inline Tensor tensor_from_data(const std::vector<double>& data, const std::vector<int>& shape, bool req_grad = false) {
+        size_t expected = shapeToNumel(shape);
+        if (data.size() != expected) throw std::runtime_error("Tensor Error: data size mismatch for shape.");
+        Tensor t(shape, DType::Float64, req_grad);
+        for (size_t i = 0; i < data.size(); ++i) t.setFlat(i, data[i]);
+        return t;
+    }
+
+    // 标量张量
+    inline Tensor tensor_scalar(double val, bool req_grad = false) {
+        Tensor t({1}, DType::Float64, req_grad);
+        t.setFlat(0, val);
+        return t;
+    }
+
+    // ---- Concatenation ----
+    inline Tensor tensor_cat(const std::vector<Tensor>& tensors, int axis = 0) {
+        if (tensors.empty()) throw std::runtime_error("Tensor Error: cat requires at least one tensor.");
+        int ndim = tensors[0].dim();
+        if (axis < 0) axis += ndim;
+        if (axis < 0 || axis >= ndim) throw std::runtime_error("Tensor Error: cat axis out of range.");
+
+        // Validate shapes
+        for (size_t ti = 1; ti < tensors.size(); ++ti) {
+            if (tensors[ti].dim() != ndim) throw std::runtime_error("Tensor Error: cat dimension mismatch.");
+            for (int d = 0; d < ndim; ++d) {
+                if (d != axis && tensors[ti].shape[d] != tensors[0].shape[d])
+                    throw std::runtime_error("Tensor Error: cat shape mismatch on dim " + std::to_string(d) + ".");
+            }
+        }
+
+        std::vector<int> out_shape = tensors[0].shape;
+        int total_along_axis = 0;
+        for (const auto& t : tensors) total_along_axis += t.shape[axis];
+        out_shape[axis] = total_along_axis;
+
+        Tensor out(out_shape, tensors[0].dtype(), false);
+
+        // Copy data
+        size_t outer = 1, inner = 1;
+        for (int d = 0; d < axis; ++d) outer *= out_shape[d];
+        for (int d = axis + 1; d < ndim; ++d) inner *= out_shape[d];
+
+        size_t write_idx = 0;
+        for (size_t o = 0; o < outer; ++o) {
+            for (const auto& t : tensors) {
+                size_t chunk = t.shape[axis] * inner;
+                for (size_t c = 0; c < chunk; ++c) {
+                    size_t src_linear = o * t.shape[axis] * inner + c;
+                    out.setFlat(write_idx++, t.getFlat(src_linear));
+                }
+            }
+        }
+        return out;
+    }
+
+    // ---- Stack ----
+    inline Tensor tensor_stack(const std::vector<Tensor>& tensors, int axis = 0) {
+        if (tensors.empty()) throw std::runtime_error("Tensor Error: stack requires at least one tensor.");
+        // unsqueeze each tensor at axis, then cat
+        std::vector<Tensor> expanded;
+        for (const auto& t : tensors) expanded.push_back(t.unsqueeze(axis));
+        return tensor_cat(expanded, axis);
+    }
+
+    // ---- Random ----
+    inline Tensor tensor_rand(const std::vector<int>& shape, DType dt = DType::Float64) {
+        Tensor t(shape, dt, false);
+        for (size_t i = 0; i < t.numel(); ++i) {
+            t.setFlat(i, static_cast<double>(std::rand()) / RAND_MAX);
+        }
+        return t;
+    }
+
+    inline Tensor tensor_randn(const std::vector<int>& shape, DType dt = DType::Float64) {
+        // Box-Muller transform
+        Tensor t(shape, dt, false);
+        for (size_t i = 0; i < t.numel(); ++i) {
+            double u1 = (static_cast<double>(std::rand()) + 1.0) / (RAND_MAX + 2.0);
+            double u2 = static_cast<double>(std::rand()) / (RAND_MAX + 1.0);
+            t.setFlat(i, std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * 3.14159265358979323846 * u2));
+        }
+        return t;
+    }
+
+    // ---- Softmax (不跟踪梯度的简化版) ----
+    inline Tensor tensor_softmax(const Tensor& a, int axis = -1) {
+        if (a.dim() == 0) throw std::runtime_error("Tensor Error: softmax requires at least 1D.");
+        if (axis < 0) axis += a.dim();
+
+        Tensor out = a.clone();
+        out.requires_grad = false;
+        out.is_leaf = true;
+
+        // 沿 axis 做 softmax
+        size_t outer = 1, inner = 1, axis_size = a.shape[axis];
+        for (int d = 0; d < axis; ++d) outer *= a.shape[d];
+        for (int d = axis + 1; d < a.dim(); ++d) inner *= a.shape[d];
+
+        for (size_t o = 0; o < outer; ++o) {
+            for (size_t in = 0; in < inner; ++in) {
+                // Find max for numerical stability
+                double mx = -1e300;
+                for (size_t k = 0; k < axis_size; ++k) {
+                    size_t idx = o * axis_size * inner + k * inner + in;
+                    double v = a.getFlat(idx);
+                    if (v > mx) mx = v;
+                }
+                double sum_exp = 0.0;
+                for (size_t k = 0; k < axis_size; ++k) {
+                    size_t idx = o * axis_size * inner + k * inner + in;
+                    double e = std::exp(a.getFlat(idx) - mx);
+                    out.setFlat(idx, e);
+                    sum_exp += e;
+                }
+                for (size_t k = 0; k < axis_size; ++k) {
+                    size_t idx = o * axis_size * inner + k * inner + in;
+                    out.setFlat(idx, out.getFlat(idx) / sum_exp);
+                }
+            }
+        }
+        return out;
+    }
+
+    // ---- MSE Loss ----
+    inline Tensor tensor_mse_loss(const Tensor& pred, const Tensor& target) {
+        Tensor diff = tensor_sub(pred, target);
+        Tensor sq = tensor_mul(diff, diff);
+        return tensor_mean(sq);
+    }
+
+    // ---- Cross Entropy Loss (logits, integer targets) ----
+    // Simplified: pred is [N, C], target is [N] of class indices → scalar loss
+    // Not differentiable through this implementation; use for evaluation.
+
+    // ---- Zero gradients ----
+    inline void tensor_zero_grad(Tensor& t) {
+        if (t.grad) t.grad->fill_(0.0);
+    }
+
+    // ---- SGD step (in-place) ----
+    inline void tensor_sgd_step(Tensor& param, double lr) {
+        if (!param.grad) return;
+        for (size_t i = 0; i < param.numel(); ++i) {
+            param.setFlat(i, param.getFlat(i) - lr * param.grad->getFlat(i));
+        }
     }
 
 } // namespace jc

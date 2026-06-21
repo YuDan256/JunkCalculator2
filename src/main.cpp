@@ -25,6 +25,7 @@
 #include "modules/window_module.h"
 #include "modules/latex_module.h"
 #include "modules/ffi_module.h"
+#include "modules/tensor_module.h"
 #include <csignal>
 #include <atomic>
 #include <random>
@@ -719,7 +720,7 @@ int main(int argc, char* argv[]) {
             }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
-            if (input == "/version") { std::cout << "Junk Calculator 2.4.4.2\n"; continue; }
+            if (input == "/version") { std::cout << "Junk Calculator 2.4.4.3\n"; continue; }
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
             if (input == "/clear") { vm.clearGlobals(); std::cout << "All variables cleared.\n"; continue; }
             if (input == "/cls") {

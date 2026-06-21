@@ -16,6 +16,22 @@ namespace jc {
         env["Tensor"] = Value(tensorClass);
 
         // ====================================================================
+        // 类方法绑定辅助函数
+        // ====================================================================
+        auto addTensorMethod = [&](const std::string& name, int param_count, NativeCallable fn) {
+            std::vector<std::string> params;
+            std::vector<bool> refs;
+            for (int i = 0; i < param_count; ++i) {
+                params.push_back("_p" + std::to_string(i));
+                refs.push_back(false);
+            }
+            auto closure = GcHeap::get().allocate<ObjClosure>(params, refs, name, nullptr);
+            closure->nativeFn = jc::VM::makeNativeFn(fn);
+            closure->defaultValues.resize(param_count, Value::none());
+            tensorClass->methods[name] = closure;
+        };
+
+        // ====================================================================
         // 2. 辅助函数
         // ====================================================================
         auto getTensor = [](const Value& val) -> std::shared_ptr<Tensor> {
@@ -58,117 +74,110 @@ namespace jc {
             return data;
         };
 
-        // 辅助：创建 dunder 闭包
-        auto makeDunder = [&](const std::string& name, int param_count, NativeCallable fn) {
-            std::vector<std::string> params;
-            std::vector<bool> refs;
-            params.push_back("self"); refs.push_back(false);
-            for (int i = 1; i < param_count; ++i) {
-                params.push_back("_p" + std::to_string(i));
-                refs.push_back(false);
-            }
-            auto closure = GcHeap::get().allocate<ObjClosure>(params, refs, name, nullptr);
-            closure->nativeFn = std::make_any<NativeCallable>(std::move(fn));
-            tensorClass->methods[name] = closure;
-        };
-
-        // ====================================================================
-        // 3. Dunder Methods
-        // ====================================================================
-
         // __str__
-        makeDunder("__str__", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
+        addTensorMethod("__str__", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
             return Value(t->toString());
         });
 
         // __add__ : T + T
-        makeDunder("__add__", 2, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            if (isTensor(args[1])) {
-                auto t2 = getTensor(args[1]);
+        addTensorMethod("__add__", 1, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            if (isTensor(args[0])) {
+                auto t2 = getTensor(args[0]);
                 return wrapTensor(tensor_add(*t1, *t2));
             }
-            // 标量加法
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_add(*t1, scalar));
         });
 
         // __radd__ : scalar + T
-        makeDunder("__radd__", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+        addTensorMethod("__radd__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_add(scalar, *t1));
         });
 
         // __sub__
-        makeDunder("__sub__", 2, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            if (isTensor(args[1])) {
-                return wrapTensor(tensor_sub(*t1, *getTensor(args[1])));
+        addTensorMethod("__sub__", 1, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            if (isTensor(args[0])) {
+                return wrapTensor(tensor_sub(*t1, *getTensor(args[0])));
             }
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_sub(*t1, scalar));
         });
 
         // __rsub__
-        makeDunder("__rsub__", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+        addTensorMethod("__rsub__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_sub(scalar, *t1));
         });
 
         // __mul__
-        makeDunder("__mul__", 2, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            if (isTensor(args[1])) {
-                return wrapTensor(tensor_mul(*t1, *getTensor(args[1])));
+        addTensorMethod("__mul__", 1, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            if (isTensor(args[0])) {
+                return wrapTensor(tensor_mul(*t1, *getTensor(args[0])));
             }
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_mul(*t1, scalar));
         });
 
         // __rmul__
-        makeDunder("__rmul__", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+        addTensorMethod("__rmul__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_mul(scalar, *t1));
         });
 
         // __div__
-        makeDunder("__div__", 2, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            if (isTensor(args[1])) {
-                return wrapTensor(tensor_div(*t1, *getTensor(args[1])));
+        addTensorMethod("__div__", 1, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            if (isTensor(args[0])) {
+                return wrapTensor(tensor_div(*t1, *getTensor(args[0])));
             }
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_div(*t1, scalar));
         });
 
         // __rdiv__
-        makeDunder("__rdiv__", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            Tensor scalar = tensor_scalar(args[1].asDouble());
+        addTensorMethod("__rdiv__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            Tensor scalar = tensor_scalar(args[0].asDouble());
             return wrapTensor(tensor_div(scalar, *t1));
         });
 
         // __pow__
-        makeDunder("__pow__", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t1 = getTensor(args[0]);
-            double exponent = args[1].asDouble();
+        addTensorMethod("__pow__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t1 = getTensor(selfVal);
+            double exponent = args[0].asDouble();
             return wrapTensor(tensor_pow_scalar(*t1, exponent));
         });
 
         // __neg__
-        makeDunder("__neg__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_neg(*getTensor(args[0])));
+        addTensorMethod("__neg__", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            return wrapTensor(tensor_neg(*getTensor(selfVal)));
         });
 
         // __eq__
-        makeDunder("__eq__", 2, [getTensor, isTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            if (!isTensor(args[1])) return Value(false);
-            auto t1 = getTensor(args[0]);
-            auto t2 = getTensor(args[1]);
+        addTensorMethod("__eq__", 1, [getTensor, isTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            if (!isTensor(args[0])) return Value(false);
+            auto t1 = getTensor(selfVal);
+            auto t2 = getTensor(args[0]);
             if (t1->shape != t2->shape) return Value(false);
             for (size_t i = 0; i < t1->numel(); ++i) {
                 if (t1->getFlat(i) != t2->getFlat(i)) return Value(false);
@@ -177,23 +186,24 @@ namespace jc {
         });
 
         // __getitem__ : t[i] — select along dim 0
-        makeDunder("__getitem__", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
-            int idx = static_cast<int>(args[1].asDouble());
+        addTensorMethod("__getitem__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            int idx = static_cast<int>(args[0].asDouble());
             if (t->dim() == 1) {
-                // 返回标量
                 return Value::fromDouble(t->getFlat(idx < 0 ? idx + t->shape[0] : idx));
             }
             return wrapTensor(t->select(0, idx));
         });
 
         // __setitem__ : t[i] = val (仅支持 1D 标量赋值)
-        makeDunder("__setitem__", 3, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
-            int idx = static_cast<int>(args[1].asDouble());
+        addTensorMethod("__setitem__", 2, [getTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            int idx = static_cast<int>(args[0].asDouble());
             if (idx < 0) idx += t->shape[0];
             if (t->dim() == 1) {
-                t->setFlat(idx, args[2].asDouble());
+                t->setFlat(idx, args[1].asDouble());
             } else {
                 throw std::runtime_error("Tensor Error: __setitem__ only supports 1D scalar assignment. Use setFlat() for N-D.");
             }
@@ -201,14 +211,16 @@ namespace jc {
         });
 
         // __len__
-        makeDunder("__len__", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
+        addTensorMethod("__len__", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
             return Value::fromDouble(t->dim() > 0 ? static_cast<double>(t->shape[0]) : 0.0);
         });
 
         // __abs__
-        makeDunder("__abs__", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_abs(*getTensor(args[0])));
+        addTensorMethod("__abs__", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            return wrapTensor(tensor_abs(*getTensor(selfVal)));
         });
 
         // ====================================================================
@@ -216,167 +228,222 @@ namespace jc {
         // ====================================================================
 
         // .item() — 提取标量
-        makeDunder("item", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            return Value::fromDouble(getTensor(args[0])->item());
+        addTensorMethod("item", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return Value::fromDouble(t->item());
         });
 
         // .shape() — 返回形状列表
-        makeDunder("shape", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
+        addTensorMethod("shape", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
             auto list = GcHeap::get().allocate<ObjList>();
             for (int s : t->shape) list->vec.push_back(Value::fromDouble(static_cast<double>(s)));
             return Value(list);
         });
 
         // .dim() — 返回维度数
-        makeDunder("dim", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            return Value::fromDouble(static_cast<double>(getTensor(args[0])->dim()));
+        addTensorMethod("dim", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return Value::fromDouble(static_cast<double>(t->dim()));
         });
 
         // .numel() — 返回元素总数
-        makeDunder("numel", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            return Value::fromDouble(static_cast<double>(getTensor(args[0])->numel()));
+        addTensorMethod("numel", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return Value::fromDouble(static_cast<double>(t->numel()));
         });
 
         // .dtype() — 返回类型字符串
-        makeDunder("dtype", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            return Value(dtypeToString(getTensor(args[0])->dtype()));
+        addTensorMethod("dtype", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return Value(dtypeToString(t->dtype()));
         });
 
         // .clone()
-        makeDunder("clone", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(getTensor(args[0])->clone());
+        addTensorMethod("clone", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(t->clone());
         });
 
         // .contiguous()
-        makeDunder("contiguous", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(getTensor(args[0])->contiguous());
+        addTensorMethod("contiguous", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(t->contiguous());
         });
 
         // .view(shape_list)
-        makeDunder("view", 2, [getTensor, wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
-            auto shape = listToShape(args[1]);
+        addTensorMethod("view", 1, [getTensor, wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            auto shape = listToShape(args[0]);
             return wrapTensor(t->view(shape));
         });
 
-        // .reshape(shape_list) — alias for contiguous().view()
-        makeDunder("reshape", 2, [getTensor, wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
-            auto shape = listToShape(args[1]);
+        // .reshape(shape_list)
+        addTensorMethod("reshape", 1, [getTensor, wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            auto shape = listToShape(args[0]);
             return wrapTensor(t->contiguous().view(shape));
         });
 
         // .T() — transpose last two dims
-        makeDunder("T", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(getTensor(args[0])->T());
+        addTensorMethod("T", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(t->T());
         });
 
         // .transpose(dim0, dim1)
-        makeDunder("transpose", 3, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
-            int d0 = static_cast<int>(args[1].asDouble());
-            int d1 = static_cast<int>(args[2].asDouble());
+        addTensorMethod("transpose", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            int d0 = static_cast<int>(args[0].asDouble());
+            int d1 = static_cast<int>(args[1].asDouble());
             return wrapTensor(t->transpose(d0, d1));
         });
 
         // .unsqueeze(dim)
-        makeDunder("unsqueeze", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(getTensor(args[0])->unsqueeze(static_cast<int>(args[1].asDouble())));
+        addTensorMethod("unsqueeze", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(t->unsqueeze(static_cast<int>(args[0].asDouble())));
         });
 
         // .squeeze([dim])
-        makeDunder("squeeze", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(getTensor(args[0])->squeeze());
+        addTensorMethod("squeeze", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(t->squeeze());
         });
 
         // .fill_(val)
-        makeDunder("fill_", 2, [getTensor](const std::vector<Value>& args) -> Value {
-            getTensor(args[0])->fill_(args[1].asDouble());
-            return args[0]; // return self
+        addTensorMethod("fill_", 1, [getTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            t->fill_(args[0].asDouble());
+            return selfVal;
         });
 
         // .sum()
-        makeDunder("sum", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_sum(*getTensor(args[0])));
+        addTensorMethod("sum", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_sum(*t));
         });
 
         // .mean()
-        makeDunder("mean", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_mean(*getTensor(args[0])));
+        addTensorMethod("mean", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_mean(*t));
         });
 
         // .max()
-        makeDunder("max", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_max(*getTensor(args[0])));
+        addTensorMethod("max", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_max(*t));
         });
 
         // .min()
-        makeDunder("min", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_min(*getTensor(args[0])));
+        addTensorMethod("min", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_min(*t));
         });
 
         // .exp()
-        makeDunder("exp", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_exp(*getTensor(args[0])));
+        addTensorMethod("exp", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_exp(*t));
         });
 
         // .log()
-        makeDunder("log", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_log(*getTensor(args[0])));
+        addTensorMethod("log", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_log(*t));
         });
 
         // .sqrt()
-        makeDunder("sqrt", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_sqrt(*getTensor(args[0])));
+        addTensorMethod("sqrt", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_sqrt(*t));
         });
 
         // .relu()
-        makeDunder("relu", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_relu(*getTensor(args[0])));
+        addTensorMethod("relu", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_relu(*t));
         });
 
         // .sigmoid()
-        makeDunder("sigmoid", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_sigmoid(*getTensor(args[0])));
+        addTensorMethod("sigmoid", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_sigmoid(*t));
         });
 
         // .tanh()
-        makeDunder("tanh", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_tanh(*getTensor(args[0])));
+        addTensorMethod("tanh", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_tanh(*t));
         });
 
         // .softmax([axis])
-        makeDunder("softmax", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_softmax(*getTensor(args[0]), -1));
+        addTensorMethod("softmax", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_softmax(*t, -1));
         });
 
         // .matmul(other)
-        makeDunder("matmul", 2, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_matmul(*getTensor(args[0]), *getTensor(args[1])));
+        addTensorMethod("matmul", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return wrapTensor(tensor_matmul(*t, *getTensor(args[0])));
         });
 
         // .backward()
-        makeDunder("backward", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            getTensor(args[0])->backward();
+        addTensorMethod("backward", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            t->backward();
             return Value::none();
         });
 
         // .grad — 作为方法调用返回梯度张量
-        makeDunder("grad", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
+        addTensorMethod("grad", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
             if (!t->grad) return Value::none();
             return wrapTensor(*t->grad);
         });
 
         // .requires_grad — 返回 bool
-        makeDunder("requires_grad", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            return Value(getTensor(args[0])->requires_grad ? true : false);
+        addTensorMethod("requires_grad", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            return Value(t->requires_grad ? true : false);
         });
 
         // .detach() — 返回不跟踪梯度的副本
-        makeDunder("detach", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
-            Tensor t = getTensor(args[0])->clone();
+        addTensorMethod("detach", 0, [getTensor, wrapTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto orig = getTensor(selfVal);
+            Tensor t = orig->clone();
             t.requires_grad = false;
             t.grad_fn = nullptr;
             t.grad = nullptr;
@@ -385,15 +452,17 @@ namespace jc {
         });
 
         // .zero_grad()
-        makeDunder("zero_grad", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
+        addTensorMethod("zero_grad", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
             tensor_zero_grad(*t);
-            return args[0]; // return self
+            return selfVal;
         });
 
         // .tolist() — 转换为 JC2 list
-        makeDunder("tolist", 1, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
+        addTensorMethod("tolist", 0, [getTensor](const std::vector<Value>&) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
             auto list = GcHeap::get().allocate<ObjList>();
             for (size_t i = 0; i < t->numel(); ++i) {
                 list->vec.push_back(Value::fromDouble(t->getFlat(i)));
@@ -402,18 +471,20 @@ namespace jc {
         });
 
         // .getFlat(idx) — 按线性索引读取
-        makeDunder("getFlat", 2, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
-            size_t idx = static_cast<size_t>(args[1].asDouble());
+        addTensorMethod("getFlat", 1, [getTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            size_t idx = static_cast<size_t>(args[0].asDouble());
             return Value::fromDouble(t->getFlat(idx));
         });
 
         // .setFlat(idx, val) — 按线性索引写入
-        makeDunder("setFlat", 3, [getTensor](const std::vector<Value>& args) -> Value {
-            auto t = getTensor(args[0]);
-            size_t idx = static_cast<size_t>(args[1].asDouble());
-            t->setFlat(idx, args[2].asDouble());
-            return args[0];
+        addTensorMethod("setFlat", 2, [getTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            size_t idx = static_cast<size_t>(args[0].asDouble());
+            t->setFlat(idx, args[1].asDouble());
+            return selfVal;
         });
 
         // ====================================================================
@@ -562,17 +633,16 @@ namespace jc {
         reg.reg("from_matrix", {1, 2}, [wrapTensor](const std::vector<Value>& args) -> Value {
             if (!args[0].isObjType(ObjType::REAL_MATRIX)) 
                 throw std::runtime_error("TypeError: from_matrix expects a RealMatrix.");
-            auto mat = static_cast<RealMatrix*>(args[0].asObj());
+            const RealMatrix& mat = static_cast<ObjRealMatrix*>(args[0].asObj())->mat;
             bool rg = (args.size() >= 2) ? args[1].truthy() : false;
-            return wrapTensor(tensor_from_matrix(*mat, rg));
+            return wrapTensor(tensor_from_matrix(mat, rg));
         });
 
         // tensor.to_matrix(tensor) — 张量转换为矩阵
-        reg.reg("to_matrix", {1}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+        reg.reg("to_matrix", {1}, [getTensor](const std::vector<Value>& args) -> Value {
             auto t = getTensor(args[0]);
-            auto mat = tensor_to_matrix(*t);
-            auto matObj = GcHeap::get().allocate<RealMatrix>(mat);
-            return Value(matObj);
+            RealMatrix mat = tensor_to_matrix(*t);
+            return Value(mat);
         });
 
         // tensor.getrow(t, row) — 获取第 row 行

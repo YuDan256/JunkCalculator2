@@ -14,15 +14,15 @@ test_factory_functions() = {
     z = tensor.zeros(@[2, 3])
     assert(z.dim() == 2, "zeros() dim failed")
     assert(z.shape()[0] == 2 && z.shape()[1] == 3, "zeros() shape failed")
-    assert(z.item() == 0.0, "zeros() value failed")
+    assert(z.getFlat(0) == 0.0, "zeros() value failed")
 
     // tensor.ones
     o = tensor.ones(@[2, 3])
-    assert(o.item() == 1.0, "ones() value failed")
+    assert(o.getFlat(0) == 1.0, "ones() value failed")
 
     // tensor.full
     f = tensor.full(@[2, 2], 5.0)
-    assert(abs(f.item() - 5.0) < 1e-10, "full() value failed")
+    assert(abs(f.getFlat(0) - 5.0) < 1e-10, "full() value failed")
 
     // tensor.eye
     e = tensor.eye(3)
@@ -31,7 +31,7 @@ test_factory_functions() = {
     // tensor.arange
     a = tensor.arange(0, 5, 1)
     assert(a.numel() == 5, "arange() numel failed")
-    assert(abs(a.item() - 0.0) < 1e-10, "arange() first element failed")
+    assert(abs(a.getFlat(0) - 0.0) < 1e-10, "arange() first element failed")
 
     // tensor.linspace
     l = tensor.linspace(0, 1, 5)
@@ -299,7 +299,7 @@ test_matrix_interop() = {
     
     // 转换回矩阵
     m2 = tensor.to_matrix(t)
-    assert(m2.getRows() == 2 && m2.getCols() == 2, "to_matrix shape failed")
+    assert(m2.rows() == 2 && m2.cols() == 2, "to_matrix shape failed")
 }
 test_matrix_interop()
 

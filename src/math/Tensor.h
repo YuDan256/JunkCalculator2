@@ -267,6 +267,14 @@ namespace jc {
             return t;
         }
 
+        Tensor to(DType target_dtype) const {
+            Tensor t(shape, target_dtype, requires_grad);
+            size_t n = numel();
+            for (size_t i = 0; i < n; ++i) t.setFlat(i, getFlat(i));
+            t.is_leaf = true;
+            return t;
+        }
+
         // 使张量连续化
         Tensor contiguous() const {
             if (is_contiguous()) return *this;
@@ -1259,17 +1267,17 @@ namespace jc {
     }
 
     // 从 double 数组创建
-    inline Tensor tensor_from_data(const std::vector<double>& data, const std::vector<int>& shape, bool req_grad = false) {
+    inline Tensor tensor_from_data(const std::vector<double>& data, const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
         size_t expected = shapeToNumel(shape);
         if (data.size() != expected) throw std::runtime_error("Tensor Error: data size mismatch for shape.");
-        Tensor t(shape, DType::Float64, req_grad);
+        Tensor t(shape, dt, req_grad);
         for (size_t i = 0; i < data.size(); ++i) t.setFlat(i, data[i]);
         return t;
     }
 
     // 标量张量
-    inline Tensor tensor_scalar(double val, bool req_grad = false) {
-        Tensor t({1}, DType::Float64, req_grad);
+    inline Tensor tensor_scalar(double val, DType dt = DType::Float64, bool req_grad = false) {
+        Tensor t({1}, dt, req_grad);
         t.setFlat(0, val);
         return t;
     }
@@ -1433,17 +1441,17 @@ namespace jc {
     }
 
     // ---- Random ----
-    inline Tensor tensor_rand(const std::vector<int>& shape, DType dt = DType::Float64) {
-        Tensor t(shape, dt, false);
+    inline Tensor tensor_rand(const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
+        Tensor t(shape, dt, req_grad);
         for (size_t i = 0; i < t.numel(); ++i) {
             t.setFlat(i, static_cast<double>(std::rand()) / RAND_MAX);
         }
         return t;
     }
 
-    inline Tensor tensor_randn(const std::vector<int>& shape, DType dt = DType::Float64) {
+    inline Tensor tensor_randn(const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
         // Box-Muller transform
-        Tensor t(shape, dt, false);
+        Tensor t(shape, dt, req_grad);
         for (size_t i = 0; i < t.numel(); ++i) {
             double u1 = (static_cast<double>(std::rand()) + 1.0) / (RAND_MAX + 2.0);
             double u2 = static_cast<double>(std::rand()) / (RAND_MAX + 1.0);

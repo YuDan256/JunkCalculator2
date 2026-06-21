@@ -6,44 +6,63 @@ import tensor
 
 test_factory_functions() = {
     // tensor.scalar
-    s = tensor.scalar(3.14)
+    s = tensor.scalar(3.14, "float64")
     assert(s.dim() == 0 || s.numel() == 1, "scalar() dimension failed")
     assert(abs(s.item() - 3.14) < 1e-10, "scalar() value failed")
+    assert(s.dtype() == "float64", "scalar() dtype failed")
+
+    sg = tensor.scalar(1.5, "float32", true)
+    assert(sg.dtype() == "float32", "scalar(dtype) failed")
+    assert(sg.requires_grad() == true, "scalar(requires_grad) failed")
 
     // tensor.zeros
-    z = tensor.zeros(@[2, 3])
+    z = tensor.zeros(@[2, 3], "float32")
     assert(z.dim() == 2, "zeros() dim failed")
     assert(z.shape()[0] == 2 && z.shape()[1] == 3, "zeros() shape failed")
     assert(z.getFlat(0) == 0.0, "zeros() value failed")
+    assert(z.dtype() == "float32", "zeros() dtype failed")
+
+    zg = tensor.zeros(@[1, 2], "float64", true)
+    assert(zg.requires_grad() == true, "zeros(requires_grad) failed")
 
     // tensor.ones
-    o = tensor.ones(@[2, 3])
+    o = tensor.ones(@[2, 3], "int32")
     assert(o.getFlat(0) == 1.0, "ones() value failed")
+    assert(o.dtype() == "int32", "ones() dtype failed")
 
     // tensor.full
-    f = tensor.full(@[2, 2], 5.0)
+    f = tensor.full(@[2, 2], 5.0, "int64")
     assert(abs(f.getFlat(0) - 5.0) < 1e-10, "full() value failed")
+    assert(f.dtype() == "int64", "full() dtype failed")
+
+    fg = tensor.full(@[1, 1], 2.0, "float32", true)
+    assert(fg.requires_grad() == true, "full(requires_grad) failed")
 
     // tensor.eye
-    e = tensor.eye(3)
+    e = tensor.eye(3, "float32")
     assert(e.shape()[0] == 3 && e.shape()[1] == 3, "eye() shape failed")
+    assert(e.dtype() == "float32", "eye() dtype failed")
 
     // tensor.arange
-    a = tensor.arange(0, 5, 1)
+    a = tensor.arange(0, 5, 1, "int64")
     assert(a.numel() == 5, "arange() numel failed")
     assert(abs(a.getFlat(0) - 0.0) < 1e-10, "arange() first element failed")
+    assert(a.dtype() == "int64", "arange() dtype failed")
 
     // tensor.linspace
-    l = tensor.linspace(0, 1, 5)
+    l = tensor.linspace(0, 1, 5, "float32")
     assert(l.numel() == 5, "linspace() numel failed")
+    assert(l.dtype() == "float32", "linspace() dtype failed")
 
     // tensor.rand
-    r = tensor.rand(@[2, 2])
+    r = tensor.rand(@[2, 2], "float32")
     assert(r.dim() == 2, "rand() dim failed")
+    assert(r.dtype() == "float32", "rand() dtype failed")
 
     // tensor.randn
-    rn = tensor.randn(@[3, 3])
+    rn = tensor.randn(@[3, 3], "float64", true)
     assert(rn.dim() == 2, "randn() dim failed")
+    assert(rn.requires_grad() == true, "randn(requires_grad) failed")
 }
 test_factory_functions()
 
@@ -52,7 +71,7 @@ test_factory_functions()
 // ============================================================================
 
 test_properties() = {
-    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], @[2, 3])
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], @[2, 3], "float64")
     
     // shape, dim, numel
     assert(t.shape()[0] == 2 && t.shape()[1] == 3, "shape() failed")
@@ -62,6 +81,29 @@ test_properties() = {
     // dtype
     dt = t.dtype()
     assert(dt == "float64", "dtype() failed")
+
+    ti64 = tensor.tensor(@[1, 2, 3], @[3], "int64")
+    assert(ti64.dtype() == "int64", "tensor(dtype) failed")
+
+    tg = tensor.tensor(@[1.0, 2.0], @[2], "float32", true)
+    assert(tg.dtype() == "float32", "tensor(dtype, requires_grad) dtype failed")
+    assert(tg.requires_grad() == true, "tensor(dtype, requires_grad) grad failed")
+
+    tf32_alias = tensor.tensor(@[1, 2], @[2], "f32")
+    assert(tf32_alias.dtype() == "float32", "tensor(dtype alias f32) failed")
+
+    ti64_alias = tensor.tensor(@[1, 2], @[2], "i64")
+    assert(ti64_alias.dtype() == "int64", "tensor(dtype alias i64) failed")
+
+    // dtype conversion
+    converted_i32 = t.to("int32")
+    assert(converted_i32.dtype() == "int32", "to(dtype) dtype failed")
+    assert(abs(converted_i32.getFlat(1) - 2.0) < 1e-10, "to(dtype) value failed")
+    assert(t.dtype() == "float64", "to(dtype) should not mutate original tensor")
+
+    converted_f32 = tensor.to(ti64, "float32")
+    assert(converted_f32.dtype() == "float32", "tensor.to(dtype) dtype failed")
+    assert(abs(converted_f32.getFlat(2) - 3.0) < 1e-10, "tensor.to(dtype) value failed")
     
     // item access
     assert(abs(t.getFlat(0) - 1.0) < 1e-10, "getFlat(0) failed")
@@ -78,7 +120,7 @@ test_properties()
 // ============================================================================
 
 test_shape_transforms() = {
-    t = tensor.arange(0, 6, 1)
+    t = tensor.arange(0, 6, 1, "float64")
     
     // reshape
     r = t.reshape(@[2, 3])
@@ -97,7 +139,7 @@ test_shape_transforms() = {
     assert(tr.shape()[0] == 3 && tr.shape()[1] == 2, "transpose() failed")
     
     // T() - last two dims
-    t2d = tensor.ones(@[2, 3])
+    t2d = tensor.ones(@[2, 3], "float64")
     tt = t2d.T()
     assert(tt.shape()[0] == 3 && tt.shape()[1] == 2, "T() failed")
 }
@@ -108,8 +150,8 @@ test_shape_transforms()
 // ============================================================================
 
 test_arithmetic() = {
-    a = tensor.tensor(@[1.0, 2.0], @[2])
-    b = tensor.tensor(@[3.0, 4.0], @[2])
+    a = tensor.tensor(@[1.0, 2.0], @[2], "float64")
+    b = tensor.tensor(@[3.0, 4.0], @[2], "float64")
     
     // 加法
     c = a + b
@@ -141,8 +183,8 @@ test_arithmetic()
 // ============================================================================
 
 test_matmul() = {
-    a = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2])
-    b = tensor.tensor(@[5.0, 6.0, 7.0, 8.0], @[2, 2])
+    a = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2], "float64")
+    b = tensor.tensor(@[5.0, 6.0, 7.0, 8.0], @[2, 2], "float64")
     
     c = tensor.matmul(a, b)
     assert(c.shape()[0] == 2 && c.shape()[1] == 2, "matmul shape failed")
@@ -160,7 +202,7 @@ test_matmul()
 // ============================================================================
 
 test_reductions() = {
-    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2])
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2], "float64")
     
     // sum
     s = t.sum()
@@ -185,7 +227,7 @@ test_reductions()
 // ============================================================================
 
 test_activations() = {
-    t = tensor.tensor(@[-1.0, 0.0, 1.0], @[3])
+    t = tensor.tensor(@[-1.0, 0.0, 1.0], @[3], "float64")
     
     // relu
     r = t.relu()
@@ -207,7 +249,7 @@ test_activations()
 // ============================================================================
 
 test_math_functions() = {
-    t = tensor.tensor(@[1.0, 2.0, 3.0], @[3])
+    t = tensor.tensor(@[1.0, 2.0, 3.0], @[3], "float64")
     
     // exp
     e = t.exp()
@@ -228,8 +270,8 @@ test_math_functions()
 // ============================================================================
 
 test_concatenation() = {
-    a = tensor.ones(@[2, 2])
-    b = tensor.ones(@[2, 2])
+    a = tensor.ones(@[2, 2], "float64")
+    b = tensor.ones(@[2, 2], "float64")
     
     // cat axis=0
     c0 = tensor.cat(@[a, b], 0)
@@ -258,7 +300,7 @@ test_concatenation()
 // ============================================================================
 
 test_matrix_operations() = {
-    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], @[2, 3])
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], @[2, 3], "float64")
     
     // getrow
     row = tensor.getrow(t, 0)
@@ -308,7 +350,7 @@ test_matrix_interop()
 // ============================================================================
 
 test_utilities() = {
-    t = tensor.ones(@[2, 3])
+    t = tensor.ones(@[2, 3], "float64")
     
     // isTensor
     assert(tensor.isTensor(t) == true, "isTensor() failed")

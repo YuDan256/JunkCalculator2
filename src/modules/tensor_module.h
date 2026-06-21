@@ -5,6 +5,8 @@
 #include "../math/Tensor.h"
 #include "../memory/Value.h"
 
+#include <utility>
+
 namespace jc {
 
     JC2_MODULE(tensor) {
@@ -72,6 +74,21 @@ namespace jc {
             std::vector<double> data;
             for (const auto& v : list->vec) data.push_back(v.asDouble());
             return data;
+        };
+
+        auto parseTensorOptions = [](const std::vector<Value>& args, size_t start,
+                                     DType defaultDt = DType::Float64,
+                                     bool defaultRequiresGrad = false) -> std::pair<DType, bool> {
+            DType dt = defaultDt;
+            bool req_grad = defaultRequiresGrad;
+            for (size_t i = start; i < args.size(); ++i) {
+                if (args[i].isString()) {
+                    dt = stringToDType(args[i].asString());
+                } else {
+                    req_grad = args[i].truthy();
+                }
+            }
+            return {dt, req_grad};
         };
 
         // __str__
@@ -262,6 +279,14 @@ namespace jc {
             auto selfVal = jc::helpers::getGlobalCallback("self");
             auto t = getTensor(selfVal);
             return Value(dtypeToString(t->dtype()));
+        });
+
+        // .to(dtype) — dtype 转换
+        addTensorMethod("to", 1, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto selfVal = jc::helpers::getGlobalCallback("self");
+            auto t = getTensor(selfVal);
+            if (!args[0].isString()) throw std::runtime_error("TypeError: to(dtype) expects a dtype string.");
+            return wrapTensor(t->to(stringToDType(args[0].asString())));
         });
 
         // .clone()
@@ -492,68 +517,77 @@ namespace jc {
         // ====================================================================
         ModuleReg reg(env, builtins, arity);
 
-        // tensor.tensor(data_list, shape_list, [requires_grad])
-        reg.reg("tensor", {2, 3}, [wrapTensor, listToDoubles, listToShape](const std::vector<Value>& args) -> Value {
+        // tensor.tensor(data_list, shape_list, [dtype], [requires_grad])
+        reg.reg("tensor", {2, 3, 4}, [wrapTensor, listToDoubles, listToShape, parseTensorOptions](const std::vector<Value>& args) -> Value {
             auto data = listToDoubles(args[0]);
             auto shape = listToShape(args[1]);
-            bool req_grad = (args.size() >= 3) ? args[2].truthy() : false;
-            return wrapTensor(tensor_from_data(data, shape, req_grad));
+            auto [dt, req_grad] = parseTensorOptions(args, 2);
+            return wrapTensor(tensor_from_data(data, shape, dt, req_grad));
         });
 
-        // tensor.scalar(val, [requires_grad])
-        reg.reg("scalar", {1, 2}, [wrapTensor](const std::vector<Value>& args) -> Value {
-            bool rg = (args.size() >= 2) ? args[1].truthy() : false;
-            return wrapTensor(tensor_scalar(args[0].asDouble(), rg));
+        // tensor.scalar(val, [dtype], [requires_grad])
+        reg.reg("scalar", {1, 2, 3}, [wrapTensor, parseTensorOptions](const std::vector<Value>& args) -> Value {
+            auto [dt, rg] = parseTensorOptions(args, 1);
+            return wrapTensor(tensor_scalar(args[0].asDouble(), dt, rg));
         });
 
-        // tensor.zeros(shape_list, [requires_grad])
-        reg.reg("zeros", {1, 2}, [wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
+        // tensor.zeros(shape_list, [dtype], [requires_grad])
+        reg.reg("zeros", {1, 2, 3}, [wrapTensor, listToShape, parseTensorOptions](const std::vector<Value>& args) -> Value {
             auto shape = listToShape(args[0]);
-            bool rg = (args.size() >= 2) ? args[1].truthy() : false;
-            return wrapTensor(tensor_zeros(shape, DType::Float64, rg));
+            auto [dt, rg] = parseTensorOptions(args, 1);
+            return wrapTensor(tensor_zeros(shape, dt, rg));
         });
 
-        // tensor.ones(shape_list, [requires_grad])
-        reg.reg("ones", {1, 2}, [wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
+        // tensor.ones(shape_list, [dtype], [requires_grad])
+        reg.reg("ones", {1, 2, 3}, [wrapTensor, listToShape, parseTensorOptions](const std::vector<Value>& args) -> Value {
             auto shape = listToShape(args[0]);
-            bool rg = (args.size() >= 2) ? args[1].truthy() : false;
-            return wrapTensor(tensor_ones(shape, DType::Float64, rg));
+            auto [dt, rg] = parseTensorOptions(args, 1);
+            return wrapTensor(tensor_ones(shape, dt, rg));
         });
 
-        // tensor.full(shape_list, fill_value, [requires_grad])
-        reg.reg("full", {2, 3}, [wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
+        // tensor.full(shape_list, fill_value, [dtype], [requires_grad])
+        reg.reg("full", {2, 3, 4}, [wrapTensor, listToShape, parseTensorOptions](const std::vector<Value>& args) -> Value {
             auto shape = listToShape(args[0]);
             double val = args[1].asDouble();
-            bool rg = (args.size() >= 3) ? args[2].truthy() : false;
-            return wrapTensor(tensor_full(shape, val, DType::Float64, rg));
+            auto [dt, rg] = parseTensorOptions(args, 2);
+            return wrapTensor(tensor_full(shape, val, dt, rg));
         });
 
-        // tensor.eye(n)
-        reg.reg("eye", {1}, [wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_eye(static_cast<int>(args[0].asDouble())));
+        // tensor.eye(n, [dtype])
+        reg.reg("eye", {1, 2}, [wrapTensor, parseTensorOptions](const std::vector<Value>& args) -> Value {
+            auto [dt, rg] = parseTensorOptions(args, 1);
+            return wrapTensor(tensor_eye(static_cast<int>(args[0].asDouble()), dt));
         });
 
-        // tensor.arange(start, end, [step])
-        reg.reg("arange", {2, 3}, [wrapTensor](const std::vector<Value>& args) -> Value {
+        // tensor.arange(start, end, [step], [dtype])
+        reg.reg("arange", {2, 3, 4}, [wrapTensor](const std::vector<Value>& args) -> Value {
             double start = args[0].asDouble();
             double end = args[1].asDouble();
-            double step = (args.size() >= 3) ? args[2].asDouble() : 1.0;
-            return wrapTensor(tensor_arange(start, end, step));
+            double step = 1.0;
+            DType dt = DType::Float64;
+            for (size_t i = 2; i < args.size(); ++i) {
+                if (args[i].isString()) dt = stringToDType(args[i].asString());
+                else step = args[i].asDouble();
+            }
+            return wrapTensor(tensor_arange(start, end, step, dt));
         });
 
-        // tensor.linspace(start, end, steps)
-        reg.reg("linspace", {3}, [wrapTensor](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_linspace(args[0].asDouble(), args[1].asDouble(), static_cast<int>(args[2].asDouble())));
+        // tensor.linspace(start, end, steps, [dtype])
+        reg.reg("linspace", {3, 4}, [wrapTensor, parseTensorOptions](const std::vector<Value>& args) -> Value {
+            auto [dt, rg] = parseTensorOptions(args, 3);
+            return wrapTensor(tensor_linspace(args[0].asDouble(), args[1].asDouble(), static_cast<int>(args[2].asDouble()), dt));
         });
 
-        // tensor.rand(shape_list)
-        reg.reg("rand", {1}, [wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_rand(listToShape(args[0])));
+        // tensor.rand(shape_list, [dtype], [requires_grad])
+        reg.reg("rand", {1, 2, 3}, [wrapTensor, listToShape, parseTensorOptions](const std::vector<Value>& args) -> Value {
+            auto [dt, rg] = parseTensorOptions(args, 1);
+            return wrapTensor(tensor_rand(listToShape(args[0]), dt, rg));
         });
 
-        // tensor.randn(shape_list)
-        reg.reg("randn", {1}, [wrapTensor, listToShape](const std::vector<Value>& args) -> Value {
-            return wrapTensor(tensor_randn(listToShape(args[0])));
+        // tensor.randn(shape_list, [dtype], [requires_grad])
+        reg.reg("randn", {1, 2, 3}, [wrapTensor, listToShape, parseTensorOptions](const std::vector<Value>& args) -> Value {
+            auto [dt, rg] = parseTensorOptions(args, 1);
+            return wrapTensor(tensor_randn(listToShape(args[0]), dt, rg));
         });
 
         // tensor.matmul(a, b)
@@ -627,6 +661,12 @@ namespace jc {
         // tensor.isTensor(val) — 类型判断
         reg.reg("isTensor", {1}, [isTensor](const std::vector<Value>& args) -> Value {
             return Value(isTensor(args[0]));
+        });
+
+        // tensor.to(t, dtype) — dtype 转换
+        reg.reg("to", {2}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            if (!args[1].isString()) throw std::runtime_error("TypeError: to(tensor, dtype) expects a dtype string.");
+            return wrapTensor(getTensor(args[0])->to(stringToDType(args[1].asString())));
         });
 
         // tensor.from_matrix(matrix, [requires_grad]) — 从矩阵创建张量

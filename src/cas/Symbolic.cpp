@@ -5485,11 +5485,15 @@ namespace jc {
         }
         if (expr.ptr->getType() == SymType::POW) {
             auto p = std::static_pointer_cast<SymPow>(expr.ptr);
-            SymExpr base = SymExpr(p->base);
-            SymExpr exp = SymExpr(p->exp);
-            SymExpr log_base(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{base.ptr}));
-            SymExpr rewritten(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{(exp * log_base).ptr}));
-            return mrv(rewritten, var, depth);
+            if (containsVar(p->exp, var)) {
+                SymExpr base = SymExpr(p->base);
+                SymExpr exp = SymExpr(p->exp);
+                SymExpr log_base(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{base.ptr}));
+                SymExpr rewritten(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{(exp * log_base).ptr}));
+                return mrv(rewritten, var, depth);
+            } else {
+                return mrv(SymExpr(p->base), var, depth);
+            }
         }
         if (expr.ptr->getType() == SymType::FUNC) {
             auto f = std::static_pointer_cast<SymFunc>(expr.ptr);

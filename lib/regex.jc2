@@ -72,10 +72,11 @@ class _RePS {
     quant() = {
         node = self.atom()
         if (self.ok()) {
+            is_quant = false
             match (self.pk()) {
-                "*" => { self.nx(); return {type: "star", inner: node} },
-                "+" => { self.nx(); return {type: "plus", inner: node} },
-                "?" => { self.nx(); return {type: "opt", inner: node} },
+                "*" => { self.nx(); node = {type: "star", inner: node}; is_quant = true },
+                "+" => { self.nx(); node = {type: "plus", inner: node}; is_quant = true },
+                "?" => { self.nx(); node = {type: "opt", inner: node}; is_quant = true },
                 "{" => {
                     saved_p = self.p; self.nx() 
                     min_str = ""
@@ -97,12 +98,21 @@ class _RePS {
                         } else { 
                             max_val = min_str.len() > 0 ? min_val : 0 
                         }
-                        return {type: "bound", inner: node, min: min_val, max: max_val}
+                        node = {type: "bound", inner: node, min: min_val, max: max_val}
+                        is_quant = true
                     } else { 
                         self.p = saved_p 
                     }
                 },
                 _ => {}
+            }
+            if (is_quant) {
+                if (self.ok() && self.pk() == "?") {
+                    self.nx()
+                    node.lazy = true
+                } else {
+                    node.lazy = false
+                }
             }
         }
         return node
@@ -130,6 +140,11 @@ class _RePS {
                 self.nx()
                 if (!self.ok()) throw "Regex Error: Trailing backslash"
                 e = self.nx()
+                if (e.isdigit() && e != "0") {
+                    num_str = e
+                    while (self.ok() && self.pk().isdigit()) { num_str += self.nx() }
+                    return {type: "backref", idx: int(num_str)}
+                }
                 if (e in _RE_SHORTHANDS) return {type: "esc", kind: e}
                 return {type: "lit", ch: e}
             },
@@ -216,6 +231,16 @@ _re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) ->
         if (ra >= 0) return ra
         return _re_rm(b, 0, text, pos, tl, caps)
     },
+    {type: "backref", idx: ref_idx} => {
+        if (ref_idx > caps.data.len() - 1) return -1
+        s = caps.getStart(ref_idx)
+        e = caps.getEnd(ref_idx)
+        if (s < 0 || e < 0) return -1
+        len = e - s
+        if (pos + len > tl) return -1
+        if (text[pos : pos + len] == text[s : e]) return pos + len
+        return -1
+    },
     _ => _re_rm_one(node, text, pos, tl)
 }
 
@@ -250,10 +275,22 @@ _re_rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCa
             rb = _re_rm(b, 0, text, pos, tl, caps)
             return (rb >= 0) ? _re_rm(nodes, idx + 1, text, rb, tl, caps) : -1
         },
-        {type: "bound", inner, min, max} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, min, max),
-        {type: "star", inner} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, -1),
-        {type: "plus", inner} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 1, -1),
-        {type: "opt", inner} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, 1),
+        {type: "bound", inner, min, max, lazy} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, min, max, lazy),
+        {type: "star", inner, lazy} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, -1, lazy),
+        {type: "plus", inner, lazy} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 1, -1, lazy),
+        {type: "opt", inner, lazy} => return _re_rm_quant(nodes, idx, text, pos, tl, caps, inner, 0, 1, lazy),
+        {type: "backref", idx: ref_idx} => {
+            if (ref_idx > caps.data.len() - 1) return -1
+            s = caps.getStart(ref_idx)
+            e = caps.getEnd(ref_idx)
+            if (s < 0 || e < 0) return -1
+            len = e - s
+            if (pos + len > tl) return -1
+            if (text[pos : pos + len] == text[s : e]) {
+                return _re_rm(nodes, idx + 1, text, pos + len, tl, caps)
+            }
+            return -1
+        },
         _ => {
             np = _re_rm_one(node, text, pos, tl)
             return (np >= 0) ? _re_rm(nodes, idx + 1, text, np, tl, caps) : -1
@@ -261,7 +298,7 @@ _re_rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCa
     }
 }
 
-_re_rm_quant(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps, inner: dict, min_v: whole, max_v: whole) -> whole = {
+_re_rm_quant(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps, inner: dict, min_v: whole, max_v: whole, lazy: bool) -> whole = {
     positions = @[pos]; cur = pos; count = 0
     while (max_v < 0 || count < max_v) {
         np = _re_rm_single(inner, text, cur, tl, caps)
@@ -270,9 +307,16 @@ _re_rm_quant(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps:
         cur = np
         count += 1
     }
-    for (k in range(positions.len() - 1, min_v - 1, -1)) {
-        rest = _re_rm(nodes, idx + 1, text, positions[k], tl, caps)
-        if (rest >= 0) return rest
+    if (lazy) {
+        for (k in range(min_v, positions.len())) {
+            rest = _re_rm(nodes, idx + 1, text, positions[k], tl, caps)
+            if (rest >= 0) return rest
+        }
+    } else {
+        for (k in range(positions.len() - 1, min_v - 1, -1)) {
+            rest = _re_rm(nodes, idx + 1, text, positions[k], tl, caps)
+            if (rest >= 0) return rest
+        }
     }
     return -1
 }
@@ -442,8 +486,10 @@ if (isfunction(__register_help)) {
     [^abc]        Negated character class
     ^  $          Start / End anchors
     *  +  ?       Greedy quantifiers
-    {m,n}         Bounded quantifiers
+    *? +? ??      Lazy (non-greedy) quantifiers
+    {m,n}         Bounded quantifiers (append ? for lazy)
     (...)         Capturing group
+    \1, \2        Backreferences
     |             Alternation (OR)
 )DOC")
 }

@@ -1127,6 +1127,50 @@ namespace jc {
         return tensor_binary_op(a, b, [](double x, double y) { return x >= y ? 1.0 : 0.0; }, false);
     }
 
+    // ========================================================================
+    // 8. 矩阵互操作 (Matrix Interoperability)
+    // ========================================================================
+    
+    // ---- 从 RealMatrix 创建 Tensor ----
+    inline Tensor tensor_from_matrix(const RealMatrix& mat, bool req_grad = false) {
+        int rows = mat.getRows();
+        int cols = mat.getCols();
+        Tensor t({rows, cols}, DType::Float64, req_grad);
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                t.setFlat(i * cols + j, mat(i, j));
+            }
+        }
+        return t;
+    }
+
+    // ---- 从 ComplexMatrix 创建 Tensor（仅取实部）----
+    inline Tensor tensor_from_complex_matrix(const ComplexMatrix& mat, bool req_grad = false) {
+        int rows = mat.getRows();
+        int cols = mat.getCols();
+        Tensor t({rows, cols}, DType::Float64, req_grad);
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                t.setFlat(i * cols + j, mat(i, j).real);
+            }
+        }
+        return t;
+    }
+
+    // ---- 将 Tensor 转换为 RealMatrix ----
+    inline RealMatrix tensor_to_matrix(const Tensor& t) {
+        if (t.dim() != 2) throw std::runtime_error("Tensor Error: tensor_to_matrix requires 2D tensor.");
+        int rows = t.shape[0];
+        int cols = t.shape[1];
+        std::vector<double> data(rows * cols);
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                data[i * cols + j] = t.getFlat(i * cols + j);
+            }
+        }
+        return RealMatrix(rows, cols, data);
+    }
+
     // ---- 工厂函数 ----
     inline Tensor tensor_full(const std::vector<int>& shape, double val, DType dt = DType::Float64, bool req_grad = false) {
         Tensor t(shape, dt, req_grad);
@@ -1232,6 +1276,114 @@ namespace jc {
         std::vector<Tensor> expanded;
         for (const auto& t : tensors) expanded.push_back(t.unsqueeze(axis));
         return tensor_cat(expanded, axis);
+    }
+
+    // ---- 行列操作（Matrix-style Row/Col Operations）----
+    
+    // getRow: 返回第 row 行作为 1D tensor
+    inline Tensor tensor_getrow(const Tensor& t, int row) {
+        if (t.dim() < 2) throw std::runtime_error("Tensor Error: getrow requires at least 2D tensor.");
+        if (row < 0) row += t.shape[0];
+        if (row < 0 || row >= t.shape[0])
+            throw std::runtime_error("Tensor Error: getrow index out of range.");
+        
+        std::vector<int> row_shape(t.shape.begin() + 1, t.shape.end());
+        Tensor result(row_shape, t.dtype(), false);
+        size_t row_numel = t.numel() / t.shape[0];
+        for (size_t i = 0; i < row_numel; ++i) {
+            result.setFlat(i, t.getFlat(row * row_numel + i));
+        }
+        return result;
+    }
+
+    // getCol: 返回第 col 列作为 Tensor（仅对 2D）
+    inline Tensor tensor_getcol(const Tensor& t, int col) {
+        if (t.dim() != 2) throw std::runtime_error("Tensor Error: getcol requires 2D tensor.");
+        int rows = t.shape[0], cols = t.shape[1];
+        if (col < 0) col += cols;
+        if (col < 0 || col >= cols)
+            throw std::runtime_error("Tensor Error: getcol index out of range.");
+        
+        Tensor result({rows}, t.dtype(), false);
+        for (int i = 0; i < rows; ++i) {
+            result.setFlat(i, t.getFlat(i * cols + col));
+        }
+        return result;
+    }
+
+    // deleteRow: 删除第 row 行，返回新 tensor（仅对 2D）
+    inline Tensor tensor_deleterow(const Tensor& t, int row) {
+        if (t.dim() != 2) throw std::runtime_error("Tensor Error: deleterow requires 2D tensor.");
+        if (t.shape[0] <= 1) throw std::runtime_error("Tensor Error: Cannot delete row from 1-row tensor.");
+        
+        if (row < 0) row += t.shape[0];
+        if (row < 0 || row >= t.shape[0])
+            throw std::runtime_error("Tensor Error: deleterow index out of range.");
+        
+        int rows = t.shape[0], cols = t.shape[1];
+        Tensor result({rows - 1, cols}, t.dtype(), false);
+        int wr = 0;
+        for (int i = 0; i < rows; ++i) {
+            if (i == row) continue;
+            for (int j = 0; j < cols; ++j) {
+                result.setFlat(wr * cols + j, t.getFlat(i * cols + j));
+            }
+            wr++;
+        }
+        return result;
+    }
+
+    // deleteCol: 删除第 col 列，返回新 tensor（仅对 2D）
+    inline Tensor tensor_deletecol(const Tensor& t, int col) {
+        if (t.dim() != 2) throw std::runtime_error("Tensor Error: deletecol requires 2D tensor.");
+        if (t.shape[1] <= 1) throw std::runtime_error("Tensor Error: Cannot delete col from 1-col tensor.");
+        
+        if (col < 0) col += t.shape[1];
+        if (col < 0 || col >= t.shape[1])
+            throw std::runtime_error("Tensor Error: deletecol index out of range.");
+        
+        int rows = t.shape[0], cols = t.shape[1];
+        Tensor result({rows, cols - 1}, t.dtype(), false);
+        for (int i = 0; i < rows; ++i) {
+            int wj = 0;
+            for (int j = 0; j < cols; ++j) {
+                if (j == col) continue;
+                result.setFlat(i * (cols - 1) + wj, t.getFlat(i * cols + j));
+                wj++;
+            }
+        }
+        return result;
+    }
+
+    // swapRows: 交换两行（仅对 2D）
+    inline Tensor tensor_swaprows(const Tensor& t, int r1, int r2) {
+        if (t.dim() != 2) throw std::runtime_error("Tensor Error: swaprows requires 2D tensor.");
+        int rows = t.shape[0], cols = t.shape[1];
+        if (r1 < 0) r1 += rows;
+        if (r2 < 0) r2 += rows;
+        if (r1 < 0 || r1 >= rows || r2 < 0 || r2 >= rows)
+            throw std::runtime_error("Tensor Error: swaprows index out of range.");
+        
+        Tensor result = t.clone();
+        for (int j = 0; j < cols; ++j) {
+            double tmp = result.getFlat(r1 * cols + j);
+            result.setFlat(r1 * cols + j, result.getFlat(r2 * cols + j));
+            result.setFlat(r2 * cols + j, tmp);
+        }
+        return result;
+    }
+
+    // ---- 矩阵连接（Block concatenation）----
+    inline Tensor tensor_hstack(const std::vector<Tensor>& tensors) {
+        // 水平拼接：假设都是 2D，按列连接
+        if (tensors.empty()) throw std::runtime_error("Tensor Error: hstack requires at least one tensor.");
+        return tensor_cat(tensors, 1);  // axis=1 表示列方向
+    }
+
+    inline Tensor tensor_vstack(const std::vector<Tensor>& tensors) {
+        // 垂直拼接：假设都是 2D，按行连接
+        if (tensors.empty()) throw std::runtime_error("Tensor Error: vstack requires at least one tensor.");
+        return tensor_cat(tensors, 0);  // axis=0 表示行方向
     }
 
     // ---- Random ----

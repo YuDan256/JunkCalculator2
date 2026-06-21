@@ -557,6 +557,79 @@ namespace jc {
         reg.reg("isTensor", {1}, [isTensor](const std::vector<Value>& args) -> Value {
             return Value(isTensor(args[0]));
         });
+
+        // tensor.from_matrix(matrix, [requires_grad]) — 从矩阵创建张量
+        reg.reg("from_matrix", {1, 2}, [wrapTensor](const std::vector<Value>& args) -> Value {
+            if (!args[0].isObjType(ObjType::REAL_MATRIX)) 
+                throw std::runtime_error("TypeError: from_matrix expects a RealMatrix.");
+            auto mat = static_cast<RealMatrix*>(args[0].asObj());
+            bool rg = (args.size() >= 2) ? args[1].truthy() : false;
+            return wrapTensor(tensor_from_matrix(*mat, rg));
+        });
+
+        // tensor.to_matrix(tensor) — 张量转换为矩阵
+        reg.reg("to_matrix", {1}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto t = getTensor(args[0]);
+            auto mat = tensor_to_matrix(*t);
+            auto matObj = GcHeap::get().allocate<RealMatrix>(mat);
+            return Value(matObj);
+        });
+
+        // tensor.getrow(t, row) — 获取第 row 行
+        reg.reg("getrow", {2}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto t = getTensor(args[0]);
+            int row = static_cast<int>(args[1].asDouble());
+            return wrapTensor(tensor_getrow(*t, row));
+        });
+
+        // tensor.getcol(t, col) — 获取第 col 列
+        reg.reg("getcol", {2}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto t = getTensor(args[0]);
+            int col = static_cast<int>(args[1].asDouble());
+            return wrapTensor(tensor_getcol(*t, col));
+        });
+
+        // tensor.deleterow(t, row) — 删除第 row 行
+        reg.reg("deleterow", {2}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto t = getTensor(args[0]);
+            int row = static_cast<int>(args[1].asDouble());
+            return wrapTensor(tensor_deleterow(*t, row));
+        });
+
+        // tensor.deletecol(t, col) — 删除第 col 列
+        reg.reg("deletecol", {2}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto t = getTensor(args[0]);
+            int col = static_cast<int>(args[1].asDouble());
+            return wrapTensor(tensor_deletecol(*t, col));
+        });
+
+        // tensor.swaprows(t, r1, r2) — 交换两行
+        reg.reg("swaprows", {3}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            auto t = getTensor(args[0]);
+            int r1 = static_cast<int>(args[1].asDouble());
+            int r2 = static_cast<int>(args[2].asDouble());
+            return wrapTensor(tensor_swaprows(*t, r1, r2));
+        });
+
+        // tensor.hstack(list_of_tensors) — 水平拼接
+        reg.reg("hstack", {1}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            if (!args[0].isObjType(ObjType::LIST)) 
+                throw std::runtime_error("TypeError: hstack expects a list of tensors.");
+            auto list = static_cast<ObjList*>(args[0].asObj());
+            std::vector<Tensor> tensors;
+            for (const auto& v : list->vec) tensors.push_back(*getTensor(v));
+            return wrapTensor(tensor_hstack(tensors));
+        });
+
+        // tensor.vstack(list_of_tensors) — 垂直拼接
+        reg.reg("vstack", {1}, [getTensor, wrapTensor](const std::vector<Value>& args) -> Value {
+            if (!args[0].isObjType(ObjType::LIST)) 
+                throw std::runtime_error("TypeError: vstack expects a list of tensors.");
+            auto list = static_cast<ObjList*>(args[0].asObj());
+            std::vector<Tensor> tensors;
+            for (const auto& v : list->vec) tensors.push_back(*getTensor(v));
+            return wrapTensor(tensor_vstack(tensors));
+        });
     }
 
 } // namespace jc

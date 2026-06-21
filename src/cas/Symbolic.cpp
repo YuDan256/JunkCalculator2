@@ -5185,10 +5185,10 @@ namespace jc {
                         return res;
                     }
                 }
-                // Fallback for complex powers
-                AsympSeries s(order);
-                s.addTerm(Fraction(0), expr);
-                return s;
+                // Convert variable power to exp and compute series
+                SymExpr log_base(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{powNode->base}));
+                SymExpr rewritten(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{(SymExpr(powNode->exp) * log_base).ptr}));
+                return computeGruntzSeries(rewritten, t_var, order);
             }
             case SymType::FUNC: {
                 auto func = std::static_pointer_cast<SymFunc>(expr.ptr);
@@ -5601,7 +5601,15 @@ namespace jc {
                 }
                 if (node->getType() == SymType::ADD) for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args) check_log(arg);
                 else if (node->getType() == SymType::MUL) for (auto& arg : std::static_pointer_cast<SymMul>(node)->args) check_log(arg);
-                else if (node->getType() == SymType::POW) { check_log(std::static_pointer_cast<SymPow>(node)->base); check_log(std::static_pointer_cast<SymPow>(node)->exp); }
+                else if (node->getType() == SymType::POW) {
+                    auto powNode = std::static_pointer_cast<SymPow>(node);
+                    if (powNode->exp->getType() != SymType::NUM) {
+                        has_log = true;
+                        return;
+                    }
+                    check_log(powNode->base);
+                    check_log(powNode->exp);
+                }
                 else if (node->getType() == SymType::FUNC) for (auto& arg : std::static_pointer_cast<SymFunc>(node)->args) check_log(arg);
             };
             check_log(expr.ptr);

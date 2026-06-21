@@ -1,0 +1,325 @@
+import tensor
+
+// ============================================================================
+// 1. 基础工厂函数测试
+// ============================================================================
+
+test_factory_functions() = {
+    // tensor.scalar
+    s = tensor.scalar(3.14)
+    assert(s.dim() == 0 || s.numel() == 1, "scalar() dimension failed")
+    assert(abs(s.item() - 3.14) < 1e-10, "scalar() value failed")
+
+    // tensor.zeros
+    z = tensor.zeros(@[2, 3])
+    assert(z.dim() == 2, "zeros() dim failed")
+    assert(z.shape()[0] == 2 && z.shape()[1] == 3, "zeros() shape failed")
+    assert(z.item() == 0.0, "zeros() value failed")
+
+    // tensor.ones
+    o = tensor.ones(@[2, 3])
+    assert(o.item() == 1.0, "ones() value failed")
+
+    // tensor.full
+    f = tensor.full(@[2, 2], 5.0)
+    assert(abs(f.item() - 5.0) < 1e-10, "full() value failed")
+
+    // tensor.eye
+    e = tensor.eye(3)
+    assert(e.shape()[0] == 3 && e.shape()[1] == 3, "eye() shape failed")
+
+    // tensor.arange
+    a = tensor.arange(0, 5, 1)
+    assert(a.numel() == 5, "arange() numel failed")
+    assert(abs(a.item() - 0.0) < 1e-10, "arange() first element failed")
+
+    // tensor.linspace
+    l = tensor.linspace(0, 1, 5)
+    assert(l.numel() == 5, "linspace() numel failed")
+
+    // tensor.rand
+    r = tensor.rand(@[2, 2])
+    assert(r.dim() == 2, "rand() dim failed")
+
+    // tensor.randn
+    rn = tensor.randn(@[3, 3])
+    assert(rn.dim() == 2, "randn() dim failed")
+}
+test_factory_functions()
+
+// ============================================================================
+// 2. 基础属性和访问测试
+// ============================================================================
+
+test_properties() = {
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], @[2, 3])
+    
+    // shape, dim, numel
+    assert(t.shape()[0] == 2 && t.shape()[1] == 3, "shape() failed")
+    assert(t.dim() == 2, "dim() failed")
+    assert(t.numel() == 6, "numel() failed")
+    
+    // dtype
+    dt = t.dtype()
+    assert(dt == "float64", "dtype() failed")
+    
+    // item access
+    assert(abs(t.getFlat(0) - 1.0) < 1e-10, "getFlat(0) failed")
+    assert(abs(t.getFlat(5) - 6.0) < 1e-10, "getFlat(5) failed")
+    
+    // setFlat
+    t.setFlat(0, 10.0)
+    assert(abs(t.getFlat(0) - 10.0) < 1e-10, "setFlat() failed")
+}
+test_properties()
+
+// ============================================================================
+// 3. 形状变换测试（view, reshape, unsqueeze, squeeze, transpose）
+// ============================================================================
+
+test_shape_transforms() = {
+    t = tensor.arange(0, 6, 1)
+    
+    // reshape
+    r = t.reshape(@[2, 3])
+    assert(r.shape()[0] == 2 && r.shape()[1] == 3, "reshape() failed")
+    
+    // unsqueeze
+    u = r.unsqueeze(0)
+    assert(u.dim() == 3, "unsqueeze() dim failed")
+    
+    // squeeze
+    sq = u.squeeze()
+    assert(sq.dim() == 2, "squeeze() dim failed")
+    
+    // transpose
+    tr = r.transpose(0, 1)
+    assert(tr.shape()[0] == 3 && tr.shape()[1] == 2, "transpose() failed")
+    
+    // T() - last two dims
+    t2d = tensor.ones(@[2, 3])
+    tt = t2d.T()
+    assert(tt.shape()[0] == 3 && tt.shape()[1] == 2, "T() failed")
+}
+test_shape_transforms()
+
+// ============================================================================
+// 4. 算术运算测试（加、减、乘、除、幂、取负）
+// ============================================================================
+
+test_arithmetic() = {
+    a = tensor.tensor(@[1.0, 2.0], @[2])
+    b = tensor.tensor(@[3.0, 4.0], @[2])
+    
+    // 加法
+    c = a + b
+    assert(abs(c.getFlat(0) - 4.0) < 1e-10, "add failed")
+    assert(abs(c.getFlat(1) - 6.0) < 1e-10, "add failed")
+    
+    // 减法
+    d = b - a
+    assert(abs(d.getFlat(0) - 2.0) < 1e-10, "sub failed")
+    
+    // 乘法（逐元素）
+    e = a * b
+    assert(abs(e.getFlat(0) - 3.0) < 1e-10, "mul failed")
+    assert(abs(e.getFlat(1) - 8.0) < 1e-10, "mul failed")
+    
+    // 除法（逐元素）
+    f = b / a
+    assert(abs(f.getFlat(0) - 3.0) < 1e-10, "div failed")
+    assert(abs(f.getFlat(1) - 2.0) < 1e-10, "div failed")
+    
+    // 取负
+    g = -a
+    assert(abs(g.getFlat(0) - (-1.0)) < 1e-10, "neg failed")
+}
+test_arithmetic()
+
+// ============================================================================
+// 5. 矩阵乘法测试
+// ============================================================================
+
+test_matmul() = {
+    a = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2])
+    b = tensor.tensor(@[5.0, 6.0, 7.0, 8.0], @[2, 2])
+    
+    c = tensor.matmul(a, b)
+    assert(c.shape()[0] == 2 && c.shape()[1] == 2, "matmul shape failed")
+    
+    // [1,2; 3,4] @ [5,6; 7,8] = [19,22; 43,50]
+    assert(abs(c.getFlat(0) - 19.0) < 1e-10, "matmul[0] failed")
+    assert(abs(c.getFlat(1) - 22.0) < 1e-10, "matmul[1] failed")
+    assert(abs(c.getFlat(2) - 43.0) < 1e-10, "matmul[2] failed")
+    assert(abs(c.getFlat(3) - 50.0) < 1e-10, "matmul[3] failed")
+}
+test_matmul()
+
+// ============================================================================
+// 6. 规约操作测试（sum, mean, max, min）
+// ============================================================================
+
+test_reductions() = {
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2])
+    
+    // sum
+    s = t.sum()
+    assert(abs(s.item() - 10.0) < 1e-10, "sum() failed")
+    
+    // mean
+    m = t.mean()
+    assert(abs(m.item() - 2.5) < 1e-10, "mean() failed")
+    
+    // max
+    max_t = t.max()
+    assert(abs(max_t.item() - 4.0) < 1e-10, "max() failed")
+    
+    // min
+    min_t = t.min()
+    assert(abs(min_t.item() - 1.0) < 1e-10, "min() failed")
+}
+test_reductions()
+
+// ============================================================================
+// 7. 激活函数测试（relu, sigmoid, tanh）
+// ============================================================================
+
+test_activations() = {
+    t = tensor.tensor(@[-1.0, 0.0, 1.0], @[3])
+    
+    // relu
+    r = t.relu()
+    assert(abs(r.getFlat(0) - 0.0) < 1e-10, "relu(-1) failed")
+    assert(abs(r.getFlat(2) - 1.0) < 1e-10, "relu(1) failed")
+    
+    // sigmoid
+    sig = t.sigmoid()
+    assert(sig.getFlat(2) > 0.7 && sig.getFlat(2) < 0.8, "sigmoid failed")
+    
+    // tanh
+    th = t.tanh()
+    assert(th.getFlat(2) > 0.7 && th.getFlat(2) < 0.8, "tanh failed")
+}
+test_activations()
+
+// ============================================================================
+// 8. 数学函数测试（exp, log, sqrt）
+// ============================================================================
+
+test_math_functions() = {
+    t = tensor.tensor(@[1.0, 2.0, 3.0], @[3])
+    
+    // exp
+    e = t.exp()
+    assert(abs(e.getFlat(0) - 2.71828) < 0.01, "exp() failed")
+    
+    // log
+    l = t.log()
+    assert(abs(l.getFlat(0) - 0.0) < 1e-10, "log(1) failed")
+    
+    // sqrt
+    sq = t.sqrt()
+    assert(abs(sq.getFlat(0) - 1.0) < 1e-10, "sqrt(1) failed")
+}
+test_math_functions()
+
+// ============================================================================
+// 9. 拼接操作测试（cat, stack, hstack, vstack）
+// ============================================================================
+
+test_concatenation() = {
+    a = tensor.ones(@[2, 2])
+    b = tensor.ones(@[2, 2])
+    
+    // cat axis=0
+    c0 = tensor.cat(@[a, b], 0)
+    assert(c0.shape()[0] == 4 && c0.shape()[1] == 2, "cat(axis=0) shape failed")
+    
+    // cat axis=1
+    c1 = tensor.cat(@[a, b], 1)
+    assert(c1.shape()[0] == 2 && c1.shape()[1] == 4, "cat(axis=1) shape failed")
+    
+    // stack
+    st = tensor.stack(@[a, b], 0)
+    assert(st.dim() == 3, "stack() dim failed")
+    
+    // hstack
+    h = tensor.hstack(@[a, b])
+    assert(h.shape()[0] == 2 && h.shape()[1] == 4, "hstack shape failed")
+    
+    // vstack
+    v = tensor.vstack(@[a, b])
+    assert(v.shape()[0] == 4 && v.shape()[1] == 2, "vstack shape failed")
+}
+test_concatenation()
+
+// ============================================================================
+// 10. 矩阵行列操作测试
+// ============================================================================
+
+test_matrix_operations() = {
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], @[2, 3])
+    
+    // getrow
+    row = tensor.getrow(t, 0)
+    assert(row.numel() == 3, "getrow numel failed")
+    assert(abs(row.getFlat(0) - 1.0) < 1e-10, "getrow value failed")
+    
+    // getcol
+    col = tensor.getcol(t, 1)
+    assert(col.numel() == 2, "getcol numel failed")
+    assert(abs(col.getFlat(0) - 2.0) < 1e-10, "getcol value failed")
+    
+    // deleterow
+    dr = tensor.deleterow(t, 0)
+    assert(dr.shape()[0] == 1 && dr.shape()[1] == 3, "deleterow shape failed")
+    
+    // deletecol
+    dc = tensor.deletecol(t, 1)
+    assert(dc.shape()[0] == 2 && dc.shape()[1] == 2, "deletecol shape failed")
+    
+    // swaprows
+    sr = tensor.swaprows(t, 0, 1)
+    assert(abs(sr.getFlat(0) - 4.0) < 1e-10, "swaprows failed")
+}
+test_matrix_operations()
+
+// ============================================================================
+// 11. 矩阵互操作测试（与 Matrix 转换）
+// ============================================================================
+
+test_matrix_interop() = {
+    // 创建一个 2x2 矩阵
+    m = [1, 2; 3, 4]
+    
+    // 转换为 tensor
+    t = tensor.from_matrix(m)
+    assert(t.shape()[0] == 2 && t.shape()[1] == 2, "from_matrix shape failed")
+    assert(abs(t.getFlat(0) - 1.0) < 1e-10, "from_matrix value failed")
+    
+    // 转换回矩阵
+    m2 = tensor.to_matrix(t)
+    assert(m2.getRows() == 2 && m2.getCols() == 2, "to_matrix shape failed")
+}
+test_matrix_interop()
+
+// ============================================================================
+// 12. 类型和其他工具测试
+// ============================================================================
+
+test_utilities() = {
+    t = tensor.ones(@[2, 3])
+    
+    // isTensor
+    assert(tensor.isTensor(t) == true, "isTensor() failed")
+    assert(tensor.isTensor(42) == false, "isTensor() failed on non-tensor")
+    
+    // clone
+    c = t.clone()
+    assert(c.shape()[0] == 2 && c.shape()[1] == 3, "clone() shape failed")
+    
+    // fill_
+    t.fill_(5.0)
+    assert(abs(t.getFlat(0) - 5.0) < 1e-10, "fill_() failed")
+}
+test_utilities()

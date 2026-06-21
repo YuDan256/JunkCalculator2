@@ -53,10 +53,52 @@ test_expected_error() = {
 }
 ```
 
-## 5. 控制台输出 (Console Output)
-* **保持整洁**：测试运行器会自动在外部打印 `[PASS] test_name.jc2` 或 `[FAIL]`。因此，测试脚本内部应尽量**减少**不必要的 `println` 输出。
-* **允许的输出**：可以在文件开头打印一行 `println("=== Testing XXX ===")`，或者在耗时较长的测试中打印进度 `println("[1/5] XXX OK")`。
-* **禁止的输出**：不要在循环中打印中间计算结果，这会严重污染测试汇总面板。
+## 5. 控制台输出 (Console Output) — 测试套件必须静默
+
+**核心原则：所有测试脚本应以完全静默模式运行。**
+
+* **严格要求**：测试脚本内部**不允许任何 `println()` 输出**，包括开头的测试标题、进度信息等。
+  - ❌ 禁止：`println("=== Testing XXX ===")`
+  - ❌ 禁止：`println("[1/5] XXX OK")`
+  - ❌ 禁止：任何中间调试打印
+
+* **为什么**：测试运行器（Test Runner）会自动为每个测试文件打印统一格式的结果汇总：
+  ```
+  [TEST] Running test_xxx.jc2...
+    -> [PASS] test_xxx.jc2
+  ```
+  任何内部输出都会破坏这个整洁的面板，降低可读性。
+
+* **唯一例外**：仅在测试脚本故意验证输出功能时（如 `print()` 函数的测试），才允许使用 `println()`。此时应明确注释说明。
+
+* **最佳实践**：
+  ```jc2
+  // ✓ 好的做法：静默执行，仅用 assert 验证
+  test_feature_a() = {
+      result = some_computation()
+      assert(result == expected, "Feature A computation failed")
+  }
+  test_feature_a()
+  
+  // ✓ 好的做法：复杂测试可分段，使用描述性错误消息
+  test_complex_feature() = {
+      // 第 1 阶段
+      x = 10
+      assert(x > 0, "Setup: x should be positive")
+      
+      // 第 2 阶段
+      y = transform(x)
+      assert(y == 20, "Transform: should double the value")
+  }
+  test_complex_feature()
+  
+  // ✗ 坏的做法：打印进度信息
+  test_bad() = {
+      println("Testing feature...")  // ← 污染输出！
+      assert(...)
+      println("OK")                  // ← 污染输出！
+  }
+  ```
 
 ## 6. 自动化对比函数 (可选)
 对于需要大量对比的测试（如模式匹配、解析器测试），可以在文件顶部定义一个辅助的 `check` 函数：

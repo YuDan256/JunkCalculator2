@@ -66,11 +66,11 @@ static jc2::Value makeSocketInstance(NativeSocket s) {
 }
 
 #define METHOD(name) JC2_ValueHandle sock_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
-#define GET_SELF auto wrapper = getSock(jc2::Value(argv[0]), #name)
+#define GET_SELF(func_name) auto wrapper = getSock(jc2::Value(argv[0]), func_name)
 
 METHOD(send) {
     (void)argc;
-    GET_SELF;
+    GET_SELF("send");
     std::string data = jc2::Value(argv[1]).as_string();
     if (::send(wrapper->sock, data.c_str(), (int)data.size(), 0) == SOCKET_ERROR) {
         jc2::throw_error("Network Error: Connection lost during send.");
@@ -79,7 +79,7 @@ METHOD(send) {
 }
 
 METHOD(recv) {
-    GET_SELF;
+    GET_SELF("recv");
     int max_bytes = argc > 1 ? static_cast<int>(jc2::Value(argv[1]).as_double()) : 4096;
     if (max_bytes <= 0) max_bytes = 4096;
 
@@ -94,7 +94,7 @@ METHOD(recv) {
 
 METHOD(close) {
     (void)argc;
-    GET_SELF;
+    GET_SELF("close");
     if (wrapper->sock != INVALID_SOCKET) {
         closesocket(wrapper->sock);
         wrapper->sock = INVALID_SOCKET;
@@ -104,7 +104,7 @@ METHOD(close) {
 
 METHOD(accept) {
     (void)argc;
-    GET_SELF;
+    GET_SELF("accept");
     NativeSocket client_sock = ::accept(wrapper->sock, nullptr, nullptr);
     if (client_sock == INVALID_SOCKET) {
         jc2::throw_error("Network Error: Accept failed.");

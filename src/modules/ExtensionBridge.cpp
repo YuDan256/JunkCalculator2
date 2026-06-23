@@ -539,6 +539,22 @@ static JC2_ValueHandle host_dict_keys(JC2_VMContext, JC2_ValueHandle dict) {
     return Value::none().as_bits;
 }
 
+static JC2_ValueHandle host_get_global(JC2_VMContext, const char* name) {
+    if (!VM::activeVM) return Value::none().as_bits;
+    auto it = VM::activeVM->getGlobals().find(name);
+    if (it != VM::activeVM->getGlobals().end()) {
+        return it->second.as_bits;
+    }
+    return Value::none().as_bits;
+}
+
+static JC2_ValueHandle host_to_string(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    std::ostringstream oss;
+    oss << val;
+    return Value(std::string(oss.str())).as_bits;
+}
+
 static JC2_ValueHandle host_call_function(JC2_VMContext, JC2_ValueHandle func, int argc, JC2_ValueHandle* argv) {
     Value f = from_handle(func);
     if (!f.isFunctionClosure()) return Value::none().as_bits;
@@ -605,6 +621,8 @@ static const JC2_HostAPI host_api = {
     host_dict_size,
     host_is_dict,
     host_dict_keys,
+    host_get_global,
+    host_to_string,
     host_make_real_matrix,
     host_real_matrix_get,
     host_real_matrix_set,

@@ -2846,75 +2846,6 @@
       "        ",
       "        • \"close\"",
       "           The user clicked the 'X' button on the window."
-    ],
-    "latex": [
-      "═══ LaTeX Mathematical Engine — Native Module ═══",
-      "",
-      "  Requires: import latex",
-      "",
-      "  The `latex` module provides bi-directional integration with standard LaTeX ",
-      "  math syntax. It can serialize JC2 matrices, fractions, and complex numbers ",
-      "  into beautiful LaTeX code, and conversely, it can parse, compile, and ",
-      "  evaluate raw LaTeX formulas into blazing-fast native JC2 closures.",
-      "",
-      "  Serialization (JC2 → LaTeX)",
-      "  ──────────────────────",
-      "    latex.to_latex(obj)",
-      "        Converts a JC2 value into a clean LaTeX code string.",
-      "        • fraction:  frac(1,2)      → \"\\frac{1}{2}\"",
-      "        • complex:   3+4i           → \"3+4i\"",
-      "        • matrix:    [1, 2; 3, 4]   → \"\\begin{pmatrix} 1 & 2 \\\\ ... \\end{pmatrix}\"",
-      "        • list:      list(1, 2)     → \"\\left[ 1, 2 \\right]\"",
-      "",
-      "  Direct Evaluation (LaTeX → Number or Complex)",
-      "  ──────────────────────",
-      "    latex.eval(\"formula\")",
-      "        Parses and evaluates a constant LaTeX math string directly.",
-      "        The underlying engine fully supports the Complex Plane.",
-      "        (Tip: Use r-strings `r\"...\"` so you don't have to double-escape backslashes!)",
-      "        ",
-      "        latex.eval(r\"\\frac{1+\\sqrt{5}}{2}\")       → 1.618033",
-      "        latex.eval(r\"\\frac{1+i}{2}\")              → 0.5 + 0.5i",
-      "        latex.eval(r\"e^{i \\pi} + 1\")              → 0 + 0i  (Euler's Identity!)",
-      "",
-      "        // Multi-line matrices require raw multi-line strings (r\"\"\" ... \"\"\")",
-      "        latex.eval(r\"\"\"",
-      "        \\begin{pmatrix}",
-      "            1 & 2 \\\\",
-      "            3 & 4",
-      "        \\end{pmatrix}",
-      "        \"\"\")",
-      "",
-      "  JIT Compilation to JC2 Closures (LaTeX → JC2 Function)",
-      "  ──────────────────────",
-      "    latex.compile(\"formula\", variable_names)",
-      "        Dynamically compiles a parameterized LaTeX formula into an executable ",
-      "        JC2 abstract syntax tree, returning a true JC2 function closure.",
-      "        `variable_names` must be a list or stringmatrix.",
-      "",
-      "        // 1. Compile the LaTeX math into a native callable function f(x, \\theta)",
-      "        f = latex.compile(r\"\\frac{\\sin(\\theta)}{x^2}\", [\"x\", r\"\\theta\"])",
-      "        ",
-      "        // 2. Call it interactively! (Supports real and complex arguments)",
-      "        f(2.0, PI/2)                 → 0.25",
-      "        ",
-      "        // 3. Works seamlessly with all higher-order and calculus functions!",
-      "        table(f, [1, 2, 3], fill(PI/2, 3)|>trans)    → Tabulates results over a vector",
-      "        diff(f(_, PI/2), 2.0)        → Derivative w.r.t 'x' at x=2.0",
-      "",
-      "  Supported LaTeX Syntax (Parser Engine)",
-      "  ──────────────────────",
-      "    • Operations:   +, -, *, /, ^",
-      "    • Grouping:     { }, ( ), [ ]",
-      "    • Fractions:    \\frac{numerator}{denominator}",
-      "    • Functions:    \\sin, \\cos, \\tan, \\sqrt, \\ln, \\log, \\exp, \\abs",
-      "    • Constants:    \\pi, e, i, j   (i and j are intrinsically parsed as 0+1i)",
-      "    ",
-      "    ★ Advanced Feature: Implicit Multiplication",
-      "      The recursive descent parser fully understands implicit mathematical ",
-      "      multiplication just like a human reading a paper. ",
-      "      Expressions like \"2i\", \"xy\", and \"2 \\sin(x)\" act identically to ",
-      "      \"2*i\", \"x*y\", and \"2 * \\sin(x)\"."
     ]
   },
   "functions": {
@@ -4302,20 +4233,6 @@
         "evalf(PI)"
       ]
     },
-    "latex.to_latex": {
-      "signature": "latex.to_latex(obj)",
-      "desc": "Serializes a JC2 value (matrix, fraction, complex) into LaTeX code.",
-      "examples": [
-        "latex.to_latex(frac(1, 2))"
-      ]
-    },
-    "latex.eval": {
-      "signature": "latex.eval(formula)",
-      "desc": "Parses and evaluates a LaTeX math string directly.",
-      "examples": [
-        "latex.eval(r\"\\frac{1}{2}\")"
-      ]
-    },
     "clear": {
       "signature": "clear(collection)",
       "desc": "Removes all elements from a Set, List, or Dict.",
@@ -5173,11 +5090,6 @@
       "signature": "isset(x)",
       "desc": "Returns true if x is a set.",
       "examples": ["isset(@{1})"]
-    },
-    "latex.compile": {
-      "signature": "latex.compile(formula, vars)",
-      "desc": "Compiles a parameterized LaTeX formula into an executable JC2 closure.",
-      "examples": ["latex.compile(r\"\\sin(x)\", [\"x\"])"]
     },
     "addE": {
       "signature": "addE(A, B)",

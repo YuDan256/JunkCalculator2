@@ -17,7 +17,6 @@
 #include "modules/Module.h"
 #include "vm/BuiltinRegistry.h"
 #include "modules/window_module.h"
-#include "modules/latex_module.h"
 #include <csignal>
 #include <atomic>
 #include <random>

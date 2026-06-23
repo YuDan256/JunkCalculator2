@@ -116,6 +116,8 @@ typedef struct JC2_HostAPI {
     
     /* --- 扩展操作 (Extended Operations) --- */
     JC2_ValueHandle (*dict_keys)(JC2_VMContext ctx, JC2_ValueHandle dict);
+    JC2_ValueHandle (*get_global)(JC2_VMContext ctx, const char* name);
+    JC2_ValueHandle (*to_string)(JC2_VMContext ctx, JC2_ValueHandle v);
     
     /* --- 矩阵操作 (Matrix Operations) --- */
     JC2_ValueHandle (*make_real_matrix)(JC2_VMContext ctx, int rows, int cols);

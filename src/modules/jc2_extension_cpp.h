@@ -46,6 +46,13 @@ public:
     bool is_fraction() const { return Env::api->is_fraction(Env::ctx, handle); }
     bool is_namespace() const { return Env::api->is_namespace(Env::ctx, handle); }
 
+    std::string to_string() const {
+        JC2_ValueHandle str_h = Env::api->to_string(Env::ctx, handle);
+        size_t len = 0;
+        const char* s = Env::api->as_string(Env::ctx, str_h, &len);
+        return s ? std::string(s, len) : "";
+    }
+
     bool as_bool() const { return Env::api->as_bool(Env::ctx, handle); }
     int32_t as_int() const { return Env::api->as_int(Env::ctx, handle); }
     double as_double() const { return Env::api->as_double(Env::ctx, handle); }

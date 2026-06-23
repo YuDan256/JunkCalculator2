@@ -126,6 +126,11 @@ foreach(mod ${JC2_MODULES})
     )
 endforeach()
 
+# ★ Add a custom target to build all modules at once
+add_custom_target(modules DEPENDS ${JC2_MODULES}
+    COMMENT "Building all native modules..."
+)
+
 # ==============================================================================
 # Extreme Compiler Optimization & Safety Levels
 # ==============================================================================

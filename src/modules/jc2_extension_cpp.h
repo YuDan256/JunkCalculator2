@@ -135,6 +135,10 @@ public:
     size_t size() const {
         return Env::api->dict_size(Env::ctx, get_handle());
     }
+    
+    List keys() const {
+        return List(Env::api->dict_keys(Env::ctx, get_handle()));
+    }
 };
 
 class Complex : public Value {

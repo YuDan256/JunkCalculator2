@@ -2716,75 +2716,6 @@
       "    matrix(r, c, ...)   Construct matrix (auto-detects real/complex/string)",
       "    pi()  e()  i()      Constant factory functions (always available)"
     ],
-    "json": [
-      "═══ JSON Module — Native Module ═══",
-      "",
-      "  Requires: import json",
-      "",
-      "  Provides high-performance, native C++ state-machine based JSON serialization",
-      "  and deserialization. It guarantees memory safety and DOM-level formatting",
-      "  without external dependencies.",
-      "",
-      "  Functions & JS Aliases",
-      "  ──────────────────────",
-      "    Both traditional and Node.js-style aliases are injected directly into",
-      "    the global namespace upon import.",
-      "",
-      "    json.encode(val)  /  json.stringify(val)    Convert JC2 value → JSON string",
-      "    json.decode(str)  /  json.parse(str)        Parse JSON string → JC2 value",
-      "    json.pretty(val)                            Pretty-print with 4-space indent",
-      "    json.pretty(val, indent)                    Custom indent width (e.g., 2)",
-      "",
-      "  Type Mapping (JC2 → JSON)",
-      "  ──────────────────────",
-      "    double / int / fraction      →  number (integers are cleanly truncated)",
-      "    string                       →  string (Deep RFC standard escaping)",
-      "    list                         →  array",
-      "    dict                         →  object",
-      "    realmatrix (1D / 2D)         →  array / array of arrays",
-      "    none                         →  null",
-      "    complex / Special types      →  \"<unserializable_type>\" (Fallback)",
-      "",
-      "  Type Mapping (JSON → JC2)",
-      "  ──────────────────────",
-      "    number (integer)             →  int (avoids precision loss on IDs)",
-      "    number (float)               →  double",
-      "    string                       →  string",
-      "    array                        →  list",
-      "    object                       →  dict",
-      "    true / false                 →  true / false",
-      "    null                         →  none",
-      "",
-      "  Examples",
-      "  ──────────────────────",
-      "    import json",
-      "",
-      "    // 1. Serialization (Object to String)",
-      "    d = { name: \"Alice\", active: true, scores: [85, 92] }",
-      "    s = stringify(d)             ",
-      "    // → '{\"name\": \"Alice\", \"active\": true, \"scores\": [85, 92]}'",
-      "",
-      "    // 2. Pretty Print (Perfect for writing config files)",
-      "    print(json.pretty(d, 2))     ",
-      "    // → {",
-      "    //     \"name\": \"Alice\",",
-      "    //     \"active\": true,",
-      "    //     \"scores\": [",
-      "    //       85,",
-      "    //       92",
-      "    //     ]",
-      "    //   }",
-      "",
-      "    // 3. Deserialization (String to Object)",
-      "    raw = r\"({\"host\": \"127.0.0.1\", \"port\": 8080})\"",
-      "    conf = json.parse(raw)",
-      "    conf.port                    // → 8080 (Parsed as int)",
-      "    conf.host                    // → \"127.0.0.1\"",
-      "",
-      "    // 4. File I/O Full Pipeline",
-      "    writeFile(\"config.json\", json.pretty(conf))",
-      "    loaded = json.parse(readFile(\"config.json\"))"
-    ],
     "import": [
       "═══ Import (Code Reuse & Native Modules) ═══",
       "",
@@ -4371,22 +4302,6 @@
         "evalf(PI)"
       ]
     },
-    "json.encode": {
-      "signature": "json.encode(val)",
-      "desc": "Serializes a JC2 value into a JSON string.",
-      "aliases": ["stringify"],
-      "examples": [
-        "json.encode({a: 1})"
-      ]
-    },
-    "json.decode": {
-      "signature": "json.decode(str)",
-      "desc": "Parses a JSON string into a JC2 value.",
-      "aliases": ["parse"],
-      "examples": [
-        "json.decode(\"{\\\"a\\\": 1}\")"
-      ]
-    },
     "latex.to_latex": {
       "signature": "latex.to_latex(obj)",
       "desc": "Serializes a JC2 value (matrix, fraction, complex) into LaTeX code.",
@@ -5263,11 +5178,6 @@
       "signature": "latex.compile(formula, vars)",
       "desc": "Compiles a parameterized LaTeX formula into an executable JC2 closure.",
       "examples": ["latex.compile(r\"\\sin(x)\", [\"x\"])"]
-    },
-    "json.pretty": {
-      "signature": "json.pretty(val, [indent])",
-      "desc": "Serializes a JC2 value into a pretty-printed JSON string.",
-      "examples": ["json.pretty({a: 1}, 2)"]
     },
     "addE": {
       "signature": "addE(A, B)",

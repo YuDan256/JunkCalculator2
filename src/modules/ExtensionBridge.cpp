@@ -527,6 +527,18 @@ static void host_instance_set_field(JC2_VMContext, JC2_ValueHandle inst, const c
     }
 }
 
+static JC2_ValueHandle host_dict_keys(JC2_VMContext, JC2_ValueHandle dict) {
+    Value d = from_handle(dict);
+    if (d.isObjType(ObjType::DICT)) {
+        ObjList* list = GcHeap::get().allocate<ObjList>();
+        for (const auto& kv : static_cast<ObjDict*>(d.asObj())->elements) {
+            list->vec.push_back(kv.first);
+        }
+        return Value(list).as_bits;
+    }
+    return Value::none().as_bits;
+}
+
 static JC2_ValueHandle host_call_function(JC2_VMContext, JC2_ValueHandle func, int argc, JC2_ValueHandle* argv) {
     Value f = from_handle(func);
     if (!f.isFunctionClosure()) return Value::none().as_bits;
@@ -633,7 +645,8 @@ static const JC2_HostAPI host_api = {
     host_set_class_parent,
     host_get_class,
     host_instance_get_field,
-    host_instance_set_field
+    host_instance_set_field,
+    host_dict_keys
 };
 
 const JC2_HostAPI* get_host_api() {

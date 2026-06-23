@@ -2847,49 +2847,6 @@
       "    • Private Variables: Inside a .jc2 module, variables declared with `local` ",
       "      are strictly private and will NOT be exported to the final namespace."
     ],
-    "bytes": [
-      "═══ Bare-Metal Memory Engine — Native Module ═══",
-      "",
-      "  Requires: import bytes",
-      "",
-      "  The `bytes` module provides low-level, zero-dependency C++ memory buffers. ",
-      "  It grants absolute control over binary reading, writing, and file I/O.",
-      "  ",
-      "  ★ Note: For everyday use, it is highly recommended to use the standard ",
-      "    library wrapper `import buffer`, which provides an OOP interface.",
-      "",
-      "  Buffer Allocation & I/O",
-      "  ──────────────────────",
-      "    bytes.alloc(size)           Allocate a zeroed buffer of `size` bytes.",
-      "    bytes.pack(array)           Create a buffer from an array of 8-bit integers.",
-      "    bytes.readFile(path)        Map an entire file from disk into a buffer.",
-      "    buf.writeFile(path)         Flush a byte buffer directly to your disk.",
-      "    buf.len()                   Get the total size of the buffer in bytes.",
-      "",
-      "  Low-Level Reading & Writing (Absolute Offsets)",
-      "  ──────────────────────",
-      "    buf.set(offset, val, type)  Write a value into memory at `offset`.",
-      "    buf.get(offset, type)       Read a value from memory at `offset`.",
-      "    buf.get(offset, \"str\", len) Read specifically a string of `len` bytes.",
-      "",
-      "    Supported formats (passed as strings): ",
-      "      \"u8\", \"i8\", \"u16\", \"i16\", \"u32\", \"i32\", \"i64\", \"u64\", \"f32\", \"f64\", \"str\"",
-      "",
-      "  High-Performance Bulk Operations",
-      "  ──────────────────────",
-      "    buf.write_arr(off, arr, type)  ",
-      "        Directly memcpy a JC2 Array/Matrix into memory at C++ speeds. ",
-      "        (Currently supports \"i16\" and \"f64\"). ",
-      "        Provides massive performance boosts for audio/data generation.",
-      "",
-      "  Example",
-      "  ──────────────────────",
-      "    import bytes",
-      "    b = bytes.alloc(4)",
-      "    b.set(0, 255, \"u8\")",
-      "    b.set(1, 65535, \"u16\") ",
-      "    b.get(1, \"u16\")             → 65535"
-    ],
     "socket": [
       "═══ Native Socket Binding — Native Module ═══",
       "",
@@ -5389,46 +5346,6 @@
       "signature": "isset(x)",
       "desc": "Returns true if x is a set.",
       "examples": ["isset(@{1})"]
-    },
-    "bytes.alloc": {
-      "signature": "bytes.alloc(size)",
-      "desc": "Allocates a zeroed byte buffer of the specified size.",
-      "examples": ["bytes.alloc(1024)"]
-    },
-    "bytes.pack": {
-      "signature": "bytes.pack(array)",
-      "desc": "Creates a byte buffer from an array of 8-bit integers.",
-      "examples": ["bytes.pack([255, 0, 128])"]
-    },
-    "bytes.readFile": {
-      "signature": "bytes.readFile(path)",
-      "desc": "Reads an entire file into a byte buffer.",
-      "examples": ["bytes.readFile(\"data.bin\")"]
-    },
-    "bytes.writeFile": {
-      "signature": "buf.writeFile(path)",
-      "desc": "Writes a byte buffer to a file.",
-      "examples": ["buf.writeFile(\"out.bin\")"]
-    },
-    "bytes.set": {
-      "signature": "buf.set(offset, val, type)",
-      "desc": "Writes a value into the buffer at the specified offset.",
-      "examples": ["buf.set(0, 255, \"u8\")"]
-    },
-    "bytes.write_arr": {
-      "signature": "buf.write_arr(offset, arr, type)",
-      "desc": "Directly copies an array into the buffer at C++ speeds.",
-      "examples": ["buf.write_arr(0, data, \"f64\")"]
-    },
-    "bytes.get": {
-      "signature": "buf.get(offset, type, [len])",
-      "desc": "Reads a value from the buffer at the specified offset.",
-      "examples": ["buf.get(0, \"u16\")"]
-    },
-    "bytes.len": {
-      "signature": "buf.len()",
-      "desc": "Returns the total size of the buffer in bytes.",
-      "examples": ["buf.len()"]
     },
     "socket.connect": {
       "signature": "socket.connect(host, port)",

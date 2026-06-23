@@ -49,7 +49,6 @@ set(JC2_HEADERS
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/VM.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/modules/json_module.h"
-    "src/modules/bytes_module.h" 
     "src/modules/socket_module.h"
     "src/modules/window_module.h"
     "src/modules/latex_module.h"
@@ -86,6 +85,11 @@ add_library(prob SHARED "src/modules/prob/prob_module.cpp")
 target_include_directories(prob PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(prob PROPERTIES PREFIX "") # Output prob.dll instead of libprob.dll
 
+# ★ Build Bytes Module as a standalone DLL
+add_library(bytes SHARED "src/modules/bytes/bytes_module.cpp")
+target_include_directories(bytes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(bytes PROPERTIES PREFIX "") # Output bytes.dll instead of libbytes.dll
+
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
@@ -101,6 +105,7 @@ if(MSVC)
     target_compile_options(image PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(tensor PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(prob PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+    target_compile_options(bytes PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     
     # Enable Whole Program Optimization (LTCG) in Release mode for maximum speed
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi /GL")
@@ -110,6 +115,7 @@ else()
     target_compile_options(image PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(tensor PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(prob PRIVATE -Wall -Wextra -Werror -O3)
+    target_compile_options(bytes PRIVATE -Wall -Wextra -Werror -O3)
 endif()
 
 # ==============================================================================
@@ -158,6 +164,7 @@ install(TARGETS JunkCalculator2 DESTINATION bin)
 install(TARGETS image DESTINATION bin)
 install(TARGETS tensor DESTINATION bin)
 install(TARGETS prob DESTINATION bin)
+install(TARGETS bytes DESTINATION bin)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

@@ -17,6 +17,7 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#include <unistd.h>
 #endif
 
 // ★ 开启 VM 级指令与栈追踪日志
@@ -2296,9 +2297,22 @@ namespace jc {
                         if (!std::filesystem::is_regular_file(resolved)) {
                             resolved = helpers::safeResolvePath(name + ".dll");
                         }
+                        if (!std::filesystem::is_regular_file(resolved)) {
+                            char exePath[MAX_PATH];
+                            if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
+                                resolved = (std::filesystem::path(exePath).parent_path() / (name + ".dll")).string();
+                            }
+                        }
 #else
                         if (!std::filesystem::is_regular_file(resolved)) {
                             resolved = helpers::safeResolvePath(name + ".so");
+                        }
+                        if (!std::filesystem::is_regular_file(resolved)) {
+                            char exePath[4096];
+                            ssize_t count = readlink("/proc/self/exe", exePath, 4096);
+                            if (count != -1) {
+                                resolved = (std::filesystem::path(std::string(exePath, count)).parent_path() / (name + ".so")).string();
+                            }
                         }
 #endif
 

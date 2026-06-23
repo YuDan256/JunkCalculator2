@@ -14,7 +14,6 @@
 #include "frontend/Highlight.h"
 #include "frontend/Compiler.h"
 #include "vm/VM.h"
-#include "modules/Module.h"
 #include "vm/BuiltinRegistry.h"
 #include <csignal>
 #include <atomic>

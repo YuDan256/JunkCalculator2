@@ -117,12 +117,13 @@ if(WIN32)
     target_link_libraries(window PRIVATE User32 Gdi32 imm32)
 endif()
 
-# ★ Copy modules to the modules/ directory in the build tree
+# ★ Output modules directly to the modules/ directory
 set(JC2_MODULES image tensor prob bytes ffi socket json latex window)
 foreach(mod ${JC2_MODULES})
-    add_custom_command(TARGET ${mod} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:JunkCalculator2>/modules"
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${mod}>" "$<TARGET_FILE_DIR:JunkCalculator2>/modules/$<TARGET_FILE_NAME:${mod}>"
+    set_target_properties(${mod} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules"
     )
 endforeach()
 

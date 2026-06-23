@@ -7,7 +7,6 @@
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
 #include "../frontend/Compiler.h"
-#include "../modules/Module.h"
 #include "VM.h"
 #include "../memory/GcHeap.h"
 #include "HelpRouter.h"         // ★ HelpRouter, DynamicHelp
@@ -4216,10 +4215,8 @@ void BuiltinRegistry::registerSystemShell() {
         });
 
     reg("modules", { 0 }, [](const std::vector<Value>&) -> Value {
-        auto& mods = jc::getNativeModules();
-        if (mods.empty()) { std::cout << "  No native modules available.\n"; return Value::none(); }
-        std::cout << "  Available native modules:\n";
-        for (const auto& [m, val] : mods) std::cout << "    " << m << "\n";
+        std::cout << "  Native modules are now loaded dynamically via DLL/SO files.\n";
+        std::cout << "  Use `import \"module_name\"` to load them.\n";
         return Value::none();
         });
 

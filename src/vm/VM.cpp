@@ -1,6 +1,5 @@
 //Vm.cpp
 #include "VM.h"
-#include "../modules/Module.h"
 #include "BuiltinRegistry.h"
 #include "../frontend/Highlight.h"
 #include "../frontend/Lexer.h"
@@ -2245,51 +2244,8 @@ namespace jc {
                     ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
                     ns->name = name;
 
-                    auto& modules = getNativeModules();
-                    auto it = modules.find(name);
-                    if (it != modules.end()) {
-                        // ★ 原生模块：使用临时字典，完全隔离，不污染全局！
-                        std::unordered_map<std::string, Value> tempGlobals;
-                        std::unordered_map<std::string, NativeCallable> tempNatives;
-                        std::unordered_map<std::string, std::set<int>> tempArity;
-
-                        it->second.loader(tempGlobals, tempNatives, tempArity);
-                        importedModules.insert(name);
-
-                        for (const auto& kv : tempGlobals) {
-                            auto uv = GcHeap::get().allocate<ObjUpVal>();
-                            uv->closed = kv.second;
-                            uv->location = &uv->closed;
-                            ns->fields[kv.first] = { uv, true };
-                        }
-
-                        for (const auto& kv : tempNatives) {
-                            auto closure = GcHeap::get().allocate<ObjClosure>(
-                                std::vector<std::string>{}, std::vector<bool>{}, kv.first, nullptr
-                            );
-                            closure->nativeFn = std::make_any<NativeCallable>(kv.second);
-                            
-                            auto ait = tempArity.find(kv.first);
-                            if (ait != tempArity.end() && !ait->second.empty()) {
-                                int maxA = *ait->second.rbegin();
-                                int minA = *ait->second.begin();
-                                for (int j = 0; j < maxA; ++j) {
-                                    closure->paramNames.push_back("_" + std::to_string(j));
-                                    closure->isRef.push_back(false);
-                                }
-                                for (int j = minA; j < maxA; ++j) {
-                                    closure->defaultValues.push_back(Value::none());
-                                }
-                            }
-
-                            auto uv = GcHeap::get().allocate<ObjUpVal>();
-                            uv->closed = Value(closure);
-                            uv->location = &uv->closed;
-                            ns->fields[kv.first] = { uv, true };
-                        }
-                    } else {
-                        // ★ 脚本模块：使用真正的 Namespace 编译机制，彻底告别老掉牙的 diff！
-                        std::string resolved = helpers::safeResolvePath(name);
+                    // ★ 脚本模块与动态库：使用真正的 Namespace 编译机制，彻底告别老掉牙的 diff！
+                    std::string resolved = helpers::safeResolvePath(name);
                         if (!std::filesystem::is_regular_file(resolved)) {
                             resolved = helpers::safeResolvePath(name + ".jc2");
                         }
@@ -2426,7 +2382,6 @@ namespace jc {
                         }
                         ns = static_cast<ObjNamespace*>(nsVal.asObj());
                         }
-                    }
 
                     loadedModules[name] = Value(ns);
                     push(Value(ns));

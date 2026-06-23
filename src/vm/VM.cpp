@@ -2244,42 +2244,56 @@ namespace jc {
                     ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
                     ns->name = name;
 
-                    // ★ 脚本模块与动态库：使用真正的 Namespace 编译机制，彻底告别老掉牙的 diff！
-                    std::string resolved = helpers::safeResolvePath(name);
+                    std::string resolved = "";
+                    
+#if defined(_WIN32)
+                    std::string nativeExt = ".dll";
+#else
+                    std::string nativeExt = ".so";
+#endif
+                    std::string nativeName = name;
+                    if (nativeName.length() < nativeExt.length() || nativeName.substr(nativeName.length() - nativeExt.length()) != nativeExt) {
+                        nativeName += nativeExt;
+                    }
+
+                    // 1. 优先查找 <exe_dir>/modules/ 下的原生模块
+#if defined(_WIN32)
+                    char exePath[MAX_PATH];
+                    if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
+                        std::string modPath = (std::filesystem::path(exePath).parent_path() / "modules" / nativeName).string();
+                        if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
+                    }
+#else
+                    char exePath[4096];
+                    ssize_t count = readlink("/proc/self/exe", exePath, 4096);
+                    if (count != -1) {
+                        std::string modPath = (std::filesystem::path(std::string(exePath, count)).parent_path() / "modules" / nativeName).string();
+                        if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
+                    }
+#endif
+
+                    // 2. 其次查找当前目录下的原生模块
+                    if (resolved.empty()) {
+                        std::string localModPath = helpers::safeResolvePath(nativeName);
+                        if (std::filesystem::is_regular_file(localModPath)) resolved = localModPath;
+                    }
+
+                    // 3. 最后查找 .jc2 脚本
+                    if (resolved.empty()) {
+                        resolved = helpers::safeResolvePath(name);
                         if (!std::filesystem::is_regular_file(resolved)) {
                             resolved = helpers::safeResolvePath(name + ".jc2");
                         }
-#if defined(_WIN32)
-                        if (!std::filesystem::is_regular_file(resolved)) {
-                            resolved = helpers::safeResolvePath(name + ".dll");
-                        }
-                        if (!std::filesystem::is_regular_file(resolved)) {
-                            char exePath[MAX_PATH];
-                            if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
-                                resolved = (std::filesystem::path(exePath).parent_path() / (name + ".dll")).string();
-                            }
-                        }
-#else
-                        if (!std::filesystem::is_regular_file(resolved)) {
-                            resolved = helpers::safeResolvePath(name + ".so");
-                        }
-                        if (!std::filesystem::is_regular_file(resolved)) {
-                            char exePath[4096];
-                            ssize_t count = readlink("/proc/self/exe", exePath, 4096);
-                            if (count != -1) {
-                                resolved = (std::filesystem::path(std::string(exePath, count)).parent_path() / (name + ".so")).string();
-                            }
-                        }
-#endif
+                    }
 
-                        if (!std::filesystem::is_regular_file(resolved)) {
-                            throw std::runtime_error("VM Error: Cannot find module '" + name + "'.");
-                        }
+                    if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
+                        throw std::runtime_error("VM Error: Cannot find module '" + name + "'.");
+                    }
 
-                        importedModules.insert(name);
+                    importedModules.insert(name);
 
-                        std::string ext = std::filesystem::path(resolved).extension().string();
-                        if (ext == ".dll" || ext == ".so") {
+                    std::string ext = std::filesystem::path(resolved).extension().string();
+                    if (ext == ".dll" || ext == ".so") {
 #if defined(_WIN32)
                             HMODULE handle = LoadLibraryA(resolved.c_str());
                             if (!handle) throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "'.");

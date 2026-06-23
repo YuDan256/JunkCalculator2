@@ -117,6 +117,15 @@ if(WIN32)
     target_link_libraries(window PRIVATE User32 Gdi32 imm32)
 endif()
 
+# ★ Copy modules to the modules/ directory in the build tree
+set(JC2_MODULES image tensor prob bytes ffi socket json latex window)
+foreach(mod ${JC2_MODULES})
+    add_custom_command(TARGET ${mod} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:JunkCalculator2>/modules"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${mod}>" "$<TARGET_FILE_DIR:JunkCalculator2>/modules/$<TARGET_FILE_NAME:${mod}>"
+    )
+endforeach()
+
 # ==============================================================================
 # Extreme Compiler Optimization & Safety Levels
 # ==============================================================================
@@ -192,15 +201,15 @@ add_dependencies(SyncResources JunkCalculator2)
 # CPack Installation & Release Packaging Rules
 # ==============================================================================
 install(TARGETS JunkCalculator2 DESTINATION bin)
-install(TARGETS image DESTINATION bin)
-install(TARGETS tensor DESTINATION bin)
-install(TARGETS prob DESTINATION bin)
-install(TARGETS bytes DESTINATION bin)
-install(TARGETS ffi DESTINATION bin)
-install(TARGETS socket DESTINATION bin)
-install(TARGETS json DESTINATION bin)
-install(TARGETS latex DESTINATION bin)
-install(TARGETS window DESTINATION bin)
+install(TARGETS image DESTINATION bin/modules)
+install(TARGETS tensor DESTINATION bin/modules)
+install(TARGETS prob DESTINATION bin/modules)
+install(TARGETS bytes DESTINATION bin/modules)
+install(TARGETS ffi DESTINATION bin/modules)
+install(TARGETS socket DESTINATION bin/modules)
+install(TARGETS json DESTINATION bin/modules)
+install(TARGETS latex DESTINATION bin/modules)
+install(TARGETS window DESTINATION bin/modules)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

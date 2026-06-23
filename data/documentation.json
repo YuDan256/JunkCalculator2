@@ -2847,44 +2847,6 @@
       "    • Private Variables: Inside a .jc2 module, variables declared with `local` ",
       "      are strictly private and will NOT be exported to the final namespace."
     ],
-    "socket": [
-      "═══ Native Socket Binding — Native Module ═══",
-      "",
-      "  Requires: import socket",
-      "",
-      "  The `socket` module provides unfiltered access to the operating system's ",
-      "  network stack (WinSock2 on Windows, POSIX Sockets on Linux/macOS).",
-      "",
-      "  ★ Note: For everyday networking, it is HIGHLY recommended to use the standard ",
-      "    library wrapper `import net`, which abstracts these pointers into managed ",
-      "    TCP objects (`TcpSocket` and `TcpServer`).",
-      "",
-      "  Outbound Connections (Client)",
-      "  ──────────────────────",
-      "    socket.connect(host, port)",
-      "        Resolves domain records (DNS) and dials a TCP stream to the remote peer.",
-      "        Returns an opaque pointer wrapped inside a `Socket` Class instance.",
-      "",
-      "  Inbound Listeners (Server)",
-      "  ──────────────────────",
-      "    socket.server(host, port)",
-      "        Binds to a specified local interface (e.g., \"127.0.0.1\" or \"0.0.0.0\") ",
-      "        and puts the OS networking stack into LISTEN mode with SO_REUSEADDR enabled.",
-      "        Returns a server socket wrapper.",
-      "",
-      "    server.accept()",
-      "        Blocks the active VM thread pending incoming network traffic. ",
-      "        When a peer connects, returns a brand-new client socket wrapper.",
-      "",
-      "  Raw Data Exchange / Teardown",
-      "  ──────────────────────",
-      "    sock.send(text)",
-      "        Performs a deep C++ 'send()' call, flushing strings over the TCP boundary.",
-      "    sock.recv(max_bytes)",
-      "        Blocks and reads incoming packets. Returns \"\" on disconnect.",
-      "    sock.close()",
-      "        Silently severs an established network pipe."
-    ],
     "window": [
       "═══ Native Window Engine — Native Module ═══",
       "",
@@ -5296,36 +5258,6 @@
       "signature": "isset(x)",
       "desc": "Returns true if x is a set.",
       "examples": ["isset(@{1})"]
-    },
-    "socket.connect": {
-      "signature": "socket.connect(host, port)",
-      "desc": "Dials a TCP stream to the remote peer.",
-      "examples": ["socket.connect(\"127.0.0.1\", 8080)"]
-    },
-    "socket.send": {
-      "signature": "sock.send(text)",
-      "desc": "Sends a string over the TCP socket.",
-      "examples": ["sock.send(\"Hello\")"]
-    },
-    "socket.recv": {
-      "signature": "sock.recv(max_bytes)",
-      "desc": "Blocks and reads incoming packets from the socket.",
-      "examples": ["sock.recv(1024)"]
-    },
-    "socket.close": {
-      "signature": "sock.close()",
-      "desc": "Closes the network socket.",
-      "examples": ["sock.close()"]
-    },
-    "socket.server": {
-      "signature": "socket.server(host, port)",
-      "desc": "Binds to a local interface and listens for incoming TCP connections.",
-      "examples": ["socket.server(\"0.0.0.0\", 8080)"]
-    },
-    "socket.accept": {
-      "signature": "server.accept()",
-      "desc": "Blocks and accepts an incoming connection, returning a client socket.",
-      "examples": ["server.accept()"]
     },
     "latex.compile": {
       "signature": "latex.compile(formula, vars)",

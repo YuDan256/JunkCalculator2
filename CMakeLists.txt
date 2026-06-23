@@ -49,7 +49,6 @@ set(JC2_HEADERS
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/VM.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/modules/json_module.h"
-    "src/modules/socket_module.h"
     "src/modules/window_module.h"
     "src/modules/latex_module.h"
     "src/modules/ExtensionBridge.h"
@@ -93,10 +92,16 @@ add_library(ffi SHARED "src/modules/ffi/ffi_module.cpp")
 target_include_directories(ffi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(ffi PROPERTIES PREFIX "") # Output ffi.dll instead of libffi.dll
 
+# ★ Build Socket Module as a standalone DLL
+add_library(socket SHARED "src/modules/socket/socket_module.cpp")
+target_include_directories(socket PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(socket PROPERTIES PREFIX "") # Output socket.dll instead of libsocket.dll
+
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
     target_link_libraries(JunkCalculator2 PRIVATE ws2_32 User32 Gdi32 imm32)
+    target_link_libraries(socket PRIVATE ws2_32)
 endif()
 
 # ==============================================================================
@@ -110,6 +115,7 @@ if(MSVC)
     target_compile_options(prob PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(bytes PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(ffi PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+    target_compile_options(socket PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     
     # Enable Whole Program Optimization (LTCG) in Release mode for maximum speed
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi /GL")
@@ -121,6 +127,7 @@ else()
     target_compile_options(prob PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(bytes PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(ffi PRIVATE -Wall -Wextra -Werror -O3)
+    target_compile_options(socket PRIVATE -Wall -Wextra -Werror -O3)
 endif()
 
 # ==============================================================================
@@ -171,6 +178,7 @@ install(TARGETS tensor DESTINATION bin)
 install(TARGETS prob DESTINATION bin)
 install(TARGETS bytes DESTINATION bin)
 install(TARGETS ffi DESTINATION bin)
+install(TARGETS socket DESTINATION bin)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

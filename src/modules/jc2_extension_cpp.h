@@ -45,10 +45,19 @@ public:
     }
 };
 
+class Class : public Value {
+public:
+    Class(const std::string& name) : Value(Env::api->make_class(Env::ctx, name.c_str())) {}
+
+    void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 255, bool has_rest = true, void* user_data = nullptr) {
+        Env::api->bind_method(Env::ctx, get_handle(), name.c_str(), fn, min_arity, max_arity, has_rest, user_data);
+    }
+};
+
 class Instance : public Value {
 public:
-    Instance(const std::string& class_name) 
-        : Value(Env::api->make_instance(Env::ctx, class_name.c_str())) {}
+    Instance(const Class& cls) 
+        : Value(Env::api->make_instance(Env::ctx, cls.get_handle())) {}
     
     void set_native_data(void* data, JC2_NativeDestructor dtor) {
         Env::api->set_native_data(Env::ctx, get_handle(), data, dtor);
@@ -65,6 +74,10 @@ class Module {
 public:
     Module(JC2_ModuleHandle m) : mod(m) {}
 
+    void register_help(const std::string& topic, const std::string& help_text) {
+        Env::api->register_help(Env::ctx, topic.c_str(), help_text.c_str());
+    }
+
     void register_function(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 255, bool has_rest = true, void* user_data = nullptr) {
         Env::api->register_function(Env::ctx, mod, name.c_str(), fn, min_arity, max_arity, has_rest, user_data);
     }
@@ -79,6 +92,10 @@ public:
 
     void register_string(const std::string& name, const std::string& val) {
         Env::api->register_string(Env::ctx, mod, name.c_str(), val.c_str());
+    }
+
+    void register_value(const std::string& name, const Value& val) {
+        Env::api->register_value(Env::ctx, mod, name.c_str(), val.get_handle());
     }
 };
 

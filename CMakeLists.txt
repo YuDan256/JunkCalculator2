@@ -49,7 +49,6 @@ set(JC2_HEADERS
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/VM.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/modules/json_module.h"
-    "src/modules/image_module.h"
     "src/modules/prob_module.h"
     "src/modules/bytes_module.h" 
     "src/modules/socket_module.h"
@@ -69,6 +68,11 @@ set(JC2_SOURCES
 
 add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# ★ Build Image Module as a standalone DLL
+add_library(image SHARED "src/modules/image_module.cpp")
+target_include_directories(image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(image PROPERTIES PREFIX "") # Output image.dll instead of libimage.dll
 
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
@@ -133,6 +137,7 @@ add_dependencies(SyncResources JunkCalculator2)
 # CPack Installation & Release Packaging Rules
 # ==============================================================================
 install(TARGETS JunkCalculator2 DESTINATION bin)
+install(TARGETS image DESTINATION bin)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

@@ -4,7 +4,7 @@
 #include "Module.h"
 #include "../vm/BuiltinRegistry.h"
 #include "../vm/VM.h"
-#include "image_module.h"
+#include "Image.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -197,8 +197,8 @@ namespace jc_window {
             return true;
         }
 
-        void show(const std::shared_ptr<Image>& img) {
-            if (!running || !hwnd) return;
+        void show(const jc::Image* img) {
+            if (!running || !hwnd || !img) return;
             const auto& src = img->getRawPixels();
             {
                 std::lock_guard<std::mutex> lock(bufMutex);
@@ -219,7 +219,7 @@ namespace jc_window {
         NativeWindow(const std::string&, int, int) { throw std::runtime_error("Window module is strictly Win32 currently."); }
         bool isOpen() { return false; }
         bool pollEvent(WinEvent&) { return false; }
-        void show(const std::shared_ptr<Image>&) {}
+        void show(const jc::Image*) {}
         void setImeEnabled(bool) {}
         void showCursor(bool) {}
         void setCursorPos(int, int) {}
@@ -373,7 +373,9 @@ JC2_MODULE(window) {
     addWinMethod("show", [](const std::vector<jc::Value>& args) -> jc::Value {
         auto inst = jc::helpers::getGlobalCallback("self").asInstance();
         auto win = std::any_cast<std::shared_ptr<NativeWindow>&>(inst->nativeData);
-        auto im = jc_image::getImg(args[0]);
+        if (!args[0].isInstance()) throw std::runtime_error("Type Error: Expected an Image instance.");
+        jc::Image* im = static_cast<jc::Image*>(args[0].asInstance()->c_nativeData);
+        if (!im) throw std::runtime_error("Type Error: Invalid Image instance.");
         win->show(im);
         return jc::Value::none();
         });

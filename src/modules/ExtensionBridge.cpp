@@ -1,5 +1,6 @@
 #include "ExtensionBridge.h"
 #include "../vm/VM.h"
+#include "../vm/HelpRouter.h"
 #include <stdexcept>
 
 namespace jc {
@@ -35,16 +36,50 @@ static const char* host_as_string(JC2_VMContext, JC2_ValueHandle v, size_t* out_
     return s.c_str();
 }
 
-static JC2_ValueHandle host_make_instance(JC2_VMContext ctx, const char* class_name) {
-    VM* vm = static_cast<VM*>(ctx);
-    auto globals = vm->getGlobals();
-    auto it = globals.find(class_name);
-    if (it == globals.end() || !it->second.isClass()) {
-        throw std::runtime_error(std::string("Class not found: ") + class_name);
-    }
+static JC2_ValueHandle host_make_class(JC2_VMContext, const char* name) {
+    ObjClass* cls = GcHeap::get().allocate<ObjClass>();
+    cls->name = name;
+    return Value(cls).as_bits;
+}
+
+static JC2_ValueHandle host_make_instance(JC2_VMContext, JC2_ValueHandle class_handle) {
+    Value clsVal = from_handle(class_handle);
+    if (!clsVal.isClass()) throw std::runtime_error("Type Error: make_instance expects a Class handle.");
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
-    inst->classDef = static_cast<ObjClass*>(it->second.asObj());
+    inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
     return Value(inst).as_bits;
+}
+
+static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data) {
+    Value clsVal = from_handle(class_handle);
+    if (!clsVal.isClass()) throw std::runtime_error("Type Error: bind_method expects a Class handle.");
+    ObjClass* cls = static_cast<ObjClass*>(clsVal.asObj());
+    
+    NativeCallable callable = [fn, user_data](const std::vector<Value>& args) -> Value {
+        std::vector<JC2_ValueHandle> c_args(args.size());
+        for (size_t i = 0; i < args.size(); ++i) c_args[i] = args[i].as_bits;
+        try {
+            JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(args.size()), c_args.data(), user_data);
+            return from_handle(res);
+        } catch (const std::exception& e) {
+            throw;
+        }
+    };
+
+    auto closure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, name, nullptr);
+    closure->nativeFn = std::make_any<NativeCallable>(callable);
+    
+    if (!has_rest) {
+        for (int i = 0; i < max_arity; ++i) {
+            closure->paramNames.push_back("_" + std::to_string(i));
+            closure->isRef.push_back(false);
+        }
+        for (int i = min_arity; i < max_arity; ++i) {
+            closure->defaultValues.push_back(Value::none());
+        }
+    }
+    
+    cls->methods[name] = closure;
 }
 
 static void host_set_native_data(JC2_VMContext, JC2_ValueHandle instance, void* data, JC2_NativeDestructor dtor) {
@@ -62,6 +97,10 @@ static void* host_get_native_data(JC2_VMContext, JC2_ValueHandle instance) {
         return val.asInstance()->c_nativeData;
     }
     return nullptr;
+}
+
+static void host_register_help(JC2_VMContext, const char* topic, const char* help_text) {
+    jc::DynamicHelp[topic] = help_text;
 }
 
 static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data) {
@@ -105,6 +144,11 @@ static void host_register_string(JC2_VMContext, JC2_ModuleHandle mod, const char
     (*mctx->env)[name] = Value(std::string(val));
 }
 
+static void host_register_value(JC2_VMContext, JC2_ModuleHandle mod, const char* name, JC2_ValueHandle val) {
+    ModuleLoadContext* mctx = static_cast<ModuleLoadContext*>(mod);
+    (*mctx->env)[name] = from_handle(val);
+}
+
 static void host_throw_error(JC2_VMContext, const char* msg) {
     throw std::runtime_error(msg);
 }
@@ -128,13 +172,17 @@ static const JC2_HostAPI host_api = {
     host_as_int,
     host_as_double,
     host_as_string,
+    host_make_class,
     host_make_instance,
+    host_bind_method,
     host_set_native_data,
     host_get_native_data,
+    host_register_help,
     host_register_function,
     host_register_int,
     host_register_double,
     host_register_string,
+    host_register_value,
     host_throw_error
 };
 

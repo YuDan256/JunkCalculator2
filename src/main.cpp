@@ -19,7 +19,6 @@
 #include "modules/Module.h"
 #include "vm/BuiltinRegistry.h"
 #include "modules/json_module.h"
-#include "modules/image_module.h"
 #include "modules/prob_module.h"
 #include "modules/bytes_module.h"
 #include "modules/window_module.h"

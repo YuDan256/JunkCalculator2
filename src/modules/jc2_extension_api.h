@@ -74,18 +74,22 @@ typedef struct JC2_HostAPI {
     const char* (*as_string)(JC2_VMContext ctx, JC2_ValueHandle v, size_t* out_len);
     
     /* --- 原生对象生命周期管理 (Native Object Management) --- */
-    /* 创建一个空壳实例，用于绑定 C++ 原生指针 */
-    JC2_ValueHandle (*make_instance)(JC2_VMContext ctx, const char* class_name);
+    JC2_ValueHandle (*make_class)(JC2_VMContext ctx, const char* name);
+    JC2_ValueHandle (*make_instance)(JC2_VMContext ctx, JC2_ValueHandle class_handle);
+    void (*bind_method)(JC2_VMContext ctx, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data);
+    
     /* 将 DLL 内部 new 出来的指针绑定到实例，并注册析构回调 */
     void (*set_native_data)(JC2_VMContext ctx, JC2_ValueHandle instance, void* data, JC2_NativeDestructor dtor);
     /* 提取绑定的原生指针 */
     void* (*get_native_data)(JC2_VMContext ctx, JC2_ValueHandle instance);
     
     /* --- 模块注册 (Module Registration) --- */
+    void (*register_help)(JC2_VMContext ctx, const char* topic, const char* help_text);
     void (*register_function)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data);
     void (*register_int)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, int32_t val);
     void (*register_double)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, double val);
     void (*register_string)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, const char* val);
+    void (*register_value)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, JC2_ValueHandle val);
     
     /* --- 异常处理 (Error Handling) --- */
     /* 触发 JC2 异常，此函数内部会执行 C++ throw，因此在 DLL 中调用后不应再执行后续逻辑 */

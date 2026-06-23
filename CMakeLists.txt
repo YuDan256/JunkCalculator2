@@ -143,6 +143,10 @@ if(MSVC)
 else()
     foreach(target JunkCalculator2 ${JC2_MODULES})
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -O3 -march=native)
+        # Force static linking for MinGW to ensure portability (Green version)
+        if(MINGW OR CYGWIN)
+            target_link_options(${target} PRIVATE -static -static-libgcc -static-libstdc++)
+        endif()
     endforeach()
 
     # Enable Link Time Optimization (LTO) for GCC/Clang

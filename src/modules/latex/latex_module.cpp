@@ -352,7 +352,7 @@ JC2_ValueHandle global_eval(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     LatexParser parser;
     auto ast = parser.compile(arg.as_string());
     jc2::Value res = ast->eval({});
-    if (res.is_complex() && res.as_complex().imag() == 0.0) return jc2::Value(res.as_complex().real()).get_handle();
+    if (res.is_complex() && jc2::Complex(res.get_handle()).imag() == 0.0) return jc2::Value(jc2::Complex(res.get_handle()).real()).get_handle();
     return res.get_handle();
 }
 
@@ -379,7 +379,7 @@ JC2_ValueHandle latex_callable_call(JC2_VMContext, int argc, JC2_ValueHandle* ar
     }
 
     jc2::Value res = data->ast->eval(env);
-    if (res.is_complex() && res.as_complex().imag() == 0.0) return jc2::Value(res.as_complex().real()).get_handle();
+    if (res.is_complex() && jc2::Complex(res.get_handle()).imag() == 0.0) return jc2::Value(jc2::Complex(res.get_handle()).real()).get_handle();
     return res.get_handle();
 }
 

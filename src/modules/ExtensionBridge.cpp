@@ -1,6 +1,7 @@
 #include "ExtensionBridge.h"
 #include "../vm/VM.h"
 #include "../vm/HelpRouter.h"
+#include "../vm/BuiltinRegistry.h"
 #include <stdexcept>
 
 namespace jc {

@@ -508,7 +508,7 @@ static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle in
     if (i.isInstance()) {
         ObjInstance* obj = i.asInstance();
         if (obj->fields) {
-            Value key(std::string(name));
+            Value key = Value(std::string(name));
             auto it = obj->fields->keyMap.find(key);
             if (it != obj->fields->keyMap.end()) {
                 return obj->fields->elements[it->second].second.as_bits;

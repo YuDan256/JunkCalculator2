@@ -96,6 +96,13 @@ typedef struct JC2_HostAPI {
     /* 触发 JC2 异常，此函数内部会执行 C++ throw，因此在 DLL 中调用后不应再执行后续逻辑 */
     void (*throw_error)(JC2_VMContext ctx, const char* msg);
     
+    /* --- 列表操作 (List Operations) --- */
+    JC2_ValueHandle (*make_list)(JC2_VMContext ctx);
+    void (*list_push)(JC2_VMContext ctx, JC2_ValueHandle list, JC2_ValueHandle val);
+    size_t (*list_size)(JC2_VMContext ctx, JC2_ValueHandle list);
+    JC2_ValueHandle (*list_get)(JC2_VMContext ctx, JC2_ValueHandle list, size_t index);
+    bool (*is_list)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
 } JC2_HostAPI;
 
 /* =========================================================================

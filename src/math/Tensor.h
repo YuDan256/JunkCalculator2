@@ -1181,50 +1181,6 @@ namespace jc {
         return tensor_binary_op(a, b, [](double x, double y) { return x >= y ? 1.0 : 0.0; }, false);
     }
 
-    // ========================================================================
-    // 8. 矩阵互操作 (Matrix Interoperability)
-    // ========================================================================
-    
-    // ---- 从 RealMatrix 创建 Tensor ----
-    inline Tensor tensor_from_matrix(const RealMatrix& mat, bool req_grad = false) {
-        int rows = mat.getRows();
-        int cols = mat.getCols();
-        Tensor t({rows, cols}, DType::Float64, req_grad);
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                t.setFlat(i * cols + j, mat(i, j));
-            }
-        }
-        return t;
-    }
-
-    // ---- 从 ComplexMatrix 创建 Tensor（仅取实部）----
-    inline Tensor tensor_from_complex_matrix(const ComplexMatrix& mat, bool req_grad = false) {
-        int rows = mat.getRows();
-        int cols = mat.getCols();
-        Tensor t({rows, cols}, DType::Float64, req_grad);
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                t.setFlat(i * cols + j, mat(i, j).real);
-            }
-        }
-        return t;
-    }
-
-    // ---- 将 Tensor 转换为 RealMatrix ----
-    inline RealMatrix tensor_to_matrix(const Tensor& t) {
-        if (t.dim() != 2) throw std::runtime_error("Tensor Error: tensor_to_matrix requires 2D tensor.");
-        int rows = t.shape[0];
-        int cols = t.shape[1];
-        std::vector<double> data(rows * cols);
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                data[i * cols + j] = t.getFlat(i * cols + j);
-            }
-        }
-        return RealMatrix(rows, cols, data);
-    }
-
     // ---- 工厂函数 ----
     inline Tensor tensor_full(const std::vector<int>& shape, double val, DType dt = DType::Float64, bool req_grad = false) {
         Tensor t(shape, dt, req_grad);

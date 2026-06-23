@@ -55,7 +55,6 @@ set(JC2_HEADERS
     "src/modules/window_module.h"
     "src/modules/latex_module.h"
     "src/modules/ffi_module.h"
-    "src/modules/tensor_module.h"
     "src/modules/ExtensionBridge.h"
     "src/modules/jc2_extension_api.h"
     "src/modules/jc2_extension_cpp.h"
@@ -78,6 +77,11 @@ add_library(image SHARED "src/modules/image_module.cpp")
 target_include_directories(image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(image PROPERTIES PREFIX "") # Output image.dll instead of libimage.dll
 
+# ★ Build Tensor Module as a standalone DLL
+add_library(tensor SHARED "src/modules/tensor_module.cpp")
+target_include_directories(tensor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(tensor PROPERTIES PREFIX "") # Output tensor.dll instead of libtensor.dll
+
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
@@ -91,6 +95,7 @@ if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
     target_compile_options(JunkCalculator2 PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(image PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+    target_compile_options(tensor PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     
     # Enable Whole Program Optimization (LTCG) in Release mode for maximum speed
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi /GL")
@@ -98,6 +103,7 @@ if(MSVC)
 else()
     target_compile_options(JunkCalculator2 PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(image PRIVATE -Wall -Wextra -Werror -O3)
+    target_compile_options(tensor PRIVATE -Wall -Wextra -Werror -O3)
 endif()
 
 # ==============================================================================
@@ -144,6 +150,7 @@ add_dependencies(SyncResources JunkCalculator2)
 # ==============================================================================
 install(TARGETS JunkCalculator2 DESTINATION bin)
 install(TARGETS image DESTINATION bin)
+install(TARGETS tensor DESTINATION bin)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

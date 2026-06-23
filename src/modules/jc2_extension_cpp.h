@@ -34,6 +34,7 @@ public:
     bool is_double() const { return Env::api->is_double(Env::ctx, handle); }
     bool is_string() const { return Env::api->is_string(Env::ctx, handle); }
     bool is_instance() const { return Env::api->is_instance(Env::ctx, handle); }
+    bool is_list() const { return Env::api->is_list(Env::ctx, handle); }
 
     bool as_bool() const { return Env::api->as_bool(Env::ctx, handle); }
     int32_t as_int() const { return Env::api->as_int(Env::ctx, handle); }
@@ -67,6 +68,24 @@ class Instance : public Value {
 public:
     Instance(const Class& cls) 
         : Value(Env::api->make_instance(Env::ctx, cls.get_handle())) {}
+};
+
+class List : public Value {
+public:
+    List() : Value(Env::api->make_list(Env::ctx)) {}
+    List(JC2_ValueHandle h) : Value(h) {}
+    
+    void push_back(const Value& val) {
+        Env::api->list_push(Env::ctx, get_handle(), val.get_handle());
+    }
+    
+    size_t size() const {
+        return Env::api->list_size(Env::ctx, get_handle());
+    }
+    
+    Value get(size_t index) const {
+        return Value(Env::api->list_get(Env::ctx, get_handle(), index));
+    }
 };
 
 class Module {

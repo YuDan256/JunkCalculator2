@@ -56,10 +56,16 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
     ObjClass* cls = static_cast<ObjClass*>(clsVal.asObj());
     
     NativeCallable callable = [fn, user_data](const std::vector<Value>& args) -> Value {
-        std::vector<JC2_ValueHandle> c_args(args.size());
-        for (size_t i = 0; i < args.size(); ++i) c_args[i] = args[i].as_bits;
+        std::vector<JC2_ValueHandle> c_args;
+        c_args.reserve(args.size() + 1);
+        if (!jc::helpers::nativeSelfStack.empty()) {
+            c_args.push_back(jc::helpers::nativeSelfStack.back().as_bits);
+        } else {
+            c_args.push_back(Value::none().as_bits);
+        }
+        for (size_t i = 0; i < args.size(); ++i) c_args.push_back(args[i].as_bits);
         try {
-            JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(args.size()), c_args.data(), user_data);
+            JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(c_args.size()), c_args.data(), user_data);
             return from_handle(res);
         } catch (...) {
             throw;
@@ -157,6 +163,39 @@ static void host_throw_error(JC2_VMContext, const char* msg) {
     throw std::runtime_error(msg);
 }
 
+static JC2_ValueHandle host_make_list(JC2_VMContext) {
+    ObjList* list = GcHeap::get().allocate<ObjList>();
+    return Value(list).as_bits;
+}
+
+static void host_list_push(JC2_VMContext, JC2_ValueHandle list, JC2_ValueHandle val) {
+    Value l = from_handle(list);
+    if (l.isObjType(ObjType::LIST)) {
+        static_cast<ObjList*>(l.asObj())->vec.push_back(from_handle(val));
+    }
+}
+
+static size_t host_list_size(JC2_VMContext, JC2_ValueHandle list) {
+    Value l = from_handle(list);
+    if (l.isObjType(ObjType::LIST)) {
+        return static_cast<ObjList*>(l.asObj())->vec.size();
+    }
+    return 0;
+}
+
+static JC2_ValueHandle host_list_get(JC2_VMContext, JC2_ValueHandle list, size_t index) {
+    Value l = from_handle(list);
+    if (l.isObjType(ObjType::LIST)) {
+        auto& vec = static_cast<ObjList*>(l.asObj())->vec;
+        if (index < vec.size()) return vec[index].as_bits;
+    }
+    return Value::none().as_bits;
+}
+
+static bool host_is_list(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::LIST);
+}
+
 static const JC2_HostAPI host_api = {
     JC2_EXT_MAGIC,
     JC2_EXT_VERSION,
@@ -188,7 +227,12 @@ static const JC2_HostAPI host_api = {
     host_register_double,
     host_register_string,
     host_register_value,
-    host_throw_error
+    host_throw_error,
+    host_make_list,
+    host_list_push,
+    host_list_size,
+    host_list_get,
+    host_is_list
 };
 
 const JC2_HostAPI* get_host_api() {

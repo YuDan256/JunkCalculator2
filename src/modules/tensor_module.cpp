@@ -60,7 +60,7 @@ static std::pair<jc::DType, bool> parseTensorOptions(int argc, JC2_ValueHandle* 
 }
 
 // Macros for methods
-#define METHOD(name) JC2_ValueHandle tensor_##name(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data)
+#define METHOD(name) JC2_ValueHandle tensor_##name(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
 #define GET_SELF auto t1 = getTensor(jc2::Value(argv[0]))
 
 METHOD(__str__) { GET_SELF; return jc2::Value(t1->toString()).get_handle(); }
@@ -178,7 +178,7 @@ METHOD(getFlat) { GET_SELF; return jc2::Value(t1->getFlat(static_cast<size_t>(jc
 METHOD(setFlat) { GET_SELF; t1->setFlat(static_cast<size_t>(jc2::Value(argv[1]).as_double()), jc2::Value(argv[2]).as_double()); return argv[0]; }
 
 // Global functions
-#define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data)
+#define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
 FUNC(tensor) {
     auto data = listToDoubles(jc2::Value(argv[0]));
@@ -234,7 +234,7 @@ FUNC(randn) {
     auto [dt, rg] = parseTensorOptions(argc, argv, 1);
     return wrapTensor(jc::tensor_randn(listToShape(jc2::Value(argv[0])), dt, rg)).get_handle();
 }
-FUNC(matmul) { return wrapTensor(jc::tensor_matmul(*getTensor(jc2::Value(argv[0])), *getTensor(jc2::Value(argv[1])))).get_handle(); }
+FUNC(matmul) { (void)argc; return wrapTensor(jc::tensor_matmul(*getTensor(jc2::Value(argv[0])), *getTensor(jc2::Value(argv[1])))).get_handle(); }
 FUNC(cat) {
     jc2::Value listVal(argv[0]);
     if (!listVal.is_list()) jc2::throw_error("TypeError: cat expects a list of tensors.");
@@ -253,22 +253,23 @@ FUNC(stack) {
     int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_double()) : 0;
     return wrapTensor(jc::tensor_stack(tensors, axis)).get_handle();
 }
-FUNC(mse_loss) { return wrapTensor(jc::tensor_mse_loss(*getTensor(jc2::Value(argv[0])), *getTensor(jc2::Value(argv[1])))).get_handle(); }
+FUNC(mse_loss) { (void)argc; return wrapTensor(jc::tensor_mse_loss(*getTensor(jc2::Value(argv[0])), *getTensor(jc2::Value(argv[1])))).get_handle(); }
 FUNC(softmax) {
     int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_double()) : -1;
     return wrapTensor(jc::tensor_softmax(*getTensor(jc2::Value(argv[0])), axis)).get_handle();
 }
-FUNC(backward) { getTensor(jc2::Value(argv[0]))->backward(); return jc2::Value().get_handle(); }
-FUNC(zero_grad) { jc::tensor_zero_grad(*getTensor(jc2::Value(argv[0]))); return jc2::Value().get_handle(); }
-FUNC(sgd_step) { jc::tensor_sgd_step(*getTensor(jc2::Value(argv[0])), jc2::Value(argv[1]).as_double()); return jc2::Value().get_handle(); }
-FUNC(isTensor) { return jc2::Value(isTensor(jc2::Value(argv[0]))).get_handle(); }
-FUNC(to) { return wrapTensor(getTensor(jc2::Value(argv[0]))->to(jc::stringToDType(jc2::Value(argv[1]).as_string()))).get_handle(); }
-FUNC(getrow) { return wrapTensor(jc::tensor_getrow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(getcol) { return wrapTensor(jc::tensor_getcol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(deleterow) { return wrapTensor(jc::tensor_deleterow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(deletecol) { return wrapTensor(jc::tensor_deletecol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(swaprows) { return wrapTensor(jc::tensor_swaprows(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()), static_cast<int>(jc2::Value(argv[2]).as_double()))).get_handle(); }
+FUNC(backward) { (void)argc; getTensor(jc2::Value(argv[0]))->backward(); return jc2::Value().get_handle(); }
+FUNC(zero_grad) { (void)argc; jc::tensor_zero_grad(*getTensor(jc2::Value(argv[0]))); return jc2::Value().get_handle(); }
+FUNC(sgd_step) { (void)argc; jc::tensor_sgd_step(*getTensor(jc2::Value(argv[0])), jc2::Value(argv[1]).as_double()); return jc2::Value().get_handle(); }
+FUNC(isTensor) { (void)argc; return jc2::Value(isTensor(jc2::Value(argv[0]))).get_handle(); }
+FUNC(to) { (void)argc; return wrapTensor(getTensor(jc2::Value(argv[0]))->to(jc::stringToDType(jc2::Value(argv[1]).as_string()))).get_handle(); }
+FUNC(getrow) { (void)argc; return wrapTensor(jc::tensor_getrow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
+FUNC(getcol) { (void)argc; return wrapTensor(jc::tensor_getcol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
+FUNC(deleterow) { (void)argc; return wrapTensor(jc::tensor_deleterow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
+FUNC(deletecol) { (void)argc; return wrapTensor(jc::tensor_deletecol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
+FUNC(swaprows) { (void)argc; return wrapTensor(jc::tensor_swaprows(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()), static_cast<int>(jc2::Value(argv[2]).as_double()))).get_handle(); }
 FUNC(hstack) {
+    (void)argc;
     jc2::Value listVal(argv[0]);
     if (!listVal.is_list()) jc2::throw_error("TypeError: hstack expects a list of tensors.");
     jc2::List list(listVal.get_handle());
@@ -277,6 +278,7 @@ FUNC(hstack) {
     return wrapTensor(jc::tensor_hstack(tensors)).get_handle();
 }
 FUNC(vstack) {
+    (void)argc;
     jc2::Value listVal(argv[0]);
     if (!listVal.is_list()) jc2::throw_error("TypeError: vstack expects a list of tensors.");
     jc2::List list(listVal.get_handle());
@@ -301,6 +303,7 @@ FUNC(from_matrix) {
     return wrapTensor(t).get_handle();
 }
 FUNC(to_matrix) {
+    (void)argc;
     auto t = getTensor(jc2::Value(argv[0]));
     if (t->dim() != 2) jc2::throw_error("Tensor Error: to_matrix requires 2D tensor.");
     int rows = t->shape[0];
@@ -314,6 +317,7 @@ FUNC(to_matrix) {
     return mat.get_handle();
 }
 FUNC(no_grad) {
+    (void)argc;
     jc2::Value fnVal(argv[0]);
     if (!fnVal.is_function()) jc2::throw_error("TypeError: no_grad expects a function.");
     jc2::Function fn(fnVal.get_handle());

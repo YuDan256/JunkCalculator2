@@ -1,5 +1,5 @@
-#include "jc2_extension_cpp.h"
-#include "./Tensor.h"
+#include "../jc2_extension_cpp.h"
+#include "Tensor.h"
 #include <memory>
 
 static jc2::Class* g_tensorClass = nullptr;

@@ -4,7 +4,7 @@
 #include "Module.h"
 #include "../vm/BuiltinRegistry.h"
 #include "../vm/VM.h"
-#include "Image.h"
+#include "./image/Image.h"
 
 #ifdef _WIN32
 #include <windows.h>

@@ -27,7 +27,7 @@
 #include "../math/Fraction.h"
 #include "../math/Base.h"
 #include "../math/Tolerance.h"
-#include "../modules/Image.h"
+#include "../modules/image/Image.h"
 #include "../modules/Probability.h"
 #include "GcHeap.h"
 #include "../cas/Symbolic.h" 

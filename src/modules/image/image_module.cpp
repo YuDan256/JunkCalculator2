@@ -1,4 +1,4 @@
-#include "jc2_extension_cpp.h"
+#include "../jc2_extension_cpp.h"
 #include "Image.h"
 #include <sstream>
 

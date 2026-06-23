@@ -45,7 +45,7 @@ set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/Compiler.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
-    "src/modules/Image.h" "src/modules/Probability.h" "src/modules/Module.h"
+    "src/modules/image/Image.h" "src/modules/Probability.h" "src/modules/Module.h"
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/VM.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/modules/json_module.h"
@@ -73,12 +73,12 @@ add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build Image Module as a standalone DLL
-add_library(image SHARED "src/modules/image_module.cpp")
+add_library(image SHARED "src/modules/image/image_module.cpp")
 target_include_directories(image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(image PROPERTIES PREFIX "") # Output image.dll instead of libimage.dll
 
 # ★ Build Tensor Module as a standalone DLL
-add_library(tensor SHARED "src/modules/tensor_module.cpp")
+add_library(tensor SHARED "src/modules/tensor/tensor_module.cpp")
 target_include_directories(tensor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(tensor PROPERTIES PREFIX "") # Output tensor.dll instead of libtensor.dll
 

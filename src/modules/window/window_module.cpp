@@ -229,7 +229,7 @@ JC2_ValueHandle win_init(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
     int h = static_cast<int>(jc2::Value(argv[3]).as_double());
     auto win = new NativeWindow(title, w, h);
     self.set_native_data(win, [](void* ptr) { delete static_cast<NativeWindow*>(ptr); });
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
 }
 
 JC2_ValueHandle win_isOpen(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
@@ -242,7 +242,7 @@ JC2_ValueHandle win_isOpen(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 JC2_ValueHandle win_pollEvent(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
-    if (!win) return jc2::Value::none().get_handle();
+    if (!win) return jc2::Value().get_handle();
     WinEvent ev;
     if (win->pollEvent(ev)) {
         jc2::Dict d;
@@ -282,7 +282,7 @@ JC2_ValueHandle win_pollEvent(JC2_VMContext, int, JC2_ValueHandle* argv, void*) 
         }
         return d.get_handle();
     }
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
 }
 
 JC2_ValueHandle win_isKeyDown(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
@@ -327,35 +327,35 @@ JC2_ValueHandle win_isKeyDown(JC2_VMContext, int, JC2_ValueHandle* argv, void*) 
 JC2_ValueHandle win_show(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
-    if (!win) return jc2::Value::none().get_handle();
+    if (!win) return jc2::Value().get_handle();
     jc2::Value arg(argv[1]);
     if (!arg.is_instance()) jc2::throw_error("Type Error: Expected an Image instance.");
     jc2::Instance imgInst(arg.get_handle());
     auto im = imgInst.get_native_data<jc::Image>();
     if (!im) jc2::throw_error("Type Error: Invalid Image instance.");
     win->show(im);
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
 }
 
 JC2_ValueHandle win_setImeEnabled(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
     if (win) win->setImeEnabled(jc2::Value(argv[1]).as_double() != 0.0);
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
 }
 
 JC2_ValueHandle win_showCursor(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
     if (win) win->showCursor(jc2::Value(argv[1]).as_double() != 0.0);
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
 }
 
 JC2_ValueHandle win_setCursorPos(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
     if (win) win->setCursorPos(static_cast<int>(jc2::Value(argv[1]).as_double()), static_cast<int>(jc2::Value(argv[2]).as_double()));
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
 }
 
 int jc2_init(jc2::Module& mod) {

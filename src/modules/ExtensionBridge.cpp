@@ -61,7 +61,7 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
         try {
             JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(args.size()), c_args.data(), user_data);
             return from_handle(res);
-        } catch (const std::exception& e) {
+        } catch (...) {
             throw;
         }
     };
@@ -113,7 +113,7 @@ static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const ch
         try {
             JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(args.size()), c_args.data(), user_data);
             return from_handle(res);
-        } catch (const std::exception& e) {
+        } catch (...) {
             throw; // 拦截 C++ 异常，交由 VM 处理
         }
     };

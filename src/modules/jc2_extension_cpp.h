@@ -43,6 +43,15 @@ public:
         const char* s = Env::api->as_string(Env::ctx, handle, &len);
         return s ? std::string(s, len) : "";
     }
+
+    void set_native_data(void* data, JC2_NativeDestructor dtor) {
+        Env::api->set_native_data(Env::ctx, handle, data, dtor);
+    }
+
+    template<typename T>
+    T* get_native_data() const {
+        return static_cast<T*>(Env::api->get_native_data(Env::ctx, handle));
+    }
 };
 
 class Class : public Value {
@@ -58,15 +67,6 @@ class Instance : public Value {
 public:
     Instance(const Class& cls) 
         : Value(Env::api->make_instance(Env::ctx, cls.get_handle())) {}
-    
-    void set_native_data(void* data, JC2_NativeDestructor dtor) {
-        Env::api->set_native_data(Env::ctx, get_handle(), data, dtor);
-    }
-
-    template<typename T>
-    T* get_native_data() const {
-        return static_cast<T*>(Env::api->get_native_data(Env::ctx, get_handle()));
-    }
 };
 
 class Module {

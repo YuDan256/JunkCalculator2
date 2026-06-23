@@ -56,9 +56,13 @@ set(JC2_HEADERS
     "src/modules/latex_module.h"
     "src/modules/ffi_module.h"
     "src/modules/tensor_module.h"
+    "src/modules/ExtensionBridge.h"
+    "src/modules/jc2_extension_api.h"
+    "src/modules/jc2_extension_cpp.h"
 )
 
 set(JC2_SOURCES
+    "src/modules/ExtensionBridge.cpp"
     "src/modules/ffi_module.cpp"
     "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/Compiler.cpp"
     "src/vm/VM.cpp" "src/vm/BuiltinRegistry.cpp" "src/main.cpp"

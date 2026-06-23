@@ -2777,75 +2777,6 @@
       "    • Encapsulation: All definitions are strictly isolated inside the returned namespace.",
       "    • Private Variables: Inside a .jc2 module, variables declared with `local` ",
       "      are strictly private and will NOT be exported to the final namespace."
-    ],
-    "window": [
-      "═══ Native Window Engine — Native Module ═══",
-      "",
-      "  Requires: import window",
-      "  (Note: Currently restricted to Win32 architectures. Requires User32 / Gdi32 / imm32)",
-      "",
-      "  The `window` module pierces the OS layer to spawn a hardware-accelerated ",
-      "  GUI window, complete with an asynchronous, thread-safe Event Queue for ",
-      "  zero-latency keyboard and mouse polling.",
-      "",
-      "  Spawning a Window & Basic State",
-      "  ──────────────────────",
-      "    win = window.Window(title, width, height)",
-      "        Requests the OS to create a fixed-size trackable window.",
-      "    win.isOpen()",
-      "        Returns true if the window is alive, false if closed by the user.",
-      "    win.show(image_obj)",
-      "        Bit-block transfers (Blits) a JC2 `image` object's memory buffer ",
-      "        directly onto the window's device context (HDC) instantly.",
-      "",
-      "  Mouse & Cursor Control (3D/FPS Mechanics)",
-      "  ──────────────────────",
-      "    win.showCursor(boolean)",
-      "        Dynamically hides (false) or shows (true) the Windows mouse pointer.",
-      "        Essential for creating immersive games and custom UI crosshairs.",
-      "        ",
-      "    win.setCursorPos(x, y)",
-      "        Forcibly teleports the operating system's mouse pointer to the ",
-      "        specified coordinates within the window. Used to create \"infinite\" ",
-      "        mouse-look mechanics in 3D games by continually resetting the ",
-      "        mouse to the center of the screen.",
-      "",
-      "  IME (Input Method Editor) Control",
-      "  ──────────────────────",
-      "    win.setImeEnabled(boolean)",
-      "        Dynamically enables or disables the OS Input Method (e.g., Pinyin).",
-      "        • Pass `false` for action games to prevent the IME from intercepting WASD.",
-      "        • Pass `true` when expecting text input from the user.",
-      "",
-      "  Real-Time Input Polling",
-      "  ──────────────────────",
-      "    win.isKeyDown(key)",
-      "        Provides instantaneous, zero-latency physical key state.",
-      "        Accepts human-readable strings (case-insensitive):",
-      "          \"W\", \"A\", \"S\", \"D\", \"0\"-\"9\"",
-      "          \"UP\", \"DOWN\", \"LEFT\", \"RIGHT\"",
-      "          \"SPACE\", \"ENTER\", \"ESC\", \"SHIFT\", \"CTRL\", \"ALT\", \"TAB\"",
-      "        Returns true if currently pressed, false otherwise.",
-      "",
-      "  Event Queue (win.pollEvent)",
-      "  ──────────────────────",
-      "    ev = win.pollEvent()",
-      "        Non-blocking pop from the OS message queue. Returns `none` if empty.",
-      "        If an event exists, returns a Dict with a \"type\" string:",
-      "",
-      "        • \"keydown\" / \"keyup\"",
-      "           ev.key       → string (\"W\", \"SPACE\", \"LEFT\", etc.)",
-      "           ev.keycode   → number (Underlying Win32 Virtual-Key code)",
-      "        ",
-      "        • \"mousedown\" / \"mouseup\"",
-      "           ev.x, ev.y   → number (Mouse cursor coordinates)",
-      "           ev.button    → number (0 = Left Click, 1 = Right Click)",
-      "        ",
-      "        • \"mousemove\"",
-      "           ev.x, ev.y   → number (Current coordinates)",
-      "        ",
-      "        • \"close\"",
-      "           The user clicked the 'X' button on the window."
     ]
   },
   "functions": {
@@ -4238,62 +4169,6 @@
       "desc": "Removes all elements from a Set, List, or Dict.",
       "examples": [
         "clear(myList)"
-      ]
-    },
-    "window.Window": {
-      "signature": "window.Window(title, width, height)",
-      "desc": "Creates a new hardware-accelerated OS window.",
-      "examples": [
-        "win = window.Window(\"My Game\", 800, 600)"
-      ]
-    },
-    "isOpen": {
-      "signature": "win.isOpen()",
-      "desc": "Returns true if the window is still open, false if closed.",
-      "examples": [
-        "while (win.isOpen()) { ... }"
-      ]
-    },
-    "pollEvent": {
-      "signature": "win.pollEvent()",
-      "desc": "Pops the next input event from the window's queue. Returns a Dict or none.",
-      "examples": [
-        "ev = win.pollEvent()"
-      ]
-    },
-    "isKeyDown": {
-      "signature": "win.isKeyDown(key)",
-      "desc": "Returns true if the specified physical key is currently pressed.",
-      "examples": [
-        "if (win.isKeyDown(\"W\")) moveUp()"
-      ]
-    },
-    "show": {
-      "signature": "win.show(img)",
-      "desc": "Blits an image object's buffer directly to the window.",
-      "examples": [
-        "win.show(im)"
-      ]
-    },
-    "setImeEnabled": {
-      "signature": "win.setImeEnabled(enable)",
-      "desc": "Enables or disables the OS Input Method Editor (IME) for the window.",
-      "examples": [
-        "win.setImeEnabled(0)"
-      ]
-    },
-    "showCursor": {
-      "signature": "win.showCursor(show)",
-      "desc": "Hides or shows the OS mouse cursor over the window.",
-      "examples": [
-        "win.showCursor(0)"
-      ]
-    },
-    "setCursorPos": {
-      "signature": "win.setCursorPos(x, y)",
-      "desc": "Teleports the OS mouse cursor to the specified window coordinates.",
-      "examples": [
-        "win.setCursorPos(400, 300)"
       ]
     },
     "add": {

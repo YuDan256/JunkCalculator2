@@ -24,6 +24,7 @@ static bool host_is_bool(JC2_VMContext, JC2_ValueHandle v) { return from_handle(
 static bool host_is_int(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isInt32(); }
 static bool host_is_double(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isDouble(); }
 static bool host_is_string(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isString(); }
+static bool host_is_complex(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isObjType(ObjType::COMPLEX); }
 static bool host_is_instance(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isInstance(); }
 
 static bool host_as_bool(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).truthy(); }
@@ -35,6 +36,19 @@ static const char* host_as_string(JC2_VMContext, JC2_ValueHandle v, size_t* out_
     const std::string& s = val.asString();
     if (out_len) *out_len = s.length();
     return s.c_str();
+}
+
+static double host_complex_get_real(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isObjType(ObjType::COMPLEX)) return static_cast<ObjComplex*>(val.asObj())->comp.real;
+    if (val.isNumber()) return val.asDouble();
+    return 0.0;
+}
+
+static double host_complex_get_imag(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isObjType(ObjType::COMPLEX)) return static_cast<ObjComplex*>(val.asObj())->comp.imag;
+    return 0.0;
 }
 
 static JC2_ValueHandle host_make_class(JC2_VMContext, const char* name) {
@@ -197,6 +211,341 @@ static bool host_is_list(JC2_VMContext, JC2_ValueHandle v) {
     return from_handle(v).isObjType(ObjType::LIST);
 }
 
+static JC2_ValueHandle host_make_dict(JC2_VMContext) {
+    ObjDict* dict = GcHeap::get().allocate<ObjDict>();
+    return Value(dict).as_bits;
+}
+
+static void host_dict_set(JC2_VMContext, JC2_ValueHandle dict, JC2_ValueHandle key, JC2_ValueHandle val) {
+    Value d = from_handle(dict);
+    if (d.isObjType(ObjType::DICT)) {
+        static_cast<ObjDict*>(d.asObj())->set(from_handle(key), from_handle(val));
+    }
+}
+
+static JC2_ValueHandle host_dict_get(JC2_VMContext, JC2_ValueHandle dict, JC2_ValueHandle key) {
+    Value d = from_handle(dict);
+    if (d.isObjType(ObjType::DICT)) {
+        ObjDict* obj = static_cast<ObjDict*>(d.asObj());
+        Value k = from_handle(key);
+        auto it = obj->keyMap.find(k);
+        if (it != obj->keyMap.end()) return obj->elements[it->second].second.as_bits;
+    }
+    return Value::none().as_bits;
+}
+
+static bool host_dict_has(JC2_VMContext, JC2_ValueHandle dict, JC2_ValueHandle key) {
+    Value d = from_handle(dict);
+    if (d.isObjType(ObjType::DICT)) {
+        ObjDict* obj = static_cast<ObjDict*>(d.asObj());
+        return obj->keyMap.find(from_handle(key)) != obj->keyMap.end();
+    }
+    return false;
+}
+
+static size_t host_dict_size(JC2_VMContext, JC2_ValueHandle dict) {
+    Value d = from_handle(dict);
+    if (d.isObjType(ObjType::DICT)) {
+        return static_cast<ObjDict*>(d.asObj())->elements.size();
+    }
+    return 0;
+}
+
+static bool host_is_dict(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::DICT);
+}
+
+static JC2_ValueHandle host_make_real_matrix(JC2_VMContext, int rows, int cols) {
+    return Value(RealMatrix(rows, cols)).as_bits;
+}
+
+static double host_real_matrix_get(JC2_VMContext, JC2_ValueHandle mat, int row, int col) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::REAL_MATRIX)) {
+        return static_cast<ObjRealMatrix*>(m.asObj())->mat(row, col);
+    }
+    return 0.0;
+}
+
+static void host_real_matrix_set(JC2_VMContext, JC2_ValueHandle mat, int row, int col, double val) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::REAL_MATRIX)) {
+        static_cast<ObjRealMatrix*>(m.asObj())->mat(row, col) = val;
+    }
+}
+
+static int host_real_matrix_rows(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::REAL_MATRIX)) {
+        return static_cast<ObjRealMatrix*>(m.asObj())->mat.getRows();
+    }
+    return 0;
+}
+
+static int host_real_matrix_cols(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::REAL_MATRIX)) {
+        return static_cast<ObjRealMatrix*>(m.asObj())->mat.getCols();
+    }
+    return 0;
+}
+
+static bool host_is_real_matrix(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::REAL_MATRIX);
+}
+
+static JC2_ValueHandle host_make_complex_matrix(JC2_VMContext, int rows, int cols) {
+    return Value(ComplexMatrix(rows, cols)).as_bits;
+}
+
+static double host_complex_matrix_get_real(JC2_VMContext, JC2_ValueHandle mat, int row, int col) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(m.asObj())->mat(row, col).real;
+    return 0.0;
+}
+
+static double host_complex_matrix_get_imag(JC2_VMContext, JC2_ValueHandle mat, int row, int col) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(m.asObj())->mat(row, col).imag;
+    return 0.0;
+}
+
+static void host_complex_matrix_set(JC2_VMContext, JC2_ValueHandle mat, int row, int col, double r, double i) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::COMPLEX_MATRIX)) static_cast<ObjComplexMatrix*>(m.asObj())->mat(row, col) = Complex(r, i);
+}
+
+static int host_complex_matrix_rows(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(m.asObj())->mat.getRows();
+    return 0;
+}
+
+static int host_complex_matrix_cols(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(m.asObj())->mat.getCols();
+    return 0;
+}
+
+static bool host_is_complex_matrix(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::COMPLEX_MATRIX);
+}
+
+static JC2_ValueHandle host_make_string_matrix(JC2_VMContext, int rows, int cols) {
+    return Value(StringMatrix(rows, cols)).as_bits;
+}
+
+static const char* host_string_matrix_get(JC2_VMContext, JC2_ValueHandle mat, int row, int col, size_t* out_len) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::STRING_MATRIX)) {
+        const std::string& s = static_cast<ObjStringMatrix*>(m.asObj())->mat(row, col);
+        if (out_len) *out_len = s.length();
+        return s.c_str();
+    }
+    return nullptr;
+}
+
+static void host_string_matrix_set(JC2_VMContext, JC2_ValueHandle mat, int row, int col, const char* str, size_t len) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::STRING_MATRIX)) {
+        static_cast<ObjStringMatrix*>(m.asObj())->mat(row, col) = std::string(str, len);
+    }
+}
+
+static int host_string_matrix_rows(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::STRING_MATRIX)) return static_cast<ObjStringMatrix*>(m.asObj())->mat.getRows();
+    return 0;
+}
+
+static int host_string_matrix_cols(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::STRING_MATRIX)) return static_cast<ObjStringMatrix*>(m.asObj())->mat.getCols();
+    return 0;
+}
+
+static bool host_is_string_matrix(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::STRING_MATRIX);
+}
+
+static JC2_ValueHandle host_make_set(JC2_VMContext) {
+    ObjSet* set = GcHeap::get().allocate<ObjSet>();
+    return Value(set).as_bits;
+}
+
+static void host_set_add(JC2_VMContext, JC2_ValueHandle set, JC2_ValueHandle val) {
+    Value s = from_handle(set);
+    if (s.isObjType(ObjType::SET)) {
+        static_cast<ObjSet*>(s.asObj())->add(from_handle(val));
+    }
+}
+
+static void host_set_remove(JC2_VMContext, JC2_ValueHandle set, JC2_ValueHandle val) {
+    Value s = from_handle(set);
+    if (s.isObjType(ObjType::SET)) {
+        static_cast<ObjSet*>(s.asObj())->discard(from_handle(val));
+    }
+}
+
+static bool host_set_has(JC2_VMContext, JC2_ValueHandle set, JC2_ValueHandle val) {
+    Value s = from_handle(set);
+    if (s.isObjType(ObjType::SET)) {
+        ObjSet* obj = static_cast<ObjSet*>(s.asObj());
+        return obj->keys.find(from_handle(val)) != obj->keys.end();
+    }
+    return false;
+}
+
+static size_t host_set_size(JC2_VMContext, JC2_ValueHandle set) {
+    Value s = from_handle(set);
+    if (s.isObjType(ObjType::SET)) {
+        return static_cast<ObjSet*>(s.asObj())->elements.size();
+    }
+    return 0;
+}
+
+static bool host_is_set(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::SET);
+}
+
+static JC2_ValueHandle host_make_bigint(JC2_VMContext, const char* str) {
+    try { return Value(BigInt(std::string(str))).as_bits; }
+    catch (...) { return Value::none().as_bits; }
+}
+
+static const char* host_bigint_to_string(JC2_VMContext, JC2_ValueHandle v, size_t* out_len) {
+    Value val = from_handle(v);
+    if (val.isBigInt()) {
+        ObjString* s = internString(val.asBigInt().toString());
+        if (out_len) *out_len = s->str.length();
+        return s->str.c_str();
+    }
+    return nullptr;
+}
+
+static bool host_is_bigint(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isBigInt();
+}
+
+static JC2_ValueHandle host_make_fraction(JC2_VMContext, JC2_ValueHandle num, JC2_ValueHandle den) {
+    try {
+        return Value(Fraction(from_handle(num).asBigInt(), from_handle(den).asBigInt())).as_bits;
+    } catch (...) { return Value::none().as_bits; }
+}
+
+static JC2_ValueHandle host_fraction_get_num(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(val.asObj())->frac.getNum()).as_bits;
+    return Value::none().as_bits;
+}
+
+static JC2_ValueHandle host_fraction_get_den(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(val.asObj())->frac.getDen()).as_bits;
+    return Value::none().as_bits;
+}
+
+static bool host_is_fraction(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::FRACTION);
+}
+
+static JC2_ValueHandle host_make_namespace(JC2_VMContext, const char* name) {
+    ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+    ns->name = name;
+    return Value(ns).as_bits;
+}
+
+static void host_namespace_set(JC2_VMContext, JC2_ValueHandle ns, const char* key, JC2_ValueHandle val) {
+    Value n = from_handle(ns);
+    if (n.isObjType(ObjType::NAMESPACE)) {
+        ObjNamespace* obj = static_cast<ObjNamespace*>(n.asObj());
+        if (!obj->is_frozen) {
+            NamespaceField field;
+            field.upval = GcHeap::get().allocate<ObjUpVal>();
+            field.upval->closed = from_handle(val);
+            field.upval->location = &field.upval->closed;
+            field.isConst = false;
+            obj->fields[key] = field;
+        }
+    }
+}
+
+static JC2_ValueHandle host_namespace_get(JC2_VMContext, JC2_ValueHandle ns, const char* key) {
+    Value n = from_handle(ns);
+    if (n.isObjType(ObjType::NAMESPACE)) {
+        ObjNamespace* obj = static_cast<ObjNamespace*>(n.asObj());
+        auto it = obj->fields.find(key);
+        if (it != obj->fields.end() && it->second.upval && it->second.upval->location) {
+            return it->second.upval->location->as_bits;
+        }
+    }
+    return Value::none().as_bits;
+}
+
+static bool host_is_namespace(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::NAMESPACE);
+}
+
+static void host_set_class_parent(JC2_VMContext, JC2_ValueHandle cls, JC2_ValueHandle parent) {
+    Value c = from_handle(cls);
+    Value p = from_handle(parent);
+    if (c.isClass() && p.isClass()) {
+        static_cast<ObjClass*>(c.asObj())->parent = static_cast<ObjClass*>(p.asObj());
+    }
+}
+
+static JC2_ValueHandle host_get_class(JC2_VMContext, JC2_ValueHandle inst) {
+    Value i = from_handle(inst);
+    if (i.isInstance()) {
+        ObjClass* cls = i.asInstance()->classDef;
+        if (cls) return Value(cls).as_bits;
+    }
+    return Value::none().as_bits;
+}
+
+static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle inst, const char* name) {
+    Value i = from_handle(inst);
+    if (i.isInstance()) {
+        ObjInstance* obj = i.asInstance();
+        if (obj->fields) {
+            Value key(std::string(name));
+            auto it = obj->fields->keyMap.find(key);
+            if (it != obj->fields->keyMap.end()) {
+                return obj->fields->elements[it->second].second.as_bits;
+            }
+        }
+    }
+    return Value::none().as_bits;
+}
+
+static void host_instance_set_field(JC2_VMContext, JC2_ValueHandle inst, const char* name, JC2_ValueHandle val) {
+    Value i = from_handle(inst);
+    if (i.isInstance()) {
+        ObjInstance* obj = i.asInstance();
+        if (!obj->fields) obj->fields = GcHeap::get().allocate<ObjDict>();
+        obj->fields->set(Value(std::string(name)), from_handle(val));
+    }
+}
+
+static JC2_ValueHandle host_call_function(JC2_VMContext, JC2_ValueHandle func, int argc, JC2_ValueHandle* argv) {
+    Value f = from_handle(func);
+    if (!f.isFunctionClosure()) return Value::none().as_bits;
+    std::vector<Value> args(argc);
+    for (int i = 0; i < argc; ++i) args[i] = from_handle(argv[i]);
+    if (jc::helpers::callFunctionCallback) {
+        try {
+            return jc::helpers::callFunctionCallback(static_cast<ObjClosure*>(f.asObj()), args).as_bits;
+        } catch (...) {
+            return Value::none().as_bits;
+        }
+    }
+    return Value::none().as_bits;
+}
+
+static bool host_is_function(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isFunctionClosure();
+}
+
 static const JC2_HostAPI host_api = {
     JC2_EXT_MAGIC,
     JC2_EXT_VERSION,
@@ -211,11 +560,14 @@ static const JC2_HostAPI host_api = {
     host_is_int,
     host_is_double,
     host_is_string,
+    host_is_complex,
     host_is_instance,
     host_as_bool,
     host_as_int,
     host_as_double,
     host_as_string,
+    host_complex_get_real,
+    host_complex_get_imag,
     host_make_class,
     host_make_instance,
     host_bind_method,
@@ -233,7 +585,55 @@ static const JC2_HostAPI host_api = {
     host_list_push,
     host_list_size,
     host_list_get,
-    host_is_list
+    host_is_list,
+    host_make_dict,
+    host_dict_set,
+    host_dict_get,
+    host_dict_has,
+    host_dict_size,
+    host_is_dict,
+    host_make_real_matrix,
+    host_real_matrix_get,
+    host_real_matrix_set,
+    host_real_matrix_rows,
+    host_real_matrix_cols,
+    host_is_real_matrix,
+    host_make_complex_matrix,
+    host_complex_matrix_get_real,
+    host_complex_matrix_get_imag,
+    host_complex_matrix_set,
+    host_complex_matrix_rows,
+    host_complex_matrix_cols,
+    host_is_complex_matrix,
+    host_make_string_matrix,
+    host_string_matrix_get,
+    host_string_matrix_set,
+    host_string_matrix_rows,
+    host_string_matrix_cols,
+    host_is_string_matrix,
+    host_make_set,
+    host_set_add,
+    host_set_remove,
+    host_set_has,
+    host_set_size,
+    host_is_set,
+    host_call_function,
+    host_is_function,
+    host_make_bigint,
+    host_bigint_to_string,
+    host_is_bigint,
+    host_make_fraction,
+    host_fraction_get_num,
+    host_fraction_get_den,
+    host_is_fraction,
+    host_make_namespace,
+    host_namespace_set,
+    host_namespace_get,
+    host_is_namespace,
+    host_set_class_parent,
+    host_get_class,
+    host_instance_get_field,
+    host_instance_set_field
 };
 
 const JC2_HostAPI* get_host_api() {

@@ -64,6 +64,7 @@ typedef struct JC2_HostAPI {
     bool (*is_int)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_double)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_string)(JC2_VMContext ctx, JC2_ValueHandle v);
+    bool (*is_complex)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_instance)(JC2_VMContext ctx, JC2_ValueHandle v);
     
     /* --- 值提取 (Value Extraction) --- */
@@ -72,6 +73,8 @@ typedef struct JC2_HostAPI {
     double (*as_double)(JC2_VMContext ctx, JC2_ValueHandle v);
     /* 返回的字符串指针由 JC2 引擎管理生命周期，DLL 不可 free */
     const char* (*as_string)(JC2_VMContext ctx, JC2_ValueHandle v, size_t* out_len);
+    double (*complex_get_real)(JC2_VMContext ctx, JC2_ValueHandle v);
+    double (*complex_get_imag)(JC2_VMContext ctx, JC2_ValueHandle v);
     
     /* --- 原生对象生命周期管理 (Native Object Management) --- */
     JC2_ValueHandle (*make_class)(JC2_VMContext ctx, const char* name);
@@ -102,6 +105,72 @@ typedef struct JC2_HostAPI {
     size_t (*list_size)(JC2_VMContext ctx, JC2_ValueHandle list);
     JC2_ValueHandle (*list_get)(JC2_VMContext ctx, JC2_ValueHandle list, size_t index);
     bool (*is_list)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- 字典操作 (Dict Operations) --- */
+    JC2_ValueHandle (*make_dict)(JC2_VMContext ctx);
+    void (*dict_set)(JC2_VMContext ctx, JC2_ValueHandle dict, JC2_ValueHandle key, JC2_ValueHandle val);
+    JC2_ValueHandle (*dict_get)(JC2_VMContext ctx, JC2_ValueHandle dict, JC2_ValueHandle key);
+    bool (*dict_has)(JC2_VMContext ctx, JC2_ValueHandle dict, JC2_ValueHandle key);
+    size_t (*dict_size)(JC2_VMContext ctx, JC2_ValueHandle dict);
+    bool (*is_dict)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- 矩阵操作 (Matrix Operations) --- */
+    JC2_ValueHandle (*make_real_matrix)(JC2_VMContext ctx, int rows, int cols);
+    double (*real_matrix_get)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col);
+    void (*real_matrix_set)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col, double val);
+    int (*real_matrix_rows)(JC2_VMContext ctx, JC2_ValueHandle mat);
+    int (*real_matrix_cols)(JC2_VMContext ctx, JC2_ValueHandle mat);
+    bool (*is_real_matrix)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    JC2_ValueHandle (*make_complex_matrix)(JC2_VMContext ctx, int rows, int cols);
+    double (*complex_matrix_get_real)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col);
+    double (*complex_matrix_get_imag)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col);
+    void (*complex_matrix_set)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col, double r, double i);
+    int (*complex_matrix_rows)(JC2_VMContext ctx, JC2_ValueHandle mat);
+    int (*complex_matrix_cols)(JC2_VMContext ctx, JC2_ValueHandle mat);
+    bool (*is_complex_matrix)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    JC2_ValueHandle (*make_string_matrix)(JC2_VMContext ctx, int rows, int cols);
+    const char* (*string_matrix_get)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col, size_t* out_len);
+    void (*string_matrix_set)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col, const char* str, size_t len);
+    int (*string_matrix_rows)(JC2_VMContext ctx, JC2_ValueHandle mat);
+    int (*string_matrix_cols)(JC2_VMContext ctx, JC2_ValueHandle mat);
+    bool (*is_string_matrix)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- 集合操作 (Set Operations) --- */
+    JC2_ValueHandle (*make_set)(JC2_VMContext ctx);
+    void (*set_add)(JC2_VMContext ctx, JC2_ValueHandle set, JC2_ValueHandle val);
+    void (*set_remove)(JC2_VMContext ctx, JC2_ValueHandle set, JC2_ValueHandle val);
+    bool (*set_has)(JC2_VMContext ctx, JC2_ValueHandle set, JC2_ValueHandle val);
+    size_t (*set_size)(JC2_VMContext ctx, JC2_ValueHandle set);
+    bool (*is_set)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- 函数调用 (Function Calling) --- */
+    JC2_ValueHandle (*call_function)(JC2_VMContext ctx, JC2_ValueHandle func, int argc, JC2_ValueHandle* argv);
+    bool (*is_function)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- BigInt 操作 (BigInt Operations) --- */
+    JC2_ValueHandle (*make_bigint)(JC2_VMContext ctx, const char* str);
+    const char* (*bigint_to_string)(JC2_VMContext ctx, JC2_ValueHandle v, size_t* out_len);
+    bool (*is_bigint)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- Fraction 操作 (Fraction Operations) --- */
+    JC2_ValueHandle (*make_fraction)(JC2_VMContext ctx, JC2_ValueHandle num, JC2_ValueHandle den);
+    JC2_ValueHandle (*fraction_get_num)(JC2_VMContext ctx, JC2_ValueHandle v);
+    JC2_ValueHandle (*fraction_get_den)(JC2_VMContext ctx, JC2_ValueHandle v);
+    bool (*is_fraction)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- Namespace 操作 (Namespace Operations) --- */
+    JC2_ValueHandle (*make_namespace)(JC2_VMContext ctx, const char* name);
+    void (*namespace_set)(JC2_VMContext ctx, JC2_ValueHandle ns, const char* key, JC2_ValueHandle val);
+    JC2_ValueHandle (*namespace_get)(JC2_VMContext ctx, JC2_ValueHandle ns, const char* key);
+    bool (*is_namespace)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- 高级类与实例操作 (Advanced Class & Instance Operations) --- */
+    void (*set_class_parent)(JC2_VMContext ctx, JC2_ValueHandle cls, JC2_ValueHandle parent);
+    JC2_ValueHandle (*get_class)(JC2_VMContext ctx, JC2_ValueHandle inst);
+    JC2_ValueHandle (*instance_get_field)(JC2_VMContext ctx, JC2_ValueHandle inst, const char* name);
+    void (*instance_set_field)(JC2_VMContext ctx, JC2_ValueHandle inst, const char* name, JC2_ValueHandle val);
     
 } JC2_HostAPI;
 

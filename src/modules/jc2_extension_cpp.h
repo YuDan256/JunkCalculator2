@@ -33,8 +33,18 @@ public:
     bool is_int() const { return Env::api->is_int(Env::ctx, handle); }
     bool is_double() const { return Env::api->is_double(Env::ctx, handle); }
     bool is_string() const { return Env::api->is_string(Env::ctx, handle); }
+    bool is_complex() const { return Env::api->is_complex(Env::ctx, handle); }
     bool is_instance() const { return Env::api->is_instance(Env::ctx, handle); }
     bool is_list() const { return Env::api->is_list(Env::ctx, handle); }
+    bool is_dict() const { return Env::api->is_dict(Env::ctx, handle); }
+    bool is_set() const { return Env::api->is_set(Env::ctx, handle); }
+    bool is_real_matrix() const { return Env::api->is_real_matrix(Env::ctx, handle); }
+    bool is_complex_matrix() const { return Env::api->is_complex_matrix(Env::ctx, handle); }
+    bool is_string_matrix() const { return Env::api->is_string_matrix(Env::ctx, handle); }
+    bool is_function() const { return Env::api->is_function(Env::ctx, handle); }
+    bool is_bigint() const { return Env::api->is_bigint(Env::ctx, handle); }
+    bool is_fraction() const { return Env::api->is_fraction(Env::ctx, handle); }
+    bool is_namespace() const { return Env::api->is_namespace(Env::ctx, handle); }
 
     bool as_bool() const { return Env::api->as_bool(Env::ctx, handle); }
     int32_t as_int() const { return Env::api->as_int(Env::ctx, handle); }
@@ -58,6 +68,11 @@ public:
 class Class : public Value {
 public:
     Class(const std::string& name) : Value(Env::api->make_class(Env::ctx, name.c_str())) {}
+    Class(JC2_ValueHandle h) : Value(h) {}
+
+    void set_parent(const Class& parent) {
+        Env::api->set_class_parent(Env::ctx, get_handle(), parent.get_handle());
+    }
 
     void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 255, bool has_rest = true, void* user_data = nullptr) {
         Env::api->bind_method(Env::ctx, get_handle(), name.c_str(), fn, min_arity, max_arity, has_rest, user_data);
@@ -66,8 +81,20 @@ public:
 
 class Instance : public Value {
 public:
-    Instance(const Class& cls) 
-        : Value(Env::api->make_instance(Env::ctx, cls.get_handle())) {}
+    Instance(const Class& cls) : Value(Env::api->make_instance(Env::ctx, cls.get_handle())) {}
+    Instance(JC2_ValueHandle h) : Value(h) {}
+    
+    Class get_class() const {
+        return Class(Env::api->get_class(Env::ctx, get_handle()));
+    }
+    
+    Value get(const std::string& name) const {
+        return Value(Env::api->instance_get_field(Env::ctx, get_handle(), name.c_str()));
+    }
+    
+    void set(const std::string& name, const Value& val) {
+        Env::api->instance_set_field(Env::ctx, get_handle(), name.c_str(), val.get_handle());
+    }
 };
 
 class List : public Value {
@@ -85,6 +112,147 @@ public:
     
     Value get(size_t index) const {
         return Value(Env::api->list_get(Env::ctx, get_handle(), index));
+    }
+};
+
+class Dict : public Value {
+public:
+    Dict() : Value(Env::api->make_dict(Env::ctx)) {}
+    Dict(JC2_ValueHandle h) : Value(h) {}
+    
+    void set(const Value& key, const Value& val) {
+        Env::api->dict_set(Env::ctx, get_handle(), key.get_handle(), val.get_handle());
+    }
+    
+    Value get(const Value& key) const {
+        return Value(Env::api->dict_get(Env::ctx, get_handle(), key.get_handle()));
+    }
+    
+    bool has(const Value& key) const {
+        return Env::api->dict_has(Env::ctx, get_handle(), key.get_handle());
+    }
+    
+    size_t size() const {
+        return Env::api->dict_size(Env::ctx, get_handle());
+    }
+};
+
+class Complex : public Value {
+public:
+    Complex(double r, double i) : Value(Env::api->make_complex(Env::ctx, r, i)) {}
+    Complex(JC2_ValueHandle h) : Value(h) {}
+    
+    double real() const { return Env::api->complex_get_real(Env::ctx, get_handle()); }
+    double imag() const { return Env::api->complex_get_imag(Env::ctx, get_handle()); }
+};
+
+class Set : public Value {
+public:
+    Set() : Value(Env::api->make_set(Env::ctx)) {}
+    Set(JC2_ValueHandle h) : Value(h) {}
+    
+    void add(const Value& val) { Env::api->set_add(Env::ctx, get_handle(), val.get_handle()); }
+    void remove(const Value& val) { Env::api->set_remove(Env::ctx, get_handle(), val.get_handle()); }
+    bool has(const Value& val) const { return Env::api->set_has(Env::ctx, get_handle(), val.get_handle()); }
+    size_t size() const { return Env::api->set_size(Env::ctx, get_handle()); }
+};
+
+class RealMatrix : public Value {
+public:
+    RealMatrix(int rows, int cols) : Value(Env::api->make_real_matrix(Env::ctx, rows, cols)) {}
+    RealMatrix(JC2_ValueHandle h) : Value(h) {}
+    
+    double get(int row, int col) const {
+        return Env::api->real_matrix_get(Env::ctx, get_handle(), row, col);
+    }
+    
+    void set(int row, int col, double val) {
+        Env::api->real_matrix_set(Env::ctx, get_handle(), row, col, val);
+    }
+    
+    int rows() const {
+        return Env::api->real_matrix_rows(Env::ctx, get_handle());
+    }
+    
+    int cols() const {
+        return Env::api->real_matrix_cols(Env::ctx, get_handle());
+    }
+};
+
+class ComplexMatrix : public Value {
+public:
+    ComplexMatrix(int rows, int cols) : Value(Env::api->make_complex_matrix(Env::ctx, rows, cols)) {}
+    ComplexMatrix(JC2_ValueHandle h) : Value(h) {}
+    
+    double get_real(int row, int col) const { return Env::api->complex_matrix_get_real(Env::ctx, get_handle(), row, col); }
+    double get_imag(int row, int col) const { return Env::api->complex_matrix_get_imag(Env::ctx, get_handle(), row, col); }
+    void set(int row, int col, double r, double i) { Env::api->complex_matrix_set(Env::ctx, get_handle(), row, col, r, i); }
+    int rows() const { return Env::api->complex_matrix_rows(Env::ctx, get_handle()); }
+    int cols() const { return Env::api->complex_matrix_cols(Env::ctx, get_handle()); }
+};
+
+class StringMatrix : public Value {
+public:
+    StringMatrix(int rows, int cols) : Value(Env::api->make_string_matrix(Env::ctx, rows, cols)) {}
+    StringMatrix(JC2_ValueHandle h) : Value(h) {}
+    
+    std::string get(int row, int col) const {
+        size_t len = 0;
+        const char* s = Env::api->string_matrix_get(Env::ctx, get_handle(), row, col, &len);
+        return s ? std::string(s, len) : "";
+    }
+    void set(int row, int col, const std::string& str) {
+        Env::api->string_matrix_set(Env::ctx, get_handle(), row, col, str.c_str(), str.length());
+    }
+    int rows() const { return Env::api->string_matrix_rows(Env::ctx, get_handle()); }
+    int cols() const { return Env::api->string_matrix_cols(Env::ctx, get_handle()); }
+};
+
+class Function : public Value {
+public:
+    Function(JC2_ValueHandle h) : Value(h) {}
+    
+    Value call(const std::vector<Value>& args) const {
+        std::vector<JC2_ValueHandle> handles(args.size());
+        for (size_t i = 0; i < args.size(); ++i) {
+            handles[i] = args[i].get_handle();
+        }
+        return Value(Env::api->call_function(Env::ctx, get_handle(), static_cast<int>(handles.size()), handles.data()));
+    }
+};
+
+class BigInt : public Value {
+public:
+    BigInt(const std::string& str) : Value(Env::api->make_bigint(Env::ctx, str.c_str())) {}
+    BigInt(JC2_ValueHandle h) : Value(h) {}
+    
+    std::string to_string() const {
+        size_t len = 0;
+        const char* s = Env::api->bigint_to_string(Env::ctx, get_handle(), &len);
+        return s ? std::string(s, len) : "";
+    }
+};
+
+class Fraction : public Value {
+public:
+    Fraction(const Value& num, const Value& den) : Value(Env::api->make_fraction(Env::ctx, num.get_handle(), den.get_handle())) {}
+    Fraction(JC2_ValueHandle h) : Value(h) {}
+    
+    Value num() const { return Value(Env::api->fraction_get_num(Env::ctx, get_handle())); }
+    Value den() const { return Value(Env::api->fraction_get_den(Env::ctx, get_handle())); }
+};
+
+class Namespace : public Value {
+public:
+    Namespace(const std::string& name) : Value(Env::api->make_namespace(Env::ctx, name.c_str())) {}
+    Namespace(JC2_ValueHandle h) : Value(h) {}
+    
+    void set(const std::string& key, const Value& val) {
+        Env::api->namespace_set(Env::ctx, get_handle(), key.c_str(), val.get_handle());
+    }
+    
+    Value get(const std::string& key) const {
+        return Value(Env::api->namespace_get(Env::ctx, get_handle(), key.c_str()));
     }
 };
 

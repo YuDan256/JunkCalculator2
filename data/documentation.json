@@ -3372,6 +3372,21 @@
       "    t.setFlat(idx, val)   Write element by linear index",
       "    tensor.isTensor(val)  Returns true if val is a Tensor instance",
       "",
+      "  Matrix Interoperability",
+      "  ──────────────────────",
+      "    tensor.from_matrix(matrix, [requires_grad])",
+      "        Create a Tensor from a JC2 RealMatrix (2D).",
+      "        A = [1, 2; 3, 4]",
+      "        t = tensor.from_matrix(A)          → 2×2 Tensor",
+      "        t = tensor.from_matrix(A, true)    → with gradient tracking",
+      "",
+      "    tensor.to_matrix(tensor)",
+      "        Convert a 2D Tensor back to a JC2 RealMatrix.",
+      "        M = tensor.to_matrix(t)            → [1, 2; 3, 4]",
+      "",
+      "    This allows seamless bridging between JC2's native matrix algebra",
+      "    (det, inv, eig, lsolve, etc.) and the tensor autograd engine.",
+      "",
       "  Row & Column Operations (2D Tensors)",
       "  ──────────────────────",
       "    tensor.getrow(t, row)       Extract row as a 1D Tensor",
@@ -6487,6 +6502,21 @@
       "signature": "tensor.isTensor(val)",
       "desc": "Returns true if the value is a Tensor instance, false otherwise.",
       "examples": ["tensor.isTensor(t)"]
+    },
+    "tensor.from_matrix": {
+      "signature": "tensor.from_matrix(matrix, [requires_grad])",
+      "desc": "Creates a 2D Tensor from a JC2 RealMatrix. Optionally enables gradient tracking.",
+      "examples": ["tensor.from_matrix([1, 2; 3, 4])", "tensor.from_matrix(A, true)"]
+    },
+    "tensor.to_matrix": {
+      "signature": "tensor.to_matrix(tensor)",
+      "desc": "Converts a 2D Tensor back to a JC2 RealMatrix for use with native linear algebra functions (det, inv, eig, etc.).",
+      "examples": ["M = tensor.to_matrix(t)"]
+    },
+    "tensor.no_grad": {
+      "signature": "tensor.no_grad(fn)",
+      "desc": "Executes a function without tracking gradients.",
+      "examples": ["tensor.no_grad(() => { ... })"]
     },
     "tensor.getrow": {
       "signature": "tensor.getrow(t, row)",

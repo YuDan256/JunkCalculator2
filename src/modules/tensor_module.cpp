@@ -284,6 +284,41 @@ FUNC(vstack) {
     for (size_t i = 0; i < list.size(); ++i) tensors.push_back(*getTensor(list.get(i)));
     return wrapTensor(jc::tensor_vstack(tensors)).get_handle();
 }
+FUNC(from_matrix) {
+    jc2::Value matVal(argv[0]);
+    if (!matVal.is_real_matrix()) jc2::throw_error("TypeError: from_matrix expects a RealMatrix.");
+    jc2::RealMatrix mat(matVal.get_handle());
+    bool rg = (argc >= 2) ? jc2::Value(argv[1]).as_bool() : false;
+    
+    int rows = mat.rows();
+    int cols = mat.cols();
+    jc::Tensor t({rows, cols}, jc::DType::Float64, rg);
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            t.setFlat(i * cols + j, mat.get(i, j));
+        }
+    }
+    return wrapTensor(t).get_handle();
+}
+FUNC(to_matrix) {
+    auto t = getTensor(jc2::Value(argv[0]));
+    if (t->dim() != 2) jc2::throw_error("Tensor Error: to_matrix requires 2D tensor.");
+    int rows = t->shape[0];
+    int cols = t->shape[1];
+    jc2::RealMatrix mat(rows, cols);
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            mat.set(i, j, t->getFlat(i * cols + j));
+        }
+    }
+    return mat.get_handle();
+}
+FUNC(no_grad) {
+    jc2::Value fnVal(argv[0]);
+    if (!fnVal.is_function()) jc2::throw_error("TypeError: no_grad expects a function.");
+    jc2::Function fn(fnVal.get_handle());
+    return fn.call({}).get_handle();
+}
 
 int jc2_init(jc2::Module& mod) {
     g_tensorClass = new jc2::Class("Tensor");
@@ -369,6 +404,9 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function("swaprows", global_swaprows, 3, 3, false);
     mod.register_function("hstack", global_hstack, 1, 1, false);
     mod.register_function("vstack", global_vstack, 1, 1, false);
+    mod.register_function("from_matrix", global_from_matrix, 1, 2, false);
+    mod.register_function("to_matrix", global_to_matrix, 1, 1, false);
+    mod.register_function("no_grad", global_no_grad, 1, 1, false);
 
     return 0;
 }

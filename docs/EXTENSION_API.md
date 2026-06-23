@@ -66,6 +66,36 @@ JC2_EXTENSION_INIT
 *   **值提取**：
     *   `as_bool()`, `as_int()`, `as_double()`, `as_string()`
 
+### 高级内置类型 (`Complex`, `List`, `Dict`, `Set`, `Matrix`, `Function`)
+除了基本类型，C++ 包装层还提供了对 JC2 高级内置类型的直接操作支持：
+
+*   **`jc2::Complex`**：对应 JC2 的复数。支持 `real()`, `imag()`。
+*   **`jc2::List`**：对应 JC2 的 `list`。支持 `push_back(val)`, `get(index)`, `size()`。
+*   **`jc2::Dict`**：对应 JC2 的 `dict`。支持 `set(key, val)`, `get(key)`, `has(key)`, `size()`。
+*   **`jc2::Set`**：对应 JC2 的 `set`。支持 `add(val)`, `remove(val)`, `has(val)`, `size()`。
+*   **`jc2::RealMatrix`**：对应 JC2 的 `realmatrix`。支持 `get(row, col)`, `set(row, col, val)`, `rows()`, `cols()`。
+*   **`jc2::ComplexMatrix`**：对应 JC2 的 `complexmatrix`。支持 `get_real(row, col)`, `get_imag(row, col)`, `set(row, col, r, i)`, `rows()`, `cols()`。
+*   **`jc2::StringMatrix`**：对应 JC2 的 `stringmatrix`。支持 `get(row, col)`, `set(row, col, str)`, `rows()`, `cols()`。
+*   **`jc2::Function`**：对应 JC2 的函数闭包。支持 `call(args_vector)`，允许你从 C++ 侧直接回调 JC2 脚本中的函数！
+
+```cpp
+// 示例：从 C++ 调用 JC2 传入的回调函数
+JC2_ValueHandle map_array(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    jc2::RealMatrix mat(argv[0]);
+    jc2::Function callback(argv[1]);
+    
+    jc2::RealMatrix result(mat.rows(), mat.cols());
+    for (int i = 0; i < mat.rows(); ++i) {
+        for (int j = 0; j < mat.cols(); ++j) {
+            // 调用 JC2 脚本函数
+            jc2::Value ret = callback.call({ jc2::Value(mat.get(i, j)) });
+            result.set(i, j, ret.as_double());
+        }
+    }
+    return result.get_handle();
+}
+```
+
 ### `jc2::Module`
 用于在模块加载时向 JC2 引擎注册内容。
 
@@ -76,7 +106,31 @@ JC2_EXTENSION_INIT
 
 ## 4. 面向对象与原生指针绑定 (OOP & Native Data)
 
-你可以创建 JC2 类，并将 C++ 的原生对象（如文件句柄、网络套接字、图形窗口等）绑定到 JC2 的实例上。当 JC2 的实例被垃圾回收时，会自动调用你提供的 C++ 析构函数。
+你可以创建 JC2 类，设置继承关系，读写实例字段，并将 C++ 的原生对象（如文件句柄、网络套接字、图形窗口等）绑定到 JC2 的实例上。当 JC2 的实例被垃圾回收时，会自动调用你提供的 C++ 析构函数。
+
+### 类继承与字段操作示例
+
+```cpp
+// 1. 创建父类和子类
+jc2::Class animalClass("Animal");
+jc2::Class dogClass("Dog");
+
+// 2. 设置继承关系 (Dog extends Animal)
+dogClass.set_parent(animalClass);
+
+// 3. 在 C++ 中操作实例字段
+JC2_ValueHandle dog_init(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    jc2::Instance self(argv[0]);
+    
+    // 动态设置 JC2 实例的字段
+    self.set("legs", jc2::Value(4));
+    self.set("sound", jc2::Value("Woof!"));
+    
+    return jc2::Value().get_handle();
+}
+```
+
+### 原生指针绑定示例
 
 ```cpp
 #include "jc2_extension_cpp.h"

@@ -78,6 +78,10 @@ public:
         Env::api->register_help(Env::ctx, topic.c_str(), help_text.c_str());
     }
 
+    void register_function_help(const std::string& name, const std::string& signature, const std::string& desc, const std::string& example = "") {
+        Env::api->register_function_help(Env::ctx, name.c_str(), signature.c_str(), desc.c_str(), example.c_str());
+    }
+
     void register_function(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 255, bool has_rest = true, void* user_data = nullptr) {
         Env::api->register_function(Env::ctx, mod, name.c_str(), fn, min_arity, max_arity, has_rest, user_data);
     }

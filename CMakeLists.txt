@@ -90,12 +90,14 @@ endif()
 if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
     target_compile_options(JunkCalculator2 PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+    target_compile_options(image PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     
     # Enable Whole Program Optimization (LTCG) in Release mode for maximum speed
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi /GL")
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
 else()
     target_compile_options(JunkCalculator2 PRIVATE -Wall -Wextra -Werror -O3)
+    target_compile_options(image PRIVATE -Wall -Wextra -Werror -O3)
 endif()
 
 # ==============================================================================

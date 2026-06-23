@@ -103,6 +103,10 @@ static void host_register_help(JC2_VMContext, const char* topic, const char* hel
     jc::DynamicHelp[topic] = help_text;
 }
 
+static void host_register_function_help(JC2_VMContext, const char* name, const char* signature, const char* desc, const char* example) {
+    jc::HelpRouter::addFunctionHelp(name, signature, desc, example);
+}
+
 static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data) {
     ModuleLoadContext* mctx = static_cast<ModuleLoadContext*>(mod);
     
@@ -178,6 +182,7 @@ static const JC2_HostAPI host_api = {
     host_set_native_data,
     host_get_native_data,
     host_register_help,
+    host_register_function_help,
     host_register_function,
     host_register_int,
     host_register_double,

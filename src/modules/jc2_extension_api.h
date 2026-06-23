@@ -85,6 +85,7 @@ typedef struct JC2_HostAPI {
     
     /* --- 模块注册 (Module Registration) --- */
     void (*register_help)(JC2_VMContext ctx, const char* topic, const char* help_text);
+    void (*register_function_help)(JC2_VMContext ctx, const char* name, const char* signature, const char* desc, const char* example);
     void (*register_function)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data);
     void (*register_int)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, int32_t val);
     void (*register_double)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, double val);

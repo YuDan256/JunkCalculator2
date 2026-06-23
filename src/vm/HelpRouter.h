@@ -429,6 +429,34 @@ namespace jc {
         static void printMainHelp() {
             printHelpTopic("main");
         }
+
+        static void addFunctionHelp(const std::string& name, const std::string& sig, const std::string& desc, const std::string& ex) {
+            init();
+            if (helpAst.isNull()) {
+                helpAst.type = NativeJson::N_OBJECT;
+            }
+            if (helpAst.obj.find("functions") == helpAst.obj.end()) {
+                NativeJson funcs; funcs.type = NativeJson::N_OBJECT;
+                helpAst.obj["functions"] = funcs;
+            }
+            NativeJson fnNode;
+            fnNode.type = NativeJson::N_OBJECT;
+            
+            NativeJson sigNode; sigNode.type = NativeJson::N_STRING; sigNode.str = sig;
+            fnNode.obj["signature"] = sigNode;
+            
+            NativeJson descNode; descNode.type = NativeJson::N_STRING; descNode.str = desc;
+            fnNode.obj["desc"] = descNode;
+            
+            if (!ex.empty()) {
+                NativeJson exArr; exArr.type = NativeJson::N_ARRAY;
+                NativeJson exNode; exNode.type = NativeJson::N_STRING; exNode.str = ex;
+                exArr.arr.push_back(exNode);
+                fnNode.obj["examples"] = exArr;
+            }
+            
+            helpAst.obj["functions"].obj[name] = fnNode;
+        }
     };
 } // namespace jc
 

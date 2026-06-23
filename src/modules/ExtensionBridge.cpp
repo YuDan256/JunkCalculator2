@@ -604,6 +604,7 @@ static const JC2_HostAPI host_api = {
     host_dict_has,
     host_dict_size,
     host_is_dict,
+    host_dict_keys,
     host_make_real_matrix,
     host_real_matrix_get,
     host_real_matrix_set,
@@ -645,8 +646,7 @@ static const JC2_HostAPI host_api = {
     host_set_class_parent,
     host_get_class,
     host_instance_get_field,
-    host_instance_set_field,
-    host_dict_keys
+    host_instance_set_field
 };
 
 const JC2_HostAPI* get_host_api() {

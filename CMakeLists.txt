@@ -148,9 +148,8 @@ if(MSVC)
     target_compile_options(window PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     
     # Enable Whole Program Optimization (LTCG) in Release mode for maximum speed
-    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi /GL")
-    set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
-    set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /LTCG")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi")
+    set_target_properties(JunkCalculator2 image tensor prob bytes ffi socket json latex window PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 else()
     target_compile_options(JunkCalculator2 PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(image PRIVATE -Wall -Wextra -Werror -O3)

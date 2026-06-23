@@ -45,11 +45,10 @@ set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/Compiler.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
-    "src/modules/image/Image.h" "src/modules/Probability.h" "src/modules/Module.h"
+    "src/modules/image/Image.h" "src/modules/Module.h"
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/VM.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/modules/json_module.h"
-    "src/modules/prob_module.h"
     "src/modules/bytes_module.h" 
     "src/modules/socket_module.h"
     "src/modules/window_module.h"
@@ -82,6 +81,11 @@ add_library(tensor SHARED "src/modules/tensor/tensor_module.cpp")
 target_include_directories(tensor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(tensor PROPERTIES PREFIX "") # Output tensor.dll instead of libtensor.dll
 
+# ★ Build Prob Module as a standalone DLL
+add_library(prob SHARED "src/modules/prob/prob_module.cpp")
+target_include_directories(prob PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(prob PROPERTIES PREFIX "") # Output prob.dll instead of libprob.dll
+
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
@@ -96,6 +100,7 @@ if(MSVC)
     target_compile_options(JunkCalculator2 PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(image PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(tensor PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+    target_compile_options(prob PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     
     # Enable Whole Program Optimization (LTCG) in Release mode for maximum speed
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi /GL")
@@ -104,6 +109,7 @@ else()
     target_compile_options(JunkCalculator2 PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(image PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(tensor PRIVATE -Wall -Wextra -Werror -O3)
+    target_compile_options(prob PRIVATE -Wall -Wextra -Werror -O3)
 endif()
 
 # ==============================================================================
@@ -151,6 +157,7 @@ add_dependencies(SyncResources JunkCalculator2)
 install(TARGETS JunkCalculator2 DESTINATION bin)
 install(TARGETS image DESTINATION bin)
 install(TARGETS tensor DESTINATION bin)
+install(TARGETS prob DESTINATION bin)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

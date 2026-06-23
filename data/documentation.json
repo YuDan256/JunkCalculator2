@@ -1088,76 +1088,6 @@
       "    regress(X, Y)       Linear regression Y = a + bX",
       "                        Automatically prints the model equation & returns @[a, b]."
     ],
-    "prob": [
-      "═══ Probability Distributions & Hypothesis Tests — Native Module ═══",
-      "",
-      "  Requires: import \"prob\"",
-      "",
-      "  Distributions are first-class objects backed by native C++ code.",
-      "  After importing, Distribution objects are class instances",
-      "  (type → \"Distribution\").",
-      "",
-      "  Creating Distributions",
-      "  ──────────────────────",
-      "    import prob",
-      "",
-      "    CONTINUOUS:",
-      "      prob.Normal()              Standard normal N(0,1)",
-      "      prob.Normal(mu, sigma)     General normal N(μ, σ²)",
-      "      prob.TDist(df)             Student's t-distribution",
-      "      prob.Chi2(df)              Chi-squared",
-      "      prob.FDist(d1, d2)         F-distribution",
-      "      prob.ExpDist(lambda)       Exponential",
-      "      prob.GammaDist(shape,rate) Gamma",
-      "      prob.BetaDist(a, b)        Beta",
-      "      prob.Uniform(a, b)         Continuous uniform on [a,b)",
-      "",
-      "    DISCRETE:",
-      "      prob.Binom(n, p)           Binomial",
-      "      prob.Poisson(lambda)       Poisson",
-      "      prob.Geom(p)               Geometric (# trials until first success)",
-      "",
-      "  Distribution Methods (Object-Oriented API)",
-      "  ──────────────────────",
-      "    D.pdf(x)              Probability density / mass",
-      "    D.cdf(x)              Cumulative distribution P(X ≤ x)",
-      "    D.quantile(p)         Inverse CDF: find x such that P(X ≤ x) = p",
-      "    D.mean()              Distribution mean",
-      "    D.var()               Distribution variance",
-      "    D.std()               Distribution std dev",
-      "    D.sample(n)           Draw n random samples → returns a row array",
-      "",
-      "    * Global variants like distInfo(D), pdf(D, x), and mean(D) are also ",
-      "      supported for backward compatibility and functional piping.",
-      "",
-      "  Special Math Functions (available after import prob)",
-      "  ──────────────────────",
-      "    prob.gamma(x)              Gamma function Γ(x)",
-      "    prob.lgamma(x)             Log-gamma ln(Γ(x))",
-      "    prob.betaFn(a, b)          Beta function B(a,b) = Γ(a)Γ(b)/Γ(a+b)",
-      "    prob.erf(x)                Error function",
-      "    prob.erfc(x)               Complementary error function 1-erf(x)",
-      "",
-      "  Hypothesis Tests (returns @[statistic, df, p-value])",
-      "  ──────────────────────",
-      "    prob.ttest(X)              One-sample t-test:  H0: μ = 0",
-      "    prob.ttest(X, mu0)         One-sample t-test:  H0: μ = μ0",
-      "    prob.ttest2(X, Y)          Welch two-sample:   H0: μ_X = μ_Y",
-      "    prob.ttestP(X, Y)          Paired t-test:      H0: mean(X-Y) = 0",
-      "    prob.chi2test(obs, exp)    Chi-squared goodness-of-fit",
-      "",
-      "    Significance levels: *** (p<0.001)  ** (p<0.01)  * (p<0.05)  n.s.",
-      "",
-      "  Example",
-      "  ──────────────────────",
-      "    import prob",
-      "    d = prob.Normal(100, 15)",
-      "    d.cdf(130)                   → 0.9772  (97.72%)",
-      "    d.quantile(0.95)             → 124.67",
-      "    d.mean()                     → 100",
-      "    s = d.sample(1000)",
-      "    mean(s)                      ≈ 100"
-    ],
     "int": [
       "═══ Arbitrary-Precision Integers & Number Theory ═══",
       "",
@@ -4665,35 +4595,6 @@
         "win.setCursorPos(400, 300)"
       ]
     },
-    "pdf": {
-      "signature": "dist.pdf(x)",
-      "desc": "Returns the Probability Density Function (or PMF) evaluated at x.",
-      "aliases": ["pmf"],
-      "examples": [
-        "prob.Normal(0, 1).pdf(0)"
-      ]
-    },
-    "cdf": {
-      "signature": "dist.cdf(x)",
-      "desc": "Returns the Cumulative Distribution Function evaluated at x.",
-      "examples": [
-        "prob.Normal(0, 1).cdf(1.96)"
-      ]
-    },
-    "quantile": {
-      "signature": "dist.quantile(p)",
-      "desc": "Returns the inverse CDF (quantile) for probability p (0 < p < 1).",
-      "examples": [
-        "prob.Normal(0, 1).quantile(0.95)"
-      ]
-    },
-    "sample": {
-      "signature": "dist.sample(n)",
-      "desc": "Draws n random samples from the distribution and returns them as a row vector.",
-      "examples": [
-        "prob.Normal(100, 15).sample(10)"
-      ]
-    },
     "add": {
       "signature": "add(collection, val) / dict.add(key, val)",
       "desc": "Adds an element to a set or list, or a key-value pair to a dict.",
@@ -5489,106 +5390,6 @@
       "desc": "Returns true if x is a set.",
       "examples": ["isset(@{1})"]
     },
-    "prob.Normal": {
-      "signature": "prob.Normal([mu], [sigma])",
-      "desc": "Constructs a Normal distribution N(mu, sigma^2).",
-      "examples": ["prob.Normal(0, 1)"]
-    },
-    "prob.TDist": {
-      "signature": "prob.TDist(df)",
-      "desc": "Constructs a Student's t-distribution.",
-      "examples": ["prob.TDist(10)"]
-    },
-    "prob.Chi2": {
-      "signature": "prob.Chi2(df)",
-      "desc": "Constructs a Chi-squared distribution.",
-      "examples": ["prob.Chi2(5)"]
-    },
-    "prob.FDist": {
-      "signature": "prob.FDist(d1, d2)",
-      "desc": "Constructs an F-distribution.",
-      "examples": ["prob.FDist(5, 10)"]
-    },
-    "prob.ExpDist": {
-      "signature": "prob.ExpDist(lambda)",
-      "desc": "Constructs an Exponential distribution.",
-      "examples": ["prob.ExpDist(1.5)"]
-    },
-    "prob.GammaDist": {
-      "signature": "prob.GammaDist(shape, rate)",
-      "desc": "Constructs a Gamma distribution.",
-      "examples": ["prob.GammaDist(2, 1)"]
-    },
-    "prob.BetaDist": {
-      "signature": "prob.BetaDist(a, b)",
-      "desc": "Constructs a Beta distribution.",
-      "examples": ["prob.BetaDist(2, 5)"]
-    },
-    "prob.Uniform": {
-      "signature": "prob.Uniform(a, b)",
-      "desc": "Constructs a Continuous Uniform distribution on [a, b).",
-      "examples": ["prob.Uniform(0, 10)"]
-    },
-    "prob.Binom": {
-      "signature": "prob.Binom(n, p)",
-      "desc": "Constructs a Binomial distribution.",
-      "examples": ["prob.Binom(10, 0.5)"]
-    },
-    "prob.Poisson": {
-      "signature": "prob.Poisson(lambda)",
-      "desc": "Constructs a Poisson distribution.",
-      "examples": ["prob.Poisson(3)"]
-    },
-    "prob.Geom": {
-      "signature": "prob.Geom(p)",
-      "desc": "Constructs a Geometric distribution.",
-      "examples": ["prob.Geom(0.5)"]
-    },
-    "prob.gamma": {
-      "signature": "prob.gamma(x)",
-      "desc": "Returns the Gamma function evaluated at x.",
-      "examples": ["prob.gamma(5)"]
-    },
-    "prob.lgamma": {
-      "signature": "prob.lgamma(x)",
-      "desc": "Returns the natural logarithm of the absolute value of the Gamma function.",
-      "examples": ["prob.lgamma(5)"]
-    },
-    "prob.betaFn": {
-      "signature": "prob.betaFn(a, b)",
-      "desc": "Returns the Beta function evaluated at a and b.",
-      "examples": ["prob.betaFn(2, 5)"]
-    },
-    "prob.erfc": {
-      "signature": "prob.erfc(x)",
-      "desc": "Returns the complementary error function of x.",
-      "examples": ["prob.erfc(1)"]
-    },
-    "prob.ttest": {
-      "signature": "prob.ttest(X, [mu0])",
-      "desc": "Performs a one-sample t-test.",
-      "examples": ["prob.ttest(data, 0)"]
-    },
-    "prob.ttest2": {
-      "signature": "prob.ttest2(X, Y)",
-      "desc": "Performs a Welch two-sample t-test.",
-      "examples": ["prob.ttest2(group1, group2)"]
-    },
-    "prob.ttestP": {
-      "signature": "prob.ttestP(X, Y)",
-      "desc": "Performs a paired t-test.",
-      "examples": ["prob.ttestP(pre, post)"]
-    },
-    "prob.chi2test": {
-      "signature": "prob.chi2test(obs, exp)",
-      "desc": "Performs a Chi-squared goodness-of-fit test.",
-      "examples": ["prob.chi2test(observed, expected)"]
-    },
-    "prob.distInfo": {
-      "signature": "prob.distInfo(dist)",
-      "desc": "Prints information about a Distribution.",
-      "examples": ["prob.distInfo(prob.Normal(0, 1))"]
-    },
     "bytes.alloc": {
       "signature": "bytes.alloc(size)",
       "desc": "Allocates a zeroed byte buffer of the specified size.",
@@ -6008,21 +5809,6 @@
       "signature": "toSet(v)",
       "desc": "Converts a list, array, or string into a Set, removing duplicates.",
       "examples": ["toSet([3, 1, 4, 1, 5])", "toSet(\"hello\")"]
-    },
-    "prob.dmean": {
-      "signature": "prob.dmean(dist)",
-      "desc": "Returns the theoretical mean of a Distribution (global function variant).",
-      "examples": ["prob.dmean(prob.Normal(0, 1))"]
-    },
-    "prob.dvar": {
-      "signature": "prob.dvar(dist)",
-      "desc": "Returns the theoretical variance of a Distribution (global function variant).",
-      "examples": ["prob.dvar(prob.Normal(0, 1))"]
-    },
-    "prob.dstd": {
-      "signature": "prob.dstd(dist)",
-      "desc": "Returns the theoretical standard deviation of a Distribution (global function variant).",
-      "examples": ["prob.dstd(prob.Normal(0, 1))"]
     },
     "init": {
       "signature": "init(...)",

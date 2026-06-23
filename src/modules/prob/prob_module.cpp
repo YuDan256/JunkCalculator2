@@ -21,16 +21,16 @@ static jc2::Value makeDist(jc::Distribution d) {
     return inst;
 }
 
-#define METHOD(name) JC2_ValueHandle dist_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
+#define METHOD(name) JC2_ValueHandle dist_##name(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
 #define GET_SELF auto d = getDist(jc2::Value(argv[0]))
 
 METHOD(pdf) { GET_SELF; return jc2::Value(d->pdf(jc2::Value(argv[1]).as_double())).get_handle(); }
 METHOD(pmf) { GET_SELF; return jc2::Value(d->pdf(jc2::Value(argv[1]).as_double())).get_handle(); }
 METHOD(cdf) { GET_SELF; return jc2::Value(d->cdf(jc2::Value(argv[1]).as_double())).get_handle(); }
 METHOD(quantile) { GET_SELF; return jc2::Value(d->quantile(jc2::Value(argv[1]).as_double())).get_handle(); }
-METHOD(mean) { (void)argc; GET_SELF; return jc2::Value(d->distMean()).get_handle(); }
-METHOD(var) { (void)argc; GET_SELF; return jc2::Value(d->distVar()).get_handle(); }
-METHOD(std_dev) { (void)argc; GET_SELF; return jc2::Value(std::sqrt(d->distVar())).get_handle(); }
+METHOD(mean) { GET_SELF; return jc2::Value(d->distMean()).get_handle(); }
+METHOD(var) { GET_SELF; return jc2::Value(d->distVar()).get_handle(); }
+METHOD(std_dev) { GET_SELF; return jc2::Value(std::sqrt(d->distVar())).get_handle(); }
 METHOD(sample) {
     GET_SELF;
     int n = static_cast<int>(std::round(jc2::Value(argv[1]).as_double()));

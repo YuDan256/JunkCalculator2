@@ -9,8 +9,15 @@
 #include "../frontend/Utf8.h"
 #include "../memory/GcHeap.h"
 #include "EngineInterrupt.h"
+#include "../modules/ExtensionBridge.h"
 #include <iostream>
 #include <cmath>
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 // ★ 开启 VM 级指令与栈追踪日志
 #define JC2_DEBUG_VM_TRACE false
@@ -2285,6 +2292,15 @@ namespace jc {
                         if (!std::filesystem::is_regular_file(resolved)) {
                             resolved = helpers::safeResolvePath(name + ".jc2");
                         }
+#if defined(_WIN32)
+                        if (!std::filesystem::is_regular_file(resolved)) {
+                            resolved = helpers::safeResolvePath(name + ".dll");
+                        }
+#else
+                        if (!std::filesystem::is_regular_file(resolved)) {
+                            resolved = helpers::safeResolvePath(name + ".so");
+                        }
+#endif
 
                         if (!std::filesystem::is_regular_file(resolved)) {
                             throw std::runtime_error("VM Error: Cannot find module '" + name + "'.");
@@ -2292,7 +2308,65 @@ namespace jc {
 
                         importedModules.insert(name);
 
-                        std::ifstream file(resolved);
+                        std::string ext = std::filesystem::path(resolved).extension().string();
+                        if (ext == ".dll" || ext == ".so") {
+#if defined(_WIN32)
+                            HMODULE handle = LoadLibraryA(resolved.c_str());
+                            if (!handle) throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "'.");
+                            auto init_fn = (JC2_ExtensionInitFunc)GetProcAddress(handle, "jc2_extension_init");
+#else
+                            void* handle = dlopen(resolved.c_str(), RTLD_NOW);
+                            if (!handle) throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "': " + dlerror());
+                            auto init_fn = (JC2_ExtensionInitFunc)dlsym(handle, "jc2_extension_init");
+#endif
+                            if (!init_fn) {
+                                throw std::runtime_error("VM Error: Dynamic library '" + resolved + "' does not export 'jc2_extension_init'.");
+                            }
+
+                            std::unordered_map<std::string, Value> tempGlobals;
+                            std::unordered_map<std::string, NativeCallable> tempNatives;
+                            std::unordered_map<std::string, std::set<int>> tempArity;
+
+                            ModuleLoadContext mctx = { &tempGlobals, &tempNatives, &tempArity };
+
+                            int res = init_fn(this, &mctx, get_host_api());
+                            if (res != 0) {
+                                throw std::runtime_error("VM Error: Extension initialization failed with code " + std::to_string(res));
+                            }
+
+                            for (const auto& kv : tempGlobals) {
+                                auto uv = GcHeap::get().allocate<ObjUpVal>();
+                                uv->closed = kv.second;
+                                uv->location = &uv->closed;
+                                ns->fields[kv.first] = { uv, true };
+                            }
+
+                            for (const auto& kv : tempNatives) {
+                                auto closure = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, kv.first, nullptr
+                                );
+                                closure->nativeFn = std::make_any<NativeCallable>(kv.second);
+                                
+                                auto ait = tempArity.find(kv.first);
+                                if (ait != tempArity.end() && !ait->second.empty()) {
+                                    int maxA = *ait->second.rbegin();
+                                    int minA = *ait->second.begin();
+                                    for (int j = 0; j < maxA; ++j) {
+                                        closure->paramNames.push_back("_" + std::to_string(j));
+                                        closure->isRef.push_back(false);
+                                    }
+                                    for (int j = minA; j < maxA; ++j) {
+                                        closure->defaultValues.push_back(Value::none());
+                                    }
+                                }
+
+                                auto uv = GcHeap::get().allocate<ObjUpVal>();
+                                uv->closed = Value(closure);
+                                uv->location = &uv->closed;
+                                ns->fields[kv.first] = { uv, true };
+                            }
+                        } else {
+                            std::ifstream file(resolved);
                         if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read module script.");
                         std::string code, line;
                         while (std::getline(file, line)) code += line + "\n";
@@ -2337,6 +2411,7 @@ namespace jc {
                             throw std::runtime_error("VM Error: Module script must not use top-level 'return'.");
                         }
                         ns = static_cast<ObjNamespace*>(nsVal.asObj());
+                        }
                     }
 
                     loadedModules[name] = Value(ns);

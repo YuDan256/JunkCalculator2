@@ -150,6 +150,8 @@ namespace jc {
         ObjClass* classDef = nullptr;
         ObjDict* fields = nullptr;
         std::any nativeData;
+        void* c_nativeData = nullptr;
+        void (*c_nativeDtor)(void*) = nullptr;
         bool is_frozen = false;
         mutable bool is_hashable_cached = false;
         mutable bool has_cached_hash = false;
@@ -157,7 +159,14 @@ namespace jc {
         ObjInstance() { type = ObjType::INSTANCE; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Instance."); }
         void clear() override { checkModify(); clearTotal(); }
-        void clearTotal() override { nativeData.reset(); }
+        void clearTotal() override { 
+            nativeData.reset(); 
+            if (c_nativeDtor && c_nativeData) {
+                c_nativeDtor(c_nativeData);
+            }
+            c_nativeData = nullptr;
+            c_nativeDtor = nullptr;
+        }
     };
     struct ObjSuper : public Obj {
         ObjInstance* instance = nullptr;

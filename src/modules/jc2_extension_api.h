@@ -20,7 +20,11 @@ extern "C" {
  * 1. 不透明句柄 (Opaque Handles)
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
-typedef void* JC2_ValueHandle;
+#define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
+#define JC2_EXT_VERSION 1
+
+/* 完美契合 JC2 的 NaN-Boxing (8 bytes)，无需堆分配即可传递值 */
+typedef uint64_t JC2_ValueHandle;
 typedef void* JC2_ModuleHandle;
 typedef void* JC2_VMContext;
 
@@ -43,6 +47,9 @@ typedef void (*JC2_NativeDestructor)(void* ptr);
  * EXE 传递给 DLL 的函数指针集合，DLL 只能通过这些指针操作 JC2 引擎
  * ========================================================================= */
 typedef struct JC2_HostAPI {
+    uint32_t magic;
+    uint32_t version;
+
     /* --- 值创建 (Value Creation) --- */
     JC2_ValueHandle (*make_none)(JC2_VMContext ctx);
     JC2_ValueHandle (*make_bool)(JC2_VMContext ctx, bool b);

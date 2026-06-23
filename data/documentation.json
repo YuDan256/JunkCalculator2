@@ -3022,56 +3022,6 @@
       "      multiplication just like a human reading a paper. ",
       "      Expressions like \"2i\", \"xy\", and \"2 \\sin(x)\" act identically to ",
       "      \"2*i\", \"x*y\", and \"2 * \\sin(x)\"."
-    ],
-    "ffi": [
-      "═══ Foreign Function Interface (FFI) — Native Module ═══",
-      "",
-      "  Requires: import ffi",
-      "",
-      "  The `ffi` module provides a zero-dependency Foreign Function Interface",
-      "  allowing JC2 to dynamically load C/C++ shared libraries (.dll, .so, .dylib)",
-      "  and call their exported functions directly from scripts.",
-      "",
-      "  Loading Libraries",
-      "  ──────────────────────",
-      "    libc = ffi.load(\"msvcrt.dll\")    // Windows C standard library",
-      "    libm = ffi.load(\"libm.so.6\")     // Linux math library",
-      "",
-      "  Binding Functions",
-      "  ──────────────────────",
-      "    func = libc.bind(\"function_name\", \"return_type\", [\"arg1_type\", ...])",
-      "",
-      "    Supported Types:",
-      "      \"i32\", \"u32\", \"i64\", \"u64\" : Integers (passed/returned as 64-bit internally)",
-      "      \"f64\"                      : 64-bit double precision float",
-      "      \"string\"                   : Null-terminated C string (const char*)",
-      "      \"pointer\"                  : Raw memory address (passed as int)",
-      "      \"void\"                     : No return value (returns none)",
-      "",
-      "    * Note: \"f32\" (float) is intentionally unsupported to prevent binary bloat.",
-      "      Maximum supported arguments per function is 6.",
-      "",
-      "  Examples",
-      "  ──────────────────────",
-      "    import ffi",
-      "    libc = ffi.load(\"msvcrt.dll\")",
-      "",
-      "    // int puts(const char *str);",
-      "    puts = libc.bind(\"puts\", \"i32\", [\"string\"])",
-      "    puts(\"Hello from C!\")",
-      "",
-      "    // double pow(double x, double y);",
-      "    c_pow = libc.bind(\"pow\", \"f64\", [\"f64\", \"f64\"])",
-      "    print(c_pow(2.0, 10.0))  // 1024.0",
-      "",
-      "  Memory & Pointers",
-      "  ──────────────────────",
-      "    Use the `buffer` module to allocate raw memory and pass it as a \"pointer\".",
-      "    import buffer",
-      "    time = libc.bind(\"time\", \"i64\", [\"pointer\"])",
-      "    ptr = buffer.alloc(8)",
-      "    time(ptr)              // ptr is automatically passed as void*",
-      "    print(ptr.readI64())"
     ]
   },
   "functions": {
@@ -5851,16 +5801,6 @@
       "signature": "__call__(...)",
       "desc": "Dunder method: Allows an instance to be called like a function.",
       "examples": ["__call__(x) = self.multiplier * x"]
-    },
-    "ffi.load": {
-      "signature": "ffi.load(path)",
-      "desc": "Loads a dynamic shared library (.dll, .so, .dylib) and returns a library dictionary containing the `bind` method.",
-      "examples": ["libc = ffi.load(\"msvcrt.dll\")"]
-    },
-    "bind": {
-      "signature": "lib.bind(name, retType, argTypes)",
-      "desc": "Binds a C function from a loaded library. argTypes can be a list or stringmatrix of type names.",
-      "examples": ["puts = libc.bind(\"puts\", \"i32\", [\"string\"])"]
     }
   },
   "keywords": {

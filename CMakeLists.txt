@@ -52,7 +52,6 @@ set(JC2_HEADERS
     "src/modules/socket_module.h"
     "src/modules/window_module.h"
     "src/modules/latex_module.h"
-    "src/modules/ffi_module.h"
     "src/modules/ExtensionBridge.h"
     "src/modules/jc2_extension_api.h"
     "src/modules/jc2_extension_cpp.h"
@@ -60,7 +59,6 @@ set(JC2_HEADERS
 
 set(JC2_SOURCES
     "src/modules/ExtensionBridge.cpp"
-    "src/modules/ffi_module.cpp"
     "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/Compiler.cpp"
     "src/vm/VM.cpp" "src/vm/BuiltinRegistry.cpp" "src/main.cpp"
     "src/cas/Symbolic.cpp" "src/cas/Integration.cpp" "src/cas/Factorization.cpp" "src/cas/Groebner.cpp"
@@ -90,6 +88,11 @@ add_library(bytes SHARED "src/modules/bytes/bytes_module.cpp")
 target_include_directories(bytes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(bytes PROPERTIES PREFIX "") # Output bytes.dll instead of libbytes.dll
 
+# ★ Build FFI Module as a standalone DLL
+add_library(ffi SHARED "src/modules/ffi/ffi_module.cpp")
+target_include_directories(ffi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(ffi PROPERTIES PREFIX "") # Output ffi.dll instead of libffi.dll
+
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
@@ -106,6 +109,7 @@ if(MSVC)
     target_compile_options(tensor PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(prob PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     target_compile_options(bytes PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+    target_compile_options(ffi PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     
     # Enable Whole Program Optimization (LTCG) in Release mode for maximum speed
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Oi /GL")
@@ -116,6 +120,7 @@ else()
     target_compile_options(tensor PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(prob PRIVATE -Wall -Wextra -Werror -O3)
     target_compile_options(bytes PRIVATE -Wall -Wextra -Werror -O3)
+    target_compile_options(ffi PRIVATE -Wall -Wextra -Werror -O3)
 endif()
 
 # ==============================================================================
@@ -165,6 +170,7 @@ install(TARGETS image DESTINATION bin)
 install(TARGETS tensor DESTINATION bin)
 install(TARGETS prob DESTINATION bin)
 install(TARGETS bytes DESTINATION bin)
+install(TARGETS ffi DESTINATION bin)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

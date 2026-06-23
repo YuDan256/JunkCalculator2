@@ -21,7 +21,6 @@
 #include "modules/json_module.h"
 #include "modules/window_module.h"
 #include "modules/latex_module.h"
-#include "modules/ffi_module.h"
 #include <csignal>
 #include <atomic>
 #include <random>

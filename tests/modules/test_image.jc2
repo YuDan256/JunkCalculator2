@@ -1,0 +1,39 @@
+import image
+
+test_image_basic() = {
+    im = image.img(100, 200, "black")
+    assert(im.width() == 100, "width failed")
+    assert(im.height() == 200, "height failed")
+    
+    im.setPixel(10, 10, "red")
+    assert(im.getPixel(10, 10) == "#FF0000", "setPixel/getPixel failed")
+    
+    im.clear("white")
+    assert(im.getPixel(10, 10) == "#FFFFFF", "clear failed")
+}
+test_image_basic()
+
+test_image_draw() = {
+    im = image.img(100, 100, "black")
+    im.line(0, 0, 10, 10, "red")
+    im.rect(20, 20, 10, 10, "blue")
+    im.fillRect(40, 40, 10, 10, "green")
+    im.circle(80, 80, 5, "white")
+    im.fillCircle(80, 80, 5, "yellow")
+    im.text("JC2", 10, 50, "pink", 2)
+    im.axes(-10, 10, -10, 10, "gray")
+    
+    // 只要不报错就算通过
+    assert(true, "draw methods failed")
+}
+test_image_draw()
+
+test_image_invalid_size() = {
+    try {
+        image.img(-10, 100)
+        assert(false, "Should throw error for negative dimensions")
+    } catch (e) {
+        assert("Dimensions must be positive" in e, "Wrong error message thrown")
+    }
+}
+test_image_invalid_size()

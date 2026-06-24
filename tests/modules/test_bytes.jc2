@@ -1,0 +1,37 @@
+import bytes
+
+test_bytes_basic() = {
+    b = bytes.alloc(10)
+    assert(b.len() == 10, "alloc/len failed")
+    
+    b.set(0, 255, "u8")
+    assert(b.get(0, "u8") == 255, "set/get u8 failed")
+    
+    b.set(1, -128, "i8")
+    assert(b.get(1, "i8") == -128, "set/get i8 failed")
+    
+    b.set(2, 65535, "u16")
+    assert(b.get(2, "u16") == 65535, "set/get u16 failed")
+    
+    b.set(4, 3.14, "f64")
+    assert(abs(b.get(4, "f64") - 3.14) < 1e-5, "set/get f64 failed")
+}
+test_bytes_basic()
+
+test_bytes_pack() = {
+    b = bytes.pack([65, 66, 67])
+    assert(b.len() == 3, "pack len failed")
+    assert(b.get(0, "str", 3) == "ABC", "pack/get str failed")
+}
+test_bytes_pack()
+
+test_bytes_out_of_bounds() = {
+    b = bytes.alloc(4)
+    try {
+        b.get(2, "u32")
+        assert(false, "Should throw out of bounds error")
+    } catch (e) {
+        assert("out of bounds" in e, "Wrong error message thrown")
+    }
+}
+test_bytes_out_of_bounds()

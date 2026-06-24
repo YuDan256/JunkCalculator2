@@ -1,0 +1,41 @@
+import socket
+
+test_socket_server_client() = {
+    port = 54321
+    
+    // 1. 启动本地服务器
+    srv = socket.server("127.0.0.1", port)
+    assert(type(srv) == "Socket", "Server should return a Socket instance")
+    
+    // 2. 客户端连接
+    cli = socket.connect("127.0.0.1", port)
+    assert(type(cli) == "Socket", "Client should return a Socket instance")
+    
+    // 3. 服务器接受连接 (因为客户端已连接，这里不会阻塞)
+    conn = srv.accept()
+    assert(type(conn) == "Socket", "Accept should return a Socket instance")
+    
+    // 4. 发送与接收数据
+    sent_bytes = cli.send("hello socket")
+    assert(sent_bytes == 12, "Send should return number of bytes sent")
+    
+    msg = conn.recv(1024)
+    assert(msg == "hello socket", "Socket send/recv data mismatch")
+    
+    // 5. 清理资源
+    cli.close()
+    conn.close()
+    srv.close()
+}
+test_socket_server_client()
+
+test_socket_connect_error() = {
+    try {
+        // 尝试连接一个未监听的端口
+        socket.connect("127.0.0.1", 54322)
+        assert(false, "Should throw connection refused error")
+    } catch (e) {
+        assert("Connection refused" in e, "Wrong error message thrown for connection refused")
+    }
+}
+test_socket_connect_error()

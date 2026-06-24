@@ -1,0 +1,34 @@
+import window
+
+test_window_basic() = {
+    try {
+        win = window.Window("Test Window", 100, 100)
+        assert(win.isOpen() == true, "Window should be open")
+        
+        // 测试方法是否存在且不崩溃
+        win.setImeEnabled(false)
+        win.showCursor(false)
+        win.setCursorPos(50, 50)
+        
+        ev = win.pollEvent()
+        assert(ev == none || type(ev) == "dict", "pollEvent should return none or dict")
+        
+        key_state = win.isKeyDown("A")
+        assert(type(key_state) == "bool", "isKeyDown should return bool")
+        
+    } catch (e) {
+        // 兼容非 Win32 平台：如果抛出平台不支持的错误，则视为测试通过
+        assert("Win32" in e, "Unexpected error thrown: " + str(e))
+    }
+}
+test_window_basic()
+
+test_window_invalid_args() = {
+    try {
+        window.Window("Test")
+        assert(false, "Should throw error for missing arguments")
+    } catch (e) {
+        assert("exactly 3 arguments" in e, "Wrong error message thrown for invalid args")
+    }
+}
+test_window_invalid_args()

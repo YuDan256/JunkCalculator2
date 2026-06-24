@@ -1,0 +1,43 @@
+import ffi
+
+test_ffi_load_error() = {
+    try {
+        ffi.load("non_existent_library_12345.dll")
+        assert(false, "Should throw error for non-existent library")
+    } catch (e) {
+        assert("Failed to load library" in e, "Wrong error message thrown for ffi.load")
+    }
+}
+test_ffi_load_error()
+
+test_ffi_real_call() = {
+    lib = none
+    
+    // 尝试按平台加载 C 标准数学库
+    try {
+        lib = ffi.load("msvcrt.dll") // Windows
+    } catch (e1) {
+        try {
+            lib = ffi.load("libm.so.6") // Linux
+        } catch (e2) {
+            try {
+                lib = ffi.load("libSystem.dylib") // macOS
+            } catch (e3) {
+                // 如果都加载失败（例如特殊环境），则保留 lib = none
+            }
+        }
+    }
+    
+    if (lib != none) {
+        // 绑定 C 标准库的 pow 函数: double pow(double x, double y)
+        c_pow = lib.bind("pow", "f64", ["f64", "f64"])
+        assert(type(c_pow) == "FFICallable", "bind should return FFICallable")
+        
+        res = c_pow(2.0, 10.0)
+        assert(res == 1024.0, "FFI pow(2.0, 10.0) failed")
+    } else {
+        // 如果找不到标准库，至少验证 ffi.load 是一个函数
+        assert(type(ffi.load) == "function", "ffi.load should be a function")
+    }
+}
+test_ffi_real_call()

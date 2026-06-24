@@ -1,0 +1,32 @@
+import json
+
+test_json_encode_decode() = {
+    d = { "name": "Alice", "age": 30, "active": true, "scores": [85, 92] }
+    s = json.encode(d)
+    assert(type(s) == "string", "json.encode should return a string")
+    
+    d2 = json.decode(s)
+    assert(d2["name"] == "Alice", "decode name failed")
+    assert(d2["age"] == 30, "decode age failed")
+    assert(d2["active"] == true, "decode active failed")
+    assert(d2["scores"][0] == 85 && d2["scores"][1] == 92, "decode scores failed")
+}
+test_json_encode_decode()
+
+test_json_pretty() = {
+    d = { "a": 1 }
+    s = json.pretty(d, 2)
+    expected = "{\n  \"a\": 1\n}"
+    assert(s == expected, "json.pretty failed")
+}
+test_json_pretty()
+
+test_json_parse_error() = {
+    try {
+        json.decode("{ invalid json }")
+        assert(false, "Should throw parse error for invalid JSON")
+    } catch (e) {
+        assert("JSON Parse Error" in e, "Wrong error message thrown")
+    }
+}
+test_json_parse_error()

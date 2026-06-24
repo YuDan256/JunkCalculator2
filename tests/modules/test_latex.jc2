@@ -1,0 +1,34 @@
+import latex
+
+test_latex_to_latex() = {
+    assert(latex.to_latex(1.5) == "1.5", "to_latex double failed")
+    assert(latex.to_latex([1, 2]) == "\\left[ 1, 2 \\right]", "to_latex list failed")
+}
+test_latex_to_latex()
+
+test_latex_eval() = {
+    assert(abs(latex.eval(r"\frac{1}{2}") - 0.5) < 1e-5, "eval frac failed")
+    assert(abs(latex.eval(r"1 + 2 * 3") - 7.0) < 1e-5, "eval arithmetic failed")
+    assert(abs(latex.eval(r"\sin(\pi / 2)") - 1.0) < 1e-5, "eval sin failed")
+    assert(abs(latex.eval(r"\sqrt{16}") - 4.0) < 1e-5, "eval sqrt failed")
+}
+test_latex_eval()
+
+test_latex_compile() = {
+    f = latex.compile(r"x^2 + y", ["x", "y"])
+    assert(abs(f(2, 3) - 7.0) < 1e-5, "compile failed")
+    
+    f2 = latex.compile(r"\frac{a}{b}", ["a", "b"])
+    assert(abs(f2(10, 2) - 5.0) < 1e-5, "compile frac failed")
+}
+test_latex_compile()
+
+test_latex_parse_error() = {
+    try {
+        latex.eval(r"\frac{1}")
+        assert(false, "Should throw parse error for incomplete frac")
+    } catch (e) {
+        assert("Expected" in e || "Missing" in e, "Wrong error message thrown")
+    }
+}
+test_latex_parse_error()

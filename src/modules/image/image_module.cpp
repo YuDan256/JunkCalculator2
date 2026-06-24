@@ -160,19 +160,19 @@ int jc2_init(Module& mod) {
     g_imageClass = new Class("Image");
     mod.register_value("Image", *g_imageClass);
     
-    g_imageClass->bind_method("width", img_width, 1, 1, false);
-    g_imageClass->bind_method("height", img_height, 1, 1, false);
-    g_imageClass->bind_method("setPixel", img_setPixel, 4, 4, false);
-    g_imageClass->bind_method("getPixel", img_getPixel, 3, 3, false);
-    g_imageClass->bind_method("clear", img_clear, 2, 2, false);
-    g_imageClass->bind_method("line", img_line, 6, 7, false);
-    g_imageClass->bind_method("rect", img_rect, 6, 7, false);
-    g_imageClass->bind_method("fillRect", img_fillRect, 6, 6, false);
-    g_imageClass->bind_method("circle", img_circle, 5, 6, false);
-    g_imageClass->bind_method("fillCircle", img_fillCircle, 5, 5, false);
-    g_imageClass->bind_method("text", img_text, 5, 6, false);
-    g_imageClass->bind_method("axes", img_axes, 5, 6, false);
-    g_imageClass->bind_method("save", img_save, 2, 2, false);
+    g_imageClass->bind_method("width", img_width, 0, 0, false);
+    g_imageClass->bind_method("height", img_height, 0, 0, false);
+    g_imageClass->bind_method("setPixel", img_setPixel, 3, 3, false);
+    g_imageClass->bind_method("getPixel", img_getPixel, 2, 2, false);
+    g_imageClass->bind_method("clear", img_clear, 1, 1, false);
+    g_imageClass->bind_method("line", img_line, 5, 6, false);
+    g_imageClass->bind_method("rect", img_rect, 5, 6, false);
+    g_imageClass->bind_method("fillRect", img_fillRect, 5, 5, false);
+    g_imageClass->bind_method("circle", img_circle, 4, 5, false);
+    g_imageClass->bind_method("fillCircle", img_fillCircle, 4, 4, false);
+    g_imageClass->bind_method("text", img_text, 4, 5, false);
+    g_imageClass->bind_method("axes", img_axes, 4, 5, false);
+    g_imageClass->bind_method("save", img_save, 1, 1, false);
 
     mod.register_function("img", create_image, 2, 3, false);
 

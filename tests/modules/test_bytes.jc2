@@ -1,8 +1,8 @@
 import bytes
 
 test_bytes_basic() = {
-    b = bytes.alloc(10)
-    assert(b.len() == 10, "alloc/len failed")
+    b = bytes.alloc(16)
+    assert(b.len() == 16, "alloc/len failed")
     
     b.set(0, 255, "u8")
     assert(b.get(0, "u8") == 255, "set/get u8 failed")

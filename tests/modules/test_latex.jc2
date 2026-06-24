@@ -2,7 +2,7 @@ import latex
 
 test_latex_to_latex() = {
     assert(latex.to_latex(1.5) == "1.5", "to_latex double failed")
-    assert(latex.to_latex([1, 2]) == "\\left[ 1, 2 \\right]", "to_latex list failed")
+    assert(latex.to_latex(@[1, 2]) == "\\left[ 1, 2 \\right]", "to_latex list failed")
 }
 test_latex_to_latex()
 

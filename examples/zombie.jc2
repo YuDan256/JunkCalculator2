@@ -21,6 +21,7 @@ class FpsProbe {
         }
     }
 
+    // 去掉了 W 参数，因为固定在左上角了
     draw(im) = {
         base_x = 10
         base_y = 10
@@ -31,9 +32,11 @@ class FpsProbe {
         im.fillRect(base_x, base_y, box_width, box_height, "#151515")
         im.fillRect(base_x, base_y, box_width, 2, "#00FFCC")
         
+        // ★ 修复重叠：字在上面
         c_fps = (self.avg_fps >= 45) ? "#00FFCC" : ((self.avg_fps >= 30) ? "#FFCC00" : "#FF0055")
         im.text(f"FPS: {self.avg_fps}", base_x + 5, base_y + 8, c_fps, 2)
         
+        // ★ 修复重叠：图在下面 (从底部往上画)
         graph_bottom = base_y + box_height - 5
         
         for (i in range(self.max_samples)) {
@@ -56,13 +59,13 @@ class Raycaster3D extends engine.GameEngine {
     init() = {
         self.W = 800
         self.H = 600
-        super.init("JC2 3D Maze - Survival FPS", self.W, self.H, 1e6) // 不设置性能上限，让睿频发力
+        super.init("JC2 3D Maze - Survival FPS", self.W, self.H, 10000000)
         
-        self.STRIP_WIDTH = 2 // 调高一点性能更稳包容光影
+        self.STRIP_WIDTH = 1 // 数字越高，画质越低，性能越好。但1已能跑约50~60FPS。
         
         // Cyberpunk Color Palette: [0]=Empty, [1~4]=Walls, [5]=Portal
-        self.colors = list("#000000", "#FF0055", "#00AADD", "#FFCC00", "#9933FF", "#FFFFFF")
-        self.shades = list("#000000", "#AA0033", "#0088AA", "#AA8800", "#6622AA", "#DDDDDD")
+        self.colors = @["#000000", "#FF0055", "#00AADD", "#FFCC00", "#9933FF", "#FFFFFF"]
+        self.shades = @["#000000", "#AA0033", "#0088AA", "#AA8800", "#6622AA", "#DDDDDD"]
         
         self.mouse_locked = false 
         self.last_mouse_x = self.W / 2
@@ -92,7 +95,7 @@ class Raycaster3D extends engine.GameEngine {
         self.show_probe = false
 
         self.tex = {
-            "ZOMBIE": list(
+            "ZOMBIE": @[
                 ".XXXXXX.",
                 "XX0RR0X.",
                 "XXGGGGX.",
@@ -101,8 +104,8 @@ class Raycaster3D extends engine.GameEngine {
                 "XXXXXXXX",
                 "XG.XX.GX",
                 "XX....XX"
-            ),
-            "DEAD": list(
+            ],
+            "DEAD": @[
                 "........",
                 "........",
                 "........",
@@ -111,8 +114,8 @@ class Raycaster3D extends engine.GameEngine {
                 "XrXXrX..",
                 "rDDDrDr.",
                 "XDDDrDXX"
-            ),
-            "HP": list(
+            ],
+            "HP": @[
                 "........",
                 "........",
                 ".XXXXXX.",
@@ -121,8 +124,8 @@ class Raycaster3D extends engine.GameEngine {
                 ".XWRWWX.",
                 ".XWWWWX.",
                 ".XXXXXX."
-            ),
-            "AMMO": list(
+            ],
+            "AMMO": @[
                 "........",
                 "........",
                 ".XXXXXX.",
@@ -131,7 +134,7 @@ class Raycaster3D extends engine.GameEngine {
                 ".XYYYYX.",
                 ".XGGGGX.",
                 ".XXXXXX."
-            )
+            ]
         }
         
         // 调色板映射 (. = 透明背景)

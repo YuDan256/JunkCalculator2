@@ -310,11 +310,11 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
     }
     funcCode += ") => " + exprCode;
 
-    jc2::Value compileFunc(jc2::Env::api->get_global(jc2::Env::ctx, "compileCode"));
-    if (!compileFunc.is_function()) jc2::throw_error("Internal Error: 'compileCode' function not found.");
+    jc2::Value evalFunc(jc2::Env::api->get_global(jc2::Env::ctx, "eval"));
+    if (!evalFunc.is_function()) jc2::throw_error("Internal Error: 'eval' function not found.");
     
     JC2_ValueHandle codeHandle = jc2::Value(funcCode).get_handle();
-    return jc2::Env::api->call_function(jc2::Env::ctx, compileFunc.get_handle(), 1, &codeHandle);
+    return jc2::Env::api->call_function(jc2::Env::ctx, evalFunc.get_handle(), 1, &codeHandle);
 }
 
 int jc2_init(jc2::Module& mod) {

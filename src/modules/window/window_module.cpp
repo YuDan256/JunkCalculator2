@@ -254,8 +254,8 @@ JC2_ValueHandle win_init(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
     if (argc < 4) jc2::throw_error("TypeError: Window takes exactly 3 arguments (title, width, height).");
     jc2::Instance self(argv[0]);
     std::string title = jc2::Value(argv[1]).as_string();
-    int w = static_cast<int>(jc2::Value(argv[2]).as_double());
-    int h = static_cast<int>(jc2::Value(argv[3]).as_double());
+    int w = jc2::Value(argv[2]).as_int();
+    int h = jc2::Value(argv[3]).as_int();
     auto win = new NativeWindow(title, w, h);
     self.set_native_data(win, [](void* ptr) { delete static_cast<NativeWindow*>(ptr); });
     return jc2::Value().get_handle();
@@ -343,7 +343,7 @@ JC2_ValueHandle win_isKeyDown(JC2_VMContext, int, JC2_ValueHandle* argv, void*) 
             else if (s == "BACKSPACE" || s == "BACK") key = VK_BACK;
         }
     } else {
-        key = static_cast<int>(arg.as_double());
+        key = arg.as_int();
     }
     if (key == 0) return jc2::Value(false).get_handle();
     bool isDown = (GetAsyncKeyState(key) & 0x8000) != 0;
@@ -383,7 +383,7 @@ JC2_ValueHandle win_showCursor(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
 JC2_ValueHandle win_setCursorPos(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
-    if (win) win->setCursorPos(static_cast<int>(jc2::Value(argv[1]).as_double()), static_cast<int>(jc2::Value(argv[2]).as_double()));
+    if (win) win->setCursorPos(jc2::Value(argv[1]).as_int(), jc2::Value(argv[2]).as_int());
     return jc2::Value().get_handle();
 }
 

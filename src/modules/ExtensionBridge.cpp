@@ -545,6 +545,13 @@ static JC2_ValueHandle host_get_global(JC2_VMContext, const char* name) {
     if (it != VM::activeVM->getGlobals().end()) {
         return it->second.as_bits;
     }
+    const auto& builtins = VM::activeVM->getNativeBuiltins();
+    auto bit = builtins.find(name);
+    if (bit != builtins.end()) {
+        ObjClosure* closure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(bit->second);
+        return Value(closure).as_bits;
+    }
     return Value::none().as_bits;
 }
 
@@ -560,14 +567,7 @@ static JC2_ValueHandle host_call_function(JC2_VMContext, JC2_ValueHandle func, i
     if (!f.isFunctionClosure()) return Value::none().as_bits;
     std::vector<Value> args(argc);
     for (int i = 0; i < argc; ++i) args[i] = from_handle(argv[i]);
-    if (jc::helpers::callFunctionCallback) {
-        try {
-            return jc::helpers::callFunctionCallback(static_cast<ObjClosure*>(f.asObj()), args).as_bits;
-        } catch (...) {
-            return Value::none().as_bits;
-        }
-    }
-    return Value::none().as_bits;
+    return jc::helpers::safeCallFunction(static_cast<ObjClosure*>(f.asObj()), args).as_bits;
 }
 
 static bool host_is_function(JC2_VMContext, JC2_ValueHandle v) {

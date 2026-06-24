@@ -9,14 +9,6 @@
 #include <vector>
 #include <string>
 
-static jc2::Value callGlobal(const std::string& name, const std::vector<jc2::Value>& args) {
-    jc2::Value func(jc2::Env::api->get_global(jc2::Env::ctx, name.c_str()));
-    if (!func.is_function()) jc2::throw_error("Global function " + name + " not found.");
-    std::vector<JC2_ValueHandle> handles(args.size());
-    for (size_t i = 0; i < args.size(); ++i) handles[i] = args[i].get_handle();
-    return jc2::Value(jc2::Env::api->call_function(jc2::Env::ctx, func.get_handle(), static_cast<int>(handles.size()), handles.data()));
-}
-
 std::string valueToLatex(const jc2::Value& val) {
     if (val.is_double()) {
         std::ostringstream oss; oss << std::defaultfloat << std::setprecision(6) << val.as_double();
@@ -66,89 +58,6 @@ std::string valueToLatex(const jc2::Value& val) {
     return val.to_string();
 }
 
-class ExprNode {
-public:
-    virtual jc2::Value eval(const std::unordered_map<std::string, jc2::Value>& env) const = 0;
-    virtual ~ExprNode() = default;
-};
-using ExprPtr = std::shared_ptr<ExprNode>;
-
-class NumNode : public ExprNode {
-    double val;
-public:
-    NumNode(double v) : val(v) {}
-    jc2::Value eval(const std::unordered_map<std::string, jc2::Value>&) const override { return jc2::Value(val); }
-};
-
-class VarNode : public ExprNode {
-    std::string name;
-public:
-    VarNode(std::string n) : name(n) {}
-    jc2::Value eval(const std::unordered_map<std::string, jc2::Value>& env) const override {
-        if (name == "\\pi" || name == "pi") return jc2::Value(3.1415926535897932);
-        if (name == "e") return jc2::Value(2.718281828459045);
-        if (name == "i" || name == "j") return jc2::Complex(0.0, 1.0);
-
-        auto it = env.find(name);
-        if (it == env.end()) {
-            std::string symName = name;
-            if (!symName.empty() && symName[0] == '\\') symName = symName.substr(1);
-            return callGlobal("sym", {jc2::Value(symName)});
-        }
-        return it->second;
-    }
-};
-
-class BinOpNode : public ExprNode {
-    char op; ExprPtr left, right;
-public:
-    BinOpNode(char o, ExprPtr l, ExprPtr r) : op(o), left(l), right(r) {}
-    jc2::Value eval(const std::unordered_map<std::string, jc2::Value>& env) const override {
-        jc2::Value l = left->eval(env), r = right->eval(env);
-        switch (op) {
-        case '+': return callGlobal("addE", {l, r});
-        case '-': return callGlobal("subE", {l, r});
-        case '*': return callGlobal("mulE", {l, r});
-        case '/': return callGlobal("divE", {l, r});
-        case '^': return callGlobal("powE", {l, r});
-        default: return jc2::Value(0.0);
-        }
-    }
-};
-
-class FuncNode : public ExprNode {
-    std::string func; ExprPtr arg;
-public:
-    FuncNode(std::string f, ExprPtr a) : func(f), arg(a) {}
-    jc2::Value eval(const std::unordered_map<std::string, jc2::Value>& env) const override {
-        jc2::Value a = arg->eval(env);
-        std::string fname = func;
-        if (!fname.empty() && fname[0] == '\\') fname = fname.substr(1);
-        if (fname == "ln") fname = "log";
-        return callGlobal(fname, {a});
-    }
-};
-
-class MatrixNode : public ExprNode {
-    std::vector<std::vector<ExprPtr>> rows;
-public:
-    MatrixNode(std::vector<std::vector<ExprPtr>> r) : rows(r) {}
-    jc2::Value eval(const std::unordered_map<std::string, jc2::Value>& env) const override {
-        int r = static_cast<int>(rows.size());
-        int c = r > 0 ? static_cast<int>(rows[0].size()) : 0;
-        jc2::List list;
-        for (int i = 0; i < r; ++i) {
-            if (static_cast<int>(rows[i].size()) != c) jc2::throw_error("LaTeX Math Error: Matrix rows must have the same number of columns");
-            jc2::List rowList;
-            for (int j = 0; j < c; ++j) {
-                rowList.push_back(rows[i][j]->eval(env));
-            }
-            list.push_back(rowList);
-        }
-        return callGlobal("toMatrix", {list});
-    }
-};
-
 class LatexParser {
     std::string src; size_t pos = 0;
 
@@ -171,7 +80,7 @@ class LatexParser {
         return false;
     }
 
-    ExprPtr parseMatrix() {
+    std::string parseMatrix() {
         std::string envName;
         if (matchCmd("\\begin")) {
             if (!match('{')) jc2::throw_error("Expected '{' after \\begin");
@@ -180,11 +89,10 @@ class LatexParser {
             envName = src.substr(start, pos - start);
             if (!match('}')) jc2::throw_error("Expected '}' after \\begin{...");
         } else {
-            return nullptr;
+            return "";
         }
 
-        std::vector<std::vector<ExprPtr>> rows;
-        std::vector<ExprPtr> currentRow;
+        std::string code = "[";
 
         while (pos < src.size()) {
             skipSpace();
@@ -195,24 +103,23 @@ class LatexParser {
                 std::string endName = src.substr(start, pos - start);
                 if (!match('}')) jc2::throw_error("Expected '}' after \\end{...");
                 if (endName != envName) jc2::throw_error("Mismatched \\begin{" + envName + "} and \\end{" + endName + "}");
-                if (!currentRow.empty()) rows.push_back(currentRow);
                 break;
             }
             if (matchCmd("\\\\")) {
-                rows.push_back(currentRow);
-                currentRow.clear();
+                code += "; ";
                 continue;
             }
             if (match('&')) {
+                code += ", ";
                 continue;
             }
-            currentRow.push_back(parseExpr());
+            code += parseExpr();
         }
-
-        return std::make_shared<MatrixNode>(rows);
+        code += "]";
+        return code;
     }
 
-    ExprPtr parseFactor() {
+    std::string parseFactor() {
         skipSpace();
         if (peekCmd() == "\\begin") {
             return parseMatrix();
@@ -224,7 +131,7 @@ class LatexParser {
             if (!match('{')) jc2::throw_error("Expected '{' for denominator");
             auto den = parseExpr();
             if (!match('}')) jc2::throw_error("Expected '}' after denominator");
-            return std::make_shared<BinOpNode>('/', num, den);
+            return "((" + num + ") / (" + den + "))";
         }
 
         std::string cmd = peekCmd();
@@ -233,7 +140,7 @@ class LatexParser {
             pos += cmd.size();
             skipSpace();
 
-            ExprPtr arg;
+            std::string arg;
             if (match('(')) {
                 arg = parseExpr();
                 if (!match(')')) jc2::throw_error("Missing ')' for " + cmd);
@@ -245,70 +152,73 @@ class LatexParser {
             else {
                 arg = parsePower();
             }
-            return std::make_shared<FuncNode>(cmd, arg);
+            std::string fname = cmd.substr(1);
+            if (fname == "ln") fname = "log";
+            return fname + "(" + arg + ")";
         }
 
         if (match('(')) {
             auto expr = parseExpr();
             if (!match(')')) jc2::throw_error("Missing closing ')'");
-            return expr;
+            return "(" + expr + ")";
         }
         if (match('{')) {
             auto expr = parseExpr();
             if (!match('}')) jc2::throw_error("Missing closing '}'");
-            return expr;
+            return "(" + expr + ")";
         }
         if (match('[')) {
             auto expr = parseExpr();
             if (!match(']')) jc2::throw_error("Missing closing ']'");
-            return expr;
+            return "(" + expr + ")";
         }
 
         size_t start = pos;
         while (pos < src.size() && (std::isdigit(src[pos]) || src[pos] == '.')) pos++;
-        if (pos > start) return std::make_shared<NumNode>(std::stod(src.substr(start, pos - start)));
+        if (pos > start) return src.substr(start, pos - start);
 
         if (cmd != "") {
             pos += cmd.size();
-            return std::make_shared<VarNode>(cmd);
+            if (cmd == "\\pi") return "PI";
+            return cmd.substr(1);
         }
         if (pos < src.size() && std::isalpha(src[pos])) {
             std::string varStr(1, src[pos++]);
-            return std::make_shared<VarNode>(varStr);
+            return varStr;
         }
 
         jc2::throw_error("LaTeX Parse Error: Unexpected token at '" + src.substr(pos, 5) + "...'");
-        return nullptr;
+        return "";
     }
 
-    ExprPtr parsePower() {
+    std::string parsePower() {
         auto left = parseFactor();
         skipSpace();
         if (match('^')) {
             auto right = parseFactor();
-            return std::make_shared<BinOpNode>('^', left, right);
+            return "(" + left + ") ^ (" + right + ")";
         }
         return left;
     }
 
-    ExprPtr parseTerm() {
+    std::string parseTerm() {
         auto left = parsePower();
         while (true) {
             skipSpace();
             if (match('*') || matchCmd("\\cdot") || matchCmd("\\times")) {
-                left = std::make_shared<BinOpNode>('*', left, parsePower());
+                left = "(" + left + ") * (" + parsePower() + ")";
             }
             else if (match('/')) {
-                left = std::make_shared<BinOpNode>('/', left, parsePower());
+                left = "(" + left + ") / (" + parsePower() + ")";
             }
             else {
                 if (pos < src.size() && (src[pos] == '(' || std::isalpha(src[pos]))) {
-                    left = std::make_shared<BinOpNode>('*', left, parsePower());
+                    left = "(" + left + ") * (" + parsePower() + ")";
                 }
                 else if (pos < src.size() && src[pos] == '\\') {
                     std::string cmd = peekCmd();
                     if (cmd == "\\\\" || cmd == "\\end") break;
-                    left = std::make_shared<BinOpNode>('*', left, parsePower());
+                    left = "(" + left + ") * (" + parsePower() + ")";
                 }
                 else break;
             }
@@ -317,26 +227,26 @@ class LatexParser {
     }
 
 public:
-    ExprPtr parseExpr() {
+    std::string parseExpr() {
         skipSpace();
-        ExprPtr left;
+        std::string left;
         bool negate = false;
         if (match('-')) negate = true;
         else match('+');
 
         left = parseTerm();
-        if (negate) left = std::make_shared<BinOpNode>('*', std::make_shared<NumNode>(-1), left);
+        if (negate) left = "-(" + left + ")";
 
         while (true) {
             skipSpace();
-            if (match('+')) left = std::make_shared<BinOpNode>('+', left, parseTerm());
-            else if (match('-')) left = std::make_shared<BinOpNode>('-', left, parseTerm());
+            if (match('+')) left = "(" + left + ") + (" + parseTerm() + ")";
+            else if (match('-')) left = "(" + left + ") - (" + parseTerm() + ")";
             else break;
         }
         return left;
     }
 
-    ExprPtr compile(const std::string& latex) {
+    std::string compile(const std::string& latex) {
         src = latex; pos = 0;
         return parseExpr();
     }
@@ -350,35 +260,14 @@ JC2_ValueHandle global_eval(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Value arg(argv[0]);
     if (!arg.is_string()) jc2::throw_error("eval() requires a LaTeX string.");
     LatexParser parser;
-    auto ast = parser.compile(arg.as_string());
-    jc2::Value res = ast->eval({});
-    if (res.is_complex() && jc2::Complex(res.get_handle()).imag() == 0.0) return jc2::Value(jc2::Complex(res.get_handle()).real()).get_handle();
-    return res.get_handle();
-}
-
-struct LatexCallData {
-    ExprPtr ast;
-    std::vector<std::string> varNames;
-    std::string latex_str;
-};
-
-static jc2::Class* g_latexCallableClass = nullptr;
-
-JC2_ValueHandle latex_callable_call(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    jc2::Instance self(argv[0]);
-    auto data = self.get_native_data<LatexCallData>();
-    if (!data) jc2::throw_error("LaTeX Error: Invalid callable.");
-
-    if ((size_t)(argc - 1) != data->varNames.size()) {
-        jc2::throw_error("LaTeX Func '" + data->latex_str + "' expects " + std::to_string(data->varNames.size()) + " arguments.");
-    }
-
-    std::unordered_map<std::string, jc2::Value> env;
-    for (size_t i = 0; i < data->varNames.size(); ++i) {
-        env[data->varNames[i]] = jc2::Value(argv[i + 1]);
-    }
-
-    jc2::Value res = data->ast->eval(env);
+    std::string code = parser.compile(arg.as_string());
+    
+    jc2::Value evalFunc(jc2::Env::api->get_global(jc2::Env::ctx, "eval"));
+    if (!evalFunc.is_function()) jc2::throw_error("Internal Error: 'eval' function not found.");
+    
+    JC2_ValueHandle codeHandle = jc2::Value(code).get_handle();
+    jc2::Value res(jc2::Env::api->call_function(jc2::Env::ctx, evalFunc.get_handle(), 1, &codeHandle));
+    
     if (res.is_complex() && jc2::Complex(res.get_handle()).imag() == 0.0) return jc2::Value(jc2::Complex(res.get_handle()).real()).get_handle();
     return res.get_handle();
 }
@@ -410,25 +299,25 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
     else jc2::throw_error("compile_latex(): 2nd argument must be a List or Matrix of variable strings.");
 
     LatexParser parser;
-    ExprPtr ast = parser.compile(latex_str);
+    std::string exprCode = parser.compile(latex_str);
 
-    auto callData = new LatexCallData();
-    callData->ast = ast;
-    callData->varNames = varNames;
-    callData->latex_str = latex_str;
+    std::string funcCode = "(";
+    for (size_t i = 0; i < varNames.size(); ++i) {
+        std::string v = varNames[i];
+        if (!v.empty() && v[0] == '\\') v = v.substr(1);
+        funcCode += v;
+        if (i < varNames.size() - 1) funcCode += ", ";
+    }
+    funcCode += ") => " + exprCode;
 
-    jc2::Instance callableInst(*g_latexCallableClass);
-    callableInst.set_native_data(callData, [](void* ptr) {
-        delete static_cast<LatexCallData*>(ptr);
-    });
-
-    return callableInst.get_handle();
+    jc2::Value compileFunc(jc2::Env::api->get_global(jc2::Env::ctx, "compileCode"));
+    if (!compileFunc.is_function()) jc2::throw_error("Internal Error: 'compileCode' function not found.");
+    
+    JC2_ValueHandle codeHandle = jc2::Value(funcCode).get_handle();
+    return jc2::Env::api->call_function(jc2::Env::ctx, compileFunc.get_handle(), 1, &codeHandle);
 }
 
 int jc2_init(jc2::Module& mod) {
-    g_latexCallableClass = new jc2::Class("LatexCallable");
-    g_latexCallableClass->bind_method("__call__", latex_callable_call, 0, 255, true);
-    mod.register_value("LatexCallable", *g_latexCallableClass);
 
     mod.register_function("to_latex", global_to_latex, 1, 1, false);
     mod.register_function("eval", global_eval, 1, 1, false);

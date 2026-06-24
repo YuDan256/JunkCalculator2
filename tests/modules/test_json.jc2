@@ -1,7 +1,7 @@
 import json
 
 test_json_encode_decode() = {
-    d = { "name": "Alice", "age": 30, "active": true, "scores": [85, 92] }
+    d = { "name": "Alice", "age": 30, "active": true, "scores": @[85, 92] }
     s = json.encode(d)
     assert(type(s) == "string", "json.encode should return a string")
     

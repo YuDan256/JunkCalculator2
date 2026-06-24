@@ -80,6 +80,7 @@ Class* g_imageClass = nullptr;
 JC2_ValueHandle create_image(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     int w = Value(argv[0]).as_int();
     int h = Value(argv[1]).as_int();
+    if (w <= 0 || h <= 0) throw_error("Dimensions must be positive.");
     jc::Color bg = (argc == 3) ? parseColor(Value(argv[2])) : jc::Color{255, 255, 255};
     
     Instance inst(*g_imageClass);

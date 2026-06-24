@@ -541,16 +541,14 @@ static JC2_ValueHandle host_dict_keys(JC2_VMContext, JC2_ValueHandle dict) {
 
 static JC2_ValueHandle host_get_global(JC2_VMContext, const char* name) {
     if (!VM::activeVM) return Value::none().as_bits;
-    auto it = VM::activeVM->getGlobals().find(name);
-    if (it != VM::activeVM->getGlobals().end()) {
+    auto globals = VM::activeVM->getGlobals();
+    auto it = globals.find(name);
+    if (it != globals.end()) {
         return it->second.as_bits;
     }
-    const auto& builtins = VM::activeVM->getNativeBuiltins();
-    auto bit = builtins.find(name);
-    if (bit != builtins.end()) {
-        ObjClosure* closure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(bit->second);
-        return Value(closure).as_bits;
+    Value builtinVal = VM::activeVM->getBuiltinClosure(name);
+    if (!builtinVal.isNone()) {
+        return builtinVal.as_bits;
     }
     return Value::none().as_bits;
 }

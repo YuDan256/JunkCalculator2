@@ -38,6 +38,8 @@ class Tetris extends engine.GameEngine {
         // Pin the game board to the left side
         self.ox = 50
         self.oy = 60
+        
+        self.setBackground("#14141A")
 
         // Start the game!
         self.reset()
@@ -224,9 +226,6 @@ class Tetris extends engine.GameEngine {
     }
 
     draw(im) = {
-        // Deep space background
-        im.fillRect(0, 0, self.width, self.height, "#14141A")
-        
         // -------------------------------------------------------------
         // 🎨 Left Box: MAIN BOARD RENDERER
         // -------------------------------------------------------------
@@ -308,7 +307,7 @@ class Tetris extends engine.GameEngine {
         im.text(str(self.lines), ui_x, stat_y + 95, "#FFCC00", 2.0)
         
         local spd = int((0.5 - self.fall_speed) * 1000)
-        im.text(f"SPEED: +{(spd > 0) ? spd : 0}", ui_x, stat_y + 130, "#00FFCC", 1.2)
+        im.text(f"SPEED: +{(spd > 0) ? spd : 0}", ui_x, stat_y + 130, "#00FFCC", 1)
 
         // ★ CONTROLS LEGEND
         local ctrl_y = stat_y + 200

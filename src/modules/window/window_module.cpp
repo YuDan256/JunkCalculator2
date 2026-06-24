@@ -7,6 +7,7 @@
 #include <cctype>
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #include <imm.h>
 #include <thread>
@@ -199,21 +200,33 @@ public:
     void show(const jc::Image* img) {
         if (!running || !hwnd || !img) return;
         const auto& src = img->getRawPixels();
+        
+        // 严格使用图像自身的尺寸，防止越界
+        int imgW = img->width();
+        int imgH = img->height();
+        int copyW = std::min(width, imgW);
+        int copyH = std::min(height, imgH);
+        
         int rowBytes = width * 3;
         int rowPad = (4 - rowBytes % 4) % 4;
         int stride = rowBytes + rowPad;
+        
         {
             std::lock_guard<std::mutex> lock(bufMutex);
             if (displayBuffer.size() < stride * height) {
                 displayBuffer.resize(stride * height, 0);
             }
-            for (int y = 0; y < height; ++y) {
-                for (int x = 0; x < width; ++x) {
-                    int srcIdx = (y * width + x) * 3;
+            for (int y = 0; y < copyH; ++y) {
+                for (int x = 0; x < copyW; ++x) {
+                    int srcIdx = (y * imgW + x) * 3;
                     int dstIdx = y * stride + x * 3;
-                    displayBuffer[dstIdx] = src[srcIdx + 2];     // B
-                    displayBuffer[dstIdx + 1] = src[srcIdx + 1]; // G
-                    displayBuffer[dstIdx + 2] = src[srcIdx];     // R
+                    
+                    // 确保不会越界读取 src
+                    if (srcIdx + 2 < src.size()) {
+                        displayBuffer[dstIdx] = src[srcIdx + 2];     // B
+                        displayBuffer[dstIdx + 1] = src[srcIdx + 1]; // G
+                        displayBuffer[dstIdx + 2] = src[srcIdx];     // R
+                    }
                 }
             }
         }

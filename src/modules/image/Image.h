@@ -216,9 +216,9 @@ namespace jc {
             }
         }
 
-        // ★ 全新：内置点阵字体渲染引擎！
-        void drawText(const std::string& txt, int startX, int startY, Color c, int scale = 1) {
-            int currX = startX;
+        // ★ 全新：内置点阵字体渲染引擎！(支持小数缩放)
+        void drawText(const std::string& txt, int startX, int startY, Color c, double scale = 1.0) {
+            double currX = startX;
             for (char ch : txt) {
                 if (ch < 32 || ch > 126) ch = '?'; // Fallback
                 int idx = ch - 32;
@@ -226,12 +226,17 @@ namespace jc {
                     uint8_t bits = font8x8[idx][row];
                     for (int col = 0; col < 8; ++col) {
                         if (bits & (1 << (7 - col))) {
-                            if (scale <= 1) setPixel(currX + col, startY + row, c);
-                            else fillRect(currX + col * scale, startY + row * scale, scale, scale, c);
+                            // 采用无缝贴合算法，完美支持 1.5, 2.5 等小数缩放，防止像素断层
+                            int px = static_cast<int>(currX + col * scale);
+                            int py = static_cast<int>(startY + row * scale);
+                            int pw = static_cast<int>(currX + (col + 1) * scale) - px;
+                            int ph = static_cast<int>(startY + (row + 1) * scale) - py;
+                            if (pw <= 1 && ph <= 1) setPixel(px, py, c);
+                            else fillRect(px, py, pw, ph, c);
                         }
                     }
                 }
-                currX += 8 * scale; // 每一个字符占 8 点宽
+                currX += 8.0 * scale; // 每一个字符占 8 点宽
             }
         }
 

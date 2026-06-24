@@ -24,11 +24,11 @@ JC2_ValueHandle img_height(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return Value(getImg(argv)->height()).get_handle();
 }
 JC2_ValueHandle img_setPixel(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
-    getImg(argv)->setPixel(Value(argv[1]).as_int(), Value(argv[2]).as_int(), parseColor(Value(argv[3])));
+    getImg(argv)->setPixel(static_cast<int>(Value(argv[1]).as_double()), static_cast<int>(Value(argv[2]).as_double()), parseColor(Value(argv[3])));
     return argv[0];
 }
 JC2_ValueHandle img_getPixel(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
-    return Value(getImg(argv)->getPixel(Value(argv[1]).as_int(), Value(argv[2]).as_int()).toHex()).get_handle();
+    return Value(getImg(argv)->getPixel(static_cast<int>(Value(argv[1]).as_double()), static_cast<int>(Value(argv[2]).as_double())).toHex()).get_handle();
 }
 JC2_ValueHandle img_clear(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     getImg(argv)->clear(parseColor(Value(argv[1])));
@@ -41,11 +41,11 @@ JC2_ValueHandle img_line(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
 }
 JC2_ValueHandle img_rect(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     double thickness = (argc == 7 && !Value(argv[6]).is_none()) ? Value(argv[6]).as_double() : 1.0;
-    getImg(argv)->rect(Value(argv[1]).as_int(), Value(argv[2]).as_int(), Value(argv[3]).as_int(), Value(argv[4]).as_int(), parseColor(Value(argv[5])), thickness);
+    getImg(argv)->rect(static_cast<int>(Value(argv[1]).as_double()), static_cast<int>(Value(argv[2]).as_double()), static_cast<int>(Value(argv[3]).as_double()), static_cast<int>(Value(argv[4]).as_double()), parseColor(Value(argv[5])), thickness);
     return argv[0];
 }
 JC2_ValueHandle img_fillRect(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
-    getImg(argv)->fillRect(Value(argv[1]).as_int(), Value(argv[2]).as_int(), Value(argv[3]).as_int(), Value(argv[4]).as_int(), parseColor(Value(argv[5])));
+    getImg(argv)->fillRect(static_cast<int>(Value(argv[1]).as_double()), static_cast<int>(Value(argv[2]).as_double()), static_cast<int>(Value(argv[3]).as_double()), static_cast<int>(Value(argv[4]).as_double()), parseColor(Value(argv[5])));
     return argv[0];
 }
 JC2_ValueHandle img_circle(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
@@ -59,8 +59,10 @@ JC2_ValueHandle img_fillCircle(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
 }
 JC2_ValueHandle img_text(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string txt = Value(argv[1]).as_string();
-    int scale = (argc == 6 && !Value(argv[5]).is_none()) ? Value(argv[5]).as_int() : 1;
-    getImg(argv)->drawText(txt, Value(argv[2]).as_int(), Value(argv[3]).as_int(), parseColor(Value(argv[4])), scale);
+    int x = static_cast<int>(Value(argv[2]).as_double());
+    int y = static_cast<int>(Value(argv[3]).as_double());
+    double scale = (argc == 6 && !Value(argv[5]).is_none()) ? Value(argv[5]).as_double() : 1.0;
+    getImg(argv)->drawText(txt, x, y, parseColor(Value(argv[4])), scale);
     return argv[0];
 }
 JC2_ValueHandle img_axes(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
@@ -78,8 +80,8 @@ JC2_ValueHandle img_save(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 Class* g_imageClass = nullptr;
 
 JC2_ValueHandle create_image(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    int w = Value(argv[0]).as_int();
-    int h = Value(argv[1]).as_int();
+    int w = static_cast<int>(Value(argv[0]).as_double());
+    int h = static_cast<int>(Value(argv[1]).as_double());
     if (w <= 0 || h <= 0) throw_error("Dimensions must be positive.");
     jc::Color bg = (argc == 3) ? parseColor(Value(argv[2])) : jc::Color{255, 255, 255};
     

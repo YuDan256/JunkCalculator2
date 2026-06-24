@@ -89,6 +89,10 @@ private:
     }
 
     LRESULT wndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+        if (msg == WM_APP + 1) {
+            InvalidateRect(hWnd, NULL, FALSE);
+            return 0;
+        }
         if (msg == WM_CLOSE) {
             pushEvent({ "close", 0, 0, 0, 0 });
             PostQuitMessage(0);
@@ -139,7 +143,9 @@ private:
 
 public:
     NativeWindow(const std::string& title, int w, int h) : width(w), height(h) {
-        displayBuffer.resize(w * h * 3, 0);
+        int rowBytes = w * 3;
+        int rowPad = (4 - rowBytes % 4) % 4;
+        displayBuffer.resize((rowBytes + rowPad) * h, 0);
         winThread = std::thread(&NativeWindow::threadFunc, this, title);
         while (running && hwnd == NULL) std::this_thread::yield();
     }
@@ -193,15 +199,25 @@ public:
     void show(const jc::Image* img) {
         if (!running || !hwnd || !img) return;
         const auto& src = img->getRawPixels();
+        int rowBytes = width * 3;
+        int rowPad = (4 - rowBytes % 4) % 4;
+        int stride = rowBytes + rowPad;
         {
             std::lock_guard<std::mutex> lock(bufMutex);
-            for (size_t i = 0; i < src.size(); i += 3) {
-                displayBuffer[i] = src[i + 2]; // B
-                displayBuffer[i + 1] = src[i + 1]; // G
-                displayBuffer[i + 2] = src[i];     // R
+            if (displayBuffer.size() < stride * height) {
+                displayBuffer.resize(stride * height, 0);
+            }
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    int srcIdx = (y * width + x) * 3;
+                    int dstIdx = y * stride + x * 3;
+                    displayBuffer[dstIdx] = src[srcIdx + 2];     // B
+                    displayBuffer[dstIdx + 1] = src[srcIdx + 1]; // G
+                    displayBuffer[dstIdx + 2] = src[srcIdx];     // R
+                }
             }
         }
-        InvalidateRect(hwnd, NULL, FALSE);
+        PostMessage(hwnd, WM_APP + 1, 0, 0);
     }
 };
 #else

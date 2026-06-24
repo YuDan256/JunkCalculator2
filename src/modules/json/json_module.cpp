@@ -119,10 +119,10 @@ struct JsonEngine {
 };
 
 struct JsonParser {
-    const std::string& s;
+    std::string s;
     size_t pos;
 
-    JsonParser(const std::string& str) : s(str), pos(0) {}
+    JsonParser(std::string str) : s(std::move(str)), pos(0) {}
 
     void skipWS() {
         while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\n' || s[pos] == '\r')) pos++;

@@ -1619,6 +1619,7 @@ Value VM::run(int targetFrameDepth) {
         int bx = GET_Bx(instruction);
         int sbx = GET_sBx(instruction);
         int ax = GET_Ax(instruction);
+        (void)ax;
         int sax = GET_sAx(instruction);
 
         switch (op) {
@@ -3332,13 +3333,13 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
-                execSliceGet(a, b, c);
+                execSliceGet(a, b, static_cast<uint8_t>(c));
                 break;
             }
             case OpCode::SLICE_SET: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
-                execSliceSet(a, c, c); // Wait, c is dims. The args are at a+1...
+                execSliceSet(a, c, static_cast<uint8_t>(c)); // Wait, c is dims. The args are at a+1...
                 break;
             }
             case OpCode::IMPORT: {

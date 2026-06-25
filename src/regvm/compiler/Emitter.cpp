@@ -657,7 +657,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                           inst.node->op == IROp::BuildMatrix || inst.node->op == IROp::IndexGet ||
                           inst.node->op == IROp::IndexSet || inst.node->op == IROp::SliceGet ||
                           inst.node->op == IROp::SliceSet)) {
-            int argsCount = inst.node->dataInputs.size();
+            int argsCount = static_cast<int>(inst.node->dataInputs.size());
             if (dynamicSpillBase + argsCount > absoluteMaxReg) {
                 absoluteMaxReg = dynamicSpillBase + argsCount;
             }

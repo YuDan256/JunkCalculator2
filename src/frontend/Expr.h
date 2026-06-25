@@ -487,6 +487,7 @@ namespace jc {
 
         std::string rawBody;
         std::shared_ptr<Expr> body;
+        int fnIdx = -1;
 
         LambdaExpr(std::string name, std::vector<Token> params, std::vector<bool> paramIsRef, std::vector<bool> paramIsConst,
             std::vector<std::shared_ptr<Expr>> defaultExprs, bool hasRestParam,
@@ -594,6 +595,7 @@ namespace jc {
 
             std::string rawBody;
             std::shared_ptr<Expr> body;
+            int fnIdx = -1;
         };
         std::vector<MethodDef> methods;
 

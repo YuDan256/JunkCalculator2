@@ -131,97 +131,7 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
             EncodedInst inst;
             inst.node = node;
             
-            if (node == bb->controlNode) {
-                if (node->op == IROp::If) {
-                    BasicBlock* trueBlock = nullptr;
-                    BasicBlock* falseBlock = nullptr;
-                    for (auto* succ : bb->succs) {
-                        if (succ->controlNode->op == IROp::IfTrue) trueBlock = succ;
-                        if (succ->controlNode->op == IROp::IfFalse) falseBlock = succ;
-                    }
-                    int condReg = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                    
-                    if (!inst.words.empty()) {
-                        insts.push_back(inst);
-                    }
-                    
-                    EncodedInst jmpFalse;
-                    jmpFalse.isJump = true;
-                    jmpFalse.jumpOp = OpCode::JMP_FALSE;
-                    jmpFalse.jumpA = condReg;
-                    jmpFalse.jumpTarget = falseBlock;
-                    insts.push_back(jmpFalse);
-                    
-                    EncodedInst jmpTrue;
-                    jmpTrue.isJump = true;
-                    jmpTrue.jumpOp = OpCode::JMP;
-                    jmpTrue.jumpTarget = trueBlock;
-                    insts.push_back(jmpTrue);
-                    continue;
-                }
-                else if (node->op == IROp::TryBegin) {
-                    BasicBlock* catchBlock = nullptr;
-                    BasicBlock* tryBlock = nullptr;
-                    for (auto* succ : bb->succs) {
-                        if (succ->controlNode->op == IROp::Catch) catchBlock = succ;
-                        else tryBlock = succ;
-                    }
-                    int errReg = catchBlock->controlNode->physicalReg;
-                    
-                    EncodedInst tryInst;
-                    tryInst.isJump = true;
-                    tryInst.jumpOp = OpCode::TRY_BEGIN;
-                    tryInst.jumpA = errReg;
-                    tryInst.jumpTarget = catchBlock;
-                    insts.push_back(tryInst);
-                    
-                    EncodedInst jmpInst;
-                    jmpInst.isJump = true;
-                    jmpInst.jumpOp = OpCode::JMP;
-                    jmpInst.jumpTarget = tryBlock;
-                    insts.push_back(jmpInst);
-                    continue;
-                }
-                else if (node->op == IROp::Return) {
-                    int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                    auto ret = buildInstA(OpCode::RETURN, a);
-                    inst.words.insert(inst.words.end(), ret.begin(), ret.end());
-                }
-                else if (node->op == IROp::Throw) {
-                    int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                    auto thr = buildInstA(OpCode::THROW, a);
-                    inst.words.insert(inst.words.end(), thr.begin(), thr.end());
-                }
-                else if (node->op == IROp::TryEnd) {
-                    auto w = buildInstA(OpCode::TRY_END, 0);
-                    inst.words.insert(inst.words.end(), w.begin(), w.end());
-                    if (!inst.words.empty()) {
-                        insts.push_back(inst);
-                    }
-                    if (!bb->succs.empty()) {
-                        EncodedInst jmpInst;
-                        jmpInst.isJump = true;
-                        jmpInst.jumpOp = OpCode::JMP;
-                        jmpInst.jumpTarget = bb->succs[0];
-                        insts.push_back(jmpInst);
-                    }
-                    continue;
-                }
-                else {
-                    // IfTrue, IfFalse, Merge, Loop, Catch
-                    if (!bb->succs.empty()) {
-                        EncodedInst jmpInst;
-                        jmpInst.isJump = true;
-                        jmpInst.jumpOp = OpCode::JMP;
-                        jmpInst.jumpTarget = bb->succs[0];
-                        insts.push_back(jmpInst);
-                    }
-                    continue;
-                }
-            }
-            else {
-                // Data Nodes
-                auto buildBinary = [&](OpCode op) {
+            auto buildBinary = [&](OpCode op) {
                     int a = node->physicalReg;
                     int b = 0, c = 0;
                     OpType bType = OpType::KBIT_REG;
@@ -579,10 +489,87 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::Return: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto ret = buildInstA(OpCode::RETURN, a);
+                        inst.words.insert(inst.words.end(), ret.begin(), ret.end());
+                        break;
+                    }
+                    case IROp::Throw: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto thr = buildInstA(OpCode::THROW, a);
+                        inst.words.insert(inst.words.end(), thr.begin(), thr.end());
+                        break;
+                    }
+                    case IROp::TryEnd: {
+                        auto w = buildInstA(OpCode::TRY_END, 0);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     default: break;
                 }
+
+                if (!inst.words.empty()) {
+                    insts.push_back(inst);
+                }
             }
-            if (!inst.words.empty() || inst.isJump) insts.push_back(inst);
+
+            IRNode* cNode = bb->controlNode;
+            if (cNode->op == IROp::If) {
+                BasicBlock* trueBlock = nullptr;
+                BasicBlock* falseBlock = nullptr;
+                for (auto* succ : bb->succs) {
+                    if (succ->controlNode->op == IROp::IfTrue) trueBlock = succ;
+                    if (succ->controlNode->op == IROp::IfFalse) falseBlock = succ;
+                }
+                EncodedInst dummy;
+                int condReg = ensureReg(cNode->dataInputs[0], dummy.words, chunk, 124);
+                if (!dummy.words.empty()) insts.push_back(dummy);
+                
+                EncodedInst jmpFalse;
+                jmpFalse.isJump = true;
+                jmpFalse.jumpOp = OpCode::JMP_FALSE;
+                jmpFalse.jumpA = condReg;
+                jmpFalse.jumpTarget = falseBlock;
+                insts.push_back(jmpFalse);
+                
+                EncodedInst jmpTrue;
+                jmpTrue.isJump = true;
+                jmpTrue.jumpOp = OpCode::JMP;
+                jmpTrue.jumpTarget = trueBlock;
+                insts.push_back(jmpTrue);
+            }
+            else if (cNode->op == IROp::TryBegin) {
+                BasicBlock* catchBlock = nullptr;
+                BasicBlock* tryBlock = nullptr;
+                for (auto* succ : bb->succs) {
+                    if (succ->controlNode->op == IROp::Catch) catchBlock = succ;
+                    else tryBlock = succ;
+                }
+                int errReg = catchBlock->controlNode->physicalReg;
+                
+                EncodedInst tryInst;
+                tryInst.isJump = true;
+                tryInst.jumpOp = OpCode::TRY_BEGIN;
+                tryInst.jumpA = errReg;
+                tryInst.jumpTarget = catchBlock;
+                insts.push_back(tryInst);
+                
+                EncodedInst jmpInst;
+                jmpInst.isJump = true;
+                jmpInst.jumpOp = OpCode::JMP;
+                jmpInst.jumpTarget = tryBlock;
+                insts.push_back(jmpInst);
+            }
+            else if (cNode->op != IROp::Return && cNode->op != IROp::Throw) {
+                if (!bb->succs.empty()) {
+                    EncodedInst jmpInst;
+                    jmpInst.isJump = true;
+                    jmpInst.jumpOp = OpCode::JMP;
+                    jmpInst.jumpTarget = bb->succs[0];
+                    insts.push_back(jmpInst);
+                }
+            }
         }
     }
 

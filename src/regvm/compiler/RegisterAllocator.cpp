@@ -16,7 +16,7 @@ static bool isControlSpine(IROp op) {
         case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw:
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
         case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam:
-        case IROp::Call: case IROp::CallExt: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
+        case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
         case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
         case IROp::IndexGet: case IROp::IndexSet: case IROp::SliceGet: case IROp::SliceSet: 
         case IROp::GetProperty: case IROp::TryGetProperty: case IROp::SetProperty:
@@ -132,9 +132,9 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         phi->op = IROp::Nop; // 销毁 Phi 节点
     }
 
-    // 将控制节点追加到基本块指令流的末尾
+    // 将控制节点插入到基本块指令流的开头
     for (auto& bb : blocks) {
-        bb->instructions.push_back(bb->controlNode);
+        bb->instructions.insert(bb->instructions.begin(), bb->controlNode);
     }
 
     // 5. 活跃变量分析 (Liveness Analysis)

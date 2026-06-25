@@ -228,7 +228,7 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
         if (n->controlInput) {
             ctrlUses[n->controlInput].push_back(n);
         }
-        if (n->op == IROp::Merge) {
+        if (n->op == IROp::Merge || n->op == IROp::Loop) {
             for (IRNode* din : n->dataInputs) {
                 if (din) ctrlUses[din].push_back(n);
             }

@@ -1,5 +1,4 @@
 #include "IRBuilder.h"
-#include "../../math/BaseNum.h"
 
 namespace jc {
 namespace regvm {

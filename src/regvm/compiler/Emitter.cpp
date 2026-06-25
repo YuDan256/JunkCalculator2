@@ -102,7 +102,7 @@ static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& ar
     int base = dynamicSpillBase;
     for (size_t i = 0; i < args.size(); ++i) {
         int reg = ensureReg(args[i], words, chunk, 124);
-        auto move = buildInstAB(OpCode::MOVE, base + i, reg);
+        auto move = buildInstAB(OpCode::MOVE, base + static_cast<int>(i), reg);
         words.insert(words.end(), move.begin(), move.end());
     }
     return base;
@@ -371,7 +371,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::IndexSet:
                     case IROp::SliceSet: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
-                        auto set = buildInstABC(node->op == IROp::IndexSet ? OpCode::INDEX_SET : OpCode::SLICE_SET, spillBase, 0, node->payload1);
+                        auto set = buildInstABC(node->op == IROp::IndexSet ? OpCode::INDEX_SET : OpCode::SLICE_SET, spillBase, 0, static_cast<int>(node->payload1));
                         inst.words.insert(inst.words.end(), set.begin(), set.end());
                         break;
                     }

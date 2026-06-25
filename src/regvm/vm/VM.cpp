@@ -1608,16 +1608,16 @@ Value VM::run(int targetFrameDepth) {
 
     while (true) {
         try {
-        Instruction inst = code[frame->ip++];
-        OpCode op = GET_OPCODE(inst);
+        Instruction instruction = code[frame->ip++];
+        OpCode op = GET_OPCODE(instruction);
         
-        int a = GET_A(inst);
-        int b = GET_B(inst);
-        int c = GET_C(inst);
-        int bx = GET_Bx(inst);
-        int sbx = GET_sBx(inst);
-        int ax = GET_Ax(inst);
-        int sax = GET_sAx(inst);
+        int a = GET_A(instruction);
+        int b = GET_B(instruction);
+        int c = GET_C(instruction);
+        int bx = GET_Bx(instruction);
+        int sbx = GET_sBx(instruction);
+        int ax = GET_Ax(instruction);
+        int sax = GET_sAx(instruction);
 
         switch (op) {
             case OpCode::MOVE: {

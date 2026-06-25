@@ -1311,7 +1311,7 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
 void VM::execSliceSet(int a, int c, uint8_t dims) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     Value obj = registers[currentFrame->registerBase + a];
-    Value val = registers[currentFrame->registerBase + a + c + 1];
+    Value val = registers[currentFrame->registerBase + a + 3 * dims + 1];
     
     auto readOptionalInt = [&](int idx) -> std::pair<bool, int> {
         Value v = registers[currentFrame->registerBase + a + 1 + idx];
@@ -3339,7 +3339,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::SLICE_SET: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
-                execSliceSet(a, c, static_cast<uint8_t>(c)); // Wait, c is dims. The args are at a+1...
+                execSliceSet(a, c, static_cast<uint8_t>(c));
                 break;
             }
             case OpCode::IMPORT: {

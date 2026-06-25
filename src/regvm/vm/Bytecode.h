@@ -104,7 +104,7 @@ enum class OpCode : uint8_t {
     INDEX_GET,      // R(A) := R(B)[R(B+1)...R(B+C)] [Ext A, B, C]
     INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(A+C+1) [Ext A, C]
     SLICE_GET,      // R(A) := slice_get(R(B), dims = C, args = R(B+1)...) [Ext A, B, C]
-    SLICE_SET,      // slice_set(R(A), dims = C, args = R(A+1)..., val = R(A+C+1)) [Ext A, C]
+    SLICE_SET,      // slice_set(R(A), dims = C, args = R(A+1)..., val = R(A + 3*C + 1)) [Ext A, C]
 
     // 字符串操作
     STRINGIFY,      // R(A) := str(R(B))

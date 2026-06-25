@@ -1157,17 +1157,29 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
 
     IROp op = IROp::Add;
     switch (expr->op) {
+        case TokenType::PLUS:
         case TokenType::PLUS_ASSIGN: op = IROp::Add; break;
+        case TokenType::MINUS:
         case TokenType::MINUS_ASSIGN: op = IROp::Sub; break;
+        case TokenType::STAR:
         case TokenType::STAR_ASSIGN: op = IROp::Mul; break;
+        case TokenType::SLASH:
         case TokenType::SLASH_ASSIGN: op = IROp::Div; break;
+        case TokenType::PERCENT:
         case TokenType::PERCENT_ASSIGN: op = IROp::Mod; break;
+        case TokenType::CARET:
         case TokenType::CARET_ASSIGN: op = IROp::Pow; break;
+        case TokenType::BACKSLASH:
         case TokenType::BACKSLASH_ASSIGN: op = IROp::LeftDivide; break;
+        case TokenType::BIT_AND:
         case TokenType::BIT_AND_ASSIGN: op = IROp::BitAnd; break;
+        case TokenType::BIT_OR:
         case TokenType::BIT_OR_ASSIGN: op = IROp::BitOr; break;
+        case TokenType::BIT_XOR:
         case TokenType::BIT_XOR_ASSIGN: op = IROp::BitXor; break;
+        case TokenType::SHIFT_LEFT:
         case TokenType::SHIFT_LEFT_ASSIGN: op = IROp::Shl; break;
+        case TokenType::SHIFT_RIGHT:
         case TokenType::SHIFT_RIGHT_ASSIGN: op = IROp::Shr; break;
         default: throw std::runtime_error("IRBuilder: Unsupported compound operator.");
     }

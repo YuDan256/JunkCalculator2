@@ -178,7 +178,6 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
             if (mod == ScopeModifier::State) {
                 if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
-                int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
                 CompiledFunction::UpvalueInfo uv;
                 uv.name = vp->name.lexeme;
                 uv.isLocal = false;
@@ -217,7 +216,6 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     if (currentFunction) {
                         int upvalIdx = resolveUpvalue(vp->name.lexeme);
                         if (upvalIdx == -1) {
-                            upvalIdx = static_cast<int>(currentFunction->upvalues.size());
                             CompiledFunction::UpvalueInfo uv;
                             uv.name = vp->name.lexeme;
                             uv.isLocal = false;
@@ -328,7 +326,6 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 
                 if (restPat->name.lexeme != "_") {
                     if (restPat->modifier == ScopeModifier::State) {
-                        int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
                         CompiledFunction::UpvalueInfo uv;
                         uv.name = restPat->name.lexeme;
                         uv.isLocal = false;
@@ -344,23 +341,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         isUninit->addData(getVal);
                         isUninit->setControl(currentControl);
 
-                        IRNode* ifNode = graph->createNode(IROp::If);
-                        ifNode->addData(isUninit);
-                        ifNode->setControl(currentControl);
+                        IRNode* stateIfNode = graph->createNode(IROp::If);
+                        stateIfNode->addData(isUninit);
+                        stateIfNode->setControl(currentControl);
 
-                        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
-                        ifTrue->setControl(ifNode);
+                        IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
+                        stateIfTrue->setControl(stateIfNode);
 
-                        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
-                        ifFalse->setControl(ifNode);
+                        IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
+                        stateIfFalse->setControl(stateIfNode);
 
-                        currentControl = ifTrue;
+                        currentControl = stateIfTrue;
                         writeVariable(restPat->name.lexeme, sliceNode);
                         IRNode* trueCtrl = currentControl;
 
                         IRNode* merge = graph->createNode(IROp::Merge);
                         merge->addData(trueCtrl);
-                        merge->addData(ifFalse);
+                        merge->addData(stateIfFalse);
                         currentControl = merge;
                     } else {
                         ScopeModifier rmod = restPat->modifier;
@@ -371,7 +368,6 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             if (currentFunction) {
                                 int upvalIdx = resolveUpvalue(restPat->name.lexeme);
                                 if (upvalIdx == -1) {
-                                    upvalIdx = static_cast<int>(currentFunction->upvalues.size());
                                     CompiledFunction::UpvalueInfo uv;
                                     uv.name = restPat->name.lexeme;
                                     uv.isLocal = false;
@@ -760,7 +756,6 @@ void IRBuilder::visitVariable(Variable* expr) {
 void IRBuilder::visitAssign(Assign* expr) {
     if (expr->isState) {
         if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
-        int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
         CompiledFunction::UpvalueInfo uv;
         uv.name = expr->name.lexeme;
         uv.isLocal = false;
@@ -805,7 +800,6 @@ void IRBuilder::visitAssign(Assign* expr) {
         if (currentFunction) {
             int upvalIdx = resolveUpvalue(expr->name.lexeme);
             if (upvalIdx == -1) {
-                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
                 CompiledFunction::UpvalueInfo uv;
                 uv.name = expr->name.lexeme;
                 uv.isLocal = false;
@@ -1423,7 +1417,6 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
         int upvalIdx = resolveUpvalue(expr->name.lexeme);
         if (upvalIdx == -1) {
             // If not found in parent, it's a global ref
-            upvalIdx = static_cast<int>(currentFunction->upvalues.size());
             CompiledFunction::UpvalueInfo uv;
             uv.name = expr->name.lexeme;
             uv.isLocal = false;
@@ -1444,7 +1437,6 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
     if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
-    int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
     CompiledFunction::UpvalueInfo uv;
     uv.name = expr->name.lexeme;
     uv.isLocal = false;
@@ -1576,7 +1568,6 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         if (expr->isState) {
             if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
-            int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
             CompiledFunction::UpvalueInfo uv;
             uv.name = var->name.lexeme;
             uv.isLocal = false;
@@ -1590,7 +1581,6 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             if (currentFunction) {
                 int upvalIdx = resolveUpvalue(var->name.lexeme);
                 if (upvalIdx == -1) {
-                    upvalIdx = static_cast<int>(currentFunction->upvalues.size());
                     CompiledFunction::UpvalueInfo uv;
                     uv.name = var->name.lexeme;
                     uv.isLocal = false;

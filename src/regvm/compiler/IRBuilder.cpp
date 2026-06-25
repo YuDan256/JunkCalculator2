@@ -185,10 +185,29 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     envStack.back() = loopPhis;
     currentControl = loopNode;
     
+    IRNode* exitControl = graph->createNode(IROp::Merge);
+
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     nextNode->setControl(currentControl);
     nextNode->addData(iterNode);
     currentControl = nextNode;
+    
+    IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
+    isUninitNode->setControl(currentControl);
+    isUninitNode->addData(nextNode);
+    
+    IRNode* ifNode = graph->createNode(IROp::If);
+    ifNode->setControl(currentControl);
+    ifNode->addData(isUninitNode);
+    
+    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    ifTrue->setControl(ifNode);
+    exitControl->addData(ifTrue);
+    auto exitEnv = envStack.back();
+    
+    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    ifFalse->setControl(ifNode);
+    currentControl = ifFalse;
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     buildPatternMatch(clause.pattern.get(), nextNode, failMerge);
@@ -196,18 +215,18 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     IRNode* condFailMerge = graph->createNode(IROp::Merge);
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
-        IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
-        ifNode->addData(lastValue);
+        IRNode* condIfNode = graph->createNode(IROp::If);
+        condIfNode->setControl(currentControl);
+        condIfNode->addData(lastValue);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
-        ifTrue->setControl(ifNode);
+        IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
+        condIfTrue->setControl(condIfNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
-        ifFalse->setControl(ifNode);
-        condFailMerge->addData(ifFalse);
+        IRNode* condIfFalse = graph->createNode(IROp::IfFalse);
+        condIfFalse->setControl(condIfNode);
+        condFailMerge->addData(condIfFalse);
         
-        currentControl = ifTrue;
+        currentControl = condIfTrue;
     }
     
     buildCompClause(expr, clauseIdx + 1, listNode);
@@ -222,7 +241,7 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
         if (!failMerge->dataInputs.empty()) pair.second->addData(readVariable(pair.first));
     }
     
-    IRNode* exitControl = graph->createNode(IROp::Merge);
+    envStack.back() = exitEnv;
     currentControl = exitControl;
 }
 
@@ -870,6 +889,23 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     nextNode->setControl(currentControl);
     nextNode->addData(iterNode);
     currentControl = nextNode;
+    
+    IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
+    isUninitNode->setControl(currentControl);
+    isUninitNode->addData(nextNode);
+    
+    IRNode* ifNode = graph->createNode(IROp::If);
+    ifNode->setControl(currentControl);
+    ifNode->addData(isUninitNode);
+    
+    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    ifTrue->setControl(ifNode);
+    breakMerge->addData(ifTrue);
+    loopStack.back().breakEnvs.push_back(envStack.back());
+    
+    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    ifFalse->setControl(ifNode);
+    currentControl = ifFalse;
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     buildPatternMatch(expr->pattern.get(), nextNode, failMerge);

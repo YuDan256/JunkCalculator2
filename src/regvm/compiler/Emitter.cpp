@@ -17,33 +17,32 @@ struct EncodedInst {
     int offset = 0;
 };
 
-static void encodeReg(int reg, int& enc, bool& ext, bool isKBit) {
-    if (reg > 0xFFFFFF) throw std::runtime_error("Emitter Error: Register index exceeds 24-bit limit.");
-    if (isKBit) {
-        if (reg >= 127) { enc = 127; ext = true; } // ESCAPE_KBIT_REG
-        else { enc = reg; ext = false; }
-    } else {
-        if (reg >= 255) { enc = 255; ext = true; } // ESCAPE_NORMAL_8
-        else { enc = reg; ext = false; }
+enum class OpType {
+    NORMAL,
+    KBIT_REG,
+    KBIT_KST
+};
+
+static void encodeOperand(int val, OpType type, int& enc, bool& ext) {
+    if (val > 0xFFFFFF) throw std::runtime_error("Emitter Error: Operand exceeds 24-bit limit.");
+    if (type == OpType::NORMAL) {
+        if (val >= 255) { enc = 255; ext = true; }
+        else { enc = val; ext = false; }
+    } else if (type == OpType::KBIT_REG) {
+        if (val >= 127) { enc = 127; ext = true; }
+        else { enc = val; ext = false; }
+    } else if (type == OpType::KBIT_KST) {
+        if (val >= 127) { enc = 255; ext = true; } // 255 is 0xFF, which is 127 | 0x80
+        else { enc = val | 0x80; ext = false; }
     }
 }
 
-static void encodeKst(int kst, int& enc, bool& ext, bool isKBit) {
-    if (kst > 0xFFFFFF) throw std::runtime_error("Emitter Error: Constant index exceeds 24-bit limit.");
-    if (isKBit) {
-        if (kst >= 127) { enc = 255; ext = true; } // ESCAPE_KBIT_CONST
-        else { enc = kst | 0x80; ext = false; }
-    } else {
-        throw std::runtime_error("Emitter Error: Cannot encode constant in non-K-bit operand.");
-    }
-}
-
-static std::vector<uint32_t> buildInstABC(OpCode op, int a, int b, int c, bool bIsK = false, bool cIsK = false) {
+static std::vector<uint32_t> buildInstABC(OpCode op, int a, int b, int c, OpType bType = OpType::NORMAL, OpType cType = OpType::NORMAL) {
     int encA, encB, encC;
     bool extA, extB, extC;
-    encodeReg(a, encA, extA, false);
-    if (bIsK) encodeKst(b, encB, extB, true); else encodeReg(b, encB, extB, true);
-    if (cIsK) encodeKst(c, encC, extC, true); else encodeReg(c, encC, extC, true);
+    encodeOperand(a, OpType::NORMAL, encA, extA);
+    encodeOperand(b, bType, encB, extB);
+    encodeOperand(c, cType, encC, extC);
 
     std::vector<uint32_t> words;
     words.push_back(CREATE_ABC(op, encA, encB, encC));
@@ -53,17 +52,17 @@ static std::vector<uint32_t> buildInstABC(OpCode op, int a, int b, int c, bool b
     return words;
 }
 
-static std::vector<uint32_t> buildInstAB(OpCode op, int a, int b, bool bIsK = false) {
-    return buildInstABC(op, a, b, 0, bIsK, false);
+static std::vector<uint32_t> buildInstAB(OpCode op, int a, int b, OpType bType = OpType::NORMAL) {
+    return buildInstABC(op, a, b, 0, bType, OpType::NORMAL);
 }
 
 static std::vector<uint32_t> buildInstA(OpCode op, int a) {
-    return buildInstABC(op, a, 0, 0, false, false);
+    return buildInstABC(op, a, 0, 0, OpType::NORMAL, OpType::NORMAL);
 }
 
 static std::vector<uint32_t> buildInstABx(OpCode op, int a, int bx) {
     int encA; bool extA;
-    encodeReg(a, encA, extA, false);
+    encodeOperand(a, OpType::NORMAL, encA, extA);
     
     int encBx = bx; bool extBx = false;
     if (bx >= 0xFFFF) { encBx = 0xFFFF; extBx = true; }
@@ -73,6 +72,19 @@ static std::vector<uint32_t> buildInstABx(OpCode op, int a, int bx) {
     words.push_back(CREATE_ABx(op, encA, encBx));
     if (extA) words.push_back(CREATE_Ax(OpCode::EXTRAARG, a));
     if (extBx) words.push_back(CREATE_Ax(OpCode::EXTRAARG, bx));
+    return words;
+}
+
+static std::vector<uint32_t> buildInstAsBx(OpCode op, int a, int sbx) {
+    int encA; bool extA;
+    encodeOperand(a, OpType::NORMAL, encA, extA);
+
+    if (sbx < -32767 || sbx > 32767) throw std::runtime_error("Emitter Error: sBx out of bounds.");
+    int encBx = sbx + 0x7FFF;
+
+    std::vector<uint32_t> words;
+    words.push_back(CREATE_ABx(op, encA, encBx));
+    if (extA) words.push_back(CREATE_Ax(OpCode::EXTRAARG, a));
     return words;
 }
 
@@ -205,24 +217,25 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 auto buildBinary = [&](OpCode op) {
                     int a = node->physicalReg;
                     int b = 0, c = 0;
-                    bool bK = false, cK = false;
+                    OpType bType = OpType::KBIT_REG;
+                    OpType cType = OpType::KBIT_REG;
                     if (node->dataInputs[0]->op == IROp::Constant) {
-                        b = chunk.addConstant(node->dataInputs[0]->constVal); bK = true;
+                        b = chunk.addConstant(node->dataInputs[0]->constVal); bType = OpType::KBIT_KST;
                     } else b = node->dataInputs[0]->physicalReg;
                     if (node->dataInputs[1]->op == IROp::Constant) {
-                        c = chunk.addConstant(node->dataInputs[1]->constVal); cK = true;
+                        c = chunk.addConstant(node->dataInputs[1]->constVal); cType = OpType::KBIT_KST;
                     } else c = node->dataInputs[1]->physicalReg;
-                    return buildInstABC(op, a, b, c, bK, cK);
+                    return buildInstABC(op, a, b, c, bType, cType);
                 };
 
                 switch (node->op) {
                     case IROp::Add: inst.words = buildBinary(OpCode::ADD); break;
                     case IROp::Sub: inst.words = buildBinary(OpCode::SUB); break;
-                    case IROp::Mul: inst.words = buildBinary(OpCode::MULTIPLY); break;
-                    case IROp::Div: inst.words = buildBinary(OpCode::DIVIDE); break;
-                    case IROp::Mod: inst.words = buildBinary(OpCode::MODULO); break;
-                    case IROp::Pow: inst.words = buildBinary(OpCode::POWER); break;
-                    case IROp::LeftDivide: inst.words = buildBinary(OpCode::LEFT_DIVIDE); break;
+                    case IROp::Mul: inst.words = buildBinary(OpCode::MUL); break;
+                    case IROp::Div: inst.words = buildBinary(OpCode::DIV); break;
+                    case IROp::Mod: inst.words = buildBinary(OpCode::MOD); break;
+                    case IROp::Pow: inst.words = buildBinary(OpCode::POW); break;
+                    case IROp::LeftDivide: inst.words = buildBinary(OpCode::LDIV); break;
                     case IROp::Eq: inst.words = buildBinary(OpCode::EQ); break;
                     case IROp::Neq: inst.words = buildBinary(OpCode::NEQ); break;
                     case IROp::Lt: inst.words = buildBinary(OpCode::LT); break;
@@ -471,7 +484,7 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::FormatString: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = chunk.addConstant(node->dataInputs[1]->constVal);
-                        auto w = buildInstABC(OpCode::FORMAT_STRING, node->physicalReg, b, c, false, true);
+                        auto w = buildInstABC(OpCode::FORMAT_STRING, node->physicalReg, b, c, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -485,7 +498,7 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        auto w = buildInstABC(OpCode::METHOD, a, nameIdx, c, false, false);
+                        auto w = buildInstABC(OpCode::METHOD, a, nameIdx, c, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -499,14 +512,14 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::GetProperty: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::GET_PROP, node->physicalReg, b, icIdx, false, false);
+                        auto w = buildInstABC(OpCode::GET_PROP, node->physicalReg, b, icIdx, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::TryGetProperty: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::TRY_GET_PROP, node->physicalReg, b, icIdx, false, false);
+                        auto w = buildInstABC(OpCode::TRY_GET_PROP, node->physicalReg, b, icIdx, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -514,13 +527,13 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::SET_PROP, a, icIdx, c, false, false);
+                        auto w = buildInstABC(OpCode::SET_PROP, a, icIdx, c, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::GetSuper: {
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        auto w = buildInstAB(OpCode::GET_SUPER, node->physicalReg, nameIdx, true);
+                        auto w = buildInstAB(OpCode::GET_SUPER, node->physicalReg, nameIdx, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -537,25 +550,25 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::AssertParamType: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::ASSERT_PARAM_TYPE, a, node->payload1, node->payload2, false, false);
+                        auto w = buildInstABC(OpCode::ASSERT_PARAM_TYPE, a, node->payload1, node->payload2, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::AssertReturnType: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstAB(OpCode::ASSERT_RETURN_TYPE, a, node->payload1, false);
+                        auto w = buildInstAB(OpCode::ASSERT_RETURN_TYPE, a, node->payload1, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::MatchType: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, node->payload1, false, false);
+                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, node->payload1, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::MatchShape: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::MATCH_SHAPE, node->physicalReg, b, node->payload1, false, false);
+                        auto w = buildInstABC(OpCode::MATCH_SHAPE, node->physicalReg, b, node->payload1, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -582,8 +595,9 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 
                 if (inst.jumpOp == OpCode::JMP) {
                     if (relOffset < -8388607 || relOffset > 8388607) throw std::runtime_error("Emitter Error: Jump too large even for 24-bit!");
-                    if (inst.words.empty() || GET_OPCODE(inst.words[0]) != OpCode::JMP || GET_sAx(inst.words[0]) != relOffset) {
-                        inst.words = { CREATE_sAx(OpCode::JMP, relOffset) };
+                    auto newWords = std::vector<uint32_t>{ CREATE_sAx(OpCode::JMP, relOffset) };
+                    if (inst.words != newWords) {
+                        inst.words = newWords;
                         changed = true;
                     }
                 } else {
@@ -592,29 +606,35 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                             inst.isTrampoline = true;
                             changed = true;
                             if (inst.jumpOp == OpCode::JMP_TRUE) {
-                                inst.words = { CREATE_AsBx(OpCode::JMP_FALSE, inst.jumpA, 1), CREATE_sAx(OpCode::JMP, 0) };
+                                inst.words = buildInstAsBx(OpCode::JMP_FALSE, inst.jumpA, 1);
+                                inst.words.push_back(CREATE_sAx(OpCode::JMP, 0));
                             } else if (inst.jumpOp == OpCode::JMP_FALSE) {
-                                inst.words = { CREATE_AsBx(OpCode::JMP_TRUE, inst.jumpA, 1), CREATE_sAx(OpCode::JMP, 0) };
+                                inst.words = buildInstAsBx(OpCode::JMP_TRUE, inst.jumpA, 1);
+                                inst.words.push_back(CREATE_sAx(OpCode::JMP, 0));
                             } else if (inst.jumpOp == OpCode::TRY_BEGIN) {
-                                inst.words = { CREATE_AsBx(OpCode::TRY_BEGIN, inst.jumpA, 2), CREATE_sAx(OpCode::JMP, 1), CREATE_sAx(OpCode::JMP, 0) };
+                                inst.words = buildInstAsBx(OpCode::TRY_BEGIN, inst.jumpA, 1);
+                                inst.words.push_back(CREATE_sAx(OpCode::JMP, 1));
+                                inst.words.push_back(CREATE_sAx(OpCode::JMP, 0));
                             }
                         }
                         if (inst.jumpOp == OpCode::TRY_BEGIN) {
-                            int catchRel = targetOffset - (inst.offset + 3);
-                            if (GET_sAx(inst.words[2]) != catchRel) {
-                                inst.words[2] = CREATE_sAx(OpCode::JMP, catchRel);
+                            int catchRel = targetOffset - (inst.offset + static_cast<int>(inst.words.size()));
+                            if (GET_sAx(inst.words.back()) != catchRel) {
+                                inst.words.back() = CREATE_sAx(OpCode::JMP, catchRel);
                                 changed = true;
                             }
                         } else {
-                            int farRel = targetOffset - (inst.offset + 2);
-                            if (GET_sAx(inst.words[1]) != farRel) {
-                                inst.words[1] = CREATE_sAx(OpCode::JMP, farRel);
+                            int farRel = targetOffset - (inst.offset + static_cast<int>(inst.words.size()));
+                            if (GET_sAx(inst.words.back()) != farRel) {
+                                inst.words.back() = CREATE_sAx(OpCode::JMP, farRel);
                                 changed = true;
                             }
                         }
                     } else {
-                        if (inst.words.empty() || GET_sBx(inst.words[0]) != relOffset) {
-                            inst.words = { CREATE_AsBx(inst.jumpOp, inst.jumpA, relOffset) };
+                        auto newWords = buildInstAsBx(inst.jumpOp, inst.jumpA, relOffset);
+                        if (inst.words != newWords) {
+                            inst.words = newWords;
+                            inst.isTrampoline = false;
                             changed = true;
                         }
                     }

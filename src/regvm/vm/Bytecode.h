@@ -22,10 +22,6 @@ enum class OpCode : uint8_t {
     LOAD_NIL,       // R(A) := none
     LOAD_BOOL,      // R(A) := (bool)B
     
-    // 溢出槽访问
-    LOAD_EXT,       // R(A) := Spill(Bx)
-    STORE_EXT,      // Spill(Bx) := R(A)
-
     // 全局变量与上值
     GET_GLOBAL,     // R(A) := Globals[Bx] [Ext]
     SET_GLOBAL,     // Globals[Bx] := R(A) [Ext]
@@ -80,9 +76,9 @@ enum class OpCode : uint8_t {
     PASS_REFS,      // pass_refs(sigIdx = Bx) [Ext]
 
     // 面向对象与属性
-    GET_PROP,       // R(A) := R(B)[RK(C)]
-    TRY_GET_PROP,   // R(A), R(A+1) := try_get(R(B), RK(C))
-    SET_PROP,       // R(A)[RK(B)] := RK(C)
+    GET_PROP,       // R(A) := R(B)[icIdx = C] [Ext A, B, C]
+    TRY_GET_PROP,   // R(A), R(A+1) := try_get(R(B), icIdx = C) [Ext A, B, C]
+    SET_PROP,       // R(A)[icIdx = B] := R(C) [Ext A, B, C]
     INVOKE,         // R(A) := Invoke(obj = R(A), args = R(A+1)...R(A+B), icIdx = C) [Ext A, B, C]
     TAIL_INVOKE,    // [Ext A, B, C]
     INVOKE_FALLBACK,// R(A) := InvokeFallback(obj = R(A), args = R(A+1)...R(A+B), fbIdx = C) [Ext A, B, C]
@@ -100,15 +96,15 @@ enum class OpCode : uint8_t {
     BUILD_DICT,     // R(A) := Dict(R(B) ... R(B+C-1)) [Ext B, C]
     DICT_REST,      // R(A) := dict_rest(R(B), exclude_keys = R(C)) [Ext C]
     BUILD_SET,      // R(A) := Set(R(B) ... R(B+C-1)) [Ext B, C]
-    BUILD_MATRIX,   // R(A) := Matrix(shapeIdx = Bx, elements = R(A+1)...) [Ext A, Bx]
+    BUILD_MATRIX,   // R(A) := Matrix(elements = R(B)..., shapeIdx = C) [Ext A, B, C]
     BUILD_NAMESPACE,// R(A) := Namespace(nameIdx = Bx) [Ext]
     LIST_INIT,      // R(A) := []
     LIST_APPEND,    // R(A).append(R(B))
     LIST_COMP_END,  // R(A) := comp_end(R(A))
-    INDEX_GET,      // R(A) := R(B)[R(A+1)...R(A+C)] [Ext A, C]
-    INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(B) [Ext A, C]
-    SLICE_GET,      // R(A) := slice_get(R(B), dims = C, args = R(A+1)...) [Ext A, C]
-    SLICE_SET,      // slice_set(R(A), R(B), dims = C, args = R(A+1)...) [Ext A, C]
+    INDEX_GET,      // R(A) := R(B)[R(B+1)...R(B+C)] [Ext A, B, C]
+    INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(A+C+1) [Ext A, C]
+    SLICE_GET,      // R(A) := slice_get(R(B), dims = C, args = R(B+1)...) [Ext A, B, C]
+    SLICE_SET,      // slice_set(R(A), dims = C, args = R(A+1)..., val = R(A+C+1)) [Ext A, C]
 
     // 字符串操作
     STRINGIFY,      // R(A) := str(R(B))

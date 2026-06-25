@@ -86,17 +86,23 @@ static int ensureReg(IRNode* in, std::vector<uint32_t>& preWords, Chunk& chunk, 
     return in->physicalReg;
 }
 
-static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& args, Chunk& chunk) {
-    int spillBase = 10000; // 统一地址空间：利用溢出槽作为连续内存区
+static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& args, Chunk& chunk, int dynamicSpillBase) {
+    int base = dynamicSpillBase;
     for (size_t i = 0; i < args.size(); ++i) {
         int reg = ensureReg(args[i], words, chunk, 124);
-        auto store = buildInstABx(OpCode::STORE_EXT, reg, spillBase + i);
-        words.insert(words.end(), store.begin(), store.end());
+        auto move = buildInstAB(OpCode::MOVE, base + i, reg);
+        words.insert(words.end(), move.begin(), move.end());
     }
-    return spillBase;
+    return base;
 }
 
 void Emitter::emit(IRGraph* graph, Chunk& chunk) {
+    int maxReg = 127;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->physicalReg > maxReg) maxReg = nodePtr->physicalReg;
+    }
+    int dynamicSpillBase = maxReg + 1;
+
     std::vector<EncodedInst> insts;
     std::unordered_map<BasicBlock*, int> blockToInstIdx;
 
@@ -170,8 +176,20 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     auto thr = buildInstA(OpCode::THROW, a);
                     inst.words.insert(inst.words.end(), thr.begin(), thr.end());
                 }
+                else if (node->op == IROp::TryEnd) {
+                    auto w = buildInstA(OpCode::TRY_END, 0);
+                    inst.words.insert(inst.words.end(), w.begin(), w.end());
+                    if (!bb->succs.empty()) {
+                        EncodedInst jmpInst;
+                        jmpInst.isJump = true;
+                        jmpInst.jumpOp = OpCode::JMP;
+                        jmpInst.jumpTarget = bb->succs[0];
+                        insts.push_back(jmpInst);
+                    }
+                    continue;
+                }
                 else {
-                    // IfTrue, IfFalse, Merge, Loop, Catch, TryEnd
+                    // IfTrue, IfFalse, Merge, Loop, Catch
                     if (!bb->succs.empty()) {
                         EncodedInst jmpInst;
                         jmpInst.isJump = true;
@@ -244,17 +262,6 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::Move: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         auto w = buildInstAB(OpCode::MOVE, node->physicalReg, b);
-                        inst.words.insert(inst.words.end(), w.begin(), w.end());
-                        break;
-                    }
-                    case IROp::LoadExt: {
-                        auto w = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, node->payload1);
-                        inst.words.insert(inst.words.end(), w.begin(), w.end());
-                        break;
-                    }
-                    case IROp::StoreExt: {
-                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABx(OpCode::STORE_EXT, a, node->payload1);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -332,41 +339,41 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::Call:
                     case IROp::TailCall: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         auto call = buildInstAB(node->op == IROp::Call ? OpCode::CALL : OpCode::TAIL_CALL, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), call.begin(), call.end());
-                        auto loadRes = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, spillBase);
+                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
                         inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::Invoke:
                     case IROp::TailInvoke: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
                         auto inv = buildInstABC(node->op == IROp::Invoke ? OpCode::INVOKE : OpCode::TAIL_INVOKE, spillBase, node->payload1, icIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
-                        auto loadRes = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, spillBase);
+                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
                         inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::InvokeFallback:
                     case IROp::TailInvokeFallback: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
                         uint32_t fbIdx = chunk.addFallbackInfo(icIdx, node->payload2, node->payload3);
                         auto inv = buildInstABC(node->op == IROp::InvokeFallback ? OpCode::INVOKE_FALLBACK : OpCode::TAIL_INVOKE_FALLBACK, spillBase, node->payload1, fbIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
-                        auto loadRes = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, spillBase);
+                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
                         inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::SuperInvoke:
                     case IROp::TailSuperInvoke: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
                         auto inv = buildInstABC(node->op == IROp::SuperInvoke ? OpCode::SUPER_INVOKE : OpCode::TAIL_SUPER_INVOKE, spillBase, node->payload1, nameIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
-                        auto loadRes = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, spillBase);
+                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
                         inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
@@ -374,23 +381,19 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::BuildDict:
                     case IROp::BuildSet:
                     case IROp::ConcatStrings: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         OpCode op = OpCode::BUILD_LIST;
                         if (node->op == IROp::BuildDict) op = OpCode::BUILD_DICT;
                         else if (node->op == IROp::BuildSet) op = OpCode::BUILD_SET;
                         else if (node->op == IROp::ConcatStrings) op = OpCode::CONCAT_STRINGS;
-                        auto build = buildInstABC(op, spillBase, spillBase, node->payload1);
+                        auto build = buildInstABC(op, node->physicalReg, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), build.begin(), build.end());
-                        auto loadRes = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::BuildMatrix: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
-                        auto build = buildInstABx(OpCode::BUILD_MATRIX, spillBase, node->payload1);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        auto build = buildInstABC(OpCode::BUILD_MATRIX, node->physicalReg, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), build.begin(), build.end());
-                        auto loadRes = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::DictRest: {
@@ -428,17 +431,15 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::IndexGet:
                     case IROp::SliceGet: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
-                        auto get = buildInstABC(node->op == IROp::IndexGet ? OpCode::INDEX_GET : OpCode::SLICE_GET, spillBase, spillBase, node->payload1);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        auto get = buildInstABC(node->op == IROp::IndexGet ? OpCode::INDEX_GET : OpCode::SLICE_GET, node->physicalReg, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), get.begin(), get.end());
-                        auto loadRes = buildInstABx(OpCode::LOAD_EXT, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::IndexSet:
                     case IROp::SliceSet: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk);
-                        auto set = buildInstABC(node->op == IROp::IndexSet ? OpCode::INDEX_SET : OpCode::SLICE_SET, spillBase, spillBase, node->payload1);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        auto set = buildInstABC(node->op == IROp::IndexSet ? OpCode::INDEX_SET : OpCode::SLICE_SET, spillBase, 0, node->payload1);
                         inst.words.insert(inst.words.end(), set.begin(), set.end());
                         break;
                     }
@@ -484,7 +485,7 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        auto w = buildInstABC(OpCode::METHOD, a, nameIdx, c, true, false);
+                        auto w = buildInstABC(OpCode::METHOD, a, nameIdx, c, false, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -498,14 +499,14 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::GetProperty: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::GET_PROP, node->physicalReg, b, icIdx, false, true);
+                        auto w = buildInstABC(OpCode::GET_PROP, node->physicalReg, b, icIdx, false, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::TryGetProperty: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::TRY_GET_PROP, node->physicalReg, b, icIdx, false, true);
+                        auto w = buildInstABC(OpCode::TRY_GET_PROP, node->physicalReg, b, icIdx, false, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -513,7 +514,7 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::SET_PROP, a, icIdx, c, true, false);
+                        auto w = buildInstABC(OpCode::SET_PROP, a, icIdx, c, false, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -536,25 +537,25 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::AssertParamType: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::ASSERT_PARAM_TYPE, a, node->payload1, node->payload2, true, true);
+                        auto w = buildInstABC(OpCode::ASSERT_PARAM_TYPE, a, node->payload1, node->payload2, false, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::AssertReturnType: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstAB(OpCode::ASSERT_RETURN_TYPE, a, node->payload1, true);
+                        auto w = buildInstAB(OpCode::ASSERT_RETURN_TYPE, a, node->payload1, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::MatchType: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, node->payload1, false, true);
+                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, node->payload1, false, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::MatchShape: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::MATCH_SHAPE, node->physicalReg, b, node->payload1, false, true);
+                        auto w = buildInstABC(OpCode::MATCH_SHAPE, node->physicalReg, b, node->payload1, false, false);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

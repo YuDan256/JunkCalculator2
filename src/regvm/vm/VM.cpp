@@ -149,13 +149,13 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     }
                     actualArgs.resize(fixedMax);
                 }
-                while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::none());
+                while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
                 actualArgs.push_back(Value(restList));
             } else {
                 if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                     throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                 }
-                while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::none());
+                while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
             }
 
             if (isTailCall) {
@@ -278,13 +278,13 @@ void VM::execCall(int a, int b, bool isTailCall) {
                         }
                         actualArgs.resize(fixedMax);
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::none());
+                    while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
                     actualArgs.push_back(Value(restList));
                 } else {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::none());
+                    while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
                 }
 
                 CallFrame newFrame;
@@ -369,13 +369,13 @@ void VM::execCall(int a, int b, bool isTailCall) {
                         }
                         actualArgs.resize(fixedMax);
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::none());
+                    while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
                     actualArgs.push_back(Value(restList));
                 } else {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::none());
+                    while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
                 }
 
                 if (isTailCall) {
@@ -590,13 +590,13 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
                 }
                 actualArgs.resize(fixedMax);
             }
-            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::none());
+            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
             actualArgs.push_back(Value(restList));
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::none());
+            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
         }
 
         for (size_t i = 0; i < actualArgs.size(); ++i) {
@@ -955,13 +955,13 @@ invoke_method:
                 }
                 actualArgs.resize(fixedMax);
             }
-            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::none());
+            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
             actualArgs.push_back(Value(restList));
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::none());
+            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
         }
 
         if (isTailCall) {
@@ -1087,13 +1087,13 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
                 }
                 actualArgs.resize(fixedMax);
             }
-            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::none());
+            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
             actualArgs.push_back(Value(restList));
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::none());
+            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
         }
 
         if (isTailCall) {

@@ -127,8 +127,10 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     auto ast = parser.parse();
     
     if (g_useRegVM) {
+        auto& fns = regvm_inst.getCompiledFunctions();
+        
         jc::regvm::IRGraph graph;
-        jc::regvm::IRBuilder builder(&graph);
+        jc::regvm::IRBuilder builder(&graph, &fns);
         builder.build(ast.get());
         
         jc::regvm::IROptimizer::optimize(&graph);

@@ -1,4 +1,7 @@
 #include "IRBuilder.h"
+#include "IROptimizer.h"
+#include "RegisterAllocator.h"
+#include "Emitter.h"
 
 namespace jc {
 namespace regvm {
@@ -39,7 +42,8 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
     envStack.back()[name] = value;
 }
 
-IRBuilder::IRBuilder(IRGraph* graph) : graph(graph), currentControl(nullptr), lastValue(nullptr) {
+IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions) 
+    : graph(graph), compiledFunctions(compiledFunctions), currentControl(nullptr), lastValue(nullptr) {
     envStack.emplace_back(); // 压入顶层作用域
 }
 
@@ -1257,6 +1261,68 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
 }
 
 void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
+    if (compiledFunctions) {
+        auto fnDef = std::make_shared<CompiledFunction>();
+        fnDef->name = expr->name.empty() ? "lambda" : expr->name;
+        fnDef->arity = static_cast<int>(expr->params.size()) - (expr->hasRestParam ? 1 : 0);
+        fnDef->maxArity = static_cast<int>(expr->params.size());
+        fnDef->hasRestParam = expr->hasRestParam;
+        fnDef->paramIsRef = expr->paramIsRef;
+        fnDef->paramIsConst = expr->paramIsConst;
+        
+        IRGraph fnGraph;
+        IRBuilder fnBuilder(&fnGraph, compiledFunctions);
+        
+        for (size_t i = 0; i < expr->params.size(); ++i) {
+            IRNode* paramNode = fnGraph.createValueNode(IROp::Parameter);
+            paramNode->payload1 = static_cast<uint32_t>(i);
+            fnBuilder.declareVariable(expr->params[i].lexeme, paramNode);
+            
+            if (expr->defaultExprs[i]) {
+                IRNode* isUninit = fnGraph.createValueNode(IROp::IsUninit);
+                isUninit->setControl(fnBuilder.currentControl);
+                isUninit->addData(paramNode);
+                
+                IRNode* ifNode = fnGraph.createNode(IROp::If);
+                ifNode->setControl(fnBuilder.currentControl);
+                ifNode->addData(isUninit);
+                
+                IRNode* ifTrue = fnGraph.createNode(IROp::IfTrue);
+                ifTrue->setControl(ifNode);
+                
+                IRNode* ifFalse = fnGraph.createNode(IROp::IfFalse);
+                ifFalse->setControl(ifNode);
+                
+                fnBuilder.currentControl = ifTrue;
+                expr->defaultExprs[i]->accept(fnBuilder);
+                IRNode* defVal = fnBuilder.lastValue;
+                IRNode* trueCtrl = fnBuilder.currentControl;
+                
+                IRNode* merge = fnGraph.createNode(IROp::Merge);
+                merge->addData(trueCtrl);
+                merge->addData(ifFalse);
+                
+                IRNode* phi = fnGraph.createValueNode(IROp::Phi);
+                phi->setControl(merge);
+                phi->addData(defVal);
+                phi->addData(paramNode);
+                phi->name = expr->params[i].lexeme;
+                
+                fnBuilder.currentControl = merge;
+                fnBuilder.writeVariable(expr->params[i].lexeme, phi);
+            }
+        }
+        
+        fnBuilder.build(expr->body.get());
+        
+        IROptimizer::optimize(&fnGraph);
+        RegisterAllocator::allocate(&fnGraph);
+        fnDef->localCount = Emitter::emit(&fnGraph, fnDef->chunk);
+        
+        compiledFunctions->push_back(fnDef);
+        expr->fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
+    }
+
     IRNode* closureNode = graph->createValueNode(IROp::Closure);
     closureNode->setControl(currentControl);
     closureNode->name = std::to_string(expr->fnIdx);
@@ -1559,6 +1625,68 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     }
         
     for (auto& method : expr->methods) {
+        if (compiledFunctions) {
+            auto fnDef = std::make_shared<CompiledFunction>();
+            fnDef->name = method.name.lexeme;
+            fnDef->arity = static_cast<int>(method.params.size()) - (method.hasRestParam ? 1 : 0);
+            fnDef->maxArity = static_cast<int>(method.params.size());
+            fnDef->hasRestParam = method.hasRestParam;
+            fnDef->paramIsRef = method.paramIsRef;
+            fnDef->paramIsConst = method.paramIsConst;
+            
+            IRGraph fnGraph;
+            IRBuilder fnBuilder(&fnGraph, compiledFunctions);
+            
+            for (size_t i = 0; i < method.params.size(); ++i) {
+                IRNode* paramNode = fnGraph.createValueNode(IROp::Parameter);
+                paramNode->payload1 = static_cast<uint32_t>(i);
+                fnBuilder.declareVariable(method.params[i].lexeme, paramNode);
+                
+                if (method.defaultExprs[i]) {
+                    IRNode* isUninit = fnGraph.createValueNode(IROp::IsUninit);
+                    isUninit->setControl(fnBuilder.currentControl);
+                    isUninit->addData(paramNode);
+                    
+                    IRNode* ifNode = fnGraph.createNode(IROp::If);
+                    ifNode->setControl(fnBuilder.currentControl);
+                    ifNode->addData(isUninit);
+                    
+                    IRNode* ifTrue = fnGraph.createNode(IROp::IfTrue);
+                    ifTrue->setControl(ifNode);
+                    
+                    IRNode* ifFalse = fnGraph.createNode(IROp::IfFalse);
+                    ifFalse->setControl(ifNode);
+                    
+                    fnBuilder.currentControl = ifTrue;
+                    method.defaultExprs[i]->accept(fnBuilder);
+                    IRNode* defVal = fnBuilder.lastValue;
+                    IRNode* trueCtrl = fnBuilder.currentControl;
+                    
+                    IRNode* merge = fnGraph.createNode(IROp::Merge);
+                    merge->addData(trueCtrl);
+                    merge->addData(ifFalse);
+                    
+                    IRNode* phi = fnGraph.createValueNode(IROp::Phi);
+                    phi->setControl(merge);
+                    phi->addData(defVal);
+                    phi->addData(paramNode);
+                    phi->name = method.params[i].lexeme;
+                    
+                    fnBuilder.currentControl = merge;
+                    fnBuilder.writeVariable(method.params[i].lexeme, phi);
+                }
+            }
+            
+            fnBuilder.build(method.body.get());
+            
+            IROptimizer::optimize(&fnGraph);
+            RegisterAllocator::allocate(&fnGraph);
+            fnDef->localCount = Emitter::emit(&fnGraph, fnDef->chunk);
+            
+            compiledFunctions->push_back(fnDef);
+            method.fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
+        }
+
         IRNode* methodClosure = graph->createValueNode(IROp::Closure);
         methodClosure->setControl(currentControl);
         methodClosure->name = std::to_string(method.fnIdx);

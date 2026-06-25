@@ -133,6 +133,10 @@ public:
     void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
         compiledFunctions = fns;
     }
+    
+    std::vector<std::shared_ptr<CompiledFunction>>& getCompiledFunctions() {
+        return compiledFunctions;
+    }
 
     Value execute(const Chunk& mainChunk, int localCount);
 };

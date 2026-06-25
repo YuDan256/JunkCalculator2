@@ -2,6 +2,7 @@
 #define JC2_REGVM_IRBUILDER_H
 
 #include "IR.h"
+#include "../vm/Bytecode.h"
 #include "../../frontend/Expr.h"
 #include <unordered_map>
 #include <unordered_set>
@@ -15,6 +16,7 @@ namespace regvm {
 class IRBuilder : public ExprVisitor {
 private:
     IRGraph* graph;
+    std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions;
     
     // Sea of Nodes 构建状态
     IRNode* currentControl; // 当前的控制流依赖节点
@@ -40,7 +42,7 @@ private:
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 
 public:
-    explicit IRBuilder(IRGraph* graph);
+    explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr);
     void build(Expr* ast);
 
     void visitBinary(Binary* expr) override;

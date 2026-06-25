@@ -2817,12 +2817,18 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 
+                if (iterable.isObjType(ObjType::LIST)) {
+                    ObjList* state = GcHeap::get().allocate<ObjList>();
+                    state->vec.push_back(iterable);
+                    state->vec.push_back(Value::fromInt32(0));
+                    getReg(a) = Value(state);
+                    break;
+                }
+                
                 ObjList* elements = GcHeap::get().allocate<ObjList>();
                 getReg(a) = Value(elements); // ★ 立即 Root 防止 GC 误杀
                 
-                if (iterable.isObjType(ObjType::LIST)) {
-                    elements->vec = static_cast<ObjList*>(iterable.asObj())->vec;
-                } else if (iterable.isString()) {
+                if (iterable.isString()) {
                     ObjString* objStr = iterable.asObjString();
                     const std::string& s = objStr->str;
                     if (objStr->isAscii) {

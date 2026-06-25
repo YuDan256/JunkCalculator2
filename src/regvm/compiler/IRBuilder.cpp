@@ -1259,7 +1259,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
 void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
     IRNode* closureNode = graph->createValueNode(IROp::Closure);
     closureNode->setControl(currentControl);
-    closureNode->name = expr->name;
+    closureNode->name = std::to_string(expr->fnIdx);
     lastValue = closureNode;
 }
 
@@ -1561,7 +1561,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     for (auto& method : expr->methods) {
         IRNode* methodClosure = graph->createValueNode(IROp::Closure);
         methodClosure->setControl(currentControl);
-        methodClosure->name = method.name.lexeme;
+        methodClosure->name = std::to_string(method.fnIdx);
 
         IRNode* methodNode = graph->createNode(IROp::Method);
         methodNode->setControl(currentControl);

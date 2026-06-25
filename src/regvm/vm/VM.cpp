@@ -2581,6 +2581,45 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             throw std::runtime_error("RegVM Error: Cannot index this instance (no __getitem__).");
                         }
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                        const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (m.getRows() == 1) result = Value(m(0, i));
+                        else if (m.getCols() == 1) result = Value(m(i, 0));
+                        else {
+                            std::vector<double> row(m.getCols());
+                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                            result = Value(RealMatrix(1, m.getCols(), row));
+                        }
+                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                        const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (m.getRows() == 1) result = Value(m(0, i));
+                        else if (m.getCols() == 1) result = Value(m(i, 0));
+                        else {
+                            std::vector<Complex> row(m.getCols());
+                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                            result = Value(ComplexMatrix(1, m.getCols(), row));
+                        }
+                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                        const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (m.getRows() == 1) result = Value(m(0, i));
+                        else if (m.getCols() == 1) result = Value(m(i, 0));
+                        else {
+                            std::vector<std::string> row(m.getCols());
+                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                            result = Value(StringMatrix(1, m.getCols(), row));
+                        }
                     } else {
                         throw std::runtime_error("RegVM Error: Unsupported 1D index get.");
                     }
@@ -2593,6 +2632,18 @@ Value VM::run(int targetFrameDepth) {
                     Value result;
                     if (obj.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
+                        if (r < 0) r = m.getRows() + r;
+                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        result = Value(m(r, c_idx));
+                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                        const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
+                        if (r < 0) r = m.getRows() + r;
+                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        result = Value(m(r, c_idx));
+                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                        const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                         if (r < 0) r = m.getRows() + r;
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
@@ -2643,6 +2694,68 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             throw std::runtime_error("RegVM Error: Cannot assign index on this instance (no __setitem__).");
                         }
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                        if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                        auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        
+                        if (m.getRows() == 1) m(0, i) = val.asDouble();
+                        else if (m.getCols() == 1) m(i, 0) = val.asDouble();
+                        else {
+                            if (val.isObjType(ObjType::REAL_MATRIX)) {
+                                const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
+                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
+                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
+                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
+                            } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
+                        }
+                        registers[currentFrame->registerBase + a] = obj;
+                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                        if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                        auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        
+                        if (m.getRows() == 1) m(0, i) = val.asComplex();
+                        else if (m.getCols() == 1) m(i, 0) = val.asComplex();
+                        else {
+                            if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
+                                const auto& src = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
+                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
+                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
+                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
+                            } else if (val.isObjType(ObjType::REAL_MATRIX)) {
+                                const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
+                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
+                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = Complex(src(0, j));
+                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
+                            } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
+                        }
+                        registers[currentFrame->registerBase + a] = obj;
+                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                        if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                        auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        
+                        if (m.getRows() == 1) m(0, i) = val.asString();
+                        else if (m.getCols() == 1) m(i, 0) = val.asString();
+                        else {
+                            if (val.isObjType(ObjType::STRING_MATRIX)) {
+                                const auto& src = static_cast<ObjStringMatrix*>(val.asObj())->mat;
+                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
+                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
+                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
+                            } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
+                        }
+                        registers[currentFrame->registerBase + a] = obj;
                     } else {
                         throw std::runtime_error("RegVM Error: Unsupported 1D index set.");
                     }
@@ -2658,6 +2771,24 @@ Value VM::run(int targetFrameDepth) {
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
                         m(r, c_idx) = val.asDouble();
+                        registers[currentFrame->registerBase + a] = obj;
+                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                        if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                        auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
+                        if (r < 0) r = m.getRows() + r;
+                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        m(r, c_idx) = val.asComplex();
+                        registers[currentFrame->registerBase + a] = obj;
+                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                        if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                        auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
+                        if (r < 0) r = m.getRows() + r;
+                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (val.isString()) m(r, c_idx) = val.asString();
+                        else { std::ostringstream oss; oss << val; m(r, c_idx) = oss.str(); }
+                        registers[currentFrame->registerBase + a] = obj;
                     } else {
                         throw std::runtime_error("RegVM Error: Unsupported 2D index set.");
                     }
@@ -2706,6 +2837,45 @@ Value VM::run(int targetFrameDepth) {
                     const auto* s = static_cast<ObjSet*>(iterable.asObj());
                     for (const auto& val : s->elements) {
                         elements->vec.push_back(val);
+                    }
+                } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
+                    const auto& m = static_cast<ObjRealMatrix*>(iterable.asObj())->mat;
+                    if (m.getRows() == 1) {
+                        for (int j = 0; j < m.getCols(); ++j) elements->vec.push_back(Value(m(0, j)));
+                    } else if (m.getCols() == 1) {
+                        for (int i = 0; i < m.getRows(); ++i) elements->vec.push_back(Value(m(i, 0)));
+                    } else {
+                        for (int i = 0; i < m.getRows(); ++i) {
+                            std::vector<double> row(m.getCols());
+                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                            elements->vec.push_back(Value(RealMatrix(1, m.getCols(), row)));
+                        }
+                    }
+                } else if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
+                    const auto& m = static_cast<ObjComplexMatrix*>(iterable.asObj())->mat;
+                    if (m.getRows() == 1) {
+                        for (int j = 0; j < m.getCols(); ++j) elements->vec.push_back(Value(m(0, j)));
+                    } else if (m.getCols() == 1) {
+                        for (int i = 0; i < m.getRows(); ++i) elements->vec.push_back(Value(m(i, 0)));
+                    } else {
+                        for (int i = 0; i < m.getRows(); ++i) {
+                            std::vector<Complex> row(m.getCols());
+                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                            elements->vec.push_back(Value(ComplexMatrix(1, m.getCols(), row)));
+                        }
+                    }
+                } else if (iterable.isObjType(ObjType::STRING_MATRIX)) {
+                    const auto& m = static_cast<ObjStringMatrix*>(iterable.asObj())->mat;
+                    if (m.getRows() == 1) {
+                        for (int j = 0; j < m.getCols(); ++j) elements->vec.push_back(Value(m(0, j)));
+                    } else if (m.getCols() == 1) {
+                        for (int i = 0; i < m.getRows(); ++i) elements->vec.push_back(Value(m(i, 0)));
+                    } else {
+                        for (int i = 0; i < m.getRows(); ++i) {
+                            std::vector<std::string> row(m.getCols());
+                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                            elements->vec.push_back(Value(StringMatrix(1, m.getCols(), row)));
+                        }
                     }
                 } else if (iterable.isInstance()) {
                     auto method = findDunder(iterable, DUNDER_ITER);
@@ -2796,6 +2966,39 @@ Value VM::run(int targetFrameDepth) {
                 } else if (haystack.isObjType(ObjType::SET)) {
                     auto s = static_cast<ObjSet*>(haystack.asObj());
                     found = s->keys.find(needle) != s->keys.end();
+                } else if (haystack.isObjType(ObjType::REAL_MATRIX)) {
+                    const auto& m = static_cast<ObjRealMatrix*>(haystack.asObj())->mat;
+                    if (needle.isNumber() || needle.isObjType(ObjType::BIGINT) || needle.isObjType(ObjType::FRACTION)) {
+                        double nv = needle.asDouble();
+                        for (int i = 0; i < m.getRows(); ++i) {
+                            for (int j = 0; j < m.getCols(); ++j) {
+                                if (m(i, j) == nv) { found = true; break; }
+                            }
+                            if (found) break;
+                        }
+                    }
+                } else if (haystack.isObjType(ObjType::COMPLEX_MATRIX)) {
+                    const auto& m = static_cast<ObjComplexMatrix*>(haystack.asObj())->mat;
+                    if (needle.isNumber() || needle.isObjType(ObjType::BIGINT) || needle.isObjType(ObjType::FRACTION) || needle.isObjType(ObjType::COMPLEX)) {
+                        Complex nv = needle.asComplex();
+                        for (int i = 0; i < m.getRows(); ++i) {
+                            for (int j = 0; j < m.getCols(); ++j) {
+                                if (m(i, j) == nv) { found = true; break; }
+                            }
+                            if (found) break;
+                        }
+                    }
+                } else if (haystack.isObjType(ObjType::STRING_MATRIX)) {
+                    const auto& m = static_cast<ObjStringMatrix*>(haystack.asObj())->mat;
+                    std::string nv;
+                    if (needle.isString()) nv = needle.asString();
+                    else { std::ostringstream oss; oss << needle; nv = oss.str(); }
+                    for (int i = 0; i < m.getRows(); ++i) {
+                        for (int j = 0; j < m.getCols(); ++j) {
+                            if (m(i, j) == nv) { found = true; break; }
+                        }
+                        if (found) break;
+                    }
                 } else if (haystack.isInstance()) {
                     auto method = findDunder(haystack, DUNDER_CONTAINS);
                     if (method) {
@@ -2828,7 +3031,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 } else {
-                    throw std::runtime_error("RegVM Error: 'in' requires a string, list, dict, set, or instance.");
+                    throw std::runtime_error("RegVM Error: 'in' requires a string, list, dict, set, matrix, or instance.");
                 }
                 
                 getReg(a) = Value(found);

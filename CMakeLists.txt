@@ -49,6 +49,7 @@ set(JC2_HEADERS
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/VM.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/regvm/compiler/IR.h" "src/regvm/compiler/IRBuilder.h" "src/regvm/compiler/IROptimizer.h" "src/regvm/compiler/RegisterAllocator.h"
+    "src/regvm/vm/Bytecode.h"
     "src/modules/ExtensionBridge.h"
     "src/modules/jc2_extension_api.h"
     "src/modules/jc2_extension_cpp.h"

@@ -12,6 +12,7 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
     IRNode* node = graph->createValueNode(IROp::GetGlobal);
     node->name = name;
     node->setControl(currentControl);
+    currentControl = node;
     return node;
 }
 

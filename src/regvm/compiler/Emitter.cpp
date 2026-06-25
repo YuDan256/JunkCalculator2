@@ -322,7 +322,9 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::BuildMatrix: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
-                        auto build = buildInstABC(OpCode::BUILD_MATRIX, node->physicalReg, spillBase, node->payload1);
+                        std::vector<uint16_t> rowCols(node->payload1, static_cast<uint16_t>(node->payload2));
+                        uint32_t shapeIdx = chunk.addMatrixShape(static_cast<uint16_t>(node->payload1), rowCols);
+                        auto build = buildInstABC(OpCode::BUILD_MATRIX, node->physicalReg, spillBase, shapeIdx);
                         inst.words.insert(inst.words.end(), build.begin(), build.end());
                         break;
                     }

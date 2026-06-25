@@ -103,9 +103,14 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     }
 
     // 4. Phi 节点去结构化 (Phi Destruction)
+    std::vector<IRNode*> phis;
     for (auto& nodePtr : graph->getNodes()) {
-        IRNode* phi = nodePtr.get();
-        if (phi->op != IROp::Phi || phi->virtualReg == -1) continue;
+        if (nodePtr->op == IROp::Phi && nodePtr->virtualReg != -1) {
+            phis.push_back(nodePtr.get());
+        }
+    }
+    
+    for (IRNode* phi : phis) {
         IRNode* merge = phi->controlInput;
         if (!merge || (merge->op != IROp::Merge && merge->op != IROp::Loop)) continue;
 

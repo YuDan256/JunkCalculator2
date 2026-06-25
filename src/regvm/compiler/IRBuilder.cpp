@@ -279,6 +279,91 @@ void IRBuilder::visitLiteral(Literal* expr) {
 }
 
 void IRBuilder::visitBinary(Binary* expr) {
+    if (expr->op.type == TokenType::AND_AND || expr->op.type == TokenType::OR_OR) {
+        expr->left->accept(*this);
+        IRNode* leftVal = lastValue;
+        
+        IRNode* toBoolNode = graph->createValueNode(IROp::ToBool);
+        toBoolNode->setControl(currentControl);
+        toBoolNode->addData(leftVal);
+        
+        IRNode* ifNode = graph->createNode(IROp::If);
+        ifNode->setControl(currentControl);
+        ifNode->addData(toBoolNode);
+        
+        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        ifTrue->setControl(ifNode);
+        
+        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        ifFalse->setControl(ifNode);
+        
+        auto baseEnv = envStack.back();
+        
+        IRNode* mergeNode = graph->createNode(IROp::Merge);
+        IRNode* resultPhi = graph->createValueNode(IROp::Phi);
+        resultPhi->setControl(mergeNode);
+        
+        if (expr->op.type == TokenType::AND_AND) {
+            currentControl = ifTrue;
+            expr->right->accept(*this);
+            mergeNode->addData(currentControl);
+            resultPhi->addData(lastValue);
+            auto rightEnv = envStack.back();
+            
+            envStack.back() = baseEnv;
+            currentControl = ifFalse;
+            mergeNode->addData(currentControl);
+            resultPhi->addData(leftVal);
+            
+            envStack.back() = baseEnv;
+            std::unordered_set<std::string> modifiedVars;
+            for (const auto& pair : rightEnv) {
+                if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
+            }
+            for (const auto& name : modifiedVars) {
+                IRNode* tNode = rightEnv.count(name) ? rightEnv[name] : baseEnv[name];
+                IRNode* eNode = baseEnv[name];
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(mergeNode);
+                phi->addData(tNode);
+                phi->addData(eNode);
+                phi->name = name;
+                envStack.back()[name] = phi;
+            }
+        } else {
+            currentControl = ifTrue;
+            mergeNode->addData(currentControl);
+            resultPhi->addData(leftVal);
+            
+            envStack.back() = baseEnv;
+            currentControl = ifFalse;
+            expr->right->accept(*this);
+            mergeNode->addData(currentControl);
+            resultPhi->addData(lastValue);
+            auto rightEnv = envStack.back();
+            
+            envStack.back() = baseEnv;
+            std::unordered_set<std::string> modifiedVars;
+            for (const auto& pair : rightEnv) {
+                if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
+            }
+            for (const auto& name : modifiedVars) {
+                IRNode* tNode = baseEnv[name];
+                IRNode* eNode = rightEnv.count(name) ? rightEnv[name] : baseEnv[name];
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(mergeNode);
+                phi->addData(tNode);
+                phi->addData(eNode);
+                phi->name = name;
+                envStack.back()[name] = phi;
+            }
+        }
+        
+        currentControl = mergeNode;
+        lastValue = resultPhi;
+        return;
+    }
+
     // 1. 编译左子树
     expr->left->accept(*this);
     IRNode* leftVal = lastValue;
@@ -788,18 +873,18 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
 
     IROp op = IROp::Add;
     switch (expr->op) {
-        case TokenType::PLUS: op = IROp::Add; break;
-        case TokenType::MINUS: op = IROp::Sub; break;
-        case TokenType::STAR: op = IROp::Mul; break;
-        case TokenType::SLASH: op = IROp::Div; break;
-        case TokenType::PERCENT: op = IROp::Mod; break;
-        case TokenType::CARET: op = IROp::Pow; break;
-        case TokenType::BACKSLASH: op = IROp::LeftDivide; break;
-        case TokenType::BIT_AND: op = IROp::BitAnd; break;
-        case TokenType::BIT_OR: op = IROp::BitOr; break;
-        case TokenType::BIT_XOR: op = IROp::BitXor; break;
-        case TokenType::SHIFT_LEFT: op = IROp::Shl; break;
-        case TokenType::SHIFT_RIGHT: op = IROp::Shr; break;
+        case TokenType::PLUS_ASSIGN: op = IROp::Add; break;
+        case TokenType::MINUS_ASSIGN: op = IROp::Sub; break;
+        case TokenType::STAR_ASSIGN: op = IROp::Mul; break;
+        case TokenType::SLASH_ASSIGN: op = IROp::Div; break;
+        case TokenType::PERCENT_ASSIGN: op = IROp::Mod; break;
+        case TokenType::CARET_ASSIGN: op = IROp::Pow; break;
+        case TokenType::BACKSLASH_ASSIGN: op = IROp::LeftDivide; break;
+        case TokenType::BIT_AND_ASSIGN: op = IROp::BitAnd; break;
+        case TokenType::BIT_OR_ASSIGN: op = IROp::BitOr; break;
+        case TokenType::BIT_XOR_ASSIGN: op = IROp::BitXor; break;
+        case TokenType::SHIFT_LEFT_ASSIGN: op = IROp::Shl; break;
+        case TokenType::SHIFT_RIGHT_ASSIGN: op = IROp::Shr; break;
         default: throw std::runtime_error("IRBuilder: Unsupported compound operator.");
     }
 

@@ -935,10 +935,14 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
 
     // 2. 异常分支
     envStack.back() = baseEnv;
-    currentControl = tryBegin;
+    
+    IRNode* catchNode = graph->createValueNode(IROp::Catch);
+    catchNode->setControl(tryBegin);
+    currentControl = catchNode;
+    
     envStack.emplace_back(); // Catch scope
 
-    IRNode* errVal = tryBegin; // 假设 TryBegin 产生异常对象
+    IRNode* errVal = catchNode; // Catch 节点产生异常对象
 
     IRNode* failMerge = graph->createNode(IROp::Merge);
     buildPatternMatch(expr->catchPattern.get(), errVal, failMerge);

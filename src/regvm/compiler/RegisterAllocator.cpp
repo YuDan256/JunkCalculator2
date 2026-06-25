@@ -9,23 +9,11 @@
 namespace jc {
 namespace regvm {
 
-struct BasicBlock {
-    IRNode* controlNode;
-    std::vector<IRNode*> instructions;
-    std::vector<BasicBlock*> preds;
-    std::vector<BasicBlock*> succs;
-
-    std::unordered_set<int> def;
-    std::unordered_set<int> use;
-    std::unordered_set<int> liveIn;
-    std::unordered_set<int> liveOut;
-};
-
 // 判断节点是否属于控制流骨架 (Control Spine)
 static bool isControlSpine(IROp op) {
     switch (op) {
         case IROp::Start: case IROp::Return: case IROp::If: case IROp::IfTrue: case IROp::IfFalse:
-        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::TryEnd: case IROp::Throw:
+        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw:
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
         case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam:
         case IROp::Call: case IROp::CallExt: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
@@ -44,7 +32,9 @@ static bool isControlSpine(IROp op) {
 
 void RegisterAllocator::allocate(IRGraph* graph) {
     std::unordered_map<IRNode*, BasicBlock*> nodeToBB;
-    std::vector<std::unique_ptr<BasicBlock>> blocks;
+    graph->blocks.clear();
+    auto& blocks = graph->blocks;
+    int bbId = 0;
 
     // 1. 为每个控制流骨架节点创建基本块
     for (auto& nodePtr : graph->getNodes()) {
@@ -52,6 +42,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         if (node->op == IROp::Nop) continue;
         if (isControlSpine(node->op)) {
             auto bb = std::make_unique<BasicBlock>();
+            bb->id = bbId++;
             bb->controlNode = node;
             nodeToBB[node] = bb.get();
             blocks.push_back(std::move(bb));

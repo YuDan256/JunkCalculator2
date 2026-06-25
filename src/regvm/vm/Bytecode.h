@@ -121,8 +121,8 @@ enum class OpCode : uint8_t {
     THROW,          // Throw R(A)
 
     // 迭代器与包含
-    ITER_INIT,      // R(A) := Iter(R(B))
-    ITER_NEXT,      // R(A) := Next(R(B)). If exhausted PC++, else PC+=2
+    ITER_INIT,      // R(A) := Iter(R(B), destruct = C)
+    ITER_NEXT,      // R(A) := Next(R(B)). Returns uninit if exhausted.
     IN,             // R(A) := R(B) in R(C)
 
     // 模块导入

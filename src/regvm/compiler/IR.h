@@ -32,6 +32,7 @@ enum class IROp {
     Phi,        // 在 Merge 点根据控制流选择数据
 
     TryBegin,   // 异常处理
+    Catch,      // 捕获异常对象
     TryEnd,
     Throw,
 
@@ -161,6 +162,22 @@ struct IRNode {
 };
 
 // ============================================================================
+// 基本块 (Basic Block) - 用于指令调度和发射
+// ============================================================================
+struct BasicBlock {
+    int id = 0;
+    IRNode* controlNode = nullptr;
+    std::vector<IRNode*> instructions;
+    std::vector<BasicBlock*> preds;
+    std::vector<BasicBlock*> succs;
+
+    std::unordered_set<int> def;
+    std::unordered_set<int> use;
+    std::unordered_set<int> liveIn;
+    std::unordered_set<int> liveOut;
+};
+
+// ============================================================================
 // IR 图 (表示一个函数的完整中间表示)
 // ============================================================================
 class IRGraph {
@@ -171,6 +188,7 @@ private:
 
 public:
     IRNode* startNode = nullptr;
+    std::vector<std::unique_ptr<BasicBlock>> blocks; // 调度后的基本块序列
 
     IRGraph() {
         startNode = createNode(IROp::Start);

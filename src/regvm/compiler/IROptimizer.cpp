@@ -34,7 +34,7 @@ void IROptimizer::replaceNode(IRGraph* graph, IRNode* oldNode, IRNode* newNode) 
 bool IROptimizer::hasSideEffects(IROp op) {
     switch (op) {
         case IROp::Start: case IROp::Return: case IROp::If: case IROp::IfTrue: case IROp::IfFalse:
-        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::TryEnd: case IROp::Throw:
+        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw:
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
         case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam:
         case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:

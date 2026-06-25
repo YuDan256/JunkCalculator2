@@ -61,6 +61,7 @@ set(JC2_SOURCES
     "src/regvm/compiler/IRBuilder.cpp"
     "src/regvm/compiler/IROptimizer.cpp"
     "src/regvm/compiler/RegisterAllocator.cpp"
+    "src/regvm/compiler/Emitter.cpp"
     "src/vm/VM.cpp" "src/vm/BuiltinRegistry.cpp" "src/main.cpp"
     "src/cas/Symbolic.cpp" "src/cas/Integration.cpp" "src/cas/Factorization.cpp" "src/cas/Groebner.cpp"
     "src/resource.rc"

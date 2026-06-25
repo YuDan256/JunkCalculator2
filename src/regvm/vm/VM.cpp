@@ -1848,6 +1848,33 @@ Value VM::run(int targetFrameDepth) {
                         Value c = !helpers::nativeClassStack.empty() ? helpers::nativeClassStack.back() : currentClass;
                         
                         auto& fnDef = vm->compiledFunctions[capturedFnIdx];
+                        
+                        std::vector<Value> actualArgs = args;
+                        int totalArgc = static_cast<int>(actualArgs.size());
+
+                        if (fnDef->hasRestParam) {
+                            int fixedMax = fnDef->maxArity - 1;
+                            if (totalArgc < fnDef->arity) {
+                                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                            }
+                            ObjList* restList = GcHeap::get().allocate<ObjList>();
+                            if (totalArgc > fixedMax) {
+                                int restCount = totalArgc - fixedMax;
+                                restList->vec.resize(restCount);
+                                for (int j = 0; j < restCount; j++) {
+                                    restList->vec[j] = actualArgs[fixedMax + j];
+                                }
+                                actualArgs.resize(fixedMax);
+                            }
+                            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
+                            actualArgs.push_back(Value(restList));
+                        } else {
+                            if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
+                                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                            }
+                            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
+                        }
+
                         CallFrame newFrame;
                         newFrame.function = fnDef.get();
                         newFrame.chunk = &fnDef->chunk;
@@ -1858,10 +1885,10 @@ Value VM::run(int targetFrameDepth) {
                         newFrame.selfContext = s;
                         newFrame.classContext = c;
                         
-                        for (size_t i = 0; i < args.size(); ++i) {
-                            vm->registers[newFrame.registerBase + i] = args[i];
+                        for (size_t i = 0; i < actualArgs.size(); ++i) {
+                            vm->registers[newFrame.registerBase + i] = actualArgs[i];
                         }
-                        for (int i = static_cast<int>(args.size()); i < fnDef->localCount; ++i) {
+                        for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                             vm->registers[newFrame.registerBase + i] = Value::none();
                         }
                         
@@ -3246,6 +3273,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->isRef = targetFn->isRef;
                                 bound->defaultValues = targetFn->defaultValues;
                                 bound->isUFCS = true;
+                                bound->nativeFn = targetFn->nativeFn;
                             } else {
                                 bound->nativeFn = std::make_any<NativeCallable>(
                                     [](const std::vector<Value>& args) -> Value {

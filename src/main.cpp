@@ -430,25 +430,45 @@ int main(int argc, char* argv[]) {
     jc::helpers::evalCallback = [](const std::string& code) -> jc::Value { return evalCode(code, "<eval>", false); };
     jc::helpers::runFileCallback = [](const std::string& path) { runScript(path, true); };
     jc::helpers::callFunctionCallback = [](jc::ObjClosure* closure, const std::vector<jc::Value>& args) -> jc::Value {
-        if (closure->isNative() && !closure->isBytecode()) {
-            jc::helpers::nativeSelfStack.push_back(closure->boundSelf);
-            jc::helpers::nativeClassStack.push_back(closure->boundClass);
-            jc::Value result;
-            try {
-                auto& fn = std::any_cast<jc::NativeCallable&>(closure->nativeFn);
-                result = fn(args);
-            } catch (...) {
+        if (g_useRegVM) {
+            if (closure->nativeFn.has_value()) {
+                jc::helpers::nativeSelfStack.push_back(closure->boundSelf);
+                jc::helpers::nativeClassStack.push_back(closure->boundClass);
+                jc::Value result;
+                try {
+                    auto& fn = std::any_cast<jc::NativeCallable&>(closure->nativeFn);
+                    result = fn(args);
+                } catch (...) {
+                    jc::helpers::nativeSelfStack.pop_back();
+                    jc::helpers::nativeClassStack.pop_back();
+                    throw;
+                }
                 jc::helpers::nativeSelfStack.pop_back();
                 jc::helpers::nativeClassStack.pop_back();
-                throw;
+                return result;
             }
-            jc::helpers::nativeSelfStack.pop_back();
-            jc::helpers::nativeClassStack.pop_back();
-            return result;
-        } else if (closure->isBytecode()) {
-            return vm.callVMFunction(closure->compiledFnIndex, args, closure, closure->boundSelf, closure->boundClass);
+            throw std::runtime_error("RegVM Error: Invalid closure in callback.");
+        } else {
+            if (closure->isNative() && !closure->isBytecode()) {
+                jc::helpers::nativeSelfStack.push_back(closure->boundSelf);
+                jc::helpers::nativeClassStack.push_back(closure->boundClass);
+                jc::Value result;
+                try {
+                    auto& fn = std::any_cast<jc::NativeCallable&>(closure->nativeFn);
+                    result = fn(args);
+                } catch (...) {
+                    jc::helpers::nativeSelfStack.pop_back();
+                    jc::helpers::nativeClassStack.pop_back();
+                    throw;
+                }
+                jc::helpers::nativeSelfStack.pop_back();
+                jc::helpers::nativeClassStack.pop_back();
+                return result;
+            } else if (closure->isBytecode()) {
+                return vm.callVMFunction(closure->compiledFnIndex, args, closure, closure->boundSelf, closure->boundClass);
+            }
+            throw std::runtime_error("Runtime Error: Invalid closure.");
         }
-        throw std::runtime_error("Runtime Error: Invalid closure.");
     };
     jc::helpers::resolvePathCallback = [exeDir](const std::string& path) -> std::string {
         namespace fs = std::filesystem;

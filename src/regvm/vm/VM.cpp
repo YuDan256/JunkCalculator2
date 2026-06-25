@@ -3811,9 +3811,10 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 
+                bool isTailCall = (op == OpCode::TAIL_CALL);
                 int prevIp = frame->ip;
-                execCall(a, b, true);
-                if (frame->ip == prevIp) {
+                execCall(a, b, isTailCall);
+                if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
                     closeUpvalues(frame->registerBase);
                     int targetReg = frame->returnRegister;

@@ -2805,6 +2805,16 @@ Value VM::run(int targetFrameDepth) {
                 
                 uint8_t destructFlag = static_cast<uint8_t>(c);
                 Value iterable = getReg(b);
+                
+                if (iterable.isInstance()) {
+                    auto method = findDunder(iterable, DUNDER_ITER);
+                    if (method) {
+                        Value iterObj = callDunder(iterable, method, {});
+                        getReg(a) = iterObj; // Custom iterator
+                        break;
+                    }
+                }
+                
                 ObjList* elements = GcHeap::get().allocate<ObjList>();
                 
                 if (iterable.isObjType(ObjType::LIST)) {
@@ -2879,13 +2889,6 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 } else if (iterable.isInstance()) {
-                    auto method = findDunder(iterable, DUNDER_ITER);
-                    if (method) {
-                        Value iterObj = callDunder(iterable, method, {});
-                        getReg(a) = iterObj;
-                        getReg(a + 1) = Value::none(); // 使用 none 作为自定义迭代器的索引标记
-                        break;
-                    }
                     auto inst = iterable.asInstance();
                     if (inst->fields) {
                         if (destructFlag) {
@@ -2906,37 +2909,41 @@ Value VM::run(int targetFrameDepth) {
                     throw std::runtime_error("RegVM Error: Cannot iterate over this type.");
                 }
                 
-                getReg(a) = Value(elements);
-                getReg(a + 1) = Value::fromInt32(0); // 迭代器索引
+                ObjList* state = GcHeap::get().allocate<ObjList>();
+                state->vec.push_back(Value(elements));
+                state->vec.push_back(Value::fromInt32(0));
+                getReg(a) = Value(state);
                 break;
             }
             case OpCode::ITER_NEXT: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 
-                Value& iterObj = getReg(b);
-                Value& idxVal = getReg(b + 1);
+                Value& stateVal = getReg(b);
                 
-                if (idxVal.isNone()) {
-                    auto method = findDunder(iterObj, DUNDER_NEXT);
-                    if (!method) throw std::runtime_error("RegVM Error: Iterator missing __next__ method.");
-                    
-                    Value nextVal = callDunder(iterObj, method, {});
-                    if (nextVal.isNone()) {
-                        getReg(a) = Value::uninit();
-                    } else {
-                        getReg(a) = nextVal;
+                if (stateVal.isObjType(ObjType::LIST)) {
+                    auto state = static_cast<ObjList*>(stateVal.asObj());
+                    if (state->vec.size() == 2 && state->vec[1].isInt32()) {
+                        auto elems = static_cast<ObjList*>(state->vec[0].asObj())->vec;
+                        int i = state->vec[1].asInt32();
+                        if (i >= static_cast<int>(elems.size())) {
+                            getReg(a) = Value::uninit();
+                        } else {
+                            getReg(a) = elems[i];
+                            state->vec[1] = Value::fromInt32(i + 1);
+                        }
+                        break;
                     }
+                }
+                
+                auto method = findDunder(stateVal, DUNDER_NEXT);
+                if (!method) throw std::runtime_error("RegVM Error: Iterator missing __next__ method.");
+                
+                Value nextVal = callDunder(stateVal, method, {});
+                if (nextVal.isNone()) {
+                    getReg(a) = Value::uninit();
                 } else {
-                    int i = idxVal.isInt32() ? idxVal.asInt32() : static_cast<int>(idxVal.asDouble());
-                    const auto& elems = static_cast<ObjList*>(iterObj.asObj())->vec;
-                    
-                    if (i >= static_cast<int>(elems.size())) {
-                        getReg(a) = Value::uninit();
-                    } else {
-                        getReg(a) = elems[i];
-                        idxVal = Value::fromInt32(i + 1);
-                    }
+                    getReg(a) = nextVal;
                 }
                 break;
             }

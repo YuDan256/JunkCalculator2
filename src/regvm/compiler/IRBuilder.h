@@ -36,7 +36,7 @@ private:
     };
     std::vector<IRLoopInfo> loopStack;
 
-    void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge);
+    void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, bool forceLocal = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 
 public:

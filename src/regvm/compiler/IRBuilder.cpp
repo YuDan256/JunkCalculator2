@@ -43,10 +43,10 @@ IRBuilder::IRBuilder(IRGraph* graph) : graph(graph), currentControl(nullptr), la
     envStack.emplace_back(); // 压入顶层作用域
 }
 
-void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge) {
+void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, bool forceLocal) {
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
         if (vp->name.lexeme != "_") {
-            if (vp->modifier == ScopeModifier::Local) {
+            if (forceLocal || vp->modifier == ScopeModifier::Local) {
                 declareVariable(vp->name.lexeme, valNode);
             } else {
                 writeVariable(vp->name.lexeme, valNode);
@@ -119,7 +119,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(idxNode);
             elemNode->payload1 = 1;
             
-            buildPatternMatch(lp->elements[i].get(), elemNode, failMerge);
+            buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, forceLocal);
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
         IRNode* typeNode = graph->createValueNode(IROp::MatchType);
@@ -149,7 +149,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(keyNode);
             elemNode->payload1 = 1;
             
-            buildPatternMatch(entry.second.get(), elemNode, failMerge);
+            buildPatternMatch(entry.second.get(), elemNode, failMerge, forceLocal);
         }
     }
 }
@@ -211,7 +211,7 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     currentControl = ifFalse;
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(clause.pattern.get(), nextNode, failMerge);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, true);
     
     IRNode* condFailMerge = graph->createNode(IROp::Merge);
     for (auto& cond : clause.conditions) {
@@ -1331,7 +1331,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     currentControl = ifFalse;
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(expr->pattern.get(), nextNode, failMerge);
+    buildPatternMatch(expr->pattern.get(), nextNode, failMerge, expr->isLocal);
     
     expr->body->accept(*this);
     
@@ -1653,7 +1653,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     
-    buildPatternMatch(expr->pattern.get(), valNode, failMerge);
+    buildPatternMatch(expr->pattern.get(), valNode, failMerge, expr->isLocal);
     
     if (!failMerge->dataInputs.empty()) {
         IRNode* throwNode = graph->createNode(IROp::Throw);

@@ -1765,6 +1765,7 @@ Value VM::run(int targetFrameDepth) {
                 auto closure = GcHeap::get().allocate<ObjClosure>(
                     std::vector<std::string>{}, std::vector<bool>{}, fn->name, nullptr
                 );
+                getReg(a) = Value(closure); // ★ 立即 Root 防止 GC 误杀
                 closure->compiledFnIndex = fnIdx;
 
                 if (!fn->upvalues.empty()) {
@@ -1889,7 +1890,6 @@ Value VM::run(int targetFrameDepth) {
                 closure->hasRestParam = fn->hasRestParam;
                 closure->boundSelf = frame->selfContext;
                 closure->boundClass = frame->classContext;
-                getReg(a) = Value(closure);
                 break;
             }
             case OpCode::GET_UPVAL: {
@@ -2230,11 +2230,11 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 ObjList* list = GcHeap::get().allocate<ObjList>();
+                getReg(a) = Value(list); // ★ 立即 Root 防止 GC 误杀
                 list->vec.reserve(c);
                 for (int i = 0; i < c; ++i) {
                     list->vec.push_back(getReg(b + i));
                 }
-                getReg(a) = Value(list);
                 break;
             }
             case OpCode::BUILD_DICT: {
@@ -2242,12 +2242,12 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 ObjDict* dict = GcHeap::get().allocate<ObjDict>();
+                getReg(a) = Value(dict); // ★ 立即 Root 防止 GC 误杀
                 dict->elements.reserve(c);
                 dict->keyMap.reserve(c);
                 for (int i = 0; i < c; ++i) {
                     dict->set(getReg(b + i * 2), getReg(b + i * 2 + 1));
                 }
-                getReg(a) = Value(dict);
                 break;
             }
             case OpCode::BUILD_SET: {
@@ -2255,12 +2255,12 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 ObjSet* set = GcHeap::get().allocate<ObjSet>();
+                getReg(a) = Value(set); // ★ 立即 Root 防止 GC 误杀
                 set->elements.reserve(c);
                 set->keys.reserve(c);
                 for (int i = 0; i < c; ++i) {
                     set->add(getReg(b + i));
                 }
-                getReg(a) = Value(set);
                 break;
             }
             case OpCode::BUILD_MATRIX: {
@@ -2297,10 +2297,12 @@ Value VM::run(int targetFrameDepth) {
                 if (hasOther) {
                     if (rows == 1) {
                         ObjList* L = GcHeap::get().allocate<ObjList>();
+                        getReg(a) = Value(L); // ★ 立即 Root 防止 GC 误杀
                         for (int ii = 0; ii < total; ++ii) L->vec.push_back(getReg(b + ii));
                         result = Value(L);
                     } else {
                         ObjList* outer = GcHeap::get().allocate<ObjList>();
+                        getReg(a) = Value(outer); // ★ 立即 Root 防止 GC 误杀
                         int idx = 0;
                         for (int i = 0; i < rows; ++i) {
                             ObjList* inner = GcHeap::get().allocate<ObjList>();
@@ -2816,6 +2818,7 @@ Value VM::run(int targetFrameDepth) {
                 }
                 
                 ObjList* elements = GcHeap::get().allocate<ObjList>();
+                getReg(a) = Value(elements); // ★ 立即 Root 防止 GC 误杀
                 
                 if (iterable.isObjType(ObjType::LIST)) {
                     elements->vec = static_cast<ObjList*>(iterable.asObj())->vec;
@@ -2924,7 +2927,7 @@ Value VM::run(int targetFrameDepth) {
                 if (stateVal.isObjType(ObjType::LIST)) {
                     auto state = static_cast<ObjList*>(stateVal.asObj());
                     if (state->vec.size() == 2 && state->vec[1].isInt32()) {
-                        auto elems = static_cast<ObjList*>(state->vec[0].asObj())->vec;
+                        const auto& elems = static_cast<ObjList*>(state->vec[0].asObj())->vec; // ★ 修复 O(N^2) 性能 Bug：使用引用避免拷贝
                         int i = state->vec[1].asInt32();
                         if (i >= static_cast<int>(elems.size())) {
                             getReg(a) = Value::uninit();
@@ -3377,6 +3380,7 @@ Value VM::run(int targetFrameDepth) {
                 }
                 
                 ObjDict* restDict = GcHeap::get().allocate<ObjDict>();
+                getReg(a) = Value(restDict); // ★ 立即 Root 防止 GC 误杀
                 if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     for (const auto& [k, v] : d->elements) {
@@ -3398,7 +3402,6 @@ Value VM::run(int targetFrameDepth) {
                         restDict->set(Value(k), *(field.upval->location));
                     }
                 }
-                getReg(a) = Value(restDict);
                 break;
             }
             case OpCode::BUILD_NAMESPACE: {
@@ -3408,6 +3411,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 const std::string& nsName = chunk->constants[b].asString();
                 ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+                getReg(a) = Value(ns); // ★ 立即 Root 防止 GC 误杀
                 ns->name = nsName;
                 
                 for (int i = 0; i < c; ++i) {
@@ -3422,8 +3426,6 @@ Value VM::run(int targetFrameDepth) {
                     ObjUpVal* upval = captureUpvalue(frame->registerBase + slot);
                     ns->fields[key] = { upval, isConst };
                 }
-                
-                getReg(a) = Value(ns);
                 break;
             }
             case OpCode::LIST_COMP_END: {

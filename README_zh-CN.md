@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.4.4.3
+# Junk Calculator 2.4.5.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.4.3-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.5.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,66 +68,48 @@
 
 ---
 
-## v2.4.4.3 版本更新说明
+## v2.4.5.0 版本更新说明
 
 ### 语言特性与语法
-- **模式匹配与解构增强**：
-  - 将 `for-in` 循环和列表推导式 (List Comprehension) 的绑定逻辑统一至 Pattern 引擎。
-  - 支持在 `catch` 异常绑定中使用模式解构。
-  - 允许在解构模式和剩余参数 (`...rest`) 上使用类型注解和默认值。
-  - 支持在类方法参数中使用解构。
-  - 允许解构参数接受实例 (Instance) 和矩阵 (Matrix) 类型。
-  - 实现了占位符穿透与模式修饰符绑定的深度正交化，并将占位符 `_` 严格限制为仅用于直接函数调用参数。
-- **常量语义强化**：
-  - 支持在函数参数和解构模式上使用 `const` 修饰符。
-  - 对 `const` 变量的非法赋值现在会在编译时直接抛出错误，而不是生成运行时异常。
-  - 防止通过 `delete` 命令删除全局常量。
-- **异常处理增强**：允许在 `throw` 和 `catch` 中抛出和捕获任意 `Value` 类型，不再局限于特定错误对象。
-- **运算符与字面量**：
-  - 提升了位运算符和集合运算符的优先级，使其高于比较运算符。
-  - 字符串字面量现在支持完整的 C 风格和八进制转义序列。
-  - 在算术上下文中，布尔值 `true` 和 `false` 现在被视为精确的整数 `1` 和 `0`。
-- **UFCS 词法回退**：实现了统一函数调用语法 (UFCS) 方法语法的词法回退机制。
+- **国际化与字符编码**：全面支持 UTF-8，允许使用中文等非 ASCII 字符作为标识符；内置字符串函数按字符（Codepoint）而非字节处理。
+- **注释与交互**：
+  - 新增嵌套多行注释支持 `/* ... */`。
+  - 新增 `/silent` REPL 命令，可隐藏表达式求值输出。
+- **逻辑运算符**：`&&` 和 `||` 现在严格返回布尔值（`true` 或 `false`），不再返回操作数原始值。
 
 ### 编译器与前端优化
-- **死代码消除与常量传播**：
-  - 实现了针对代码块、循环和短路操作符的死代码消除 (Dead Code Elimination)。
-  - 实现了 `const` 变量的常量传播 (Constant Propagation)，并在编译时省略常量的 `OP_SET_LOCAL` 指令。
-- **安全的窥孔优化**：重新引入了带有跳转边界保护的安全窥孔优化，消除了冗余的 `OP_CONSTANT` + `OP_POP` 指令对。
-- **AST 内存分配器**：为 AST 节点实现了基于碰撞指针 (Bump Pointer) 和空闲链表 (Free List) 的 Arena 内存分配器，大幅提升解析性能。
-- **编译时错误信息**：编译时错误现在包含精确的文件名和行号。
-- **字节码操作数扩展**：引入了 `OP_EXTEND` 前缀指令，按需支持 32 位操作数，并添加了编译时操作数溢出检查。
+- **常量折叠增强**：在编译期常量折叠时，能够正确传播并报告数学错误（如除零异常）。
 
 ### 虚拟机与内存管理
-- **闭包内存泄漏修复**：使用 GC 管理的 `ObjUpVal` 替换了基于 `std::shared_ptr` 的 `UpVal`，彻底修复了循环引用闭包导致的内存泄漏问题。
-- **全局变量访问优化**：将全局变量存储从 `std::unordered_map` 替换为 `std::vector`，并在内联缓存 (Inline Cache) 中直接缓存槽索引，大幅提升全局变量访问速度。
-- **指令压缩**：
-  - 通过将 `nameIdx` 移入缓存槽，压缩了内联缓存指令。
-  - 使用调用签名池 (Call Signature Pool) 将 `OP_PASS_REFS` 压缩为固定的 3 字节指令。
-  - 使用矩阵形状池 (Matrix Shape Pool) 将 `OP_BUILD_MATRIX` 压缩为固定的 3 字节指令。
-  - 使用形状模式池 (Shape Pattern Pool) 将 `OP_MATCH_SHAPE` 压缩为 3 字节指令。
-- **堆分配消除**：
-  - 预计算引用计数，消除了内置 dunder 调用中的字符串分配。
-  - 消除了 `invokeDunder`、`callVMFunction`、`callDunder` 参数打包以及切片索引构建中的隐式 `std::vector` 和堆分配。
-  - 使用 `memmove` 优化栈操作，进一步减少堆分配。
-- **尾调用优化修正**：细化了尾调用禁用条件，仅在传递局部变量的引用 (`ref`) 时禁用尾调用优化。
+- **哈希与安全**：
+  - 将底层哈希算法从 `std::hash` 替换为 SipHash-2-4，并引入随机种子，有效抵御哈希碰撞与注入攻击。
+  - 统一并硬化了数值类型（Fraction、BigInt、double）的判等与哈希规则，确保精度一致性。
+- **性能优化**：
+  - 优化魔术方法（Dunder Methods）调度，消除冗余的哈希表查找。
+  - 内置函数闭包改用弱引用缓存机制，显著降低长期驻留内存的开销。
 
 ### 数学与 CAS 引擎
-- **Strassen 矩阵乘法**：
-  - 实现了带有回退阈值的 Strassen 矩阵乘法算法。
-  - 通过深度限制的并发机制实现了 Strassen 子矩阵乘法的并行化。
-  - 使用零拷贝视图 (Zero-copy Views) 和动态剥离 (Dynamic Peeling) 减少了 Strassen 算法中的矩阵内存分配。
-- **大整数算法优化**：
-  - 实现了 Karatsuba 大整数乘法算法。
-  - 使用无符号合并和分支消除优化了 BigInt 除法 (Knuth D 算法)。
-  - 优化了 BigInt 的阶乘、GCD 和模幂 (modPow) 算法。
-- **其他数学优化**：
-  - 使用位扫描快速倍增算法 (Bit-scanning Fast Doubling) 优化了斐波那契数列计算。
-  - 改进了 Miller-Rabin 素性测试，对 ≤81 位数使用确定性基底，对更大数使用随机基底。
+- **大整数与分解算法**：
+  - BigInt 底层存储从 $10^9$ 升级为 $2^{32}$ 进制，全面重构核心计算算法，消除内层循环的除法指令。
+  - 优化 Pollard's rho 算法（引入 Brent's 判圈、GCD 批量化及小素数轮除法），并结合 Lenstra 椭圆曲线分解法 (ECM) 大幅提升大整数分解性能。
+- **质数引擎升级**：
+  - 质数表存储格式升级为高压缩率的二进制 JCP1 格式，支持 O(1) 访问与动态扩容。
+  - 引入分段埃拉托斯特尼筛法和纯 64 位硬件级 Miller-Rabin 素性测试，质数生成与校验速度提升数千倍。
+- **CAS 与微积分**：
+  - 修复了 Gruntz 极限算法对变量指数（如 `x^x`）和对数隐藏项的处理。
+  - 新增 `toFrac` 函数，可将浮点数精确还原为 `Fraction` 有理数。
 
-### 测试框架
-- **测试运行器**：引入了具备隔离执行和汇总报告功能的全新测试运行器。
-- **测试套件重构**：将测试用例重新组织为 `core`、`modules`、`features` 和 `syntax` 目录，并添加了 `TEST_SPEC.md` 以标准化测试套件。
+### 原生模块与标准库
+- **模块解耦与 C ABI**：
+  - 将所有原生扩展模块（image、tensor、prob、bytes、ffi、socket、json、latex、window）彻底解耦为独立的动态链接库（DLL/SO）。
+  - 定义了稳定的纯 C ABI 扩展接口（`jc2_extension_api.h`），支持使用 C/C++、Rust、Zig 等语言编写第三方扩展。
+  - 支持动态库在初始化时向主程序动态注入帮助文档。
+- **Tensor 模块**：全新实现的高性能张量计算模块，完整支持自动微分（Autograd）、多维广播机制、矩阵互操作及常用机器学习算子。
+- **正则表达式**：`regex` 引擎新增对非贪婪量词（如 `*?`, `+?`）和反向引用（如 `\1`）的支持。
+
+### 构建系统与测试
+- **扩展模块构建**：原生扩展 DLL 统一输出至 `modules/` 目录，`import` 指令优先在该目录查找；为每个扩展模块补充了独立的测试套件。
+- **跨平台编译**：为 MinGW (GCC) 补充了静态链接标志，确保生成不依赖外部运行时的绿色版二进制文件。
 
 ---
 

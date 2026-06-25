@@ -573,95 +573,8 @@
     "evalf": {
       "signature": "evalf(expr)"
     },
-    "json.encode": {
-      "signature": "json.encode(val)"
-    },
-    "json.decode": {
-      "signature": "json.decode(str)"
-    },
-    "latex.to_latex": {
-      "signature": "latex.to_latex(obj)"
-    },
-    "latex.eval": {
-      "signature": "latex.eval(formula)"
-    },
-    "image.img": {
-      "signature": "image.img(width, height, [bg_color])"
-    },
-    "width": {
-      "signature": "im.width()"
-    },
-    "height": {
-      "signature": "im.height()"
-    },
-    "setPixel": {
-      "signature": "im.setPixel(x, y, color)"
-    },
-    "getPixel": {
-      "signature": "im.getPixel(x, y)"
-    },
     "clear": {
-      "signature": "im.clear(color) / clear(collection)"
-    },
-    "line": {
-      "signature": "im.line(x0, y0, x1, y1, color, [thick])"
-    },
-    "rect": {
-      "signature": "im.rect(x, y, w, h, color, [thick])"
-    },
-    "fillRect": {
-      "signature": "im.fillRect(x, y, w, h, color)"
-    },
-    "circle": {
-      "signature": "im.circle(cx, cy, radius, color, [thick])"
-    },
-    "fillCircle": {
-      "signature": "im.fillCircle(cx, cy, radius, color)"
-    },
-    "text": {
-      "signature": "im.text(txt, x, y, color, [scale])"
-    },
-    "axes": {
-      "signature": "im.axes(xMin, xMax, yMin, yMax, [color])"
-    },
-    "save": {
-      "signature": "im.save(path)"
-    },
-    "window.Window": {
-      "signature": "window.Window(title, width, height)"
-    },
-    "isOpen": {
-      "signature": "win.isOpen()"
-    },
-    "pollEvent": {
-      "signature": "win.pollEvent()"
-    },
-    "isKeyDown": {
-      "signature": "win.isKeyDown(key)"
-    },
-    "show": {
-      "signature": "win.show(img)"
-    },
-    "setImeEnabled": {
-      "signature": "win.setImeEnabled(enable)"
-    },
-    "showCursor": {
-      "signature": "win.showCursor(show)"
-    },
-    "setCursorPos": {
-      "signature": "win.setCursorPos(x, y)"
-    },
-    "pdf": {
-      "signature": "dist.pdf(x)"
-    },
-    "cdf": {
-      "signature": "dist.cdf(x)"
-    },
-    "quantile": {
-      "signature": "dist.quantile(p)"
-    },
-    "sample": {
-      "signature": "dist.sample(n)"
+      "signature": "clear(collection)"
     },
     "add": {
       "signature": "add(collection, val) / dict.add(key, val)"
@@ -942,9 +855,6 @@
     "modules": {
       "signature": "modules()"
     },
-    "imgPlot": {
-      "signature": "imgPlot(im, f, xMin, xMax, yMin, yMax, color, [thick])"
-    },
     "breakpoint": {
       "signature": "breakpoint()"
     },
@@ -956,6 +866,15 @@
     },
     "mountPrimes": {
       "signature": "mountPrimes(path)"
+    },
+    "extendPrimes": {
+      "signature": "extendPrimes(n)"
+    },
+    "convertPrimes": {
+      "signature": "convertPrimes(txtPath, binPath)"
+    },
+    "verifyPrimes": {
+      "signature": "verifyPrimes()"
     },
     "sysinfo": {
       "signature": "sysinfo()"
@@ -1124,114 +1043,6 @@
     },
     "isset": {
       "signature": "isset(x)"
-    },
-    "prob.Normal": {
-      "signature": "prob.Normal([mu], [sigma])"
-    },
-    "prob.TDist": {
-      "signature": "prob.TDist(df)"
-    },
-    "prob.Chi2": {
-      "signature": "prob.Chi2(df)"
-    },
-    "prob.FDist": {
-      "signature": "prob.FDist(d1, d2)"
-    },
-    "prob.ExpDist": {
-      "signature": "prob.ExpDist(lambda)"
-    },
-    "prob.GammaDist": {
-      "signature": "prob.GammaDist(shape, rate)"
-    },
-    "prob.BetaDist": {
-      "signature": "prob.BetaDist(a, b)"
-    },
-    "prob.Uniform": {
-      "signature": "prob.Uniform(a, b)"
-    },
-    "prob.Binom": {
-      "signature": "prob.Binom(n, p)"
-    },
-    "prob.Poisson": {
-      "signature": "prob.Poisson(lambda)"
-    },
-    "prob.Geom": {
-      "signature": "prob.Geom(p)"
-    },
-    "prob.gamma": {
-      "signature": "prob.gamma(x)"
-    },
-    "prob.lgamma": {
-      "signature": "prob.lgamma(x)"
-    },
-    "prob.betaFn": {
-      "signature": "prob.betaFn(a, b)"
-    },
-    "prob.erfc": {
-      "signature": "prob.erfc(x)"
-    },
-    "prob.ttest": {
-      "signature": "prob.ttest(X, [mu0])"
-    },
-    "prob.ttest2": {
-      "signature": "prob.ttest2(X, Y)"
-    },
-    "prob.ttestP": {
-      "signature": "prob.ttestP(X, Y)"
-    },
-    "prob.chi2test": {
-      "signature": "prob.chi2test(obs, exp)"
-    },
-    "prob.distInfo": {
-      "signature": "prob.distInfo(dist)"
-    },
-    "bytes.alloc": {
-      "signature": "bytes.alloc(size)"
-    },
-    "bytes.pack": {
-      "signature": "bytes.pack(array)"
-    },
-    "bytes.readFile": {
-      "signature": "bytes.readFile(path)"
-    },
-    "bytes.writeFile": {
-      "signature": "buf.writeFile(path)"
-    },
-    "bytes.set": {
-      "signature": "buf.set(offset, val, type)"
-    },
-    "bytes.write_arr": {
-      "signature": "buf.write_arr(offset, arr, type)"
-    },
-    "bytes.get": {
-      "signature": "buf.get(offset, type, [len])"
-    },
-    "bytes.len": {
-      "signature": "buf.len()"
-    },
-    "socket.connect": {
-      "signature": "socket.connect(host, port)"
-    },
-    "socket.send": {
-      "signature": "sock.send(text)"
-    },
-    "socket.recv": {
-      "signature": "sock.recv(max_bytes)"
-    },
-    "socket.close": {
-      "signature": "sock.close()"
-    },
-    "socket.server": {
-      "signature": "socket.server(host, port)"
-    },
-    "socket.accept": {
-      "signature": "server.accept()"
-    },
-    "latex.compile": {
-      "signature": "latex.compile(formula, vars)"
-    },
-    "json.pretty": {
-      "signature": "json.pretty(val, [indent])"
     },
     "addE": {
       "signature": "addE(A, B)"
@@ -1437,15 +1248,6 @@
     "toSet": {
       "signature": "toSet(v)"
     },
-    "prob.dmean": {
-      "signature": "prob.dmean(dist)"
-    },
-    "prob.dvar": {
-      "signature": "prob.dvar(dist)"
-    },
-    "prob.dstd": {
-      "signature": "prob.dstd(dist)"
-    },
     "init": {
       "signature": "init(...)"
     },
@@ -1521,12 +1323,6 @@
     "__call__": {
       "signature": "__call__(...)"
     },
-    "ffi.load": {
-      "signature": "ffi.load(path)"
-    },
-    "bind": {
-      "signature": "lib.bind(name, retType, argTypes)"
-    },
     "ln": {
       "signature": "ln(x) / ln(base, x)"
     },
@@ -1547,15 +1343,6 @@
     },
     "hasField": {
       "signature": "hasField(d, key)"
-    },
-    "stringify": {
-      "signature": "stringify(val)"
-    },
-    "parse": {
-      "signature": "parse(str)"
-    },
-    "pmf": {
-      "signature": "dist.pmf(x)"
     },
     "size": {
       "signature": "size(d)"

@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.4.3
+# Junk Calculator 2.4.5.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.4.3-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.4.5.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -68,65 +68,48 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.4.3
+## What's New in v2.4.5.0
 
 ### Language Features & Syntax
-- **Pattern Matching & Destructuring Enhancements**:
-  - Unified `for-in` and list comprehension bindings with the Pattern engine.
-  - Supported pattern destructuring in `catch` bindings.
-  - Allowed type annotations and default values on destructuring and rest parameters (`...rest`).
-  - Supported destructuring parameters in class methods.
-  - Allowed destructuring parameters to accept `Instance` and `Matrix` types.
-  - Implemented deep orthogonalization of placeholder penetration and pattern modifier binding, restricting the placeholder `_` to direct function call arguments only.
-- **Const Semantics Enforcement**:
-  - Supported the `const` modifier on function parameters and destructuring patterns.
-  - Const assignment violations now throw compile-time errors instead of generating runtime exceptions.
-  - Prevented the deletion of global constants via the `delete` command.
-- **Exception Handling**: Allowed arbitrary `Value` types to be thrown and caught in exception handling, no longer restricted to specific error objects.
-- **Operators & Literals**:
-  - Elevated the precedence of bitwise and set operators above comparison operators.
-  - Added full C-style and octal escape sequences in string literals.
-  - Booleans `true` and `false` are now treated as exact integers `1` and `0` in arithmetic contexts.
-- **UFCS Lexical Fallback**: Implemented a lexical fallback mechanism for Uniform Function Call Syntax (UFCS) method resolution.
+- **Internationalization & Encoding**: Full UTF-8 support, allowing non-ASCII characters (e.g., Chinese) as identifiers; built-in string functions now process by Codepoint instead of byte.
+- **Comments & Interaction**:
+  - Added nested multi-line comment support `/* ... */`.
+  - Added `/silent` REPL command to suppress expression evaluation output.
+- **Logical Operators**: `&&` and `||` now strictly return boolean values (`true` or `false`) instead of the original operands.
 
 ### Compiler & Frontend Optimizations
-- **Dead Code Elimination & Constant Propagation**:
-  - Implemented Dead Code Elimination (DCE) for blocks, loops, and short-circuit operators.
-  - Implemented constant propagation for `const` variables, omitting `OP_SET_LOCAL` instructions for compile-time constants.
-- **AST Arena Allocator**: Implemented an arena allocator for AST nodes using a bump pointer and free list, significantly improving parsing performance.
-- **Compile-time Errors**: Compile-time errors now include precise file names and line numbers.
-- **Bytecode Operand Extension**: Introduced the `OP_EXTEND` prefix instruction to support 32-bit operands on demand, along with compile-time overflow checks for bytecode operand limits.
+- **Constant Folding Enhancement**: Correctly propagates and reports math errors (e.g., division by zero) during compile-time constant folding.
 
 ### Virtual Machine & Memory Management
-- **Closure Memory Leak Fix**: Replaced `std::shared_ptr`-based `UpVal` with GC-managed `ObjUpVal`, completely fixing memory leaks caused by cyclic closure references.
-- **Global Variable Access Optimization**: Replaced the global variable `std::unordered_map` with a `std::vector` and cached slot indices directly in the Inline Cache (IC), drastically improving global variable access speed.
-- **Instruction Compression**:
-  - Compressed inline cache instructions by moving `nameIdx` into the cache slot.
-  - Compressed `OP_PASS_REFS` to a fixed 3-byte instruction using a call signature pool.
-  - Compressed `OP_BUILD_MATRIX` to a fixed 3-byte instruction using a matrix shape pool.
-  - Compressed `OP_MATCH_SHAPE` to 3 bytes using a shape pattern pool.
-- **Heap Allocation Elimination**:
-  - Precomputed reference counts to eliminate string allocations in built-in dunder calls.
-  - Eliminated implicit `std::vector` and heap allocations in `invokeDunder`, `callVMFunction`, `callDunder` parameter packing, and slice index building.
-  - Reduced heap allocations and optimized stack operations using `memmove`.
-- **TCO Refinement**: Refined the Tail Call Optimization (TCO) disable condition to only block TCO when references (`ref`) to local variables are passed.
+- **Hashing & Security**:
+  - Replaced the underlying hash algorithm from `std::hash` to SipHash-2-4 with random seed support, effectively mitigating hash collision and injection attacks.
+  - Unified and hardened equality and hashing rules for numeric types (Fraction, BigInt, double) to ensure precision consistency.
+- **Performance Optimizations**:
+  - Optimized dunder method dispatch by eliminating redundant hash table lookups.
+  - Switched built-in function closures to a weak reference cache mechanism, significantly reducing long-term memory footprint.
 
 ### Mathematics & CAS Engine
-- **Strassen Matrix Multiplication**:
-  - Implemented the Strassen algorithm for matrix multiplication with a fallback threshold.
-  - Parallelized Strassen sub-matrix multiplications with depth-limited concurrency.
-  - Reduced matrix allocations in Strassen using zero-copy views and dynamic peeling.
-- **BigInt Algorithmic Improvements**:
-  - Implemented the Karatsuba algorithm for BigInt multiplication.
-  - Optimized BigInt division (Knuth D) with unsigned merging and branch elimination.
-  - Optimized BigInt factorial, GCD, and modular exponentiation (`modPow`) algorithms.
-- **Other Math Optimizations**:
-  - Optimized Fibonacci sequence generation using the bit-scanning fast doubling algorithm.
-  - Improved the Miller-Rabin primality test to use deterministic bases for ≤81-bit numbers and random bases for larger numbers.
+- **BigInt & Factorization**:
+  - Upgraded BigInt underlying storage from base 10^9 to 2^32, completely refactoring core calculation algorithms to eliminate division instructions in inner loops.
+  - Optimized Pollard's rho algorithm (Brent's cycle finding, GCD batching, small prime trial division) and integrated Lenstra Elliptic Curve Factorization (ECM) to drastically improve large integer factorization performance.
+- **Prime Engine Upgrade**:
+  - Upgraded prime table storage to the highly compressed binary JCP1 format, supporting O(1) access and dynamic extension.
+  - Introduced segmented sieve of Eratosthenes and pure 64-bit hardware Miller-Rabin primality testing, boosting prime generation and verification speed by thousands of times.
+- **CAS & Calculus**:
+  - Fixed Gruntz limit algorithm handling of variable exponents (e.g., `x^x`) and hidden logarithmic terms.
+  - Added `toFrac` function to precisely convert floating-point numbers to `Fraction` rationals.
 
-### Test Framework
-- **Test Runner**: Added a new test runner with isolated execution and summary reporting.
-- **Test Suite Refactoring**: Reorganized tests into `core`, `modules`, `features`, and `syntax` directories, and added `TEST_SPEC.md` to standardize the test suite.
+### Native Modules & Standard Library
+- **Module Decoupling & C ABI**:
+  - Completely decoupled all native extension modules (image, tensor, prob, bytes, ffi, socket, json, latex, window) into standalone dynamic libraries (DLL/SO).
+  - Defined a stable pure C ABI extension interface (`jc2_extension_api.h`), supporting third-party extensions written in C/C++, Rust, Zig, etc.
+  - Enabled dynamic libraries to inject help documentation into the main program at initialization.
+- **Tensor Module**: A newly implemented high-performance tensor computation module, fully supporting automatic differentiation (Autograd), multi-dimensional broadcasting, matrix interop, and common machine learning operators.
+- **Regular Expressions**: The `regex` engine now supports lazy quantifiers (e.g., `*?`, `+?`) and backreferences (e.g., `\1`).
+
+### Build System & Testing
+- **Extension Module Build**: Native extension DLLs are now uniformly output to the `modules/` directory, and the `import` instruction prioritizes this directory; added independent test suites for each extension module.
+- **Cross-Platform Compilation**: Added static linking flags for MinGW (GCC) to ensure the generation of portable, dependency-free binaries.
 
 ---
 

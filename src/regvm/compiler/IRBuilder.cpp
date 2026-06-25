@@ -17,7 +17,6 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
                 node->payload1 = static_cast<uint32_t>(i);
                 node->name = name;
                 node->setControl(currentControl);
-                currentControl = node;
                 return node;
             }
         }
@@ -29,7 +28,6 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
         node->payload1 = static_cast<uint32_t>(upvalIdx);
         node->name = name;
         node->setControl(currentControl);
-        currentControl = node;
         return node;
     }
 

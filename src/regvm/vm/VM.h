@@ -5,6 +5,8 @@
 #include "../../memory/Value.h"
 #include <vector>
 #include <unordered_map>
+#include <memory>
+#include <set>
 
 namespace jc {
 namespace regvm {
@@ -13,10 +15,14 @@ namespace regvm {
 // 寄存器机调用帧 (Register Window Frame)
 // ============================================================================
 struct CallFrame {
+    const CompiledFunction* function = nullptr;
     const Chunk* chunk = nullptr;
     int ip = 0;
     int registerBase = 0; // 寄存器窗口基址 (指向全局 registers 数组)
-    // ObjClosure* closure = nullptr; // 后续添加闭包支持
+    ObjClosure* closure = nullptr;
+    int refParamsBase = -1;
+    Value selfContext = Value::none();
+    Value classContext = Value::none();
 };
 
 // ============================================================================
@@ -34,12 +40,53 @@ private:
 
     std::vector<Value> globals;
     std::unordered_map<std::string, uint32_t> globalNames;
+    std::unordered_map<std::string, Value> loadedModules;
+    std::unordered_set<std::string> importedModules;
 
-    Value run();
+    std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
+    std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
+
+    ObjUpVal* openUpvalues = nullptr;
+    void closeUpvalues(int lastRegIndex);
+    ObjUpVal* captureUpvalue(int regIndex);
+
+    struct ExceptionHandler {
+        int frameIndex = 0;
+        int ip = 0;
+        int registerBase = 0;
+        int errReg = 0;
+    };
+    std::vector<ExceptionHandler> exceptionHandlers;
+
+    int currentTargetFrameDepth = 0;
+
+    Value run(int targetFrameDepth = 0);
+    bool handleExceptionUnwind(Value errVal);
+
+    void execCall(int a, int b, bool isTailCall = false);
+    void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
+
+    void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, uint32_t fbIdx);
+    void execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall);
+    void execSliceGet(int a, int b, uint8_t dims);
+    void execSliceSet(int a, int c, uint8_t dims);
+    Value execImport(const std::string& name);
+
+    void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
+    void execAssertReturnType(const Value& val, uint32_t icIdx);
+
+    bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
+    std::string getTypeName(const Value& val);
+    ObjClosure* findDunder(const Value& val, const std::string& name);
+    Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
 
 public:
     VM();
     ~VM();
+
+    void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
+        compiledFunctions = fns;
+    }
 
     Value execute(const Chunk& mainChunk);
 };

@@ -288,10 +288,22 @@ constexpr int ESCAPE_KBIT_CONST = 0xFF;  // K-Bit 常量的转义标志 (255)
 // ============================================================================
 // 寄存器机 Chunk (存储字节码与元数据)
 // ============================================================================
+enum class BuiltinType : int8_t {
+    UNKNOWN = -1,
+    ANY, INT, FLOAT, REAL, NUMBER, WHOLE, EXACT, STRING, BOOL, BINARY, NONE_TYPE,
+    LIST, DICT, SET, FRACTION, COMPLEX, BASENUM, SYMBOLIC,
+    REALMAT, COMPLEXMAT, STRINGMAT, MATRIX, FUNC, CLASS, INSTANCE, NAMESPACE,
+    ITERABLE, CALLABLE, INDEXABLE, HASHABLE, NUMERIC,
+    CUSTOM_CLASS
+};
+
 struct InlineCache {
     uint32_t nameIdx = 0;
     int cachedGlobalSlot = -1;
-    // ... 其他缓存字段
+    ObjClass* cachedClass = nullptr;
+    ObjClosure* cachedMethod = nullptr;
+    int cachedFieldIndex = -1;
+    BuiltinType cachedBuiltinType = BuiltinType::UNKNOWN;
 };
 
 struct ShapePattern {
@@ -467,6 +479,30 @@ public:
         }
         std::cout << std::endl;
     }
+};
+
+struct CompiledFunction {
+    std::string name;
+    std::string sourceFile;
+    int arity = 0;
+    int maxArity = 0;
+    int localCount = 0;
+    bool hasRestParam = false;
+    Chunk chunk;
+
+    struct UpvalueInfo {
+        std::string name;
+        bool isLocal;
+        int index;
+        bool isRef = false;
+        bool isGlobal = false;
+        bool isExplicitState = false;
+        bool isRefParam = false;
+    };
+    std::vector<UpvalueInfo> upvalues;
+    std::vector<bool> paramIsRef;
+    std::vector<bool> paramIsConst;
+    int refCount = 0;
 };
 
 } // namespace regvm

@@ -128,6 +128,7 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     
     if (g_useRegVM) {
         auto& fns = regvm_inst.getCompiledFunctions();
+        size_t currentFnsSize = fns.size();
         
         jc::regvm::IRGraph graph;
         jc::regvm::IRBuilder builder(&graph, &fns);
@@ -140,6 +141,11 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
         int localCount = jc::regvm::Emitter::emit(&graph, chunk);
         
         if (g_showDisasm) {
+            for (size_t i = currentFnsSize; i < fns.size(); ++i) {
+                std::string chunkName = fns[i]->name;
+                chunkName = "Function: " + chunkName + " (RegVM)";
+                fns[i]->chunk.disassemble(chunkName);
+            }
             chunk.disassemble(isFile ? "Script Chunk (RegVM)" : "REPL Chunk (RegVM)");
         }
         

@@ -108,7 +108,7 @@ static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& ar
     return base;
 }
 
-void Emitter::emit(IRGraph* graph, Chunk& chunk) {
+int Emitter::emit(IRGraph* graph, Chunk& chunk) {
     int maxReg = 127;
     for (auto& nodePtr : graph->getNodes()) {
         if (nodePtr->physicalReg > maxReg) maxReg = nodePtr->physicalReg;
@@ -645,6 +645,26 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
             chunk.write(word, 0); // TODO: Map line numbers from IRNode
         }
     }
+    
+    // Return the total number of registers used (localCount)
+    int absoluteMaxReg = dynamicSpillBase;
+    for (const auto& inst : insts) {
+        if (inst.node && (inst.node->op == IROp::Call || inst.node->op == IROp::TailCall || 
+                          inst.node->op == IROp::Invoke || inst.node->op == IROp::TailInvoke ||
+                          inst.node->op == IROp::InvokeFallback || inst.node->op == IROp::TailInvokeFallback ||
+                          inst.node->op == IROp::SuperInvoke || inst.node->op == IROp::TailSuperInvoke ||
+                          inst.node->op == IROp::BuildList || inst.node->op == IROp::BuildDict ||
+                          inst.node->op == IROp::BuildSet || inst.node->op == IROp::ConcatStrings ||
+                          inst.node->op == IROp::BuildMatrix || inst.node->op == IROp::IndexGet ||
+                          inst.node->op == IROp::IndexSet || inst.node->op == IROp::SliceGet ||
+                          inst.node->op == IROp::SliceSet)) {
+            int argsCount = inst.node->dataInputs.size();
+            if (dynamicSpillBase + argsCount > absoluteMaxReg) {
+                absoluteMaxReg = dynamicSpillBase + argsCount;
+            }
+        }
+    }
+    return absoluteMaxReg;
 }
 
 } // namespace regvm

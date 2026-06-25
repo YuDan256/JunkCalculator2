@@ -1546,10 +1546,11 @@ VM::~VM() {
     delete[] frames;
 }
 
-Value VM::execute(const Chunk& mainChunk) {
+Value VM::execute(const Chunk& mainChunk, int localCount) {
     auto mainFn = std::make_shared<CompiledFunction>();
     mainFn->name = "<script>";
     mainFn->chunk = mainChunk;
+    mainFn->localCount = localCount;
     
     closeUpvalues(0);
     

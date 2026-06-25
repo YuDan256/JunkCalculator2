@@ -85,6 +85,42 @@ private:
         }
     }
 
+    void clearGlobals() {
+        globals.clear();
+        globalNames.clear();
+        constGlobals.clear();
+        importedModules.clear();
+        loadedModules.clear();
+        openUpvalues = nullptr;
+        clearAllGlobalICs();
+    }
+
+    void removeGlobal(const std::string& name) {
+        auto it = globalNames.find(name);
+        if (it != globalNames.end()) {
+            globals[it->second] = Value::none();
+            globalNames.erase(it);
+        }
+        constGlobals.erase(name);
+        clearAllGlobalICs();
+    }
+
+    std::unordered_map<std::string, Value> getGlobals() const {
+        std::unordered_map<std::string, Value> res;
+        for (const auto& [k, v] : globalNames) res[k] = globals[v];
+        return res;
+    }
+
+    void setGlobal(const std::string& name, const Value& val) {
+        auto it = globalNames.find(name);
+        if (it != globalNames.end()) {
+            globals[it->second] = val;
+        } else {
+            globalNames[name] = static_cast<uint32_t>(globals.size());
+            globals.push_back(val);
+        }
+    }
+
     bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
     std::string getTypeName(const Value& val);
     ObjClosure* findDunder(const Value& val, const std::string& name);
@@ -98,7 +134,7 @@ public:
         compiledFunctions = fns;
     }
 
-    Value execute(const Chunk& mainChunk);
+    Value execute(const Chunk& mainChunk, int localCount);
 };
 
 } // namespace regvm

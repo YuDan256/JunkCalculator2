@@ -15,6 +15,11 @@
 #include "frontend/Compiler.h"
 #include "vm/VM.h"
 #include "vm/BuiltinRegistry.h"
+#include "regvm/compiler/IRBuilder.h"
+#include "regvm/compiler/IROptimizer.h"
+#include "regvm/compiler/RegisterAllocator.h"
+#include "regvm/compiler/Emitter.h"
+#include "regvm/vm/VM.h"
 #include <csignal>
 #include <atomic>
 #include <random>
@@ -105,6 +110,8 @@ void printHelpTopic(const std::string& topic) {
 
 // 核心 VM 实例和全局上下文
 jc::VM vm;
+jc::regvm::VM regvm_inst;
+bool g_useRegVM = false;
 bool g_showDisasm = false;  // ★ 新增：字节码反汇编开关
 bool g_autoDebug = false;
 bool g_profile = false;
@@ -119,6 +126,28 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     jc::Parser parser(tokens, sourceFile);                   // ★
     auto ast = parser.parse();
     
+    if (g_useRegVM) {
+        jc::regvm::IRGraph graph;
+        jc::regvm::IRBuilder builder(&graph);
+        builder.build(ast.get());
+        
+        jc::regvm::IROptimizer::optimize(&graph);
+        jc::regvm::RegisterAllocator::allocate(&graph);
+        
+        jc::regvm::Chunk chunk;
+        int localCount = jc::regvm::Emitter::emit(&graph, chunk);
+        
+        if (g_showDisasm) {
+            chunk.disassemble(isFile ? "Script Chunk (RegVM)" : "REPL Chunk (RegVM)");
+        }
+        
+        if (g_autoDebug) {
+            std::cout << "Warning: Debugger is not yet supported in RegVM.\n";
+        }
+        
+        return regvm_inst.execute(chunk, localCount);
+    }
+
     jc::Compiler compiler;
     // ★ 核心修复：每次编译前，从 VM 获取最新、最权威的函数列表！
     auto currentFns = vm.getCompiledFunctions();
@@ -200,7 +229,10 @@ void runScript(const std::string& filepath, bool isImport = false) {
     try {
         // ★ 将 resolvedPath 传进虚拟机
         jc::Value result = evalCode(code, resolvedPath, true);
-        if (!result.isNone()) vm.setGlobal("ANS", result);
+        if (!result.isNone()) {
+            vm.setGlobal("ANS", result);
+            regvm_inst.setGlobal("ANS", result);
+        }
     }
     catch (const jc::EngineInterruptError&) {
         if (isImport) throw;
@@ -232,7 +264,8 @@ void saveWorkspace(const std::string& filename) {
     std::ofstream out((dir / (filename + ".jc2")).string());
 
     int count = 0;
-    for (const auto& [name, value] : vm.getGlobals()) {
+    auto globals = g_useRegVM ? regvm_inst.getGlobals() : vm.getGlobals();
+    for (const auto& [name, value] : globals) {
         if (name == "PI" || name == "E" || name == "i" || name == "I" || name == "ANS") continue;
         out << name << " = " << value.toJC2Expression() << "\n";
         count++;
@@ -251,6 +284,7 @@ void loadWorkspace(const std::string& filename) {
     if (!fs::exists(path)) { std::cerr << "   IO Error: Workspace not found.\n"; return; }
 
     vm.clearGlobals();
+    regvm_inst.clearGlobals();
     runScript(path);
 }
 
@@ -294,6 +328,13 @@ int runTestSuite(const std::string& testPath, const std::string& exeDir) {
         vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
         vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
         vm.setGlobal("ANS", jc::Value::none());
+        
+        regvm_inst.clearGlobals();
+        regvm_inst.setGlobal("PI", jc::Value(3.14159265358979323846));
+        regvm_inst.setGlobal("E", jc::Value(2.71828182845904523536));
+        regvm_inst.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
+        regvm_inst.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
+        regvm_inst.setGlobal("ANS", jc::Value::none());
         jc::helpers::g_scriptDirStack.clear();
 
         std::cout << jc::col(jc::Ansi::BRIGHT_BLUE) << "\n[TEST] Running " << filename << "..." << jc::col(jc::Ansi::RESET) << std::endl;
@@ -372,9 +413,18 @@ int main(int argc, char* argv[]) {
     vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
     vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
     vm.setGlobal("ANS", jc::Value::none());
+    
+    regvm_inst.setGlobal("PI", jc::Value(3.14159265358979323846));
+    regvm_inst.setGlobal("E", jc::Value(2.71828182845904523536));
+    regvm_inst.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
+    regvm_inst.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
+    regvm_inst.setGlobal("ANS", jc::Value::none());
 
     // 绑定虚拟机外包服务给系统级运行时回调！
-    jc::helpers::setGlobalCallback = [](const std::string& name, const jc::Value& val) { vm.setGlobal(name, val); };
+    jc::helpers::setGlobalCallback = [](const std::string& name, const jc::Value& val) { 
+        vm.setGlobal(name, val); 
+        regvm_inst.setGlobal(name, val);
+    };
     jc::helpers::evalCallback = [](const std::string& code) -> jc::Value { return evalCode(code, "<eval>", false); };
     jc::helpers::runFileCallback = [](const std::string& path) { runScript(path, true); };
     jc::helpers::callFunctionCallback = [](jc::ObjClosure* closure, const std::vector<jc::Value>& args) -> jc::Value {
@@ -437,6 +487,9 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--debug") {    // ★ 拦截 --debug 启动项
             g_autoDebug = true;
+        }
+        else if (arg == "--regvm") {
+            g_useRegVM = true;
         }
         else if (arg == "--run") {
             continue; // 跳过 --run 标记
@@ -675,6 +728,16 @@ int main(int argc, char* argv[]) {
                 std::cout << "Interactive Step-Debugger disabled.\n";
                 continue;
             }
+            if (input == "/regvm on") {
+                g_useRegVM = true;
+                std::cout << "Register VM backend enabled.\n";
+                continue;
+            }
+            if (input == "/regvm off") {
+                g_useRegVM = false;
+                std::cout << "Register VM backend disabled (using Stack VM).\n";
+                continue;
+            }
             if (input == "/profile on") {
                 g_profile = true;
                 if (jc::VM::activeVM) jc::VM::activeVM->enableProfiler(true);
@@ -711,7 +774,12 @@ int main(int argc, char* argv[]) {
             if (input == "/help") { printHelp(); continue; }
             if (input == "/version") { std::cout << "Junk Calculator 2.4.5.0\n"; continue; }
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
-            if (input == "/clear") { vm.clearGlobals(); std::cout << "All variables cleared.\n"; continue; }
+            if (input == "/clear") { 
+                vm.clearGlobals(); 
+                regvm_inst.clearGlobals();
+                std::cout << "All variables cleared.\n"; 
+                continue; 
+            }
             if (input == "/cls") {
 #ifdef _WIN32
                 std::system("cls");
@@ -730,6 +798,7 @@ int main(int argc, char* argv[]) {
                 if (s != std::string::npos) varName = varName.substr(s, e - s + 1);
                 else varName = "";
                 vm.removeGlobal(varName);
+                regvm_inst.removeGlobal(varName);
                 std::cout << "Variable '" << varName << "' forcefully deleted.\n";
                 continue;
             }
@@ -786,7 +855,10 @@ int main(int argc, char* argv[]) {
 
         try {
             jc::Value result = evalCode(input, "REPL", false);
-            if (!result.isNone()) vm.setGlobal("ANS", result);
+            if (!result.isNone()) {
+                vm.setGlobal("ANS", result);
+                regvm_inst.setGlobal("ANS", result);
+            }
             if (!g_silentRepl && (!result.isNone() || g_showNone)) {
                 std::string typeColor;
                 bool isTopLevelMatrix = false;

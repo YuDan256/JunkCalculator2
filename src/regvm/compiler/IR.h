@@ -13,6 +13,8 @@ namespace regvm {
 // IR 节点操作码 (Sea of Nodes)
 // ============================================================================
 enum class IROp {
+    Nop,        // 空节点 (用于被消除的死代码)
+
     // 控制流节点 (Control Flow)
     Start,
     Return,

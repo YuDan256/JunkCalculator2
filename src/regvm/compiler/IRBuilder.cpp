@@ -7,10 +7,32 @@ namespace jc {
 namespace regvm {
 
 IRNode* IRBuilder::readVariable(const std::string& name) {
-    for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
-        auto it = envStack[i].find(name);
-        if (it != envStack[i].end()) return it->second;
+    IRNode* localNode = getLocalNode(name);
+    if (localNode) return localNode;
+
+    if (currentFunction) {
+        for (size_t i = 0; i < currentFunction->upvalues.size(); ++i) {
+            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isRef)) {
+                IRNode* node = graph->createValueNode(IROp::GetUpvalue);
+                node->payload1 = static_cast<uint32_t>(i);
+                node->name = name;
+                node->setControl(currentControl);
+                currentControl = node;
+                return node;
+            }
+        }
     }
+
+    int upvalIdx = resolveUpvalue(name);
+    if (upvalIdx != -1) {
+        IRNode* node = graph->createValueNode(IROp::GetUpvalue);
+        node->payload1 = static_cast<uint32_t>(upvalIdx);
+        node->name = name;
+        node->setControl(currentControl);
+        currentControl = node;
+        return node;
+    }
+
     // 如果没找到，生成一个 GetGlobal 节点
     IRNode* node = graph->createValueNode(IROp::GetGlobal);
     node->name = name;
@@ -29,6 +51,32 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value) {
             return;
         }
     }
+
+    if (currentFunction) {
+        for (size_t i = 0; i < currentFunction->upvalues.size(); ++i) {
+            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isRef)) {
+                IRNode* node = graph->createNode(IROp::SetUpvalue);
+                node->payload1 = static_cast<uint32_t>(i);
+                node->name = name;
+                node->addData(value);
+                node->setControl(currentControl);
+                currentControl = node;
+                return;
+            }
+        }
+    }
+
+    int upvalIdx = resolveUpvalue(name);
+    if (upvalIdx != -1) {
+        IRNode* node = graph->createNode(IROp::SetUpvalue);
+        node->payload1 = static_cast<uint32_t>(upvalIdx);
+        node->name = name;
+        node->addData(value);
+        node->setControl(currentControl);
+        currentControl = node;
+        return;
+    }
+
     // 如果都没找到，说明是全局变量赋值
     IRNode* node = graph->createNode(IROp::SetGlobal);
     node->setControl(currentControl);
@@ -42,9 +90,75 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
     envStack.back()[name] = value;
 }
 
-IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions) 
-    : graph(graph), compiledFunctions(compiledFunctions), currentControl(nullptr), lastValue(nullptr) {
+IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction) 
+    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), currentControl(nullptr), lastValue(nullptr) {
     envStack.emplace_back(); // 压入顶层作用域
+}
+
+IRNode* IRBuilder::getLocalNode(const std::string& name) {
+    for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
+        auto it = envStack[i].find(name);
+        if (it != envStack[i].end()) return it->second;
+    }
+    return nullptr;
+}
+
+int IRBuilder::resolveUpvalue(const std::string& name) {
+    if (!parent) return -1;
+
+    // Check if parent already has this upvalue
+    if (parent->currentFunction) {
+        for (size_t i = 0; i < parent->currentFunction->upvalues.size(); ++i) {
+            if (parent->currentFunction->upvalues[i].name == name) {
+                int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                CompiledFunction::UpvalueInfo uv;
+                uv.name = name;
+                uv.isLocal = false;
+                uv.index = static_cast<int>(i);
+                uv.isRef = false;
+                uv.isGlobal = false;
+                uv.isExplicitState = false;
+                uv.isRefParam = false;
+                currentFunction->upvalues.push_back(uv);
+                upvalueTargets.push_back({upvalIdx, false, nullptr});
+                return upvalIdx;
+            }
+        }
+    }
+
+    IRNode* localNode = parent->getLocalNode(name);
+    if (localNode) {
+        int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+        CompiledFunction::UpvalueInfo uv;
+        uv.name = name;
+        uv.isLocal = true;
+        uv.index = -1; // Will be resolved after RegisterAllocator
+        uv.isRef = false;
+        uv.isGlobal = false;
+        uv.isExplicitState = false;
+        uv.isRefParam = false;
+        currentFunction->upvalues.push_back(uv);
+        upvalueTargets.push_back({upvalIdx, true, localNode});
+        return upvalIdx;
+    }
+
+    int upvalue = parent->resolveUpvalue(name);
+    if (upvalue != -1) {
+        int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+        CompiledFunction::UpvalueInfo uv;
+        uv.name = name;
+        uv.isLocal = false;
+        uv.index = upvalue;
+        uv.isRef = false;
+        uv.isGlobal = false;
+        uv.isExplicitState = false;
+        uv.isRefParam = false;
+        currentFunction->upvalues.push_back(uv);
+        upvalueTargets.push_back({upvalIdx, false, nullptr});
+        return upvalIdx;
+    }
+
+    return -1;
 }
 
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, bool forceLocal) {
@@ -1066,17 +1180,97 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
-    IRNode* noneNode = graph->createConstant(Value::none());
-    noneNode->setControl(currentControl);
-    declareVariable(expr->name.lexeme, noneNode);
-    lastValue = noneNode;
+    IRNode* initVal = nullptr;
+    if (expr->initializer) {
+        expr->initializer->accept(*this);
+        initVal = lastValue;
+    }
+
+    int upvalIdx = resolveUpvalue(expr->name.lexeme);
+    if (upvalIdx == -1) {
+        // If not found in parent, it's a global ref
+        upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+        CompiledFunction::UpvalueInfo uv;
+        uv.name = expr->name.lexeme;
+        uv.isLocal = false;
+        uv.index = 0;
+        uv.isRef = true;
+        uv.isGlobal = true;
+        uv.isExplicitState = false;
+        uv.isRefParam = false;
+        currentFunction->upvalues.push_back(uv);
+    } else {
+        currentFunction->upvalues[upvalIdx].isRef = true;
+    }
+
+    if (initVal) {
+        IRNode* setUpval = graph->createNode(IROp::SetUpvalue);
+        setUpval->payload1 = static_cast<uint32_t>(upvalIdx);
+        setUpval->name = expr->name.lexeme;
+        setUpval->addData(initVal);
+        setUpval->setControl(currentControl);
+        currentControl = setUpval;
+    }
+
+    lastValue = graph->createConstant(Value::none());
+    lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
-    IRNode* noneNode = graph->createConstant(Value::none());
-    noneNode->setControl(currentControl);
-    declareVariable(expr->name.lexeme, noneNode);
-    lastValue = noneNode;
+    IRNode* initVal = nullptr;
+    if (expr->initializer) {
+        expr->initializer->accept(*this);
+        initVal = lastValue;
+    }
+
+    int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+    CompiledFunction::UpvalueInfo uv;
+    uv.name = expr->name.lexeme;
+    uv.isLocal = false;
+    uv.index = 0;
+    uv.isRef = false;
+    uv.isGlobal = false;
+    uv.isExplicitState = true;
+    uv.isRefParam = false;
+    currentFunction->upvalues.push_back(uv);
+
+    IRNode* getUpval = graph->createValueNode(IROp::GetUpvalue);
+    getUpval->payload1 = static_cast<uint32_t>(upvalIdx);
+    getUpval->name = expr->name.lexeme;
+    getUpval->setControl(currentControl);
+    currentControl = getUpval;
+
+    IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+    isUninit->addData(getUpval);
+    isUninit->setControl(currentControl);
+
+    IRNode* ifNode = graph->createNode(IROp::If);
+    ifNode->addData(isUninit);
+    ifNode->setControl(currentControl);
+
+    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    ifTrue->setControl(ifNode);
+
+    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    ifFalse->setControl(ifNode);
+
+    currentControl = ifTrue;
+    if (initVal) {
+        IRNode* setUpval = graph->createNode(IROp::SetUpvalue);
+        setUpval->payload1 = static_cast<uint32_t>(upvalIdx);
+        setUpval->name = expr->name.lexeme;
+        setUpval->addData(initVal);
+        setUpval->setControl(currentControl);
+        currentControl = setUpval;
+    }
+
+    IRNode* merge = graph->createNode(IROp::Merge);
+    merge->addData(currentControl);
+    merge->addData(ifFalse);
+    currentControl = merge;
+
+    lastValue = graph->createConstant(Value::none());
+    lastValue->setControl(currentControl);
 }
     
 void IRBuilder::visitConstDecl(ConstDecl* expr) {
@@ -1271,7 +1465,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         fnDef->paramIsConst = expr->paramIsConst;
         
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, compiledFunctions);
+        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
         
         for (size_t i = 0; i < expr->params.size(); ++i) {
             IRNode* paramNode = fnGraph.createValueNode(IROp::Parameter);
@@ -1317,6 +1511,13 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         
         IROptimizer::optimize(&fnGraph);
         RegisterAllocator::allocate(&fnGraph);
+        
+        for (auto& target : fnBuilder.upvalueTargets) {
+            if (target.isLocal && target.localNode) {
+                fnDef->upvalues[target.index].index = target.localNode->physicalReg;
+            }
+        }
+        
         fnDef->localCount = Emitter::emit(&fnGraph, fnDef->chunk);
         
         compiledFunctions->push_back(fnDef);
@@ -1326,6 +1527,15 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
     IRNode* closureNode = graph->createValueNode(IROp::Closure);
     closureNode->setControl(currentControl);
     closureNode->name = std::to_string(expr->fnIdx);
+    
+    if (compiledFunctions) {
+        for (auto& target : fnBuilder.upvalueTargets) {
+            if (target.isLocal && target.localNode) {
+                closureNode->addData(target.localNode);
+            }
+        }
+    }
+    
     lastValue = closureNode;
 }
 
@@ -1635,7 +1845,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             fnDef->paramIsConst = method.paramIsConst;
             
             IRGraph fnGraph;
-            IRBuilder fnBuilder(&fnGraph, compiledFunctions);
+            IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
             
             for (size_t i = 0; i < method.params.size(); ++i) {
                 IRNode* paramNode = fnGraph.createValueNode(IROp::Parameter);
@@ -1681,22 +1891,46 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             
             IROptimizer::optimize(&fnGraph);
             RegisterAllocator::allocate(&fnGraph);
+            
+            for (auto& target : fnBuilder.upvalueTargets) {
+                if (target.isLocal && target.localNode) {
+                    fnDef->upvalues[target.index].index = target.localNode->physicalReg;
+                }
+            }
+            
             fnDef->localCount = Emitter::emit(&fnGraph, fnDef->chunk);
             
             compiledFunctions->push_back(fnDef);
             method.fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
+            
+            IRNode* methodClosure = graph->createValueNode(IROp::Closure);
+            methodClosure->setControl(currentControl);
+            methodClosure->name = std::to_string(method.fnIdx);
+            
+            for (auto& target : fnBuilder.upvalueTargets) {
+                if (target.isLocal && target.localNode) {
+                    methodClosure->addData(target.localNode);
+                }
+            }
+
+            IRNode* methodNode = graph->createNode(IROp::Method);
+            methodNode->setControl(currentControl);
+            methodNode->addData(classNode);
+            methodNode->addData(methodClosure);
+            methodNode->name = method.name.lexeme;
+            currentControl = methodNode;
+        } else {
+            IRNode* methodClosure = graph->createValueNode(IROp::Closure);
+            methodClosure->setControl(currentControl);
+            methodClosure->name = std::to_string(method.fnIdx);
+
+            IRNode* methodNode = graph->createNode(IROp::Method);
+            methodNode->setControl(currentControl);
+            methodNode->addData(classNode);
+            methodNode->addData(methodClosure);
+            methodNode->name = method.name.lexeme;
+            currentControl = methodNode;
         }
-
-        IRNode* methodClosure = graph->createValueNode(IROp::Closure);
-        methodClosure->setControl(currentControl);
-        methodClosure->name = std::to_string(method.fnIdx);
-
-        IRNode* methodNode = graph->createNode(IROp::Method);
-        methodNode->setControl(currentControl);
-        methodNode->addData(classNode);
-        methodNode->addData(methodClosure);
-        methodNode->name = method.name.lexeme;
-        currentControl = methodNode;
     }
         
     declareVariable(expr->name.lexeme, classNode);

@@ -26,9 +26,22 @@ private:
     // 变量名 -> 当前定义该变量的 IRNode
     std::vector<std::unordered_map<std::string, IRNode*>> envStack;
 
+    IRBuilder* parent = nullptr;
+    CompiledFunction* currentFunction = nullptr;
+
+    struct UpvalueTarget {
+        int index;
+        bool isLocal;
+        IRNode* localNode;
+    };
+    std::vector<UpvalueTarget> upvalueTargets;
+
     IRNode* readVariable(const std::string& name);
     void writeVariable(const std::string& name, IRNode* value);
     void declareVariable(const std::string& name, IRNode* value);
+    
+    IRNode* getLocalNode(const std::string& name);
+    int resolveUpvalue(const std::string& name);
 
     struct IRLoopInfo {
         IRNode* loopNode;
@@ -42,7 +55,7 @@ private:
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 
 public:
-    explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr);
+    explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr, IRBuilder* parent = nullptr, CompiledFunction* currentFunction = nullptr);
     void build(Expr* ast);
 
     void visitBinary(Binary* expr) override;

@@ -131,6 +131,98 @@ enum class OpCode : uint8_t {
     MATCH_SHAPE,        // R(A) := match_shape(R(B), shapeIdx = C) [Ext]
 };
 
+inline std::string opCodeToString(OpCode op) {
+    switch (op) {
+        case OpCode::MOVE: return "MOVE";
+        case OpCode::LOADK: return "LOADK";
+        case OpCode::EXTRAARG: return "EXTRAARG";
+        case OpCode::LOAD_NIL: return "LOAD_NIL";
+        case OpCode::LOAD_BOOL: return "LOAD_BOOL";
+        case OpCode::GET_GLOBAL: return "GET_GLOBAL";
+        case OpCode::SET_GLOBAL: return "SET_GLOBAL";
+        case OpCode::SET_GLOBAL_REF: return "SET_GLOBAL_REF";
+        case OpCode::DEFINE_CONST_GLOBAL: return "DEFINE_CONST_GLOBAL";
+        case OpCode::GET_UPVAL: return "GET_UPVAL";
+        case OpCode::SET_UPVAL: return "SET_UPVAL";
+        case OpCode::DELETE_GLOBAL: return "DELETE_GLOBAL";
+        case OpCode::IS_UNINIT: return "IS_UNINIT";
+        case OpCode::ADD: return "ADD";
+        case OpCode::SUB: return "SUB";
+        case OpCode::MUL: return "MUL";
+        case OpCode::DIV: return "DIV";
+        case OpCode::MOD: return "MOD";
+        case OpCode::POW: return "POW";
+        case OpCode::LDIV: return "LDIV";
+        case OpCode::BAND: return "BAND";
+        case OpCode::BOR: return "BOR";
+        case OpCode::BXOR: return "BXOR";
+        case OpCode::SHL: return "SHL";
+        case OpCode::SHR: return "SHR";
+        case OpCode::UNM: return "UNM";
+        case OpCode::NOT: return "NOT";
+        case OpCode::BNOT: return "BNOT";
+        case OpCode::TO_BOOL: return "TO_BOOL";
+        case OpCode::EQ: return "EQ";
+        case OpCode::NEQ: return "NEQ";
+        case OpCode::LT: return "LT";
+        case OpCode::LE: return "LE";
+        case OpCode::GT: return "GT";
+        case OpCode::GE: return "GE";
+        case OpCode::JMP: return "JMP";
+        case OpCode::JMP_TRUE: return "JMP_TRUE";
+        case OpCode::JMP_FALSE: return "JMP_FALSE";
+        case OpCode::CALL: return "CALL";
+        case OpCode::TAIL_CALL: return "TAIL_CALL";
+        case OpCode::RETURN: return "RETURN";
+        case OpCode::CLOSURE: return "CLOSURE";
+        case OpCode::GET_REF_PARAM: return "GET_REF_PARAM";
+        case OpCode::SET_REF_PARAM: return "SET_REF_PARAM";
+        case OpCode::PASS_REFS: return "PASS_REFS";
+        case OpCode::GET_PROP: return "GET_PROP";
+        case OpCode::TRY_GET_PROP: return "TRY_GET_PROP";
+        case OpCode::SET_PROP: return "SET_PROP";
+        case OpCode::INVOKE: return "INVOKE";
+        case OpCode::TAIL_INVOKE: return "TAIL_INVOKE";
+        case OpCode::INVOKE_FALLBACK: return "INVOKE_FALLBACK";
+        case OpCode::TAIL_INVOKE_FALLBACK: return "TAIL_INVOKE_FALLBACK";
+        case OpCode::GET_SUPER: return "GET_SUPER";
+        case OpCode::SUPER_INVOKE: return "SUPER_INVOKE";
+        case OpCode::TAIL_SUPER_INVOKE: return "TAIL_SUPER_INVOKE";
+        case OpCode::GET_SELF: return "GET_SELF";
+        case OpCode::CLASS: return "CLASS";
+        case OpCode::METHOD: return "METHOD";
+        case OpCode::INHERIT: return "INHERIT";
+        case OpCode::BUILD_LIST: return "BUILD_LIST";
+        case OpCode::BUILD_DICT: return "BUILD_DICT";
+        case OpCode::DICT_REST: return "DICT_REST";
+        case OpCode::BUILD_SET: return "BUILD_SET";
+        case OpCode::BUILD_MATRIX: return "BUILD_MATRIX";
+        case OpCode::BUILD_NAMESPACE: return "BUILD_NAMESPACE";
+        case OpCode::LIST_INIT: return "LIST_INIT";
+        case OpCode::LIST_APPEND: return "LIST_APPEND";
+        case OpCode::LIST_COMP_END: return "LIST_COMP_END";
+        case OpCode::INDEX_GET: return "INDEX_GET";
+        case OpCode::INDEX_SET: return "INDEX_SET";
+        case OpCode::SLICE_GET: return "SLICE_GET";
+        case OpCode::SLICE_SET: return "SLICE_SET";
+        case OpCode::STRINGIFY: return "STRINGIFY";
+        case OpCode::CONCAT_STRINGS: return "CONCAT_STRINGS";
+        case OpCode::FORMAT_STRING: return "FORMAT_STRING";
+        case OpCode::TRY_BEGIN: return "TRY_BEGIN";
+        case OpCode::TRY_END: return "TRY_END";
+        case OpCode::THROW: return "THROW";
+        case OpCode::ITER_INIT: return "ITER_INIT";
+        case OpCode::ITER_NEXT: return "ITER_NEXT";
+        case OpCode::IN: return "IN";
+        case OpCode::IMPORT: return "IMPORT";
+        case OpCode::ASSERT_PARAM_TYPE: return "ASSERT_PARAM_TYPE";
+        case OpCode::ASSERT_RETURN_TYPE: return "ASSERT_RETURN_TYPE";
+        case OpCode::MATCH_TYPE: return "MATCH_TYPE";
+        case OpCode::MATCH_SHAPE: return "MATCH_SHAPE";
+        default: return "UNKNOWN";
+    }
+}
+
 // ============================================================================
 // 32-bit 指令编码与解码宏
 // 格式 A (iABC) : [OpCode:8] [A:8] [B:8] [C:8]
@@ -275,6 +367,105 @@ public:
     uint32_t addFallbackInfo(uint32_t icIdx, uint8_t fbType, uint32_t fbIdx) {
         fallbackInfos.push_back({icIdx, fbType, fbIdx});
         return static_cast<uint32_t>(fallbackInfos.size() - 1);
+    }
+
+    void disassemble(const std::string& name) const {
+        std::cout << "=== " << name << " ===" << std::endl;
+        for (int offset = 0; offset < static_cast<int>(code.size()); ++offset) {
+            disassembleInstruction(offset);
+        }
+        std::cout << "==================" << std::endl;
+    }
+
+    void disassembleInstruction(int offset) const {
+        Instruction inst = code[offset];
+        std::cout << std::right << std::setw(4) << std::setfill('0') << offset << "  " << std::setfill(' ');
+
+        if (offset > 0 && lines[offset] == lines[offset - 1])
+            std::cout << "   | ";
+        else
+            std::cout << std::right << std::setw(4) << lines[offset] << " ";
+
+        OpCode op = GET_OPCODE(inst);
+        std::string opName = opCodeToString(op);
+        std::cout << std::left << std::setw(20) << opName;
+
+        int a = GET_A(inst);
+        int b = GET_B(inst);
+        int c = GET_C(inst);
+        int bx = GET_Bx(inst);
+        int sbx = GET_sBx(inst);
+        int ax = GET_Ax(inst);
+        int sax = GET_sAx(inst);
+
+        auto formatRK = [](int rk) {
+            if (ISK(rk)) return "K(" + std::to_string(INDEXK(rk)) + ")";
+            return "R(" + std::to_string(rk) + ")";
+        };
+
+        switch (op) {
+            case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV:
+            case OpCode::MOD: case OpCode::POW: case OpCode::LDIV: case OpCode::BAND:
+            case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL: case OpCode::SHR:
+            case OpCode::EQ: case OpCode::NEQ: case OpCode::LT: case OpCode::LE:
+            case OpCode::GT: case OpCode::GE:
+                std::cout << "R(" << a << ") " << formatRK(b) << " " << formatRK(c);
+                break;
+            
+            case OpCode::BUILD_LIST: case OpCode::BUILD_DICT: case OpCode::BUILD_SET:
+            case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
+            case OpCode::INDEX_GET: case OpCode::INDEX_SET: case OpCode::SLICE_GET:
+            case OpCode::SLICE_SET: case OpCode::FORMAT_STRING: case OpCode::ITER_INIT:
+            case OpCode::IN: case OpCode::ASSERT_PARAM_TYPE: case OpCode::MATCH_TYPE:
+            case OpCode::MATCH_SHAPE: case OpCode::GET_PROP: case OpCode::TRY_GET_PROP:
+            case OpCode::SET_PROP: case OpCode::INVOKE: case OpCode::TAIL_INVOKE:
+            case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
+            case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE: case OpCode::METHOD:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                break;
+
+            case OpCode::MOVE: case OpCode::LOAD_NIL: case OpCode::LOAD_BOOL:
+            case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
+            case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
+            case OpCode::CALL: case OpCode::TAIL_CALL: case OpCode::GET_SUPER:
+            case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::STRINGIFY:
+            case OpCode::ITER_NEXT: case OpCode::IMPORT: case OpCode::ASSERT_RETURN_TYPE:
+                std::cout << "R(" << a << ") " << b;
+                break;
+
+            case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::LIST_INIT:
+            case OpCode::LIST_COMP_END: case OpCode::TRY_END: case OpCode::THROW:
+                std::cout << "R(" << a << ")";
+                break;
+
+            case OpCode::LOADK: case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
+            case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL:
+            case OpCode::CLOSURE: case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
+            case OpCode::CLASS: case OpCode::BUILD_NAMESPACE:
+                std::cout << "R(" << a << ") " << bx;
+                break;
+
+            case OpCode::DELETE_GLOBAL: case OpCode::PASS_REFS:
+                std::cout << bx;
+                break;
+
+            case OpCode::JMP_TRUE: case OpCode::JMP_FALSE: case OpCode::TRY_BEGIN:
+                std::cout << "R(" << a << ") " << sbx;
+                break;
+
+            case OpCode::EXTRAARG:
+                std::cout << ax;
+                break;
+
+            case OpCode::JMP:
+                std::cout << sax;
+                break;
+
+            default:
+                std::cout << "?";
+                break;
+        }
+        std::cout << std::endl;
     }
 };
 

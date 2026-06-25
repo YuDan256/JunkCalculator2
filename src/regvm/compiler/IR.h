@@ -136,7 +136,7 @@ struct IRNode {
     
     // 寄存器分配信息
     int virtualReg = -1;                 // 虚拟寄存器 ID (SSA 阶段分配)
-    int physicalReg = -1;                // 物理寄存器 ID (0~255) 或溢出槽 (>=256)
+    int physicalReg = -1;                // 物理寄存器 ID (0~127) 或溢出槽 (>=128)
     
     // 附加数据载体
     Value constVal;                      // 用于 Constant 节点

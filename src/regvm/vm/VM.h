@@ -81,6 +81,7 @@ private:
     std::string getTypeName(const Value& val);
     ObjClosure* findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
+    bool evaluateTruthiness(const Value& val);
 
 public:
     VM();

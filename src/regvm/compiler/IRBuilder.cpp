@@ -226,9 +226,46 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         
         currentControl = ifTrue;
         
+        int restIndex = -1;
         for (size_t i = 0; i < lp->elements.size(); ++i) {
-            if (dynamic_cast<RestPattern*>(lp->elements[i].get())) continue;
-            IRNode* idxNode = graph->createConstant(Value(static_cast<double>(i)));
+            if (dynamic_cast<RestPattern*>(lp->elements[i].get())) {
+                restIndex = static_cast<int>(i);
+                break;
+            }
+        }
+
+        for (size_t i = 0; i < lp->elements.size(); ++i) {
+            if (static_cast<int>(i) == restIndex) {
+                auto* restPat = static_cast<RestPattern*>(lp->elements[i].get());
+                IRNode* startNode = graph->createConstant(Value(static_cast<double>(i)));
+                startNode->setControl(currentControl);
+                
+                int tailCount = static_cast<int>(lp->elements.size()) - 1 - static_cast<int>(i);
+                IRNode* endNode = tailCount > 0 ? graph->createConstant(Value(static_cast<double>(-tailCount))) : graph->createConstant(Value::none());
+                endNode->setControl(currentControl);
+                
+                IRNode* stepNode = graph->createConstant(Value::none());
+                stepNode->setControl(currentControl);
+                
+                IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
+                sliceNode->setControl(currentControl);
+                sliceNode->addData(valNode);
+                sliceNode->addData(stepNode);
+                sliceNode->addData(endNode);
+                sliceNode->addData(startNode);
+                sliceNode->payload1 = 1;
+                
+                buildPatternMatch(restPat->target.get(), sliceNode, failMerge, forceLocal);
+                continue;
+            }
+            
+            IRNode* idxNode = nullptr;
+            if (restIndex != -1 && static_cast<int>(i) > restIndex) {
+                int offsetFromEnd = static_cast<int>(lp->elements.size()) - static_cast<int>(i);
+                idxNode = graph->createConstant(Value(static_cast<double>(-offsetFromEnd)));
+            } else {
+                idxNode = graph->createConstant(Value(static_cast<double>(i)));
+            }
             idxNode->setControl(currentControl);
             
             IRNode* elemNode = graph->createValueNode(IROp::IndexGet);

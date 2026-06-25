@@ -541,6 +541,16 @@ ObjClosure* VM::findDunder(const Value& val, const std::string& name) {
     return nullptr;
 }
 
+bool VM::evaluateTruthiness(const Value& val) {
+    if (val.isInstance()) {
+        auto method = findDunder(val, DUNDER_BOOL);
+        if (method) {
+            return callDunder(val, method, {}).truthy();
+        }
+    }
+    return val.truthy();
+}
+
 Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args) {
     auto inst = obj.asInstance();
     if (method->isNative() && !method->isBytecode()) {
@@ -2130,7 +2140,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::NOT: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                getReg(a) = Value(!getReg(b).truthy());
+                getReg(a) = Value(!evaluateTruthiness(getReg(b)));
                 break;
             }
             case OpCode::BNOT: {
@@ -2144,7 +2154,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::TO_BOOL: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                getReg(a) = Value(getReg(b).truthy());
+                getReg(a) = Value(evaluateTruthiness(getReg(b)));
                 break;
             }
             case OpCode::EQ: {
@@ -2158,7 +2168,7 @@ Value VM::run(int targetFrameDepth) {
                     int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
                     getReg(a) = Value(v1 == v2); break;
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(callDunder(vb, meth, {vc}).truthy()); break; } }
+                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(Value::equals(vb, vc));
                 break;
             }
@@ -2173,8 +2183,8 @@ Value VM::run(int targetFrameDepth) {
                     int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
                     getReg(a) = Value(v1 != v2); break;
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEQ)) { getReg(a) = Value(callDunder(vb, meth, {vc}).truthy()); break; } }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(!callDunder(vb, meth, {vc}).truthy()); break; } }
+                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
+                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(!Value::equals(vb, vc));
                 break;
             }
@@ -2189,7 +2199,7 @@ Value VM::run(int targetFrameDepth) {
                     int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
                     getReg(a) = Value(v1 < v2); break;
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LT)) { getReg(a) = Value(callDunder(vb, meth, {vc}).truthy()); break; } }
+                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb < vc);
                 break;
             }
@@ -2204,7 +2214,7 @@ Value VM::run(int targetFrameDepth) {
                     int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
                     getReg(a) = Value(v1 <= v2); break;
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LE)) { getReg(a) = Value(callDunder(vb, meth, {vc}).truthy()); break; } }
+                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb <= vc);
                 break;
             }
@@ -2219,7 +2229,7 @@ Value VM::run(int targetFrameDepth) {
                     int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
                     getReg(a) = Value(v1 > v2); break;
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GT)) { getReg(a) = Value(callDunder(vb, meth, {vc}).truthy()); break; } }
+                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb > vc);
                 break;
             }
@@ -2234,7 +2244,7 @@ Value VM::run(int targetFrameDepth) {
                     int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
                     getReg(a) = Value(v1 >= v2); break;
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GE)) { getReg(a) = Value(callDunder(vb, meth, {vc}).truthy()); break; } }
+                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb >= vc);
                 break;
             }
@@ -2244,12 +2254,12 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::JMP_TRUE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (getReg(a).truthy()) frame->ip += sbx;
+                if (evaluateTruthiness(getReg(a))) frame->ip += sbx;
                 break;
             }
             case OpCode::JMP_FALSE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (!getReg(a).truthy()) frame->ip += sbx;
+                if (!evaluateTruthiness(getReg(a))) frame->ip += sbx;
                 break;
             }
             case OpCode::BUILD_LIST: {
@@ -3046,7 +3056,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (haystack.isInstance()) {
                     auto method = findDunder(haystack, DUNDER_CONTAINS);
                     if (method) {
-                        found = callDunder(haystack, method, {needle}).truthy();
+                        found = evaluateTruthiness(callDunder(haystack, method, {needle}));
                     } else {
                         auto inst = haystack.asInstance();
                         if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {

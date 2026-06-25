@@ -1309,6 +1309,7 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
 }
 
 void VM::execSliceSet(int a, int c, uint8_t dims) {
+    (void)c;
     CallFrame* currentFrame = &frames[frameCount - 1];
     Value obj = registers[currentFrame->registerBase + a];
     Value val = registers[currentFrame->registerBase + a + 3 * dims + 1];
@@ -2712,7 +2713,7 @@ Value VM::run(int targetFrameDepth) {
                                 } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
                             } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
                         }
-                        registers[currentFrame->registerBase + a] = obj;
+                        getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                         if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                         auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
@@ -2736,7 +2737,7 @@ Value VM::run(int targetFrameDepth) {
                                 } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
                             } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
                         }
-                        registers[currentFrame->registerBase + a] = obj;
+                        getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
                         if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
                         auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
@@ -2755,7 +2756,7 @@ Value VM::run(int targetFrameDepth) {
                                 } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
                             } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
                         }
-                        registers[currentFrame->registerBase + a] = obj;
+                        getReg(a) = obj;
                     } else {
                         throw std::runtime_error("RegVM Error: Unsupported 1D index set.");
                     }
@@ -2771,7 +2772,7 @@ Value VM::run(int targetFrameDepth) {
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
                         m(r, c_idx) = val.asDouble();
-                        registers[currentFrame->registerBase + a] = obj;
+                        getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                         if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                         auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
@@ -2779,7 +2780,7 @@ Value VM::run(int targetFrameDepth) {
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
                         m(r, c_idx) = val.asComplex();
-                        registers[currentFrame->registerBase + a] = obj;
+                        getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
                         if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
                         auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
@@ -2788,7 +2789,7 @@ Value VM::run(int targetFrameDepth) {
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
                         if (val.isString()) m(r, c_idx) = val.asString();
                         else { std::ostringstream oss; oss << val; m(r, c_idx) = oss.str(); }
-                        registers[currentFrame->registerBase + a] = obj;
+                        getReg(a) = obj;
                     } else {
                         throw std::runtime_error("RegVM Error: Unsupported 2D index set.");
                     }

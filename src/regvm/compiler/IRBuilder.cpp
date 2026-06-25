@@ -382,7 +382,7 @@ void IRBuilder::visitBinary(Binary* expr) {
         case TokenType::PERCENT: op = IROp::Mod; break;
         case TokenType::CARET: op = IROp::Pow; break;
         case TokenType::BACKSLASH: op = IROp::LeftDivide; break;
-        case TokenType::EQUAL_EQUAL: op = IROp::Eq; break;
+        case TokenType::EQUAL: op = IROp::Eq; break;
         case TokenType::BANG_EQUAL: op = IROp::Neq; break;
         case TokenType::LESS: op = IROp::Lt; break;
         case TokenType::LESS_EQUAL: op = IROp::Le; break;

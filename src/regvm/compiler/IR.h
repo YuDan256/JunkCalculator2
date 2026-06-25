@@ -63,7 +63,6 @@ enum class IROp {
 
     // 函数调用
     Call,
-    CallExt,    // 极端调用 (参数在溢出槽)
     TailCall,
     Invoke,
     TailInvoke,

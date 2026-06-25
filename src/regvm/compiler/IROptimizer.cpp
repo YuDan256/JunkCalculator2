@@ -37,7 +37,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::TryEnd: case IROp::Throw:
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
         case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam:
-        case IROp::Call: case IROp::CallExt: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
+        case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
         case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
         case IROp::IndexGet: case IROp::IndexSet: case IROp::SliceGet: case IROp::SliceSet: 
         case IROp::GetProperty: case IROp::TryGetProperty: case IROp::SetProperty:

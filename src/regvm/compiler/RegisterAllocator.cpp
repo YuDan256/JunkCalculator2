@@ -236,9 +236,10 @@ void RegisterAllocator::allocate(IRGraph* graph) {
 
     // 7. Chaitin 图着色算法
     // 根据 K-Bit 设计，B/C 操作数最高位为 1 时表示常量池索引 (0~127)
-    // 因此物理寄存器被严格限制在 0~127。
-    // 我们保留 3 个寄存器 (125, 126, 127) 用于极端溢出恢复，因此 K = 125。
-    const int K = 125;
+    // 且 127 (0x7F) 被保留作为 EXTRAARG 的转义标志。
+    // 因此物理寄存器被严格限制在 0~126。
+    // 我们保留 3 个寄存器 (124, 125, 126) 用于极端溢出恢复，因此 K = 124。
+    const int K = 124;
     std::vector<int> color(numVRegs, -1);
     std::vector<bool> removed(numVRegs, false);
     std::stack<int> selectStack;

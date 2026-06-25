@@ -288,7 +288,14 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     }
 
     // 着色与溢出槽分配
-    int spillCount = 0;
+    int maxPreColor = 127;
+    for (int i = 0; i < numVRegs; ++i) {
+        if (removed[i] && color[i] > maxPreColor) {
+            maxPreColor = color[i];
+        }
+    }
+    int spillCount = maxPreColor - 127;
+
     while (!selectStack.empty()) {
         int v = selectStack.top();
         selectStack.pop();

@@ -141,6 +141,10 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     int condReg = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                     
+                    if (!inst.words.empty()) {
+                        insts.push_back(inst);
+                    }
+                    
                     EncodedInst jmpFalse;
                     jmpFalse.isJump = true;
                     jmpFalse.jumpOp = OpCode::JMP_FALSE;
@@ -191,6 +195,9 @@ void Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 else if (node->op == IROp::TryEnd) {
                     auto w = buildInstA(OpCode::TRY_END, 0);
                     inst.words.insert(inst.words.end(), w.begin(), w.end());
+                    if (!inst.words.empty()) {
+                        insts.push_back(inst);
+                    }
                     if (!bb->succs.empty()) {
                         EncodedInst jmpInst;
                         jmpInst.isJump = true;

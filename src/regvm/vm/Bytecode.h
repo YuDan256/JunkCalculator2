@@ -410,8 +410,21 @@ public:
         int ax = GET_Ax(inst);
         int sax = GET_sAx(inst);
 
-        auto formatRK = [](int rk) {
-            if (ISK(rk)) return "K(" + std::to_string(INDEXK(rk)) + ")";
+        auto formatConstant = [&](int idx) -> std::string {
+            if (idx < 0 || idx >= static_cast<int>(constants.size())) return "?";
+            const Value& v = constants[idx];
+            if (v.isString()) return "\"" + v.asString() + "\"";
+            std::ostringstream oss; oss << v; return oss.str();
+        };
+
+        auto formatRK = [&](int rk) {
+            if (ISK(rk)) {
+                int idx = INDEXK(rk);
+                if (idx != ESCAPE_KBIT_CONST) {
+                    return "K(" + std::to_string(idx) + ":" + formatConstant(idx) + ")";
+                }
+                return "K(" + std::to_string(idx) + ")";
+            }
             return "R(" + std::to_string(rk) + ")";
         };
 
@@ -426,23 +439,89 @@ public:
             
             case OpCode::BUILD_LIST: case OpCode::BUILD_DICT: case OpCode::BUILD_SET:
             case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
-            case OpCode::BUILD_NAMESPACE: case OpCode::INDEX_GET: case OpCode::INDEX_SET: 
-            case OpCode::SLICE_GET: case OpCode::SLICE_SET: case OpCode::FORMAT_STRING: 
-            case OpCode::ITER_INIT: case OpCode::IN: case OpCode::ASSERT_PARAM_TYPE: 
-            case OpCode::MATCH_TYPE: case OpCode::MATCH_SHAPE: case OpCode::GET_PROP: 
-            case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: case OpCode::INVOKE: 
-            case OpCode::TAIL_INVOKE: case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
-            case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE: case OpCode::METHOD:
+            case OpCode::INDEX_GET: case OpCode::INDEX_SET: 
+            case OpCode::SLICE_GET: case OpCode::SLICE_SET: 
+            case OpCode::ITER_INIT: case OpCode::IN: case OpCode::MATCH_SHAPE:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 break;
 
-            case OpCode::MOVE: case OpCode::LOAD_NIL: case OpCode::LOAD_BOOL:
+            case OpCode::FORMAT_STRING:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << formatConstant(c);
+                }
+                break;
+
+            case OpCode::BUILD_NAMESPACE:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[b].asString();
+                }
+                break;
+
+            case OpCode::ASSERT_PARAM_TYPE:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[c].asString();
+                }
+                break;
+
+            case OpCode::MATCH_TYPE:
+            case OpCode::GET_PROP: case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: 
+            case OpCode::INVOKE: case OpCode::TAIL_INVOKE: 
+            case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(inlineCaches.size())) {
+                    int nameIdx = inlineCaches[c].nameIdx;
+                    if (nameIdx < static_cast<int>(constants.size())) {
+                        std::cout << "  ; " << constants[nameIdx].asString();
+                    }
+                }
+                break;
+
+            case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[c].asString();
+                }
+                break;
+
+            case OpCode::METHOD:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[b].asString();
+                }
+                break;
+
+            case OpCode::MOVE: case OpCode::LOAD_NIL:
             case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
             case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
-            case OpCode::CALL: case OpCode::TAIL_CALL: case OpCode::GET_SUPER:
+            case OpCode::CALL: case OpCode::TAIL_CALL:
             case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::STRINGIFY:
-            case OpCode::ITER_NEXT: case OpCode::IMPORT: case OpCode::ASSERT_RETURN_TYPE:
+            case OpCode::ITER_NEXT: case OpCode::IMPORT:
                 std::cout << "R(" << a << ") " << b;
+                break;
+
+            case OpCode::LOAD_BOOL:
+                std::cout << "R(" << a << ") " << b;
+                std::cout << "  ; " << (b ? "true" : "false");
+                break;
+
+            case OpCode::ASSERT_RETURN_TYPE:
+                std::cout << "R(" << a << ") " << b;
+                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(inlineCaches.size())) {
+                    int nameIdx = inlineCaches[b].nameIdx;
+                    if (nameIdx < static_cast<int>(constants.size())) {
+                        std::cout << "  ; " << constants[nameIdx].asString();
+                    }
+                }
+                break;
+
+            case OpCode::GET_SUPER:
+                std::cout << "R(" << a << ") " << b;
+                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[b].asString();
+                }
                 break;
 
             case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::LIST_INIT:
@@ -450,14 +529,50 @@ public:
                 std::cout << "R(" << a << ")";
                 break;
 
-            case OpCode::LOADK: case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
+            case OpCode::LOADK:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << formatConstant(bx);
+                }
+                break;
+
+            case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
             case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL:
-            case OpCode::CLOSURE: case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(inlineCaches.size())) {
+                    int nameIdx = inlineCaches[bx].nameIdx;
+                    if (nameIdx < static_cast<int>(constants.size())) {
+                        std::cout << "  ; " << constants[nameIdx].asString();
+                    }
+                }
+                break;
+
             case OpCode::CLASS:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[bx].asString();
+                }
+                break;
+
+            case OpCode::CLOSURE:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; fnIdx=" << constants[bx].asDouble();
+                }
+                break;
+
+            case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
                 std::cout << "R(" << a << ") " << bx;
                 break;
 
-            case OpCode::DELETE_GLOBAL: case OpCode::PASS_REFS:
+            case OpCode::DELETE_GLOBAL:
+                std::cout << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[bx].asString();
+                }
+                break;
+
+            case OpCode::PASS_REFS:
                 std::cout << bx;
                 break;
 

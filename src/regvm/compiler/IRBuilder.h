@@ -37,7 +37,7 @@ private:
     std::vector<UpvalueTarget> upvalueTargets;
 
     IRNode* readVariable(const std::string& name);
-    void writeVariable(const std::string& name, IRNode* value);
+    void writeVariable(const std::string& name, IRNode* value, bool isConst = false, bool isGlobalRef = false);
     void declareVariable(const std::string& name, IRNode* value);
     
     IRNode* getLocalNode(const std::string& name);
@@ -51,7 +51,7 @@ private:
     };
     std::vector<IRLoopInfo> loopStack;
 
-    void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, bool forceLocal = false);
+    void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 
 public:

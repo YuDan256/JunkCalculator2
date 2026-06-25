@@ -41,7 +41,7 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
     return node;
 }
 
-void IRBuilder::writeVariable(const std::string& name, IRNode* value) {
+void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isConst, bool isGlobalRef) {
     if (envStack.empty()) return;
     // 查找变量在哪个作用域定义的
     for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
@@ -78,7 +78,11 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value) {
     }
 
     // 如果都没找到，说明是全局变量赋值
-    IRNode* node = graph->createNode(IROp::SetGlobal);
+    IROp op = IROp::SetGlobal;
+    if (isConst) op = IROp::DefineConstGlobal;
+    else if (isGlobalRef) op = IROp::SetGlobalRef;
+
+    IRNode* node = graph->createNode(op);
     node->setControl(currentControl);
     node->addData(value);
     node->name = name;
@@ -161,10 +165,19 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
     return -1;
 }
 
-void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, bool forceLocal) {
+void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst) {
+    if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
+        buildPatternMatch(dp->inner.get(), valNode, failMerge, globalMod, globalConst);
+        return;
+    }
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
         if (vp->name.lexeme != "_") {
-            if (vp->modifier == ScopeModifier::State) {
+            ScopeModifier mod = vp->modifier;
+            if (mod == ScopeModifier::None) mod = globalMod;
+            bool isConst = vp->isConst || globalConst;
+
+            if (mod == ScopeModifier::State) {
+                if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
                 int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
                 CompiledFunction::UpvalueInfo uv;
                 uv.name = vp->name.lexeme;
@@ -192,7 +205,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 ifFalse->setControl(ifNode);
 
                 currentControl = ifTrue;
-                writeVariable(vp->name.lexeme, valNode);
+                writeVariable(vp->name.lexeme, valNode, isConst, false);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -200,28 +213,31 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(ifFalse);
                 currentControl = merge;
             } else {
-                if (vp->modifier == ScopeModifier::Ref) {
-                    int upvalIdx = resolveUpvalue(vp->name.lexeme);
-                    if (upvalIdx == -1) {
-                        upvalIdx = static_cast<int>(currentFunction->upvalues.size());
-                        CompiledFunction::UpvalueInfo uv;
-                        uv.name = vp->name.lexeme;
-                        uv.isLocal = false;
-                        uv.index = 0;
-                        uv.isRef = true;
-                        uv.isGlobal = true;
-                        uv.isExplicitState = false;
-                        uv.isRefParam = false;
-                        currentFunction->upvalues.push_back(uv);
-                    } else {
-                        currentFunction->upvalues[upvalIdx].isRef = true;
+                if (mod == ScopeModifier::Ref) {
+                    if (currentFunction) {
+                        int upvalIdx = resolveUpvalue(vp->name.lexeme);
+                        if (upvalIdx == -1) {
+                            upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                            CompiledFunction::UpvalueInfo uv;
+                            uv.name = vp->name.lexeme;
+                            uv.isLocal = false;
+                            uv.index = 0;
+                            uv.isRef = true;
+                            uv.isGlobal = true;
+                            uv.isExplicitState = false;
+                            uv.isRefParam = false;
+                            currentFunction->upvalues.push_back(uv);
+                        } else {
+                            currentFunction->upvalues[upvalIdx].isRef = true;
+                        }
                     }
                 }
 
-                if (forceLocal || vp->modifier == ScopeModifier::Local) {
+                if (mod == ScopeModifier::Local) {
                     declareVariable(vp->name.lexeme, valNode);
                 } else {
-                    writeVariable(vp->name.lexeme, valNode);
+                    bool isGlobalRef = (mod == ScopeModifier::Ref) && !currentFunction;
+                    writeVariable(vp->name.lexeme, valNode, isConst, isGlobalRef);
                 }
             }
         }
@@ -347,27 +363,34 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         merge->addData(ifFalse);
                         currentControl = merge;
                     } else {
-                        if (restPat->modifier == ScopeModifier::Ref) {
-                            int upvalIdx = resolveUpvalue(restPat->name.lexeme);
-                            if (upvalIdx == -1) {
-                                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
-                                CompiledFunction::UpvalueInfo uv;
-                                uv.name = restPat->name.lexeme;
-                                uv.isLocal = false;
-                                uv.index = 0;
-                                uv.isRef = true;
-                                uv.isGlobal = true;
-                                uv.isExplicitState = false;
-                                uv.isRefParam = false;
-                                currentFunction->upvalues.push_back(uv);
-                            } else {
-                                currentFunction->upvalues[upvalIdx].isRef = true;
+                        ScopeModifier rmod = restPat->modifier;
+                        if (rmod == ScopeModifier::None) rmod = globalMod;
+                        bool rConst = restPat->isConst || globalConst;
+
+                        if (rmod == ScopeModifier::Ref) {
+                            if (currentFunction) {
+                                int upvalIdx = resolveUpvalue(restPat->name.lexeme);
+                                if (upvalIdx == -1) {
+                                    upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                                    CompiledFunction::UpvalueInfo uv;
+                                    uv.name = restPat->name.lexeme;
+                                    uv.isLocal = false;
+                                    uv.index = 0;
+                                    uv.isRef = true;
+                                    uv.isGlobal = true;
+                                    uv.isExplicitState = false;
+                                    uv.isRefParam = false;
+                                    currentFunction->upvalues.push_back(uv);
+                                } else {
+                                    currentFunction->upvalues[upvalIdx].isRef = true;
+                                }
                             }
                         }
-                        if (forceLocal || restPat->modifier == ScopeModifier::Local) {
+                        if (rmod == ScopeModifier::Local) {
                             declareVariable(restPat->name.lexeme, sliceNode);
                         } else {
-                            writeVariable(restPat->name.lexeme, sliceNode);
+                            bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
+                            writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
                         }
                     }
                 }
@@ -389,7 +412,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(idxNode);
             elemNode->payload1 = 1;
             
-            buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, forceLocal);
+            buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, globalMod, globalConst);
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
         IRNode* typeNode = graph->createValueNode(IROp::MatchType);
@@ -419,7 +442,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(keyNode);
             elemNode->payload1 = 1;
             
-            buildPatternMatch(entry.second.get(), elemNode, failMerge, forceLocal);
+            buildPatternMatch(entry.second.get(), elemNode, failMerge, globalMod, globalConst);
         }
     }
 }
@@ -481,7 +504,7 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     currentControl = ifFalse;
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, true);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false);
     
     IRNode* condFailMerge = graph->createNode(IROp::Merge);
     for (auto& cond : clause.conditions) {
@@ -736,6 +759,7 @@ void IRBuilder::visitVariable(Variable* expr) {
 
 void IRBuilder::visitAssign(Assign* expr) {
     if (expr->isState) {
+        if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
         int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
         CompiledFunction::UpvalueInfo uv;
         uv.name = expr->name.lexeme;
@@ -765,7 +789,7 @@ void IRBuilder::visitAssign(Assign* expr) {
         currentControl = ifTrue;
         expr->value->accept(*this);
         IRNode* valNode = lastValue;
-        writeVariable(expr->name.lexeme, valNode);
+        writeVariable(expr->name.lexeme, valNode, expr->isConst, false);
         IRNode* trueCtrl = currentControl;
 
         IRNode* merge = graph->createNode(IROp::Merge);
@@ -778,20 +802,22 @@ void IRBuilder::visitAssign(Assign* expr) {
     }
 
     if (expr->isRef) {
-        int upvalIdx = resolveUpvalue(expr->name.lexeme);
-        if (upvalIdx == -1) {
-            upvalIdx = static_cast<int>(currentFunction->upvalues.size());
-            CompiledFunction::UpvalueInfo uv;
-            uv.name = expr->name.lexeme;
-            uv.isLocal = false;
-            uv.index = 0;
-            uv.isRef = true;
-            uv.isGlobal = true;
-            uv.isExplicitState = false;
-            uv.isRefParam = false;
-            currentFunction->upvalues.push_back(uv);
-        } else {
-            currentFunction->upvalues[upvalIdx].isRef = true;
+        if (currentFunction) {
+            int upvalIdx = resolveUpvalue(expr->name.lexeme);
+            if (upvalIdx == -1) {
+                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                CompiledFunction::UpvalueInfo uv;
+                uv.name = expr->name.lexeme;
+                uv.isLocal = false;
+                uv.index = 0;
+                uv.isRef = true;
+                uv.isGlobal = true;
+                uv.isExplicitState = false;
+                uv.isRefParam = false;
+                currentFunction->upvalues.push_back(uv);
+            } else {
+                currentFunction->upvalues[upvalIdx].isRef = true;
+            }
         }
     }
 
@@ -801,7 +827,8 @@ void IRBuilder::visitAssign(Assign* expr) {
     if (expr->isLocal) {
         declareVariable(expr->name.lexeme, valNode);
     } else {
-        writeVariable(expr->name.lexeme, valNode);
+        bool isGlobalRef = expr->isRef && !currentFunction;
+        writeVariable(expr->name.lexeme, valNode, expr->isConst, isGlobalRef);
     }
     lastValue = valNode;
 }
@@ -1392,21 +1419,23 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
-    int upvalIdx = resolveUpvalue(expr->name.lexeme);
-    if (upvalIdx == -1) {
-        // If not found in parent, it's a global ref
-        upvalIdx = static_cast<int>(currentFunction->upvalues.size());
-        CompiledFunction::UpvalueInfo uv;
-        uv.name = expr->name.lexeme;
-        uv.isLocal = false;
-        uv.index = 0;
-        uv.isRef = true;
-        uv.isGlobal = true;
-        uv.isExplicitState = false;
-        uv.isRefParam = false;
-        currentFunction->upvalues.push_back(uv);
-    } else {
-        currentFunction->upvalues[upvalIdx].isRef = true;
+    if (currentFunction) {
+        int upvalIdx = resolveUpvalue(expr->name.lexeme);
+        if (upvalIdx == -1) {
+            // If not found in parent, it's a global ref
+            upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+            CompiledFunction::UpvalueInfo uv;
+            uv.name = expr->name.lexeme;
+            uv.isLocal = false;
+            uv.index = 0;
+            uv.isRef = true;
+            uv.isGlobal = true;
+            uv.isExplicitState = false;
+            uv.isRefParam = false;
+            currentFunction->upvalues.push_back(uv);
+        } else {
+            currentFunction->upvalues[upvalIdx].isRef = true;
+        }
     }
 
     lastValue = graph->createConstant(Value::none());
@@ -1414,6 +1443,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
+    if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
     int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
     CompiledFunction::UpvalueInfo uv;
     uv.name = expr->name.lexeme;
@@ -1545,6 +1575,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         if (expr->isState) {
+            if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
             int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
             CompiledFunction::UpvalueInfo uv;
             uv.name = var->name.lexeme;
@@ -1556,25 +1587,30 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             uv.isRefParam = false;
             currentFunction->upvalues.push_back(uv);
         } else if (expr->isRef) {
-            int upvalIdx = resolveUpvalue(var->name.lexeme);
-            if (upvalIdx == -1) {
-                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
-                CompiledFunction::UpvalueInfo uv;
-                uv.name = var->name.lexeme;
-                uv.isLocal = false;
-                uv.index = 0;
-                uv.isRef = true;
-                uv.isGlobal = true;
-                uv.isExplicitState = false;
-                uv.isRefParam = false;
-                currentFunction->upvalues.push_back(uv);
-            } else {
-                currentFunction->upvalues[upvalIdx].isRef = true;
+            if (currentFunction) {
+                int upvalIdx = resolveUpvalue(var->name.lexeme);
+                if (upvalIdx == -1) {
+                    upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                    CompiledFunction::UpvalueInfo uv;
+                    uv.name = var->name.lexeme;
+                    uv.isLocal = false;
+                    uv.index = 0;
+                    uv.isRef = true;
+                    uv.isGlobal = true;
+                    uv.isExplicitState = false;
+                    uv.isRefParam = false;
+                    currentFunction->upvalues.push_back(uv);
+                } else {
+                    currentFunction->upvalues[upvalIdx].isRef = true;
+                }
             }
         }
 
         if (expr->isLocal) declareVariable(var->name.lexeme, opNode);
-        else writeVariable(var->name.lexeme, opNode);
+        else {
+            bool isGlobalRef = expr->isRef && !currentFunction;
+            writeVariable(var->name.lexeme, opNode, false, isGlobalRef);
+        }
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
         IRNode* setProp = graph->createValueNode(IROp::SetProperty);
         setProp->setControl(currentControl);
@@ -1795,7 +1831,8 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     currentControl = ifFalse;
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(expr->pattern.get(), nextNode, failMerge, expr->isLocal);
+    ScopeModifier mod = expr->isLocal ? ScopeModifier::Local : ScopeModifier::None;
+    buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst);
     
     expr->body->accept(*this);
     
@@ -1874,7 +1911,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* errVal = catchNode; // Catch 节点产生异常对象
 
     IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(expr->catchPattern.get(), errVal, failMerge);
+    buildPatternMatch(expr->catchPattern.get(), errVal, failMerge, ScopeModifier::Local, false);
 
     if (!failMerge->dataInputs.empty()) {
         IRNode* throwNode = graph->createNode(IROp::Throw);
@@ -2203,7 +2240,12 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     
-    buildPatternMatch(expr->pattern.get(), valNode, failMerge, expr->isLocal);
+    ScopeModifier mod = ScopeModifier::None;
+    if (expr->isLocal) mod = ScopeModifier::Local;
+    else if (expr->isRef) mod = ScopeModifier::Ref;
+    else if (expr->isState) mod = ScopeModifier::State;
+
+    buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst);
     
     if (!failMerge->dataInputs.empty()) {
         IRNode* throwNode = graph->createNode(IROp::Throw);
@@ -2345,7 +2387,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         for (auto& pat : branch.patterns) {
             IRNode* patFailMerge = graph->createNode(IROp::Merge);
             
-            buildPatternMatch(pat.get(), subjectNode, patFailMerge);
+            buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false);
             
             branchSuccessMerge->addData(currentControl);
             currentControl = patFailMerge;

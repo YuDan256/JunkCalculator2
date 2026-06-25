@@ -199,16 +199,11 @@ add_dependencies(SyncResources JunkCalculator2)
 # ==============================================================================
 # CPack Installation & Release Packaging Rules
 # ==============================================================================
-install(TARGETS JunkCalculator2 DESTINATION bin)
-install(TARGETS image DESTINATION bin/modules)
-install(TARGETS tensor DESTINATION bin/modules)
-install(TARGETS prob DESTINATION bin/modules)
-install(TARGETS bytes DESTINATION bin/modules)
-install(TARGETS ffi DESTINATION bin/modules)
-install(TARGETS socket DESTINATION bin/modules)
-install(TARGETS json DESTINATION bin/modules)
-install(TARGETS latex DESTINATION bin/modules)
-install(TARGETS window DESTINATION bin/modules)
+install(TARGETS JunkCalculator2 RUNTIME DESTINATION bin)
+install(TARGETS ${JC2_MODULES}
+    RUNTIME DESTINATION bin/modules
+    LIBRARY DESTINATION bin/modules
+)
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
 else()

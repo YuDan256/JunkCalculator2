@@ -1501,6 +1501,7 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
 }
 
 Value VM::execImport(const std::string& name) {
+    (void)name;
     throw std::runtime_error("RegVM Error: execImport not fully implemented.");
 }
 
@@ -1651,8 +1652,8 @@ Value VM::run(int targetFrameDepth) {
                 } else {
                     const std::string& name = chunk->constants[ic.nameIdx].asString();
                     if (name == "__class__") {
-                        if (currentFrame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
-                        getReg(a) = currentFrame->classContext;
+                        if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
+                        getReg(a) = frame->classContext;
                         break;
                     }
                     auto it = globalNames.find(name);
@@ -2668,7 +2669,7 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
-                uint8_t destructFlag = c;
+                uint8_t destructFlag = static_cast<uint8_t>(c);
                 Value iterable = getReg(b);
                 ObjList* elements = GcHeap::get().allocate<ObjList>();
                 
@@ -2802,14 +2803,14 @@ Value VM::run(int targetFrameDepth) {
                         if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
                             found = true;
                         } else if (needle.isString()) {
-                            auto c = inst->classDef;
+                            auto cls = inst->classDef;
                             std::string key = needle.asString();
-                            while (c) {
-                                if (c->methods.find(key) != c->methods.end()) {
+                            while (cls) {
+                                if (cls->methods.find(key) != cls->methods.end()) {
                                     found = true;
                                     break;
                                 }
-                                c = c->parent;
+                                cls = cls->parent;
                             }
                             if (!found) {
                                 auto getattrMethod = findDunder(haystack, DUNDER_GETATTR);

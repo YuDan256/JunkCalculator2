@@ -164,10 +164,65 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, bool forceLocal) {
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
         if (vp->name.lexeme != "_") {
-            if (forceLocal || vp->modifier == ScopeModifier::Local) {
-                declareVariable(vp->name.lexeme, valNode);
-            } else {
+            if (vp->modifier == ScopeModifier::State) {
+                int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                CompiledFunction::UpvalueInfo uv;
+                uv.name = vp->name.lexeme;
+                uv.isLocal = false;
+                uv.index = 0;
+                uv.isRef = false;
+                uv.isGlobal = false;
+                uv.isExplicitState = true;
+                uv.isRefParam = false;
+                currentFunction->upvalues.push_back(uv);
+
+                IRNode* getVal = readVariable(vp->name.lexeme);
+                IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+                isUninit->addData(getVal);
+                isUninit->setControl(currentControl);
+
+                IRNode* ifNode = graph->createNode(IROp::If);
+                ifNode->addData(isUninit);
+                ifNode->setControl(currentControl);
+
+                IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+                ifTrue->setControl(ifNode);
+
+                IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+                ifFalse->setControl(ifNode);
+
+                currentControl = ifTrue;
                 writeVariable(vp->name.lexeme, valNode);
+                IRNode* trueCtrl = currentControl;
+
+                IRNode* merge = graph->createNode(IROp::Merge);
+                merge->addData(trueCtrl);
+                merge->addData(ifFalse);
+                currentControl = merge;
+            } else {
+                if (vp->modifier == ScopeModifier::Ref) {
+                    int upvalIdx = resolveUpvalue(vp->name.lexeme);
+                    if (upvalIdx == -1) {
+                        upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                        CompiledFunction::UpvalueInfo uv;
+                        uv.name = vp->name.lexeme;
+                        uv.isLocal = false;
+                        uv.index = 0;
+                        uv.isRef = true;
+                        uv.isGlobal = true;
+                        uv.isExplicitState = false;
+                        uv.isRefParam = false;
+                        currentFunction->upvalues.push_back(uv);
+                    } else {
+                        currentFunction->upvalues[upvalIdx].isRef = true;
+                    }
+                }
+
+                if (forceLocal || vp->modifier == ScopeModifier::Local) {
+                    declareVariable(vp->name.lexeme, valNode);
+                } else {
+                    writeVariable(vp->name.lexeme, valNode);
+                }
             }
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
@@ -255,7 +310,67 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 sliceNode->addData(startNode);
                 sliceNode->payload1 = 1;
                 
-                buildPatternMatch(restPat->target.get(), sliceNode, failMerge, forceLocal);
+                if (restPat->name.lexeme != "_") {
+                    if (restPat->modifier == ScopeModifier::State) {
+                        int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                        CompiledFunction::UpvalueInfo uv;
+                        uv.name = restPat->name.lexeme;
+                        uv.isLocal = false;
+                        uv.index = 0;
+                        uv.isRef = false;
+                        uv.isGlobal = false;
+                        uv.isExplicitState = true;
+                        uv.isRefParam = false;
+                        currentFunction->upvalues.push_back(uv);
+
+                        IRNode* getVal = readVariable(restPat->name.lexeme);
+                        IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+                        isUninit->addData(getVal);
+                        isUninit->setControl(currentControl);
+
+                        IRNode* ifNode = graph->createNode(IROp::If);
+                        ifNode->addData(isUninit);
+                        ifNode->setControl(currentControl);
+
+                        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+                        ifTrue->setControl(ifNode);
+
+                        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+                        ifFalse->setControl(ifNode);
+
+                        currentControl = ifTrue;
+                        writeVariable(restPat->name.lexeme, sliceNode);
+                        IRNode* trueCtrl = currentControl;
+
+                        IRNode* merge = graph->createNode(IROp::Merge);
+                        merge->addData(trueCtrl);
+                        merge->addData(ifFalse);
+                        currentControl = merge;
+                    } else {
+                        if (restPat->modifier == ScopeModifier::Ref) {
+                            int upvalIdx = resolveUpvalue(restPat->name.lexeme);
+                            if (upvalIdx == -1) {
+                                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                                CompiledFunction::UpvalueInfo uv;
+                                uv.name = restPat->name.lexeme;
+                                uv.isLocal = false;
+                                uv.index = 0;
+                                uv.isRef = true;
+                                uv.isGlobal = true;
+                                uv.isExplicitState = false;
+                                uv.isRefParam = false;
+                                currentFunction->upvalues.push_back(uv);
+                            } else {
+                                currentFunction->upvalues[upvalIdx].isRef = true;
+                            }
+                        }
+                        if (forceLocal || restPat->modifier == ScopeModifier::Local) {
+                            declareVariable(restPat->name.lexeme, sliceNode);
+                        } else {
+                            writeVariable(restPat->name.lexeme, sliceNode);
+                        }
+                    }
+                }
                 continue;
             }
             
@@ -620,6 +735,66 @@ void IRBuilder::visitVariable(Variable* expr) {
 }
 
 void IRBuilder::visitAssign(Assign* expr) {
+    if (expr->isState) {
+        int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+        CompiledFunction::UpvalueInfo uv;
+        uv.name = expr->name.lexeme;
+        uv.isLocal = false;
+        uv.index = 0;
+        uv.isRef = false;
+        uv.isGlobal = false;
+        uv.isExplicitState = true;
+        uv.isRefParam = false;
+        currentFunction->upvalues.push_back(uv);
+
+        IRNode* getVal = readVariable(expr->name.lexeme);
+        IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+        isUninit->addData(getVal);
+        isUninit->setControl(currentControl);
+
+        IRNode* ifNode = graph->createNode(IROp::If);
+        ifNode->addData(isUninit);
+        ifNode->setControl(currentControl);
+
+        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        ifTrue->setControl(ifNode);
+
+        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        ifFalse->setControl(ifNode);
+
+        currentControl = ifTrue;
+        expr->value->accept(*this);
+        IRNode* valNode = lastValue;
+        writeVariable(expr->name.lexeme, valNode);
+        IRNode* trueCtrl = currentControl;
+
+        IRNode* merge = graph->createNode(IROp::Merge);
+        merge->addData(trueCtrl);
+        merge->addData(ifFalse);
+        currentControl = merge;
+
+        lastValue = valNode;
+        return;
+    }
+
+    if (expr->isRef) {
+        int upvalIdx = resolveUpvalue(expr->name.lexeme);
+        if (upvalIdx == -1) {
+            upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+            CompiledFunction::UpvalueInfo uv;
+            uv.name = expr->name.lexeme;
+            uv.isLocal = false;
+            uv.index = 0;
+            uv.isRef = true;
+            uv.isGlobal = true;
+            uv.isExplicitState = false;
+            uv.isRefParam = false;
+            currentFunction->upvalues.push_back(uv);
+        } else {
+            currentFunction->upvalues[upvalIdx].isRef = true;
+        }
+    }
+
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
     
@@ -1217,12 +1392,6 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
-    IRNode* initVal = nullptr;
-    if (expr->initializer) {
-        expr->initializer->accept(*this);
-        initVal = lastValue;
-    }
-
     int upvalIdx = resolveUpvalue(expr->name.lexeme);
     if (upvalIdx == -1) {
         // If not found in parent, it's a global ref
@@ -1240,26 +1409,11 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
         currentFunction->upvalues[upvalIdx].isRef = true;
     }
 
-    if (initVal) {
-        IRNode* setUpval = graph->createNode(IROp::SetUpvalue);
-        setUpval->payload1 = static_cast<uint32_t>(upvalIdx);
-        setUpval->name = expr->name.lexeme;
-        setUpval->addData(initVal);
-        setUpval->setControl(currentControl);
-        currentControl = setUpval;
-    }
-
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
-    IRNode* initVal = nullptr;
-    if (expr->initializer) {
-        expr->initializer->accept(*this);
-        initVal = lastValue;
-    }
-
     int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
     CompiledFunction::UpvalueInfo uv;
     uv.name = expr->name.lexeme;
@@ -1270,41 +1424,6 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
     uv.isExplicitState = true;
     uv.isRefParam = false;
     currentFunction->upvalues.push_back(uv);
-
-    IRNode* getUpval = graph->createValueNode(IROp::GetUpvalue);
-    getUpval->payload1 = static_cast<uint32_t>(upvalIdx);
-    getUpval->name = expr->name.lexeme;
-    getUpval->setControl(currentControl);
-    currentControl = getUpval;
-
-    IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-    isUninit->addData(getUpval);
-    isUninit->setControl(currentControl);
-
-    IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->addData(isUninit);
-    ifNode->setControl(currentControl);
-
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
-    ifTrue->setControl(ifNode);
-
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
-    ifFalse->setControl(ifNode);
-
-    currentControl = ifTrue;
-    if (initVal) {
-        IRNode* setUpval = graph->createNode(IROp::SetUpvalue);
-        setUpval->payload1 = static_cast<uint32_t>(upvalIdx);
-        setUpval->name = expr->name.lexeme;
-        setUpval->addData(initVal);
-        setUpval->setControl(currentControl);
-        currentControl = setUpval;
-    }
-
-    IRNode* merge = graph->createNode(IROp::Merge);
-    merge->addData(currentControl);
-    merge->addData(ifFalse);
-    currentControl = merge;
 
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -1425,6 +1544,35 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     opNode->addData(rightVal);
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
+        if (expr->isState) {
+            int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+            CompiledFunction::UpvalueInfo uv;
+            uv.name = var->name.lexeme;
+            uv.isLocal = false;
+            uv.index = 0;
+            uv.isRef = false;
+            uv.isGlobal = false;
+            uv.isExplicitState = true;
+            uv.isRefParam = false;
+            currentFunction->upvalues.push_back(uv);
+        } else if (expr->isRef) {
+            int upvalIdx = resolveUpvalue(var->name.lexeme);
+            if (upvalIdx == -1) {
+                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                CompiledFunction::UpvalueInfo uv;
+                uv.name = var->name.lexeme;
+                uv.isLocal = false;
+                uv.index = 0;
+                uv.isRef = true;
+                uv.isGlobal = true;
+                uv.isExplicitState = false;
+                uv.isRefParam = false;
+                currentFunction->upvalues.push_back(uv);
+            } else {
+                currentFunction->upvalues[upvalIdx].isRef = true;
+            }
+        }
+
         if (expr->isLocal) declareVariable(var->name.lexeme, opNode);
         else writeVariable(var->name.lexeme, opNode);
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
@@ -1559,21 +1707,24 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         
         compiledFunctions->push_back(fnDef);
         expr->fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
-    }
 
-    IRNode* closureNode = graph->createValueNode(IROp::Closure);
-    closureNode->setControl(currentControl);
-    closureNode->name = std::to_string(expr->fnIdx);
-    
-    if (compiledFunctions) {
+        IRNode* closureNode = graph->createValueNode(IROp::Closure);
+        closureNode->setControl(currentControl);
+        closureNode->name = std::to_string(expr->fnIdx);
+        
         for (auto& target : fnBuilder.upvalueTargets) {
             if (target.isLocal && target.localNode) {
                 closureNode->addData(target.localNode);
             }
         }
+        
+        lastValue = closureNode;
+    } else {
+        IRNode* closureNode = graph->createValueNode(IROp::Closure);
+        closureNode->setControl(currentControl);
+        closureNode->name = std::to_string(expr->fnIdx);
+        lastValue = closureNode;
     }
-    
-    lastValue = closureNode;
 }
 
 void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {

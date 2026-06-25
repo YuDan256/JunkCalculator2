@@ -15,6 +15,7 @@
 #if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
+#undef IN
 #else
 #include <dlfcn.h>
 #include <unistd.h>

@@ -56,6 +56,7 @@ set(JC2_HEADERS
 set(JC2_SOURCES
     "src/modules/ExtensionBridge.cpp"
     "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/Compiler.cpp"
+    "src/regvm/compiler/IRBuilder.cpp"
     "src/vm/VM.cpp" "src/vm/BuiltinRegistry.cpp" "src/main.cpp"
     "src/cas/Symbolic.cpp" "src/cas/Integration.cpp" "src/cas/Factorization.cpp" "src/cas/Groebner.cpp"
     "src/resource.rc"

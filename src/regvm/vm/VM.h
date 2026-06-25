@@ -77,6 +77,15 @@ private:
     void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
     void execAssertReturnType(const Value& val, uint32_t icIdx);
 
+    bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
+    std::string getTypeName(const Value& val);
+    ObjClosure* findDunder(const Value& val, const std::string& name);
+    Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
+
+public:
+    VM();
+    ~VM();
+
     void clearAllGlobalICs() {
         for (auto& fn : compiledFunctions) {
             for (auto& ic : fn->chunk.inlineCaches) {
@@ -120,15 +129,6 @@ private:
             globals.push_back(val);
         }
     }
-
-    bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
-    std::string getTypeName(const Value& val);
-    ObjClosure* findDunder(const Value& val, const std::string& name);
-    Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
-
-public:
-    VM();
-    ~VM();
 
     void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
         compiledFunctions = fns;

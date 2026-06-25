@@ -201,7 +201,7 @@ namespace jc {
             ObjClosure* closure = nullptr,
             Value boundSelf = Value::none(), Value boundClass = Value::none());
         const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
-
+        const std::unordered_map<std::string, std::set<int>>& getBuiltinArity() const { return builtinArity; }
 
         Value execute(const Chunk& mainChunk);
 

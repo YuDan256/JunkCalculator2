@@ -16,6 +16,7 @@
 #include <fstream>
 
 #if defined(_WIN32)
+#define NOMINMAX
 #include <windows.h>
 #else
 #include <dlfcn.h>
@@ -131,7 +132,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
             for (int i = 0; i < argc; ++i) {
                 actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
-            int totalArgc = actualArgs.size();
+            int totalArgc = static_cast<int>(actualArgs.size());
 
             if (fnDef->hasRestParam) {
                 int fixedMax = fnDef->maxArity - 1;
@@ -168,7 +169,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (size_t i = 0; i < actualArgs.size(); ++i) {
                     registers[currentFrame->registerBase + i] = actualArgs[i];
                 }
-                for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+                for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                     registers[currentFrame->registerBase + i] = Value::none();
                 }
                 
@@ -189,7 +190,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
             for (size_t i = 0; i < actualArgs.size(); ++i) {
                 registers[newFrame.registerBase + i] = actualArgs[i];
             }
-            for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+            for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                 registers[newFrame.registerBase + i] = Value::none();
             }
             
@@ -198,8 +199,8 @@ void VM::execCall(int a, int b, bool isTailCall) {
             if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
             frames[frameCount++] = newFrame;
         } else if (closure->isNative()) {
-            auto ait = jc::VM::activeVM->getArity().find(closure->rawBody);
-            if (ait != jc::VM::activeVM->getArity().end() && !ait->second.empty()) {
+            auto ait = jc::VM::activeVM->getBuiltinArity().find(closure->rawBody);
+            if (ait != jc::VM::activeVM->getBuiltinArity().end() && !ait->second.empty()) {
                 if (ait->second.find(argc) == ait->second.end()) {
                     std::string expected;
                     for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
@@ -260,7 +261,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (int i = 0; i < argc; ++i) {
                     actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
                 }
-                int totalArgc = actualArgs.size();
+                int totalArgc = static_cast<int>(actualArgs.size());
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -298,7 +299,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (size_t i = 0; i < actualArgs.size(); ++i) {
                     registers[newFrame.registerBase + i] = actualArgs[i];
                 }
-                for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+                for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                     registers[newFrame.registerBase + i] = Value::none();
                 }
                 
@@ -351,7 +352,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (int i = 0; i < argc; ++i) {
                     actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
                 }
-                int totalArgc = actualArgs.size();
+                int totalArgc = static_cast<int>(actualArgs.size());
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -388,7 +389,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     for (size_t i = 0; i < actualArgs.size(); ++i) {
                         registers[currentFrame->registerBase + i] = actualArgs[i];
                     }
-                    for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+                    for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                         registers[currentFrame->registerBase + i] = Value::none();
                     }
                     
@@ -409,7 +410,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (size_t i = 0; i < actualArgs.size(); ++i) {
                     registers[newFrame.registerBase + i] = actualArgs[i];
                 }
-                for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+                for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                     registers[newFrame.registerBase + i] = Value::none();
                 }
                 
@@ -572,7 +573,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         newFrame.classContext = Value(inst->classDef);
         
         std::vector<Value> actualArgs = args;
-        int totalArgc = actualArgs.size();
+        int totalArgc = static_cast<int>(actualArgs.size());
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -600,7 +601,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         for (size_t i = 0; i < actualArgs.size(); ++i) {
             registers[newBase + i] = actualArgs[i];
         }
-        for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+        for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
             registers[newBase + i] = Value::none();
         }
         
@@ -895,9 +896,9 @@ invoke_method:
         
         auto nIt = jc::VM::activeVM->getNativeBuiltins().find(methodName);
         if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
-            auto ait = jc::VM::activeVM->getArity().find(methodName);
+            auto ait = jc::VM::activeVM->getBuiltinArity().find(methodName);
             int totalArgs = argc + 1;
-            if (ait != jc::VM::activeVM->getArity().end() && !ait->second.empty() && ait->second.find(totalArgs) == ait->second.end()) {
+            if (ait != jc::VM::activeVM->getBuiltinArity().end() && !ait->second.empty() && ait->second.find(totalArgs) == ait->second.end()) {
                 std::string expected;
                 for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
                     if (aIt != ait->second.begin()) expected += " or ";
@@ -937,7 +938,7 @@ invoke_method:
         for (int i = 0; i < argc; ++i) {
             actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
         }
-        int totalArgc = actualArgs.size();
+        int totalArgc = static_cast<int>(actualArgs.size());
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -974,7 +975,7 @@ invoke_method:
             for (size_t i = 0; i < actualArgs.size(); ++i) {
                 registers[currentFrame->registerBase + i] = actualArgs[i];
             }
-            for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+            for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                 registers[currentFrame->registerBase + i] = Value::none();
             }
             
@@ -995,7 +996,7 @@ invoke_method:
         for (size_t i = 0; i < actualArgs.size(); ++i) {
             registers[newFrame.registerBase + i] = actualArgs[i];
         }
-        for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+        for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
             registers[newFrame.registerBase + i] = Value::none();
         }
         
@@ -1069,7 +1070,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         for (int i = 0; i < argc; ++i) {
             actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
         }
-        int totalArgc = actualArgs.size();
+        int totalArgc = static_cast<int>(actualArgs.size());
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -1106,7 +1107,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             for (size_t i = 0; i < actualArgs.size(); ++i) {
                 registers[currentFrame->registerBase + i] = actualArgs[i];
             }
-            for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+            for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
                 registers[currentFrame->registerBase + i] = Value::none();
             }
             
@@ -1127,7 +1128,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         for (size_t i = 0; i < actualArgs.size(); ++i) {
             registers[newFrame.registerBase + i] = actualArgs[i];
         }
-        for (int i = actualArgs.size(); i < fnDef->localCount; ++i) {
+        for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
             registers[newFrame.registerBase + i] = Value::none();
         }
         
@@ -1694,9 +1695,9 @@ Value VM::run(int targetFrameDepth) {
                 if (val.isFunctionClosure()) {
                     auto nit = jc::VM::activeVM->getNativeBuiltins().find(name);
                     if (nit != jc::VM::activeVM->getNativeBuiltins().end()) {
-                        auto ait = jc::VM::activeVM->getArity().find(name);
+                        auto ait = jc::VM::activeVM->getBuiltinArity().find(name);
                         auto closure = val.asFunction();
-                        if (ait == jc::VM::activeVM->getArity().end() || ait->second.empty()) {
+                        if (ait == jc::VM::activeVM->getBuiltinArity().end() || ait->second.empty()) {
                             throw std::runtime_error("Runtime Error: Cannot redefine '" + name + "' — it is a variadic built-in function.");
                         }
                         for (int argC = closure->minArgs(); argC <= closure->maxArgs(); ++argC) {
@@ -2974,9 +2975,9 @@ Value VM::run(int targetFrameDepth) {
                         bound->boundSelf = obj;
                         NativeCallable nativeFn = nIt->second;
                         
-                        auto ait = jc::VM::activeVM->getArity().find(field);
+                        auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
                         std::set<int> allowedArities;
-                        if (ait != jc::VM::activeVM->getArity().end()) allowedArities = ait->second;
+                        if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
 
                         bound->nativeFn = std::make_any<NativeCallable>(
                             [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {

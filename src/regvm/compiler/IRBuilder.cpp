@@ -1411,7 +1411,7 @@ void IRBuilder::visitSetLiteral(SetLiteral* expr) {
     lastValue = node;
 }
 
-void IRBuilder::visitSliceExpr(SliceExpr* expr) {
+void IRBuilder::visitSliceExpr(SliceExpr*) {
     throw std::runtime_error("IRBuilder: Slice expression should be handled by visitIndexAccess.");
 }
     

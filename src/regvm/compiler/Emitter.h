@@ -2,7 +2,7 @@
 #define JC2_REGVM_EMITTER_H
 
 #include "IR.h"
-#include "../../vm/Bytecode.h"
+#include "../vm/Bytecode.h"
 
 namespace jc {
 namespace regvm {

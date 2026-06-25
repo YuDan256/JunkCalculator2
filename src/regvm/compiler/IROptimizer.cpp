@@ -36,15 +36,17 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::Start: case IROp::Return: case IROp::If: case IROp::IfTrue: case IROp::IfFalse:
         case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw:
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
-        case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam:
+        case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam: case IROp::PassRefs:
         case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
         case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
         case IROp::IndexGet: case IROp::IndexSet: case IROp::SliceGet: case IROp::SliceSet: 
         case IROp::GetProperty: case IROp::TryGetProperty: case IROp::SetProperty:
         case IROp::AssertParamType: case IROp::AssertReturnType:
         case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
-        case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
+        case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
         case IROp::Method: case IROp::Inherit: case IROp::Import:
+        case IROp::ListInit: case IROp::ListAppend: case IROp::ListCompEnd:
+        case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
             return true;
         default:
             return false;

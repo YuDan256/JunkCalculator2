@@ -892,7 +892,6 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     opNode->setControl(currentControl);
     opNode->addData(targetVal);
     opNode->addData(rightVal);
-    currentControl = opNode;
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         if (expr->isLocal) declareVariable(var->name.lexeme, opNode);
@@ -921,7 +920,6 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
     IRNode* closureNode = graph->createValueNode(IROp::Closure);
     closureNode->setControl(currentControl);
     closureNode->name = expr->name;
-    currentControl = closureNode;
     lastValue = closureNode;
 }
 

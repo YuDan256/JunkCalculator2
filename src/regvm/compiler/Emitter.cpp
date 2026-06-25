@@ -6,11 +6,11 @@ namespace jc {
 namespace regvm {
 
 struct EncodedInst {
-    IRNode* node;
+    IRNode* node = nullptr;
     std::vector<uint32_t> words;
     
     bool isJump = false;
-    OpCode jumpOp;
+    OpCode jumpOp = OpCode::MOVE;
     int jumpA = 0;
     BasicBlock* jumpTarget = nullptr;
     bool isTrampoline = false;

@@ -119,8 +119,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
     std::unordered_map<BasicBlock*, int> blockToInstIdx;
 
     // 1. Lowering: IRNode -> EncodedInst
-    for (auto& bbPtr : graph->blocks) {
-        BasicBlock* bb = bbPtr.get();
+    for (size_t bbIdx = 0; bbIdx < graph->blocks.size(); ++bbIdx) {
+        BasicBlock* bb = graph->blocks[bbIdx].get();
+        BasicBlock* nextBb = (bbIdx + 1 < graph->blocks.size()) ? graph->blocks[bbIdx + 1].get() : nullptr;
         blockToInstIdx[bb] = static_cast<int>(insts.size());
         
         EncodedInst labelInst;
@@ -528,18 +529,34 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 int condReg = ensureReg(cNode->dataInputs[0], dummy.words, chunk, 124);
                 if (!dummy.words.empty()) insts.push_back(dummy);
                 
-                EncodedInst jmpFalse;
-                jmpFalse.isJump = true;
-                jmpFalse.jumpOp = OpCode::JMP_FALSE;
-                jmpFalse.jumpA = condReg;
-                jmpFalse.jumpTarget = falseBlock;
-                insts.push_back(jmpFalse);
-                
-                EncodedInst jmpTrue;
-                jmpTrue.isJump = true;
-                jmpTrue.jumpOp = OpCode::JMP;
-                jmpTrue.jumpTarget = trueBlock;
-                insts.push_back(jmpTrue);
+                if (falseBlock == nextBb) {
+                    EncodedInst jmpTrue;
+                    jmpTrue.isJump = true;
+                    jmpTrue.jumpOp = OpCode::JMP_TRUE;
+                    jmpTrue.jumpA = condReg;
+                    jmpTrue.jumpTarget = trueBlock;
+                    insts.push_back(jmpTrue);
+                } else if (trueBlock == nextBb) {
+                    EncodedInst jmpFalse;
+                    jmpFalse.isJump = true;
+                    jmpFalse.jumpOp = OpCode::JMP_FALSE;
+                    jmpFalse.jumpA = condReg;
+                    jmpFalse.jumpTarget = falseBlock;
+                    insts.push_back(jmpFalse);
+                } else {
+                    EncodedInst jmpFalse;
+                    jmpFalse.isJump = true;
+                    jmpFalse.jumpOp = OpCode::JMP_FALSE;
+                    jmpFalse.jumpA = condReg;
+                    jmpFalse.jumpTarget = falseBlock;
+                    insts.push_back(jmpFalse);
+                    
+                    EncodedInst jmpTrue;
+                    jmpTrue.isJump = true;
+                    jmpTrue.jumpOp = OpCode::JMP;
+                    jmpTrue.jumpTarget = trueBlock;
+                    insts.push_back(jmpTrue);
+                }
             }
             else if (cNode->op == IROp::TryBegin) {
                 BasicBlock* catchBlock = nullptr;
@@ -557,14 +574,16 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 tryInst.jumpTarget = catchBlock;
                 insts.push_back(tryInst);
                 
-                EncodedInst jmpInst;
-                jmpInst.isJump = true;
-                jmpInst.jumpOp = OpCode::JMP;
-                jmpInst.jumpTarget = tryBlock;
-                insts.push_back(jmpInst);
+                if (tryBlock != nextBb) {
+                    EncodedInst jmpInst;
+                    jmpInst.isJump = true;
+                    jmpInst.jumpOp = OpCode::JMP;
+                    jmpInst.jumpTarget = tryBlock;
+                    insts.push_back(jmpInst);
+                }
             }
             else if (cNode->op != IROp::Return && cNode->op != IROp::Throw) {
-                if (!bb->succs.empty()) {
+                if (!bb->succs.empty() && bb->succs[0] != nextBb) {
                     EncodedInst jmpInst;
                     jmpInst.isJump = true;
                     jmpInst.jumpOp = OpCode::JMP;
@@ -589,11 +608,19 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 int relOffset = targetOffset - (inst.offset + static_cast<int>(inst.words.size()));
                 
                 if (inst.jumpOp == OpCode::JMP) {
-                    if (relOffset < -8388607 || relOffset > 8388607) throw std::runtime_error("Emitter Error: Jump too large even for 24-bit!");
-                    auto newWords = std::vector<uint32_t>{ CREATE_sAx(OpCode::JMP, relOffset) };
-                    if (inst.words != newWords) {
-                        inst.words = newWords;
-                        changed = true;
+                    if (relOffset == 0) {
+                        if (!inst.words.empty()) {
+                            inst.words.clear();
+                            inst.isJump = false;
+                            changed = true;
+                        }
+                    } else {
+                        if (relOffset < -8388607 || relOffset > 8388607) throw std::runtime_error("Emitter Error: Jump too large even for 24-bit!");
+                        auto newWords = std::vector<uint32_t>{ CREATE_sAx(OpCode::JMP, relOffset) };
+                        if (inst.words != newWords) {
+                            inst.words = newWords;
+                            changed = true;
+                        }
                     }
                 } else {
                     if (relOffset < -32767 || relOffset > 32767) {

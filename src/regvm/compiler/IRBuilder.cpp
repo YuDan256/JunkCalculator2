@@ -1,4 +1,5 @@
 #include "IRBuilder.h"
+#include "../../math/BaseNum.h"
 
 namespace jc {
 namespace regvm {
@@ -270,15 +271,69 @@ void IRBuilder::visitLiteral(Literal* expr) {
         else val = Value::none();
     } else if (expr->isString) {
         val = Value(expr->value);
+    } else if (expr->isImaginary) {
+        const std::string& s = expr->value;
+        double imagPart = 0.0;
+        if (s.length() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X' || s[1] == 'b' || s[1] == 'B' || s[1] == 'o' || s[1] == 'O')) {
+            int base = 10;
+            if (s[1] == 'x' || s[1] == 'X') base = 16;
+            else if (s[1] == 'b' || s[1] == 'B') base = 2;
+            else if (s[1] == 'o' || s[1] == 'O') base = 8;
+            std::string numPart = s.substr(2);
+            try {
+                imagPart = BaseNum::fromString(numPart, base).getValue().toDouble();
+            } catch (...) {
+                throw std::runtime_error("IRBuilder Error: Invalid imaginary literal '" + s + "'.");
+            }
+        } else {
+            imagPart = std::stod(s);
+        }
+        val = Value(Complex(0.0, imagPart));
     } else {
-        try { val = Value(std::stod(expr->value)); } 
-        catch(...) { val = Value::none(); }
+        const std::string& s = expr->value;
+        if (s.length() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X' || s[1] == 'b' || s[1] == 'B' || s[1] == 'o' || s[1] == 'O')) {
+            int base = 10;
+            if (s[1] == 'x' || s[1] == 'X') base = 16;
+            else if (s[1] == 'b' || s[1] == 'B') base = 2;
+            else if (s[1] == 'o' || s[1] == 'O') base = 8;
+            std::string numPart = s.substr(2);
+            try {
+                val = BaseNum::fromString(numPart, base).getValue();
+            } catch (...) {
+                throw std::runtime_error("IRBuilder Error: Invalid integer literal '" + s + "'.");
+            }
+        } else if (s.find('.') == std::string::npos &&
+            s.find('e') == std::string::npos &&
+            s.find('E') == std::string::npos) {
+            try { val = Value(jc::BigInt(s)); }
+            catch (...) { val = Value(std::stod(s)); }
+        } else {
+            val = Value(std::stod(s));
+        }
     }
     lastValue = graph->createConstant(val);
     lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitBinary(Binary* expr) {
+    if (expr->op.type == TokenType::PIPE) {
+        expr->right->accept(*this);
+        IRNode* calleeNode = lastValue;
+        
+        expr->left->accept(*this);
+        IRNode* argNode = lastValue;
+        
+        IRNode* callNode = graph->createValueNode(IROp::Call);
+        callNode->setControl(currentControl);
+        callNode->addData(calleeNode);
+        callNode->addData(argNode);
+        callNode->payload1 = 1;
+        
+        currentControl = callNode;
+        lastValue = callNode;
+        return;
+    }
+
     if (expr->op.type == TokenType::AND_AND || expr->op.type == TokenType::OR_OR) {
         expr->left->accept(*this);
         IRNode* leftVal = lastValue;
@@ -388,6 +443,7 @@ void IRBuilder::visitBinary(Binary* expr) {
         case TokenType::LESS_EQUAL: op = IROp::Le; break;
         case TokenType::GREATER: op = IROp::Gt; break;
         case TokenType::GREATER_EQUAL: op = IROp::Ge; break;
+        case TokenType::IN: op = IROp::In; break;
         case TokenType::BIT_AND: op = IROp::BitAnd; break;
         case TokenType::BIT_OR: op = IROp::BitOr; break;
         case TokenType::BIT_XOR: op = IROp::BitXor; break;
@@ -422,8 +478,21 @@ void IRBuilder::visitAssign(Assign* expr) {
 
 void IRBuilder::visitBlock(Block* expr) {
     envStack.emplace_back(); // 进入新作用域
-    for (auto& stmt : expr->statements) {
-        stmt->accept(*this);
+    if (expr->statements.empty()) {
+        lastValue = graph->createConstant(Value::none());
+        lastValue->setControl(currentControl);
+    } else {
+        for (size_t i = 0; i < expr->statements.size(); ++i) {
+            expr->statements[i]->accept(*this);
+            
+            bool isTerminal = dynamic_cast<ReturnExpr*>(expr->statements[i].get()) ||
+                              dynamic_cast<BreakExpr*>(expr->statements[i].get()) ||
+                              dynamic_cast<ContinueExpr*>(expr->statements[i].get()) ||
+                              dynamic_cast<ThrowExpr*>(expr->statements[i].get());
+            if (i < expr->statements.size() - 1 && isTerminal) {
+                break;
+            }
+        }
     }
     envStack.pop_back(); // 离开作用域
 }
@@ -497,14 +566,16 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
 
     // 4. 编译 True 分支
     currentControl = ifTrue;
+    envStack.emplace_back(baseEnv); // ★ 自动创建块级作用域
     expr->thenBranch->accept(*this);
     IRNode* thenControl = currentControl;
     IRNode* thenVal = lastValue;
     auto thenEnv = envStack.back();
+    envStack.pop_back();
 
     // 5. 编译 False 分支
-    envStack.back() = baseEnv; // 恢复基础环境
     currentControl = ifFalse;
+    envStack.emplace_back(baseEnv); // ★ 自动创建块级作用域
     IRNode* elseVal = nullptr;
     if (expr->elseBranch) {
         expr->elseBranch->accept(*this);
@@ -515,6 +586,7 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     }
     IRNode* elseControl = currentControl;
     auto elseEnv = envStack.back();
+    envStack.pop_back();
 
     // 6. 创建 Merge 节点汇合控制流
     IRNode* mergeNode = graph->createNode(IROp::Merge);
@@ -523,13 +595,12 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     currentControl = mergeNode;
 
     // 7. 合并环境 (生成 Phi 节点)
-    envStack.back() = baseEnv; // 准备合并后的新环境
     std::unordered_set<std::string> modifiedVars;
     for (const auto& pair : thenEnv) {
-        if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
+        if (baseEnv.count(pair.first) && baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
     }
     for (const auto& pair : elseEnv) {
-        if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
+        if (baseEnv.count(pair.first) && baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
     }
 
     for (const auto& name : modifiedVars) {
@@ -577,6 +648,58 @@ void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
 }
 
 void IRBuilder::visitMatrixNode(MatrixNode* expr) {
+    int rows = static_cast<int>(expr->elements.size());
+    if (rows == 0) {
+        if (expr->forceList) {
+            IRNode* node = graph->createValueNode(IROp::ListInit);
+            node->setControl(currentControl);
+            currentControl = node;
+            lastValue = node;
+        } else {
+            lastValue = graph->createConstant(Value(RealMatrix(0, 0)));
+            lastValue->setControl(currentControl);
+        }
+        return;
+    }
+
+    if (expr->forceList) {
+        if (rows == 1) {
+            std::vector<IRNode*> elements;
+            for (auto& e : expr->elements[0]) {
+                e->accept(*this);
+                elements.push_back(lastValue);
+            }
+            IRNode* node = graph->createValueNode(IROp::BuildList);
+            node->setControl(currentControl);
+            for (auto* e : elements) node->addData(e);
+            node->payload1 = static_cast<uint32_t>(elements.size());
+            currentControl = node;
+            lastValue = node;
+        } else {
+            std::vector<IRNode*> rowNodes;
+            for (auto& row : expr->elements) {
+                std::vector<IRNode*> elements;
+                for (auto& e : row) {
+                    e->accept(*this);
+                    elements.push_back(lastValue);
+                }
+                IRNode* rowNode = graph->createValueNode(IROp::BuildList);
+                rowNode->setControl(currentControl);
+                for (auto* e : elements) rowNode->addData(e);
+                rowNode->payload1 = static_cast<uint32_t>(elements.size());
+                currentControl = rowNode;
+                rowNodes.push_back(rowNode);
+            }
+            IRNode* node = graph->createValueNode(IROp::BuildList);
+            node->setControl(currentControl);
+            for (auto* r : rowNodes) node->addData(r);
+            node->payload1 = static_cast<uint32_t>(rowNodes.size());
+            currentControl = node;
+            lastValue = node;
+        }
+        return;
+    }
+
     std::vector<IRNode*> elements;
     for (auto& row : expr->elements) {
         for (auto& e : row) {
@@ -594,6 +717,8 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
 }
 
 void IRBuilder::visitWhileExpr(WhileExpr* expr) {
+    envStack.emplace_back(envStack.back()); // ★ 自动创建块级作用域
+    
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);
     
@@ -649,16 +774,23 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
         phi->name = name;
         exitEnv[name] = phi;
     }
-    envStack.back() = exitEnv;
     
     loopStack.pop_back();
+    
+    auto finalEnv = exitEnv;
+    envStack.pop_back();
+    for (const auto& pair : finalEnv) {
+        if (envStack.back().count(pair.first)) {
+            envStack.back()[pair.first] = pair.second;
+        }
+    }
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitForExpr(ForExpr* expr) {
-    envStack.emplace_back();
+    envStack.emplace_back(envStack.back()); // ★ 自动创建块级作用域
     expr->initializer->accept(*this);
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
@@ -717,10 +849,16 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
         phi->name = name;
         exitEnv[name] = phi;
     }
-    envStack.back() = exitEnv;
     
     loopStack.pop_back();
+    
+    auto finalEnv = exitEnv;
     envStack.pop_back();
+    for (const auto& pair : finalEnv) {
+        if (envStack.back().count(pair.first)) {
+            envStack.back()[pair.first] = pair.second;
+        }
+    }
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -747,9 +885,45 @@ void IRBuilder::visitContinueExpr(ContinueExpr*) {
 }
     
 void IRBuilder::visitIndexAccess(IndexAccess* expr) {
+    bool hasSlice = false;
+    for (auto& idx : expr->indices) {
+        if (dynamic_cast<SliceExpr*>(idx.get())) {
+            hasSlice = true;
+            break;
+        }
+    }
+
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
-        
+
+    if (hasSlice) {
+        std::vector<IRNode*> sliceArgs;
+        for (auto& idx : expr->indices) {
+            if (auto* slice = dynamic_cast<SliceExpr*>(idx.get())) {
+                if (slice->start) { slice->start->accept(*this); sliceArgs.push_back(lastValue); }
+                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+                
+                if (slice->end) { slice->end->accept(*this); sliceArgs.push_back(lastValue); }
+                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+                
+                if (slice->step) { slice->step->accept(*this); sliceArgs.push_back(lastValue); }
+                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+            } else {
+                idx->accept(*this); sliceArgs.push_back(lastValue);
+                IRNode* n1 = graph->createConstant(Value::none()); n1->setControl(currentControl); sliceArgs.push_back(n1);
+                IRNode* n2 = graph->createConstant(Value(0.0)); n2->setControl(currentControl); sliceArgs.push_back(n2);
+            }
+        }
+        IRNode* node = graph->createValueNode(IROp::SliceGet);
+        node->setControl(currentControl);
+        node->addData(objNode);
+        for (auto* arg : sliceArgs) node->addData(arg);
+        node->payload1 = static_cast<uint32_t>(expr->indices.size());
+        currentControl = node;
+        lastValue = node;
+        return;
+    }
+
     std::vector<IRNode*> indices;
     for (auto& idx : expr->indices) {
         idx->accept(*this);
@@ -771,26 +945,113 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
     } else {
         lastValue = readVariable(expr->name.lexeme);
     }
-    IRNode* objNode = lastValue;
-        
-    std::vector<IRNode*> indices;
-    for (auto& idx : expr->indexChain[0]) {
-        idx->accept(*this);
-        indices.push_back(lastValue);
+    IRNode* rootObjNode = lastValue;
+
+    bool hasSlice = false;
+    if (expr->indexChain.size() == 1) {
+        for (auto& idx : expr->indexChain[0]) {
+            if (dynamic_cast<SliceExpr*>(idx.get())) {
+                hasSlice = true;
+                break;
+            }
+        }
     }
-        
+
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
+
+    if (hasSlice) {
+        std::vector<IRNode*> sliceArgs;
+        for (auto& idx : expr->indexChain[0]) {
+            if (auto* slice = dynamic_cast<SliceExpr*>(idx.get())) {
+                if (slice->start) { slice->start->accept(*this); sliceArgs.push_back(lastValue); }
+                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+                
+                if (slice->end) { slice->end->accept(*this); sliceArgs.push_back(lastValue); }
+                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+                
+                if (slice->step) { slice->step->accept(*this); sliceArgs.push_back(lastValue); }
+                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+            } else {
+                idx->accept(*this); sliceArgs.push_back(lastValue);
+                IRNode* n1 = graph->createConstant(Value::none()); n1->setControl(currentControl); sliceArgs.push_back(n1);
+                IRNode* n2 = graph->createConstant(Value(0.0)); n2->setControl(currentControl); sliceArgs.push_back(n2);
+            }
+        }
+        IRNode* node = graph->createValueNode(IROp::SliceSet);
+        node->setControl(currentControl);
+        node->addData(rootObjNode);
+        for (auto* arg : sliceArgs) node->addData(arg);
+        node->addData(valNode);
+        node->payload1 = static_cast<uint32_t>(expr->indexChain[0].size());
+        currentControl = node;
         
-    IRNode* node = graph->createValueNode(IROp::IndexSet);
-    node->setControl(currentControl);
-    node->addData(objNode);
-    for (auto* idx : indices) node->addData(idx);
-    node->addData(valNode);
-    node->payload1 = static_cast<uint32_t>(indices.size());
+        if (!expr->hasObjectExpr()) {
+            writeVariable(expr->name.lexeme, rootObjNode);
+        }
+        lastValue = valNode;
+        return;
+    }
+
+    std::vector<std::vector<IRNode*>> indicesTmp(expr->indexChain.size());
+    for (size_t i = 0; i < expr->indexChain.size(); ++i) {
+        for (size_t j = 0; j < expr->indexChain[i].size(); ++j) {
+            expr->indexChain[i][j]->accept(*this);
+            indicesTmp[i].push_back(lastValue);
+        }
+    }
+
+    int depth = static_cast<int>(expr->indexChain.size());
+    if (depth == 1) {
+        IRNode* node = graph->createValueNode(IROp::IndexSet);
+        node->setControl(currentControl);
+        node->addData(rootObjNode);
+        for (auto* idx : indicesTmp[0]) node->addData(idx);
+        node->addData(valNode);
+        node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
+        currentControl = node;
         
-    currentControl = node;
-    lastValue = valNode;
+        if (!expr->hasObjectExpr()) {
+            writeVariable(expr->name.lexeme, rootObjNode);
+        }
+        lastValue = valNode;
+    } else {
+        std::vector<IRNode*> chainObjs;
+        chainObjs.push_back(rootObjNode);
+        
+        for (int level = 0; level < depth - 1; ++level) {
+            IRNode* getNode = graph->createValueNode(IROp::IndexGet);
+            getNode->setControl(currentControl);
+            getNode->addData(chainObjs.back());
+            for (auto* idx : indicesTmp[level]) getNode->addData(idx);
+            getNode->payload1 = static_cast<uint32_t>(indicesTmp[level].size());
+            currentControl = getNode;
+            chainObjs.push_back(getNode);
+        }
+        
+        IRNode* setNode = graph->createValueNode(IROp::IndexSet);
+        setNode->setControl(currentControl);
+        setNode->addData(chainObjs.back());
+        for (auto* idx : indicesTmp[depth - 1]) setNode->addData(idx);
+        setNode->addData(valNode);
+        setNode->payload1 = static_cast<uint32_t>(indicesTmp[depth - 1].size());
+        currentControl = setNode;
+        
+        for (int level = depth - 2; level >= 0; --level) {
+            IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
+            backSetNode->setControl(currentControl);
+            backSetNode->addData(chainObjs[level]);
+            for (auto* idx : indicesTmp[level]) backSetNode->addData(idx);
+            backSetNode->addData(chainObjs[level + 1]);
+            backSetNode->payload1 = static_cast<uint32_t>(indicesTmp[level].size());
+            currentControl = backSetNode;
+        }
+        
+        if (!expr->hasObjectExpr()) {
+            writeVariable(expr->name.lexeme, rootObjNode);
+        }
+        lastValue = valNode;
+    }
 }
     
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
@@ -837,6 +1098,8 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     IRNode* objNode = nullptr;
     std::vector<IRNode*> indices;
     std::string propName;
+    
+    std::vector<IndexAccess*> chain;
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         targetVal = readVariable(var->name.lexeme);
@@ -851,19 +1114,40 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         targetVal->name = propName;
         currentControl = targetVal;
     } else if (auto* idx = dynamic_cast<IndexAccess*>(expr->target.get())) {
-        idx->object->accept(*this);
-        objNode = lastValue;
-        for (auto& i : idx->indices) {
-            i->accept(*this);
-            indices.push_back(lastValue);
+        IndexAccess* curr = idx;
+        while (curr) {
+            chain.push_back(curr);
+            if (auto* next = dynamic_cast<IndexAccess*>(curr->object.get())) {
+                curr = next;
+            } else {
+                break;
+            }
         }
+        std::reverse(chain.begin(), chain.end());
         
-        targetVal = graph->createValueNode(IROp::IndexGet);
-        targetVal->setControl(currentControl);
-        targetVal->addData(objNode);
-        for (auto* i : indices) targetVal->addData(i);
-        targetVal->payload1 = static_cast<uint32_t>(indices.size());
-        currentControl = targetVal;
+        chain[0]->object->accept(*this);
+        objNode = lastValue;
+        
+        IRNode* currObj = objNode;
+        for (size_t i = 0; i < chain.size(); ++i) {
+            std::vector<IRNode*> levelIndices;
+            for (auto& idxExpr : chain[i]->indices) {
+                idxExpr->accept(*this);
+                levelIndices.push_back(lastValue);
+            }
+            if (i == chain.size() - 1) {
+                indices = levelIndices;
+            }
+            
+            IRNode* getNode = graph->createValueNode(IROp::IndexGet);
+            getNode->setControl(currentControl);
+            getNode->addData(currObj);
+            for (auto* idxNode : levelIndices) getNode->addData(idxNode);
+            getNode->payload1 = static_cast<uint32_t>(levelIndices.size());
+            currentControl = getNode;
+            currObj = getNode;
+        }
+        targetVal = currObj;
     } else {
         throw std::runtime_error("IRBuilder: Unsupported compound assignment target.");
     }
@@ -904,13 +1188,57 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         setProp->name = propName;
         currentControl = setProp;
     } else if (dynamic_cast<IndexAccess*>(expr->target.get())) {
-        IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
-        setIdx->setControl(currentControl);
-        setIdx->addData(objNode);
-        for (auto* i : indices) setIdx->addData(i);
-        setIdx->addData(opNode);
-        setIdx->payload1 = static_cast<uint32_t>(indices.size());
-        currentControl = setIdx;
+        int depth = static_cast<int>(chain.size());
+        if (depth == 1) {
+            IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
+            setIdx->setControl(currentControl);
+            setIdx->addData(objNode);
+            for (auto* i : indices) setIdx->addData(i);
+            setIdx->addData(opNode);
+            setIdx->payload1 = static_cast<uint32_t>(indices.size());
+            currentControl = setIdx;
+        } else {
+            std::vector<IRNode*> chainObjs;
+            chainObjs.push_back(objNode);
+            
+            std::vector<std::vector<IRNode*>> allIndices;
+            for (size_t i = 0; i < chain.size(); ++i) {
+                std::vector<IRNode*> levelIndices;
+                for (auto& idxExpr : chain[i]->indices) {
+                    idxExpr->accept(*this);
+                    levelIndices.push_back(lastValue);
+                }
+                allIndices.push_back(levelIndices);
+                
+                if (i < chain.size() - 1) {
+                    IRNode* getNode = graph->createValueNode(IROp::IndexGet);
+                    getNode->setControl(currentControl);
+                    getNode->addData(chainObjs.back());
+                    for (auto* idxNode : levelIndices) getNode->addData(idxNode);
+                    getNode->payload1 = static_cast<uint32_t>(levelIndices.size());
+                    currentControl = getNode;
+                    chainObjs.push_back(getNode);
+                }
+            }
+            
+            IRNode* setNode = graph->createValueNode(IROp::IndexSet);
+            setNode->setControl(currentControl);
+            setNode->addData(chainObjs.back());
+            for (auto* idx : allIndices.back()) setNode->addData(idx);
+            setNode->addData(opNode);
+            setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
+            currentControl = setNode;
+            
+            for (int level = depth - 2; level >= 0; --level) {
+                IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
+                backSetNode->setControl(currentControl);
+                backSetNode->addData(chainObjs[level]);
+                for (auto* idx : allIndices[level]) backSetNode->addData(idx);
+                backSetNode->addData(chainObjs[level + 1]);
+                backSetNode->payload1 = static_cast<uint32_t>(allIndices[level].size());
+                currentControl = backSetNode;
+            }
+        }
     }
 
     lastValue = opNode;
@@ -944,7 +1272,7 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
 }
 
 void IRBuilder::visitForInExpr(ForInExpr* expr) {
-    envStack.emplace_back();
+    envStack.emplace_back(envStack.back()); // ★ 自动创建块级作用域
     expr->iterable->accept(*this);
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
     iterNode->setControl(currentControl);
@@ -1019,10 +1347,16 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
         phi->name = name;
         exitEnv[name] = phi;
     }
-    envStack.back() = exitEnv;
     
     loopStack.pop_back();
+    
+    auto finalEnv = exitEnv;
     envStack.pop_back();
+    for (const auto& pair : finalEnv) {
+        if (envStack.back().count(pair.first)) {
+            envStack.back()[pair.first] = pair.second;
+        }
+    }
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -1416,8 +1750,16 @@ void IRBuilder::visitSliceExpr(SliceExpr*) {
 }
     
 void IRBuilder::visitSequenceExpr(SequenceExpr* expr) {
-    for (auto& e : expr->expressions) {
-        e->accept(*this);
+    for (size_t i = 0; i < expr->expressions.size(); ++i) {
+        expr->expressions[i]->accept(*this);
+        
+        bool isTerminal = dynamic_cast<ReturnExpr*>(expr->expressions[i].get()) ||
+                          dynamic_cast<BreakExpr*>(expr->expressions[i].get()) ||
+                          dynamic_cast<ContinueExpr*>(expr->expressions[i].get()) ||
+                          dynamic_cast<ThrowExpr*>(expr->expressions[i].get());
+        if (i < expr->expressions.size() - 1 && isTerminal) {
+            break;
+        }
     }
 }
 

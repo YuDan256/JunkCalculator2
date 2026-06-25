@@ -19,6 +19,7 @@ struct CallFrame {
     const Chunk* chunk = nullptr;
     int ip = 0;
     int registerBase = 0; // 寄存器窗口基址 (指向全局 registers 数组)
+    int returnRegister = 0; // ★ 记录当前帧返回时，结果应写入父帧的哪个物理寄存器
     ObjClosure* closure = nullptr;
     int refParamsBase = -1;
     Value selfContext = Value::none();
@@ -40,6 +41,7 @@ private:
 
     std::vector<Value> globals;
     std::unordered_map<std::string, uint32_t> globalNames;
+    std::unordered_set<std::string> constGlobals;
     std::unordered_map<std::string, Value> loadedModules;
     std::unordered_set<std::string> importedModules;
 
@@ -74,6 +76,14 @@ private:
 
     void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
     void execAssertReturnType(const Value& val, uint32_t icIdx);
+
+    void clearAllGlobalICs() {
+        for (auto& fn : compiledFunctions) {
+            for (auto& ic : fn->chunk.inlineCaches) {
+                ic.cachedGlobalSlot = -1;
+            }
+        }
+    }
 
     bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
     std::string getTypeName(const Value& val);

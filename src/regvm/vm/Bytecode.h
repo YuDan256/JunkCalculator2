@@ -97,7 +97,7 @@ enum class OpCode : uint8_t {
     DICT_REST,      // R(A) := dict_rest(R(B), exclude_keys = R(C)) [Ext C]
     BUILD_SET,      // R(A) := Set(R(B) ... R(B+C-1)) [Ext B, C]
     BUILD_MATRIX,   // R(A) := Matrix(elements = R(B)..., shapeIdx = C) [Ext A, B, C]
-    BUILD_NAMESPACE,// R(A) := Namespace(nameIdx = Bx) [Ext]
+    BUILD_NAMESPACE,// R(A) := Namespace(nameIdx = B, count = C). Triplets (key, slot, isConst) start at R(A+1) [Ext A, B, C]
     LIST_INIT,      // R(A) := []
     LIST_APPEND,    // R(A).append(R(B))
     LIST_COMP_END,  // R(A) := comp_end(R(A))
@@ -426,12 +426,12 @@ public:
             
             case OpCode::BUILD_LIST: case OpCode::BUILD_DICT: case OpCode::BUILD_SET:
             case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
-            case OpCode::INDEX_GET: case OpCode::INDEX_SET: case OpCode::SLICE_GET:
-            case OpCode::SLICE_SET: case OpCode::FORMAT_STRING: case OpCode::ITER_INIT:
-            case OpCode::IN: case OpCode::ASSERT_PARAM_TYPE: case OpCode::MATCH_TYPE:
-            case OpCode::MATCH_SHAPE: case OpCode::GET_PROP: case OpCode::TRY_GET_PROP:
-            case OpCode::SET_PROP: case OpCode::INVOKE: case OpCode::TAIL_INVOKE:
-            case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
+            case OpCode::BUILD_NAMESPACE: case OpCode::INDEX_GET: case OpCode::INDEX_SET: 
+            case OpCode::SLICE_GET: case OpCode::SLICE_SET: case OpCode::FORMAT_STRING: 
+            case OpCode::ITER_INIT: case OpCode::IN: case OpCode::ASSERT_PARAM_TYPE: 
+            case OpCode::MATCH_TYPE: case OpCode::MATCH_SHAPE: case OpCode::GET_PROP: 
+            case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: case OpCode::INVOKE: 
+            case OpCode::TAIL_INVOKE: case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
             case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE: case OpCode::METHOD:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 break;
@@ -453,7 +453,7 @@ public:
             case OpCode::LOADK: case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
             case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL:
             case OpCode::CLOSURE: case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
-            case OpCode::CLASS: case OpCode::BUILD_NAMESPACE:
+            case OpCode::CLASS:
                 std::cout << "R(" << a << ") " << bx;
                 break;
 

@@ -5,6 +5,7 @@
 #include "../../frontend/Parser.h"
 #include "../../frontend/Compiler.h"
 #include "../../vm/VM.h" // For ValueException
+#include "../../vm/BuiltinRegistry.h"
 #include "../../modules/ExtensionBridge.h"
 #include <stdexcept>
 #include <iostream>
@@ -107,27 +108,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
             registers[currentFrame->registerBase + a] = nIt->second(args);
-            
-            if (isTailCall) {
-                Value res = registers[currentFrame->registerBase + a];
-                closeUpvalues(currentFrame->registerBase);
-                frameCount--;
-                if (frameCount <= currentTargetFrameDepth) {
-                    registers[currentFrame->registerBase + a] = res;
-                    return;
-                }
-                CallFrame* parentFrame = &frames[frameCount - 1];
-                int callIp = parentFrame->ip - 1;
-                while (callIp >= 0 && GET_OPCODE(parentFrame->chunk->code[callIp]) == OpCode::EXTRAARG) {
-                    callIp--;
-                }
-                Instruction callInst = parentFrame->chunk->code[callIp];
-                int targetReg = GET_A(callInst);
-                if (targetReg == ESCAPE_NORMAL_8) {
-                    targetReg = GET_Ax(parentFrame->chunk->code[callIp + 1]);
-                }
-                registers[parentFrame->registerBase + targetReg] = res;
-            }
             return;
         }
         auto it = globalNames.find(tag);
@@ -201,6 +181,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
             newFrame.chunk = &fnDef->chunk;
             newFrame.ip = 0;
             newFrame.registerBase = currentFrame->registerBase + a + 1;
+            newFrame.returnRegister = a;
             newFrame.closure = closure;
             newFrame.selfContext = closure->boundSelf;
             newFrame.classContext = closure->boundClass;
@@ -254,27 +235,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
             }
             helpers::nativeSelfStack.pop_back();
             helpers::nativeClassStack.pop_back();
-            
-            if (isTailCall) {
-                Value res = registers[currentFrame->registerBase + a];
-                closeUpvalues(currentFrame->registerBase);
-                frameCount--;
-                if (frameCount <= currentTargetFrameDepth) {
-                    registers[currentFrame->registerBase + a] = res;
-                    return;
-                }
-                CallFrame* parentFrame = &frames[frameCount - 1];
-                int callIp = parentFrame->ip - 1;
-                while (callIp >= 0 && GET_OPCODE(parentFrame->chunk->code[callIp]) == OpCode::EXTRAARG) {
-                    callIp--;
-                }
-                Instruction callInst = parentFrame->chunk->code[callIp];
-                int targetReg = GET_A(callInst);
-                if (targetReg == ESCAPE_NORMAL_8) {
-                    targetReg = GET_Ax(parentFrame->chunk->code[callIp + 1]);
-                }
-                registers[parentFrame->registerBase + targetReg] = res;
-            }
         }
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
@@ -330,6 +290,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
                 newFrame.registerBase = currentFrame->registerBase + a + 1;
+                newFrame.returnRegister = a;
                 newFrame.closure = initMethod;
                 newFrame.selfContext = Value(instance);
                 newFrame.classContext = Value(cls);
@@ -362,52 +323,10 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
                 registers[currentFrame->registerBase + a] = Value(instance);
-                
-                if (isTailCall) {
-                    Value res = registers[currentFrame->registerBase + a];
-                    closeUpvalues(currentFrame->registerBase);
-                    frameCount--;
-                    if (frameCount <= currentTargetFrameDepth) {
-                        registers[currentFrame->registerBase + a] = res;
-                        return;
-                    }
-                    CallFrame* parentFrame = &frames[frameCount - 1];
-                    int callIp = parentFrame->ip - 1;
-                    while (callIp >= 0 && GET_OPCODE(parentFrame->chunk->code[callIp]) == OpCode::EXTRAARG) {
-                        callIp--;
-                    }
-                    Instruction callInst = parentFrame->chunk->code[callIp];
-                    int targetReg = GET_A(callInst);
-                    if (targetReg == ESCAPE_NORMAL_8) {
-                        targetReg = GET_Ax(parentFrame->chunk->code[callIp + 1]);
-                    }
-                    registers[parentFrame->registerBase + targetReg] = res;
-                }
             }
         } else {
             if (argc > 0) throw std::runtime_error("TypeError: Class takes no arguments directly.");
             registers[currentFrame->registerBase + a] = Value(instance);
-            
-            if (isTailCall) {
-                Value res = registers[currentFrame->registerBase + a];
-                closeUpvalues(currentFrame->registerBase);
-                frameCount--;
-                if (frameCount <= currentTargetFrameDepth) {
-                    registers[currentFrame->registerBase + a] = res;
-                    return;
-                }
-                CallFrame* parentFrame = &frames[frameCount - 1];
-                int callIp = parentFrame->ip - 1;
-                while (callIp >= 0 && GET_OPCODE(parentFrame->chunk->code[callIp]) == OpCode::EXTRAARG) {
-                    callIp--;
-                }
-                Instruction callInst = parentFrame->chunk->code[callIp];
-                int targetReg = GET_A(callInst);
-                if (targetReg == ESCAPE_NORMAL_8) {
-                    targetReg = GET_Ax(parentFrame->chunk->code[callIp + 1]);
-                }
-                registers[parentFrame->registerBase + targetReg] = res;
-            }
         }
     } else if (callee.isInstance()) {
         auto inst = callee.asInstance();
@@ -482,6 +401,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
                 newFrame.registerBase = currentFrame->registerBase + a + 1;
+                newFrame.returnRegister = a;
                 newFrame.closure = method;
                 newFrame.selfContext = callee;
                 newFrame.classContext = Value(owningClass);
@@ -515,27 +435,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 }
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
-                
-                if (isTailCall) {
-                    Value res = registers[currentFrame->registerBase + a];
-                    closeUpvalues(currentFrame->registerBase);
-                    frameCount--;
-                    if (frameCount <= currentTargetFrameDepth) {
-                        registers[currentFrame->registerBase + a] = res;
-                        return;
-                    }
-                    CallFrame* parentFrame = &frames[frameCount - 1];
-                    int callIp = parentFrame->ip - 1;
-                    while (callIp >= 0 && GET_OPCODE(parentFrame->chunk->code[callIp]) == OpCode::EXTRAARG) {
-                        callIp--;
-                    }
-                    Instruction callInst = parentFrame->chunk->code[callIp];
-                    int targetReg = GET_A(callInst);
-                    if (targetReg == ESCAPE_NORMAL_8) {
-                        targetReg = GET_Ax(parentFrame->chunk->code[callIp + 1]);
-                    }
-                    registers[parentFrame->registerBase + targetReg] = res;
-                }
             }
         } else {
             throw std::runtime_error("RegVM Error: Target is not callable.");
@@ -667,6 +566,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         CallFrame* currentFrame = &frames[frameCount - 1];
         int newBase = currentFrame->registerBase + currentFrame->function->localCount;
         newFrame.registerBase = newBase;
+        newFrame.returnRegister = 0;
         newFrame.closure = method;
         newFrame.selfContext = Value(inst);
         newFrame.classContext = Value(inst->classDef);
@@ -993,6 +893,40 @@ invoke_method:
             return;
         }
         
+        auto nIt = jc::VM::activeVM->getNativeBuiltins().find(methodName);
+        if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+            auto ait = jc::VM::activeVM->getArity().find(methodName);
+            int totalArgs = argc + 1;
+            if (ait != jc::VM::activeVM->getArity().end() && !ait->second.empty() && ait->second.find(totalArgs) == ait->second.end()) {
+                std::string expected;
+                for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
+                    if (aIt != ait->second.begin()) expected += " or ";
+                    expected += std::to_string(*aIt - 1);
+                }
+                throw std::runtime_error("Runtime Error: Method '" + methodName + "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
+            }
+
+            std::vector<Value> argsVec;
+            argsVec.reserve(totalArgs);
+            argsVec.push_back(obj);
+            for (int i = 0; i < argc; ++i) {
+                argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+            }
+            registers[currentFrame->registerBase + a] = nIt->second(argsVec);
+            return;
+        }
+        
+        auto gIt = globalNames.find(methodName);
+        if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
+            for (int i = argc - 1; i >= 0; --i) {
+                registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
+            }
+            registers[currentFrame->registerBase + a + 1] = obj;
+            registers[currentFrame->registerBase + a] = globals[gIt->second];
+            execCall(a, argc + 1, isTailCall);
+            return;
+        }
+        
         throw std::runtime_error("RegVM Error: Cannot invoke method '" + methodName + "' on this type.");
     }
 
@@ -1053,6 +987,7 @@ invoke_method:
         newFrame.chunk = &fnDef->chunk;
         newFrame.ip = 0;
         newFrame.registerBase = currentFrame->registerBase + a + 1;
+        newFrame.returnRegister = a;
         newFrame.closure = method;
         newFrame.selfContext = obj;
         newFrame.classContext = owningClass ? Value(owningClass) : Value::none();
@@ -1095,27 +1030,6 @@ invoke_method:
         }
         helpers::nativeSelfStack.pop_back();
         helpers::nativeClassStack.pop_back();
-        
-        if (isTailCall) {
-            Value res = registers[currentFrame->registerBase + a];
-            closeUpvalues(currentFrame->registerBase);
-            frameCount--;
-            if (frameCount <= currentTargetFrameDepth) {
-                registers[currentFrame->registerBase + a] = res;
-                return;
-            }
-            CallFrame* parentFrame = &frames[frameCount - 1];
-            int callIp = parentFrame->ip - 1;
-            while (callIp >= 0 && GET_OPCODE(parentFrame->chunk->code[callIp]) == OpCode::EXTRAARG) {
-                callIp--;
-            }
-            Instruction callInst = parentFrame->chunk->code[callIp];
-            int targetReg = GET_A(callInst);
-            if (targetReg == ESCAPE_NORMAL_8) {
-                targetReg = GET_Ax(parentFrame->chunk->code[callIp + 1]);
-            }
-            registers[parentFrame->registerBase + targetReg] = res;
-        }
     }
 }
 
@@ -1205,6 +1119,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         newFrame.chunk = &fnDef->chunk;
         newFrame.ip = 0;
         newFrame.registerBase = currentFrame->registerBase + a + 1;
+        newFrame.returnRegister = a;
         newFrame.closure = method;
         newFrame.selfContext = Value(inst);
         newFrame.classContext = Value(owningClass);
@@ -1247,27 +1162,6 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         }
         helpers::nativeSelfStack.pop_back();
         helpers::nativeClassStack.pop_back();
-        
-        if (isTailCall) {
-            Value res = registers[currentFrame->registerBase + a];
-            closeUpvalues(currentFrame->registerBase);
-            frameCount--;
-            if (frameCount <= currentTargetFrameDepth) {
-                registers[currentFrame->registerBase + a] = res;
-                return;
-            }
-            CallFrame* parentFrame = &frames[frameCount - 1];
-            int callIp = parentFrame->ip - 1;
-            while (callIp >= 0 && GET_OPCODE(parentFrame->chunk->code[callIp]) == OpCode::EXTRAARG) {
-                callIp--;
-            }
-            Instruction callInst = parentFrame->chunk->code[callIp];
-            int targetReg = GET_A(callInst);
-            if (targetReg == ESCAPE_NORMAL_8) {
-                targetReg = GET_Ax(parentFrame->chunk->code[callIp + 1]);
-            }
-            registers[parentFrame->registerBase + targetReg] = res;
-        }
     }
 }
 
@@ -1626,6 +1520,8 @@ bool VM::handleExceptionUnwind(Value errVal) {
         frame->ip = handler.ip;
         frame->registerBase = handler.registerBase;
         
+        closeUpvalues(frame->registerBase + frame->function->localCount);
+
         if (errVal.isString()) {
             std::string s = errVal.asString();
             if (s.find("[Line ") == 0) {
@@ -1671,6 +1567,7 @@ Value VM::execute(const Chunk& mainChunk) {
     mainFrame.chunk = &mainChunk;
     mainFrame.ip = 0;
     mainFrame.registerBase = 0;
+    mainFrame.returnRegister = 0;
     
     frames[0] = mainFrame;
     frameCount = 1;
@@ -1772,6 +1669,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::SET_GLOBAL:
+            case OpCode::SET_GLOBAL_REF:
             case OpCode::DEFINE_CONST_GLOBAL: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
@@ -1779,29 +1677,65 @@ Value VM::run(int targetFrameDepth) {
                 const std::string& name = chunk->constants[ic.nameIdx].asString();
                 if (name == "__class__") throw std::runtime_error("Syntax Error: cannot override context keyword '" + name + "'.");
                 
+                if (constGlobals.count(name) && op != OpCode::DEFINE_CONST_GLOBAL) {
+                    throw std::runtime_error("Runtime Error: Cannot modify const variable '" + name + "'.");
+                }
+                if (op == OpCode::DEFINE_CONST_GLOBAL && constGlobals.count(name)) {
+                    throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
+                }
+                if (op == OpCode::SET_GLOBAL_REF) {
+                    if (globalNames.find(name) == globalNames.end() && jc::VM::activeVM->getNativeBuiltins().find(name) == jc::VM::activeVM->getNativeBuiltins().end()) {
+                        throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
+                    }
+                }
+
+                Value val = getReg(a);
+                if (val.isFunctionClosure()) {
+                    auto nit = jc::VM::activeVM->getNativeBuiltins().find(name);
+                    if (nit != jc::VM::activeVM->getNativeBuiltins().end()) {
+                        auto ait = jc::VM::activeVM->getArity().find(name);
+                        auto closure = val.asFunction();
+                        if (ait == jc::VM::activeVM->getArity().end() || ait->second.empty()) {
+                            throw std::runtime_error("Runtime Error: Cannot redefine '" + name + "' — it is a variadic built-in function.");
+                        }
+                        for (int argC = closure->minArgs(); argC <= closure->maxArgs(); ++argC) {
+                            if (ait->second.count(argC)) {
+                                throw std::runtime_error("Runtime Error: Cannot redefine '" + name + "' with " + std::to_string(argC) + " parameter(s) — conflicts with built-in function. Use a different parameter count to create an overload.");
+                            }
+                        }
+                    }
+                }
+
                 if (ic.cachedGlobalSlot != -1) {
-                    globals[ic.cachedGlobalSlot] = getReg(a);
+                    globals[ic.cachedGlobalSlot] = val;
                 } else {
                     auto it = globalNames.find(name);
                     if (it != globalNames.end()) {
                         ic.cachedGlobalSlot = it->second;
-                        globals[it->second] = getReg(a);
+                        globals[it->second] = val;
                     } else {
                         ic.cachedGlobalSlot = static_cast<int>(globals.size());
                         globalNames[name] = ic.cachedGlobalSlot;
-                        globals.push_back(getReg(a));
+                        globals.push_back(val);
                     }
+                }
+                
+                if (op == OpCode::DEFINE_CONST_GLOBAL) {
+                    constGlobals.insert(name);
                 }
                 break;
             }
             case OpCode::DELETE_GLOBAL: {
                 if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
                 const std::string& name = chunk->constants[bx].asString();
+                if (constGlobals.count(name)) {
+                    throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
+                }
                 auto it = globalNames.find(name);
                 if (it != globalNames.end()) {
                     globals[it->second] = Value::none();
                     globalNames.erase(it);
-                    // 简单起见，这里不清理所有 IC，实际生产中需要清理
+                    clearAllGlobalICs();
                 } else {
                     throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
                 }
@@ -1912,6 +1846,7 @@ Value VM::run(int targetFrameDepth) {
                         newFrame.chunk = &fnDef->chunk;
                         newFrame.ip = 0;
                         newFrame.registerBase = vm->frames[vm->frameCount - 1].registerBase + vm->frames[vm->frameCount - 1].function->localCount;
+                        newFrame.returnRegister = 0;
                         newFrame.closure = closure;
                         newFrame.selfContext = s;
                         newFrame.classContext = c;
@@ -1931,6 +1866,20 @@ Value VM::run(int targetFrameDepth) {
                     }
                 );
 
+                for (int j = 0; j < fn->arity; ++j) {
+                    closure->paramNames.push_back("_" + std::to_string(j));
+                    closure->isRef.push_back(false);
+                }
+                int defaultLimit = fn->hasRestParam ? (fn->maxArity - 1) : fn->maxArity;
+                for (int j = fn->arity; j < defaultLimit; ++j) {
+                    closure->paramNames.push_back("_" + std::to_string(j));
+                    closure->isRef.push_back(false);
+                    closure->defaultValues.push_back(Value::none());
+                }
+                if (fn->hasRestParam) {
+                    closure->paramNames.push_back("...rest");
+                    closure->isRef.push_back(false);
+                }
                 closure->hasRestParam = fn->hasRestParam;
                 closure->boundSelf = frame->selfContext;
                 closure->boundClass = frame->classContext;
@@ -2306,6 +2255,157 @@ Value VM::run(int targetFrameDepth) {
                     set->add(getReg(b + i));
                 }
                 getReg(a) = Value(set);
+                break;
+            }
+            case OpCode::BUILD_MATRIX: {
+                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                
+                const auto& shape = chunk->matrixShapes[c];
+                uint16_t rows = shape.rows;
+                const std::vector<uint16_t>& rowCols = shape.rowCols;
+
+                int total = 0;
+                for (uint16_t cols : rowCols) total += cols;
+
+                bool hasComplex = false;
+                bool hasString = false;
+                bool hasOther = false;
+
+                auto canBeMatrixElement = [](const Value& v) -> bool {
+                    return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
+                        v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
+                        v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX);
+                };
+
+                for (int ii = 0; ii < total; ++ii) {
+                    const Value& v = getReg(b + ii);
+                    if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
+                    if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
+                    if (!canBeMatrixElement(v)) hasOther = true;
+                }
+
+                Value result;
+
+                if (hasOther) {
+                    if (rows == 1) {
+                        ObjList* L = GcHeap::get().allocate<ObjList>();
+                        for (int ii = 0; ii < total; ++ii) L->vec.push_back(getReg(b + ii));
+                        result = Value(L);
+                    } else {
+                        ObjList* outer = GcHeap::get().allocate<ObjList>();
+                        int idx = 0;
+                        for (int i = 0; i < rows; ++i) {
+                            ObjList* inner = GcHeap::get().allocate<ObjList>();
+                            int cols = rowCols[i];
+                            for (int j = 0; j < cols; ++j) inner->vec.push_back(getReg(b + idx++));
+                            inner->is_frozen = true;
+                            outer->vec.push_back(Value(inner));
+                        }
+                        result = Value(outer);
+                    }
+                } else {
+                    bool hasSubMatrix = false;
+                    for (int ii = 0; ii < total; ++ii) {
+                        const Value& v = getReg(b + ii);
+                        if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX)) hasSubMatrix = true;
+                    }
+
+                    if (hasSubMatrix) {
+                        auto extractCell = [&](Value& cell) {
+                            if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::STRING_MATRIX)) {
+                                if (hasString) {
+                                    std::ostringstream oss; oss << cell;
+                                    cell = Value(StringMatrix(1, 1, { oss.str() }));
+                                } else if (hasComplex) {
+                                    cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
+                                } else {
+                                    cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
+                                }
+                            }
+                            if (hasString) {
+                                if (cell.isObjType(ObjType::REAL_MATRIX)) {
+                                    const auto& m = static_cast<ObjRealMatrix*>(cell.asObj())->mat;
+                                    std::vector<std::string> flat;
+                                    for (int i = 0; i < m.getRows(); ++i)
+                                        for (int j = 0; j < m.getCols(); ++j) {
+                                            std::ostringstream oss; oss << Value(m(i, j));
+                                            flat.push_back(oss.str());
+                                        }
+                                    cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
+                                } else if (cell.isObjType(ObjType::COMPLEX_MATRIX)) {
+                                    const auto& m = static_cast<ObjComplexMatrix*>(cell.asObj())->mat;
+                                    std::vector<std::string> flat;
+                                    for (int i = 0; i < m.getRows(); ++i)
+                                        for (int j = 0; j < m.getCols(); ++j) {
+                                            std::ostringstream oss; oss << Value(m(i, j));
+                                            flat.push_back(oss.str());
+                                        }
+                                    cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
+                                }
+                            } else if (hasComplex && cell.isObjType(ObjType::REAL_MATRIX)) {
+                                cell = Value(cell.asComplexMatrix());
+                            }
+                        };
+
+                        try {
+                            int idx = 0;
+                            Value matResult = Value::none();
+                            for (int i = 0; i < rows; ++i) {
+                                Value rowResult = Value::none();
+                                int cols = rowCols[i];
+                                for (int j = 0; j < cols; ++j) {
+                                    Value cell = getReg(b + idx++);
+                                    extractCell(cell);
+                                    if (rowResult.isNone()) {
+                                        rowResult = cell;
+                                    } else {
+                                        if (hasString) rowResult = Value(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjStringMatrix*>(cell.asObj())->mat));
+                                        else if (hasComplex) rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
+                                        else rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
+                                    }
+                                }
+                                if (matResult.isNone()) {
+                                    matResult = rowResult;
+                                } else {
+                                    if (hasString) matResult = Value(static_cast<ObjStringMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat));
+                                    else if (hasComplex) matResult = Value(static_cast<ObjComplexMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat));
+                                    else matResult = Value(static_cast<ObjRealMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat));
+                                }
+                            }
+                            result = matResult;
+                        } catch (...) {
+                            throw std::runtime_error("RegVM Error: Dimension mismatch during block matrix concatenation.");
+                        }
+                    } else {
+                        int expectedCols = rows > 0 ? rowCols[0] : 0;
+                        bool uniformCols = true;
+                        for (int i = 1; i < rows; ++i) {
+                            if (rowCols[i] != expectedCols) { uniformCols = false; break; }
+                        }
+                        if (!uniformCols) throw std::runtime_error("RegVM Error: Matrix rows must have the same number of columns.");
+
+                        if (hasString) {
+                            std::vector<std::string> flat(total);
+                            for (int ii = 0; ii < total; ++ii) {
+                                const Value& v = getReg(b + ii);
+                                if (v.isString()) flat[ii] = v.asString();
+                                else { std::ostringstream oss; if (v.isUninit()) oss << "Uninitialized"; else oss << v; flat[ii] = oss.str(); }
+                            }
+                            result = Value(StringMatrix(rows, expectedCols, flat));
+                        } else if (hasComplex) {
+                            std::vector<Complex> flat(total);
+                            for (int ii = 0; ii < total; ++ii) flat[ii] = getReg(b + ii).asComplex();
+                            result = Value(ComplexMatrix(rows, expectedCols, flat));
+                        } else {
+                            std::vector<double> flat(total);
+                            for (int ii = 0; ii < total; ++ii) flat[ii] = getReg(b + ii).asDouble();
+                            result = Value(RealMatrix(rows, expectedCols, flat));
+                        }
+                    }
+                }
+                getReg(a) = result;
                 break;
             }
             case OpCode::LIST_INIT: {
@@ -2872,11 +2972,25 @@ Value VM::run(int targetFrameDepth) {
                         );
                         bound->boundSelf = obj;
                         NativeCallable nativeFn = nIt->second;
+                        
+                        auto ait = jc::VM::activeVM->getArity().find(field);
+                        std::set<int> allowedArities;
+                        if (ait != jc::VM::activeVM->getArity().end()) allowedArities = ait->second;
+
                         bound->nativeFn = std::make_any<NativeCallable>(
-                            [nativeFn](const std::vector<Value>& args) -> Value {
+                            [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
                                 Value capturedObj = helpers::nativeSelfStack.back();
+                                int totalArgs = static_cast<int>(args.size()) + 1;
+                                if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
+                                    std::string expected;
+                                    for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
+                                        if (aIt != allowedArities.begin()) expected += " or ";
+                                        expected += std::to_string(*aIt - 1);
+                                    }
+                                    throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                                }
                                 std::vector<Value> fullArgs;
-                                fullArgs.reserve(args.size() + 1);
+                                fullArgs.reserve(totalArgs);
                                 fullArgs.push_back(capturedObj);
                                 fullArgs.insert(fullArgs.end(), args.begin(), args.end());
                                 return nativeFn(fullArgs);
@@ -2929,6 +3043,72 @@ Value VM::run(int targetFrameDepth) {
 
                 if (!found) throw std::runtime_error("RegVM Error: Property '" + field + "' not found.");
                 getReg(a) = result;
+                break;
+            }
+            case OpCode::TRY_GET_PROP: {
+                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[c]);
+                const std::string& field = chunk->constants[ic.nameIdx].asString();
+                Value obj = getReg(b);
+                bool found = false;
+                Value result;
+                
+                if (obj.isInstance()) {
+                    auto inst = obj.asInstance();
+                    if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                        if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                            result = inst->fields->elements[ic.cachedFieldIndex].second;
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        if (inst->fields) {
+                            auto it = inst->fields->keyMap.find(chunk->constants[ic.nameIdx]);
+                            if (it != inst->fields->keyMap.end()) {
+                                result = inst->fields->elements[it->second].second;
+                                found = true;
+                                ic.cachedClass = inst->classDef;
+                                ic.cachedFieldIndex = static_cast<int>(it->second);
+                            }
+                        }
+                        if (!found) {
+                            auto getattrMethod = findDunder(obj, "__getattr__");
+                            if (getattrMethod) {
+                                try {
+                                    result = callDunder(obj, getattrMethod, {Value(field)});
+                                    found = true;
+                                } catch (...) {
+                                    found = false;
+                                }
+                            }
+                        }
+                    }
+                } else if (obj.isObjType(ObjType::DICT)) {
+                    auto d = static_cast<ObjDict*>(obj.asObj());
+                    auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
+                    if (it != d->keyMap.end()) {
+                        result = d->elements[it->second].second;
+                        found = true;
+                    }
+                } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                    auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                    auto it = ns->fields.find(field);
+                    if (it != ns->fields.end()) {
+                        result = *(it->second.upval->location);
+                        found = true;
+                    }
+                }
+                
+                if (found) {
+                    getReg(a) = result;
+                    getReg(a + 1) = Value(true);
+                } else {
+                    getReg(a) = Value::none();
+                    getReg(a + 1) = Value(false);
+                }
                 break;
             }
             case OpCode::SET_PROP: {
@@ -3007,11 +3187,26 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::BUILD_NAMESPACE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
+                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
-                const std::string& nsName = chunk->constants[bx].asString();
+                const std::string& nsName = chunk->constants[b].asString();
                 ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
                 ns->name = nsName;
+                
+                for (int i = 0; i < c; ++i) {
+                    Value keyVal = getReg(a + 1 + i * 3);
+                    Value slotVal = getReg(a + 1 + i * 3 + 1);
+                    Value isConstVal = getReg(a + 1 + i * 3 + 2);
+                    
+                    std::string key = keyVal.asString();
+                    int slot = static_cast<int>(slotVal.asDouble());
+                    bool isConst = isConstVal.truthy();
+                    
+                    ObjUpVal* upval = captureUpvalue(frame->registerBase + slot);
+                    ns->fields[key] = { upval, isConst };
+                }
+                
                 getReg(a) = Value(ns);
                 break;
             }
@@ -3246,10 +3441,29 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE);
+                int prevIp = frame->ip;
                 execInvoke(a, b, c, isTailCall, -1, 0);
-                frame = &frames[frameCount - 1];
-                chunk = frame->chunk;
-                code = chunk->code.data();
+                if (isTailCall && frame->ip == prevIp) {
+                    Value res = getReg(a);
+                    closeUpvalues(frame->registerBase);
+                    int targetReg = frame->returnRegister;
+                    bool isInit = (frame->function && frame->function->name == "init");
+                    Value selfCtx = frame->selfContext;
+
+                    frameCount--;
+                    if (frameCount <= targetFrameDepth) return res;
+                    
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    
+                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                    else getReg(targetReg) = res;
+                } else {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                }
                 break;
             }
             case OpCode::INVOKE_FALLBACK:
@@ -3260,10 +3474,29 @@ Value VM::run(int targetFrameDepth) {
                 
                 const auto& fbInfo = chunk->fallbackInfos[c];
                 bool isTailCall = (op == OpCode::TAIL_INVOKE_FALLBACK);
+                int prevIp = frame->ip;
                 execInvoke(a, b, fbInfo.icIdx, isTailCall, fbInfo.fbType, fbInfo.fbIdx);
-                frame = &frames[frameCount - 1];
-                chunk = frame->chunk;
-                code = chunk->code.data();
+                if (isTailCall && frame->ip == prevIp) {
+                    Value res = getReg(a);
+                    closeUpvalues(frame->registerBase);
+                    int targetReg = frame->returnRegister;
+                    bool isInit = (frame->function && frame->function->name == "init");
+                    Value selfCtx = frame->selfContext;
+
+                    frameCount--;
+                    if (frameCount <= targetFrameDepth) return res;
+                    
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    
+                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                    else getReg(targetReg) = res;
+                } else {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                }
                 break;
             }
             case OpCode::GET_SUPER: {
@@ -3324,10 +3557,29 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
                 bool isTailCall = (op == OpCode::TAIL_SUPER_INVOKE);
+                int prevIp = frame->ip;
                 execSuperInvoke(a, b, c, isTailCall);
-                frame = &frames[frameCount - 1];
-                chunk = frame->chunk;
-                code = chunk->code.data();
+                if (isTailCall && frame->ip == prevIp) {
+                    Value res = getReg(a);
+                    closeUpvalues(frame->registerBase);
+                    int targetReg = frame->returnRegister;
+                    bool isInit = (frame->function && frame->function->name == "init");
+                    Value selfCtx = frame->selfContext;
+
+                    frameCount--;
+                    if (frameCount <= targetFrameDepth) return res;
+                    
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    
+                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                    else getReg(targetReg) = res;
+                } else {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                }
                 break;
             }
             case OpCode::GET_SELF: {
@@ -3341,11 +3593,29 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 
-                bool isTailCall = (op == OpCode::TAIL_CALL);
-                execCall(a, b, isTailCall);
-                frame = &frames[frameCount - 1];
-                chunk = frame->chunk;
-                code = chunk->code.data();
+                int prevIp = frame->ip;
+                execCall(a, b, true);
+                if (frame->ip == prevIp) {
+                    Value res = getReg(a);
+                    closeUpvalues(frame->registerBase);
+                    int targetReg = frame->returnRegister;
+                    bool isInit = (frame->function && frame->function->name == "init");
+                    Value selfCtx = frame->selfContext;
+
+                    frameCount--;
+                    if (frameCount <= targetFrameDepth) return res;
+                    
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    
+                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                    else getReg(targetReg) = res;
+                } else {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                }
                 break;
             }
             case OpCode::RETURN: {
@@ -3354,6 +3624,10 @@ Value VM::run(int targetFrameDepth) {
                 
                 closeUpvalues(frame->registerBase);
                 
+                int targetReg = frame->returnRegister;
+                bool isInit = (frame->function && frame->function->name == "init");
+                Value selfCtx = frame->selfContext;
+
                 frameCount--;
                 if (frameCount <= targetFrameDepth) {
                     return res;
@@ -3364,23 +3638,8 @@ Value VM::run(int targetFrameDepth) {
                 chunk = frame->chunk;
                 code = chunk->code.data();
                 
-                // 将返回值写入调用方的目标寄存器 (假设 CALL 指令的 A 寄存器就是目标)
-                // 在 RegVM 中，CALL 指令的 A 寄存器既是 callee 也是返回值存放地
-                // 由于我们已经回退了 frame，此时的 ip 指向 CALL 指令的下一条
-                // 我们需要回溯找到 CALL/INVOKE 指令
-                int callIp = frame->ip - 1;
-                while (callIp >= 0 && GET_OPCODE(code[callIp]) == OpCode::EXTRAARG) {
-                    callIp--;
-                }
-                Instruction callInst = code[callIp];
-                int targetReg = GET_A(callInst);
-                if (targetReg == ESCAPE_NORMAL_8) {
-                    targetReg = GET_Ax(code[callIp + 1]);
-                }
-                
-                // 如果是 init 方法返回，强制返回 self
-                if (frame->function && frame->function->name == "init") {
-                    getReg(targetReg) = frame->selfContext.isNone() ? res : frame->selfContext;
+                if (isInit) {
+                    getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
                 } else {
                     getReg(targetReg) = res;
                 }

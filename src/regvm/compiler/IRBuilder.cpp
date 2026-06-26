@@ -129,6 +129,14 @@ IRNode* IRBuilder::getLocalNode(const std::string& name) {
 int IRBuilder::resolveUpvalue(const std::string& name) {
     if (!parent) return -1;
 
+    if (currentFunction) {
+        for (size_t i = 0; i < currentFunction->upvalues.size(); ++i) {
+            if (currentFunction->upvalues[i].name == name && !currentFunction->upvalues[i].isExplicitState) {
+                return static_cast<int>(i);
+            }
+        }
+    }
+
     // Check if parent already has this upvalue
     if (parent->currentFunction) {
         for (size_t i = 0; i < parent->currentFunction->upvalues.size(); ++i) {

@@ -85,18 +85,13 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isCon
         }
     }
 
-    int upvalIdx = resolveUpvalue(name);
-    if (upvalIdx != -1) {
-        IRNode* node = graph->createNode(IROp::SetUpvalue);
-        node->payload1 = static_cast<uint32_t>(upvalIdx);
-        node->name = name;
-        node->addData(value);
-        node->setControl(currentControl);
-        currentControl = node;
+    // 如果都没找到，且在函数内部，则作为 Auto-local 变量在函数顶层作用域声明
+    if (currentFunction && !isGlobalRef) {
+        envStack[0][name] = value;
         return;
     }
 
-    // 如果都没找到，说明是全局变量赋值
+    // 否则，说明是全局变量赋值
     IROp op = IROp::SetGlobal;
     if (isConst) op = IROp::DefineConstGlobal;
     else if (isGlobalRef) op = IROp::SetGlobalRef;

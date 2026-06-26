@@ -1766,7 +1766,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::CLOSURE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
-                
+                        
                 int fnIdx = static_cast<int>(std::round(chunk->constants[bx].asDouble()));
                 if (fnIdx < 0 || fnIdx >= static_cast<int>(compiledFunctions.size()))
                     throw std::runtime_error("RegVM Error: Invalid function index.");
@@ -1775,7 +1775,7 @@ Value VM::run(int targetFrameDepth) {
                 auto closure = GcHeap::get().allocate<ObjClosure>(
                     std::vector<std::string>{}, std::vector<bool>{}, fn->name, nullptr
                 );
-                getReg(a) = Value(closure); // ★ 立即 Root 防止 GC 误杀
+                globals.push_back(Value(closure)); // ★ 临时 Root 防止 GC 误杀
                 closure->compiledFnIndex = fnIdx;
 
                 if (!fn->upvalues.empty()) {
@@ -1813,21 +1813,19 @@ Value VM::run(int targetFrameDepth) {
                             }
                         } else {
                             auto dummy = GcHeap::get().allocate<ObjUpVal>();
-                            if (uv.isGlobal) {
-                                if (!uv.isExplicitState) {
-                                    auto it = globalNames.find(uv.name);
-                                    if (it != globalNames.end()) {
-                                        dummy->closed = globals[it->second];
-                                    } else {
-                                        Value builtinVal = jc::VM::activeVM->getBuiltinClosure(uv.name);
-                                        if (!builtinVal.isNone()) {
-                                            dummy->closed = builtinVal;
-                                        } else {
-                                            throw std::runtime_error("RegVM Error: Undefined variable '" + uv.name + "'.");
-                                        }
-                                    }
+                            if (uv.isExplicitState) {
+                                dummy->closed = Value::uninit();
+                            } else if (uv.isGlobal) {
+                                auto it = globalNames.find(uv.name);
+                                if (it != globalNames.end()) {
+                                    dummy->closed = globals[it->second];
                                 } else {
-                                    dummy->closed = Value::uninit();
+                                    Value builtinVal = jc::VM::activeVM->getBuiltinClosure(uv.name);
+                                    if (!builtinVal.isNone()) {
+                                        dummy->closed = builtinVal;
+                                    } else {
+                                        throw std::runtime_error("RegVM Error: Undefined variable '" + uv.name + "'.");
+                                    }
                                 }
                             } else if (uv.isLocal) {
                                 if (uv.isRefParam) {
@@ -1847,7 +1845,10 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 }
-                
+                        
+                getReg(a) = globals.back();
+                globals.pop_back();
+                        
                 int capturedFnIdx = fnIdx;
                 VM* vm = this;
                 Value currentSelf = frame->selfContext;

@@ -32,7 +32,7 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
     if (localNode) return localNode;
 
     if (currentFunction) {
-        for (size_t i = 0; i < currentFunction->upvalues.size(); ++i) {
+        for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
             if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isRef)) {
                 IRNode* node = graph->createValueNode(IROp::GetUpvalue);
                 node->payload1 = static_cast<uint32_t>(i);
@@ -72,7 +72,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isCon
     }
 
     if (currentFunction) {
-        for (size_t i = 0; i < currentFunction->upvalues.size(); ++i) {
+        for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
             if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isRef)) {
                 IRNode* node = graph->createNode(IROp::SetUpvalue);
                 node->payload1 = static_cast<uint32_t>(i);
@@ -125,9 +125,9 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
     if (!parent) return -1;
 
     if (currentFunction) {
-        for (size_t i = 0; i < currentFunction->upvalues.size(); ++i) {
-            if (currentFunction->upvalues[i].name == name && !currentFunction->upvalues[i].isExplicitState) {
-                return static_cast<int>(i);
+        for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
+            if (currentFunction->upvalues[i].name == name) {
+                return i;
             }
         }
     }

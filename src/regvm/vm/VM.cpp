@@ -1566,28 +1566,41 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     mainFn->chunk = mainChunk;
     mainFn->localCount = localCount;
     
-    closeUpvalues(0);
-    
-    while (frameCount > 0) {
-        frames[frameCount - 1].selfContext = Value::none();
-        frames[frameCount - 1].classContext = Value::none();
-        frames[frameCount - 1].closure = nullptr;
-        frames[frameCount - 1].refParamsBase = -1;
-        frameCount--;
-    }
-    exceptionHandlers.clear();
-    
     CallFrame mainFrame;
     mainFrame.function = mainFn.get();
     mainFrame.chunk = &mainChunk;
     mainFrame.ip = 0;
-    mainFrame.registerBase = 0;
+    
+    if (frameCount > 0) {
+        CallFrame* prev = &frames[frameCount - 1];
+        mainFrame.registerBase = prev->registerBase + prev->function->localCount;
+    } else {
+        mainFrame.registerBase = 0;
+    }
     mainFrame.returnRegister = 0;
     
-    frames[0] = mainFrame;
-    frameCount = 1;
+    if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+    
+    int targetDepth = frameCount;
+    frames[frameCount++] = mainFrame;
 
-    return run(0);
+    try {
+        Value res = run(targetDepth);
+        frames[frameCount].selfContext = Value::none();
+        frames[frameCount].classContext = Value::none();
+        frames[frameCount].closure = nullptr;
+        frames[frameCount].refParamsBase = -1;
+        return res;
+    } catch (...) {
+        while (frameCount > targetDepth) {
+            frames[frameCount - 1].selfContext = Value::none();
+            frames[frameCount - 1].classContext = Value::none();
+            frames[frameCount - 1].closure = nullptr;
+            frames[frameCount - 1].refParamsBase = -1;
+            frameCount--;
+        }
+        throw;
+    }
 }
 
 Value VM::run(int targetFrameDepth) {
@@ -3914,10 +3927,19 @@ Value VM::run(int targetFrameDepth) {
         }
         } catch (const ValueException& ex) {
             if (!handleExceptionUnwind(ex.val)) throw;
+            frame = &frames[frameCount - 1];
+            chunk = frame->chunk;
+            code = chunk->code.data();
         } catch (const std::exception& ex) {
             if (!handleExceptionUnwind(Value(ex.what()))) throw;
+            frame = &frames[frameCount - 1];
+            chunk = frame->chunk;
+            code = chunk->code.data();
         } catch (...) {
             if (!handleExceptionUnwind(Value("Unknown VM Error"))) throw;
+            frame = &frames[frameCount - 1];
+            chunk = frame->chunk;
+            code = chunk->code.data();
         }
     }
 }

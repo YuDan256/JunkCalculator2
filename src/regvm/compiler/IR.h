@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <functional>
 #include "../../memory/Value.h"
 
 namespace jc {
@@ -187,6 +188,7 @@ private:
 public:
     IRNode* startNode = nullptr;
     std::vector<std::unique_ptr<BasicBlock>> blocks; // 调度后的基本块序列
+    std::vector<std::function<void()>> postAllocCallbacks;
 
     IRGraph() {
         startNode = createNode(IROp::Start);

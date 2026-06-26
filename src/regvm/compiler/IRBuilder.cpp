@@ -1798,7 +1798,12 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         
         for (auto& target : fnBuilder.upvalueTargets) {
             if (target.isLocal && target.localNode) {
-                fnDef->upvalues[target.index].index = target.localNode->physicalReg;
+                IRNode* localNode = target.localNode;
+                int upvalIdx = target.index;
+                CompiledFunction* childFn = fnDef.get();
+                this->graph->postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                    childFn->upvalues[upvalIdx].index = localNode->physicalReg;
+                });
             }
         }
         
@@ -2184,7 +2189,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             
             for (auto& target : fnBuilder.upvalueTargets) {
                 if (target.isLocal && target.localNode) {
-                    fnDef->upvalues[target.index].index = target.localNode->physicalReg;
+                    IRNode* localNode = target.localNode;
+                    int upvalIdx = target.index;
+                    CompiledFunction* childFn = fnDef.get();
+                    this->graph->postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                        childFn->upvalues[upvalIdx].index = localNode->physicalReg;
+                    });
                 }
             }
             

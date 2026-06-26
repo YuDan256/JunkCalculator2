@@ -109,6 +109,10 @@ static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& ar
 }
 
 int Emitter::emit(IRGraph* graph, Chunk& chunk) {
+    for (auto& cb : graph->postAllocCallbacks) {
+        cb();
+    }
+
     int maxReg = 127;
     for (auto& nodePtr : graph->getNodes()) {
         if (nodePtr->physicalReg > maxReg) maxReg = nodePtr->physicalReg;

@@ -125,6 +125,13 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
     if (!parent) return -1;
 
     if (currentFunction) {
+        // 优先查找显式状态上值 (Explicit State)，因为它会遮蔽同名的外部捕获上值
+        for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
+            if (currentFunction->upvalues[i].name == name && currentFunction->upvalues[i].isExplicitState) {
+                return i;
+            }
+        }
+        // 如果没有状态上值，再查找普通的捕获上值
         for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
             if (currentFunction->upvalues[i].name == name) {
                 return i;
@@ -165,6 +172,7 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
         uv.isRefParam = false;
         currentFunction->upvalues.push_back(uv);
         upvalueTargets.push_back({upvalIdx, true, localNode});
+        parent->capturedLocals.insert(name);
         return upvalIdx;
     }
 
@@ -587,7 +595,17 @@ void IRBuilder::build(Expr* ast) {
         noneNode->setControl(currentControl);
         retNode->addData(noneNode);
     }
+    recordExitNode(retNode);
     currentControl = retNode;
+
+    // 为所有退出节点添加被捕获变量的伪依赖，延长其生命周期
+    for (auto& info : exitNodes) {
+        for (const auto& pair : info.activeVars) {
+            if (capturedLocals.count(pair.first)) {
+                info.node->addData(pair.second);
+            }
+        }
+    }
 }
 
 void IRBuilder::visitLiteral(Literal* expr) {
@@ -1046,6 +1064,8 @@ void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
     IRNode* retNode = graph->createNode(IROp::Return);
     retNode->setControl(currentControl);
     retNode->addData(retVal);
+    
+    recordExitNode(retNode);
     
     currentControl = retNode;
     lastValue = retVal;
@@ -1923,6 +1943,7 @@ void IRBuilder::visitThrowExpr(ThrowExpr* expr) {
     IRNode* throwNode = graph->createNode(IROp::Throw);
     throwNode->setControl(currentControl);
     throwNode->addData(lastValue);
+    recordExitNode(throwNode);
     currentControl = throwNode;
     lastValue = throwNode;
 }
@@ -1960,6 +1981,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
         IRNode* throwNode = graph->createNode(IROp::Throw);
         throwNode->setControl(failMerge);
         throwNode->addData(errVal);
+        recordExitNode(throwNode);
     }
 
     expr->catchBody->accept(*this);
@@ -2374,6 +2396,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         IRNode* errStr = graph->createConstant(Value("TypeError: Destructuring pattern match failed."));
         errStr->setControl(failMerge);
         throwNode->addData(errStr);
+        recordExitNode(throwNode);
     }
     
     if (skipMerge) {

@@ -51,8 +51,27 @@ private:
     };
     std::vector<IRLoopInfo> loopStack;
 
+    std::unordered_set<std::string> capturedLocals;
+
+    struct ExitNodeInfo {
+        IRNode* node;
+        std::vector<std::pair<std::string, IRNode*>> activeVars;
+    };
+    std::vector<ExitNodeInfo> exitNodes;
+
     void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
+
+    void recordExitNode(IRNode* node) {
+        ExitNodeInfo info;
+        info.node = node;
+        for (const auto& scope : envStack) {
+            for (const auto& pair : scope) {
+                info.activeVars.push_back(pair);
+            }
+        }
+        exitNodes.push_back(info);
+    }
 
 public:
     explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr, IRBuilder* parent = nullptr, CompiledFunction* currentFunction = nullptr);

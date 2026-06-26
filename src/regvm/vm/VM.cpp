@@ -159,6 +159,9 @@ void VM::execCall(int a, int b, bool isTailCall) {
             }
 
             if (isTailCall) {
+                while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                    exceptionHandlers.pop_back();
+                }
                 closeUpvalues(currentFrame->registerBase);
                 currentFrame->function = fnDef.get();
                 currentFrame->chunk = &fnDef->chunk;
@@ -379,6 +382,9 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 }
 
                 if (isTailCall) {
+                    while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                        exceptionHandlers.pop_back();
+                    }
                     closeUpvalues(currentFrame->registerBase);
                     currentFrame->function = fnDef.get();
                     currentFrame->chunk = &fnDef->chunk;
@@ -975,6 +981,9 @@ invoke_method:
         }
 
         if (isTailCall) {
+            while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                exceptionHandlers.pop_back();
+            }
             closeUpvalues(currentFrame->registerBase);
             currentFrame->function = fnDef.get();
             currentFrame->chunk = &fnDef->chunk;
@@ -1107,6 +1116,9 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         }
 
         if (isTailCall) {
+            while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                exceptionHandlers.pop_back();
+            }
             closeUpvalues(currentFrame->registerBase);
             currentFrame->function = fnDef.get();
             currentFrame->chunk = &fnDef->chunk;
@@ -1592,6 +1604,9 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
         frames[frameCount].refParamsBase = -1;
         return res;
     } catch (...) {
+        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
+            exceptionHandlers.pop_back();
+        }
         while (frameCount > targetDepth) {
             frames[frameCount - 1].selfContext = Value::none();
             frames[frameCount - 1].classContext = Value::none();
@@ -1604,7 +1619,14 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
 }
 
 Value VM::run(int targetFrameDepth) {
+    struct DepthRestorer {
+        VM* vm;
+        int prev;
+        DepthRestorer(VM* v, int p) : vm(v), prev(p) {}
+        ~DepthRestorer() { vm->currentTargetFrameDepth = prev; }
+    } restorer(this, currentTargetFrameDepth);
     currentTargetFrameDepth = targetFrameDepth;
+
     CallFrame* frame = &frames[frameCount - 1];
     const Chunk* chunk = frame->chunk;
     const Instruction* code = chunk->code.data();
@@ -3721,6 +3743,9 @@ Value VM::run(int targetFrameDepth) {
                 execInvoke(a, b, c, isTailCall, -1, 0);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
+                    while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                        exceptionHandlers.pop_back();
+                    }
                     closeUpvalues(frame->registerBase);
                     int targetReg = frame->returnRegister;
                     bool isInit = (frame->function && frame->function->name == "init");
@@ -3754,6 +3779,9 @@ Value VM::run(int targetFrameDepth) {
                 execInvoke(a, b, fbInfo.icIdx, isTailCall, fbInfo.fbType, fbInfo.fbIdx);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
+                    while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                        exceptionHandlers.pop_back();
+                    }
                     closeUpvalues(frame->registerBase);
                     int targetReg = frame->returnRegister;
                     bool isInit = (frame->function && frame->function->name == "init");
@@ -3837,6 +3865,9 @@ Value VM::run(int targetFrameDepth) {
                 execSuperInvoke(a, b, c, isTailCall);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
+                    while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                        exceptionHandlers.pop_back();
+                    }
                     closeUpvalues(frame->registerBase);
                     int targetReg = frame->returnRegister;
                     bool isInit = (frame->function && frame->function->name == "init");
@@ -3874,6 +3905,9 @@ Value VM::run(int targetFrameDepth) {
                 execCall(a, b, isTailCall);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
+                    while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                        exceptionHandlers.pop_back();
+                    }
                     closeUpvalues(frame->registerBase);
                     int targetReg = frame->returnRegister;
                     bool isInit = (frame->function && frame->function->name == "init");
@@ -3898,6 +3932,10 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::RETURN: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value res = getReg(a);
+                
+                while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                    exceptionHandlers.pop_back();
+                }
                 
                 closeUpvalues(frame->registerBase);
                 

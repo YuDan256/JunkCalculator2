@@ -6,6 +6,27 @@
 namespace jc {
 namespace regvm {
 
+static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars) {
+    if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
+        collectPatternVars(dp->inner.get(), boundVars);
+    } else if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+        if (vp->name.lexeme != "_") boundVars.push_back({vp->name.lexeme, vp->modifier, vp->isConst});
+    } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
+        if (rp->name.lexeme != "_") boundVars.push_back({rp->name.lexeme, rp->modifier, rp->isConst});
+    } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
+        for (auto& e : lp->elements) collectPatternVars(e.get(), boundVars);
+        if (lp->rest) collectPatternVars(lp->rest.get(), boundVars);
+    } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
+        for (auto& row : mp->rows) {
+            for (auto& e : row) collectPatternVars(e.get(), boundVars);
+        }
+        if (mp->restRow) collectPatternVars(mp->restRow.get(), boundVars);
+    } else if (auto* dictPat = dynamic_cast<DictPattern*>(pat)) {
+        for (auto& e : dictPat->entries) collectPatternVars(e.second.get(), boundVars);
+        if (dictPat->rest) collectPatternVars(dictPat->rest.get(), boundVars);
+    }
+}
+
 IRNode* IRBuilder::readVariable(const std::string& name) {
     IRNode* localNode = getLocalNode(name);
     if (localNode) return localNode;
@@ -176,15 +197,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
             if (mod == ScopeModifier::State) {
                 if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
-                CompiledFunction::UpvalueInfo uv;
-                uv.name = vp->name.lexeme;
-                uv.isLocal = false;
-                uv.index = 0;
-                uv.isRef = false;
-                uv.isGlobal = false;
-                uv.isExplicitState = true;
-                uv.isRefParam = false;
-                currentFunction->upvalues.push_back(uv);
+                bool found = false;
+                for (auto& u : currentFunction->upvalues) {
+                    if (u.name == vp->name.lexeme && u.isExplicitState) {
+                        found = true; break;
+                    }
+                }
+                if (!found) {
+                    CompiledFunction::UpvalueInfo uv;
+                    uv.name = vp->name.lexeme;
+                    uv.isLocal = false;
+                    uv.index = 0;
+                    uv.isRef = false;
+                    uv.isGlobal = false;
+                    uv.isExplicitState = true;
+                    uv.isRefParam = false;
+                    currentFunction->upvalues.push_back(uv);
+                }
 
                 IRNode* getVal = readVariable(vp->name.lexeme);
                 IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
@@ -324,15 +353,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 
                 if (restPat->name.lexeme != "_") {
                     if (restPat->modifier == ScopeModifier::State) {
-                        CompiledFunction::UpvalueInfo uv;
-                        uv.name = restPat->name.lexeme;
-                        uv.isLocal = false;
-                        uv.index = 0;
-                        uv.isRef = false;
-                        uv.isGlobal = false;
-                        uv.isExplicitState = true;
-                        uv.isRefParam = false;
-                        currentFunction->upvalues.push_back(uv);
+                        bool found = false;
+                        for (auto& u : currentFunction->upvalues) {
+                            if (u.name == restPat->name.lexeme && u.isExplicitState) {
+                                found = true; break;
+                            }
+                        }
+                        if (!found) {
+                            CompiledFunction::UpvalueInfo uv;
+                            uv.name = restPat->name.lexeme;
+                            uv.isLocal = false;
+                            uv.index = 0;
+                            uv.isRef = false;
+                            uv.isGlobal = false;
+                            uv.isExplicitState = true;
+                            uv.isRefParam = false;
+                            currentFunction->upvalues.push_back(uv);
+                        }
 
                         IRNode* getVal = readVariable(restPat->name.lexeme);
                         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
@@ -780,8 +817,23 @@ void IRBuilder::visitAssign(Assign* expr) {
         ifFalse->setControl(ifNode);
 
         currentControl = ifTrue;
+        
+        std::string originalName = expr->name.lexeme;
+        for (auto& uv : currentFunction->upvalues) {
+            if (uv.name == originalName && uv.isExplicitState) {
+                uv.name = "<hidden_state>";
+            }
+        }
+        
         expr->value->accept(*this);
         IRNode* valNode = lastValue;
+        
+        for (auto& uv : currentFunction->upvalues) {
+            if (uv.name == "<hidden_state>" && uv.isExplicitState) {
+                uv.name = originalName;
+            }
+        }
+        
         writeVariable(expr->name.lexeme, valNode, expr->isConst, false);
         IRNode* trueCtrl = currentControl;
 
@@ -1441,7 +1493,7 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
     uv.index = 0;
     uv.isRef = false;
     uv.isGlobal = false;
-    uv.isExplicitState = true;
+    uv.isExplicitState = false;
     uv.isRefParam = false;
     currentFunction->upvalues.push_back(uv);
 
@@ -1572,7 +1624,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             uv.index = 0;
             uv.isRef = false;
             uv.isGlobal = false;
-            uv.isExplicitState = true;
+            uv.isExplicitState = false;
             uv.isRefParam = false;
             currentFunction->upvalues.push_back(uv);
         } else if (expr->isRef) {
@@ -2223,8 +2275,86 @@ void IRBuilder::visitSelfExpr(SelfExpr*) {
 }
 
 void IRBuilder::visitDestructAssign(DestructAssign* expr) {
+    std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+    collectPatternVars(expr->pattern.get(), boundVars);
+    
+    std::string firstStateVar = "";
+    if (expr->isState) {
+        for (const auto& varTuple : boundVars) {
+            if (std::get<0>(varTuple) != "_") {
+                firstStateVar = std::get<0>(varTuple);
+                break;
+            }
+        }
+    }
+    
+    IRNode* skipMerge = nullptr;
+    if (!firstStateVar.empty() && currentFunction) {
+        bool found = false;
+        for (auto& u : currentFunction->upvalues) {
+            if (u.name == firstStateVar && u.isExplicitState) {
+                found = true; break;
+            }
+        }
+        if (!found) {
+            CompiledFunction::UpvalueInfo uv;
+            uv.name = firstStateVar;
+            uv.isLocal = false;
+            uv.index = 0;
+            uv.isRef = false;
+            uv.isGlobal = false;
+            uv.isExplicitState = true;
+            uv.isRefParam = false;
+            currentFunction->upvalues.push_back(uv);
+        }
+        
+        IRNode* getVal = readVariable(firstStateVar);
+        IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+        isUninit->addData(getVal);
+        isUninit->setControl(currentControl);
+        
+        IRNode* ifNode = graph->createNode(IROp::If);
+        ifNode->addData(isUninit);
+        ifNode->setControl(currentControl);
+        
+        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        ifTrue->setControl(ifNode);
+        
+        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        ifFalse->setControl(ifNode);
+        
+        skipMerge = graph->createNode(IROp::Merge);
+        skipMerge->addData(ifFalse);
+        
+        currentControl = ifTrue;
+        
+        for (const auto& varTuple : boundVars) {
+            std::string name = std::get<0>(varTuple);
+            if (name != "_") {
+                for (auto& u : currentFunction->upvalues) {
+                    if (u.name == name && u.isExplicitState) {
+                        u.name = "<hidden_state_" + name + ">";
+                    }
+                }
+            }
+        }
+    }
+    
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
+    
+    if (!firstStateVar.empty() && currentFunction) {
+        for (const auto& varTuple : boundVars) {
+            std::string name = std::get<0>(varTuple);
+            if (name != "_") {
+                for (auto& u : currentFunction->upvalues) {
+                    if (u.name == "<hidden_state_" + name + ">" && u.isExplicitState) {
+                        u.name = name;
+                    }
+                }
+            }
+        }
+    }
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     
@@ -2243,7 +2373,20 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         throwNode->addData(errStr);
     }
     
-    lastValue = valNode;
+    if (skipMerge) {
+        skipMerge->addData(currentControl);
+        currentControl = skipMerge;
+        
+        IRNode* phi = graph->createValueNode(IROp::Phi);
+        phi->setControl(skipMerge);
+        IRNode* noneNode = graph->createConstant(Value::none());
+        noneNode->setControl(skipMerge);
+        phi->addData(noneNode);
+        phi->addData(valNode);
+        lastValue = phi;
+    } else {
+        lastValue = valNode;
+    }
 }
 
 void IRBuilder::visitFStringExpr(FStringExpr* expr) {

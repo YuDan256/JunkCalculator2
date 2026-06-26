@@ -819,18 +819,18 @@ void IRBuilder::visitAssign(Assign* expr) {
         currentControl = ifTrue;
         
         std::string originalName = expr->name.lexeme;
-        for (auto& uv : currentFunction->upvalues) {
-            if (uv.name == originalName && uv.isExplicitState) {
-                uv.name = "<hidden_state>";
+        for (auto& u : currentFunction->upvalues) {
+            if (u.name == originalName && u.isExplicitState) {
+                u.name = "<hidden_state>";
             }
         }
         
         expr->value->accept(*this);
         IRNode* valNode = lastValue;
         
-        for (auto& uv : currentFunction->upvalues) {
-            if (uv.name == "<hidden_state>" && uv.isExplicitState) {
-                uv.name = originalName;
+        for (auto& u : currentFunction->upvalues) {
+            if (u.name == "<hidden_state>" && u.isExplicitState) {
+                u.name = originalName;
             }
         }
         

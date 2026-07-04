@@ -1016,6 +1016,101 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             buildPatternMatch(entry.second.get(), elemNode, failMerge, globalMod, globalConst);
         }
+
+        if (dp->rest && dp->rest->name.lexeme != "_") {
+            auto* restPat = dp->rest.get();
+            
+            std::vector<IRNode*> keyNodes;
+            for (auto& entry : dp->entries) {
+                IRNode* kNode = graph->createConstant(Value(entry.first));
+                kNode->setControl(currentControl);
+                keyNodes.push_back(kNode);
+            }
+            
+            IRNode* excludeList = graph->createValueNode(IROp::BuildList);
+            excludeList->setControl(currentControl);
+            for (auto* k : keyNodes) excludeList->addData(k);
+            excludeList->payload1 = static_cast<uint32_t>(keyNodes.size());
+            
+            IRNode* restNode = graph->createValueNode(IROp::DictRest);
+            restNode->setControl(currentControl);
+            restNode->addData(valNode);
+            restNode->addData(excludeList);
+            currentControl = restNode;
+            
+            if (restPat->modifier == ScopeModifier::State) {
+                bool found = false;
+                for (auto& u : currentFunction->upvalues) {
+                    if (u.name == restPat->name.lexeme && u.isExplicitState) {
+                        found = true; break;
+                    }
+                }
+                if (!found) {
+                    CompiledFunction::UpvalueInfo uv;
+                    uv.name = restPat->name.lexeme;
+                    uv.isLocal = false;
+                    uv.index = 0;
+                    uv.isRef = false;
+                    uv.isGlobal = false;
+                    uv.isExplicitState = true;
+                    uv.isRefParam = false;
+                    currentFunction->upvalues.push_back(uv);
+                }
+
+                IRNode* getVal = readVariable(restPat->name.lexeme);
+                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
+                stateIsUninit->addData(getVal);
+                stateIsUninit->setControl(currentControl);
+
+                IRNode* stateIfNode = graph->createNode(IROp::If);
+                stateIfNode->addData(stateIsUninit);
+                stateIfNode->setControl(currentControl);
+
+                IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
+                stateIfTrue->setControl(stateIfNode);
+
+                IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
+                stateIfFalse->setControl(stateIfNode);
+
+                currentControl = stateIfTrue;
+                writeVariable(restPat->name.lexeme, restNode);
+                IRNode* trueCtrl = currentControl;
+
+                IRNode* merge = graph->createNode(IROp::Merge);
+                merge->addData(trueCtrl);
+                merge->addData(stateIfFalse);
+                currentControl = merge;
+            } else {
+                ScopeModifier rmod = restPat->modifier;
+                if (rmod == ScopeModifier::None) rmod = globalMod;
+                bool rConst = restPat->isConst || globalConst;
+
+                if (rmod == ScopeModifier::Ref) {
+                    if (currentFunction) {
+                        int upvalIdx = resolveUpvalue(restPat->name.lexeme);
+                        if (upvalIdx == -1) {
+                            CompiledFunction::UpvalueInfo uv;
+                            uv.name = restPat->name.lexeme;
+                            uv.isLocal = false;
+                            uv.index = 0;
+                            uv.isRef = true;
+                            uv.isGlobal = true;
+                            uv.isExplicitState = false;
+                            uv.isRefParam = false;
+                            currentFunction->upvalues.push_back(uv);
+                        } else {
+                            currentFunction->upvalues[upvalIdx].isRef = true;
+                        }
+                    }
+                }
+                if (rmod == ScopeModifier::Local) {
+                    declareVariable(restPat->name.lexeme, restNode);
+                } else {
+                    bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
+                    writeVariable(restPat->name.lexeme, restNode, rConst, isGlobalRef);
+                }
+            }
+        }
     }
 }
 

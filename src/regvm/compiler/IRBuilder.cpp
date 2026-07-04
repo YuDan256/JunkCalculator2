@@ -314,27 +314,27 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
 
                 IRNode* getVal = readVariable(vp->name.lexeme);
-                IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-                isUninit->addData(getVal);
-                isUninit->setControl(currentControl);
+                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
+                stateIsUninit->addData(getVal);
+                stateIsUninit->setControl(currentControl);
 
-                IRNode* ifNode = graph->createNode(IROp::If);
-                ifNode->addData(isUninit);
-                ifNode->setControl(currentControl);
+                IRNode* stateIfNode = graph->createNode(IROp::If);
+                stateIfNode->addData(stateIsUninit);
+                stateIfNode->setControl(currentControl);
 
-                IRNode* ifTrue = graph->createNode(IROp::IfTrue);
-                ifTrue->setControl(ifNode);
+                IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
+                stateIfTrue->setControl(stateIfNode);
 
-                IRNode* ifFalse = graph->createNode(IROp::IfFalse);
-                ifFalse->setControl(ifNode);
+                IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
+                stateIfFalse->setControl(stateIfNode);
 
-                currentControl = ifTrue;
+                currentControl = stateIfTrue;
                 writeVariable(vp->name.lexeme, valNode, isConst, false);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
                 merge->addData(trueCtrl);
-                merge->addData(ifFalse);
+                merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
                 if (mod == ScopeModifier::Ref) {
@@ -486,12 +486,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         }
 
                         IRNode* getVal = readVariable(restPat->name.lexeme);
-                        IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-                        isUninit->addData(getVal);
-                        isUninit->setControl(currentControl);
+                        IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
+                        stateIsUninit->addData(getVal);
+                        stateIsUninit->setControl(currentControl);
 
                         IRNode* stateIfNode = graph->createNode(IROp::If);
-                        stateIfNode->addData(isUninit);
+                        stateIfNode->addData(stateIsUninit);
                         stateIfNode->setControl(currentControl);
 
                         IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
@@ -602,12 +602,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
 
                 IRNode* getVal = readVariable(restPat->name.lexeme);
-                IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-                isUninit->addData(getVal);
-                isUninit->setControl(currentControl);
+                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
+                stateIsUninit->addData(getVal);
+                stateIsUninit->setControl(currentControl);
 
                 IRNode* stateIfNode = graph->createNode(IROp::If);
-                stateIfNode->addData(isUninit);
+                stateIfNode->addData(stateIsUninit);
                 stateIfNode->setControl(currentControl);
 
                 IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
@@ -753,12 +753,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             }
 
                             IRNode* getVal = readVariable(restPat->name.lexeme);
-                            IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-                            isUninit->addData(getVal);
-                            isUninit->setControl(currentControl);
+                            IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
+                            stateIsUninit->addData(getVal);
+                            stateIsUninit->setControl(currentControl);
 
                             IRNode* stateIfNode = graph->createNode(IROp::If);
-                            stateIfNode->addData(isUninit);
+                            stateIfNode->addData(stateIsUninit);
                             stateIfNode->setControl(currentControl);
 
                             IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
@@ -882,12 +882,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
 
                 IRNode* getVal = readVariable(restPat->name.lexeme);
-                IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-                isUninit->addData(getVal);
-                isUninit->setControl(currentControl);
+                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
+                stateIsUninit->addData(getVal);
+                stateIsUninit->setControl(currentControl);
 
                 IRNode* stateIfNode = graph->createNode(IROp::If);
-                stateIfNode->addData(isUninit);
+                stateIfNode->addData(stateIsUninit);
                 stateIfNode->setControl(currentControl);
 
                 IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);

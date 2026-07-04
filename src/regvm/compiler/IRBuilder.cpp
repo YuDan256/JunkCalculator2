@@ -2052,15 +2052,19 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 void IRBuilder::visitStateDecl(StateDecl* expr) {
     graph->currentLine = expr->name.line;
     if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
-    CompiledFunction::UpvalueInfo uv;
-    uv.name = expr->name.lexeme;
-    uv.isLocal = false;
-    uv.index = 0;
-    uv.isRef = false;
-    uv.isGlobal = false;
-    uv.isExplicitState = false;
-    uv.isRefParam = false;
-    currentFunction->upvalues.push_back(uv);
+    
+    int upvalIdx = resolveUpvalue(expr->name.lexeme);
+    if (upvalIdx == -1) {
+        CompiledFunction::UpvalueInfo uv;
+        uv.name = expr->name.lexeme;
+        uv.isLocal = false;
+        uv.index = 0;
+        uv.isRef = false;
+        uv.isGlobal = true;
+        uv.isExplicitState = false;
+        uv.isRefParam = false;
+        currentFunction->upvalues.push_back(uv);
+    }
 
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -2095,21 +2099,17 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     std::vector<IndexAccess*> chain;
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
+        graph->currentLine = var->name.line;
         if (expr->isState) {
             if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
-            bool found = false;
-            for (auto& u : currentFunction->upvalues) {
-                if (u.name == var->name.lexeme && !u.isExplicitState) {
-                    found = true; break;
-                }
-            }
-            if (!found) {
+            int upvalIdx = resolveUpvalue(var->name.lexeme);
+            if (upvalIdx == -1) {
                 CompiledFunction::UpvalueInfo uv;
                 uv.name = var->name.lexeme;
                 uv.isLocal = false;
                 uv.index = 0;
                 uv.isRef = false;
-                uv.isGlobal = false;
+                uv.isGlobal = true;
                 uv.isExplicitState = false;
                 uv.isRefParam = false;
                 currentFunction->upvalues.push_back(uv);
@@ -2134,6 +2134,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
         targetVal = readVariable(var->name.lexeme);
     } else if (auto* dot = dynamic_cast<DotAccess*>(expr->target.get())) {
+        graph->currentLine = dot->field.line;
         dot->object->accept(*this);
         objNode = lastValue;
         propName = dot->field.lexeme;

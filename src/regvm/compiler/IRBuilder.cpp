@@ -1266,6 +1266,12 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     iterNode->setControl(currentControl);
     iterNode->addData(lastValue);
     
+    auto isDestructPattern = [](Pattern* p) {
+        while (auto* dp = dynamic_cast<DefaultPattern*>(p)) p = dp->inner.get();
+        return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
+    };
+    iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
+    
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);
     
@@ -2826,6 +2832,13 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
     iterNode->setControl(currentControl);
     iterNode->addData(lastValue);
+    
+    auto isDestructPattern = [](Pattern* p) {
+        while (auto* dp = dynamic_cast<DefaultPattern*>(p)) p = dp->inner.get();
+        return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
+    };
+    iterNode->payload1 = isDestructPattern(expr->pattern.get()) ? 1 : 0;
+    
     currentControl = iterNode;
     
     IRNode* loopNode = graph->createNode(IROp::Loop);

@@ -254,7 +254,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         ifFalse->setControl(ifNode);
         
         currentControl = ifTrue;
-        dp->value->accept(*this);
+        dp->defaultExpr->accept(*this);
         IRNode* defVal = lastValue;
         IRNode* trueCtrl = currentControl;
         

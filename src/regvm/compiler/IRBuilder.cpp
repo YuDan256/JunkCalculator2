@@ -41,7 +41,7 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
 
     if (currentFunction) {
         for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
-            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isRef)) {
+            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isCapturedState || currentFunction->upvalues[i].isRef)) {
                 IRNode* node = graph->createValueNode(IROp::GetUpvalue);
                 node->payload1 = static_cast<uint32_t>(i);
                 node->name = name;
@@ -100,7 +100,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isCon
 
     if (currentFunction) {
         for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
-            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isRef)) {
+            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isCapturedState || currentFunction->upvalues[i].isRef)) {
                 IRNode* node = graph->createNode(IROp::SetUpvalue);
                 node->payload1 = static_cast<uint32_t>(i);
                 node->name = name;
@@ -2063,7 +2063,10 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
         uv.isGlobal = true;
         uv.isExplicitState = false;
         uv.isRefParam = false;
+        uv.isCapturedState = true;
         currentFunction->upvalues.push_back(uv);
+    } else {
+        currentFunction->upvalues[upvalIdx].isCapturedState = true;
     }
 
     lastValue = graph->createConstant(Value::none());
@@ -2112,7 +2115,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                 uv.isGlobal = true;
                 uv.isExplicitState = false;
                 uv.isRefParam = false;
+                uv.isCapturedState = true;
                 currentFunction->upvalues.push_back(uv);
+            } else {
+                currentFunction->upvalues[upvalIdx].isCapturedState = true;
             }
         } else if (expr->isRef) {
             if (currentFunction) {

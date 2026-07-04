@@ -601,6 +601,7 @@ struct CompiledFunction {
         bool isGlobal = false;
         bool isExplicitState = false;
         bool isRefParam = false;
+        bool isCapturedState = false;
     };
     std::vector<UpvalueInfo> upvalues;
     std::vector<bool> paramIsRef;

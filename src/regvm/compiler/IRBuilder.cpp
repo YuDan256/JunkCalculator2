@@ -219,6 +219,7 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
         currentFunction->upvalues.push_back(uv);
         upvalueTargets.push_back({upvalIdx, true, localNode});
         parent->capturedLocals.insert(name);
+        parent->capturedNodesToExtend.push_back(localNode);
         return upvalIdx;
     }
 
@@ -1400,6 +1401,9 @@ void IRBuilder::build(Expr* ast) {
                 info.node->addData(pair.second);
             }
         }
+        for (IRNode* n : capturedNodesToExtend) {
+            info.node->addData(n);
+        }
     }
 }
 
@@ -1470,6 +1474,7 @@ void IRBuilder::visitBinary(Binary* expr) {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
+                    capturedNodesToExtend.push_back(localNode);
                     sig.refs.push_back({0, 2, name, -1, localNode});
                 } else {
                     int upvalIdx = -1;
@@ -1807,6 +1812,7 @@ void IRBuilder::visitCall(Call* expr) {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
+                    capturedNodesToExtend.push_back(localNode);
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
                 } else {
                     int upvalIdx = -1;
@@ -2798,6 +2804,7 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
                     sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
                 } else {
                     capturedLocals.insert(name);
+                    capturedNodesToExtend.push_back(localNode);
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
                 }
             } else {
@@ -3309,6 +3316,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         exportedKeys.push_back(k);
         exportedNodes.push_back(v);
         exportedConsts.push_back(currentConstVars.count(k) > 0);
+        capturedNodesToExtend.push_back(v);
     }
     
     envStack.pop_back();
@@ -3406,6 +3414,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                     sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
                 } else {
                     capturedLocals.insert(name);
+                    capturedNodesToExtend.push_back(localNode);
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
                 }
             } else {

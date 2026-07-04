@@ -53,6 +53,7 @@ private:
 
     std::unordered_map<std::string, int> refParams;
     std::unordered_set<std::string> capturedLocals;
+    std::vector<IRNode*> capturedNodesToExtend;
 
     struct ExitNodeInfo {
         IRNode* node;

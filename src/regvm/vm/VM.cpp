@@ -815,7 +815,7 @@ void VM::execAssertReturnType(const Value& val, uint32_t icIdx) {
     }
 }
 
-void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, uint32_t fbIdx) {
+void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches[icIdx]);
     uint32_t nameIdx = ic.nameIdx;
@@ -3791,7 +3791,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE);
                 int prevIp = frame->ip;
-                execInvoke(a, b, c, isTailCall, -1, 0);
+                execInvoke(a, b, c, isTailCall, -1);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
@@ -3826,7 +3826,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE_FALLBACK);
                 int prevIp = frame->ip;
-                execInvoke(a, b, c, isTailCall, 1, 0);
+                execInvoke(a, b, c, isTailCall, 1);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {

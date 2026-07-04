@@ -68,7 +68,7 @@ private:
     void execCall(int a, int b, bool isTailCall = false);
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
-    void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, uint32_t fbIdx);
+    void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType);
     void execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall);
     void execSliceGet(int a, int b, uint8_t dims);
     void execSliceSet(int a, int c, uint8_t dims);

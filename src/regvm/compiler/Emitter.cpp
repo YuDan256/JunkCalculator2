@@ -670,9 +670,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
     }
 
     // 3. Binary Emission
+    int lastLine = 0;
     for (const auto& inst : insts) {
+        if (inst.node && inst.node->line > 0) lastLine = inst.node->line;
         for (uint32_t word : inst.words) {
-            chunk.write(word, 0); // TODO: Map line numbers from IRNode
+            chunk.write(word, lastLine);
         }
     }
     

@@ -361,6 +361,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 sliceNode->addData(endNode);
                 sliceNode->addData(startNode);
                 sliceNode->payload1 = 1;
+                currentControl = sliceNode;
                 
                 if (restPat->name.lexeme != "_") {
                     if (restPat->modifier == ScopeModifier::State) {
@@ -453,6 +454,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(valNode);
             elemNode->addData(idxNode);
             elemNode->payload1 = 1;
+            currentControl = elemNode;
             
             buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, globalMod, globalConst);
         }
@@ -483,6 +485,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(valNode);
             elemNode->addData(keyNode);
             elemNode->payload1 = 1;
+            currentControl = elemNode;
             
             buildPatternMatch(entry.second.get(), elemNode, failMerge, globalMod, globalConst);
         }
@@ -665,6 +668,7 @@ void IRBuilder::visitLiteral(Literal* expr) {
 }
 
 void IRBuilder::visitBinary(Binary* expr) {
+    graph->currentLine = expr->op.line;
     if (expr->op.type == TokenType::PIPE) {
         expr->right->accept(*this);
         IRNode* calleeNode = lastValue;
@@ -814,10 +818,12 @@ void IRBuilder::visitBinary(Binary* expr) {
 }
 
 void IRBuilder::visitVariable(Variable* expr) {
+    graph->currentLine = expr->name.line;
     lastValue = readVariable(expr->name.lexeme);
 }
 
 void IRBuilder::visitAssign(Assign* expr) {
+    graph->currentLine = expr->name.line;
     if (expr->isState) {
         if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
         CompiledFunction::UpvalueInfo uv;
@@ -932,6 +938,7 @@ void IRBuilder::visitGroupingExpr(GroupingExpr* expr) {
 }
 
 void IRBuilder::visitUnary(Unary* expr) {
+    graph->currentLine = expr->op.line;
     expr->right->accept(*this);
     IRNode* rightVal = lastValue;
     
@@ -951,6 +958,7 @@ void IRBuilder::visitUnary(Unary* expr) {
 }
 
 void IRBuilder::visitCall(Call* expr) {
+    graph->currentLine = expr->callee.line;
     std::string calleeName = expr->callee.lexeme;
     IRNode* calleeNode = readVariable(calleeName);
     
@@ -1495,6 +1503,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
 }
     
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
+    graph->currentLine = expr->name.line;
     IRNode* noneNode = graph->createConstant(Value::none());
     noneNode->setControl(currentControl);
     declareVariable(expr->name.lexeme, noneNode);
@@ -1502,6 +1511,7 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
+    graph->currentLine = expr->name.line;
     if (currentFunction) {
         int upvalIdx = resolveUpvalue(expr->name.lexeme);
         if (upvalIdx == -1) {
@@ -1525,6 +1535,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
+    graph->currentLine = expr->name.line;
     if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
     CompiledFunction::UpvalueInfo uv;
     uv.name = expr->name.lexeme;
@@ -1541,6 +1552,7 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
 }
     
 void IRBuilder::visitConstDecl(ConstDecl* expr) {
+    graph->currentLine = expr->name.line;
     IRNode* noneNode = graph->createConstant(Value::none());
     noneNode->setControl(currentControl);
     declareVariable(expr->name.lexeme, noneNode);
@@ -1548,6 +1560,7 @@ void IRBuilder::visitConstDecl(ConstDecl* expr) {
 }
 
 void IRBuilder::visitDeleteExpr(DeleteExpr* expr) {
+    if (!expr->names.empty()) graph->currentLine = expr->names[0].line;
     for (auto& tok : expr->names) {
         IRNode* delNode = graph->createNode(IROp::DeleteGlobal);
         delNode->setControl(currentControl);
@@ -2158,6 +2171,7 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
 }
 
 void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
+    graph->currentLine = expr->name.line;
     IRNode* classNode = graph->createValueNode(IROp::Class);
     classNode->setControl(currentControl);
     classNode->name = expr->name.lexeme;
@@ -2282,6 +2296,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
 }
 
 void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
+    graph->currentLine = expr->name.line;
     IRNode* nsNode = graph->createValueNode(IROp::BuildNamespace);
     nsNode->setControl(currentControl);
     nsNode->name = expr->name.lexeme;
@@ -2291,6 +2306,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
 }
     
 void IRBuilder::visitDotAccess(DotAccess* expr) {
+    graph->currentLine = expr->field.line;
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
         
@@ -2303,6 +2319,7 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
 }
 
 void IRBuilder::visitDotAssign(DotAssign* expr) {
+    graph->currentLine = expr->field.line;
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
         
@@ -2319,6 +2336,7 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
 }
 
 void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
+    graph->currentLine = expr->method.line;
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
         

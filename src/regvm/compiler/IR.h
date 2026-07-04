@@ -137,6 +137,8 @@ struct IRNode {
     int virtualReg = -1;                 // 虚拟寄存器 ID (SSA 阶段分配)
     int physicalReg = -1;                // 物理寄存器 ID (0~127) 或溢出槽 (>=128)
     
+    int line = 0;                        // 源代码行号
+    
     // 附加数据载体
     Value constVal;                      // 用于 Constant 节点
     int localSlot = -1;                  // 用于 Parameter/LoadLocal/StoreLocal 节点
@@ -186,6 +188,7 @@ private:
     int nextVirtualReg = 0; // 虚拟寄存器分配器
 
 public:
+    int currentLine = 0;
     IRNode* startNode = nullptr;
     std::vector<std::unique_ptr<BasicBlock>> blocks; // 调度后的基本块序列
     std::vector<std::function<void()>> postAllocCallbacks;
@@ -198,6 +201,7 @@ public:
     // 创建通用节点
     IRNode* createNode(IROp op) {
         auto node = std::make_unique<IRNode>(nextId++, op);
+        node->line = currentLine;
         IRNode* ptr = node.get();
         nodes.push_back(std::move(node));
         return ptr;

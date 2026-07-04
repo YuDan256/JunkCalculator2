@@ -1871,9 +1871,13 @@ Value VM::run(int targetFrameDepth) {
     // K-Bit 机制：解析寄存器或常量池索引
     auto getRK = [&](int rk) -> Value {
         if (ISK(rk)) {
-            int idx = INDEXK(rk);
-            if (idx == ESCAPE_KBIT_CONST) idx = fetchExtra();
-            return chunk->constants[idx];
+            if (rk == ESCAPE_KBIT_CONST) {
+                int idx = fetchExtra();
+                return chunk->constants[idx];
+            } else {
+                int idx = INDEXK(rk);
+                return chunk->constants[idx];
+            }
         } else {
             if (rk == ESCAPE_KBIT_REG) rk = fetchExtra();
             return getReg(rk);

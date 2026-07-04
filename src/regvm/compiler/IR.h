@@ -184,6 +184,18 @@ struct BasicBlock {
 // ============================================================================
 // IR 图 (表示一个函数的完整中间表示)
 // ============================================================================
+struct IRArgSource {
+    uint8_t argIndex;
+    uint8_t sourceType;
+    std::string name;
+    int upvalIdx;
+    IRNode* localNode;
+};
+
+struct IRCallSignature {
+    std::vector<IRArgSource> refs;
+};
+
 class IRGraph {
 private:
     std::vector<std::unique_ptr<IRNode>> nodes;
@@ -195,6 +207,7 @@ public:
     IRNode* startNode = nullptr;
     std::vector<std::unique_ptr<BasicBlock>> blocks; // 调度后的基本块序列
     std::vector<std::function<void()>> postAllocCallbacks;
+    std::vector<IRCallSignature> callSignatures;
 
     IRGraph() {
         startNode = createNode(IROp::Start);

@@ -905,11 +905,15 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(loopNode);
-            phi->addData(pair.second);
-            phi->name = pair.first;
-            loopPhisStack[i][pair.first] = phi;
+            if (capturedLocals.count(pair.first)) {
+                loopPhisStack[i][pair.first] = pair.second;
+            } else {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(loopNode);
+                phi->addData(pair.second);
+                phi->name = pair.first;
+                loopPhisStack[i][pair.first] = phi;
+            }
         }
     }
     envStack = loopPhisStack;
@@ -1062,8 +1066,50 @@ void IRBuilder::visitBinary(Binary* expr) {
         expr->right->accept(*this);
         IRNode* calleeNode = lastValue;
         
+        IRCallSignature sig;
+        if (auto* var = dynamic_cast<Variable*>(expr->left.get())) {
+            std::string name = var->name.lexeme;
+            IRNode* localNode = getLocalNode(name);
+            if (localNode) {
+                if (localNode->op == IROp::GetRefParam) {
+                    sig.refs.push_back({0, 4, name, -1, localNode});
+                } else {
+                    capturedLocals.insert(name);
+                    sig.refs.push_back({0, 2, name, -1, localNode});
+                }
+            } else {
+                int upvalIdx = -1;
+                if (currentFunction) {
+                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                        if (currentFunction->upvalues[j].name == name) {
+                            upvalIdx = j;
+                            break;
+                        }
+                    }
+                }
+                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                
+                if (upvalIdx != -1) {
+                    sig.refs.push_back({0, 3, name, upvalIdx, nullptr});
+                } else {
+                    sig.refs.push_back({0, 1, name, -1, nullptr});
+                }
+            }
+        }
+        
         expr->left->accept(*this);
         IRNode* argNode = lastValue;
+        
+        if (!sig.refs.empty()) {
+            graph->callSignatures.push_back(sig);
+            IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
+            passRefsNode->setControl(currentControl);
+            passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
+            for (auto& ref : sig.refs) {
+                if (ref.localNode) passRefsNode->addData(ref.localNode);
+            }
+            currentControl = passRefsNode;
+        }
         
         IRNode* callNode = graph->createValueNode(IROp::Call);
         callNode->setControl(currentControl);
@@ -1119,6 +1165,7 @@ void IRBuilder::visitBinary(Binary* expr) {
                     if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
                 }
                 for (const auto& name : modifiedVars) {
+                    if (capturedLocals.count(name)) continue;
                     IRNode* tNode = rightEnv[i].count(name) ? rightEnv[i].at(name) : baseEnv[i].at(name);
                     IRNode* eNode = baseEnv[i].at(name);
                     IRNode* phi = graph->createValueNode(IROp::Phi);
@@ -1148,6 +1195,7 @@ void IRBuilder::visitBinary(Binary* expr) {
                     if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
                 }
                 for (const auto& name : modifiedVars) {
+                    if (capturedLocals.count(name)) continue;
                     IRNode* tNode = baseEnv[i].at(name);
                     IRNode* eNode = rightEnv[i].count(name) ? rightEnv[i].at(name) : baseEnv[i].at(name);
                     IRNode* phi = graph->createValueNode(IROp::Phi);
@@ -1351,23 +1399,63 @@ void IRBuilder::visitCall(Call* expr) {
     std::string calleeName = expr->callee.lexeme;
     IRNode* calleeNode = readVariable(calleeName);
     
-    // 2. 编译参数
     std::vector<IRNode*> argNodes;
-    for (auto& arg : expr->arguments) {
+    IRCallSignature sig;
+    
+    for (size_t i = 0; i < expr->arguments.size(); ++i) {
+        auto& arg = expr->arguments[i];
+        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+            std::string name = var->name.lexeme;
+            IRNode* localNode = getLocalNode(name);
+            if (localNode) {
+                if (localNode->op == IROp::GetRefParam) {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
+                } else {
+                    capturedLocals.insert(name);
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
+                }
+            } else {
+                int upvalIdx = -1;
+                if (currentFunction) {
+                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                        if (currentFunction->upvalues[j].name == name) {
+                            upvalIdx = j;
+                            break;
+                        }
+                    }
+                }
+                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                
+                if (upvalIdx != -1) {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                } else {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                }
+            }
+        }
         arg->accept(*this);
         argNodes.push_back(lastValue);
     }
     
-    // 3. 创建 Call 节点
+    if (!sig.refs.empty()) {
+        graph->callSignatures.push_back(sig);
+        IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
+        passRefsNode->setControl(currentControl);
+        passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
+        for (auto& ref : sig.refs) {
+            if (ref.localNode) passRefsNode->addData(ref.localNode);
+        }
+        currentControl = passRefsNode;
+    }
+    
     IRNode* callNode = graph->createValueNode(IROp::Call);
     callNode->setControl(currentControl);
-    callNode->addData(calleeNode); // 第一个数据输入是 callee
+    callNode->addData(calleeNode);
     for (IRNode* arg : argNodes) {
         callNode->addData(arg);
     }
-    callNode->payload1 = static_cast<uint32_t>(argNodes.size()); // 记录 argc
+    callNode->payload1 = static_cast<uint32_t>(argNodes.size());
     
-    // Call 节点可能会产生副作用，因此它也串联在控制流中
     currentControl = callNode;
     lastValue = callNode;
 }
@@ -1434,6 +1522,7 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
         }
 
         for (const auto& name : modifiedVars) {
+            if (capturedLocals.count(name)) continue;
             IRNode* tNode = thenEnv[i].count(name) ? thenEnv[i].at(name) : baseEnv[i].at(name);
             IRNode* eNode = elseEnv[i].count(name) ? elseEnv[i].at(name) : baseEnv[i].at(name);
             
@@ -1604,13 +1693,17 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
             const std::string& name = pair.first;
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(breakMerge);
-            for (auto& env : breakEnvs) {
-                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            if (capturedLocals.count(name)) {
+                exitEnvStack[i][name] = pair.second;
+            } else {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(breakMerge);
+                for (auto& env : breakEnvs) {
+                    phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+                }
+                phi->name = name;
+                exitEnvStack[i][name] = phi;
             }
-            phi->name = name;
-            exitEnvStack[i][name] = phi;
         }
     }
     
@@ -2172,6 +2265,9 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         fnDef->hasRestParam = expr->hasRestParam;
         fnDef->paramIsRef = expr->paramIsRef;
         fnDef->paramIsConst = expr->paramIsConst;
+        int refCount = 0;
+        for (bool isRef : expr->paramIsRef) if (isRef) refCount++;
+        fnDef->refCount = refCount;
         
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
@@ -2261,9 +2357,52 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
     IRNode* calleeNode = lastValue;
         
     std::vector<IRNode*> argNodes;
-    for (auto& arg : expr->arguments) {
+    IRCallSignature sig;
+    
+    for (size_t i = 0; i < expr->arguments.size(); ++i) {
+        auto& arg = expr->arguments[i];
+        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+            std::string name = var->name.lexeme;
+            IRNode* localNode = getLocalNode(name);
+            if (localNode) {
+                if (localNode->op == IROp::GetRefParam) {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
+                } else {
+                    capturedLocals.insert(name);
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
+                }
+            } else {
+                int upvalIdx = -1;
+                if (currentFunction) {
+                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                        if (currentFunction->upvalues[j].name == name) {
+                            upvalIdx = j;
+                            break;
+                        }
+                    }
+                }
+                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                
+                if (upvalIdx != -1) {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                } else {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                }
+            }
+        }
         arg->accept(*this);
         argNodes.push_back(lastValue);
+    }
+    
+    if (!sig.refs.empty()) {
+        graph->callSignatures.push_back(sig);
+        IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
+        passRefsNode->setControl(currentControl);
+        passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
+        for (auto& ref : sig.refs) {
+            if (ref.localNode) passRefsNode->addData(ref.localNode);
+        }
+        currentControl = passRefsNode;
     }
         
     IRNode* invokeNode = graph->createValueNode(IROp::Call);
@@ -2439,6 +2578,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
         }
 
         for (const auto& name : modifiedVars) {
+            if (capturedLocals.count(name)) continue;
             IRNode* nNode = normalEnv[i].count(name) ? normalEnv[i].at(name) : baseEnv[i].at(name);
             IRNode* cNode = catchEnv[i].count(name) ? catchEnv[i].at(name) : baseEnv[i].at(name);
             if (nNode != cNode) {
@@ -2552,6 +2692,7 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
             }
         }
         for (const auto& name : modifiedVars) {
+            if (capturedLocals.count(name)) continue;
             IRNode* phi = graph->createValueNode(IROp::Phi);
             phi->setControl(endMerge);
             for (auto& bEnv : branchEnvs) {
@@ -2592,6 +2733,9 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             fnDef->hasRestParam = method.hasRestParam;
             fnDef->paramIsRef = method.paramIsRef;
             fnDef->paramIsConst = method.paramIsConst;
+            int refCount = 0;
+            for (bool isRef : method.paramIsRef) if (isRef) refCount++;
+            fnDef->refCount = refCount;
             
             IRGraph fnGraph;
             IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
@@ -2733,16 +2877,67 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
 
 void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     graph->currentLine = expr->method.line;
-    expr->object->accept(*this);
-    IRNode* objNode = lastValue;
+    bool isSuper = dynamic_cast<SuperExpr*>(expr->object.get()) != nullptr;
+    
+    IRNode* objNode = nullptr;
+    if (isSuper) {
+        objNode = graph->createValueNode(IROp::GetSelf);
+        objNode->setControl(currentControl);
+    } else {
+        expr->object->accept(*this);
+        objNode = lastValue;
+    }
         
     std::vector<IRNode*> argNodes;
-    for (auto& arg : expr->arguments) {
+    IRCallSignature sig;
+    
+    for (size_t i = 0; i < expr->arguments.size(); ++i) {
+        auto& arg = expr->arguments[i];
+        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+            std::string name = var->name.lexeme;
+            IRNode* localNode = getLocalNode(name);
+            if (localNode) {
+                if (localNode->op == IROp::GetRefParam) {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
+                } else {
+                    capturedLocals.insert(name);
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
+                }
+            } else {
+                int upvalIdx = -1;
+                if (currentFunction) {
+                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                        if (currentFunction->upvalues[j].name == name) {
+                            upvalIdx = j;
+                            break;
+                        }
+                    }
+                }
+                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                
+                if (upvalIdx != -1) {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                } else {
+                    sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                }
+            }
+        }
         arg->accept(*this);
         argNodes.push_back(lastValue);
     }
+    
+    if (!sig.refs.empty()) {
+        graph->callSignatures.push_back(sig);
+        IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
+        passRefsNode->setControl(currentControl);
+        passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
+        for (auto& ref : sig.refs) {
+            if (ref.localNode) passRefsNode->addData(ref.localNode);
+        }
+        currentControl = passRefsNode;
+    }
         
-    IRNode* invokeNode = graph->createValueNode(IROp::Invoke);
+    IRNode* invokeNode = graph->createValueNode(isSuper ? IROp::SuperInvoke : IROp::Invoke);
     invokeNode->setControl(currentControl);
     invokeNode->addData(objNode);
     for (auto* arg : argNodes) {

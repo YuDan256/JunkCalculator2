@@ -282,7 +282,25 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::PassRefs: {
-                        auto w = buildInstABx(OpCode::PASS_REFS, 0, node->payload1);
+                        const auto& irSig = graph->callSignatures[node->payload1];
+                        std::vector<ArgSource> chunkRefs;
+                        for (const auto& ref : irSig.refs) {
+                            ArgSource src;
+                            src.argIndex = ref.argIndex;
+                            src.sourceType = ref.sourceType;
+                            if (ref.sourceType == 1) {
+                                src.sourceRef = chunk.addConstant(Value(ref.name));
+                            } else if (ref.sourceType == 2) {
+                                src.sourceRef = ref.localNode->physicalReg;
+                            } else if (ref.sourceType == 4) {
+                                src.sourceRef = ref.localNode->payload1;
+                            } else if (ref.sourceType == 3) {
+                                src.sourceRef = ref.upvalIdx;
+                            }
+                            chunkRefs.push_back(src);
+                        }
+                        uint32_t sigIdx = chunk.addCallSignature(chunkRefs);
+                        auto w = buildInstABx(OpCode::PASS_REFS, 0, sigIdx);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

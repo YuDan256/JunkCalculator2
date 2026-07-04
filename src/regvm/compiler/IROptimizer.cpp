@@ -67,6 +67,10 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
             if (nodePtr->dataInputs.size() > 0 && nodePtr->dataInputs[0]) {
                 capturedNodes.insert(nodePtr->dataInputs[0]);
             }
+        } else if (nodePtr->op == IROp::PassRefs) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
         }
     }
 

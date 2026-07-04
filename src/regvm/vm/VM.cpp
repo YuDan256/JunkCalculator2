@@ -129,6 +129,9 @@ void VM::execCall(int a, int b, bool isTailCall) {
             std::vector<Value> actualArgs;
             if (closure->isUFCS) {
                 actualArgs.push_back(closure->boundSelf);
+                for (auto& pr : pendingCallRefs) {
+                    pr.first += 1;
+                }
             }
             for (int i = 0; i < argc; ++i) {
                 actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
@@ -930,6 +933,9 @@ invoke_method:
             }
             registers[currentFrame->registerBase + a + 1] = obj;
             registers[currentFrame->registerBase + a] = fallbackVal;
+            for (auto& pr : pendingCallRefs) {
+                pr.first += 1;
+            }
             execCall(a, argc + 1, isTailCall);
             return;
         }
@@ -964,6 +970,9 @@ invoke_method:
             }
             registers[currentFrame->registerBase + a + 1] = obj;
             registers[currentFrame->registerBase + a] = globals[gIt->second];
+            for (auto& pr : pendingCallRefs) {
+                pr.first += 1;
+            }
             execCall(a, argc + 1, isTailCall);
             return;
         }
@@ -1565,6 +1574,8 @@ bool VM::handleExceptionUnwind(Value errVal) {
             frameCount--;
         }
         
+        pendingCallRefs.clear();
+        
         CallFrame* frame = &frames[frameCount - 1];
         frame->ip = handler.ip;
         frame->registerBase = handler.registerBase;
@@ -1637,6 +1648,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             frames[frameCount - 1].refParamsBase = -1;
             frameCount--;
         }
+        pendingCallRefs.clear();
         throw;
     }
 }

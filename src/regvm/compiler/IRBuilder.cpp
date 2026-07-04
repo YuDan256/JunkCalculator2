@@ -239,10 +239,55 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
 
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst) {
     if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
-        buildPatternMatch(dp->inner.get(), valNode, failMerge, globalMod, globalConst);
+        IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+        isUninit->setControl(currentControl);
+        isUninit->addData(valNode);
+        
+        IRNode* ifNode = graph->createNode(IROp::If);
+        ifNode->setControl(currentControl);
+        ifNode->addData(isUninit);
+        
+        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        ifTrue->setControl(ifNode);
+        
+        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        ifFalse->setControl(ifNode);
+        
+        currentControl = ifTrue;
+        dp->value->accept(*this);
+        IRNode* defVal = lastValue;
+        IRNode* trueCtrl = currentControl;
+        
+        IRNode* merge = graph->createNode(IROp::Merge);
+        merge->addData(trueCtrl);
+        merge->addData(ifFalse);
+        
+        IRNode* phi = graph->createValueNode(IROp::Phi);
+        phi->setControl(merge);
+        phi->addData(defVal);
+        phi->addData(valNode);
+        
+        currentControl = merge;
+        buildPatternMatch(dp->inner.get(), phi, failMerge, globalMod, globalConst);
         return;
     }
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+        IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+        isUninit->setControl(currentControl);
+        isUninit->addData(valNode);
+        
+        IRNode* ifNode = graph->createNode(IROp::If);
+        ifNode->setControl(currentControl);
+        ifNode->addData(isUninit);
+        
+        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        ifTrue->setControl(ifNode);
+        failMerge->addData(ifTrue);
+        
+        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        ifFalse->setControl(ifNode);
+        currentControl = ifFalse;
+
         if (vp->name.lexeme != "_") {
             ScopeModifier mod = vp->modifier;
             if (mod == ScopeModifier::None) mod = globalMod;
@@ -367,8 +412,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         }
 
         bool hasRest = (restIndex != -1) || (lp->rest != nullptr);
-        uint32_t minCols = restIndex != -1 ? static_cast<uint32_t>(lp->elements.size() - 1) : static_cast<uint32_t>(lp->elements.size());
-        uint32_t maxCols = hasRest ? 0xFFFFFFFF : minCols;
+        int requiredCols = 0;
+        for (size_t i = 0; i < lp->elements.size(); ++i) {
+            if (!dynamic_cast<DefaultPattern*>(lp->elements[i].get()) && !dynamic_cast<RestPattern*>(lp->elements[i].get())) {
+                requiredCols++;
+            }
+        }
+        uint32_t minCols = static_cast<uint32_t>(requiredCols);
+        uint32_t maxCols = hasRest ? 0xFFFFFFFF : (restIndex != -1 ? 0xFFFFFFFF : static_cast<uint32_t>(lp->elements.size()));
 
         IRNode* shapeNode = graph->createValueNode(IROp::MatchShape);
         shapeNode->setControl(currentControl);
@@ -505,6 +556,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(valNode);
             elemNode->addData(idxNode);
             elemNode->payload1 = 1;
+            elemNode->payload2 = 1; // noThrow
             currentControl = elemNode;
             
             buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, globalMod, globalConst);
@@ -614,14 +666,16 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         uint32_t maxCols = 0;
         int restColIndex = -1;
         if (!mp->rows.empty()) {
+            int requiredCols = 0;
             for (size_t j = 0; j < mp->rows[0].size(); ++j) {
                 if (dynamic_cast<RestPattern*>(mp->rows[0][j].get())) {
                     restColIndex = static_cast<int>(j);
-                    break;
+                } else if (!dynamic_cast<DefaultPattern*>(mp->rows[0][j].get())) {
+                    requiredCols++;
                 }
             }
-            minCols = restColIndex != -1 ? static_cast<uint32_t>(mp->rows[0].size() - 1) : static_cast<uint32_t>(mp->rows[0].size());
-            maxCols = restColIndex != -1 ? 0xFFFFFFFF : minCols;
+            minCols = static_cast<uint32_t>(requiredCols);
+            maxCols = restColIndex != -1 ? 0xFFFFFFFF : static_cast<uint32_t>(mp->rows[0].size());
         }
 
         IRNode* shapeNode = graph->createValueNode(IROp::MatchShape);
@@ -773,6 +827,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 elemNode->addData(rIdxNode);
                 elemNode->addData(cIdxNode);
                 elemNode->payload1 = 2;
+                elemNode->payload2 = 1; // noThrow
                 currentControl = elemNode;
 
                 buildPatternMatch(mp->rows[i][j].get(), elemNode, failMerge, globalMod, globalConst);
@@ -881,13 +936,38 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             }
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
-        IRNode* typeNode = graph->createValueNode(IROp::MatchType);
-        typeNode->setControl(currentControl);
-        typeNode->addData(valNode);
-        
+        IRNode* isDict = graph->createValueNode(IROp::MatchType);
+        isDict->setControl(currentControl);
+        isDict->addData(valNode);
+        isDict->name = "dict";
+
+        IRNode* isInst = graph->createValueNode(IROp::MatchType);
+        isInst->setControl(currentControl);
+        isInst->addData(valNode);
+        isInst->name = "instance";
+
+        IRNode* isNs = graph->createValueNode(IROp::MatchType);
+        isNs->setControl(currentControl);
+        isNs->addData(valNode);
+        isNs->name = "namespace";
+
+        IRNode* or1 = graph->createValueNode(IROp::BitOr);
+        or1->setControl(currentControl);
+        or1->addData(isDict);
+        or1->addData(isInst);
+
+        IRNode* or2 = graph->createValueNode(IROp::BitOr);
+        or2->setControl(currentControl);
+        or2->addData(or1);
+        or2->addData(isNs);
+
+        IRNode* toBool = graph->createValueNode(IROp::ToBool);
+        toBool->setControl(currentControl);
+        toBool->addData(or2);
+
         IRNode* ifNode = graph->createNode(IROp::If);
         ifNode->setControl(currentControl);
-        ifNode->addData(typeNode);
+        ifNode->addData(toBool);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
@@ -897,7 +977,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         failMerge->addData(ifFalse);
         
         currentControl = ifTrue;
-        
+
         for (auto& entry : dp->entries) {
             IRNode* keyNode = graph->createConstant(Value(entry.first));
             keyNode->setControl(currentControl);
@@ -907,6 +987,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->addData(valNode);
             elemNode->addData(keyNode);
             elemNode->payload1 = 1;
+            elemNode->payload2 = 1; // noThrow
             currentControl = elemNode;
             
             buildPatternMatch(entry.second.get(), elemNode, failMerge, globalMod, globalConst);

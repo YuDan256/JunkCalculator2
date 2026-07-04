@@ -397,10 +397,17 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
-                    case IROp::IndexGet:
+                    case IROp::IndexGet: {
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        int cVal = node->payload1;
+                        if (node->payload2) cVal |= 0x80; // 使用最高位标记 noThrow
+                        auto get = buildInstABC(OpCode::INDEX_GET, node->physicalReg, spillBase, cVal);
+                        inst.words.insert(inst.words.end(), get.begin(), get.end());
+                        break;
+                    }
                     case IROp::SliceGet: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
-                        auto get = buildInstABC(node->op == IROp::IndexGet ? OpCode::INDEX_GET : OpCode::SLICE_GET, node->physicalReg, spillBase, node->payload1);
+                        auto get = buildInstABC(OpCode::SLICE_GET, node->physicalReg, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), get.begin(), get.end());
                         break;
                     }
@@ -517,7 +524,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::MatchType: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, node->payload1, OpType::NORMAL, OpType::NORMAL);
+                        uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
+                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, icIdx, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

@@ -2668,31 +2668,44 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
+                bool noThrow = (c & 0x80) != 0;
+                int dims = c & 0x7F;
+                
                 Value obj = getReg(b);
-                if (c == 1) {
+                if (dims == 1) {
                     Value idx = getReg(b + 1);
                     Value result;
                     if (obj.isObjType(ObjType::DICT)) {
                         auto dict = static_cast<ObjDict*>(obj.asObj());
                         auto it = dict->keyMap.find(idx);
                         if (it == dict->keyMap.end()) {
-                            throw std::runtime_error("RegVM Error: Key not found.");
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("RegVM Error: Key not found.");
+                        } else {
+                            result = dict->elements[it->second].second;
                         }
-                        result = dict->elements[it->second].second;
                     } else if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = static_cast<int>(list->vec.size());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: List index out of bounds.");
-                        result = list->vec[i];
+                        if (i < 0 || i >= n) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: List index out of bounds.");
+                        } else {
+                            result = list->vec[i];
+                        }
                     } else if (obj.isString()) {
                         ObjString* objStr = obj.asObjString();
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int len = static_cast<int>(objStr->charLength);
                         if (i < 0) i = len + i;
-                        if (i < 0 || i >= len) throw std::out_of_range("RegVM Error: String index out of bounds.");
-                        result = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
+                        if (i < 0 || i >= len) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: String index out of bounds.");
+                        } else {
+                            result = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
+                        }
                     } else if (obj.isInstance()) {
                         auto inst = obj.asInstance();
                         auto cls = inst->classDef;
@@ -2706,54 +2719,73 @@ Value VM::run(int targetFrameDepth) {
                             cls = cls->parent;
                         }
                         if (getitemMethod) {
-                            result = callDunder(obj, getitemMethod, {idx});
+                            try {
+                                result = callDunder(obj, getitemMethod, {idx});
+                            } catch (...) {
+                                if (noThrow) result = Value::uninit();
+                                else throw;
+                            }
                         } else {
-                            throw std::runtime_error("RegVM Error: Cannot index this instance (no __getitem__).");
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("RegVM Error: Cannot index this instance (no __getitem__).");
                         }
                     } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
-                        if (m.getRows() == 1) result = Value(m(0, i));
-                        else if (m.getCols() == 1) result = Value(m(i, 0));
-                        else {
-                            std::vector<double> row(m.getCols());
-                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                            result = Value(RealMatrix(1, m.getCols(), row));
+                        if (i < 0 || i >= n) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        } else {
+                            if (m.getRows() == 1) result = Value(m(0, i));
+                            else if (m.getCols() == 1) result = Value(m(i, 0));
+                            else {
+                                std::vector<double> row(m.getCols());
+                                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                                result = Value(RealMatrix(1, m.getCols(), row));
+                            }
                         }
                     } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
-                        if (m.getRows() == 1) result = Value(m(0, i));
-                        else if (m.getCols() == 1) result = Value(m(i, 0));
-                        else {
-                            std::vector<Complex> row(m.getCols());
-                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                            result = Value(ComplexMatrix(1, m.getCols(), row));
+                        if (i < 0 || i >= n) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        } else {
+                            if (m.getRows() == 1) result = Value(m(0, i));
+                            else if (m.getCols() == 1) result = Value(m(i, 0));
+                            else {
+                                std::vector<Complex> row(m.getCols());
+                                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                                result = Value(ComplexMatrix(1, m.getCols(), row));
+                            }
                         }
                     } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
                         const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
-                        if (m.getRows() == 1) result = Value(m(0, i));
-                        else if (m.getCols() == 1) result = Value(m(i, 0));
-                        else {
-                            std::vector<std::string> row(m.getCols());
-                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                            result = Value(StringMatrix(1, m.getCols(), row));
+                        if (i < 0 || i >= n) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        } else {
+                            if (m.getRows() == 1) result = Value(m(0, i));
+                            else if (m.getCols() == 1) result = Value(m(i, 0));
+                            else {
+                                std::vector<std::string> row(m.getCols());
+                                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                                result = Value(StringMatrix(1, m.getCols(), row));
+                            }
                         }
                     } else {
-                        throw std::runtime_error("RegVM Error: Unsupported 1D index get.");
+                        if (noThrow) result = Value::uninit();
+                        else throw std::runtime_error("RegVM Error: Unsupported 1D index get.");
                     }
                     getReg(a) = result;
-                } else if (c == 2) {
+                } else if (dims == 2) {
                     Value row = getReg(b + 1);
                     Value col = getReg(b + 2);
                     int r = static_cast<int>(std::round(row.asDouble()));
@@ -2763,22 +2795,35 @@ Value VM::run(int targetFrameDepth) {
                         const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                         if (r < 0) r = m.getRows() + r;
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
-                        result = Value(m(r, c_idx));
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        } else {
+                            result = Value(m(r, c_idx));
+                        }
                     } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                         if (r < 0) r = m.getRows() + r;
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
-                        result = Value(m(r, c_idx));
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        } else {
+                            result = Value(m(r, c_idx));
+                        }
                     } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
                         const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                         if (r < 0) r = m.getRows() + r;
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
-                        result = Value(m(r, c_idx));
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        } else {
+                            result = Value(m(r, c_idx));
+                        }
                     } else {
-                        throw std::runtime_error("RegVM Error: Unsupported 2D index get.");
+                        if (noThrow) result = Value::uninit();
+                        else throw std::runtime_error("RegVM Error: Unsupported 2D index get.");
                     }
                     getReg(a) = result;
                 } else {

@@ -29,14 +29,15 @@ private:
     IRBuilder* parent = nullptr;
     CompiledFunction* currentFunction = nullptr;
 
+    IRNode* readVariable(const std::string& name);
+public:
     struct UpvalueTarget {
         int index;
         bool isLocal;
         IRNode* localNode;
     };
     std::vector<UpvalueTarget> upvalueTargets;
-
-    IRNode* readVariable(const std::string& name);
+private:
     void writeVariable(const std::string& name, IRNode* value, bool isConst = false, bool isGlobalRef = false);
     void declareVariable(const std::string& name, IRNode* value);
     

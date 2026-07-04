@@ -1549,8 +1549,203 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
 }
 
 Value VM::execImport(const std::string& name) {
-    (void)name;
-    throw std::runtime_error("RegVM Error: execImport not fully implemented.");
+    std::string baseName = std::filesystem::path(name).stem().string();
+
+    if (loadedModules.count(name)) {
+        return loadedModules[name];
+    }
+
+    ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+    ns->name = name;
+
+    std::string resolved = "";
+    
+#if defined(_WIN32)
+    std::string nativeExt = ".dll";
+#else
+    std::string nativeExt = ".so";
+#endif
+    std::string nativeName = name;
+    if (nativeName.length() < nativeExt.length() || nativeName.substr(nativeName.length() - nativeExt.length()) != nativeExt) {
+        nativeName += nativeExt;
+    }
+
+    // 1. 优先查找 <exe_dir>/modules/ 下的原生模块
+#if defined(_WIN32)
+    char exePath[MAX_PATH];
+    if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
+        std::string modPath = (std::filesystem::path(exePath).parent_path() / "modules" / nativeName).string();
+        if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
+    }
+#else
+    char exePath[4096];
+    ssize_t count = readlink("/proc/self/exe", exePath, 4096);
+    if (count != -1) {
+        std::string modPath = (std::filesystem::path(std::string(exePath, count)).parent_path() / "modules" / nativeName).string();
+        if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
+    }
+#endif
+
+    // 2. 其次查找当前目录下的原生模块
+    if (resolved.empty()) {
+        std::string localModPath = helpers::safeResolvePath(nativeName);
+        if (std::filesystem::is_regular_file(localModPath)) resolved = localModPath;
+    }
+
+    // 3. 最后查找 .jc2 脚本
+    if (resolved.empty()) {
+        resolved = helpers::safeResolvePath(name);
+        if (!std::filesystem::is_regular_file(resolved)) {
+            resolved = helpers::safeResolvePath(name + ".jc2");
+        }
+    }
+
+    if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
+        throw std::runtime_error("RegVM Error: Cannot find module '" + name + "'.");
+    }
+
+    importedModules.insert(name);
+
+    std::string ext = std::filesystem::path(resolved).extension().string();
+    if (ext == ".dll" || ext == ".so") {
+#if defined(_WIN32)
+        HMODULE handle = LoadLibraryA(resolved.c_str());
+        if (!handle) throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "'.");
+        auto init_fn = (JC2_ExtensionInitFunc)GetProcAddress(handle, "jc2_extension_init");
+#else
+        void* handle = dlopen(resolved.c_str(), RTLD_NOW);
+        if (!handle) throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "': " + dlerror());
+        auto init_fn = (JC2_ExtensionInitFunc)dlsym(handle, "jc2_extension_init");
+#endif
+        if (!init_fn) {
+            throw std::runtime_error("RegVM Error: Dynamic library '" + resolved + "' does not export 'jc2_extension_init'.");
+        }
+
+        std::unordered_map<std::string, Value> tempGlobals;
+        std::unordered_map<std::string, NativeCallable> tempNatives;
+        std::unordered_map<std::string, std::set<int>> tempArity;
+
+        ModuleLoadContext mctx = { &tempGlobals, &tempNatives, &tempArity };
+
+        int res = init_fn(reinterpret_cast<JC2_VMContext>(this), &mctx, get_host_api());
+        if (res != 0) {
+            throw std::runtime_error("RegVM Error: Extension initialization failed with code " + std::to_string(res));
+        }
+
+        for (const auto& kv : tempGlobals) {
+            auto uv = GcHeap::get().allocate<ObjUpVal>();
+            uv->closed = kv.second;
+            uv->location = &uv->closed;
+            ns->fields[kv.first] = { uv, true };
+        }
+
+        for (const auto& kv : tempNatives) {
+            auto closure = GcHeap::get().allocate<ObjClosure>(
+                std::vector<std::string>{}, std::vector<bool>{}, kv.first, nullptr
+            );
+            closure->nativeFn = std::make_any<NativeCallable>(kv.second);
+            
+            auto ait = tempArity.find(kv.first);
+            if (ait != tempArity.end() && !ait->second.empty()) {
+                int maxA = *ait->second.rbegin();
+                int minA = *ait->second.begin();
+                for (int j = 0; j < maxA; ++j) {
+                    closure->paramNames.push_back("_" + std::to_string(j));
+                    closure->isRef.push_back(false);
+                }
+                for (int j = minA; j < maxA; ++j) {
+                    closure->defaultValues.push_back(Value::none());
+                }
+            }
+
+            auto uv = GcHeap::get().allocate<ObjUpVal>();
+            uv->closed = Value(closure);
+            uv->location = &uv->closed;
+            ns->fields[kv.first] = { uv, true };
+        }
+    } else {
+        std::ifstream file(resolved);
+        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read module script.");
+        std::string code, line;
+        while (std::getline(file, line)) code += line + "\n";
+        file.close();
+
+        jc::Lexer lexer(code, resolved);
+        auto tokens = lexer.tokenize();
+        jc::Parser parser(tokens);
+        auto ast = parser.parse();
+
+        auto nsDecl = std::make_unique<NamespaceDecl>(Token(TokenType::IDENTIFIER, baseName, 0), std::move(ast));
+
+        auto modFn = std::make_shared<CompiledFunction>();
+        modFn->name = "<module " + baseName + ">";
+        modFn->sourceFile = resolved;
+        modFn->arity = 0;
+        modFn->maxArity = 0;
+        modFn->hasRestParam = false;
+
+        IRGraph fnGraph;
+        IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get());
+        fnBuilder.build(nsDecl.get());
+
+        IROptimizer::optimize(&fnGraph);
+        RegisterAllocator::allocate(&fnGraph);
+
+        for (auto& target : fnBuilder.upvalueTargets) {
+            if (target.isLocal && target.localNode) {
+                IRNode* localNode = target.localNode;
+                int upvalIdx = target.index;
+                CompiledFunction* childFn = modFn.get();
+                fnGraph.postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                    childFn->upvalues[upvalIdx].index = localNode->physicalReg;
+                });
+            }
+        }
+
+        modFn->localCount = Emitter::emit(&fnGraph, modFn->chunk);
+
+        compiledFunctions.push_back(modFn);
+
+        CallFrame newFrame;
+        newFrame.function = modFn.get();
+        newFrame.chunk = &modFn->chunk;
+        newFrame.ip = 0;
+        
+        CallFrame* currentFrame = &frames[frameCount - 1];
+        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount;
+        newFrame.returnRegister = 0;
+        newFrame.closure = nullptr;
+        newFrame.selfContext = Value::none();
+        newFrame.classContext = Value::none();
+        
+        for (int i = 0; i < modFn->localCount; ++i) {
+            registers[newFrame.registerBase + i] = Value::none();
+        }
+        
+        populateRefParams(newFrame, modFn.get());
+        
+        if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+        frames[frameCount++] = newFrame;
+
+        std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
+        helpers::g_scriptDirStack.push_back(scriptDir);
+        Value nsVal;
+        try {
+            nsVal = run(frameCount - 1);
+        } catch (...) {
+            helpers::g_scriptDirStack.pop_back();
+            throw;
+        }
+        helpers::g_scriptDirStack.pop_back();
+
+        if (!nsVal.isObjType(ObjType::NAMESPACE)) {
+            throw std::runtime_error("RegVM Error: Module script must not use top-level 'return'.");
+        }
+        ns = static_cast<ObjNamespace*>(nsVal.asObj());
+    }
+
+    loadedModules[name] = Value(ns);
+    return Value(ns);
 }
 
 bool VM::handleExceptionUnwind(Value errVal) {

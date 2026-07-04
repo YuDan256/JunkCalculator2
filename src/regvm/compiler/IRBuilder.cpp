@@ -2642,11 +2642,11 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             }
         }
         
-        if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
-            if (expr->isLocal) declareVariable(var->name.lexeme, finalNode);
+        if (auto* rootVar = dynamic_cast<Variable*>(chain[0]->object.get())) {
+            if (expr->isLocal) declareVariable(rootVar->name.lexeme, finalNode);
             else {
                 bool isGlobalRef = expr->isRef && !currentFunction;
-                writeVariable(var->name.lexeme, finalNode, false, isGlobalRef);
+                writeVariable(rootVar->name.lexeme, finalNode, false, isGlobalRef);
             }
         }
     }

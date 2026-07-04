@@ -2684,6 +2684,20 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             result = dict->elements[it->second].second;
                         }
+                    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                        if (!idx.isString()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
+                        } else {
+                            auto it = ns->fields.find(idx.asString());
+                            if (it == ns->fields.end()) {
+                                if (noThrow) result = Value::uninit();
+                                else throw std::runtime_error("RegVM Error: Key not found in namespace.");
+                            } else {
+                                result = *(it->second.upval->location);
+                            }
+                        }
                     } else if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
@@ -2843,6 +2857,21 @@ Value VM::run(int targetFrameDepth) {
                     if (obj.isObjType(ObjType::DICT)) {
                         auto dict = static_cast<ObjDict*>(obj.asObj());
                         dict->set(idx, val);
+                    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                        if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");
+                        if (!idx.isString()) throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
+                        std::string key = idx.asString();
+                        auto it = ns->fields.find(key);
+                        if (it != ns->fields.end()) {
+                            if (it->second.isConst) throw std::runtime_error("RegVM Error: Cannot modify const field '" + key + "'.");
+                            *(it->second.upval->location) = val;
+                        } else {
+                            ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
+                            uv->closed = val;
+                            uv->location = &uv->closed;
+                            ns->fields[key] = { uv, false };
+                        }
                     } else if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
@@ -3024,6 +3053,21 @@ Value VM::run(int targetFrameDepth) {
                             elements->vec.push_back(key);
                         }
                     }
+                } else if (iterable.isObjType(ObjType::NAMESPACE)) {
+                    const auto* ns = static_cast<ObjNamespace*>(iterable.asObj());
+                    if (destructFlag) {
+                        for (const auto& [key, field] : ns->fields) {
+                            ObjList* pair = GcHeap::get().allocate<ObjList>();
+                            pair->vec.push_back(Value(key));
+                            pair->vec.push_back(*(field.upval->location));
+                            pair->is_frozen = true;
+                            elements->vec.push_back(Value(pair));
+                        }
+                    } else {
+                        for (const auto& [key, field] : ns->fields) {
+                            elements->vec.push_back(Value(key));
+                        }
+                    }
                 } else if (iterable.isObjType(ObjType::SET)) {
                     const auto* s = static_cast<ObjSet*>(iterable.asObj());
                     for (const auto& val : s->elements) {
@@ -3151,6 +3195,11 @@ Value VM::run(int targetFrameDepth) {
                 } else if (haystack.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(haystack.asObj());
                     found = d->keyMap.find(needle) != d->keyMap.end();
+                } else if (haystack.isObjType(ObjType::NAMESPACE)) {
+                    auto ns = static_cast<ObjNamespace*>(haystack.asObj());
+                    if (needle.isString()) {
+                        found = ns->fields.find(needle.asString()) != ns->fields.end();
+                    }
                 } else if (haystack.isObjType(ObjType::SET)) {
                     auto s = static_cast<ObjSet*>(haystack.asObj());
                     found = s->keys.find(needle) != s->keys.end();
@@ -3538,6 +3587,19 @@ Value VM::run(int targetFrameDepth) {
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     d->set(chunk->constants[ic.nameIdx], val);
+                } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                    auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                    if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");
+                    auto it = ns->fields.find(field);
+                    if (it != ns->fields.end()) {
+                        if (it->second.isConst) throw std::runtime_error("RegVM Error: Cannot modify const field '" + field + "'.");
+                        *(it->second.upval->location) = val;
+                    } else {
+                        ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
+                        uv->closed = val;
+                        uv->location = &uv->closed;
+                        ns->fields[field] = { uv, false };
+                    }
                 } else {
                     throw std::runtime_error("RegVM Error: Cannot set property on this type.");
                 }

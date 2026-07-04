@@ -71,6 +71,10 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
             for (IRNode* in : nodePtr->dataInputs) {
                 if (in) capturedNodes.insert(in);
             }
+        } else if (nodePtr->op == IROp::BuildNamespace) {
+            for (uint32_t i = nodePtr->payload1 * 3; i < nodePtr->dataInputs.size(); ++i) {
+                if (nodePtr->dataInputs[i]) capturedNodes.insert(nodePtr->dataInputs[i]);
+            }
         }
     }
 

@@ -372,9 +372,16 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::BuildNamespace: {
+                        std::vector<IRNode*> argsToPack;
+                        for (uint32_t i = 0; i < node->payload1 * 3; ++i) {
+                            argsToPack.push_back(node->dataInputs[i]);
+                        }
+                        int spillBase = packArgs(inst.words, argsToPack, chunk, dynamicSpillBase + 1) - 1;
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        auto w = buildInstABx(OpCode::BUILD_NAMESPACE, node->physicalReg, nameIdx);
+                        auto w = buildInstABC(OpCode::BUILD_NAMESPACE, spillBase, nameIdx, node->payload1);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::ListInit: {
@@ -732,8 +739,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                           inst.node->op == IROp::BuildSet || inst.node->op == IROp::ConcatStrings ||
                           inst.node->op == IROp::BuildMatrix || inst.node->op == IROp::IndexGet ||
                           inst.node->op == IROp::IndexSet || inst.node->op == IROp::SliceGet ||
-                          inst.node->op == IROp::SliceSet)) {
+                          inst.node->op == IROp::SliceSet || inst.node->op == IROp::BuildNamespace)) {
             int argsCount = static_cast<int>(inst.node->dataInputs.size());
+            if (inst.node->op == IROp::BuildNamespace) argsCount += 1; // +1 for spillBase offset
             if (dynamicSpillBase + argsCount > absoluteMaxReg) {
                 absoluteMaxReg = dynamicSpillBase + argsCount;
             }

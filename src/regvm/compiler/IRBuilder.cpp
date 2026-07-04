@@ -114,7 +114,11 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isCon
 
     // 如果都没找到，且在函数内部，则作为 Auto-local 变量在函数顶层作用域声明
     if (currentFunction && !isGlobalRef) {
-        envStack[0][name] = value;
+        if (namespaceScopeDepth != -1) {
+            envStack[namespaceScopeDepth][name] = value;
+        } else {
+            envStack[0][name] = value;
+        }
         return;
     }
 
@@ -358,9 +362,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
                 if (mod == ScopeModifier::Local) {
                     declareVariable(vp->name.lexeme, valNode);
+                    currentLocalVars.insert(vp->name.lexeme);
                 } else {
                     bool isGlobalRef = (mod == ScopeModifier::Ref) && !currentFunction;
                     writeVariable(vp->name.lexeme, valNode, isConst, isGlobalRef);
+                    if (isConst) currentConstVars.insert(vp->name.lexeme);
                 }
             }
         }
@@ -672,9 +678,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         }
                         if (rmod == ScopeModifier::Local) {
                             declareVariable(restPat->name.lexeme, sliceNode);
+                            currentLocalVars.insert(restPat->name.lexeme);
                         } else {
                             bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
                             writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
+                            if (rConst) currentConstVars.insert(restPat->name.lexeme);
                         }
                     }
                 }
@@ -788,9 +796,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
                 if (rmod == ScopeModifier::Local) {
                     declareVariable(restPat->name.lexeme, sliceNode);
+                    currentLocalVars.insert(restPat->name.lexeme);
                 } else {
                     bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
                     writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
+                    if (rConst) currentConstVars.insert(restPat->name.lexeme);
                 }
             }
         }
@@ -958,9 +968,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             }
                             if (rmod == ScopeModifier::Local) {
                                 declareVariable(restPat->name.lexeme, sliceNode);
+                                currentLocalVars.insert(restPat->name.lexeme);
                             } else {
                                 bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
                                 writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
+                                if (rConst) currentConstVars.insert(restPat->name.lexeme);
                             }
                         }
                     }
@@ -1240,9 +1252,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
                 if (rmod == ScopeModifier::Local) {
                     declareVariable(restPat->name.lexeme, restNode);
+                    currentLocalVars.insert(restPat->name.lexeme);
                 } else {
                     bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
                     writeVariable(restPat->name.lexeme, restNode, rConst, isGlobalRef);
+                    if (rConst) currentConstVars.insert(restPat->name.lexeme);
                 }
             }
         }
@@ -2376,6 +2390,7 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
     IRNode* noneNode = graph->createConstant(Value::none());
     noneNode->setControl(currentControl);
     declareVariable(expr->name.lexeme, noneNode);
+    currentLocalVars.insert(expr->name.lexeme);
     lastValue = noneNode;
 }
 
@@ -2432,6 +2447,7 @@ void IRBuilder::visitConstDecl(ConstDecl* expr) {
     IRNode* noneNode = graph->createConstant(Value::none());
     noneNode->setControl(currentControl);
     declareVariable(expr->name.lexeme, noneNode);
+    currentConstVars.insert(expr->name.lexeme);
     lastValue = noneNode;
 }
 
@@ -3266,10 +3282,70 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
 
 void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     graph->currentLine = expr->name.line;
+    
+    int prevNamespaceDepth = namespaceScopeDepth;
+    namespaceScopeDepth = static_cast<int>(envStack.size());
+    envStack.emplace_back();
+    
+    auto prevLocalVars = currentLocalVars;
+    auto prevConstVars = currentConstVars;
+    currentLocalVars.clear();
+    currentConstVars.clear();
+    
+    if (auto* block = dynamic_cast<Block*>(expr->body.get())) {
+        for (auto& stmt : block->statements) {
+            stmt->accept(*this);
+        }
+    } else {
+        expr->body->accept(*this);
+    }
+    
+    std::vector<std::string> exportedKeys;
+    std::vector<IRNode*> exportedNodes;
+    std::vector<bool> exportedConsts;
+    
+    for (const auto& [k, v] : envStack.back()) {
+        if (currentLocalVars.count(k)) continue;
+        exportedKeys.push_back(k);
+        exportedNodes.push_back(v);
+        exportedConsts.push_back(currentConstVars.count(k) > 0);
+    }
+    
+    envStack.pop_back();
+    namespaceScopeDepth = prevNamespaceDepth;
+    currentLocalVars = prevLocalVars;
+    currentConstVars = prevConstVars;
+    
     IRNode* nsNode = graph->createValueNode(IROp::BuildNamespace);
     nsNode->setControl(currentControl);
     nsNode->name = expr->name.lexeme;
+    
+    for (size_t i = 0; i < exportedKeys.size(); ++i) {
+        IRNode* keyNode = graph->createConstant(Value(exportedKeys[i]));
+        keyNode->setControl(currentControl);
+        nsNode->addData(keyNode);
+        
+        IRNode* slotNode = graph->createConstant(Value(0.0));
+        slotNode->setControl(currentControl);
+        nsNode->addData(slotNode);
+        
+        IRNode* targetNode = exportedNodes[i];
+        this->graph->postAllocCallbacks.push_back([slotNode, targetNode]() {
+            slotNode->constVal = Value(static_cast<double>(targetNode->physicalReg));
+        });
+        
+        IRNode* constNode = graph->createConstant(Value(exportedConsts[i]));
+        constNode->setControl(currentControl);
+        nsNode->addData(constNode);
+    }
+    
+    for (size_t i = 0; i < exportedNodes.size(); ++i) {
+        nsNode->addData(exportedNodes[i]);
+    }
+    
+    nsNode->payload1 = static_cast<uint32_t>(exportedKeys.size());
     currentControl = nsNode;
+    
     writeVariable(expr->name.lexeme, nsNode, false, false);
     lastValue = nsNode;
 }

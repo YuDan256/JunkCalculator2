@@ -60,6 +60,10 @@ private:
     };
     std::vector<ExitNodeInfo> exitNodes;
 
+    int namespaceScopeDepth = -1;
+    std::unordered_set<std::string> currentLocalVars;
+    std::unordered_set<std::string> currentConstVars;
+
     void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool isAssignment = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 

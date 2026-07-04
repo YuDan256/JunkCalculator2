@@ -28,6 +28,14 @@ static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string,
 }
 
 IRNode* IRBuilder::readVariable(const std::string& name) {
+    if (refParams.count(name)) {
+        IRNode* node = graph->createValueNode(IROp::GetRefParam);
+        node->payload1 = refParams[name];
+        node->name = name;
+        node->setControl(currentControl);
+        return node;
+    }
+
     IRNode* localNode = getLocalNode(name);
     if (localNode) return localNode;
 
@@ -61,6 +69,16 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
 }
 
 void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isConst, bool isGlobalRef) {
+    if (refParams.count(name)) {
+        IRNode* node = graph->createNode(IROp::SetRefParam);
+        node->payload1 = refParams[name];
+        node->name = name;
+        node->addData(value);
+        node->setControl(currentControl);
+        currentControl = node;
+        return;
+    }
+
     if (envStack.empty()) return;
     // 查找变量在哪个作用域定义的
     for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
@@ -157,7 +175,7 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
                 uv.name = name;
                 uv.isLocal = false;
                 uv.index = static_cast<int>(i);
-                uv.isRef = false;
+                uv.isRef = parent->currentFunction->upvalues[i].isRef;
                 uv.isGlobal = false;
                 uv.isExplicitState = false;
                 uv.isRefParam = false;
@@ -166,6 +184,21 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
                 return upvalIdx;
             }
         }
+    }
+
+    if (parent->refParams.count(name)) {
+        int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+        CompiledFunction::UpvalueInfo uv;
+        uv.name = name;
+        uv.isLocal = true;
+        uv.index = parent->refParams[name];
+        uv.isRef = true;
+        uv.isGlobal = false;
+        uv.isExplicitState = false;
+        uv.isRefParam = true;
+        currentFunction->upvalues.push_back(uv);
+        upvalueTargets.push_back({upvalIdx, true, nullptr});
+        return upvalIdx;
     }
 
     IRNode* localNode = parent->getLocalNode(name);
@@ -192,7 +225,7 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
         uv.name = name;
         uv.isLocal = false;
         uv.index = upvalue;
-        uv.isRef = false;
+        uv.isRef = parent->currentFunction->upvalues[upvalue].isRef;
         uv.isGlobal = false;
         uv.isExplicitState = false;
         uv.isRefParam = false;
@@ -1069,30 +1102,30 @@ void IRBuilder::visitBinary(Binary* expr) {
         IRCallSignature sig;
         if (auto* var = dynamic_cast<Variable*>(expr->left.get())) {
             std::string name = var->name.lexeme;
-            IRNode* localNode = getLocalNode(name);
-            if (localNode) {
-                if (localNode->op == IROp::GetRefParam) {
-                    sig.refs.push_back({0, 4, name, -1, localNode});
-                } else {
+            if (refParams.count(name)) {
+                sig.refs.push_back({0, 4, name, -1, readVariable(name)});
+            } else {
+                IRNode* localNode = getLocalNode(name);
+                if (localNode) {
                     capturedLocals.insert(name);
                     sig.refs.push_back({0, 2, name, -1, localNode});
-                }
-            } else {
-                int upvalIdx = -1;
-                if (currentFunction) {
-                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
-                        if (currentFunction->upvalues[j].name == name) {
-                            upvalIdx = j;
-                            break;
+                } else {
+                    int upvalIdx = -1;
+                    if (currentFunction) {
+                        for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                            if (currentFunction->upvalues[j].name == name) {
+                                upvalIdx = j;
+                                break;
+                            }
                         }
                     }
-                }
-                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
-                
-                if (upvalIdx != -1) {
-                    sig.refs.push_back({0, 3, name, upvalIdx, nullptr});
-                } else {
-                    sig.refs.push_back({0, 1, name, -1, nullptr});
+                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    
+                    if (upvalIdx != -1) {
+                        sig.refs.push_back({0, 3, name, upvalIdx, nullptr});
+                    } else {
+                        sig.refs.push_back({0, 1, name, -1, nullptr});
+                    }
                 }
             }
         }
@@ -1406,30 +1439,30 @@ void IRBuilder::visitCall(Call* expr) {
         auto& arg = expr->arguments[i];
         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
             std::string name = var->name.lexeme;
-            IRNode* localNode = getLocalNode(name);
-            if (localNode) {
-                if (localNode->op == IROp::GetRefParam) {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
-                } else {
+            if (refParams.count(name)) {
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name)});
+            } else {
+                IRNode* localNode = getLocalNode(name);
+                if (localNode) {
                     capturedLocals.insert(name);
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
-                }
-            } else {
-                int upvalIdx = -1;
-                if (currentFunction) {
-                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
-                        if (currentFunction->upvalues[j].name == name) {
-                            upvalIdx = j;
-                            break;
+                } else {
+                    int upvalIdx = -1;
+                    if (currentFunction) {
+                        for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                            if (currentFunction->upvalues[j].name == name) {
+                                upvalIdx = j;
+                                break;
+                            }
                         }
                     }
-                }
-                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
-                
-                if (upvalIdx != -1) {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
-                } else {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    
+                    if (upvalIdx != -1) {
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                    } else {
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                    }
                 }
             }
         }
@@ -2272,10 +2305,17 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
         
+        int refIdx = 0;
         for (size_t i = 0; i < expr->params.size(); ++i) {
-            IRNode* paramNode = fnGraph.createValueNode(IROp::Parameter);
-            paramNode->payload1 = static_cast<uint32_t>(i);
-            fnBuilder.declareVariable(expr->params[i].lexeme, paramNode);
+            IRNode* paramNode = nullptr;
+            if (i < expr->paramIsRef.size() && expr->paramIsRef[i]) {
+                fnBuilder.refParams[expr->params[i].lexeme] = refIdx++;
+                paramNode = fnBuilder.readVariable(expr->params[i].lexeme);
+            } else {
+                paramNode = fnGraph.createValueNode(IROp::Parameter);
+                paramNode->payload1 = static_cast<uint32_t>(i);
+                fnBuilder.declareVariable(expr->params[i].lexeme, paramNode);
+            }
             
             if (expr->defaultExprs[i]) {
                 IRNode* isUninit = fnGraph.createValueNode(IROp::IsUninit);
@@ -2740,10 +2780,17 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             IRGraph fnGraph;
             IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
             
+            int refIdx = 0;
             for (size_t i = 0; i < method.params.size(); ++i) {
-                IRNode* paramNode = fnGraph.createValueNode(IROp::Parameter);
-                paramNode->payload1 = static_cast<uint32_t>(i);
-                fnBuilder.declareVariable(method.params[i].lexeme, paramNode);
+                IRNode* paramNode = nullptr;
+                if (i < method.paramIsRef.size() && method.paramIsRef[i]) {
+                    fnBuilder.refParams[method.params[i].lexeme] = refIdx++;
+                    paramNode = fnBuilder.readVariable(method.params[i].lexeme);
+                } else {
+                    paramNode = fnGraph.createValueNode(IROp::Parameter);
+                    paramNode->payload1 = static_cast<uint32_t>(i);
+                    fnBuilder.declareVariable(method.params[i].lexeme, paramNode);
+                }
                 
                 if (method.defaultExprs[i]) {
                     IRNode* isUninit = fnGraph.createValueNode(IROp::IsUninit);

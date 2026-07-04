@@ -51,6 +51,7 @@ private:
     };
     std::vector<IRLoopInfo> loopStack;
 
+    std::unordered_map<std::string, int> refParams;
     std::unordered_set<std::string> capturedLocals;
 
     struct ExitNodeInfo {

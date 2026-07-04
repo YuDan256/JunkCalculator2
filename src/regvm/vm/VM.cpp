@@ -1856,7 +1856,7 @@ Value VM::run(int targetFrameDepth) {
                         if (uv.isRef) {
                             if (uv.isLocal) {
                                 if (uv.isRefParam) {
-                                    closure->upvalues[i] = static_cast<ObjUpVal*>(getReg(frame->function->localCount + uv.index).asObj());
+                                    closure->upvalues[i] = static_cast<ObjUpVal*>(getReg(frame->refParamsBase + uv.index).asObj());
                                 } else {
                                     closure->upvalues[i] = captureUpvalue(frame->registerBase + uv.index);
                                 }
@@ -1899,7 +1899,7 @@ Value VM::run(int targetFrameDepth) {
                                 }
                             } else if (uv.isLocal) {
                                 if (uv.isRefParam) {
-                                    dummy->closed = *(static_cast<ObjUpVal*>(getReg(frame->function->localCount + uv.index).asObj())->location);
+                                    dummy->closed = *(static_cast<ObjUpVal*>(getReg(frame->refParamsBase + uv.index).asObj())->location);
                                 } else {
                                     dummy->closed = getReg(uv.index);
                                 }

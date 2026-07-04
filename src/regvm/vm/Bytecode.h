@@ -81,7 +81,7 @@ enum class OpCode : uint8_t {
     SET_PROP,       // R(A)[icIdx = B] := R(C) [Ext A, B, C]
     INVOKE,         // R(A) := Invoke(obj = R(A), args = R(A+1)...R(A+B), icIdx = C) [Ext A, B, C]
     TAIL_INVOKE,    // [Ext A, B, C]
-    INVOKE_FALLBACK,// R(A) := InvokeFallback(obj = R(A), args = R(A+1)...R(A+B), fbIdx = C) [Ext A, B, C]
+    INVOKE_FALLBACK,// R(A) := InvokeFallback(obj = R(A), args = R(A+1)...R(A+B), fallback = R(A+B+1), icIdx = C) [Ext A, B, C]
     TAIL_INVOKE_FALLBACK, // [Ext A, B, C]
     GET_SUPER,      // R(A) := super(Kst(B))
     SUPER_INVOKE,   // R(A) := SuperInvoke(self = R(A), args = R(A+1)...R(A+B), nameIdx = C) [Ext A, B, C]
@@ -329,12 +329,6 @@ struct CallSignature {
     std::vector<ArgSource> refs;
 };
 
-struct FallbackInfo {
-    uint32_t icIdx;
-    uint8_t fbType;
-    uint32_t fbIdx;
-};
-
 class Chunk {
 public:
     std::vector<Instruction> code;
@@ -344,7 +338,6 @@ public:
     std::vector<ShapePattern> shapePatterns;
     std::vector<MatrixShape> matrixShapes;
     std::vector<CallSignature> callSignatures;
-    std::vector<FallbackInfo> fallbackInfos;
 
     void write(Instruction inst, int line) {
         code.push_back(inst);
@@ -374,11 +367,6 @@ public:
     uint32_t addCallSignature(const std::vector<ArgSource>& refs) {
         callSignatures.push_back({refs});
         return static_cast<uint32_t>(callSignatures.size() - 1);
-    }
-
-    uint32_t addFallbackInfo(uint32_t icIdx, uint8_t fbType, uint32_t fbIdx) {
-        fallbackInfos.push_back({icIdx, fbType, fbIdx});
-        return static_cast<uint32_t>(fallbackInfos.size() - 1);
     }
 
     void disassemble(const std::string& name) const {

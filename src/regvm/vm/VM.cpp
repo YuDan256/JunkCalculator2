@@ -918,16 +918,8 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, u
 
 invoke_method:
     if (!method) {
-        if (fbType != -1) {
-            Value fallbackVal;
-            if (fbType == 0) {
-                fallbackVal = registers[currentFrame->registerBase + fbIdx];
-            } else if (fbType == 1) {
-                fallbackVal = *(currentFrame->closure->upvalues[fbIdx]->location);
-            } else if (fbType == 2) {
-                fallbackVal = *(static_cast<ObjUpVal*>(registers[currentFrame->refParamsBase + fbIdx].asObj())->location);
-            }
-            
+        if (fbType == 1) {
+            Value fallbackVal = registers[currentFrame->registerBase + a + 1 + argc];
             for (int i = argc - 1; i >= 0; --i) {
                 registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
             }
@@ -3832,10 +3824,9 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
-                const auto& fbInfo = chunk->fallbackInfos[c];
                 bool isTailCall = (op == OpCode::TAIL_INVOKE_FALLBACK);
                 int prevIp = frame->ip;
-                execInvoke(a, b, fbInfo.icIdx, isTailCall, fbInfo.fbType, fbInfo.fbIdx);
+                execInvoke(a, b, c, isTailCall, 1, 0);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {

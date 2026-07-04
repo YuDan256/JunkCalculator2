@@ -2984,11 +2984,50 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         currentControl = passRefsNode;
     }
         
-    IRNode* invokeNode = graph->createValueNode(isSuper ? IROp::SuperInvoke : IROp::Invoke);
+    bool hasFallback = false;
+    IRNode* fallbackNode = nullptr;
+    
+    if (!isSuper) {
+        std::string name = expr->method.lexeme;
+        if (refParams.count(name)) {
+            hasFallback = true;
+            fallbackNode = readVariable(name);
+        } else {
+            IRNode* localNode = getLocalNode(name);
+            if (localNode) {
+                hasFallback = true;
+                fallbackNode = readVariable(name);
+            } else {
+                int upvalIdx = -1;
+                if (currentFunction) {
+                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                        if (currentFunction->upvalues[j].name == name) {
+                            upvalIdx = j;
+                            break;
+                        }
+                    }
+                }
+                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                
+                if (upvalIdx != -1) {
+                    hasFallback = true;
+                    fallbackNode = readVariable(name);
+                }
+            }
+        }
+    }
+
+    IRNode* invokeNode = graph->createValueNode(
+        isSuper ? IROp::SuperInvoke : 
+        (hasFallback ? IROp::InvokeFallback : IROp::Invoke)
+    );
     invokeNode->setControl(currentControl);
     invokeNode->addData(objNode);
     for (auto* arg : argNodes) {
         invokeNode->addData(arg);
+    }
+    if (hasFallback) {
+        invokeNode->addData(fallbackNode);
     }
     invokeNode->payload1 = static_cast<uint32_t>(argNodes.size());
     invokeNode->name = expr->method.lexeme;

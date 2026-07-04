@@ -327,8 +327,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::TailInvokeFallback: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        uint32_t fbIdx = chunk.addFallbackInfo(icIdx, static_cast<uint8_t>(node->payload2), node->payload3);
-                        auto inv = buildInstABC(node->op == IROp::InvokeFallback ? OpCode::INVOKE_FALLBACK : OpCode::TAIL_INVOKE_FALLBACK, spillBase, node->payload1, fbIdx);
+                        auto inv = buildInstABC(node->op == IROp::InvokeFallback ? OpCode::INVOKE_FALLBACK : OpCode::TAIL_INVOKE_FALLBACK, spillBase, node->payload1, icIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
                         auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
                         inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());

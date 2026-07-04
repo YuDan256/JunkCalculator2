@@ -149,6 +149,8 @@ struct IRNode {
     uint32_t payload1 = 0;
     uint32_t payload2 = 0;
     uint32_t payload3 = 0;
+    uint32_t payload4 = 0;
+    uint32_t payload5 = 0;
     
     IRNode(int id, IROp op) : id(id), op(op) {}
 

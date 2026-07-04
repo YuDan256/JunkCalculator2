@@ -290,6 +290,29 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
                 }
 
+                if (isTailCall) {
+                    while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                        exceptionHandlers.pop_back();
+                    }
+                    closeUpvalues(currentFrame->registerBase);
+                    currentFrame->function = fnDef.get();
+                    currentFrame->chunk = &fnDef->chunk;
+                    currentFrame->ip = 0;
+                    currentFrame->closure = initMethod;
+                    currentFrame->selfContext = Value(instance);
+                    currentFrame->classContext = Value(cls);
+                    
+                    for (size_t i = 0; i < actualArgs.size(); ++i) {
+                        registers[currentFrame->registerBase + i] = actualArgs[i];
+                    }
+                    for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
+                        registers[currentFrame->registerBase + i] = Value::none();
+                    }
+                    
+                    populateRefParams(*currentFrame, fnDef.get());
+                    return;
+                }
+
                 CallFrame newFrame;
                 newFrame.function = fnDef.get();
                 newFrame.chunk = &fnDef->chunk;

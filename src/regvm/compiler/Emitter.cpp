@@ -506,7 +506,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::MatchShape: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstABC(OpCode::MATCH_SHAPE, node->physicalReg, b, node->payload1, OpType::NORMAL, OpType::NORMAL);
+                        uint32_t shapeIdx = chunk.addShapePattern(node->payload1, node->payload2, node->payload3, node->payload4, static_cast<uint8_t>(node->payload5));
+                        auto w = buildInstABC(OpCode::MATCH_SHAPE, node->physicalReg, b, shapeIdx, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

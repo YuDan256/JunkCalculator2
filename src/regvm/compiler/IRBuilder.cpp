@@ -1165,6 +1165,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             excludeList->setControl(currentControl);
             for (auto* k : keyNodes) excludeList->addData(k);
             excludeList->payload1 = static_cast<uint32_t>(keyNodes.size());
+            currentControl = excludeList;
             
             IRNode* restNode = graph->createValueNode(IROp::DictRest);
             restNode->setControl(currentControl);
@@ -1271,6 +1272,7 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
         return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
     };
     iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
+    currentControl = iterNode;
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);

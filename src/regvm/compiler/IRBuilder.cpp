@@ -1742,6 +1742,7 @@ void IRBuilder::visitAssign(Assign* expr) {
     
     if (expr->isLocal) {
         declareVariable(expr->name.lexeme, valNode);
+        currentLocalVars.insert(expr->name.lexeme);
     } else {
         bool isGlobalRef = expr->isRef && !currentFunction;
         writeVariable(expr->name.lexeme, valNode, expr->isConst, isGlobalRef);
@@ -2603,8 +2604,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     opNode->addData(rightVal);
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
-        if (expr->isLocal) declareVariable(var->name.lexeme, opNode);
-        else {
+        if (expr->isLocal) {
+            declareVariable(var->name.lexeme, opNode);
+            currentLocalVars.insert(var->name.lexeme);
+        } else {
             bool isGlobalRef = expr->isRef && !currentFunction;
             writeVariable(var->name.lexeme, opNode, false, isGlobalRef);
         }
@@ -2673,8 +2676,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
         
         if (auto* rootVar = dynamic_cast<Variable*>(chain[0]->object.get())) {
-            if (expr->isLocal) declareVariable(rootVar->name.lexeme, finalNode);
-            else {
+            if (expr->isLocal) {
+                declareVariable(rootVar->name.lexeme, finalNode);
+                currentLocalVars.insert(rootVar->name.lexeme);
+            } else {
                 bool isGlobalRef = expr->isRef && !currentFunction;
                 writeVariable(rootVar->name.lexeme, finalNode, false, isGlobalRef);
             }

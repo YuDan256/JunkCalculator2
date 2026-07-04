@@ -1261,9 +1261,9 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
     };
 
     if (dims == 1) {
-        auto step = readOptionalInt(0);
+        auto start = readOptionalInt(0);
         auto end = readOptionalInt(1);
-        auto start = readOptionalInt(2);
+        auto step = readOptionalInt(2);
         
         if (obj.isString()) {
             ObjString* objStr = obj.asObjString();
@@ -1316,12 +1316,12 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
         
         throw std::runtime_error("RegVM Error: Cannot slice a value of type '" + getTypeName(obj) + "'.");
     } else if (dims == 2) {
-        auto cStep = readOptionalInt(0);
-        auto cEnd = readOptionalInt(1);
-        auto cStart = readOptionalInt(2);
-        auto rStep = readOptionalInt(3);
-        auto rEnd = readOptionalInt(4);
-        auto rStart = readOptionalInt(5);
+        auto rStart = readOptionalInt(0);
+        auto rEnd = readOptionalInt(1);
+        auto rStep = readOptionalInt(2);
+        auto cStart = readOptionalInt(3);
+        auto cEnd = readOptionalInt(4);
+        auto cStep = readOptionalInt(5);
         
         auto processMatSlice = [&](const auto& m) {
             auto rInfo = buildSliceInfo(m.getRows(), rStart, rEnd, rStep);
@@ -1404,9 +1404,9 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
     };
 
     if (dims == 1) {
-        auto step = readOptionalInt(0);
+        auto start = readOptionalInt(0);
         auto end = readOptionalInt(1);
-        auto start = readOptionalInt(2);
+        auto step = readOptionalInt(2);
         
         if (obj.isObjType(ObjType::LIST)) {
             auto list = static_cast<ObjList*>(obj.asObj());
@@ -1461,12 +1461,12 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
             throw std::runtime_error("RegVM Error: Cannot slice-assign a value of type '" + getTypeName(obj) + "'.");
         }
     } else if (dims == 2) {
-        auto cStep = readOptionalInt(0);
-        auto cEnd = readOptionalInt(1);
-        auto cStart = readOptionalInt(2);
-        auto rStep = readOptionalInt(3);
-        auto rEnd = readOptionalInt(4);
-        auto rStart = readOptionalInt(5);
+        auto rStart = readOptionalInt(0);
+        auto rEnd = readOptionalInt(1);
+        auto rStep = readOptionalInt(2);
+        auto cStart = readOptionalInt(3);
+        auto cEnd = readOptionalInt(4);
+        auto cStep = readOptionalInt(5);
         
         auto processMatSliceSet = [&](auto& m) {
             auto rInfo = buildSliceInfo(m.getRows(), rStart, rEnd, rStep);

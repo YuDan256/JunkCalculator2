@@ -605,9 +605,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
                 sliceNode->setControl(currentControl);
                 sliceNode->addData(valNode);
-                sliceNode->addData(stepNode);
-                sliceNode->addData(endNode);
                 sliceNode->addData(startNode);
+                sliceNode->addData(endNode);
+                sliceNode->addData(stepNode);
                 sliceNode->payload1 = 1;
                 currentControl = sliceNode;
                 
@@ -724,9 +724,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
             sliceNode->setControl(currentControl);
             sliceNode->addData(valNode);
-            sliceNode->addData(stepNode);
-            sliceNode->addData(endNode);
             sliceNode->addData(startNode);
+            sliceNode->addData(endNode);
+            sliceNode->addData(stepNode);
             sliceNode->payload1 = 1;
             currentControl = sliceNode;
             
@@ -893,12 +893,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
                         sliceNode->setControl(currentControl);
                         sliceNode->addData(valNode);
-                        sliceNode->addData(cStepNode);
-                        sliceNode->addData(cEndNode);
-                        sliceNode->addData(cStartNode);
-                        sliceNode->addData(rStepNode);
-                        sliceNode->addData(rEndNode);
                         sliceNode->addData(rStartNode);
+                        sliceNode->addData(rEndNode);
+                        sliceNode->addData(rStepNode);
+                        sliceNode->addData(cStartNode);
+                        sliceNode->addData(cEndNode);
+                        sliceNode->addData(cStepNode);
                         sliceNode->payload1 = 2;
                         currentControl = sliceNode;
 
@@ -1024,12 +1024,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
             sliceNode->setControl(currentControl);
             sliceNode->addData(valNode);
-            sliceNode->addData(cStepNode);
-            sliceNode->addData(cEndNode);
-            sliceNode->addData(cStartNode);
-            sliceNode->addData(rStepNode);
-            sliceNode->addData(rEndNode);
             sliceNode->addData(rStartNode);
+            sliceNode->addData(rEndNode);
+            sliceNode->addData(rStepNode);
+            sliceNode->addData(cStartNode);
+            sliceNode->addData(cEndNode);
+            sliceNode->addData(cStepNode);
             sliceNode->payload1 = 2;
             currentControl = sliceNode;
 

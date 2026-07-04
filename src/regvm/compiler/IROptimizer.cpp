@@ -242,13 +242,33 @@ bool IROptimizer::simplifyPhis(IRGraph* graph) {
             if (node->dataInputs.empty()) continue;
             bool allSame = true;
             IRNode* firstValid = nullptr;
-            for (IRNode* in : node->dataInputs) {
+            int validIndex = -1;
+            for (size_t i = 0; i < node->dataInputs.size(); ++i) {
+                IRNode* in = node->dataInputs[i];
                 if (!in || in->op == IROp::Nop) continue;
                 if (in == node) continue;
-                if (!firstValid) firstValid = in;
+                if (!firstValid) {
+                    firstValid = in;
+                    validIndex = static_cast<int>(i);
+                }
                 else if (in != firstValid) { allSame = false; break; }
             }
             if (allSame && firstValid) {
+                std::vector<IRNode*> dependentPhis;
+                for (auto& nPtr : graph->getNodes()) {
+                    if (nPtr->op == IROp::Phi && nPtr->controlInput == node) {
+                        dependentPhis.push_back(nPtr.get());
+                    }
+                }
+                for (IRNode* phi : dependentPhis) {
+                    IRNode* validData = nullptr;
+                    if (validIndex != -1 && validIndex < static_cast<int>(phi->dataInputs.size())) {
+                        validData = phi->dataInputs[validIndex];
+                    }
+                    if (validData) {
+                        replaceNode(graph, phi, validData);
+                    }
+                }
                 replaceNode(graph, node, firstValid);
                 changed = true;
             }

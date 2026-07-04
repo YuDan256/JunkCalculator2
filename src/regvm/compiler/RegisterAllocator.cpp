@@ -147,11 +147,29 @@ void RegisterAllocator::allocate(IRGraph* graph) {
 
     if (numVRegs == 0) return;
 
+    std::unordered_set<IRNode*> capturedNodes;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op == IROp::Closure) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
+        }
+    }
+
+    std::vector<bool> isUncoloredConst(numVRegs, false);
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op == IROp::Constant && nodePtr->virtualReg != -1) {
+            if (!capturedNodes.count(nodePtr.get())) {
+                isUncoloredConst[nodePtr->virtualReg] = true;
+            }
+        }
+    }
+
     for (auto& bb : blocks) {
         for (IRNode* inst : bb->instructions) {
-            if (inst->op == IROp::Constant) continue; // 常量不占用物理寄存器
+            if (inst->virtualReg != -1 && isUncoloredConst[inst->virtualReg]) continue; // 未捕获的常量不占用物理寄存器
             for (IRNode* src : inst->dataInputs) {
-                if (src && src->virtualReg != -1 && src->op != IROp::Constant && !bb->def.count(src->virtualReg)) {
+                if (src && src->virtualReg != -1 && !isUncoloredConst[src->virtualReg] && !bb->def.count(src->virtualReg)) {
                     bb->use.insert(src->virtualReg);
                 }
             }
@@ -225,7 +243,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                 }
             }
             for (IRNode* src : inst->dataInputs) {
-                if (src && src->virtualReg != -1 && src->op != IROp::Constant) {
+                if (src && src->virtualReg != -1 && !isUncoloredConst[src->virtualReg]) {
                     live.insert(src->virtualReg);
                 }
             }
@@ -242,22 +260,13 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     std::vector<bool> removed(numVRegs, false);
     std::stack<int> selectStack;
 
-    std::unordered_set<IRNode*> capturedNodes;
-    for (auto& nodePtr : graph->getNodes()) {
-        if (nodePtr->op == IROp::Closure) {
-            for (IRNode* in : nodePtr->dataInputs) {
-                if (in) capturedNodes.insert(in);
-            }
-        }
-    }
-
     // 预着色：函数参数必须分配到指定的连续物理寄存器
     for (auto& nodePtr : graph->getNodes()) {
         if (nodePtr->op == IROp::Parameter && nodePtr->virtualReg != -1) {
             color[nodePtr->virtualReg] = nodePtr->payload1;
             removed[nodePtr->virtualReg] = true;
         } else if (nodePtr->op == IROp::Constant && nodePtr->virtualReg != -1) {
-            if (!capturedNodes.count(nodePtr.get())) {
+            if (isUncoloredConst[nodePtr->virtualReg]) {
                 // 常量节点不参与着色，它们将在生成字节码时使用 K-Bit 或被加载到暂存器
                 removed[nodePtr->virtualReg] = true;
             }

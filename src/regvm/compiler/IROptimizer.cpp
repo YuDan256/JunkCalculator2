@@ -57,9 +57,18 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
     bool changed = false;
     std::unordered_map<size_t, IRNode*> constMap;
     
+    std::unordered_set<IRNode*> capturedNodes;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op == IROp::Closure) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
+        }
+    }
+
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
-        if (node->op == IROp::Constant) {
+        if (node->op == IROp::Constant && !capturedNodes.count(node)) {
             size_t hash = ValueHasher{}(node->constVal);
             auto it = constMap.find(hash);
             if (it != constMap.end() && Value::equals(it->second->constVal, node->constVal)) {
@@ -75,12 +84,21 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
 
 bool IROptimizer::foldConstants(IRGraph* graph) {
     bool changed = false;
+    std::unordered_set<IRNode*> capturedNodes;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op == IROp::Closure) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
+        }
+    }
+
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
         if (node->op == IROp::Nop || node->op == IROp::Constant) continue;
 
         // 一元运算折叠
-        if (node->dataInputs.size() == 1 && node->dataInputs[0] && node->dataInputs[0]->op == IROp::Constant) {
+        if (node->dataInputs.size() == 1 && node->dataInputs[0] && node->dataInputs[0]->op == IROp::Constant && !capturedNodes.count(node->dataInputs[0])) {
             Value val = node->dataInputs[0]->constVal;
             try {
                 if (node->op == IROp::Neg) { node->constVal = -val; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
@@ -94,7 +112,7 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
             IRNode* leftNode = node->dataInputs[0];
             IRNode* rightNode = node->dataInputs[1];
             
-            if (leftNode->op == IROp::Constant && rightNode->op == IROp::Constant) {
+            if (leftNode->op == IROp::Constant && rightNode->op == IROp::Constant && !capturedNodes.count(leftNode) && !capturedNodes.count(rightNode)) {
                 Value left = leftNode->constVal;
                 Value right = rightNode->constVal;
                 try {
@@ -125,9 +143,18 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
 
 bool IROptimizer::foldControlFlow(IRGraph* graph) {
     bool changed = false;
+    std::unordered_set<IRNode*> capturedNodes;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op == IROp::Closure) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
+        }
+    }
+
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
-        if (node->op == IROp::If && node->dataInputs.size() == 1 && node->dataInputs[0] && node->dataInputs[0]->op == IROp::Constant) {
+        if (node->op == IROp::If && node->dataInputs.size() == 1 && node->dataInputs[0] && node->dataInputs[0]->op == IROp::Constant && !capturedNodes.count(node->dataInputs[0])) {
             bool cond = node->dataInputs[0]->constVal.truthy();
             
             IRNode* ifTrueNode = nullptr;

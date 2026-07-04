@@ -89,7 +89,7 @@ static std::vector<uint32_t> buildInstAsBx(OpCode op, int a, int sbx) {
 }
 
 static int ensureReg(IRNode* in, std::vector<uint32_t>& preWords, Chunk& chunk, int scratchReg) {
-    if (in->op == IROp::Constant) {
+    if (in->op == IROp::Constant && in->physicalReg == -1) {
         int idx = chunk.addConstant(in->constVal);
         auto loadk = buildInstABx(OpCode::LOADK, scratchReg, idx);
         preWords.insert(preWords.end(), loadk.begin(), loadk.end());
@@ -146,10 +146,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     int b = 0, c = 0;
                     OpType bType = OpType::KBIT_REG;
                     OpType cType = OpType::KBIT_REG;
-                    if (node->dataInputs[0]->op == IROp::Constant) {
+                    if (node->dataInputs[0]->op == IROp::Constant && node->dataInputs[0]->physicalReg == -1) {
                         b = chunk.addConstant(node->dataInputs[0]->constVal); bType = OpType::KBIT_KST;
                     } else b = node->dataInputs[0]->physicalReg;
-                    if (node->dataInputs[1]->op == IROp::Constant) {
+                    if (node->dataInputs[1]->op == IROp::Constant && node->dataInputs[1]->physicalReg == -1) {
                         c = chunk.addConstant(node->dataInputs[1]->constVal); cType = OpType::KBIT_KST;
                     } else c = node->dataInputs[1]->physicalReg;
                     return buildInstABC(op, a, b, c, bType, cType);

@@ -2771,6 +2771,8 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         currentControl = inheritNode;
     }
         
+    writeVariable(expr->name.lexeme, classNode, false, false);
+        
     for (auto& method : expr->methods) {
         if (compiledFunctions) {
             auto fnDef = std::make_shared<CompiledFunction>();
@@ -2885,7 +2887,6 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         }
     }
         
-    declareVariable(expr->name.lexeme, classNode);
     lastValue = classNode;
 }
 
@@ -2895,7 +2896,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     nsNode->setControl(currentControl);
     nsNode->name = expr->name.lexeme;
     currentControl = nsNode;
-    declareVariable(expr->name.lexeme, nsNode);
+    writeVariable(expr->name.lexeme, nsNode, false, false);
     lastValue = nsNode;
 }
     

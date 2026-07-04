@@ -72,6 +72,10 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
                 if (in) capturedNodes.insert(in);
             }
         } else if (nodePtr->op == IROp::BuildNamespace) {
+            // 保护 slotNode 不被常量去重（它们的值将在寄存器分配后由回调填入）
+            for (uint32_t i = 0; i < nodePtr->payload1; ++i) {
+                if (nodePtr->dataInputs[i * 3 + 1]) capturedNodes.insert(nodePtr->dataInputs[i * 3 + 1]);
+            }
             for (uint32_t i = nodePtr->payload1 * 3; i < nodePtr->dataInputs.size(); ++i) {
                 if (nodePtr->dataInputs[i]) capturedNodes.insert(nodePtr->dataInputs[i]);
             }

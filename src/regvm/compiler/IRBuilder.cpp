@@ -3325,8 +3325,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         keyNode->setControl(currentControl);
         nsNode->addData(keyNode);
         
-        // 使用唯一的虚拟值防止在 postAllocCallbacks 执行前被常量去重优化合并
-        IRNode* slotNode = graph->createConstant(Value(static_cast<double>(-1000000 - i)));
+        IRNode* slotNode = graph->createConstant(Value(0.0));
         slotNode->setControl(currentControl);
         nsNode->addData(slotNode);
         

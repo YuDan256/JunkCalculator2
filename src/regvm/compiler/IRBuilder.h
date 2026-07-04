@@ -45,9 +45,9 @@ private:
 
     struct IRLoopInfo {
         IRNode* loopNode;
-        std::unordered_map<std::string, IRNode*> loopPhis;
+        std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack;
         IRNode* breakMerge;
-        std::vector<std::unordered_map<std::string, IRNode*>> breakEnvs;
+        std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> breakEnvs;
     };
     std::vector<IRLoopInfo> loopStack;
 

@@ -3964,17 +3964,31 @@ Value VM::run(int targetFrameDepth) {
                 throw std::runtime_error("RegVM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
         }
         } catch (const ValueException& ex) {
-            if (!handleExceptionUnwind(ex.val)) throw;
+            if (!handleExceptionUnwind(ex.val)) {
+                int line = (frame->ip > 0 && frame->ip <= static_cast<int>(chunk->lines.size())) ? chunk->lines[frame->ip - 1] : 0;
+                std::string msg = ex.val.isString() ? ex.val.asString() : "ValueException";
+                throw std::runtime_error("[Line " + std::to_string(line) + "] " + msg);
+            }
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;
             code = chunk->code.data();
         } catch (const std::exception& ex) {
-            if (!handleExceptionUnwind(Value(ex.what()))) throw;
+            if (!handleExceptionUnwind(Value(ex.what()))) {
+                int line = (frame->ip > 0 && frame->ip <= static_cast<int>(chunk->lines.size())) ? chunk->lines[frame->ip - 1] : 0;
+                std::string msg = ex.what();
+                if (msg.find("[Line ") != 0) {
+                    msg = "[Line " + std::to_string(line) + "] " + msg;
+                }
+                throw std::runtime_error(msg);
+            }
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;
             code = chunk->code.data();
         } catch (...) {
-            if (!handleExceptionUnwind(Value("Unknown VM Error"))) throw;
+            if (!handleExceptionUnwind(Value("Unknown VM Error"))) {
+                int line = (frame->ip > 0 && frame->ip <= static_cast<int>(chunk->lines.size())) ? chunk->lines[frame->ip - 1] : 0;
+                throw std::runtime_error("[Line " + std::to_string(line) + "] Unknown VM Error");
+            }
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;
             code = chunk->code.data();

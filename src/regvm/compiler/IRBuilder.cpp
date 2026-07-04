@@ -510,15 +510,17 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);
     
-    std::unordered_map<std::string, IRNode*> loopPhis;
-    for (const auto& pair : envStack.back()) {
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(loopNode);
-        phi->addData(pair.second);
-        phi->name = pair.first;
-        loopPhis[pair.first] = phi;
+    std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
+        }
     }
-    envStack.back() = loopPhis;
+    envStack = loopPhisStack;
     currentControl = loopNode;
     
     IRNode* exitControl = graph->createNode(IROp::Merge);
@@ -539,7 +541,7 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     exitControl->addData(ifTrue);
-    auto exitEnv = envStack.back();
+    auto exitEnvStack = envStack;
     
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
@@ -571,13 +573,15 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     if (!condFailMerge->dataInputs.empty()) loopNode->addData(condFailMerge);
     if (!failMerge->dataInputs.empty()) loopNode->addData(failMerge);
     
-    for (auto& pair : loopPhis) {
-        pair.second->addData(readVariable(pair.first));
-        if (!condFailMerge->dataInputs.empty()) pair.second->addData(readVariable(pair.first));
-        if (!failMerge->dataInputs.empty()) pair.second->addData(readVariable(pair.first));
+    for (size_t i = 0; i < loopPhisStack.size(); ++i) {
+        for (auto& pair : loopPhisStack[i]) {
+            pair.second->addData(readVariable(pair.first));
+            if (!condFailMerge->dataInputs.empty()) pair.second->addData(readVariable(pair.first));
+            if (!failMerge->dataInputs.empty()) pair.second->addData(readVariable(pair.first));
+        }
     }
     
-    envStack.back() = exitEnv;
+    envStack = exitEnvStack;
     currentControl = exitControl;
 }
 
@@ -697,7 +701,7 @@ void IRBuilder::visitBinary(Binary* expr) {
         IRNode* ifFalse = graph->createNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         
-        auto baseEnv = envStack.back();
+        auto baseEnv = envStack;
         
         IRNode* mergeNode = graph->createNode(IROp::Merge);
         IRNode* resultPhi = graph->createValueNode(IROp::Phi);
@@ -708,54 +712,58 @@ void IRBuilder::visitBinary(Binary* expr) {
             expr->right->accept(*this);
             mergeNode->addData(currentControl);
             resultPhi->addData(lastValue);
-            auto rightEnv = envStack.back();
+            auto rightEnv = envStack;
             
-            envStack.back() = baseEnv;
+            envStack = baseEnv;
             currentControl = ifFalse;
             mergeNode->addData(currentControl);
             resultPhi->addData(leftVal);
             
-            envStack.back() = baseEnv;
-            std::unordered_set<std::string> modifiedVars;
-            for (const auto& pair : rightEnv) {
-                if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
-            }
-            for (const auto& name : modifiedVars) {
-                IRNode* tNode = rightEnv.count(name) ? rightEnv[name] : baseEnv[name];
-                IRNode* eNode = baseEnv[name];
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(mergeNode);
-                phi->addData(tNode);
-                phi->addData(eNode);
-                phi->name = name;
-                envStack.back()[name] = phi;
+            envStack = baseEnv;
+            for (size_t i = 0; i < baseEnv.size(); ++i) {
+                std::unordered_set<std::string> modifiedVars;
+                for (const auto& pair : rightEnv[i]) {
+                    if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                }
+                for (const auto& name : modifiedVars) {
+                    IRNode* tNode = rightEnv[i].count(name) ? rightEnv[i].at(name) : baseEnv[i].at(name);
+                    IRNode* eNode = baseEnv[i].at(name);
+                    IRNode* phi = graph->createValueNode(IROp::Phi);
+                    phi->setControl(mergeNode);
+                    phi->addData(tNode);
+                    phi->addData(eNode);
+                    phi->name = name;
+                    envStack[i][name] = phi;
+                }
             }
         } else {
             currentControl = ifTrue;
             mergeNode->addData(currentControl);
             resultPhi->addData(leftVal);
             
-            envStack.back() = baseEnv;
+            envStack = baseEnv;
             currentControl = ifFalse;
             expr->right->accept(*this);
             mergeNode->addData(currentControl);
             resultPhi->addData(lastValue);
-            auto rightEnv = envStack.back();
+            auto rightEnv = envStack;
             
-            envStack.back() = baseEnv;
-            std::unordered_set<std::string> modifiedVars;
-            for (const auto& pair : rightEnv) {
-                if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
-            }
-            for (const auto& name : modifiedVars) {
-                IRNode* tNode = baseEnv[name];
-                IRNode* eNode = rightEnv.count(name) ? rightEnv[name] : baseEnv[name];
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(mergeNode);
-                phi->addData(tNode);
-                phi->addData(eNode);
-                phi->name = name;
-                envStack.back()[name] = phi;
+            envStack = baseEnv;
+            for (size_t i = 0; i < baseEnv.size(); ++i) {
+                std::unordered_set<std::string> modifiedVars;
+                for (const auto& pair : rightEnv[i]) {
+                    if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                }
+                for (const auto& name : modifiedVars) {
+                    IRNode* tNode = baseEnv[i].at(name);
+                    IRNode* eNode = rightEnv[i].count(name) ? rightEnv[i].at(name) : baseEnv[i].at(name);
+                    IRNode* phi = graph->createValueNode(IROp::Phi);
+                    phi->setControl(mergeNode);
+                    phi->addData(tNode);
+                    phi->addData(eNode);
+                    phi->name = name;
+                    envStack[i][name] = phi;
+                }
             }
         }
         
@@ -984,20 +992,21 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     ifFalse->setControl(ifNode);
 
     // 3. 保存当前环境快照
-    auto baseEnv = envStack.back();
+    auto baseEnv = envStack;
 
     // 4. 编译 True 分支
     currentControl = ifTrue;
-    envStack.emplace_back(baseEnv); // ★ 自动创建块级作用域
+    envStack.emplace_back(); // ★ 自动创建块级作用域
     expr->thenBranch->accept(*this);
     IRNode* thenControl = currentControl;
     IRNode* thenVal = lastValue;
-    auto thenEnv = envStack.back();
+    auto thenEnv = envStack;
     envStack.pop_back();
 
     // 5. 编译 False 分支
+    envStack = baseEnv;
     currentControl = ifFalse;
-    envStack.emplace_back(baseEnv); // ★ 自动创建块级作用域
+    envStack.emplace_back(); // ★ 自动创建块级作用域
     IRNode* elseVal = nullptr;
     if (expr->elseBranch) {
         expr->elseBranch->accept(*this);
@@ -1007,8 +1016,9 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
         elseVal->setControl(currentControl);
     }
     IRNode* elseControl = currentControl;
-    auto elseEnv = envStack.back();
+    auto elseEnv = envStack;
     envStack.pop_back();
+    envStack = baseEnv;
 
     // 6. 创建 Merge 节点汇合控制流
     IRNode* mergeNode = graph->createNode(IROp::Merge);
@@ -1017,25 +1027,27 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     currentControl = mergeNode;
 
     // 7. 合并环境 (生成 Phi 节点)
-    std::unordered_set<std::string> modifiedVars;
-    for (const auto& pair : thenEnv) {
-        if (baseEnv.count(pair.first) && baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
-    }
-    for (const auto& pair : elseEnv) {
-        if (baseEnv.count(pair.first) && baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
-    }
+    for (size_t i = 0; i < baseEnv.size(); ++i) {
+        std::unordered_set<std::string> modifiedVars;
+        for (const auto& pair : thenEnv[i]) {
+            if (baseEnv[i].count(pair.first) && baseEnv[i][pair.first] != pair.second) modifiedVars.insert(pair.first);
+        }
+        for (const auto& pair : elseEnv[i]) {
+            if (baseEnv[i].count(pair.first) && baseEnv[i][pair.first] != pair.second) modifiedVars.insert(pair.first);
+        }
 
-    for (const auto& name : modifiedVars) {
-        IRNode* tNode = thenEnv.count(name) ? thenEnv[name] : baseEnv[name];
-        IRNode* eNode = elseEnv.count(name) ? elseEnv[name] : baseEnv[name];
-        
-        if (tNode != eNode) {
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(mergeNode);
-            phi->addData(tNode);
-            phi->addData(eNode);
-            phi->name = name;
-            envStack.back()[name] = phi; // 更新环境为 Phi 节点
+        for (const auto& name : modifiedVars) {
+            IRNode* tNode = thenEnv[i].count(name) ? thenEnv[i].at(name) : baseEnv[i].at(name);
+            IRNode* eNode = elseEnv[i].count(name) ? elseEnv[i].at(name) : baseEnv[i].at(name);
+            
+            if (tNode != eNode) {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(mergeNode);
+                phi->addData(tNode);
+                phi->addData(eNode);
+                phi->name = name;
+                envStack[i][name] = phi; // 更新环境为 Phi 节点
+            }
         }
     }
 
@@ -1141,24 +1153,26 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
 }
 
 void IRBuilder::visitWhileExpr(WhileExpr* expr) {
-    envStack.emplace_back(envStack.back()); // ★ 自动创建块级作用域
+    envStack.emplace_back(); // ★ 自动创建块级作用域
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);
     
-    std::unordered_map<std::string, IRNode*> loopPhis;
-    for (const auto& pair : envStack.back()) {
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(loopNode);
-        phi->addData(pair.second);
-        phi->name = pair.first;
-        loopPhis[pair.first] = phi;
+    std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
+        }
     }
-    envStack.back() = loopPhis;
+    envStack = loopPhisStack;
     currentControl = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhis, breakMerge, {}});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -1177,62 +1191,63 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     expr->body->accept(*this);
     
     loopNode->addData(currentControl);
-    for (auto& pair : loopPhis) {
-        pair.second->addData(readVariable(pair.first));
+    for (size_t i = 0; i < loopPhisStack.size(); ++i) {
+        for (auto& pair : loopPhisStack[i]) {
+            pair.second->addData(readVariable(pair.first));
+        }
     }
     
     breakMerge->addData(ifFalse);
-    loopStack.back().breakEnvs.push_back(envStack.back());
+    loopStack.back().breakEnvs.push_back(envStack);
     
     currentControl = breakMerge;
     
     auto& breakEnvs = loopStack.back().breakEnvs;
-    std::unordered_map<std::string, IRNode*> exitEnv;
-    for (const auto& pair : envStack.back()) {
-        const std::string& name = pair.first;
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(breakMerge);
-        for (auto& env : breakEnvs) {
-            phi->addData(env.count(name) ? env.at(name) : graph->createConstant(Value::none()));
+    std::vector<std::unordered_map<std::string, IRNode*>> exitEnvStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            const std::string& name = pair.first;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(breakMerge);
+            for (auto& env : breakEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            }
+            phi->name = name;
+            exitEnvStack[i][name] = phi;
         }
-        phi->name = name;
-        exitEnv[name] = phi;
     }
     
     loopStack.pop_back();
     
-    auto finalEnv = exitEnv;
-    envStack.pop_back();
-    for (const auto& pair : finalEnv) {
-        if (envStack.back().count(pair.first)) {
-            envStack.back()[pair.first] = pair.second;
-        }
-    }
+    envStack = exitEnvStack;
+    envStack.pop_back(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitForExpr(ForExpr* expr) {
-    envStack.emplace_back(envStack.back()); // ★ 自动创建块级作用域
+    envStack.emplace_back(); // ★ 自动创建块级作用域
     expr->initializer->accept(*this);
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);
     
-    std::unordered_map<std::string, IRNode*> loopPhis;
-    for (const auto& pair : envStack.back()) {
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(loopNode);
-        phi->addData(pair.second);
-        phi->name = pair.first;
-        loopPhis[pair.first] = phi;
+    std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
+        }
     }
-    envStack.back() = loopPhis;
+    envStack = loopPhisStack;
     currentControl = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhis, breakMerge, {}});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -1252,37 +1267,36 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     expr->update->accept(*this);
     
     loopNode->addData(currentControl);
-    for (auto& pair : loopPhis) {
-        pair.second->addData(readVariable(pair.first));
+    for (size_t i = 0; i < loopPhisStack.size(); ++i) {
+        for (auto& pair : loopPhisStack[i]) {
+            pair.second->addData(readVariable(pair.first));
+        }
     }
     
     breakMerge->addData(ifFalse);
-    loopStack.back().breakEnvs.push_back(loopPhis);
+    loopStack.back().breakEnvs.push_back(loopPhisStack);
     
     currentControl = breakMerge;
     
     auto& breakEnvs = loopStack.back().breakEnvs;
-    std::unordered_map<std::string, IRNode*> exitEnv;
-    for (const auto& pair : envStack.back()) {
-        const std::string& name = pair.first;
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(breakMerge);
-        for (auto& env : breakEnvs) {
-            phi->addData(env.count(name) ? env.at(name) : graph->createConstant(Value::none()));
+    std::vector<std::unordered_map<std::string, IRNode*>> exitEnvStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            const std::string& name = pair.first;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(breakMerge);
+            for (auto& env : breakEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            }
+            phi->name = name;
+            exitEnvStack[i][name] = phi;
         }
-        phi->name = name;
-        exitEnv[name] = phi;
     }
     
     loopStack.pop_back();
     
-    auto finalEnv = exitEnv;
-    envStack.pop_back();
-    for (const auto& pair : finalEnv) {
-        if (envStack.back().count(pair.first)) {
-            envStack.back()[pair.first] = pair.second;
-        }
-    }
+    envStack = exitEnvStack;
+    envStack.pop_back(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -1292,7 +1306,7 @@ void IRBuilder::visitBreakExpr(BreakExpr*) {
     if (loopStack.empty()) throw std::runtime_error("IRBuilder: break outside loop");
     auto& loop = loopStack.back();
     loop.breakMerge->addData(currentControl);
-    loop.breakEnvs.push_back(envStack.back());
+    loop.breakEnvs.push_back(envStack);
     
     currentControl = graph->createNode(IROp::Merge); // Dead code
 }
@@ -1301,8 +1315,10 @@ void IRBuilder::visitContinueExpr(ContinueExpr*) {
     if (loopStack.empty()) throw std::runtime_error("IRBuilder: continue outside loop");
     auto& loop = loopStack.back();
     loop.loopNode->addData(currentControl);
-    for (auto& pair : loop.loopPhis) {
-        pair.second->addData(readVariable(pair.first));
+    for (size_t i = 0; i < loop.loopPhisStack.size(); ++i) {
+        for (auto& pair : loop.loopPhisStack[i]) {
+            pair.second->addData(readVariable(pair.first));
+        }
     }
     
     currentControl = graph->createNode(IROp::Merge); // Dead code
@@ -1852,7 +1868,7 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
 }
 
 void IRBuilder::visitForInExpr(ForInExpr* expr) {
-    envStack.emplace_back(envStack.back()); // ★ 自动创建块级作用域
+    envStack.emplace_back(); // ★ 自动创建块级作用域
     expr->iterable->accept(*this);
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
     iterNode->setControl(currentControl);
@@ -1862,19 +1878,21 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);
     
-    std::unordered_map<std::string, IRNode*> loopPhis;
-    for (const auto& pair : envStack.back()) {
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(loopNode);
-        phi->addData(pair.second);
-        phi->name = pair.first;
-        loopPhis[pair.first] = phi;
+    std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
+        }
     }
-    envStack.back() = loopPhis;
+    envStack = loopPhisStack;
     currentControl = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhis, breakMerge, {}});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}});
     
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     nextNode->setControl(currentControl);
@@ -1892,7 +1910,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     breakMerge->addData(ifTrue);
-    loopStack.back().breakEnvs.push_back(envStack.back());
+    loopStack.back().breakEnvs.push_back(envStack);
     
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
@@ -1905,39 +1923,38 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     expr->body->accept(*this);
     
     loopNode->addData(currentControl);
-    for (auto& pair : loopPhis) {
-        pair.second->addData(readVariable(pair.first));
+    for (size_t i = 0; i < loopPhisStack.size(); ++i) {
+        for (auto& pair : loopPhisStack[i]) {
+            pair.second->addData(readVariable(pair.first));
+        }
     }
     
     if (!failMerge->dataInputs.empty()) {
         breakMerge->addData(failMerge);
-        loopStack.back().breakEnvs.push_back(envStack.back());
+        loopStack.back().breakEnvs.push_back(envStack);
     }
     
     currentControl = breakMerge;
     
     auto& breakEnvs = loopStack.back().breakEnvs;
-    std::unordered_map<std::string, IRNode*> exitEnv;
-    for (const auto& pair : envStack.back()) {
-        const std::string& name = pair.first;
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(breakMerge);
-        for (auto& env : breakEnvs) {
-            phi->addData(env.count(name) ? env.at(name) : graph->createConstant(Value::none()));
+    std::vector<std::unordered_map<std::string, IRNode*>> exitEnvStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            const std::string& name = pair.first;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(breakMerge);
+            for (auto& env : breakEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            }
+            phi->name = name;
+            exitEnvStack[i][name] = phi;
         }
-        phi->name = name;
-        exitEnv[name] = phi;
     }
     
     loopStack.pop_back();
     
-    auto finalEnv = exitEnv;
-    envStack.pop_back();
-    for (const auto& pair : finalEnv) {
-        if (envStack.back().count(pair.first)) {
-            envStack.back()[pair.first] = pair.second;
-        }
-    }
+    envStack = exitEnvStack;
+    envStack.pop_back(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -1957,7 +1974,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* tryBegin = graph->createNode(IROp::TryBegin);
     tryBegin->setControl(currentControl);
 
-    auto baseEnv = envStack.back();
+    auto baseEnv = envStack;
 
     // 1. 正常分支
     currentControl = tryBegin;
@@ -1966,10 +1983,10 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     tryEnd->setControl(currentControl);
     IRNode* normalControl = tryEnd;
     IRNode* normalVal = lastValue;
-    auto normalEnv = envStack.back();
+    auto normalEnv = envStack;
 
     // 2. 异常分支
-    envStack.back() = baseEnv;
+    envStack = baseEnv;
     
     IRNode* catchNode = graph->createValueNode(IROp::Catch);
     catchNode->setControl(tryBegin);
@@ -1993,14 +2010,8 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* catchControl = currentControl;
     IRNode* catchVal = lastValue;
     
-    auto catchScopeEnv = envStack.back();
     envStack.pop_back();
-    for (const auto& pair : catchScopeEnv) {
-        if (envStack.back().count(pair.first)) {
-            envStack.back()[pair.first] = pair.second;
-        }
-    }
-    auto catchEnv = envStack.back();
+    auto catchEnv = envStack;
 
     // 3. 汇合
     IRNode* mergeNode = graph->createNode(IROp::Merge);
@@ -2008,25 +2019,27 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     mergeNode->addData(catchControl);
     currentControl = mergeNode;
 
-    envStack.back() = baseEnv;
-    std::unordered_set<std::string> modifiedVars;
-    for (const auto& pair : normalEnv) {
-        if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
-    }
-    for (const auto& pair : catchEnv) {
-        if (baseEnv[pair.first] != pair.second) modifiedVars.insert(pair.first);
-    }
+    envStack = baseEnv;
+    for (size_t i = 0; i < baseEnv.size(); ++i) {
+        std::unordered_set<std::string> modifiedVars;
+        for (const auto& pair : normalEnv[i]) {
+            if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+        }
+        for (const auto& pair : catchEnv[i]) {
+            if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+        }
 
-    for (const auto& name : modifiedVars) {
-        IRNode* nNode = normalEnv.count(name) ? normalEnv[name] : baseEnv[name];
-        IRNode* cNode = catchEnv.count(name) ? catchEnv[name] : baseEnv[name];
-        if (nNode != cNode) {
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(mergeNode);
-            phi->addData(nNode);
-            phi->addData(cNode);
-            phi->name = name;
-            envStack.back()[name] = phi;
+        for (const auto& name : modifiedVars) {
+            IRNode* nNode = normalEnv[i].count(name) ? normalEnv[i].at(name) : baseEnv[i].at(name);
+            IRNode* cNode = catchEnv[i].count(name) ? catchEnv[i].at(name) : baseEnv[i].at(name);
+            if (nNode != cNode) {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(mergeNode);
+                phi->addData(nNode);
+                phi->addData(cNode);
+                phi->name = name;
+                envStack[i][name] = phi;
+            }
         }
     }
 
@@ -2059,9 +2072,13 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
     resultPhi->setControl(endMerge);
     
     IRNode* currentFailControl = currentControl;
+    auto baseEnv = envStack;
+    std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> branchEnvs;
     
     for (auto& caseBranch : expr->cases) {
         currentControl = currentFailControl;
+        envStack = baseEnv;
+        envStack.emplace_back(); // Scope for branch
         
         IRNode* caseSuccessMerge = graph->createNode(IROp::Merge);
         IRNode* nextCaseMerge = graph->createNode(IROp::Merge);
@@ -2094,10 +2111,14 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
         endMerge->addData(currentControl);
         resultPhi->addData(lastValue);
         
+        envStack.pop_back();
+        branchEnvs.push_back(envStack);
         currentFailControl = nextCaseMerge;
     }
     
     currentControl = currentFailControl;
+    envStack = baseEnv;
+    envStack.emplace_back();
     if (expr->defaultBody) {
         expr->defaultBody->accept(*this);
         endMerge->addData(currentControl);
@@ -2107,6 +2128,29 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
         noneNode->setControl(currentControl);
         endMerge->addData(currentControl);
         resultPhi->addData(noneNode);
+    }
+    envStack.pop_back();
+    branchEnvs.push_back(envStack);
+    
+    envStack = baseEnv;
+    for (size_t i = 0; i < baseEnv.size(); ++i) {
+        std::unordered_set<std::string> modifiedVars;
+        for (auto& bEnv : branchEnvs) {
+            for (const auto& pair : bEnv[i]) {
+                if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) {
+                    modifiedVars.insert(pair.first);
+                }
+            }
+        }
+        for (const auto& name : modifiedVars) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(endMerge);
+            for (auto& bEnv : branchEnvs) {
+                phi->addData(bEnv[i].count(name) ? bEnv[i].at(name) : baseEnv[i].at(name));
+            }
+            phi->name = name;
+            envStack[i][name] = phi;
+        }
     }
     
     currentControl = endMerge;
@@ -2543,9 +2587,12 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     resultPhi->setControl(endMerge);
     
     IRNode* currentFailControl = currentControl;
+    auto baseEnv = envStack;
+    std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> branchEnvs;
     
     for (auto& branch : expr->branches) {
         currentControl = currentFailControl;
+        envStack = baseEnv;
         envStack.emplace_back(); // Scope for branch
         
         IRNode* branchSuccessMerge = graph->createNode(IROp::Merge);
@@ -2583,6 +2630,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         resultPhi->addData(lastValue);
         
         envStack.pop_back();
+        branchEnvs.push_back(envStack);
         currentFailControl = nextBranchMerge;
     }
     
@@ -2591,6 +2639,28 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     noneNode->setControl(currentControl);
     endMerge->addData(currentControl);
     resultPhi->addData(noneNode);
+    branchEnvs.push_back(baseEnv); // Fallback branch environment
+    
+    envStack = baseEnv;
+    for (size_t i = 0; i < baseEnv.size(); ++i) {
+        std::unordered_set<std::string> modifiedVars;
+        for (auto& bEnv : branchEnvs) {
+            for (const auto& pair : bEnv[i]) {
+                if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) {
+                    modifiedVars.insert(pair.first);
+                }
+            }
+        }
+        for (const auto& name : modifiedVars) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(endMerge);
+            for (auto& bEnv : branchEnvs) {
+                phi->addData(bEnv[i].count(name) ? bEnv[i].at(name) : baseEnv[i].at(name));
+            }
+            phi->name = name;
+            envStack[i][name] = phi;
+        }
+    }
     
     currentControl = endMerge;
     lastValue = resultPhi;

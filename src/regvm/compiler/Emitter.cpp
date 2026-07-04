@@ -416,6 +416,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         auto set = buildInstABC(node->op == IROp::IndexSet ? OpCode::INDEX_SET : OpCode::SLICE_SET, spillBase, 0, static_cast<int>(node->payload1));
                         inst.words.insert(inst.words.end(), set.begin(), set.end());
+                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
                         break;
                     }
                     case IROp::IterInit: {

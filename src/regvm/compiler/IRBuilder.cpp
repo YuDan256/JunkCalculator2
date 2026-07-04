@@ -426,6 +426,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     }
                 }
 
+                IRNode* finalNode = nullptr;
                 if (hasSlice) {
                     std::vector<IRNode*> sliceArgs;
                     for (auto& idxExpr : chain[0]->indices) {
@@ -451,6 +452,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     node->addData(valNode);
                     node->payload1 = static_cast<uint32_t>(chain[0]->indices.size());
                     currentControl = node;
+                    finalNode = node;
                 } else {
                     std::vector<std::vector<IRNode*>> allIndices;
                     for (size_t i = 0; i < chain.size(); ++i) {
@@ -471,6 +473,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         setIdx->addData(valNode);
                         setIdx->payload1 = static_cast<uint32_t>(allIndices[0].size());
                         currentControl = setIdx;
+                        finalNode = setIdx;
                     } else {
                         std::vector<IRNode*> chainObjs;
                         chainObjs.push_back(objNode);
@@ -492,21 +495,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         setNode->addData(valNode);
                         setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
                         currentControl = setNode;
+                        finalNode = setNode;
                         
                         for (int level = depth - 2; level >= 0; --level) {
                             IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
                             backSetNode->setControl(currentControl);
                             backSetNode->addData(chainObjs[level]);
                             for (auto* iNode : allIndices[level]) backSetNode->addData(iNode);
-                            backSetNode->addData(chainObjs[level + 1]);
+                            backSetNode->addData(finalNode);
                             backSetNode->payload1 = static_cast<uint32_t>(allIndices[level].size());
                             currentControl = backSetNode;
+                            finalNode = backSetNode;
                         }
                     }
                 }
                 
                 if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
-                    writeVariable(var->name.lexeme, objNode);
+                    writeVariable(var->name.lexeme, finalNode);
                 }
             } else {
                 throw std::runtime_error("IRBuilder Error: Invalid L-value in destructuring assignment.");
@@ -2289,7 +2294,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         currentControl = node;
         
         if (!expr->hasObjectExpr()) {
-            writeVariable(expr->name.lexeme, rootObjNode);
+            writeVariable(expr->name.lexeme, node);
         }
         lastValue = valNode;
         return;
@@ -2314,7 +2319,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         currentControl = node;
         
         if (!expr->hasObjectExpr()) {
-            writeVariable(expr->name.lexeme, rootObjNode);
+            writeVariable(expr->name.lexeme, node);
         }
         lastValue = valNode;
     } else {
@@ -2339,18 +2344,20 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         setNode->payload1 = static_cast<uint32_t>(indicesTmp[depth - 1].size());
         currentControl = setNode;
         
+        IRNode* finalNode = setNode;
         for (int level = depth - 2; level >= 0; --level) {
             IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
             backSetNode->setControl(currentControl);
             backSetNode->addData(chainObjs[level]);
             for (auto* idx : indicesTmp[level]) backSetNode->addData(idx);
-            backSetNode->addData(chainObjs[level + 1]);
+            backSetNode->addData(finalNode);
             backSetNode->payload1 = static_cast<uint32_t>(indicesTmp[level].size());
             currentControl = backSetNode;
+            finalNode = backSetNode;
         }
         
         if (!expr->hasObjectExpr()) {
-            writeVariable(expr->name.lexeme, rootObjNode);
+            writeVariable(expr->name.lexeme, finalNode);
         }
         lastValue = valNode;
     }
@@ -2580,6 +2587,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         currentControl = setProp;
     } else if (dynamic_cast<IndexAccess*>(expr->target.get())) {
         int depth = static_cast<int>(chain.size());
+        IRNode* finalNode = nullptr;
         if (depth == 1) {
             IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
             setIdx->setControl(currentControl);
@@ -2588,6 +2596,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             setIdx->addData(opNode);
             setIdx->payload1 = static_cast<uint32_t>(indices.size());
             currentControl = setIdx;
+            finalNode = setIdx;
         } else {
             std::vector<IRNode*> chainObjs;
             chainObjs.push_back(objNode);
@@ -2619,15 +2628,25 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             setNode->addData(opNode);
             setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
             currentControl = setNode;
+            finalNode = setNode;
             
             for (int level = depth - 2; level >= 0; --level) {
                 IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
                 backSetNode->setControl(currentControl);
                 backSetNode->addData(chainObjs[level]);
                 for (auto* idx : allIndices[level]) backSetNode->addData(idx);
-                backSetNode->addData(chainObjs[level + 1]);
+                backSetNode->addData(finalNode);
                 backSetNode->payload1 = static_cast<uint32_t>(allIndices[level].size());
                 currentControl = backSetNode;
+                finalNode = backSetNode;
+            }
+        }
+        
+        if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
+            if (expr->isLocal) declareVariable(var->name.lexeme, finalNode);
+            else {
+                bool isGlobalRef = expr->isRef && !currentFunction;
+                writeVariable(var->name.lexeme, finalNode, false, isGlobalRef);
             }
         }
     }

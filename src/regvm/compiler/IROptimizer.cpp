@@ -53,9 +53,37 @@ bool IROptimizer::hasSideEffects(IROp op) {
     }
 }
 
+struct StrictValueHasher {
+    size_t operator()(const Value& v) const {
+        size_t h = ValueHasher{}(v);
+        int typeTag = 0;
+        if (v.isInt32()) typeTag = 1;
+        else if (v.isBool()) typeTag = 2;
+        else if (v.isDouble()) typeTag = 3;
+        else if (v.isObj()) typeTag = 4 + static_cast<int>(v.asObj()->type);
+        return h ^ (typeTag * 0x9e3779b9);
+    }
+};
+
+struct StrictValueEqual {
+    bool operator()(const Value& lhs, const Value& rhs) const {
+        if (lhs.as_bits == rhs.as_bits) return true;
+        if (lhs.isInt32() != rhs.isInt32()) return false;
+        if (lhs.isBool() != rhs.isBool()) return false;
+        if (lhs.isDouble() != rhs.isDouble()) return false;
+        if (lhs.isObj() != rhs.isObj()) return false;
+        if (lhs.isObj()) {
+            if (lhs.asObj()->type != rhs.asObj()->type) return false;
+            if (lhs.isString()) return lhs.asString() == rhs.asString();
+            return Value::equals(lhs, rhs);
+        }
+        return false;
+    }
+};
+
 bool IROptimizer::deduplicateConstants(IRGraph* graph) {
     bool changed = false;
-    std::unordered_map<size_t, IRNode*> constMap;
+    std::unordered_map<Value, IRNode*, StrictValueHasher, StrictValueEqual> constMap;
     
     std::unordered_set<IRNode*> capturedNodes;
     for (auto& nodePtr : graph->getNodes()) {
@@ -85,21 +113,12 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
         if (node->op == IROp::Constant && !capturedNodes.count(node)) {
-            size_t hash = ValueHasher{}(node->constVal);
-            auto it = constMap.find(hash);
-            bool eq = false;
+            auto it = constMap.find(node->constVal);
             if (it != constMap.end()) {
-                if (it->second->constVal.isString() && node->constVal.isString()) {
-                    eq = (it->second->constVal.asString() == node->constVal.asString());
-                } else {
-                    eq = Value::equals(it->second->constVal, node->constVal);
-                }
-            }
-            if (eq) {
                 replaceNode(graph, node, it->second);
                 changed = true;
             } else {
-                constMap[hash] = node;
+                constMap[node->constVal] = node;
             }
         }
     }

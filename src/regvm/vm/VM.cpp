@@ -2630,7 +2630,11 @@ Value VM::run(int targetFrameDepth) {
                     const Value& v = getReg(b + ii);
                     if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
                     if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
-                    if (!canBeMatrixElement(v)) hasOther = true;
+                    if (!canBeMatrixElement(v)) {
+                        hasOther = true;
+                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) || v.isObjType(ObjType::BASENUM)) {
+                        try { v.asDouble(); } catch (...) { hasOther = true; }
+                    }
                 }
 
                 Value result;
@@ -3910,7 +3914,11 @@ Value VM::run(int targetFrameDepth) {
                     if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
                     if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
                     if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX)) hasSubMatrix = true;
-                    if (!canBeMatrixElement(v)) hasOther = true;
+                    if (!canBeMatrixElement(v)) {
+                        hasOther = true;
+                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) || v.isObjType(ObjType::BASENUM)) {
+                        try { v.asDouble(); } catch (...) { hasOther = true; }
+                    }
                 }
 
                 if (hasOther) break;

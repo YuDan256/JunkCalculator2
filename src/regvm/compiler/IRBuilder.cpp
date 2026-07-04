@@ -3712,11 +3712,15 @@ void IRBuilder::visitListCompExpr(ListCompExpr* expr) {
     
     buildCompClause(expr, 0, listNode);
     
-    IRNode* endNode = graph->createValueNode(IROp::ListCompEnd);
-    endNode->setControl(currentControl);
-    endNode->addData(listNode);
-    currentControl = endNode;
-    lastValue = endNode;
+    if (expr->forceList) {
+        lastValue = listNode;
+    } else {
+        IRNode* endNode = graph->createValueNode(IROp::ListCompEnd);
+        endNode->setControl(currentControl);
+        endNode->addData(listNode);
+        currentControl = endNode;
+        lastValue = endNode;
+    }
     
     envStack.pop_back();
 }

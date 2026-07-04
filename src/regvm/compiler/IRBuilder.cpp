@@ -1549,14 +1549,18 @@ void IRBuilder::visitBinary(Binary* expr) {
         if (expr->op.type == TokenType::AND_AND) {
             currentControl = ifTrue;
             expr->right->accept(*this);
+            IRNode* rightToBool = graph->createValueNode(IROp::ToBool);
+            rightToBool->setControl(currentControl);
+            rightToBool->addData(lastValue);
+            
             mergeNode->addData(currentControl);
-            resultPhi->addData(lastValue);
+            resultPhi->addData(rightToBool);
             auto rightEnv = envStack;
             
             envStack = baseEnv;
             currentControl = ifFalse;
             mergeNode->addData(currentControl);
-            resultPhi->addData(leftVal);
+            resultPhi->addData(toBoolNode);
             
             envStack = baseEnv;
             for (size_t i = 0; i < baseEnv.size(); ++i) {
@@ -1579,13 +1583,17 @@ void IRBuilder::visitBinary(Binary* expr) {
         } else {
             currentControl = ifTrue;
             mergeNode->addData(currentControl);
-            resultPhi->addData(leftVal);
+            resultPhi->addData(toBoolNode);
             
             envStack = baseEnv;
             currentControl = ifFalse;
             expr->right->accept(*this);
+            IRNode* rightToBool = graph->createValueNode(IROp::ToBool);
+            rightToBool->setControl(currentControl);
+            rightToBool->addData(lastValue);
+            
             mergeNode->addData(currentControl);
-            resultPhi->addData(lastValue);
+            resultPhi->addData(rightToBool);
             auto rightEnv = envStack;
             
             envStack = baseEnv;

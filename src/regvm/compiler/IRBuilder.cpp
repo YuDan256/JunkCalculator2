@@ -412,14 +412,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         }
 
         bool hasRest = (restIndex != -1) || (lp->rest != nullptr);
-        int requiredCols = 0;
-        for (size_t i = 0; i < lp->elements.size(); ++i) {
-            if (!dynamic_cast<DefaultPattern*>(lp->elements[i].get()) && !dynamic_cast<RestPattern*>(lp->elements[i].get())) {
-                requiredCols++;
+        uint32_t minCols = 0;
+        if (restIndex != -1) {
+            minCols = static_cast<uint32_t>(lp->elements.size() - 1);
+        } else {
+            int requiredCols = 0;
+            for (size_t i = 0; i < lp->elements.size(); ++i) {
+                if (!dynamic_cast<DefaultPattern*>(lp->elements[i].get())) {
+                    requiredCols = static_cast<int>(i) + 1;
+                }
             }
+            minCols = static_cast<uint32_t>(requiredCols);
         }
-        uint32_t minCols = static_cast<uint32_t>(requiredCols);
-        uint32_t maxCols = hasRest ? 0xFFFFFFFF : (restIndex != -1 ? 0xFFFFFFFF : static_cast<uint32_t>(lp->elements.size()));
+        uint32_t maxCols = hasRest ? 0xFFFFFFFF : static_cast<uint32_t>(lp->elements.size());
 
         IRNode* shapeNode = graph->createValueNode(IROp::MatchShape);
         shapeNode->setControl(currentControl);
@@ -659,22 +664,41 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         uint32_t minRows = 0;
         uint32_t maxRows = 0;
         bool hasRestRow = mp->restRow != nullptr;
-        minRows = static_cast<uint32_t>(mp->rows.size());
-        maxRows = hasRestRow ? 0xFFFFFFFF : minRows;
+        
+        int reqRows = 0;
+        for (size_t i = 0; i < mp->rows.size(); ++i) {
+            bool rowHasReq = false;
+            for (size_t j = 0; j < mp->rows[i].size(); ++j) {
+                if (!dynamic_cast<DefaultPattern*>(mp->rows[i][j].get()) && !dynamic_cast<RestPattern*>(mp->rows[i][j].get())) {
+                    rowHasReq = true;
+                    break;
+                }
+            }
+            if (rowHasReq) reqRows = static_cast<int>(i) + 1;
+        }
+        minRows = static_cast<uint32_t>(reqRows);
+        maxRows = hasRestRow ? 0xFFFFFFFF : static_cast<uint32_t>(mp->rows.size());
 
         uint32_t minCols = 0;
         uint32_t maxCols = 0;
         int restColIndex = -1;
         if (!mp->rows.empty()) {
-            int requiredCols = 0;
-            for (size_t j = 0; j < mp->rows[0].size(); ++j) {
-                if (dynamic_cast<RestPattern*>(mp->rows[0][j].get())) {
-                    restColIndex = static_cast<int>(j);
-                } else if (!dynamic_cast<DefaultPattern*>(mp->rows[0][j].get())) {
-                    requiredCols++;
+            int maxReqCols = 0;
+            for (size_t i = 0; i < mp->rows.size(); ++i) {
+                int reqCols = 0;
+                for (size_t j = 0; j < mp->rows[i].size(); ++j) {
+                    if (dynamic_cast<RestPattern*>(mp->rows[i][j].get())) {
+                        if (i == 0) restColIndex = static_cast<int>(j);
+                    } else if (!dynamic_cast<DefaultPattern*>(mp->rows[i][j].get())) {
+                        reqCols = static_cast<int>(j) + 1;
+                    }
                 }
+                if (restColIndex != -1) {
+                    reqCols = static_cast<int>(mp->rows[i].size() - 1);
+                }
+                if (reqCols > maxReqCols) maxReqCols = reqCols;
             }
-            minCols = static_cast<uint32_t>(requiredCols);
+            minCols = static_cast<uint32_t>(maxReqCols);
             maxCols = restColIndex != -1 ? 0xFFFFFFFF : static_cast<uint32_t>(mp->rows[0].size());
         }
 

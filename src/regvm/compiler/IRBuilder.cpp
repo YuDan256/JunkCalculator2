@@ -396,6 +396,10 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 setProp->addData(valNode);
                 setProp->name = dot->field.lexeme;
                 currentControl = setProp;
+                
+                if (auto* var = dynamic_cast<Variable*>(dot->object.get())) {
+                    writeVariable(var->name.lexeme, objNode);
+                }
             } else if (auto* idx = dynamic_cast<IndexAccess*>(exprPat->expr.get())) {
                 std::vector<IndexAccess*> chain;
                 IndexAccess* curr = idx;
@@ -499,6 +503,10 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             currentControl = backSetNode;
                         }
                     }
+                }
+                
+                if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
+                    writeVariable(var->name.lexeme, objNode);
                 }
             } else {
                 throw std::runtime_error("IRBuilder Error: Invalid L-value in destructuring assignment.");

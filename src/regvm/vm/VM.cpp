@@ -1862,8 +1862,9 @@ Value VM::run(int targetFrameDepth) {
                                         if (it != globalNames.end()) {
                                             dummy->location = &globals[it->second];
                                         } else {
+                                            Value builtinVal = jc::VM::activeVM->getBuiltinClosure(uv.name);
                                             globalNames[uv.name] = static_cast<uint32_t>(globals.size());
-                                            globals.push_back(Value::uninit());
+                                            globals.push_back(builtinVal.isNone() ? Value::uninit() : builtinVal);
                                             dummy->location = &globals.back();
                                         }
                                     } else {
@@ -2038,8 +2039,9 @@ Value VM::run(int targetFrameDepth) {
                             upval = GcHeap::get().allocate<ObjUpVal>();
                             auto it = globalNames.find(name);
                             if (it == globalNames.end()) {
+                                Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
                                 globalNames[name] = static_cast<uint32_t>(globals.size());
-                                globals.push_back(Value::none());
+                                globals.push_back(builtinVal.isNone() ? Value::none() : builtinVal);
                             }
                             upval->location = &globals[globalNames[name]];
                             break;

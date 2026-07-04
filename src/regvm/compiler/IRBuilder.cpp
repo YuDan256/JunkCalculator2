@@ -237,7 +237,7 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
     return -1;
 }
 
-void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst) {
+void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment) {
     if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->setControl(currentControl);
@@ -268,7 +268,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         phi->addData(valNode);
         
         currentControl = merge;
-        buildPatternMatch(dp->inner.get(), phi, failMerge, globalMod, globalConst);
+        buildPatternMatch(dp->inner.get(), phi, failMerge, globalMod, globalConst, isAssignment);
         return;
     }
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
@@ -384,24 +384,145 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         
         currentControl = ifTrue;
     } else if (auto* exprPat = dynamic_cast<ExprPattern*>(pat)) {
-        exprPat->expr->accept(*this);
-        IRNode* eqNode = graph->createValueNode(IROp::Eq);
-        eqNode->setControl(currentControl);
-        eqNode->addData(valNode);
-        eqNode->addData(lastValue);
-        
-        IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
-        ifNode->addData(eqNode);
-        
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
-        ifTrue->setControl(ifNode);
-        
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
-        ifFalse->setControl(ifNode);
-        failMerge->addData(ifFalse);
-        
-        currentControl = ifTrue;
+        if (isAssignment) {
+            if (auto* dot = dynamic_cast<DotAccess*>(exprPat->expr.get())) {
+                graph->currentLine = dot->field.line;
+                dot->object->accept(*this);
+                IRNode* objNode = lastValue;
+                
+                IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+                setProp->setControl(currentControl);
+                setProp->addData(objNode);
+                setProp->addData(valNode);
+                setProp->name = dot->field.lexeme;
+                currentControl = setProp;
+            } else if (auto* idx = dynamic_cast<IndexAccess*>(exprPat->expr.get())) {
+                std::vector<IndexAccess*> chain;
+                IndexAccess* curr = idx;
+                while (curr) {
+                    chain.push_back(curr);
+                    if (auto* next = dynamic_cast<IndexAccess*>(curr->object.get())) {
+                        curr = next;
+                    } else {
+                        break;
+                    }
+                }
+                std::reverse(chain.begin(), chain.end());
+                
+                chain[0]->object->accept(*this);
+                IRNode* objNode = lastValue;
+                
+                bool hasSlice = false;
+                if (chain.size() == 1) {
+                    for (auto& idxExpr : chain[0]->indices) {
+                        if (dynamic_cast<SliceExpr*>(idxExpr.get())) {
+                            hasSlice = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasSlice) {
+                    std::vector<IRNode*> sliceArgs;
+                    for (auto& idxExpr : chain[0]->indices) {
+                        if (auto* slice = dynamic_cast<SliceExpr*>(idxExpr.get())) {
+                            if (slice->start) { slice->start->accept(*this); sliceArgs.push_back(lastValue); }
+                            else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+                            
+                            if (slice->end) { slice->end->accept(*this); sliceArgs.push_back(lastValue); }
+                            else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+                            
+                            if (slice->step) { slice->step->accept(*this); sliceArgs.push_back(lastValue); }
+                            else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
+                        } else {
+                            idxExpr->accept(*this); sliceArgs.push_back(lastValue);
+                            IRNode* n1 = graph->createConstant(Value::none()); n1->setControl(currentControl); sliceArgs.push_back(n1);
+                            IRNode* n2 = graph->createConstant(Value(0.0)); n2->setControl(currentControl); sliceArgs.push_back(n2);
+                        }
+                    }
+                    IRNode* node = graph->createValueNode(IROp::SliceSet);
+                    node->setControl(currentControl);
+                    node->addData(objNode);
+                    for (auto* arg : sliceArgs) node->addData(arg);
+                    node->addData(valNode);
+                    node->payload1 = static_cast<uint32_t>(chain[0]->indices.size());
+                    currentControl = node;
+                } else {
+                    std::vector<std::vector<IRNode*>> allIndices;
+                    for (size_t i = 0; i < chain.size(); ++i) {
+                        std::vector<IRNode*> levelIndices;
+                        for (auto& idxExpr : chain[i]->indices) {
+                            idxExpr->accept(*this);
+                            levelIndices.push_back(lastValue);
+                        }
+                        allIndices.push_back(levelIndices);
+                    }
+                    
+                    int depth = static_cast<int>(chain.size());
+                    if (depth == 1) {
+                        IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
+                        setIdx->setControl(currentControl);
+                        setIdx->addData(objNode);
+                        for (auto* iNode : allIndices[0]) setIdx->addData(iNode);
+                        setIdx->addData(valNode);
+                        setIdx->payload1 = static_cast<uint32_t>(allIndices[0].size());
+                        currentControl = setIdx;
+                    } else {
+                        std::vector<IRNode*> chainObjs;
+                        chainObjs.push_back(objNode);
+                        
+                        for (size_t i = 0; i < chain.size() - 1; ++i) {
+                            IRNode* getNode = graph->createValueNode(IROp::IndexGet);
+                            getNode->setControl(currentControl);
+                            getNode->addData(chainObjs.back());
+                            for (auto* idxNode : allIndices[i]) getNode->addData(idxNode);
+                            getNode->payload1 = static_cast<uint32_t>(allIndices[i].size());
+                            currentControl = getNode;
+                            chainObjs.push_back(getNode);
+                        }
+                        
+                        IRNode* setNode = graph->createValueNode(IROp::IndexSet);
+                        setNode->setControl(currentControl);
+                        setNode->addData(chainObjs.back());
+                        for (auto* iNode : allIndices.back()) setNode->addData(iNode);
+                        setNode->addData(valNode);
+                        setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
+                        currentControl = setNode;
+                        
+                        for (int level = depth - 2; level >= 0; --level) {
+                            IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
+                            backSetNode->setControl(currentControl);
+                            backSetNode->addData(chainObjs[level]);
+                            for (auto* iNode : allIndices[level]) backSetNode->addData(iNode);
+                            backSetNode->addData(chainObjs[level + 1]);
+                            backSetNode->payload1 = static_cast<uint32_t>(allIndices[level].size());
+                            currentControl = backSetNode;
+                        }
+                    }
+                }
+            } else {
+                throw std::runtime_error("IRBuilder Error: Invalid L-value in destructuring assignment.");
+            }
+        } else {
+            exprPat->expr->accept(*this);
+            IRNode* eqNode = graph->createValueNode(IROp::Eq);
+            eqNode->setControl(currentControl);
+            eqNode->addData(valNode);
+            eqNode->addData(lastValue);
+            
+            IRNode* ifNode = graph->createNode(IROp::If);
+            ifNode->setControl(currentControl);
+            ifNode->addData(eqNode);
+            
+            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            ifTrue->setControl(ifNode);
+            
+            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            ifFalse->setControl(ifNode);
+            failMerge->addData(ifFalse);
+            
+            currentControl = ifTrue;
+        }
     } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
         int restIndex = -1;
         for (size_t i = 0; i < lp->elements.size(); ++i) {
@@ -564,7 +685,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->payload2 = 1; // noThrow
             currentControl = elemNode;
             
-            buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, globalMod, globalConst);
+            buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, globalMod, globalConst, isAssignment);
         }
 
         if (lp->rest && lp->rest->name.lexeme != "_") {
@@ -854,7 +975,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 elemNode->payload2 = 1; // noThrow
                 currentControl = elemNode;
 
-                buildPatternMatch(mp->rows[i][j].get(), elemNode, failMerge, globalMod, globalConst);
+                buildPatternMatch(mp->rows[i][j].get(), elemNode, failMerge, globalMod, globalConst, isAssignment);
             }
         }
 
@@ -1014,7 +1135,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             elemNode->payload2 = 1; // noThrow
             currentControl = elemNode;
             
-            buildPatternMatch(entry.second.get(), elemNode, failMerge, globalMod, globalConst);
+            buildPatternMatch(entry.second.get(), elemNode, failMerge, globalMod, globalConst, isAssignment);
         }
 
         if (dp->rest && dp->rest->name.lexeme != "_") {
@@ -1178,7 +1299,7 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     
     auto envBeforePattern = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
     
     auto envBeforeCond = envStack;
     IRNode* condFailMerge = graph->createNode(IROp::Merge);
@@ -2724,7 +2845,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     auto envBeforeBody = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
     ScopeModifier mod = expr->isLocal ? ScopeModifier::Local : ScopeModifier::None;
-    buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst);
+    buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst, true);
     
     expr->body->accept(*this);
     
@@ -2803,7 +2924,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* errVal = catchNode; // Catch 节点产生异常对象
 
     IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(expr->catchPattern.get(), errVal, failMerge, ScopeModifier::Local, false);
+    buildPatternMatch(expr->catchPattern.get(), errVal, failMerge, ScopeModifier::Local, false, true);
 
     if (!failMerge->dataInputs.empty()) {
         IRNode* throwNode = graph->createNode(IROp::Throw);
@@ -3372,7 +3493,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     else if (expr->isRef) mod = ScopeModifier::Ref;
     else if (expr->isState) mod = ScopeModifier::State;
 
-    buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst);
+    buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst, true);
     
     if (!failMerge->dataInputs.empty()) {
         IRNode* throwNode = graph->createNode(IROp::Throw);
@@ -3531,7 +3652,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         for (auto& pat : branch.patterns) {
             IRNode* patFailMerge = graph->createNode(IROp::Merge);
             
-            buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false);
+            buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false, false);
             
             branchSuccessMerge->addData(currentControl);
             currentControl = patFailMerge;

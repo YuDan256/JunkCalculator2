@@ -60,7 +60,7 @@ private:
     };
     std::vector<ExitNodeInfo> exitNodes;
 
-    void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false);
+    void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool isAssignment = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 
     void recordExitNode(IRNode* node) {

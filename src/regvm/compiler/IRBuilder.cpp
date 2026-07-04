@@ -1081,9 +1081,11 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     ifFalse->setControl(ifNode);
     currentControl = ifFalse;
     
+    auto envBeforePattern = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
     buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false);
     
+    auto envBeforeCond = envStack;
     IRNode* condFailMerge = graph->createNode(IROp::Merge);
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
@@ -1110,8 +1112,12 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
             pair.second->addData(readVariable(pair.first));
-            if (!condFailMerge->dataInputs.empty()) pair.second->addData(readVariable(pair.first));
-            if (!failMerge->dataInputs.empty()) pair.second->addData(readVariable(pair.first));
+            if (!condFailMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
+            }
+            if (!failMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforePattern[i].count(pair.first) ? envBeforePattern[i].at(pair.first) : graph->createConstant(Value::none()));
+            }
         }
     }
     
@@ -1811,6 +1817,8 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     
+    auto envBeforeBody = envStack;
+    
     currentControl = ifTrue;
     expr->body->accept(*this);
     
@@ -1822,7 +1830,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     }
     
     breakMerge->addData(ifFalse);
-    loopStack.back().breakEnvs.push_back(envStack);
+    loopStack.back().breakEnvs.push_back(envBeforeBody);
     
     currentControl = breakMerge;
     
@@ -1890,6 +1898,8 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     
+    auto envBeforeBody = envStack;
+    
     currentControl = ifTrue;
     expr->body->accept(*this);
     expr->update->accept(*this);
@@ -1902,7 +1912,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     }
     
     breakMerge->addData(ifFalse);
-    loopStack.back().breakEnvs.push_back(loopPhisStack);
+    loopStack.back().breakEnvs.push_back(envBeforeBody);
     
     currentControl = breakMerge;
     
@@ -2616,6 +2626,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     ifFalse->setControl(ifNode);
     currentControl = ifFalse;
     
+    auto envBeforeBody = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
     ScopeModifier mod = expr->isLocal ? ScopeModifier::Local : ScopeModifier::None;
     buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst);
@@ -2631,7 +2642,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     
     if (!failMerge->dataInputs.empty()) {
         breakMerge->addData(failMerge);
-        loopStack.back().breakEnvs.push_back(envStack);
+        loopStack.back().breakEnvs.push_back(envBeforeBody);
     }
     
     currentControl = breakMerge;

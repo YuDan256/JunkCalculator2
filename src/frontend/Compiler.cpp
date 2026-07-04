@@ -866,8 +866,14 @@ namespace jc {
                 case TokenType::SLASH:         return (*leftVal) / (*rightVal);
                 case TokenType::PERCENT:       return (*leftVal) % (*rightVal);
                 case TokenType::CARET:         return (*leftVal) ^ (*rightVal);
-                case TokenType::EQUAL:         return Value(Value::equals(*leftVal, *rightVal));
-                case TokenType::BANG_EQUAL:    return Value(!Value::equals(*leftVal, *rightVal));
+                case TokenType::EQUAL: {
+                    bool eq = (leftVal->isString() && rightVal->isString()) ? (leftVal->asString() == rightVal->asString()) : Value::equals(*leftVal, *rightVal);
+                    return Value(eq);
+                }
+                case TokenType::BANG_EQUAL: {
+                    bool eq = (leftVal->isString() && rightVal->isString()) ? (leftVal->asString() == rightVal->asString()) : Value::equals(*leftVal, *rightVal);
+                    return Value(!eq);
+                }
                 case TokenType::BIT_AND:       return (*leftVal) & (*rightVal);
                 case TokenType::BIT_OR:        return (*leftVal) | (*rightVal);
                 case TokenType::BIT_XOR:       return bitXor(*leftVal, *rightVal);

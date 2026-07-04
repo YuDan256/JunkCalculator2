@@ -87,7 +87,15 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
         if (node->op == IROp::Constant && !capturedNodes.count(node)) {
             size_t hash = ValueHasher{}(node->constVal);
             auto it = constMap.find(hash);
-            if (it != constMap.end() && Value::equals(it->second->constVal, node->constVal)) {
+            bool eq = false;
+            if (it != constMap.end()) {
+                if (it->second->constVal.isString() && node->constVal.isString()) {
+                    eq = (it->second->constVal.asString() == node->constVal.asString());
+                } else {
+                    eq = Value::equals(it->second->constVal, node->constVal);
+                }
+            }
+            if (eq) {
                 replaceNode(graph, node, it->second);
                 changed = true;
             } else {
@@ -147,8 +155,14 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     else if (node->op == IROp::Mod) { node->constVal = left % right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Pow) { node->constVal = left ^ right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::LeftDivide) { node->constVal = ldivide(left, right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
-                    else if (node->op == IROp::Eq) { node->constVal = Value(Value::equals(left, right)); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
-                    else if (node->op == IROp::Neq) { node->constVal = Value(!Value::equals(left, right)); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
+                    else if (node->op == IROp::Eq) { 
+                        bool eq = (left.isString() && right.isString()) ? (left.asString() == right.asString()) : Value::equals(left, right);
+                        node->constVal = Value(eq); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; 
+                    }
+                    else if (node->op == IROp::Neq) { 
+                        bool eq = (left.isString() && right.isString()) ? (left.asString() == right.asString()) : Value::equals(left, right);
+                        node->constVal = Value(!eq); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; 
+                    }
                     else if (node->op == IROp::Lt) { node->constVal = Value(left < right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Le) { node->constVal = Value(left <= right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Gt) { node->constVal = Value(left > right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }

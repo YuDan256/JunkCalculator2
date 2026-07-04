@@ -2457,7 +2457,13 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value(v1 == v2); break;
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                getReg(a) = Value(Value::equals(vb, vc));
+                bool eq = false;
+                if (vb.isString() && vc.isString()) {
+                    eq = (vb.asString() == vc.asString());
+                } else {
+                    eq = Value::equals(vb, vc);
+                }
+                getReg(a) = Value(eq);
                 break;
             }
             case OpCode::NEQ: {
@@ -2473,7 +2479,13 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                getReg(a) = Value(!Value::equals(vb, vc));
+                bool eq = false;
+                if (vb.isString() && vc.isString()) {
+                    eq = (vb.asString() == vc.asString());
+                } else {
+                    eq = Value::equals(vb, vc);
+                }
+                getReg(a) = Value(!eq);
                 break;
             }
             case OpCode::LT: {
@@ -3385,7 +3397,8 @@ Value VM::run(int targetFrameDepth) {
                     const auto& L = static_cast<ObjList*>(haystack.asObj())->vec;
                     for (const auto& e : L) {
                         try {
-                            if (Value::equals(needle, e)) {
+                            bool eq = (needle.isString() && e.isString()) ? (needle.asString() == e.asString()) : Value::equals(needle, e);
+                            if (eq) {
                                 found = true;
                                 break;
                             }
@@ -4099,7 +4112,12 @@ Value VM::run(int targetFrameDepth) {
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE);
                 int prevIp = frame->ip;
+                
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[c]);
+                std::string methodName = chunk->constants[ic.nameIdx].asString();
+                
                 execInvoke(a, b, c, isTailCall, -1);
+                
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = getReg(a);
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {

@@ -242,14 +242,25 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     std::vector<bool> removed(numVRegs, false);
     std::stack<int> selectStack;
 
+    std::unordered_set<IRNode*> capturedNodes;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op == IROp::Closure) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
+        }
+    }
+
     // 预着色：函数参数必须分配到指定的连续物理寄存器
     for (auto& nodePtr : graph->getNodes()) {
         if (nodePtr->op == IROp::Parameter && nodePtr->virtualReg != -1) {
             color[nodePtr->virtualReg] = nodePtr->payload1;
             removed[nodePtr->virtualReg] = true;
         } else if (nodePtr->op == IROp::Constant && nodePtr->virtualReg != -1) {
-            // 常量节点不参与着色，它们将在生成字节码时使用 K-Bit 或被加载到暂存器
-            removed[nodePtr->virtualReg] = true;
+            if (!capturedNodes.count(nodePtr.get())) {
+                // 常量节点不参与着色，它们将在生成字节码时使用 K-Bit 或被加载到暂存器
+                removed[nodePtr->virtualReg] = true;
+            }
         }
     }
 

@@ -136,7 +136,12 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
             EncodedInst inst;
             inst.node = node;
             
-            auto buildBinary = [&](OpCode op) {
+            if (node->op == IROp::Constant && node->physicalReg != -1) {
+                int idx = chunk.addConstant(node->constVal);
+                auto w = buildInstABx(OpCode::LOADK, node->physicalReg, idx);
+                inst.words.insert(inst.words.end(), w.begin(), w.end());
+            } else {
+                auto buildBinary = [&](OpCode op) {
                     int a = node->physicalReg;
                     int b = 0, c = 0;
                     OpType bType = OpType::KBIT_REG;
@@ -515,10 +520,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     default: break;
                 }
+            }
 
-                if (!inst.words.empty()) {
-                    insts.push_back(inst);
-                }
+            if (!inst.words.empty()) {
+                insts.push_back(inst);
+            }
             }
 
             IRNode* cNode = bb->controlNode;

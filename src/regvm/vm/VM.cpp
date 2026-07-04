@@ -2052,7 +2052,13 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_ADD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RADD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                getReg(a) = vb + vc;
+                try { getReg(a) = vb + vc; } catch (const std::exception& e) {
+                    std::string msg = e.what();
+                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot add") != std::string::npos) {
+                        throw std::runtime_error("Type Error: Cannot add '" + getTypeName(vb) + "' and '" + getTypeName(vc) + "'.");
+                    }
+                    throw;
+                }
                 break;
             }
             case OpCode::SUB: {
@@ -2069,7 +2075,13 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_SUB)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RSUB)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                getReg(a) = vb - vc;
+                try { getReg(a) = vb - vc; } catch (const std::exception& e) {
+                    std::string msg = e.what();
+                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot subtract") != std::string::npos) {
+                        throw std::runtime_error("Type Error: Cannot subtract '" + getTypeName(vc) + "' from '" + getTypeName(vb) + "'.");
+                    }
+                    throw;
+                }
                 break;
             }
             case OpCode::MUL: {
@@ -2086,7 +2098,13 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MUL)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMUL)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                getReg(a) = vb * vc;
+                try { getReg(a) = vb * vc; } catch (const std::exception& e) {
+                    std::string msg = e.what();
+                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot multiply") != std::string::npos) {
+                        throw std::runtime_error("Type Error: Cannot multiply '" + getTypeName(vb) + "' and '" + getTypeName(vc) + "'.");
+                    }
+                    throw;
+                }
                 break;
             }
             case OpCode::DIV: {
@@ -2098,7 +2116,13 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_DIV)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RDIV)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                getReg(a) = vb / vc;
+                try { getReg(a) = vb / vc; } catch (const std::exception& e) {
+                    std::string msg = e.what();
+                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot divide") != std::string::npos) {
+                        throw std::runtime_error("Type Error: Cannot divide '" + getTypeName(vb) + "' by '" + getTypeName(vc) + "'.");
+                    }
+                    throw;
+                }
                 break;
             }
             case OpCode::MOD: {

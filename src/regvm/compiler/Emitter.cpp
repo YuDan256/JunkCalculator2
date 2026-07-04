@@ -205,6 +205,15 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::UpdateCaptured: {
+                        int dst = node->dataInputs[0]->physicalReg;
+                        int src = ensureReg(node->dataInputs[1], inst.words, chunk, 124);
+                        if (dst != src) {
+                            auto w = buildInstAB(OpCode::MOVE, dst, src);
+                            inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        }
+                        break;
+                    }
                     case IROp::GetGlobal: {
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
                         auto w = buildInstABx(OpCode::GET_GLOBAL, node->physicalReg, icIdx);

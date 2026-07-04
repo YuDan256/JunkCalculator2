@@ -36,7 +36,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::Start: case IROp::Return: case IROp::If: case IROp::IfTrue: case IROp::IfFalse:
         case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw:
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
-        case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam: case IROp::PassRefs:
+        case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam: case IROp::PassRefs: case IROp::UpdateCaptured:
         case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
         case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
         case IROp::IndexGet: case IROp::IndexSet: case IROp::SliceGet: case IROp::SliceSet: 
@@ -62,6 +62,10 @@ bool IROptimizer::deduplicateConstants(IRGraph* graph) {
         if (nodePtr->op == IROp::Closure) {
             for (IRNode* in : nodePtr->dataInputs) {
                 if (in) capturedNodes.insert(in);
+            }
+        } else if (nodePtr->op == IROp::UpdateCaptured) {
+            if (nodePtr->dataInputs.size() > 0 && nodePtr->dataInputs[0]) {
+                capturedNodes.insert(nodePtr->dataInputs[0]);
             }
         }
     }
@@ -89,6 +93,10 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
         if (nodePtr->op == IROp::Closure) {
             for (IRNode* in : nodePtr->dataInputs) {
                 if (in) capturedNodes.insert(in);
+            }
+        } else if (nodePtr->op == IROp::UpdateCaptured) {
+            if (nodePtr->dataInputs.size() > 0 && nodePtr->dataInputs[0]) {
+                capturedNodes.insert(nodePtr->dataInputs[0]);
             }
         }
     }
@@ -148,6 +156,10 @@ bool IROptimizer::foldControlFlow(IRGraph* graph) {
         if (nodePtr->op == IROp::Closure) {
             for (IRNode* in : nodePtr->dataInputs) {
                 if (in) capturedNodes.insert(in);
+            }
+        } else if (nodePtr->op == IROp::UpdateCaptured) {
+            if (nodePtr->dataInputs.size() > 0 && nodePtr->dataInputs[0]) {
+                capturedNodes.insert(nodePtr->dataInputs[0]);
             }
         }
     }

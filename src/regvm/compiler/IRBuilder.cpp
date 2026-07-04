@@ -66,6 +66,15 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isCon
     for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
         auto it = envStack[i].find(name);
         if (it != envStack[i].end()) {
+            if (capturedLocals.count(name)) {
+                IRNode* origNode = it->second;
+                IRNode* updateNode = graph->createNode(IROp::UpdateCaptured);
+                updateNode->setControl(currentControl);
+                updateNode->addData(origNode);
+                updateNode->addData(value);
+                currentControl = updateNode;
+                return;
+            }
             envStack[i][name] = value;
             return;
         }

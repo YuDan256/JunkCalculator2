@@ -52,6 +52,7 @@ enum class IROp {
     DefineConstGlobal,
     DeleteGlobal,
     IsUninit,
+    UpdateCaptured,
     
     // 闭包与上值
     Closure,

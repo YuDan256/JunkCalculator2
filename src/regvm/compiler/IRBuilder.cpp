@@ -1766,6 +1766,60 @@ void IRBuilder::visitBlock(Block* expr) {
         lastValue = graph->createConstant(Value::none());
         lastValue->setControl(currentControl);
     } else {
+        bool shouldHoist = currentFunction != nullptr || namespaceScopeDepth != -1;
+        for (auto& stmt : expr->statements) {
+            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+                if (assign->isLocal || (shouldHoist && !assign->isRef && !assign->isState)) {
+                    if (!getLocalNode(assign->name.lexeme)) {
+                        IRNode* uninitNode = graph->createConstant(Value::uninit());
+                        uninitNode->setControl(currentControl);
+                        if (assign->isLocal) {
+                            declareVariable(assign->name.lexeme, uninitNode);
+                        } else {
+                            if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][assign->name.lexeme] = uninitNode;
+                            else envStack[0][assign->name.lexeme] = uninitNode;
+                        }
+                    }
+                }
+            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
+                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+                collectPatternVars(destAssign->pattern.get(), boundVars);
+                for (const auto& varTuple : boundVars) {
+                    const std::string& name = std::get<0>(varTuple);
+                    ScopeModifier mod = std::get<1>(varTuple);
+                    if (mod == ScopeModifier::None) {
+                        if (destAssign->isLocal) mod = ScopeModifier::Local;
+                        else if (destAssign->isRef) mod = ScopeModifier::Ref;
+                        else if (destAssign->isState) mod = ScopeModifier::State;
+                    }
+                    if (mod == ScopeModifier::Local || (shouldHoist && mod == ScopeModifier::None)) {
+                        if (!getLocalNode(name)) {
+                            IRNode* uninitNode = graph->createConstant(Value::uninit());
+                            uninitNode->setControl(currentControl);
+                            if (mod == ScopeModifier::Local) {
+                                declareVariable(name, uninitNode);
+                            } else {
+                                if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][name] = uninitNode;
+                                else envStack[0][name] = uninitNode;
+                            }
+                        }
+                    }
+                }
+            } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
+                if (shouldHoist && !getLocalNode(clsDef->name.lexeme)) {
+                    IRNode* uninitNode = graph->createConstant(Value::uninit());
+                    uninitNode->setControl(currentControl);
+                    if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][clsDef->name.lexeme] = uninitNode;
+                    else envStack[0][clsDef->name.lexeme] = uninitNode;
+                }
+            } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
+                if (!getLocalNode(locDecl->name.lexeme)) {
+                    IRNode* uninitNode = graph->createConstant(Value::uninit());
+                    uninitNode->setControl(currentControl);
+                    declareVariable(locDecl->name.lexeme, uninitNode);
+                }
+            }
+        }
         for (size_t i = 0; i < expr->statements.size(); ++i) {
             expr->statements[i]->accept(*this);
             
@@ -2404,11 +2458,11 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
     
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
     graph->currentLine = expr->name.line;
-    IRNode* noneNode = graph->createConstant(Value::none());
-    noneNode->setControl(currentControl);
-    declareVariable(expr->name.lexeme, noneNode);
+    IRNode* uninitNode = graph->createConstant(Value::uninit());
+    uninitNode->setControl(currentControl);
+    declareVariable(expr->name.lexeme, uninitNode);
     currentLocalVars.insert(expr->name.lexeme);
-    lastValue = noneNode;
+    lastValue = uninitNode;
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
@@ -2431,7 +2485,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
         }
     }
 
-    lastValue = graph->createConstant(Value::none());
+    lastValue = graph->createConstant(Value::uninit());
     lastValue->setControl(currentControl);
 }
 
@@ -2455,17 +2509,17 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
         currentFunction->upvalues[upvalIdx].isCapturedState = true;
     }
 
-    lastValue = graph->createConstant(Value::none());
+    lastValue = graph->createConstant(Value::uninit());
     lastValue->setControl(currentControl);
 }
     
 void IRBuilder::visitConstDecl(ConstDecl* expr) {
     graph->currentLine = expr->name.line;
-    IRNode* noneNode = graph->createConstant(Value::none());
-    noneNode->setControl(currentControl);
-    declareVariable(expr->name.lexeme, noneNode);
+    IRNode* uninitNode = graph->createConstant(Value::uninit());
+    uninitNode->setControl(currentControl);
+    declareVariable(expr->name.lexeme, uninitNode);
     currentConstVars.insert(expr->name.lexeme);
-    lastValue = noneNode;
+    lastValue = uninitNode;
 }
 
 void IRBuilder::visitDeleteExpr(DeleteExpr* expr) {
@@ -3325,6 +3379,56 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     currentConstVars.clear();
     
     if (auto* block = dynamic_cast<Block*>(expr->body.get())) {
+        for (auto& stmt : block->statements) {
+            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+                if (assign->isLocal || (!assign->isRef && !assign->isState)) {
+                    if (!getLocalNode(assign->name.lexeme)) {
+                        IRNode* uninitNode = graph->createConstant(Value::uninit());
+                        uninitNode->setControl(currentControl);
+                        if (assign->isLocal) {
+                            declareVariable(assign->name.lexeme, uninitNode);
+                        } else {
+                            envStack[namespaceScopeDepth][assign->name.lexeme] = uninitNode;
+                        }
+                    }
+                }
+            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
+                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+                collectPatternVars(destAssign->pattern.get(), boundVars);
+                for (const auto& varTuple : boundVars) {
+                    const std::string& name = std::get<0>(varTuple);
+                    ScopeModifier mod = std::get<1>(varTuple);
+                    if (mod == ScopeModifier::None) {
+                        if (destAssign->isLocal) mod = ScopeModifier::Local;
+                        else if (destAssign->isRef) mod = ScopeModifier::Ref;
+                        else if (destAssign->isState) mod = ScopeModifier::State;
+                    }
+                    if (mod == ScopeModifier::Local || mod == ScopeModifier::None) {
+                        if (!getLocalNode(name)) {
+                            IRNode* uninitNode = graph->createConstant(Value::uninit());
+                            uninitNode->setControl(currentControl);
+                            if (mod == ScopeModifier::Local) {
+                                declareVariable(name, uninitNode);
+                            } else {
+                                envStack[namespaceScopeDepth][name] = uninitNode;
+                            }
+                        }
+                    }
+                }
+            } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
+                if (!getLocalNode(clsDef->name.lexeme)) {
+                    IRNode* uninitNode = graph->createConstant(Value::uninit());
+                    uninitNode->setControl(currentControl);
+                    envStack[namespaceScopeDepth][clsDef->name.lexeme] = uninitNode;
+                }
+            } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
+                if (!getLocalNode(locDecl->name.lexeme)) {
+                    IRNode* uninitNode = graph->createConstant(Value::uninit());
+                    uninitNode->setControl(currentControl);
+                    declareVariable(locDecl->name.lexeme, uninitNode);
+                }
+            }
+        }
         for (auto& stmt : block->statements) {
             stmt->accept(*this);
         }

@@ -194,7 +194,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
             newFrame.function = fnDef.get();
             newFrame.chunk = &fnDef->chunk;
             newFrame.ip = 0;
-            newFrame.registerBase = currentFrame->registerBase + a + 1;
+            newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
             newFrame.returnRegister = a;
             newFrame.closure = closure;
             newFrame.selfContext = closure->boundSelf;
@@ -326,7 +326,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.function = fnDef.get();
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
-                newFrame.registerBase = currentFrame->registerBase + a + 1;
+                newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
                 newFrame.returnRegister = a;
                 newFrame.closure = initMethod;
                 newFrame.selfContext = Value(instance);
@@ -440,7 +440,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.function = fnDef.get();
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
-                newFrame.registerBase = currentFrame->registerBase + a + 1;
+                newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
                 newFrame.returnRegister = a;
                 newFrame.closure = method;
                 newFrame.selfContext = callee;
@@ -614,7 +614,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         newFrame.ip = 0;
         
         CallFrame* currentFrame = &frames[frameCount - 1];
-        int newBase = currentFrame->registerBase + currentFrame->function->localCount;
+        int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
         newFrame.registerBase = newBase;
         newFrame.returnRegister = 0;
         newFrame.closure = method;
@@ -1037,7 +1037,7 @@ invoke_method:
         newFrame.function = fnDef.get();
         newFrame.chunk = &fnDef->chunk;
         newFrame.ip = 0;
-        newFrame.registerBase = currentFrame->registerBase + a + 1;
+        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
         newFrame.returnRegister = a;
         newFrame.closure = method;
         newFrame.selfContext = obj;
@@ -1172,7 +1172,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         newFrame.function = fnDef.get();
         newFrame.chunk = &fnDef->chunk;
         newFrame.ip = 0;
-        newFrame.registerBase = currentFrame->registerBase + a + 1;
+        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
         newFrame.returnRegister = a;
         newFrame.closure = method;
         newFrame.selfContext = Value(inst);
@@ -1723,7 +1723,7 @@ Value VM::execImport(const std::string& name) {
         newFrame.ip = 0;
         
         CallFrame* currentFrame = &frames[frameCount - 1];
-        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount;
+        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
         newFrame.returnRegister = 0;
         newFrame.closure = nullptr;
         newFrame.selfContext = Value::none();
@@ -1817,7 +1817,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     
     if (frameCount > 0) {
         CallFrame* prev = &frames[frameCount - 1];
-        mainFrame.registerBase = prev->registerBase + prev->function->localCount;
+        mainFrame.registerBase = prev->registerBase + prev->function->localCount + prev->function->refCount;
     } else {
         mainFrame.registerBase = 0;
     }
@@ -2163,7 +2163,7 @@ Value VM::run(int targetFrameDepth) {
                         newFrame.function = fnDef.get();
                         newFrame.chunk = &fnDef->chunk;
                         newFrame.ip = 0;
-                        newFrame.registerBase = vm->frames[vm->frameCount - 1].registerBase + vm->frames[vm->frameCount - 1].function->localCount;
+                        newFrame.registerBase = vm->frames[vm->frameCount - 1].registerBase + vm->frames[vm->frameCount - 1].function->localCount + vm->frames[vm->frameCount - 1].function->refCount;
                         newFrame.returnRegister = 0;
                         newFrame.closure = closure;
                         newFrame.selfContext = s;

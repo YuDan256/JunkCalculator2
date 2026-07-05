@@ -3824,17 +3824,20 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         endMerge->addData(currentControl);
         resultPhi->addData(lastValue);
         
-        envStack.pop_back();
         branchEnvs.push_back(envStack);
+        envStack.pop_back();
         currentFailControl = nextBranchMerge;
     }
     
     currentControl = currentFailControl;
+    envStack = baseEnv;
+    envStack.emplace_back();
     IRNode* noneNode = graph->createConstant(Value::none());
     noneNode->setControl(currentControl);
     endMerge->addData(currentControl);
     resultPhi->addData(noneNode);
-    branchEnvs.push_back(baseEnv); // Fallback branch environment
+    branchEnvs.push_back(envStack); // Fallback branch environment
+    envStack.pop_back();
     
     envStack = baseEnv;
     for (size_t i = 0; i < baseEnv.size(); ++i) {

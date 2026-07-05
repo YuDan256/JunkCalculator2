@@ -2452,6 +2452,13 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::EQ: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
+                if (frame->function && frame->function->name == "test_basic_api") {
+                    std::cout << "[DEBUG EQ] ";
+                    if (vb.isString()) std::cout << "\"" << vb.asString() << "\""; else std::cout << vb;
+                    std::cout << " == ";
+                    if (vc.isString()) std::cout << "\"" << vc.asString() << "\""; else std::cout << vc;
+                    std::cout << std::endl;
+                }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
                 bool bIsInt = vb.isInt32() || vb.isBool();
                 bool cIsInt = vc.isInt32() || vc.isBool();
@@ -4320,6 +4327,20 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::RETURN: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value res = getReg(a);
+                
+                if (frame->function) {
+                    if (frame->function->name == "_re_shorthand") {
+                        std::cout << "[DEBUG _re_shorthand] kind=" << registers[frame->registerBase] 
+                                  << " c=" << registers[frame->registerBase + 1] 
+                                  << " returning " << res << std::endl;
+                    } else if (frame->function->name == "_re_rm") {
+                        std::cout << "[DEBUG _re_rm] idx=" << registers[frame->registerBase + 1]
+                                  << " pos=" << registers[frame->registerBase + 3]
+                                  << " returning " << res << std::endl;
+                    } else if (frame->function->name == "test_basic_api") {
+                        std::cout << "[DEBUG test_basic_api] returning " << res << std::endl;
+                    }
+                }
                 
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                     exceptionHandlers.pop_back();

@@ -211,6 +211,7 @@ _re_in_class(node: dict, ch: string) -> bool = {
 _re_rm_one(node: dict, text: string, pos: whole, tl: whole) -> whole = {
     if (pos >= tl) return -1
     c = text[pos]
+    println("[DEBUG _re_rm_one] pos=", pos, " c='", c, "' node=", node)
     match (node) {
         {type: "lit", ch} => return ch == c ? pos + 1 : -1,
         {type: "dot"} => return c != "\n" ? pos + 1 : -1,
@@ -220,7 +221,9 @@ _re_rm_one(node: dict, text: string, pos: whole, tl: whole) -> whole = {
     }
 }
 
-_re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = match (node) {
+_re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = {
+    println("[DEBUG _re_rm_single] pos=", pos, " node=", node)
+    match (node) {
     {type: "group", inner, idx} => {
         r = _re_rm(inner, 0, text, pos, tl, caps)
         if (r >= 0) caps.set(idx, pos, r)
@@ -242,11 +245,13 @@ _re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) ->
         return -1
     },
     _ => _re_rm_one(node, text, pos, tl)
+    }
 }
 
 _re_rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = {
     if (idx >= nodes.len()) return pos
     node = nodes[idx]
+    println("[DEBUG _re_rm] idx=", idx, " pos=", pos, " node=", node)
     
     match (node) {
         {type: "_cs", idx: cidx} => {
@@ -329,6 +334,7 @@ class Regex {
         st = _RePS(pattern)
         self.nodes = st.parse()
         self.groups = st.gc
+        println("[DEBUG Regex.init] pattern='", pattern, "' nodes=", self.nodes)
     }
 
     _run(text: string, startPos: whole) = {

@@ -5,6 +5,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <iostream>
 #include "../../memory/Value.h"
 
 namespace jc {
@@ -121,6 +122,105 @@ enum class IROp {
     // 寄存器操作 (用于 Phi 去结构化和寄存器溢出)
     Move        // 寄存器间移动
 };
+
+inline std::string irOpToString(IROp op) {
+    switch (op) {
+        case IROp::Nop: return "Nop";
+        case IROp::Start: return "Start";
+        case IROp::Return: return "Return";
+        case IROp::If: return "If";
+        case IROp::IfTrue: return "IfTrue";
+        case IROp::IfFalse: return "IfFalse";
+        case IROp::Merge: return "Merge";
+        case IROp::Loop: return "Loop";
+        case IROp::Parameter: return "Parameter";
+        case IROp::Constant: return "Constant";
+        case IROp::Phi: return "Phi";
+        case IROp::TryBegin: return "TryBegin";
+        case IROp::Catch: return "Catch";
+        case IROp::TryEnd: return "TryEnd";
+        case IROp::Throw: return "Throw";
+        case IROp::Add: return "Add";
+        case IROp::Sub: return "Sub";
+        case IROp::Mul: return "Mul";
+        case IROp::Div: return "Div";
+        case IROp::Mod: return "Mod";
+        case IROp::Pow: return "Pow";
+        case IROp::LeftDivide: return "LeftDivide";
+        case IROp::Eq: return "Eq";
+        case IROp::Neq: return "Neq";
+        case IROp::Lt: return "Lt";
+        case IROp::Le: return "Le";
+        case IROp::Gt: return "Gt";
+        case IROp::Ge: return "Ge";
+        case IROp::Not: return "Not";
+        case IROp::Neg: return "Neg";
+        case IROp::ToBool: return "ToBool";
+        case IROp::BitAnd: return "BitAnd";
+        case IROp::BitOr: return "BitOr";
+        case IROp::BitXor: return "BitXor";
+        case IROp::BitNot: return "BitNot";
+        case IROp::Shl: return "Shl";
+        case IROp::Shr: return "Shr";
+        case IROp::LoadLocal: return "LoadLocal";
+        case IROp::StoreLocal: return "StoreLocal";
+        case IROp::GetGlobal: return "GetGlobal";
+        case IROp::SetGlobal: return "SetGlobal";
+        case IROp::SetGlobalRef: return "SetGlobalRef";
+        case IROp::DefineConstGlobal: return "DefineConstGlobal";
+        case IROp::DeleteGlobal: return "DeleteGlobal";
+        case IROp::IsUninit: return "IsUninit";
+        case IROp::UpdateCaptured: return "UpdateCaptured";
+        case IROp::Closure: return "Closure";
+        case IROp::GetUpvalue: return "GetUpvalue";
+        case IROp::SetUpvalue: return "SetUpvalue";
+        case IROp::GetRefParam: return "GetRefParam";
+        case IROp::SetRefParam: return "SetRefParam";
+        case IROp::PassRefs: return "PassRefs";
+        case IROp::Call: return "Call";
+        case IROp::TailCall: return "TailCall";
+        case IROp::Invoke: return "Invoke";
+        case IROp::TailInvoke: return "TailInvoke";
+        case IROp::InvokeFallback: return "InvokeFallback";
+        case IROp::TailInvokeFallback: return "TailInvokeFallback";
+        case IROp::SuperInvoke: return "SuperInvoke";
+        case IROp::TailSuperInvoke: return "TailSuperInvoke";
+        case IROp::BuildList: return "BuildList";
+        case IROp::BuildMatrix: return "BuildMatrix";
+        case IROp::BuildDict: return "BuildDict";
+        case IROp::DictRest: return "DictRest";
+        case IROp::BuildNamespace: return "BuildNamespace";
+        case IROp::BuildSet: return "BuildSet";
+        case IROp::IndexGet: return "IndexGet";
+        case IROp::IndexSet: return "IndexSet";
+        case IROp::SliceGet: return "SliceGet";
+        case IROp::SliceSet: return "SliceSet";
+        case IROp::ListInit: return "ListInit";
+        case IROp::ListAppend: return "ListAppend";
+        case IROp::ListCompEnd: return "ListCompEnd";
+        case IROp::IterInit: return "IterInit";
+        case IROp::IterNext: return "IterNext";
+        case IROp::In: return "In";
+        case IROp::Stringify: return "Stringify";
+        case IROp::ConcatStrings: return "ConcatStrings";
+        case IROp::FormatString: return "FormatString";
+        case IROp::Class: return "Class";
+        case IROp::Method: return "Method";
+        case IROp::Inherit: return "Inherit";
+        case IROp::GetProperty: return "GetProperty";
+        case IROp::TryGetProperty: return "TryGetProperty";
+        case IROp::SetProperty: return "SetProperty";
+        case IROp::GetSuper: return "GetSuper";
+        case IROp::GetSelf: return "GetSelf";
+        case IROp::Import: return "Import";
+        case IROp::AssertParamType: return "AssertParamType";
+        case IROp::AssertReturnType: return "AssertReturnType";
+        case IROp::MatchType: return "MatchType";
+        case IROp::MatchShape: return "MatchShape";
+        case IROp::Move: return "Move";
+        default: return "Unknown";
+    }
+}
 
 // ============================================================================
 // IR 节点定义
@@ -245,6 +345,51 @@ public:
     // 分配一个新的虚拟寄存器
     int allocateVirtualReg() {
         return nextVirtualReg++;
+    }
+
+    void print(const std::string& title) const {
+        std::cout << "=== IR Graph: " << title << " ===" << std::endl;
+        for (const auto& nodePtr : nodes) {
+            IRNode* n = nodePtr.get();
+            if (n->op == IROp::Nop) continue;
+            std::cout << "ID: " << n->id << " | " << irOpToString(n->op);
+            if (n->virtualReg != -1) std::cout << " | vR: " << n->virtualReg;
+            if (n->physicalReg != -1) std::cout << " | pR: " << n->physicalReg;
+            if (n->controlInput) std::cout << " | Ctrl: " << n->controlInput->id;
+            if (!n->dataInputs.empty()) {
+                std::cout << " | Data: [";
+                for (size_t i = 0; i < n->dataInputs.size(); ++i) {
+                    if (n->dataInputs[i]) std::cout << n->dataInputs[i]->id;
+                    else std::cout << "null";
+                    if (i < n->dataInputs.size() - 1) std::cout << ", ";
+                }
+                std::cout << "]";
+            }
+            if (n->op == IROp::Constant) {
+                if (n->constVal.isString()) std::cout << " | Val: \"" << n->constVal.asString() << "\"";
+                else std::cout << " | Val: " << n->constVal.toJC2Expression();
+            }
+            if (!n->name.empty()) std::cout << " | Name: " << n->name;
+            std::cout << std::endl;
+        }
+        if (!blocks.empty()) {
+            std::cout << "--- Basic Blocks ---" << std::endl;
+            for (const auto& bb : blocks) {
+                std::cout << "BB" << bb->id << " (Ctrl: " << (bb->controlNode ? std::to_string(bb->controlNode->id) : "null") << ")";
+                if (!bb->preds.empty()) {
+                    std::cout << " Preds: ";
+                    for (auto p : bb->preds) std::cout << "BB" << p->id << " ";
+                }
+                if (!bb->succs.empty()) {
+                    std::cout << " Succs: ";
+                    for (auto s : bb->succs) std::cout << "BB" << s->id << " ";
+                }
+                std::cout << "\n  Insts: ";
+                for (auto inst : bb->instructions) std::cout << inst->id << " ";
+                std::cout << std::endl;
+            }
+        }
+        std::cout << "=====================" << std::endl;
     }
 };
 

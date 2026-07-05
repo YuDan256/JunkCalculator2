@@ -19,6 +19,8 @@
 #include <filesystem>
 #include <fstream>
 
+extern bool g_showIR;
+
 #if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
@@ -1692,8 +1694,13 @@ Value VM::execImport(const std::string& name) {
         IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get());
         fnBuilder.build(nsDecl.get());
 
+        if (g_showIR) fnGraph.print("Module '" + baseName + "' Unoptimized");
+
         IROptimizer::optimize(&fnGraph);
+        if (g_showIR) fnGraph.print("Module '" + baseName + "' Optimized");
+
         RegisterAllocator::allocate(&fnGraph);
+        if (g_showIR) fnGraph.print("Module '" + baseName + "' Allocated");
 
         for (auto& target : fnBuilder.upvalueTargets) {
             if (target.isLocal && target.localNode) {

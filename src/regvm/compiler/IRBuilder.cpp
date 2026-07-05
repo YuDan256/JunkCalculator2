@@ -3,6 +3,8 @@
 #include "RegisterAllocator.h"
 #include "Emitter.h"
 
+extern bool g_showIR;
+
 namespace jc {
 namespace regvm {
 
@@ -2762,8 +2764,13 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         
         fnBuilder.build(expr->body.get());
         
+        if (g_showIR) fnGraph.print("Lambda Unoptimized");
+        
         IROptimizer::optimize(&fnGraph);
+        if (g_showIR) fnGraph.print("Lambda Optimized");
+        
         RegisterAllocator::allocate(&fnGraph);
+        if (g_showIR) fnGraph.print("Lambda Allocated");
         
         for (auto& target : fnBuilder.upvalueTargets) {
             if (target.isLocal && target.localNode) {
@@ -3248,8 +3255,13 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             
             fnBuilder.build(method.body.get());
             
+            if (g_showIR) fnGraph.print("Method '" + method.name.lexeme + "' Unoptimized");
+            
             IROptimizer::optimize(&fnGraph);
+            if (g_showIR) fnGraph.print("Method '" + method.name.lexeme + "' Optimized");
+            
             RegisterAllocator::allocate(&fnGraph);
+            if (g_showIR) fnGraph.print("Method '" + method.name.lexeme + "' Allocated");
             
             for (auto& target : fnBuilder.upvalueTargets) {
                 if (target.isLocal && target.localNode) {

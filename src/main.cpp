@@ -113,6 +113,7 @@ jc::VM vm;
 jc::regvm::VM regvm_inst;
 bool g_useRegVM = false;
 bool g_showDisasm = false;  // ★ 新增：字节码反汇编开关
+bool g_showIR = false;      // ★ 新增：IR 图打印开关
 bool g_autoDebug = false;
 bool g_profile = false;
 bool g_quiet = false;
@@ -134,8 +135,13 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
         jc::regvm::IRBuilder builder(&graph, &fns);
         builder.build(ast.get());
         
+        if (g_showIR) graph.print(isFile ? "Script Unoptimized" : "REPL Unoptimized");
+        
         jc::regvm::IROptimizer::optimize(&graph);
+        if (g_showIR) graph.print(isFile ? "Script Optimized" : "REPL Optimized");
+        
         jc::regvm::RegisterAllocator::allocate(&graph);
+        if (g_showIR) graph.print(isFile ? "Script Allocated" : "REPL Allocated");
         
         jc::regvm::Chunk chunk;
         int localCount = jc::regvm::Emitter::emit(&graph, chunk);
@@ -513,6 +519,9 @@ int main(int argc, char* argv[]) {
         else if (arg == "-d") {
             g_showDisasm = true;
         }
+        else if (arg == "--ir") {
+            g_showIR = true;
+        }
         else if (arg == "--debug") {    // ★ 拦截 --debug 启动项
             g_autoDebug = true;
         }
@@ -741,6 +750,16 @@ int main(int argc, char* argv[]) {
             if (input == "/d off") {
                 g_showDisasm = false;
                 std::cout << "Bytecode disassembly disabled.\n";
+                continue;
+            }
+            if (input == "/ir on") {
+                g_showIR = true;
+                std::cout << "IR Graph printing enabled.\n";
+                continue;
+            }
+            if (input == "/ir off") {
+                g_showIR = false;
+                std::cout << "IR Graph printing disabled.\n";
                 continue;
             }
 

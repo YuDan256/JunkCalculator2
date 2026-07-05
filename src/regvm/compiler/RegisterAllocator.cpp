@@ -118,7 +118,10 @@ void RegisterAllocator::allocate(IRGraph* graph) {
 
         for (size_t i = 0; i < phi->dataInputs.size(); ++i) {
             IRNode* src = phi->dataInputs[i];
-            if (!src || src->op == IROp::Nop) continue;
+            if (!src) continue;
+            // 注意：不要跳过 op == Nop 的节点，因为它可能是刚刚被去结构化的另一个 Phi 节点！
+            // 只要它有 virtualReg，它就是一个有效的数据源。
+            if (src->op == IROp::Nop && src->virtualReg == -1) continue;
             if (i >= merge->dataInputs.size()) continue;
             IRNode* predC = merge->dataInputs[i];
             if (!predC || !nodeToBB.count(predC)) continue;

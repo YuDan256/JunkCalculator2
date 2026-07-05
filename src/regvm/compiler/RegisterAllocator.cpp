@@ -104,6 +104,12 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         bb->instructions = sorted;
     }
 
+    // 记录每个基本块在 Phi 去结构化前的指令数量
+    std::unordered_map<BasicBlock*, size_t> prePhiInstCount;
+    for (auto& bb : blocks) {
+        prePhiInstCount[bb.get()] = bb->instructions.size();
+    }
+
     // 4. Phi 节点去结构化 (Phi Destruction)
     std::vector<IRNode*> phis;
     for (auto& nodePtr : graph->getNodes()) {
@@ -153,6 +159,46 @@ void RegisterAllocator::allocate(IRGraph* graph) {
             }
         }
         phi->op = IROp::Nop; // 销毁 Phi 节点
+    }
+
+    // 对每个基本块末尾追加的 Move 指令进行依赖排序 (Sequentializing Parallel Copies)
+    for (auto& bb : blocks) {
+        size_t startIdx = prePhiInstCount[bb.get()];
+        if (startIdx >= bb->instructions.size()) continue;
+
+        std::vector<IRNode*> moves(bb->instructions.begin() + startIdx, bb->instructions.end());
+        std::vector<IRNode*> sortedMoves;
+        std::unordered_set<IRNode*> visited;
+        std::unordered_set<IRNode*> visiting;
+
+        std::function<void(IRNode*)> dfsMove = [&](IRNode* m) {
+            if (visited.count(m)) return;
+            if (visiting.count(m)) return; // 简单打破循环依赖
+            visiting.insert(m);
+
+            int m_def = m->virtualReg;
+            if (m_def != -1) {
+                for (IRNode* other : moves) {
+                    if (other == m) continue;
+                    if (other->dataInputs.size() == 1 && other->dataInputs[0] && other->dataInputs[0]->virtualReg == m_def) {
+                        // other 读取了 m 写入的寄存器，必须在 m 之前执行
+                        dfsMove(other);
+                    }
+                }
+            }
+
+            visiting.erase(m);
+            visited.insert(m);
+            sortedMoves.push_back(m);
+        };
+
+        for (IRNode* m : moves) {
+            dfsMove(m);
+        }
+
+        for (size_t i = 0; i < sortedMoves.size(); ++i) {
+            bb->instructions[startIdx + i] = sortedMoves[i];
+        }
     }
 
     // 将控制节点插入到基本块指令流的开头

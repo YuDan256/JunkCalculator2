@@ -215,6 +215,29 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
         uv.isLocal = true;
         uv.index = -1; // Will be resolved after RegisterAllocator
         uv.isRef = false;
+        
+        IRBuilder* currBuilder = this;
+        while (currBuilder && currBuilder->currentFunction) {
+            if (currBuilder->currentFunction->name == name) {
+                uv.isRef = true;
+                break;
+            }
+            currBuilder = currBuilder->parent;
+        }
+        
+        if (!uv.isRef) {
+            IRBuilder* p = parent;
+            while (p) {
+                if (p->namespaceScopeDepth != -1 && p->namespaceScopeDepth < static_cast<int>(p->envStack.size())) {
+                    if (p->envStack[p->namespaceScopeDepth].count(name)) {
+                        uv.isRef = true;
+                        break;
+                    }
+                }
+                p = p->parent;
+            }
+        }
+        
         uv.isGlobal = false;
         uv.isExplicitState = false;
         uv.isRefParam = false;

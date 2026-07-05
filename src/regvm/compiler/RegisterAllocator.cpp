@@ -123,13 +123,31 @@ void RegisterAllocator::allocate(IRGraph* graph) {
             IRNode* predC = merge->dataInputs[i];
             if (!predC || !nodeToBB.count(predC)) continue;
 
-            BasicBlock* predBB = nodeToBB[predC];
-            IRNode* moveNode = graph->createNode(IROp::Move);
-            moveNode->virtualReg = phi->virtualReg;
-            moveNode->addData(src);
-            moveNode->setControl(predC);
-            
-            predBB->instructions.push_back(moveNode);
+            // 如果前驱控制节点本身也是一个 Merge 节点 (嵌套控制流直接 fall-through)
+            // 我们需要将 Move 指令递归地插入到该内部 Merge 的所有有效前驱分支中
+            std::vector<IRNode*> targetPreds;
+            std::function<void(IRNode*)> collectPreds = [&](IRNode* c) {
+                if (c->op == IROp::Merge) {
+                    for (IRNode* p : c->dataInputs) {
+                        if (p && p->op != IROp::Nop && nodeToBB.count(p)) {
+                            collectPreds(p);
+                        }
+                    }
+                } else {
+                    targetPreds.push_back(c);
+                }
+            };
+            collectPreds(predC);
+
+            for (IRNode* targetC : targetPreds) {
+                BasicBlock* predBB = nodeToBB[targetC];
+                IRNode* moveNode = graph->createNode(IROp::Move);
+                moveNode->virtualReg = phi->virtualReg;
+                moveNode->addData(src);
+                moveNode->setControl(targetC);
+                
+                predBB->instructions.push_back(moveNode);
+            }
         }
         phi->op = IROp::Nop; // 销毁 Phi 节点
     }

@@ -3042,20 +3042,21 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
                 } else {
                     int upvalIdx = -1;
-                if (currentFunction) {
-                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
-                        if (currentFunction->upvalues[j].name == name) {
-                            upvalIdx = j;
-                            break;
+                    if (currentFunction) {
+                        for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                            if (currentFunction->upvalues[j].name == name) {
+                                upvalIdx = j;
+                                break;
+                            }
                         }
                     }
-                }
-                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
-                
-                if (upvalIdx != -1) {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
-                } else {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    
+                    if (upvalIdx != -1) {
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                    } else {
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                    }
                 }
             }
         }
@@ -3666,20 +3667,21 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
                 } else {
                     int upvalIdx = -1;
-                if (currentFunction) {
-                    for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
-                        if (currentFunction->upvalues[j].name == name) {
-                            upvalIdx = j;
-                            break;
+                    if (currentFunction) {
+                        for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
+                            if (currentFunction->upvalues[j].name == name) {
+                                upvalIdx = j;
+                                break;
+                            }
                         }
                     }
-                }
-                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
-                
-                if (upvalIdx != -1) {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
-                } else {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    
+                    if (upvalIdx != -1) {
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                    } else {
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                    }
                 }
             }
         }

@@ -142,7 +142,7 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
 }
 
 IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction) 
-    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), currentControl(nullptr), lastValue(nullptr) {
+    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), currentControl(graph->startNode), lastValue(nullptr) {
     envStack.emplace_back(); // 压入顶层作用域
 }
 
@@ -1427,7 +1427,6 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
 }
 
 void IRBuilder::build(Expr* ast) {
-    currentControl = graph->startNode;
     ast->accept(*this);
     
     // 自动在末尾插入 Return 节点

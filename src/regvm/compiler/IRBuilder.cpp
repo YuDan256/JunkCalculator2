@@ -324,7 +324,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             bool isConst = vp->isConst || globalConst;
 
             if (mod == ScopeModifier::State) {
-                if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
+                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
                 bool found = false;
                 for (auto& u : currentFunction->upvalues) {
                     if (u.name == vp->name.lexeme && u.isExplicitState) {
@@ -570,7 +570,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentControl = setProp;
                 }
             } else {
-                throw std::runtime_error("IRBuilder Error: Invalid L-value in destructuring assignment.");
+                error("Syntax Error: Invalid L-value in destructuring assignment.");
             }
         } else {
             exprPat->expr->accept(*this);
@@ -662,6 +662,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 
                 if (restPat->name.lexeme != "_") {
                     if (restPat->modifier == ScopeModifier::State) {
+                        if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
                         bool found = false;
                         for (auto& u : currentFunction->upvalues) {
                             if (u.name == restPat->name.lexeme && u.isExplicitState) {
@@ -780,6 +781,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             currentControl = sliceNode;
             
             if (restPat->modifier == ScopeModifier::State) {
+                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
                 bool found = false;
                 for (auto& u : currentFunction->upvalues) {
                     if (u.name == restPat->name.lexeme && u.isExplicitState) {
@@ -952,6 +954,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         currentControl = sliceNode;
 
                         if (restPat->modifier == ScopeModifier::State) {
+                            if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
                             bool found = false;
                             for (auto& u : currentFunction->upvalues) {
                                 if (u.name == restPat->name.lexeme && u.isExplicitState) {
@@ -1083,6 +1086,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             currentControl = sliceNode;
 
             if (restPat->modifier == ScopeModifier::State) {
+                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
                 bool found = false;
                 for (auto& u : currentFunction->upvalues) {
                     if (u.name == restPat->name.lexeme && u.isExplicitState) {
@@ -1236,6 +1240,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             currentControl = restNode;
             
             if (restPat->modifier == ScopeModifier::State) {
+                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
                 bool found = false;
                 for (auto& u : currentFunction->upvalues) {
                     if (u.name == restPat->name.lexeme && u.isExplicitState) {
@@ -1475,7 +1480,7 @@ void IRBuilder::visitLiteral(Literal* expr) {
             try {
                 imagPart = BaseNum::fromString(numPart, base).getValue().toDouble();
             } catch (...) {
-                throw std::runtime_error("IRBuilder Error: Invalid imaginary literal '" + s + "'.");
+                error("Syntax Error: Invalid imaginary literal '" + s + "'.");
             }
         } else {
             imagPart = std::stod(s);
@@ -1492,7 +1497,7 @@ void IRBuilder::visitLiteral(Literal* expr) {
             try {
                 val = BaseNum::fromString(numPart, base).getValue();
             } catch (...) {
-                throw std::runtime_error("IRBuilder Error: Invalid integer literal '" + s + "'.");
+                error("Syntax Error: Invalid integer literal '" + s + "'.");
             }
         } else if (s.find('.') == std::string::npos &&
             s.find('e') == std::string::npos &&
@@ -1699,7 +1704,7 @@ void IRBuilder::visitBinary(Binary* expr) {
         case TokenType::BIT_XOR: op = IROp::BitXor; break;
         case TokenType::SHIFT_LEFT: op = IROp::Shl; break;
         case TokenType::SHIFT_RIGHT: op = IROp::Shr; break;
-        default: throw std::runtime_error("IRBuilder: Unsupported binary operator.");
+        default: error("Syntax Error: Unsupported binary operator.");
     }
 
     // 4. 创建运算节点并连接依赖边
@@ -1718,7 +1723,7 @@ void IRBuilder::visitVariable(Variable* expr) {
 void IRBuilder::visitAssign(Assign* expr) {
     graph->currentLine = expr->name.line;
     if (expr->isState) {
-        if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
+        if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
         CompiledFunction::UpvalueInfo uv;
         uv.name = expr->name.lexeme;
         uv.isLocal = false;
@@ -1896,7 +1901,7 @@ void IRBuilder::visitUnary(Unary* expr) {
         case TokenType::BANG:  op = IROp::Not; break;
         case TokenType::TILDE: op = IROp::BitNot; break;
         case TokenType::PLUS:  lastValue = rightVal; return; // +x 等价于 x
-        default: throw std::runtime_error("IRBuilder: Unsupported unary operator.");
+        default: error("Syntax Error: Unsupported unary operator.");
     }
     
     IRNode* node = graph->createValueNode(op);
@@ -2138,7 +2143,7 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     size_t expectedCols = expr->elements.empty() ? 0 : expr->elements[0].size();
     for (auto& row : expr->elements) {
         if (row.size() != expectedCols) {
-            throw std::runtime_error("Syntax Error: Matrix rows must have the same number of columns.");
+            error("Syntax Error: Matrix rows must have the same number of columns.");
         }
         for (auto& e : row) {
             e->accept(*this);
@@ -2313,7 +2318,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
 }
 
 void IRBuilder::visitBreakExpr(BreakExpr*) {
-    if (loopStack.empty()) throw std::runtime_error("IRBuilder: break outside loop");
+    if (loopStack.empty()) error("Syntax Error: 'break' outside loop.");
     auto& loop = loopStack.back();
     loop.breakMerge->addData(currentControl);
     loop.breakEnvs.push_back(envStack);
@@ -2322,7 +2327,7 @@ void IRBuilder::visitBreakExpr(BreakExpr*) {
 }
 
 void IRBuilder::visitContinueExpr(ContinueExpr*) {
-    if (loopStack.empty()) throw std::runtime_error("IRBuilder: continue outside loop");
+    if (loopStack.empty()) error("Syntax Error: 'continue' outside loop.");
     auto& loop = loopStack.back();
     loop.loopNode->addData(currentControl);
     for (size_t i = 0; i < loop.loopPhisStack.size(); ++i) {
@@ -2571,7 +2576,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
     graph->currentLine = expr->name.line;
-    if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
+    if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     
     int upvalIdx = resolveUpvalue(expr->name.lexeme);
     if (upvalIdx == -1) {
@@ -2627,7 +2632,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         graph->currentLine = var->name.line;
         if (expr->isState) {
-            if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
+            if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
             int upvalIdx = resolveUpvalue(var->name.lexeme);
             if (upvalIdx == -1) {
                 CompiledFunction::UpvalueInfo uv;
@@ -2722,7 +2727,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
         targetVal = currObj;
     } else {
-        throw std::runtime_error("IRBuilder: Unsupported compound assignment target.");
+        error("Syntax Error: Unsupported compound assignment target.");
     }
 
     expr->value->accept(*this);
@@ -2754,7 +2759,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         case TokenType::SHIFT_LEFT_ASSIGN: op = IROp::Shl; break;
         case TokenType::SHIFT_RIGHT:
         case TokenType::SHIFT_RIGHT_ASSIGN: op = IROp::Shr; break;
-        default: throw std::runtime_error("IRBuilder: Unsupported compound operator.");
+        default: error("Syntax Error: Unsupported compound operator.");
     }
 
     IRNode* opNode = graph->createValueNode(op);
@@ -2855,116 +2860,121 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     lastValue = opNode;
 }
 
+void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::unique_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst) {
+    int requiredArgs = 0;
+    bool seenDefault = false;
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (hasRestParam && i == params.size() - 1) continue;
+        if (defaultExprs[i]) {
+            seenDefault = true;
+        } else if (seenDefault) {
+            error(params[i].line, "Syntax Error: non-default argument follows default argument.");
+        }
+        if (!defaultExprs[i]) requiredArgs++;
+    }
+    currentFunction->arity = requiredArgs;
+    currentFunction->maxArity = static_cast<int>(params.size());
+    currentFunction->hasRestParam = hasRestParam;
+    currentFunction->paramIsRef = paramIsRef;
+    currentFunction->paramIsConst = paramIsConst;
+    int refCount = 0;
+    for (bool isRef : paramIsRef) if (isRef) refCount++;
+    currentFunction->refCount = refCount;
+    
+    int refIdx = 0;
+    for (size_t i = 0; i < params.size(); ++i) {
+        IRNode* paramNode = nullptr;
+        if (i < paramIsRef.size() && paramIsRef[i]) {
+            refParams[params[i].lexeme] = refIdx++;
+            paramNode = readVariable(params[i].lexeme);
+        } else {
+            paramNode = graph->createValueNode(IROp::Parameter);
+            paramNode->payload1 = static_cast<uint32_t>(i);
+            declareVariable(params[i].lexeme, paramNode);
+        }
+        
+        if (defaultExprs[i]) {
+            IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+            isUninit->setControl(currentControl);
+            isUninit->addData(paramNode);
+            
+            IRNode* ifNode = graph->createNode(IROp::If);
+            ifNode->setControl(currentControl);
+            ifNode->addData(isUninit);
+            
+            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            ifTrue->setControl(ifNode);
+            
+            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            ifFalse->setControl(ifNode);
+            
+            auto baseEnv = envStack;
+            
+            currentControl = ifTrue;
+            envStack.emplace_back();
+            defaultExprs[i]->accept(*this);
+            IRNode* defVal = lastValue;
+            IRNode* trueCtrl = currentControl;
+            auto trueEnv = envStack;
+            envStack.pop_back();
+            
+            envStack = baseEnv;
+            currentControl = ifFalse;
+            envStack.emplace_back();
+            IRNode* falseCtrl = currentControl;
+            auto falseEnv = envStack;
+            envStack.pop_back();
+            
+            envStack = baseEnv;
+            
+            IRNode* merge = graph->createNode(IROp::Merge);
+            merge->addData(trueCtrl);
+            merge->addData(falseCtrl);
+            
+            for (size_t envIdx = 0; envIdx < baseEnv.size(); ++envIdx) {
+                std::unordered_set<std::string> modifiedVars;
+                for (const auto& pair : trueEnv[envIdx]) {
+                    if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                }
+                for (const auto& pair : falseEnv[envIdx]) {
+                    if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                }
+                for (const auto& name : modifiedVars) {
+                    if (capturedLocals.count(name)) continue;
+                    IRNode* tNode = trueEnv[envIdx].count(name) ? trueEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                    IRNode* fNode = falseEnv[envIdx].count(name) ? falseEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                    if (tNode != fNode) {
+                        IRNode* phi = graph->createValueNode(IROp::Phi);
+                        phi->setControl(merge);
+                        phi->addData(tNode);
+                        phi->addData(fNode);
+                        phi->name = name;
+                        envStack[envIdx][name] = phi;
+                    }
+                }
+            }
+            
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(merge);
+            phi->addData(defVal);
+            phi->addData(paramNode);
+            phi->name = params[i].lexeme;
+            
+            currentControl = merge;
+            writeVariable(params[i].lexeme, phi);
+        }
+    }
+}
+
 void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
     if (compiledFunctions) {
         auto fnDef = std::make_shared<CompiledFunction>();
         fnDef->name = expr->name.empty() ? "lambda" : expr->name;
-        int requiredArgs = 0;
-        bool seenDefault = false;
-        for (size_t i = 0; i < expr->params.size(); ++i) {
-            if (expr->hasRestParam && i == expr->params.size() - 1) continue;
-            if (expr->defaultExprs[i]) {
-                seenDefault = true;
-            } else if (seenDefault) {
-                throw std::runtime_error("Syntax Error: non-default argument follows default argument.");
-            }
-            if (!expr->defaultExprs[i]) requiredArgs++;
-        }
-        fnDef->arity = requiredArgs;
-        fnDef->maxArity = static_cast<int>(expr->params.size());
-        fnDef->hasRestParam = expr->hasRestParam;
-        fnDef->paramIsRef = expr->paramIsRef;
-        fnDef->paramIsConst = expr->paramIsConst;
-        int refCount = 0;
-        for (bool isRef : expr->paramIsRef) if (isRef) refCount++;
-        fnDef->refCount = refCount;
         
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
         
-        int refIdx = 0;
-        for (size_t i = 0; i < expr->params.size(); ++i) {
-            IRNode* paramNode = nullptr;
-            if (i < expr->paramIsRef.size() && expr->paramIsRef[i]) {
-                fnBuilder.refParams[expr->params[i].lexeme] = refIdx++;
-                paramNode = fnBuilder.readVariable(expr->params[i].lexeme);
-            } else {
-                paramNode = fnGraph.createValueNode(IROp::Parameter);
-                paramNode->payload1 = static_cast<uint32_t>(i);
-                fnBuilder.declareVariable(expr->params[i].lexeme, paramNode);
-            }
-            
-            if (expr->defaultExprs[i]) {
-                IRNode* isUninit = fnGraph.createValueNode(IROp::IsUninit);
-                isUninit->setControl(fnBuilder.currentControl);
-                isUninit->addData(paramNode);
-                
-                IRNode* ifNode = fnGraph.createNode(IROp::If);
-                ifNode->setControl(fnBuilder.currentControl);
-                ifNode->addData(isUninit);
-                
-                IRNode* ifTrue = fnGraph.createNode(IROp::IfTrue);
-                ifTrue->setControl(ifNode);
-                
-                IRNode* ifFalse = fnGraph.createNode(IROp::IfFalse);
-                ifFalse->setControl(ifNode);
-                
-                auto baseEnv = fnBuilder.envStack;
-                
-                fnBuilder.currentControl = ifTrue;
-                fnBuilder.envStack.emplace_back();
-                expr->defaultExprs[i]->accept(fnBuilder);
-                IRNode* defVal = fnBuilder.lastValue;
-                IRNode* trueCtrl = fnBuilder.currentControl;
-                auto trueEnv = fnBuilder.envStack;
-                fnBuilder.envStack.pop_back();
-                
-                fnBuilder.envStack = baseEnv;
-                fnBuilder.currentControl = ifFalse;
-                fnBuilder.envStack.emplace_back();
-                IRNode* falseCtrl = fnBuilder.currentControl;
-                auto falseEnv = fnBuilder.envStack;
-                fnBuilder.envStack.pop_back();
-                
-                fnBuilder.envStack = baseEnv;
-                
-                IRNode* merge = fnGraph.createNode(IROp::Merge);
-                merge->addData(trueCtrl);
-                merge->addData(falseCtrl);
-                
-                for (size_t envIdx = 0; envIdx < baseEnv.size(); ++envIdx) {
-                    std::unordered_set<std::string> modifiedVars;
-                    for (const auto& pair : trueEnv[envIdx]) {
-                        if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
-                    }
-                    for (const auto& pair : falseEnv[envIdx]) {
-                        if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
-                    }
-                    for (const auto& name : modifiedVars) {
-                        if (fnBuilder.capturedLocals.count(name)) continue;
-                        IRNode* tNode = trueEnv[envIdx].count(name) ? trueEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
-                        IRNode* fNode = falseEnv[envIdx].count(name) ? falseEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
-                        if (tNode != fNode) {
-                            IRNode* phi = fnGraph.createValueNode(IROp::Phi);
-                            phi->setControl(merge);
-                            phi->addData(tNode);
-                            phi->addData(fNode);
-                            phi->name = name;
-                            fnBuilder.envStack[envIdx][name] = phi;
-                        }
-                    }
-                }
-                
-                IRNode* phi = fnGraph.createValueNode(IROp::Phi);
-                phi->setControl(merge);
-                phi->addData(defVal);
-                phi->addData(paramNode);
-                phi->name = expr->params[i].lexeme;
-                
-                fnBuilder.currentControl = merge;
-                fnBuilder.writeVariable(expr->params[i].lexeme, phi);
-            }
-        }
+        fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->hasRestParam, expr->paramIsRef, expr->paramIsConst);
         
         fnBuilder.build(expr->body.get());
         
@@ -3398,112 +3408,11 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         if (compiledFunctions) {
             auto fnDef = std::make_shared<CompiledFunction>();
             fnDef->name = method.name.lexeme;
-            int requiredArgs = 0;
-            bool seenDefault = false;
-            for (size_t i = 0; i < method.params.size(); ++i) {
-                if (method.hasRestParam && i == method.params.size() - 1) continue;
-                if (method.defaultExprs[i]) {
-                    seenDefault = true;
-                } else if (seenDefault) {
-                    throw std::runtime_error("Syntax Error: non-default argument follows default argument.");
-                }
-                if (!method.defaultExprs[i]) requiredArgs++;
-            }
-            fnDef->arity = requiredArgs;
-            fnDef->maxArity = static_cast<int>(method.params.size());
-            fnDef->hasRestParam = method.hasRestParam;
-            fnDef->paramIsRef = method.paramIsRef;
-            fnDef->paramIsConst = method.paramIsConst;
-            int refCount = 0;
-            for (bool isRef : method.paramIsRef) if (isRef) refCount++;
-            fnDef->refCount = refCount;
             
             IRGraph fnGraph;
             IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
             
-            int refIdx = 0;
-            for (size_t i = 0; i < method.params.size(); ++i) {
-                IRNode* paramNode = nullptr;
-                if (i < method.paramIsRef.size() && method.paramIsRef[i]) {
-                    fnBuilder.refParams[method.params[i].lexeme] = refIdx++;
-                    paramNode = fnBuilder.readVariable(method.params[i].lexeme);
-                } else {
-                    paramNode = fnGraph.createValueNode(IROp::Parameter);
-                    paramNode->payload1 = static_cast<uint32_t>(i);
-                    fnBuilder.declareVariable(method.params[i].lexeme, paramNode);
-                }
-                
-                if (method.defaultExprs[i]) {
-                    IRNode* isUninit = fnGraph.createValueNode(IROp::IsUninit);
-                    isUninit->setControl(fnBuilder.currentControl);
-                    isUninit->addData(paramNode);
-                    
-                    IRNode* ifNode = fnGraph.createNode(IROp::If);
-                    ifNode->setControl(fnBuilder.currentControl);
-                    ifNode->addData(isUninit);
-                    
-                    IRNode* ifTrue = fnGraph.createNode(IROp::IfTrue);
-                    ifTrue->setControl(ifNode);
-                    
-                    IRNode* ifFalse = fnGraph.createNode(IROp::IfFalse);
-                    ifFalse->setControl(ifNode);
-                    
-                    auto baseEnv = fnBuilder.envStack;
-                    
-                    fnBuilder.currentControl = ifTrue;
-                    fnBuilder.envStack.emplace_back();
-                    method.defaultExprs[i]->accept(fnBuilder);
-                    IRNode* defVal = fnBuilder.lastValue;
-                    IRNode* trueCtrl = fnBuilder.currentControl;
-                    auto trueEnv = fnBuilder.envStack;
-                    fnBuilder.envStack.pop_back();
-                    
-                    fnBuilder.envStack = baseEnv;
-                    fnBuilder.currentControl = ifFalse;
-                    fnBuilder.envStack.emplace_back();
-                    IRNode* falseCtrl = fnBuilder.currentControl;
-                    auto falseEnv = fnBuilder.envStack;
-                    fnBuilder.envStack.pop_back();
-                    
-                    fnBuilder.envStack = baseEnv;
-                    
-                    IRNode* merge = fnGraph.createNode(IROp::Merge);
-                    merge->addData(trueCtrl);
-                    merge->addData(falseCtrl);
-                    
-                    for (size_t envIdx = 0; envIdx < baseEnv.size(); ++envIdx) {
-                        std::unordered_set<std::string> modifiedVars;
-                        for (const auto& pair : trueEnv[envIdx]) {
-                            if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
-                        }
-                        for (const auto& pair : falseEnv[envIdx]) {
-                            if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
-                        }
-                        for (const auto& name : modifiedVars) {
-                            if (fnBuilder.capturedLocals.count(name)) continue;
-                            IRNode* tNode = trueEnv[envIdx].count(name) ? trueEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
-                            IRNode* fNode = falseEnv[envIdx].count(name) ? falseEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
-                            if (tNode != fNode) {
-                                IRNode* phi = fnGraph.createValueNode(IROp::Phi);
-                                phi->setControl(merge);
-                                phi->addData(tNode);
-                                phi->addData(fNode);
-                                phi->name = name;
-                                fnBuilder.envStack[envIdx][name] = phi;
-                            }
-                        }
-                    }
-                    
-                    IRNode* phi = fnGraph.createValueNode(IROp::Phi);
-                    phi->setControl(merge);
-                    phi->addData(defVal);
-                    phi->addData(paramNode);
-                    phi->name = method.params[i].lexeme;
-                    
-                    fnBuilder.currentControl = merge;
-                    fnBuilder.writeVariable(method.params[i].lexeme, phi);
-                }
-            }
+            fnBuilder.buildFunctionParams(method.params, method.defaultExprs, method.hasRestParam, method.paramIsRef, method.paramIsConst);
             
             fnBuilder.build(method.body.get());
             
@@ -3844,7 +3753,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
 }
 
 void IRBuilder::visitSuperExpr(SuperExpr*) {
-    throw std::runtime_error("Syntax Error: 'super' can only be used for method calls or property access.");
+    error("Syntax Error: 'super' can only be used for method calls or property access.");
 }
 
 void IRBuilder::visitSelfExpr(SelfExpr*) {
@@ -3885,7 +3794,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
                 }
             }
         } else if (mod == ScopeModifier::State) {
-            if (!currentFunction) throw std::runtime_error("IRBuilder Error: 'state' modifier cannot be used at the top level.");
+            if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
             tempStateNames.push_back(name);
             bool found = false;
             for (auto& u : currentFunction->upvalues) {
@@ -4081,7 +3990,7 @@ void IRBuilder::visitSetLiteral(SetLiteral* expr) {
 }
 
 void IRBuilder::visitSliceExpr(SliceExpr*) {
-    throw std::runtime_error("IRBuilder: Slice expression should be handled by visitIndexAccess.");
+    error("Syntax Error: Slice expression should be handled by visitIndexAccess.");
 }
     
 void IRBuilder::visitSequenceExpr(SequenceExpr* expr) {

@@ -66,8 +66,17 @@ private:
     std::unordered_set<std::string> currentLocalVars;
     std::unordered_set<std::string> currentConstVars;
 
+    void buildFunctionParams(const std::vector<Token>& params, const std::vector<std::unique_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst);
     void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool isAssignment = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
+
+    [[noreturn]] void error(const std::string& message) const {
+        throw std::runtime_error("[Line " + std::to_string(graph->currentLine) + "] " + message);
+    }
+
+    [[noreturn]] void error(int line, const std::string& message) const {
+        throw std::runtime_error("[Line " + std::to_string(line) + "] " + message);
+    }
 
     void recordExitNode(IRNode* node) {
         ExitNodeInfo info;

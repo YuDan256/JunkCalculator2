@@ -325,13 +325,74 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     for (auto& nodePtr : graph->getNodes()) {
         if (nodePtr->op == IROp::Parameter && nodePtr->virtualReg != -1) {
             color[nodePtr->virtualReg] = nodePtr->payload1;
-            removed[nodePtr->virtualReg] = true;
         } else if (nodePtr->op == IROp::Constant && nodePtr->virtualReg != -1) {
             if (isUncoloredConst[nodePtr->virtualReg]) {
                 // 常量节点不参与着色，它们将在生成字节码时使用 K-Bit 或被加载到暂存器
                 removed[nodePtr->virtualReg] = true;
             }
         }
+    }
+
+    // 7.1 贪心寄存器合并 (Greedy Register Coalescing)
+    std::vector<int> alias(numVRegs);
+    for (int i = 0; i < numVRegs; ++i) alias[i] = i;
+
+    auto getAlias = [&](auto& self, int x) -> int {
+        if (alias[x] == x) return x;
+        return alias[x] = self(self, alias[x]);
+    };
+
+    bool coalesced = false;
+    for (auto& bb : blocks) {
+        for (IRNode* inst : bb->instructions) {
+            if (inst->op == IROp::Move && inst->dataInputs.size() == 1 && inst->dataInputs[0]) {
+                int u = inst->virtualReg;
+                int v = inst->dataInputs[0]->virtualReg;
+                if (u != -1 && v != -1 && !isUncoloredConst[u] && !isUncoloredConst[v]) {
+                    int rootU = getAlias(getAlias, u);
+                    int rootV = getAlias(getAlias, v);
+                    if (rootU != rootV && !adj[rootU].count(rootV)) {
+                        int cU = color[rootU];
+                        int cV = color[rootV];
+                        if (cU != -1 && cV != -1 && cU != cV) continue; // 预着色冲突，不能合并
+                        
+                        if (cV != -1 && cU == -1) std::swap(rootU, rootV);
+                        
+                        alias[rootV] = rootU;
+                        for (int neighbor : adj[rootV]) {
+                            int rootN = getAlias(getAlias, neighbor);
+                            if (rootN != rootU) {
+                                adj[rootU].insert(rootN);
+                                adj[rootN].insert(rootU);
+                            }
+                        }
+                        coalesced = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (coalesced) {
+        for (int i = 0; i < numVRegs; ++i) {
+            if (getAlias(getAlias, i) != i) {
+                removed[i] = true;
+            } else {
+                degree[i] = 0;
+                std::unordered_set<int> newAdj;
+                for (int neighbor : adj[i]) {
+                    int rootN = getAlias(getAlias, neighbor);
+                    if (rootN != i) newAdj.insert(rootN);
+                }
+                adj[i] = newAdj;
+                degree[i] = newAdj.size();
+            }
+        }
+    }
+
+    // 标记预着色节点为 removed
+    for (int i = 0; i < numVRegs; ++i) {
+        if (color[i] != -1) removed[i] = true;
     }
 
     int nodesRemaining = 0;
@@ -425,6 +486,13 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     }
 
     // 8. 回填物理寄存器分配结果
+    for (int i = 0; i < numVRegs; ++i) {
+        int root = getAlias(getAlias, i);
+        if (color[root] != -1) {
+            color[i] = color[root];
+        }
+    }
+
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
         if (node->virtualReg != -1 && color[node->virtualReg] != -1) {

@@ -201,8 +201,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::Move: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstAB(OpCode::MOVE, node->physicalReg, b);
-                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        if (node->physicalReg != b) {
+                            auto w = buildInstAB(OpCode::MOVE, node->physicalReg, b);
+                            inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        }
                         break;
                     }
                     case IROp::UpdateCaptured: {
@@ -309,8 +311,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         auto call = buildInstAB(node->op == IROp::Call ? OpCode::CALL : OpCode::TAIL_CALL, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), call.begin(), call.end());
-                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        if (node->physicalReg != spillBase) {
+                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        }
                         break;
                     }
                     case IROp::Invoke:
@@ -319,8 +323,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
                         auto inv = buildInstABC(node->op == IROp::Invoke ? OpCode::INVOKE : OpCode::TAIL_INVOKE, spillBase, node->payload1, icIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
-                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        if (node->physicalReg != spillBase) {
+                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        }
                         break;
                     }
                     case IROp::InvokeFallback:
@@ -329,8 +335,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
                         auto inv = buildInstABC(node->op == IROp::InvokeFallback ? OpCode::INVOKE_FALLBACK : OpCode::TAIL_INVOKE_FALLBACK, spillBase, node->payload1, icIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
-                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        if (node->physicalReg != spillBase) {
+                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        }
                         break;
                     }
                     case IROp::SuperInvoke:
@@ -339,8 +347,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
                         auto inv = buildInstABC(node->op == IROp::SuperInvoke ? OpCode::SUPER_INVOKE : OpCode::TAIL_SUPER_INVOKE, spillBase, node->payload1, nameIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
-                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        if (node->physicalReg != spillBase) {
+                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        }
                         break;
                     }
                     case IROp::BuildList:
@@ -380,8 +390,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
                         auto w = buildInstABC(OpCode::BUILD_NAMESPACE, spillBase, nameIdx, node->payload1);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
-                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        if (node->physicalReg != spillBase) {
+                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        }
                         break;
                     }
                     case IROp::ListInit: {
@@ -400,8 +412,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         auto w = buildInstA(OpCode::LIST_COMP_END, a);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
-                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, a);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        if (node->physicalReg != a) {
+                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, a);
+                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        }
                         break;
                     }
                     case IROp::IndexGet: {
@@ -423,8 +437,10 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         auto set = buildInstABC(node->op == IROp::IndexSet ? OpCode::INDEX_SET : OpCode::SLICE_SET, spillBase, 0, static_cast<int>(node->payload1));
                         inst.words.insert(inst.words.end(), set.begin(), set.end());
-                        auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
-                        inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        if (node->physicalReg != spillBase) {
+                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
+                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
+                        }
                         break;
                     }
                     case IROp::IterInit: {

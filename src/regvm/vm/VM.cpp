@@ -2053,6 +2053,7 @@ Value VM::run(int targetFrameDepth) {
                 if (!fn->upvalues.empty()) {
                     closure->upvalueCount = static_cast<int>(fn->upvalues.size());
                     closure->upvalues = new ObjUpVal*[closure->upvalueCount];
+                    for (int i = 0; i < closure->upvalueCount; ++i) closure->upvalues[i] = nullptr; // ★ 初始化为空指针，防止 GC 追踪野指针
                     for (int i = 0; i < closure->upvalueCount; ++i) {
                         auto& uv = fn->upvalues[i];
                         if (uv.isRef) {
@@ -3603,6 +3604,13 @@ Value VM::run(int targetFrameDepth) {
                                 bound->defaultValues = rawMethod->defaultValues;
                                 bound->hasRestParam = rawMethod->hasRestParam;
                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                if (rawMethod->upvalueCount > 0) {
+                                    bound->upvalueCount = rawMethod->upvalueCount;
+                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                        bound->upvalues[i] = rawMethod->upvalues[i];
+                                    }
+                                }
                                 bound->nativeFn = rawMethod->nativeFn;
                                 bound->boundSelf = Value(inst);
                                 bound->boundClass = Value(cls);
@@ -3748,13 +3756,44 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                         if (!found) {
-                            auto getattrMethod = findDunder(obj, "__getattr__");
-                            if (getattrMethod) {
-                                try {
-                                    result = callDunder(obj, getattrMethod, {Value(field)});
+                            auto cls = inst->classDef;
+                            while (cls) {
+                                auto it = cls->methods.find(field);
+                                if (it != cls->methods.end()) {
+                                    auto rawMethod = it->second;
+                                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                                    );
+                                    bound->paramNames = rawMethod->paramNames;
+                                    bound->isRef = rawMethod->isRef;
+                                    bound->defaultValues = rawMethod->defaultValues;
+                                    bound->hasRestParam = rawMethod->hasRestParam;
+                                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                    if (rawMethod->upvalueCount > 0) {
+                                        bound->upvalueCount = rawMethod->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = rawMethod->upvalues[i];
+                                        }
+                                    }
+                                    bound->nativeFn = rawMethod->nativeFn;
+                                    bound->boundSelf = Value(inst);
+                                    bound->boundClass = Value(cls);
+                                    result = Value(bound);
                                     found = true;
-                                } catch (...) {
-                                    found = false;
+                                    break;
+                                }
+                                cls = cls->parent;
+                            }
+                            if (!found) {
+                                auto getattrMethod = findDunder(obj, "__getattr__");
+                                if (getattrMethod) {
+                                    try {
+                                        result = callDunder(obj, getattrMethod, {Value(field)});
+                                        found = true;
+                                    } catch (...) {
+                                        found = false;
+                                    }
                                 }
                             }
                         }
@@ -3775,6 +3814,84 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 
+                if (!found) {
+                    auto nIt = jc::VM::activeVM->getNativeBuiltins().find(field);
+                    if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+                        auto bound = GcHeap::get().allocate<ObjClosure>(
+                            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                        );
+                        bound->boundSelf = obj;
+                        NativeCallable nativeFn = nIt->second;
+                        
+                        auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
+                        std::set<int> allowedArities;
+                        if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
+
+                        bound->nativeFn = std::make_any<NativeCallable>(
+                            [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
+                                Value capturedObj = helpers::nativeSelfStack.back();
+                                int totalArgs = static_cast<int>(args.size()) + 1;
+                                if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
+                                    std::string expected;
+                                    for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
+                                        if (aIt != allowedArities.begin()) expected += " or ";
+                                        expected += std::to_string(*aIt - 1);
+                                    }
+                                    throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                                }
+                                std::vector<Value> fullArgs;
+                                fullArgs.reserve(totalArgs);
+                                fullArgs.push_back(capturedObj);
+                                fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                return nativeFn(fullArgs);
+                            }
+                        );
+                        result = Value(bound);
+                        found = true;
+                    } else {
+                        auto gIt = globalNames.find(field);
+                        if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
+                            auto bound = GcHeap::get().allocate<ObjClosure>(
+                                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                            );
+                            bound->boundSelf = obj;
+                            ObjClosure* targetFn = globals[gIt->second].asFunction();
+                        
+                            if (targetFn->isBytecode()) {
+                                bound->compiledFnIndex = targetFn->compiledFnIndex;
+                                if (targetFn->upvalueCount > 0) {
+                                    bound->upvalueCount = targetFn->upvalueCount;
+                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                        bound->upvalues[i] = targetFn->upvalues[i];
+                                    }
+                                }
+                                bound->hasRestParam = targetFn->hasRestParam;
+                                bound->paramNames = targetFn->paramNames;
+                                bound->isRef = targetFn->isRef;
+                                bound->defaultValues = targetFn->defaultValues;
+                                bound->isUFCS = true;
+                                bound->nativeFn = targetFn->nativeFn;
+                            } else {
+                                bound->nativeFn = std::make_any<NativeCallable>(
+                                    [](const std::vector<Value>& args) -> Value {
+                                        Value capturedObj = helpers::nativeSelfStack.back();
+                                        ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
+                                        std::vector<Value> fullArgs;
+                                        fullArgs.reserve(args.size() + 1);
+                                        fullArgs.push_back(capturedObj);
+                                        fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                        return helpers::safeCallFunction(fn, fullArgs);
+                                    }
+                                );
+                                bound->boundClass = Value(targetFn);
+                            }
+                            result = Value(bound);
+                            found = true;
+                        }
+                    }
+                }
+
                 if (found) {
                     getReg(a) = result;
                 } else {

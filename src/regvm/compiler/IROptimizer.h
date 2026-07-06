@@ -17,6 +17,7 @@ private:
     static bool eliminateDeadCode(IRGraph* graph);
     static bool simplifyPhis(IRGraph* graph);
     static bool deduplicateConstants(IRGraph* graph);
+    static bool eliminateCommonSubexpressions(IRGraph* graph);
     
     static void replaceNode(IRGraph* graph, IRNode* oldNode, IRNode* newNode);
     

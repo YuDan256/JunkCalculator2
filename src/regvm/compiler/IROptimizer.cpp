@@ -13,6 +13,7 @@ void IROptimizer::optimize(IRGraph* graph) {
         changed |= foldControlFlow(graph);
         changed |= simplifyPhis(graph);
         changed |= deduplicateConstants(graph);
+        changed |= eliminateCommonSubexpressions(graph);
         changed |= eliminateDeadCode(graph);
     } while (changed);
 }
@@ -81,6 +82,67 @@ struct StrictValueEqual {
         return false;
     }
 };
+
+bool IROptimizer::eliminateCommonSubexpressions(IRGraph* graph) {
+    bool changed = false;
+    
+    struct NodeHasher {
+        size_t operator()(const IRNode* n) const {
+            size_t h = std::hash<int>()(static_cast<int>(n->op));
+            for (auto* in : n->dataInputs) {
+                h ^= std::hash<void*>()(in) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            }
+            h ^= std::hash<void*>()(n->controlInput) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<uint32_t>()(n->payload1) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            return h;
+        }
+    };
+    
+    struct NodeEqual {
+        bool operator()(const IRNode* a, const IRNode* b) const {
+            if (a->op != b->op) return false;
+            if (a->payload1 != b->payload1 || a->payload2 != b->payload2 || 
+                a->payload3 != b->payload3 || a->payload4 != b->payload4 || 
+                a->payload5 != b->payload5) return false;
+            if (a->dataInputs.size() != b->dataInputs.size()) return false;
+            for (size_t i = 0; i < a->dataInputs.size(); ++i) {
+                if (a->dataInputs[i] != b->dataInputs[i]) return false;
+            }
+            if (a->controlInput != b->controlInput) return false;
+            return true;
+        }
+    };
+
+    std::unordered_map<IRNode*, IRNode*, NodeHasher, NodeEqual> seen;
+    
+    auto isPure = [](IROp op) {
+        switch (op) {
+            case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div:
+            case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:
+            case IROp::Eq: case IROp::Neq: case IROp::Lt: case IROp::Le:
+            case IROp::Gt: case IROp::Ge: case IROp::Not: case IROp::Neg:
+            case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
+            case IROp::Shl: case IROp::Shr: case IROp::ToBool: case IROp::IsUninit:
+                return true;
+            default: return false;
+        }
+    };
+
+    for (auto& nodePtr : graph->getNodes()) {
+        IRNode* node = nodePtr.get();
+        if (node->op == IROp::Nop) continue;
+        if (isPure(node->op)) {
+            auto it = seen.find(node);
+            if (it != seen.end()) {
+                replaceNode(graph, node, it->second);
+                changed = true;
+            } else {
+                seen[node] = node;
+            }
+        }
+    }
+    return changed;
+}
 
 bool IROptimizer::deduplicateConstants(IRGraph* graph) {
     bool changed = false;

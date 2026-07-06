@@ -3032,17 +3032,16 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
         auto& arg = expr->arguments[i];
         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
             std::string name = var->name.lexeme;
-            IRNode* localNode = getLocalNode(name);
-            if (localNode) {
-                if (localNode->op == IROp::GetRefParam) {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
-                } else {
+            if (refParams.count(name)) {
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name)});
+            } else {
+                IRNode* localNode = getLocalNode(name);
+                if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
-                }
-            } else {
-                int upvalIdx = -1;
+                } else {
+                    int upvalIdx = -1;
                 if (currentFunction) {
                     for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
                         if (currentFunction->upvalues[j].name == name) {
@@ -3657,17 +3656,16 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         auto& arg = expr->arguments[i];
         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
             std::string name = var->name.lexeme;
-            IRNode* localNode = getLocalNode(name);
-            if (localNode) {
-                if (localNode->op == IROp::GetRefParam) {
-                    sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, localNode});
-                } else {
+            if (refParams.count(name)) {
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name)});
+            } else {
+                IRNode* localNode = getLocalNode(name);
+                if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
                     sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
-                }
-            } else {
-                int upvalIdx = -1;
+                } else {
+                    int upvalIdx = -1;
                 if (currentFunction) {
                     for (int j = static_cast<int>(currentFunction->upvalues.size()) - 1; j >= 0; --j) {
                         if (currentFunction->upvalues[j].name == name) {

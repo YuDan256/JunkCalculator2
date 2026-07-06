@@ -117,6 +117,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
             registers[currentFrame->registerBase + a] = nIt->second(args);
+            pendingCallRefs.clear();
             return;
         }
         auto it = globalNames.find(tag);
@@ -250,10 +251,12 @@ void VM::execCall(int a, int b, bool isTailCall) {
             }
             helpers::nativeSelfStack.pop_back();
             helpers::nativeClassStack.pop_back();
+            pendingCallRefs.clear();
         }
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
         auto instance = GcHeap::get().allocate<ObjInstance>();
+        registers[currentFrame->registerBase + a] = Value(instance); // ★ 立即 Root 防止 GC 误杀
         instance->classDef = cls;
         
         ObjClosure* initMethod = nullptr;
@@ -361,10 +364,15 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
                 registers[currentFrame->registerBase + a] = Value(instance);
+                pendingCallRefs.clear();
             }
         } else {
-            if (argc > 0) throw std::runtime_error("TypeError: Class takes no arguments directly.");
+            if (argc > 0) {
+                pendingCallRefs.clear();
+                throw std::runtime_error("TypeError: Class takes no arguments directly.");
+            }
             registers[currentFrame->registerBase + a] = Value(instance);
+            pendingCallRefs.clear();
         }
     } else if (callee.isInstance()) {
         auto inst = callee.asInstance();
@@ -476,6 +484,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 }
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
+                pendingCallRefs.clear();
             }
         } else {
             throw std::runtime_error("RegVM Error: Target is not callable.");
@@ -959,6 +968,7 @@ invoke_method:
                 argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
             registers[currentFrame->registerBase + a] = nIt->second(argsVec);
+            pendingCallRefs.clear();
             return;
         }
         
@@ -1082,6 +1092,7 @@ invoke_method:
         }
         helpers::nativeSelfStack.pop_back();
         helpers::nativeClassStack.pop_back();
+        pendingCallRefs.clear();
     }
 }
 
@@ -1563,6 +1574,7 @@ Value VM::execImport(const std::string& name) {
     }
 
     ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+    loadedModules[name] = Value(ns);
     ns->name = name;
 
     std::string resolved = "";
@@ -1608,6 +1620,7 @@ Value VM::execImport(const std::string& name) {
     }
 
     if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
+        loadedModules.erase(name);
         throw std::runtime_error("RegVM Error: Cannot find module '" + name + "'.");
     }
 
@@ -1617,14 +1630,15 @@ Value VM::execImport(const std::string& name) {
     if (ext == ".dll" || ext == ".so") {
 #if defined(_WIN32)
         HMODULE handle = LoadLibraryA(resolved.c_str());
-        if (!handle) throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "'.");
+        if (!handle) { loadedModules.erase(name); throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "'."); }
         auto init_fn = (JC2_ExtensionInitFunc)GetProcAddress(handle, "jc2_extension_init");
 #else
         void* handle = dlopen(resolved.c_str(), RTLD_NOW);
-        if (!handle) throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "': " + dlerror());
+        if (!handle) { loadedModules.erase(name); throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "': " + dlerror()); }
         auto init_fn = (JC2_ExtensionInitFunc)dlsym(handle, "jc2_extension_init");
 #endif
         if (!init_fn) {
+            loadedModules.erase(name);
             throw std::runtime_error("RegVM Error: Dynamic library '" + resolved + "' does not export 'jc2_extension_init'.");
         }
 
@@ -1636,6 +1650,7 @@ Value VM::execImport(const std::string& name) {
 
         int res = init_fn(reinterpret_cast<JC2_VMContext>(this), &mctx, get_host_api());
         if (res != 0) {
+            loadedModules.erase(name);
             throw std::runtime_error("RegVM Error: Extension initialization failed with code " + std::to_string(res));
         }
 
@@ -1650,6 +1665,7 @@ Value VM::execImport(const std::string& name) {
             auto closure = GcHeap::get().allocate<ObjClosure>(
                 std::vector<std::string>{}, std::vector<bool>{}, kv.first, nullptr
             );
+            globals.push_back(Value(closure)); // ★ 临时 Root 防止 GC 误杀
             closure->nativeFn = std::make_any<NativeCallable>(kv.second);
             
             auto ait = tempArity.find(kv.first);
@@ -1669,10 +1685,11 @@ Value VM::execImport(const std::string& name) {
             uv->closed = Value(closure);
             uv->location = &uv->closed;
             ns->fields[kv.first] = { uv, true };
+            globals.pop_back();
         }
     } else {
         std::ifstream file(resolved);
-        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read module script.");
+        if (!file.is_open()) { loadedModules.erase(name); throw std::runtime_error("IO Error: Cannot read module script."); }
         std::string code, line;
         while (std::getline(file, line)) code += line + "\n";
         file.close();
@@ -1746,17 +1763,19 @@ Value VM::execImport(const std::string& name) {
             nsVal = run(frameCount - 1);
         } catch (...) {
             helpers::g_scriptDirStack.pop_back();
+            loadedModules.erase(name);
             throw;
         }
         helpers::g_scriptDirStack.pop_back();
 
         if (!nsVal.isObjType(ObjType::NAMESPACE)) {
+            loadedModules.erase(name);
             throw std::runtime_error("RegVM Error: Module script must not use top-level 'return'.");
         }
         ns = static_cast<ObjNamespace*>(nsVal.asObj());
+        loadedModules[name] = Value(ns);
     }
 
-    loadedModules[name] = Value(ns);
     return Value(ns);
 }
 

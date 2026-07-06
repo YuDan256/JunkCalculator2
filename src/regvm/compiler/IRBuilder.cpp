@@ -445,8 +445,25 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
                 std::reverse(chain.begin(), chain.end());
                 
-                chain[0]->object->accept(*this);
-                IRNode* objNode = lastValue;
+                IRNode* dotParentNode = nullptr;
+                std::string dotPropName = "";
+                IRNode* objNode = nullptr;
+                
+                if (auto* dot = dynamic_cast<DotAccess*>(chain[0]->object.get())) {
+                    dot->object->accept(*this);
+                    dotParentNode = lastValue;
+                    dotPropName = dot->field.lexeme;
+                    
+                    IRNode* getProp = graph->createValueNode(IROp::GetProperty);
+                    getProp->setControl(currentControl);
+                    getProp->addData(dotParentNode);
+                    getProp->name = dotPropName;
+                    currentControl = getProp;
+                    objNode = getProp;
+                } else {
+                    chain[0]->object->accept(*this);
+                    objNode = lastValue;
+                }
                 
                 bool hasSlice = false;
                 if (chain.size() == 1) {
@@ -544,6 +561,13 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 
                 if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
                     writeVariable(var->name.lexeme, finalNode);
+                } else if (dotParentNode) {
+                    IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+                    setProp->setControl(currentControl);
+                    setProp->addData(dotParentNode);
+                    setProp->addData(finalNode);
+                    setProp->name = dotPropName;
+                    currentControl = setProp;
                 }
             } else {
                 throw std::runtime_error("IRBuilder Error: Invalid L-value in destructuring assignment.");
@@ -2363,8 +2387,24 @@ void IRBuilder::visitIndexAccess(IndexAccess* expr) {
 }
 
 void IRBuilder::visitIndexAssign(IndexAssign* expr) {
+    IRNode* dotParentNode = nullptr;
+    std::string dotPropName = "";
+
     if (expr->hasObjectExpr()) {
-        expr->objectExpr->accept(*this);
+        if (auto* dot = dynamic_cast<DotAccess*>(expr->objectExpr.get())) {
+            dot->object->accept(*this);
+            dotParentNode = lastValue;
+            dotPropName = dot->field.lexeme;
+            
+            IRNode* getProp = graph->createValueNode(IROp::GetProperty);
+            getProp->setControl(currentControl);
+            getProp->addData(dotParentNode);
+            getProp->name = dotPropName;
+            currentControl = getProp;
+            lastValue = getProp;
+        } else {
+            expr->objectExpr->accept(*this);
+        }
     } else {
         lastValue = readVariable(expr->name.lexeme);
     }
@@ -2411,6 +2451,13 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         
         if (!expr->hasObjectExpr()) {
             writeVariable(expr->name.lexeme, node);
+        } else if (dotParentNode) {
+            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+            setProp->setControl(currentControl);
+            setProp->addData(dotParentNode);
+            setProp->addData(node);
+            setProp->name = dotPropName;
+            currentControl = setProp;
         }
         lastValue = valNode;
         return;
@@ -2474,6 +2521,13 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         
         if (!expr->hasObjectExpr()) {
             writeVariable(expr->name.lexeme, finalNode);
+        } else if (dotParentNode) {
+            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+            setProp->setControl(currentControl);
+            setProp->addData(dotParentNode);
+            setProp->addData(finalNode);
+            setProp->name = dotPropName;
+            currentControl = setProp;
         }
         lastValue = valNode;
     }
@@ -2564,6 +2618,8 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     std::string propName;
     
     std::vector<IndexAccess*> chain;
+    IRNode* dotParentNode = nullptr;
+    std::string dotPropName = "";
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         graph->currentLine = var->name.line;
@@ -2626,8 +2682,21 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
         std::reverse(chain.begin(), chain.end());
         
-        chain[0]->object->accept(*this);
-        objNode = lastValue;
+        if (auto* dot = dynamic_cast<DotAccess*>(chain[0]->object.get())) {
+            dot->object->accept(*this);
+            dotParentNode = lastValue;
+            dotPropName = dot->field.lexeme;
+            
+            IRNode* getProp = graph->createValueNode(IROp::GetProperty);
+            getProp->setControl(currentControl);
+            getProp->addData(dotParentNode);
+            getProp->name = dotPropName;
+            currentControl = getProp;
+            objNode = getProp;
+        } else {
+            chain[0]->object->accept(*this);
+            objNode = lastValue;
+        }
         
         IRNode* currObj = objNode;
         for (size_t i = 0; i < chain.size(); ++i) {
@@ -2770,6 +2839,13 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                 bool isGlobalRef = expr->isRef && !currentFunction;
                 writeVariable(rootVar->name.lexeme, finalNode, false, isGlobalRef);
             }
+        } else if (dotParentNode) {
+            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+            setProp->setControl(currentControl);
+            setProp->addData(dotParentNode);
+            setProp->addData(finalNode);
+            setProp->name = dotPropName;
+            currentControl = setProp;
         }
     }
 

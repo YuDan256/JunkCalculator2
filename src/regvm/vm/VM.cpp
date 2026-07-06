@@ -3624,11 +3624,21 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    if (inst->fields) {
-                        auto it = inst->fields->keyMap.find(chunk->constants[ic.nameIdx]);
-                        if (it != inst->fields->keyMap.end()) {
-                            result = inst->fields->elements[it->second].second;
+                    if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                        if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                            result = inst->fields->elements[ic.cachedFieldIndex].second;
                             found = true;
+                        }
+                    }
+                    if (!found) {
+                        if (inst->fields) {
+                            auto it = inst->fields->keyMap.find(chunk->constants[ic.nameIdx]);
+                            if (it != inst->fields->keyMap.end()) {
+                                result = inst->fields->elements[it->second].second;
+                                found = true;
+                                ic.cachedClass = inst->classDef;
+                                ic.cachedFieldIndex = static_cast<int>(it->second);
+                            }
                         }
                     }
                     if (!found) {
@@ -3959,13 +3969,26 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                         Value key = chunk->constants[ic.nameIdx];
-                        auto it = inst->fields->keyMap.find(key);
-                        if (it != inst->fields->keyMap.end()) {
-                            inst->fields->elements[it->second].second = val;
-                        } else {
-                            inst->fields->keyMap[key] = inst->fields->elements.size();
-                            inst->fields->elements.push_back({key, val});
+                        if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                            if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                                inst->fields->elements[ic.cachedFieldIndex].second = val;
+                                goto set_prop_done;
+                            }
                         }
+                        {
+                            auto it = inst->fields->keyMap.find(key);
+                            if (it != inst->fields->keyMap.end()) {
+                                inst->fields->elements[it->second].second = val;
+                                ic.cachedClass = inst->classDef;
+                                ic.cachedFieldIndex = static_cast<int>(it->second);
+                            } else {
+                                ic.cachedClass = inst->classDef;
+                                ic.cachedFieldIndex = static_cast<int>(inst->fields->elements.size());
+                                inst->fields->keyMap[key] = inst->fields->elements.size();
+                                inst->fields->elements.push_back({key, val});
+                            }
+                        }
+                    set_prop_done:;
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());

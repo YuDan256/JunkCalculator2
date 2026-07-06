@@ -1,6 +1,9 @@
 #include "IROptimizer.h"
 #include <unordered_map>
 #include <unordered_set>
+#include <sstream>
+#include <iomanip>
+#include <cmath>
 
 namespace jc {
 namespace regvm {
@@ -48,7 +51,6 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
         case IROp::Method: case IROp::Inherit: case IROp::Import:
         case IROp::ListInit: case IROp::ListAppend: case IROp::ListCompEnd:
-        case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
             return true;
         default:
             return false;
@@ -123,6 +125,7 @@ bool IROptimizer::eliminateCommonSubexpressions(IRGraph* graph) {
             case IROp::Gt: case IROp::Ge: case IROp::Not: case IROp::Neg:
             case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
             case IROp::Shl: case IROp::Shr: case IROp::ToBool: case IROp::IsUninit:
+            case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
                 return true;
             default: return false;
         }
@@ -219,7 +222,96 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                 else if (node->op == IROp::Not) { node->constVal = Value(!val.truthy()); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                 else if (node->op == IROp::BitNot) { node->constVal = ~val; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                 else if (node->op == IROp::ToBool) { node->constVal = Value(val.truthy()); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
+                else if (node->op == IROp::Stringify) {
+                    if (val.isString()) {
+                        node->constVal = val;
+                    } else {
+                        std::ostringstream oss;
+                        if (val.isUninit()) oss << "Uninitialized";
+                        else oss << val;
+                        node->constVal = Value(oss.str());
+                    }
+                    node->op = IROp::Constant; node->dataInputs.clear(); changed = true;
+                }
             } catch (...) {} // 忽略除零等运行时错误，留给 VM 抛出
+        }
+        // 字符串格式化折叠
+        else if (node->op == IROp::FormatString && node->dataInputs.size() == 2) {
+            IRNode* valNode = node->dataInputs[0];
+            IRNode* specNode = node->dataInputs[1];
+            if (valNode && valNode->op == IROp::Constant && !capturedNodes.count(valNode) &&
+                specNode && specNode->op == IROp::Constant && !capturedNodes.count(specNode)) {
+                Value val = valNode->constVal;
+                const std::string& spec = specNode->constVal.asString();
+                
+                char align = '\0';
+                int width = 0;
+                int precision = -1;
+                char type = '\0';
+                size_t si = 0;
+                if (si < spec.size() && (spec[si] == '<' || spec[si] == '>' || spec[si] == '^'))
+                    align = spec[si++];
+                while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
+                    width = width * 10 + (spec[si++] - '0');
+                if (si < spec.size() && spec[si] == '.') {
+                    si++; precision = 0;
+                    while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
+                        precision = precision * 10 + (spec[si++] - '0');
+                }
+                if (si < spec.size()) type = spec[si++];
+
+                std::ostringstream oss;
+                if (type == 'f' || type == 'e') {
+                    if (precision >= 0) oss << std::fixed << std::setprecision(precision);
+                    if (type == 'e') oss << std::scientific;
+                    try { oss << val.asDouble(); } catch (...) { oss << val; }
+                }
+                else if (type == 'd') { try { oss << static_cast<int64_t>(std::round(val.asDouble())); } catch (...) { oss << val; } }
+                else if (type == 'x') { try { oss << std::hex << static_cast<int64_t>(std::round(val.asDouble())); } catch (...) { oss << val; } }
+                else { oss << val; }
+
+                std::string result = oss.str();
+                if (width > 0 && static_cast<int>(result.size()) < width) {
+                    int pad = width - static_cast<int>(result.size());
+                    if (align == '<') result += std::string(pad, ' ');
+                    else if (align == '^') {
+                        int l = pad / 2, r = pad - l;
+                        result = std::string(l, ' ') + result + std::string(r, ' ');
+                    }
+                    else result = std::string(pad, ' ') + result;
+                }
+                node->constVal = Value(result);
+                node->op = IROp::Constant;
+                node->dataInputs.clear();
+                changed = true;
+            }
+        }
+        // 字符串拼接折叠
+        else if (node->op == IROp::ConcatStrings) {
+            bool allConst = true;
+            for (IRNode* in : node->dataInputs) {
+                if (!in || in->op != IROp::Constant || capturedNodes.count(in)) {
+                    allConst = false;
+                    break;
+                }
+            }
+            if (allConst && !node->dataInputs.empty()) {
+                std::string res;
+                for (IRNode* in : node->dataInputs) {
+                    Value val = in->constVal;
+                    if (val.isString()) res += val.asString();
+                    else {
+                        std::ostringstream oss;
+                        if (val.isUninit()) oss << "Uninitialized";
+                        else oss << val;
+                        res += oss.str();
+                    }
+                }
+                node->constVal = Value(res);
+                node->op = IROp::Constant;
+                node->dataInputs.clear();
+                changed = true;
+            }
         }
         // 二元运算折叠与代数化简
         else if (node->dataInputs.size() == 2 && node->dataInputs[0] && node->dataInputs[1]) {

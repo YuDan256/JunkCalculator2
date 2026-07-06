@@ -51,6 +51,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
         case IROp::Method: case IROp::Inherit: case IROp::Import:
         case IROp::ListInit: case IROp::ListAppend: case IROp::ListCompEnd:
+        case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
             return true;
         default:
             return false;
@@ -125,7 +126,6 @@ bool IROptimizer::eliminateCommonSubexpressions(IRGraph* graph) {
             case IROp::Gt: case IROp::Ge: case IROp::Not: case IROp::Neg:
             case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
             case IROp::Shl: case IROp::Shr: case IROp::ToBool: case IROp::IsUninit:
-            case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
                 return true;
             default: return false;
         }
@@ -223,15 +223,25 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                 else if (node->op == IROp::BitNot) { node->constVal = ~val; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                 else if (node->op == IROp::ToBool) { node->constVal = Value(val.truthy()); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                 else if (node->op == IROp::Stringify) {
+                    Value resVal;
                     if (val.isString()) {
-                        node->constVal = val;
+                        resVal = val;
                     } else {
                         std::ostringstream oss;
                         if (val.isUninit()) oss << "Uninitialized";
                         else oss << val;
-                        node->constVal = Value(oss.str());
+                        resVal = Value(oss.str());
                     }
-                    node->op = IROp::Constant; node->dataInputs.clear(); changed = true;
+                    IRNode* constNode = graph->createConstant(resVal);
+                    constNode->setControl(node->controlInput);
+                    for (auto& nodePtr : graph->getNodes()) {
+                        IRNode* user = nodePtr.get();
+                        if (user->controlInput == node) user->controlInput = node->controlInput;
+                        for (auto& din : user->dataInputs) {
+                            if (din == node) din = constNode;
+                        }
+                    }
+                    node->op = IROp::Nop; node->dataInputs.clear(); node->controlInput = nullptr; changed = true;
                 }
             } catch (...) {} // 忽略除零等运行时错误，留给 VM 抛出
         }
@@ -280,10 +290,17 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     }
                     else result = std::string(pad, ' ') + result;
                 }
-                node->constVal = Value(result);
-                node->op = IROp::Constant;
-                node->dataInputs.clear();
-                changed = true;
+                
+                IRNode* constNode = graph->createConstant(Value(result));
+                constNode->setControl(node->controlInput);
+                for (auto& nodePtr : graph->getNodes()) {
+                    IRNode* user = nodePtr.get();
+                    if (user->controlInput == node) user->controlInput = node->controlInput;
+                    for (auto& din : user->dataInputs) {
+                        if (din == node) din = constNode;
+                    }
+                }
+                node->op = IROp::Nop; node->dataInputs.clear(); node->controlInput = nullptr; changed = true;
             }
         }
         // 字符串拼接折叠
@@ -307,10 +324,17 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                         res += oss.str();
                     }
                 }
-                node->constVal = Value(res);
-                node->op = IROp::Constant;
-                node->dataInputs.clear();
-                changed = true;
+                
+                IRNode* constNode = graph->createConstant(Value(res));
+                constNode->setControl(node->controlInput);
+                for (auto& nodePtr : graph->getNodes()) {
+                    IRNode* user = nodePtr.get();
+                    if (user->controlInput == node) user->controlInput = node->controlInput;
+                    for (auto& din : user->dataInputs) {
+                        if (din == node) din = constNode;
+                    }
+                }
+                node->op = IROp::Nop; node->dataInputs.clear(); node->controlInput = nullptr; changed = true;
             }
         }
         // 二元运算折叠与代数化简

@@ -1349,15 +1349,11 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            if (capturedLocals.count(pair.first)) {
-                loopPhisStack[i][pair.first] = pair.second;
-            } else {
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(loopNode);
-                phi->addData(pair.second);
-                phi->name = pair.first;
-                loopPhisStack[i][pair.first] = phi;
-            }
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
         }
     }
     envStack = loopPhisStack;
@@ -1417,14 +1413,12 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            if (!capturedLocals.count(pair.first)) {
-                pair.second->addData(readVariable(pair.first));
-                if (!condFailMerge->dataInputs.empty()) {
-                    pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
-                }
-                if (!failMerge->dataInputs.empty()) {
-                    pair.second->addData(envBeforePattern[i].count(pair.first) ? envBeforePattern[i].at(pair.first) : graph->createConstant(Value::none()));
-                }
+            pair.second->addData(readVariable(pair.first));
+            if (!condFailMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
+            }
+            if (!failMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforePattern[i].count(pair.first) ? envBeforePattern[i].at(pair.first) : graph->createConstant(Value::none()));
             }
         }
     }
@@ -1624,7 +1618,6 @@ void IRBuilder::visitBinary(Binary* expr) {
                     if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
                 }
                 for (const auto& name : modifiedVars) {
-                    if (capturedLocals.count(name)) continue;
                     IRNode* tNode = rightEnv[i].count(name) ? rightEnv[i].at(name) : baseEnv[i].at(name);
                     IRNode* eNode = baseEnv[i].at(name);
                     IRNode* phi = graph->createValueNode(IROp::Phi);
@@ -1658,7 +1651,6 @@ void IRBuilder::visitBinary(Binary* expr) {
                     if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
                 }
                 for (const auto& name : modifiedVars) {
-                    if (capturedLocals.count(name)) continue;
                     IRNode* tNode = baseEnv[i].at(name);
                     IRNode* eNode = rightEnv[i].count(name) ? rightEnv[i].at(name) : baseEnv[i].at(name);
                     IRNode* phi = graph->createValueNode(IROp::Phi);
@@ -2041,7 +2033,6 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
         }
 
         for (const auto& name : modifiedVars) {
-            if (capturedLocals.count(name)) continue;
             IRNode* tNode = thenEnv[i].count(name) ? thenEnv[i].at(name) : baseEnv[i].at(name);
             IRNode* eNode = elseEnv[i].count(name) ? elseEnv[i].at(name) : baseEnv[i].at(name);
             
@@ -2170,15 +2161,11 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            if (capturedLocals.count(pair.first)) {
-                loopPhisStack[i][pair.first] = pair.second;
-            } else {
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(loopNode);
-                phi->addData(pair.second);
-                phi->name = pair.first;
-                loopPhisStack[i][pair.first] = phi;
-            }
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
         }
     }
     envStack = loopPhisStack;
@@ -2208,9 +2195,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            if (!capturedLocals.count(pair.first)) {
-                pair.second->addData(readVariable(pair.first));
-            }
+            pair.second->addData(readVariable(pair.first));
         }
     }
     
@@ -2224,17 +2209,13 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
             const std::string& name = pair.first;
-            if (capturedLocals.count(name)) {
-                exitEnvStack[i][name] = pair.second;
-            } else {
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(breakMerge);
-                for (auto& env : breakEnvs) {
-                    phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
-                }
-                phi->name = name;
-                exitEnvStack[i][name] = phi;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(breakMerge);
+            for (auto& env : breakEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
             }
+            phi->name = name;
+            exitEnvStack[i][name] = phi;
         }
     }
     
@@ -2257,15 +2238,11 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            if (capturedLocals.count(pair.first)) {
-                loopPhisStack[i][pair.first] = pair.second;
-            } else {
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(loopNode);
-                phi->addData(pair.second);
-                phi->name = pair.first;
-                loopPhisStack[i][pair.first] = phi;
-            }
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
         }
     }
     envStack = loopPhisStack;
@@ -2296,9 +2273,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            if (!capturedLocals.count(pair.first)) {
-                pair.second->addData(readVariable(pair.first));
-            }
+            pair.second->addData(readVariable(pair.first));
         }
     }
     
@@ -2312,17 +2287,13 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
             const std::string& name = pair.first;
-            if (capturedLocals.count(name)) {
-                exitEnvStack[i][name] = pair.second;
-            } else {
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(breakMerge);
-                for (auto& env : breakEnvs) {
-                    phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
-                }
-                phi->name = name;
-                exitEnvStack[i][name] = phi;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(breakMerge);
+            for (auto& env : breakEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
             }
+            phi->name = name;
+            exitEnvStack[i][name] = phi;
         }
     }
     
@@ -3131,15 +3102,11 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            if (capturedLocals.count(pair.first)) {
-                loopPhisStack[i][pair.first] = pair.second;
-            } else {
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(loopNode);
-                phi->addData(pair.second);
-                phi->name = pair.first;
-                loopPhisStack[i][pair.first] = phi;
-            }
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
         }
     }
     envStack = loopPhisStack;
@@ -3180,9 +3147,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            if (!capturedLocals.count(pair.first)) {
-                pair.second->addData(readVariable(pair.first));
-            }
+            pair.second->addData(readVariable(pair.first));
         }
     }
     
@@ -3198,17 +3163,13 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
             const std::string& name = pair.first;
-            if (capturedLocals.count(name)) {
-                exitEnvStack[i][name] = pair.second;
-            } else {
-                IRNode* phi = graph->createValueNode(IROp::Phi);
-                phi->setControl(breakMerge);
-                for (auto& env : breakEnvs) {
-                    phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
-                }
-                phi->name = name;
-                exitEnvStack[i][name] = phi;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(breakMerge);
+            for (auto& env : breakEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
             }
+            phi->name = name;
+            exitEnvStack[i][name] = phi;
         }
     }
     
@@ -3291,7 +3252,6 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
         }
 
         for (const auto& name : modifiedVars) {
-            if (capturedLocals.count(name)) continue;
             IRNode* nNode = normalEnv[i].count(name) ? normalEnv[i].at(name) : baseEnv[i].at(name);
             IRNode* cNode = catchEnv[i].count(name) ? catchEnv[i].at(name) : baseEnv[i].at(name);
             if (nNode != cNode) {
@@ -3405,7 +3365,6 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
             }
         }
         for (const auto& name : modifiedVars) {
-            if (capturedLocals.count(name)) continue;
             IRNode* phi = graph->createValueNode(IROp::Phi);
             phi->setControl(endMerge);
             for (auto& bEnv : branchEnvs) {
@@ -4119,7 +4078,6 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
             }
         }
         for (const auto& name : modifiedVars) {
-            if (capturedLocals.count(name)) continue;
             IRNode* phi = graph->createValueNode(IROp::Phi);
             phi->setControl(endMerge);
             for (auto& bEnv : branchEnvs) {

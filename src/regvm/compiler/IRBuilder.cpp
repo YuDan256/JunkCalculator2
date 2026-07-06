@@ -2491,6 +2491,13 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         
         if (!expr->hasObjectExpr()) {
             writeVariable(expr->name.lexeme, node);
+        } else if (dotParentNode) {
+            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+            setProp->setControl(currentControl);
+            setProp->addData(dotParentNode);
+            setProp->addData(node);
+            setProp->name = dotPropName;
+            currentControl = setProp;
         }
         lastValue = valNode;
     } else {

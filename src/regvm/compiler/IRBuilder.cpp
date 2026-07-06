@@ -2860,7 +2860,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     lastValue = opNode;
 }
 
-void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::unique_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst) {
+void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst) {
     int requiredArgs = 0;
     bool seenDefault = false;
     for (size_t i = 0; i < params.size(); ++i) {

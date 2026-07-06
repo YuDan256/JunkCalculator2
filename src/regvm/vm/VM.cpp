@@ -3390,8 +3390,22 @@ Value VM::run(int targetFrameDepth) {
                             if (i >= static_cast<int>(objStr->charLength)) {
                                 getReg(a) = Value::uninit();
                             } else {
-                                getReg(a) = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
-                                state->vec[1] = Value::fromInt32(i + 1);
+                                if (objStr->isAscii) {
+                                    getReg(a) = Value(std::string(1, objStr->str[i]));
+                                    state->vec[1] = Value::fromInt32(i + 1);
+                                } else {
+                                    int byteOffset = state->vec.size() > 2 ? state->vec[2].asInt32() : 0;
+                                    int charLen = 1;
+                                    unsigned char c = objStr->str[byteOffset];
+                                    if ((c & 0xE0) == 0xC0) charLen = 2;
+                                    else if ((c & 0xF0) == 0xE0) charLen = 3;
+                                    else if ((c & 0xF8) == 0xF0) charLen = 4;
+                                
+                                    getReg(a) = Value(objStr->str.substr(byteOffset, charLen));
+                                    state->vec[1] = Value::fromInt32(i + 1);
+                                    if (state->vec.size() > 2) state->vec[2] = Value::fromInt32(byteOffset + charLen);
+                                    else state->vec.push_back(Value::fromInt32(byteOffset + charLen));
+                                }
                             }
                             break;
                         } else if (iterTarget.isObjType(ObjType::REAL_MATRIX)) {

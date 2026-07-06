@@ -2899,14 +2899,51 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
                 IRNode* ifFalse = fnGraph.createNode(IROp::IfFalse);
                 ifFalse->setControl(ifNode);
                 
+                auto baseEnv = fnBuilder.envStack;
+                
                 fnBuilder.currentControl = ifTrue;
+                fnBuilder.envStack.emplace_back();
                 expr->defaultExprs[i]->accept(fnBuilder);
                 IRNode* defVal = fnBuilder.lastValue;
                 IRNode* trueCtrl = fnBuilder.currentControl;
+                auto trueEnv = fnBuilder.envStack;
+                fnBuilder.envStack.pop_back();
+                
+                fnBuilder.envStack = baseEnv;
+                fnBuilder.currentControl = ifFalse;
+                fnBuilder.envStack.emplace_back();
+                IRNode* falseCtrl = fnBuilder.currentControl;
+                auto falseEnv = fnBuilder.envStack;
+                fnBuilder.envStack.pop_back();
+                
+                fnBuilder.envStack = baseEnv;
                 
                 IRNode* merge = fnGraph.createNode(IROp::Merge);
                 merge->addData(trueCtrl);
-                merge->addData(ifFalse);
+                merge->addData(falseCtrl);
+                
+                for (size_t envIdx = 0; envIdx < baseEnv.size(); ++envIdx) {
+                    std::unordered_set<std::string> modifiedVars;
+                    for (const auto& pair : trueEnv[envIdx]) {
+                        if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                    }
+                    for (const auto& pair : falseEnv[envIdx]) {
+                        if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                    }
+                    for (const auto& name : modifiedVars) {
+                        if (fnBuilder.capturedLocals.count(name)) continue;
+                        IRNode* tNode = trueEnv[envIdx].count(name) ? trueEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                        IRNode* fNode = falseEnv[envIdx].count(name) ? falseEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                        if (tNode != fNode) {
+                            IRNode* phi = fnGraph.createValueNode(IROp::Phi);
+                            phi->setControl(merge);
+                            phi->addData(tNode);
+                            phi->addData(fNode);
+                            phi->name = name;
+                            fnBuilder.envStack[envIdx][name] = phi;
+                        }
+                    }
+                }
                 
                 IRNode* phi = fnGraph.createValueNode(IROp::Phi);
                 phi->setControl(merge);
@@ -3390,14 +3427,51 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
                     IRNode* ifFalse = fnGraph.createNode(IROp::IfFalse);
                     ifFalse->setControl(ifNode);
                     
+                    auto baseEnv = fnBuilder.envStack;
+                    
                     fnBuilder.currentControl = ifTrue;
+                    fnBuilder.envStack.emplace_back();
                     method.defaultExprs[i]->accept(fnBuilder);
                     IRNode* defVal = fnBuilder.lastValue;
                     IRNode* trueCtrl = fnBuilder.currentControl;
+                    auto trueEnv = fnBuilder.envStack;
+                    fnBuilder.envStack.pop_back();
+                    
+                    fnBuilder.envStack = baseEnv;
+                    fnBuilder.currentControl = ifFalse;
+                    fnBuilder.envStack.emplace_back();
+                    IRNode* falseCtrl = fnBuilder.currentControl;
+                    auto falseEnv = fnBuilder.envStack;
+                    fnBuilder.envStack.pop_back();
+                    
+                    fnBuilder.envStack = baseEnv;
                     
                     IRNode* merge = fnGraph.createNode(IROp::Merge);
                     merge->addData(trueCtrl);
-                    merge->addData(ifFalse);
+                    merge->addData(falseCtrl);
+                    
+                    for (size_t envIdx = 0; envIdx < baseEnv.size(); ++envIdx) {
+                        std::unordered_set<std::string> modifiedVars;
+                        for (const auto& pair : trueEnv[envIdx]) {
+                            if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                        }
+                        for (const auto& pair : falseEnv[envIdx]) {
+                            if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                        }
+                        for (const auto& name : modifiedVars) {
+                            if (fnBuilder.capturedLocals.count(name)) continue;
+                            IRNode* tNode = trueEnv[envIdx].count(name) ? trueEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                            IRNode* fNode = falseEnv[envIdx].count(name) ? falseEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                            if (tNode != fNode) {
+                                IRNode* phi = fnGraph.createValueNode(IROp::Phi);
+                                phi->setControl(merge);
+                                phi->addData(tNode);
+                                phi->addData(fNode);
+                                phi->name = name;
+                                fnBuilder.envStack[envIdx][name] = phi;
+                            }
+                        }
+                    }
                     
                     IRNode* phi = fnGraph.createValueNode(IROp::Phi);
                     phi->setControl(merge);

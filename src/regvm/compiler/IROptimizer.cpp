@@ -386,10 +386,43 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
             used.insert(curr->controlInput);
             worklist.push_back(curr->controlInput);
         }
-        for (IRNode* in : curr->dataInputs) {
-            if (in && used.find(in) == used.end()) {
-                used.insert(in);
-                worklist.push_back(in);
+        
+        if (curr->op == IROp::Merge || curr->op == IROp::Loop) {
+            for (IRNode* in : curr->dataInputs) {
+                if (in && reachableControl.find(in) != reachableControl.end() && used.find(in) == used.end()) {
+                    used.insert(in);
+                    worklist.push_back(in);
+                }
+            }
+        } else if (curr->op == IROp::Phi) {
+            IRNode* merge = curr->controlInput;
+            if (merge && (merge->op == IROp::Merge || merge->op == IROp::Loop)) {
+                for (size_t i = 0; i < curr->dataInputs.size(); ++i) {
+                    IRNode* in = curr->dataInputs[i];
+                    if (in && used.find(in) == used.end()) {
+                        if (i < merge->dataInputs.size()) {
+                            IRNode* ctrlIn = merge->dataInputs[i];
+                            if (ctrlIn && reachableControl.find(ctrlIn) != reachableControl.end()) {
+                                used.insert(in);
+                                worklist.push_back(in);
+                            }
+                        }
+                    }
+                }
+            } else {
+                for (IRNode* in : curr->dataInputs) {
+                    if (in && used.find(in) == used.end()) {
+                        used.insert(in);
+                        worklist.push_back(in);
+                    }
+                }
+            }
+        } else {
+            for (IRNode* in : curr->dataInputs) {
+                if (in && used.find(in) == used.end()) {
+                    used.insert(in);
+                    worklist.push_back(in);
+                }
             }
         }
     }

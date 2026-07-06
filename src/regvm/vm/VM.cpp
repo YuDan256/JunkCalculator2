@@ -3289,7 +3289,9 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 
-                if (iterable.isObjType(ObjType::LIST)) {
+                if (iterable.isObjType(ObjType::LIST) || iterable.isString() || 
+                    iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) || 
+                    iterable.isObjType(ObjType::STRING_MATRIX)) {
                     ObjList* state = GcHeap::get().allocate<ObjList>();
                     state->vec.push_back(iterable);
                     state->vec.push_back(Value::fromInt32(0));
@@ -3300,17 +3302,7 @@ Value VM::run(int targetFrameDepth) {
                 ObjList* elements = GcHeap::get().allocate<ObjList>();
                 getReg(a) = Value(elements); // ★ 立即 Root 防止 GC 误杀
                 
-                if (iterable.isString()) {
-                    ObjString* objStr = iterable.asObjString();
-                    const std::string& s = objStr->str;
-                    if (objStr->isAscii) {
-                        for (char ch : s) elements->vec.push_back(Value(std::string(1, ch)));
-                    } else {
-                        size_t len = objStr->charLength;
-                        for (size_t i = 0; i < len; ++i)
-                            elements->vec.push_back(Value(utf8::substring(s, i, 1, false)));
-                    }
-                } else if (iterable.isObjType(ObjType::DICT)) {
+                if (iterable.isObjType(ObjType::DICT)) {
                     const auto* d = static_cast<ObjDict*>(iterable.asObj());
                     if (destructFlag) {
                         for (const auto& [key, val] : d->elements) {
@@ -3344,45 +3336,6 @@ Value VM::run(int targetFrameDepth) {
                     const auto* s = static_cast<ObjSet*>(iterable.asObj());
                     for (const auto& val : s->elements) {
                         elements->vec.push_back(val);
-                    }
-                } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
-                    const auto& m = static_cast<ObjRealMatrix*>(iterable.asObj())->mat;
-                    if (m.getRows() == 1) {
-                        for (int j = 0; j < m.getCols(); ++j) elements->vec.push_back(Value(m(0, j)));
-                    } else if (m.getCols() == 1) {
-                        for (int i = 0; i < m.getRows(); ++i) elements->vec.push_back(Value(m(i, 0)));
-                    } else {
-                        for (int i = 0; i < m.getRows(); ++i) {
-                            std::vector<double> row(m.getCols());
-                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                            elements->vec.push_back(Value(RealMatrix(1, m.getCols(), row)));
-                        }
-                    }
-                } else if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
-                    const auto& m = static_cast<ObjComplexMatrix*>(iterable.asObj())->mat;
-                    if (m.getRows() == 1) {
-                        for (int j = 0; j < m.getCols(); ++j) elements->vec.push_back(Value(m(0, j)));
-                    } else if (m.getCols() == 1) {
-                        for (int i = 0; i < m.getRows(); ++i) elements->vec.push_back(Value(m(i, 0)));
-                    } else {
-                        for (int i = 0; i < m.getRows(); ++i) {
-                            std::vector<Complex> row(m.getCols());
-                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                            elements->vec.push_back(Value(ComplexMatrix(1, m.getCols(), row)));
-                        }
-                    }
-                } else if (iterable.isObjType(ObjType::STRING_MATRIX)) {
-                    const auto& m = static_cast<ObjStringMatrix*>(iterable.asObj())->mat;
-                    if (m.getRows() == 1) {
-                        for (int j = 0; j < m.getCols(); ++j) elements->vec.push_back(Value(m(0, j)));
-                    } else if (m.getCols() == 1) {
-                        for (int i = 0; i < m.getRows(); ++i) elements->vec.push_back(Value(m(i, 0)));
-                    } else {
-                        for (int i = 0; i < m.getRows(); ++i) {
-                            std::vector<std::string> row(m.getCols());
-                            for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                            elements->vec.push_back(Value(StringMatrix(1, m.getCols(), row)));
-                        }
                     }
                 } else if (iterable.isInstance()) {
                     auto inst = iterable.asInstance();
@@ -3419,16 +3372,77 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (stateVal.isObjType(ObjType::LIST)) {
                     auto state = static_cast<ObjList*>(stateVal.asObj());
-                    if (state->vec.size() == 2 && state->vec[1].isInt32() && state->vec[0].isObjType(ObjType::LIST)) {
-                        const auto& elems = static_cast<ObjList*>(state->vec[0].asObj())->vec; // ★ 修复 O(N^2) 性能 Bug：使用引用避免拷贝
+                    if (state->vec.size() == 2 && state->vec[1].isInt32()) {
+                        Value iterTarget = state->vec[0];
                         int i = state->vec[1].asInt32();
-                        if (i >= static_cast<int>(elems.size())) {
-                            getReg(a) = Value::uninit();
-                        } else {
-                            getReg(a) = elems[i];
-                            state->vec[1] = Value::fromInt32(i + 1);
+                    
+                        if (iterTarget.isObjType(ObjType::LIST)) {
+                            const auto& elems = static_cast<ObjList*>(iterTarget.asObj())->vec;
+                            if (i >= static_cast<int>(elems.size())) {
+                                getReg(a) = Value::uninit();
+                            } else {
+                                getReg(a) = elems[i];
+                                state->vec[1] = Value::fromInt32(i + 1);
+                            }
+                            break;
+                        } else if (iterTarget.isString()) {
+                            ObjString* objStr = iterTarget.asObjString();
+                            if (i >= static_cast<int>(objStr->charLength)) {
+                                getReg(a) = Value::uninit();
+                            } else {
+                                getReg(a) = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
+                                state->vec[1] = Value::fromInt32(i + 1);
+                            }
+                            break;
+                        } else if (iterTarget.isObjType(ObjType::REAL_MATRIX)) {
+                            const auto& m = static_cast<ObjRealMatrix*>(iterTarget.asObj())->mat;
+                            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+                            if (i >= len) {
+                                getReg(a) = Value::uninit();
+                            } else {
+                                if (m.getRows() == 1) getReg(a) = Value(m(0, i));
+                                else if (m.getCols() == 1) getReg(a) = Value(m(i, 0));
+                                else {
+                                    std::vector<double> row(m.getCols());
+                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                                    getReg(a) = Value(RealMatrix(1, m.getCols(), row));
+                                }
+                                state->vec[1] = Value::fromInt32(i + 1);
+                            }
+                            break;
+                        } else if (iterTarget.isObjType(ObjType::COMPLEX_MATRIX)) {
+                            const auto& m = static_cast<ObjComplexMatrix*>(iterTarget.asObj())->mat;
+                            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+                            if (i >= len) {
+                                getReg(a) = Value::uninit();
+                            } else {
+                                if (m.getRows() == 1) getReg(a) = Value(m(0, i));
+                                else if (m.getCols() == 1) getReg(a) = Value(m(i, 0));
+                                else {
+                                    std::vector<Complex> row(m.getCols());
+                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                                    getReg(a) = Value(ComplexMatrix(1, m.getCols(), row));
+                                }
+                                state->vec[1] = Value::fromInt32(i + 1);
+                            }
+                            break;
+                        } else if (iterTarget.isObjType(ObjType::STRING_MATRIX)) {
+                            const auto& m = static_cast<ObjStringMatrix*>(iterTarget.asObj())->mat;
+                            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+                            if (i >= len) {
+                                getReg(a) = Value::uninit();
+                            } else {
+                                if (m.getRows() == 1) getReg(a) = Value(m(0, i));
+                                else if (m.getCols() == 1) getReg(a) = Value(m(i, 0));
+                                else {
+                                    std::vector<std::string> row(m.getCols());
+                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                                    getReg(a) = Value(StringMatrix(1, m.getCols(), row));
+                                }
+                                state->vec[1] = Value::fromInt32(i + 1);
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
                 
@@ -3629,7 +3643,8 @@ Value VM::run(int targetFrameDepth) {
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                        if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                        Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
+                        if (cachedKey.as_bits == chunk->constants[ic.nameIdx].as_bits || cachedKey.asString() == field) {
                             result = inst->fields->elements[ic.cachedFieldIndex].second;
                             found = true;
                         }
@@ -3795,7 +3810,8 @@ Value VM::run(int targetFrameDepth) {
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                        if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                        Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
+                        if (cachedKey.as_bits == chunk->constants[ic.nameIdx].as_bits || cachedKey.asString() == field) {
                             result = inst->fields->elements[ic.cachedFieldIndex].second;
                             found = true;
                         }
@@ -3974,7 +3990,8 @@ Value VM::run(int targetFrameDepth) {
                         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                         Value key = chunk->constants[ic.nameIdx];
                         if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                            if (inst->fields->elements[ic.cachedFieldIndex].first.asString() == field) {
+                            Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
+                            if (cachedKey.as_bits == key.as_bits || cachedKey.asString() == field) {
                                 inst->fields->elements[ic.cachedFieldIndex].second = val;
                                 goto set_prop_done;
                             }

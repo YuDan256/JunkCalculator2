@@ -64,6 +64,7 @@ private:
 
     Value run(int targetFrameDepth = 0);
     bool handleExceptionUnwind(Value errVal);
+    std::string buildStackTrace() const;
 
     void execCall(int a, int b, bool isTailCall = false);
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);

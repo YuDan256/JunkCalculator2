@@ -1794,6 +1794,21 @@ bool VM::handleExceptionUnwind(Value errVal) {
     return false;
 }
 
+std::string VM::buildStackTrace() const {
+    std::ostringstream oss;
+    oss << jc::col(jc::Ansi::GRAY) << "\nStack Trace:\n";
+    for (int i = frameCount - 1; i >= 0; --i) {
+        const CallFrame& f = frames[i];
+        int line = (f.ip > 0 && f.ip <= static_cast<int>(f.chunk->lines.size())) ? f.chunk->lines[f.ip - 1] : 0;
+        std::string fnName = f.function ? f.function->name : "<unknown>";
+        std::string srcFile = f.function ? f.function->sourceFile : "";
+        if (srcFile.empty()) srcFile = "<script>";
+        oss << "  at " << fnName << " (" << srcFile << ":" << line << ")\n";
+    }
+    oss << jc::col(jc::Ansi::RESET);
+    return oss.str();
+}
+
 VM::VM() {
     registers = new Value[MAX_REGISTERS];
     frames = new CallFrame[MAX_FRAMES];
@@ -4478,7 +4493,7 @@ Value VM::run(int targetFrameDepth) {
             if (!handleExceptionUnwind(ex.val)) {
                 int line = (frame->ip > 0 && frame->ip <= static_cast<int>(chunk->lines.size())) ? chunk->lines[frame->ip - 1] : 0;
                 std::string msg = ex.val.isString() ? ex.val.asString() : "ValueException";
-                throw std::runtime_error("[Line " + std::to_string(line) + "] " + msg);
+                throw std::runtime_error("[Line " + std::to_string(line) + "] " + msg + buildStackTrace());
             }
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;
@@ -4490,6 +4505,9 @@ Value VM::run(int targetFrameDepth) {
                 if (msg.find("[Line ") != 0) {
                     msg = "[Line " + std::to_string(line) + "] " + msg;
                 }
+                if (msg.find("Stack Trace:") == std::string::npos) {
+                    msg += buildStackTrace();
+                }
                 throw std::runtime_error(msg);
             }
             frame = &frames[frameCount - 1];
@@ -4498,7 +4516,7 @@ Value VM::run(int targetFrameDepth) {
         } catch (...) {
             if (!handleExceptionUnwind(Value("Unknown VM Error"))) {
                 int line = (frame->ip > 0 && frame->ip <= static_cast<int>(chunk->lines.size())) ? chunk->lines[frame->ip - 1] : 0;
-                throw std::runtime_error("[Line " + std::to_string(line) + "] Unknown VM Error");
+                throw std::runtime_error("[Line " + std::to_string(line) + "] Unknown VM Error" + buildStackTrace());
             }
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;

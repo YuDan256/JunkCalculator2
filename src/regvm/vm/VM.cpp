@@ -3396,10 +3396,10 @@ Value VM::run(int targetFrameDepth) {
                                 } else {
                                     int byteOffset = state->vec.size() > 2 ? state->vec[2].asInt32() : 0;
                                     int charLen = 1;
-                                    unsigned char c = objStr->str[byteOffset];
-                                    if ((c & 0xE0) == 0xC0) charLen = 2;
-                                    else if ((c & 0xF0) == 0xE0) charLen = 3;
-                                    else if ((c & 0xF8) == 0xF0) charLen = 4;
+                                    unsigned char ch = objStr->str[byteOffset];
+                                    if ((ch & 0xE0) == 0xC0) charLen = 2;
+                                    else if ((ch & 0xF0) == 0xE0) charLen = 3;
+                                    else if ((ch & 0xF8) == 0xF0) charLen = 4;
                                 
                                     getReg(a) = Value(objStr->str.substr(byteOffset, charLen));
                                     state->vec[1] = Value::fromInt32(i + 1);

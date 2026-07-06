@@ -2319,13 +2319,9 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() + vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    int64_t res = static_cast<int64_t>(v1) + v2;
-                    if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value(static_cast<int32_t>(res)); break; }
+                if (vb.isInt32() && vc.isInt32()) {
+                    int64_t res = static_cast<int64_t>(vb.asInt32()) + vc.asInt32();
+                    if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_ADD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RADD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
@@ -2342,13 +2338,9 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() - vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    int64_t res = static_cast<int64_t>(v1) - v2;
-                    if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value(static_cast<int32_t>(res)); break; }
+                if (vb.isInt32() && vc.isInt32()) {
+                    int64_t res = static_cast<int64_t>(vb.asInt32()) - vc.asInt32();
+                    if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_SUB)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RSUB)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
@@ -2365,13 +2357,9 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() * vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    int64_t res = static_cast<int64_t>(v1) * v2;
-                    if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value(static_cast<int32_t>(res)); break; }
+                if (vb.isInt32() && vc.isInt32()) {
+                    int64_t res = static_cast<int64_t>(vb.asInt32()) * vc.asInt32();
+                    if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MUL)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMUL)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
@@ -2478,7 +2466,11 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 Value& val = getReg(b);
-                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                bool cond;
+                if (val.isBool()) cond = val.asBool();
+                else if (val.isInt32()) cond = val.asInt32() != 0;
+                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
+                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
                 getReg(a) = Value(!cond);
                 break;
             }
@@ -2494,7 +2486,11 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 Value& val = getReg(b);
-                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                bool cond;
+                if (val.isBool()) cond = val.asBool();
+                else if (val.isInt32()) cond = val.asInt32() != 0;
+                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
+                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
                 getReg(a) = Value(cond);
                 break;
             }
@@ -2507,13 +2503,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    getReg(a) = Value(v1 == v2); break;
-                }
+                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 bool eq = false;
                 if (vb.isString() && vc.isString()) {
@@ -2533,13 +2523,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() != vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    getReg(a) = Value(v1 != v2); break;
-                }
+                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(true); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 bool eq = false;
@@ -2555,13 +2539,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    getReg(a) = Value(v1 < v2); break;
-                }
+                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() < vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb < vc);
                 break;
@@ -2570,13 +2548,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    getReg(a) = Value(v1 <= v2); break;
-                }
+                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb <= vc);
                 break;
@@ -2585,13 +2557,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    getReg(a) = Value(v1 > v2); break;
-                }
+                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() > vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb > vc);
                 break;
@@ -2600,13 +2566,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break; }
-                bool bIsInt = vb.isInt32() || vb.isBool();
-                bool cIsInt = vc.isInt32() || vc.isBool();
-                if (bIsInt && cIsInt) {
-                    int32_t v1 = vb.isInt32() ? vb.asInt32() : (vb.asBool() ? 1 : 0);
-                    int32_t v2 = vc.isInt32() ? vc.asInt32() : (vc.asBool() ? 1 : 0);
-                    getReg(a) = Value(v1 >= v2); break;
-                }
+                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 getReg(a) = Value(vb >= vc);
                 break;
@@ -2618,14 +2578,22 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::JMP_TRUE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value& val = getReg(a);
-                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                bool cond;
+                if (val.isBool()) cond = val.asBool();
+                else if (val.isInt32()) cond = val.asInt32() != 0;
+                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
+                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
                 if (cond) frame->ip += sbx;
                 break;
             }
             case OpCode::JMP_FALSE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value& val = getReg(a);
-                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                bool cond;
+                if (val.isBool()) cond = val.asBool();
+                else if (val.isInt32()) cond = val.asInt32() != 0;
+                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
+                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
                 if (!cond) frame->ip += sbx;
                 break;
             }

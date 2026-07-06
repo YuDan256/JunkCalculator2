@@ -2860,8 +2860,14 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         auto fnDef = std::make_shared<CompiledFunction>();
         fnDef->name = expr->name.empty() ? "lambda" : expr->name;
         int requiredArgs = 0;
+        bool seenDefault = false;
         for (size_t i = 0; i < expr->params.size(); ++i) {
             if (expr->hasRestParam && i == expr->params.size() - 1) continue;
+            if (expr->defaultExprs[i]) {
+                seenDefault = true;
+            } else if (seenDefault) {
+                throw std::runtime_error("Syntax Error: non-default argument follows default argument.");
+            }
             if (!expr->defaultExprs[i]) requiredArgs++;
         }
         fnDef->arity = requiredArgs;
@@ -3393,8 +3399,14 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             auto fnDef = std::make_shared<CompiledFunction>();
             fnDef->name = method.name.lexeme;
             int requiredArgs = 0;
+            bool seenDefault = false;
             for (size_t i = 0; i < method.params.size(); ++i) {
                 if (method.hasRestParam && i == method.params.size() - 1) continue;
+                if (method.defaultExprs[i]) {
+                    seenDefault = true;
+                } else if (seenDefault) {
+                    throw std::runtime_error("Syntax Error: non-default argument follows default argument.");
+                }
                 if (!method.defaultExprs[i]) requiredArgs++;
             }
             fnDef->arity = requiredArgs;

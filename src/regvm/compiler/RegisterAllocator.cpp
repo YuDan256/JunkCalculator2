@@ -385,7 +385,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                     if (rootN != i) newAdj.insert(rootN);
                 }
                 adj[i] = newAdj;
-                degree[i] = newAdj.size();
+                degree[i] = static_cast<int>(newAdj.size());
             }
         }
     }

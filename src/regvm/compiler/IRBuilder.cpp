@@ -2860,7 +2860,12 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
     if (compiledFunctions) {
         auto fnDef = std::make_shared<CompiledFunction>();
         fnDef->name = expr->name.empty() ? "lambda" : expr->name;
-        fnDef->arity = static_cast<int>(expr->params.size()) - (expr->hasRestParam ? 1 : 0);
+        int requiredArgs = 0;
+        for (size_t i = 0; i < expr->params.size(); ++i) {
+            if (expr->hasRestParam && i == expr->params.size() - 1) continue;
+            if (!expr->defaultExprs[i]) requiredArgs++;
+        }
+        fnDef->arity = requiredArgs;
         fnDef->maxArity = static_cast<int>(expr->params.size());
         fnDef->hasRestParam = expr->hasRestParam;
         fnDef->paramIsRef = expr->paramIsRef;
@@ -3388,7 +3393,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         if (compiledFunctions) {
             auto fnDef = std::make_shared<CompiledFunction>();
             fnDef->name = method.name.lexeme;
-            fnDef->arity = static_cast<int>(method.params.size()) - (method.hasRestParam ? 1 : 0);
+            int requiredArgs = 0;
+            for (size_t i = 0; i < method.params.size(); ++i) {
+                if (method.hasRestParam && i == method.params.size() - 1) continue;
+                if (!method.defaultExprs[i]) requiredArgs++;
+            }
+            fnDef->arity = requiredArgs;
             fnDef->maxArity = static_cast<int>(method.params.size());
             fnDef->hasRestParam = method.hasRestParam;
             fnDef->paramIsRef = method.paramIsRef;

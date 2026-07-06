@@ -7,6 +7,7 @@
 #include "../../vm/VM.h" // For ValueException
 #include "../../vm/BuiltinRegistry.h"
 #include "../../modules/ExtensionBridge.h"
+#include "../../frontend/Highlight.h"
 #include "../compiler/IRBuilder.h"
 #include "../compiler/IROptimizer.h"
 #include "../compiler/RegisterAllocator.h"

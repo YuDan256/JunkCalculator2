@@ -2136,7 +2136,11 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     }
 
     std::vector<IRNode*> elements;
+    size_t expectedCols = expr->elements.empty() ? 0 : expr->elements[0].size();
     for (auto& row : expr->elements) {
+        if (row.size() != expectedCols) {
+            throw std::runtime_error("Syntax Error: Matrix rows must have the same number of columns.");
+        }
         for (auto& e : row) {
             e->accept(*this);
             elements.push_back(lastValue);
@@ -2146,7 +2150,7 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     node->setControl(currentControl);
     for (auto* e : elements) node->addData(e);
     node->payload1 = static_cast<uint32_t>(expr->elements.size());
-    node->payload2 = static_cast<uint32_t>(expr->elements.empty() ? 0 : expr->elements[0].size());
+    node->payload2 = static_cast<uint32_t>(expectedCols);
     currentControl = node;
     lastValue = node;
 }
@@ -3588,6 +3592,19 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     
 void IRBuilder::visitDotAccess(DotAccess* expr) {
     graph->currentLine = expr->field.line;
+    if (dynamic_cast<SuperExpr*>(expr->object.get())) {
+        IRNode* selfNode = graph->createValueNode(IROp::GetSelf);
+        selfNode->setControl(currentControl);
+        
+        IRNode* node = graph->createValueNode(IROp::GetSuper);
+        node->setControl(currentControl);
+        node->addData(selfNode);
+        node->name = expr->field.lexeme;
+        currentControl = node;
+        lastValue = node;
+        return;
+    }
+    
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
         
@@ -3732,9 +3749,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
 }
 
 void IRBuilder::visitSuperExpr(SuperExpr*) {
-    IRNode* node = graph->createValueNode(IROp::GetSuper);
-    node->setControl(currentControl);
-    lastValue = node;
+    throw std::runtime_error("Syntax Error: 'super' can only be used for method calls or property access.");
 }
 
 void IRBuilder::visitSelfExpr(SelfExpr*) {

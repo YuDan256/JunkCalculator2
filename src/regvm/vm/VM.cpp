@@ -3373,7 +3373,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (stateVal.isObjType(ObjType::LIST)) {
                     auto state = static_cast<ObjList*>(stateVal.asObj());
-                    if (state->vec.size() == 2 && state->vec[1].isInt32()) {
+                    if (state->vec.size() == 2 && state->vec[1].isInt32() && state->vec[0].isObjType(ObjType::LIST)) {
                         const auto& elems = static_cast<ObjList*>(state->vec[0].asObj())->vec; // ★ 修复 O(N^2) 性能 Bug：使用引用避免拷贝
                         int i = state->vec[1].asInt32();
                         if (i >= static_cast<int>(elems.size())) {
@@ -3777,10 +3777,8 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (found) {
                     getReg(a) = result;
-                    getReg(a + 1) = Value(true);
                 } else {
                     getReg(a) = Value::none();
-                    getReg(a + 1) = Value(false);
                 }
                 break;
             }
@@ -4201,9 +4199,10 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::GET_SUPER: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
-                const std::string& field = chunk->constants[b].asString();
-                Value selfVal = getReg(a);
+                const std::string& field = chunk->constants[c].asString();
+                Value selfVal = getReg(b);
                 if (!selfVal.isInstance()) throw std::runtime_error("RegVM Error: 'super' requires an instance context.");
                 auto inst = selfVal.asInstance();
                 

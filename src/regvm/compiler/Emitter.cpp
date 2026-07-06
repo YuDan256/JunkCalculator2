@@ -503,8 +503,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::GetSuper: {
+                        int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        auto w = buildInstAB(OpCode::GET_SUPER, node->physicalReg, nameIdx, OpType::NORMAL);
+                        auto w = buildInstABC(OpCode::GET_SUPER, node->physicalReg, b, nameIdx, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

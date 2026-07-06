@@ -83,7 +83,7 @@ enum class OpCode : uint8_t {
     TAIL_INVOKE,    // [Ext A, B, C]
     INVOKE_FALLBACK,// R(A) := InvokeFallback(obj = R(A), args = R(A+1)...R(A+B), fallback = R(A+B+1), icIdx = C) [Ext A, B, C]
     TAIL_INVOKE_FALLBACK, // [Ext A, B, C]
-    GET_SUPER,      // R(A) := super(Kst(B))
+    GET_SUPER,      // R(A) := super(self = R(B), nameIdx = C) [Ext A, B, C]
     SUPER_INVOKE,   // R(A) := SuperInvoke(self = R(A), args = R(A+1)...R(A+B), nameIdx = C) [Ext A, B, C]
     TAIL_SUPER_INVOKE, // [Ext A, B, C]
     GET_SELF,       // R(A) := self
@@ -506,9 +506,9 @@ public:
                 break;
 
             case OpCode::GET_SUPER:
-                std::cout << "R(" << a << ") " << b;
-                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[b].asString();
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[c].asString();
                 }
                 break;
 

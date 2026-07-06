@@ -234,6 +234,14 @@ struct IRNode {
     IRNode* controlInput = nullptr;      // 控制依赖 (Control Flow)
     std::vector<IRNode*> dataInputs;     // 数据依赖 (Data Flow)
     
+    IRNode* forwarding = nullptr;        // 用于节点替换时的转发
+    
+    IRNode* getResolved() {
+        IRNode* curr = this;
+        while (curr->forwarding) curr = curr->forwarding;
+        return curr;
+    }
+    
     // 寄存器分配信息
     int virtualReg = -1;                 // 虚拟寄存器 ID (SSA 阶段分配)
     int physicalReg = -1;                // 物理寄存器 ID (0~127) 或溢出槽 (>=128)

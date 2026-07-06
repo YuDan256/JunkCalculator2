@@ -291,9 +291,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                             if (ref.sourceType == 1) {
                                 src.sourceRef = chunk.addConstant(Value(ref.name));
                             } else if (ref.sourceType == 2) {
-                                src.sourceRef = ref.localNode->physicalReg;
+                                src.sourceRef = ref.localNode->getResolved()->physicalReg;
                             } else if (ref.sourceType == 4) {
-                                src.sourceRef = ref.localNode->payload1;
+                                src.sourceRef = ref.localNode->getResolved()->payload1;
                             } else if (ref.sourceType == 3) {
                                 src.sourceRef = ref.upvalIdx;
                             }

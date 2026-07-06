@@ -2931,7 +2931,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
                 int upvalIdx = target.index;
                 CompiledFunction* childFn = fnDef.get();
                 this->graph->postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
-                    childFn->upvalues[upvalIdx].index = localNode->physicalReg;
+                    childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
                 });
             }
         }
@@ -3422,7 +3422,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
                     int upvalIdx = target.index;
                     CompiledFunction* childFn = fnDef.get();
                     this->graph->postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
-                        childFn->upvalues[upvalIdx].index = localNode->physicalReg;
+                        childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
                     });
                 }
             }
@@ -3567,7 +3567,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         
         IRNode* targetNode = exportedNodes[i];
         this->graph->postAllocCallbacks.push_back([slotNode, targetNode]() {
-            slotNode->constVal = Value(static_cast<double>(targetNode->physicalReg));
+            slotNode->constVal = Value(static_cast<double>(targetNode->getResolved()->physicalReg));
         });
         
         IRNode* constNode = graph->createConstant(Value(exportedConsts[i]));

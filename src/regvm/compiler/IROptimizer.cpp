@@ -29,6 +29,7 @@ void IROptimizer::replaceNode(IRGraph* graph, IRNode* oldNode, IRNode* newNode) 
     oldNode->op = IROp::Nop;
     oldNode->dataInputs.clear();
     oldNode->controlInput = nullptr;
+    oldNode->forwarding = newNode;
 }
 
 bool IROptimizer::hasSideEffects(IROp op) {

@@ -1818,13 +1818,17 @@ std::string VM::buildStackTrace() const {
         const CallFrame& f = frames[i];
         int line = (f.ip > 0 && f.ip <= static_cast<int>(f.chunk->lines.size())) ? f.chunk->lines[f.ip - 1] : 0;
         std::string fnName = f.function ? f.function->name : "<unknown>";
-        if (fnName == "<eval>") {
-            fnName = "REPL";
-        } else if (fnName == "<script>") {
+        if (fnName == "<script>" || fnName == "<eval>") {
             std::string srcFile = f.function ? f.function->sourceFile : "";
-            if (!srcFile.empty()) fnName = srcFile;
+            if (srcFile.empty()) fnName = "REPL";
+            else {
+                try { fnName = std::filesystem::path(srcFile).filename().string(); }
+                catch (...) { fnName = srcFile; }
+            }
+            oss << "  at [Line " << line << "] in " << fnName << "\n";
+        } else {
+            oss << "  at [Line " << line << "] in " << fnName << "()\n";
         }
-        oss << "  at [Line " << line << "] in " << fnName << "\n";
     }
     oss << jc::col(jc::Ansi::RESET);
     return oss.str();

@@ -234,8 +234,8 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     }
                     IRNode* constNode = graph->createConstant(resVal);
                     constNode->setControl(node->controlInput);
-                    for (auto& nodePtr : graph->getNodes()) {
-                        IRNode* user = nodePtr.get();
+                    for (auto& userNodePtr : graph->getNodes()) {
+                        IRNode* user = userNodePtr.get();
                         if (user->controlInput == node) user->controlInput = node->controlInput;
                         for (auto& din : user->dataInputs) {
                             if (din == node) din = constNode;
@@ -293,8 +293,8 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                 
                 IRNode* constNode = graph->createConstant(Value(result));
                 constNode->setControl(node->controlInput);
-                for (auto& nodePtr : graph->getNodes()) {
-                    IRNode* user = nodePtr.get();
+                for (auto& userNodePtr : graph->getNodes()) {
+                    IRNode* user = userNodePtr.get();
                     if (user->controlInput == node) user->controlInput = node->controlInput;
                     for (auto& din : user->dataInputs) {
                         if (din == node) din = constNode;
@@ -327,8 +327,8 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                 
                 IRNode* constNode = graph->createConstant(Value(res));
                 constNode->setControl(node->controlInput);
-                for (auto& nodePtr : graph->getNodes()) {
-                    IRNode* user = nodePtr.get();
+                for (auto& userNodePtr : graph->getNodes()) {
+                    IRNode* user = userNodePtr.get();
                     if (user->controlInput == node) user->controlInput = node->controlInput;
                     for (auto& din : user->dataInputs) {
                         if (din == node) din = constNode;

@@ -1661,7 +1661,7 @@ Value VM::execImport(const std::string& name) {
                     closure->isRef.push_back(false);
                 }
                 for (int j = minA; j < maxA; ++j) {
-                    closure->defaultValues.push_back(Value::none());
+                    closure->defaultValues.push_back(Value::uninit());
                 }
             }
 
@@ -2213,7 +2213,7 @@ Value VM::run(int targetFrameDepth) {
                 for (int j = fn->arity; j < defaultLimit; ++j) {
                     closure->paramNames.push_back("_" + std::to_string(j));
                     closure->isRef.push_back(false);
-                    closure->defaultValues.push_back(Value::none());
+                    closure->defaultValues.push_back(Value::uninit());
                 }
                 if (fn->hasRestParam) {
                     closure->paramNames.push_back("...rest");

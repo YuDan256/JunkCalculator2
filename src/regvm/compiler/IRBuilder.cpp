@@ -1417,12 +1417,14 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
-            if (!condFailMerge->dataInputs.empty()) {
-                pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
-            }
-            if (!failMerge->dataInputs.empty()) {
-                pair.second->addData(envBeforePattern[i].count(pair.first) ? envBeforePattern[i].at(pair.first) : graph->createConstant(Value::none()));
+            if (!capturedLocals.count(pair.first)) {
+                pair.second->addData(readVariable(pair.first));
+                if (!condFailMerge->dataInputs.empty()) {
+                    pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
+                }
+                if (!failMerge->dataInputs.empty()) {
+                    pair.second->addData(envBeforePattern[i].count(pair.first) ? envBeforePattern[i].at(pair.first) : graph->createConstant(Value::none()));
+                }
             }
         }
     }
@@ -2168,11 +2170,15 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(loopNode);
-            phi->addData(pair.second);
-            phi->name = pair.first;
-            loopPhisStack[i][pair.first] = phi;
+            if (capturedLocals.count(pair.first)) {
+                loopPhisStack[i][pair.first] = pair.second;
+            } else {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(loopNode);
+                phi->addData(pair.second);
+                phi->name = pair.first;
+                loopPhisStack[i][pair.first] = phi;
+            }
         }
     }
     envStack = loopPhisStack;
@@ -2202,7 +2208,9 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+            if (!capturedLocals.count(pair.first)) {
+                pair.second->addData(readVariable(pair.first));
+            }
         }
     }
     
@@ -2249,11 +2257,15 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(loopNode);
-            phi->addData(pair.second);
-            phi->name = pair.first;
-            loopPhisStack[i][pair.first] = phi;
+            if (capturedLocals.count(pair.first)) {
+                loopPhisStack[i][pair.first] = pair.second;
+            } else {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(loopNode);
+                phi->addData(pair.second);
+                phi->name = pair.first;
+                loopPhisStack[i][pair.first] = phi;
+            }
         }
     }
     envStack = loopPhisStack;
@@ -2284,7 +2296,9 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+            if (!capturedLocals.count(pair.first)) {
+                pair.second->addData(readVariable(pair.first));
+            }
         }
     }
     
@@ -2298,13 +2312,17 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
             const std::string& name = pair.first;
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(breakMerge);
-            for (auto& env : breakEnvs) {
-                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            if (capturedLocals.count(name)) {
+                exitEnvStack[i][name] = pair.second;
+            } else {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(breakMerge);
+                for (auto& env : breakEnvs) {
+                    phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+                }
+                phi->name = name;
+                exitEnvStack[i][name] = phi;
             }
-            phi->name = name;
-            exitEnvStack[i][name] = phi;
         }
     }
     
@@ -3113,11 +3131,15 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(loopNode);
-            phi->addData(pair.second);
-            phi->name = pair.first;
-            loopPhisStack[i][pair.first] = phi;
+            if (capturedLocals.count(pair.first)) {
+                loopPhisStack[i][pair.first] = pair.second;
+            } else {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(loopNode);
+                phi->addData(pair.second);
+                phi->name = pair.first;
+                loopPhisStack[i][pair.first] = phi;
+            }
         }
     }
     envStack = loopPhisStack;
@@ -3158,7 +3180,9 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+            if (!capturedLocals.count(pair.first)) {
+                pair.second->addData(readVariable(pair.first));
+            }
         }
     }
     
@@ -3174,13 +3198,17 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
             const std::string& name = pair.first;
-            IRNode* phi = graph->createValueNode(IROp::Phi);
-            phi->setControl(breakMerge);
-            for (auto& env : breakEnvs) {
-                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            if (capturedLocals.count(name)) {
+                exitEnvStack[i][name] = pair.second;
+            } else {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(breakMerge);
+                for (auto& env : breakEnvs) {
+                    phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+                }
+                phi->name = name;
+                exitEnvStack[i][name] = phi;
             }
-            phi->name = name;
-            exitEnvStack[i][name] = phi;
         }
     }
     
@@ -4091,6 +4119,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
             }
         }
         for (const auto& name : modifiedVars) {
+            if (capturedLocals.count(name)) continue;
             IRNode* phi = graph->createValueNode(IROp::Phi);
             phi->setControl(endMerge);
             for (auto& bEnv : branchEnvs) {

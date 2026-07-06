@@ -255,6 +255,28 @@ bool IROptimizer::foldControlFlow(IRGraph* graph) {
 
 bool IROptimizer::simplifyPhis(IRGraph* graph) {
     bool changed = false;
+    
+    std::unordered_set<IRNode*> capturedNodes;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op == IROp::Closure) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
+        } else if (nodePtr->op == IROp::UpdateCaptured) {
+            if (nodePtr->dataInputs.size() > 0 && nodePtr->dataInputs[0]) {
+                capturedNodes.insert(nodePtr->dataInputs[0]);
+            }
+        } else if (nodePtr->op == IROp::PassRefs) {
+            for (IRNode* in : nodePtr->dataInputs) {
+                if (in) capturedNodes.insert(in);
+            }
+        } else if (nodePtr->op == IROp::BuildNamespace) {
+            for (uint32_t i = nodePtr->payload1 * 3; i < nodePtr->dataInputs.size(); ++i) {
+                if (nodePtr->dataInputs[i]) capturedNodes.insert(nodePtr->dataInputs[i]);
+            }
+        }
+    }
+
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
         
@@ -275,25 +297,34 @@ bool IROptimizer::simplifyPhis(IRGraph* graph) {
             }
             if (allSame && firstValid) {
                 std::vector<IRNode*> dependentPhis;
+                bool canSimplify = true;
                 for (auto& nPtr : graph->getNodes()) {
                     if (nPtr->op == IROp::Phi && nPtr->controlInput == node) {
+                        if (capturedNodes.count(nPtr.get())) {
+                            canSimplify = false;
+                            break;
+                        }
                         dependentPhis.push_back(nPtr.get());
                     }
                 }
-                for (IRNode* phi : dependentPhis) {
-                    IRNode* validData = nullptr;
-                    if (validIndex != -1 && validIndex < static_cast<int>(phi->dataInputs.size())) {
-                        validData = phi->dataInputs[validIndex];
+                if (canSimplify) {
+                    for (IRNode* phi : dependentPhis) {
+                        IRNode* validData = nullptr;
+                        if (validIndex != -1 && validIndex < static_cast<int>(phi->dataInputs.size())) {
+                            validData = phi->dataInputs[validIndex];
+                        }
+                        if (validData) {
+                            replaceNode(graph, phi, validData);
+                        }
                     }
-                    if (validData) {
-                        replaceNode(graph, phi, validData);
-                    }
+                    replaceNode(graph, node, firstValid);
+                    changed = true;
                 }
-                replaceNode(graph, node, firstValid);
-                changed = true;
             }
         } 
         else if (node->op == IROp::Phi) {
+            if (capturedNodes.count(node)) continue;
+            
             if (node->dataInputs.empty()) continue;
             bool allSame = true;
             IRNode* firstValid = nullptr;

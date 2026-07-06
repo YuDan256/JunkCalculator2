@@ -66,7 +66,8 @@ private:
     std::unordered_set<std::string> currentLocalVars;
     std::unordered_set<std::string> currentConstVars;
 
-    void buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst);
+    std::string currentReturnTypeHint;
+    void buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<Token>& typeHints);
     void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool isAssignment = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 

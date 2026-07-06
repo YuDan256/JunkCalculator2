@@ -2882,7 +2882,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     lastValue = opNode;
 }
 
-void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<Token>& typeHints) {
+void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::string>& typeHints) {
     int requiredArgs = 0;
     bool seenDefault = false;
     for (size_t i = 0; i < params.size(); ++i) {
@@ -2986,12 +2986,12 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             writeVariable(params[i].lexeme, phi);
         }
         
-        if (i < typeHints.size() && !typeHints[i].lexeme.empty()) {
+        if (i < typeHints.size() && !typeHints[i].empty()) {
             IRNode* assertNode = graph->createNode(IROp::AssertParamType);
             assertNode->setControl(currentControl);
             assertNode->addData(readVariable(params[i].lexeme));
             
-            uint32_t typeNameIdx = currentFunction->chunk.addConstant(Value(typeHints[i].lexeme));
+            uint32_t typeNameIdx = currentFunction->chunk.addConstant(Value(typeHints[i]));
             uint32_t icIdx = currentFunction->chunk.addInlineCache(typeNameIdx);
             uint32_t paramNameIdx = currentFunction->chunk.addConstant(Value(params[i].lexeme));
             
@@ -3011,8 +3011,8 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
         
-        fnBuilder.currentReturnTypeHint = expr->returnTypeHint.lexeme;
-        fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->hasRestParam, expr->paramIsRef, expr->paramIsConst, expr->typeHints);
+        fnBuilder.currentReturnTypeHint = expr->returnType;
+        fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->hasRestParam, expr->paramIsRef, expr->paramIsConst, expr->paramTypes);
         
         fnBuilder.build(expr->body.get());
         
@@ -3448,8 +3448,8 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             IRGraph fnGraph;
             IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
             
-            fnBuilder.currentReturnTypeHint = method.returnTypeHint.lexeme;
-            fnBuilder.buildFunctionParams(method.params, method.defaultExprs, method.hasRestParam, method.paramIsRef, method.paramIsConst, method.typeHints);
+            fnBuilder.currentReturnTypeHint = method.returnType;
+            fnBuilder.buildFunctionParams(method.params, method.defaultExprs, method.hasRestParam, method.paramIsRef, method.paramIsConst, method.paramTypes);
             
             fnBuilder.build(method.body.get());
             

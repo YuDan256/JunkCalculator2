@@ -1904,6 +1904,7 @@ Value VM::run(int targetFrameDepth) {
     CallFrame* frame = &frames[frameCount - 1];
     const Chunk* chunk = frame->chunk;
     const Instruction* code = chunk->code.data();
+    Value* frameRegs = &registers[frame->registerBase];
     
     // 提取 EXTRAARG 扩展操作数 (24-bit)
     auto fetchExtra = [&]() -> int {
@@ -1913,7 +1914,7 @@ Value VM::run(int targetFrameDepth) {
 
     // 获取物理寄存器或溢出槽 (Unified Address Space)
     auto getReg = [&](int idx) -> Value& {
-        return registers[frame->registerBase + idx];
+        return frameRegs[idx];
     };
 
     // K-Bit 机制：解析寄存器或常量池索引
@@ -4332,6 +4333,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                     
                     if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
                     else getReg(targetReg) = res;
@@ -4339,6 +4341,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                 }
                 break;
             }
@@ -4367,6 +4370,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                     
                     if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
                     else getReg(targetReg) = res;
@@ -4374,6 +4378,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                 }
                 break;
             }
@@ -4454,6 +4459,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                     
                     if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
                     else getReg(targetReg) = res;
@@ -4461,6 +4467,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                 }
                 break;
             }
@@ -4494,6 +4501,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                     
                     if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
                     else getReg(targetReg) = res;
@@ -4501,6 +4509,7 @@ Value VM::run(int targetFrameDepth) {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
                     code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
                 }
                 break;
             }
@@ -4527,6 +4536,7 @@ Value VM::run(int targetFrameDepth) {
                 frame = &frames[frameCount - 1];
                 chunk = frame->chunk;
                 code = chunk->code.data();
+                frameRegs = &registers[frame->registerBase];
                 
                 if (isInit) {
                     getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
@@ -4546,6 +4556,7 @@ Value VM::run(int targetFrameDepth) {
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;
             code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
         } catch (const std::exception& ex) {
             if (!handleExceptionUnwind(Value(ex.what()))) {
                 std::string msg = ex.what();
@@ -4563,6 +4574,7 @@ Value VM::run(int targetFrameDepth) {
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;
             code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
         } catch (...) {
             if (!handleExceptionUnwind(Value("Unknown VM Error"))) {
                 throw std::runtime_error("Unknown VM Error" + buildStackTrace());
@@ -4570,6 +4582,7 @@ Value VM::run(int targetFrameDepth) {
             frame = &frames[frameCount - 1];
             chunk = frame->chunk;
             code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
         }
     }
 }

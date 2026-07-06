@@ -342,7 +342,10 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
             IRNode* leftNode = node->dataInputs[0];
             IRNode* rightNode = node->dataInputs[1];
             
-            if (leftNode->op == IROp::Constant && rightNode->op == IROp::Constant && !capturedNodes.count(leftNode) && !capturedNodes.count(rightNode)) {
+            bool leftIsConst = leftNode->op == IROp::Constant && !capturedNodes.count(leftNode);
+            bool rightIsConst = rightNode->op == IROp::Constant && !capturedNodes.count(rightNode);
+            
+            if (leftIsConst && rightIsConst) {
                 Value left = leftNode->constVal;
                 Value right = rightNode->constVal;
                 try {

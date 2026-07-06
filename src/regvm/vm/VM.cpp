@@ -116,8 +116,8 @@ void VM::execCall(int a, int b, bool isTailCall) {
             for (int i = 0; i < argc; ++i) {
                 args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
-            registers[currentFrame->registerBase + a] = nIt->second(args);
             pendingCallRefs.clear();
+            registers[currentFrame->registerBase + a] = nIt->second(args);
             return;
         }
         auto it = globalNames.find(tag);
@@ -241,6 +241,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
             for (int i = 0; i < argc; ++i) {
                 args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
+            pendingCallRefs.clear();
             try {
                 auto& fn = std::any_cast<NativeCallable&>(closure->nativeFn);
                 registers[currentFrame->registerBase + a] = fn(args);
@@ -251,7 +252,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
             }
             helpers::nativeSelfStack.pop_back();
             helpers::nativeClassStack.pop_back();
-            pendingCallRefs.clear();
         }
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
@@ -353,6 +353,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 std::vector<Value> args;
                 args.reserve(argc);
                 for (int i = 0; i < argc; ++i) args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+                pendingCallRefs.clear();
                 try {
                     auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
                     fn(args);
@@ -364,7 +365,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
                 registers[currentFrame->registerBase + a] = Value(instance);
-                pendingCallRefs.clear();
             }
         } else {
             if (argc > 0) {
@@ -474,6 +474,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (int i = 0; i < argc; ++i) {
                     args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
                 }
+                pendingCallRefs.clear();
                 try {
                     auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
                     registers[currentFrame->registerBase + a] = fn(args);
@@ -484,7 +485,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 }
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
-                pendingCallRefs.clear();
             }
         } else {
             throw std::runtime_error("RegVM Error: Target is not callable.");
@@ -604,6 +604,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
     if (method->isNative() && !method->isBytecode()) {
         helpers::nativeSelfStack.push_back(Value(inst));
         helpers::nativeClassStack.push_back(Value(inst->classDef));
+        pendingCallRefs.clear();
         Value result;
         try {
             auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
@@ -967,8 +968,8 @@ invoke_method:
             for (int i = 0; i < argc; ++i) {
                 argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
-            registers[currentFrame->registerBase + a] = nIt->second(argsVec);
             pendingCallRefs.clear();
+            registers[currentFrame->registerBase + a] = nIt->second(argsVec);
             return;
         }
         
@@ -1082,6 +1083,7 @@ invoke_method:
         for (int i = 0; i < argc; ++i) {
             args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
         }
+        pendingCallRefs.clear();
         try {
             auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
             registers[currentFrame->registerBase + a] = fn(args);
@@ -1092,7 +1094,6 @@ invoke_method:
         }
         helpers::nativeSelfStack.pop_back();
         helpers::nativeClassStack.pop_back();
-        pendingCallRefs.clear();
     }
 }
 
@@ -1218,6 +1219,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         for (int i = 0; i < argc; ++i) {
             args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
         }
+        pendingCallRefs.clear();
         try {
             auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
             registers[currentFrame->registerBase + a] = fn(args);

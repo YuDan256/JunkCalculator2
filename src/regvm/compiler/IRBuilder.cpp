@@ -449,10 +449,10 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 std::string dotPropName = "";
                 IRNode* objNode = nullptr;
                 
-                if (auto* dot = dynamic_cast<DotAccess*>(chain[0]->object.get())) {
-                    dot->object->accept(*this);
+                if (auto* chainDot = dynamic_cast<DotAccess*>(chain[0]->object.get())) {
+                    chainDot->object->accept(*this);
                     dotParentNode = lastValue;
-                    dotPropName = dot->field.lexeme;
+                    dotPropName = chainDot->field.lexeme;
                     
                     IRNode* getProp = graph->createValueNode(IROp::GetProperty);
                     getProp->setControl(currentControl);
@@ -2682,10 +2682,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
         std::reverse(chain.begin(), chain.end());
         
-        if (auto* dot = dynamic_cast<DotAccess*>(chain[0]->object.get())) {
-            dot->object->accept(*this);
+        if (auto* chainDot = dynamic_cast<DotAccess*>(chain[0]->object.get())) {
+            chainDot->object->accept(*this);
             dotParentNode = lastValue;
-            dotPropName = dot->field.lexeme;
+            dotPropName = chainDot->field.lexeme;
             
             IRNode* getProp = graph->createValueNode(IROp::GetProperty);
             getProp->setControl(currentControl);

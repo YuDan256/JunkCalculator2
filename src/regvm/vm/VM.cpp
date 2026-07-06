@@ -134,18 +134,15 @@ void VM::execCall(int a, int b, bool isTailCall) {
         if (closure->isBytecode()) {
             auto& fnDef = compiledFunctions[closure->compiledFnIndex];
             
-            std::vector<Value> actualArgs;
+            int ufcsOffset = closure->isUFCS ? 1 : 0;
+            int totalArgc = argc + ufcsOffset;
+            
             if (closure->isUFCS) {
-                actualArgs.push_back(closure->boundSelf);
-                for (auto& pr : pendingCallRefs) {
-                    pr.first += 1;
-                }
+                for (auto& pr : pendingCallRefs) pr.first += 1;
             }
-            for (int i = 0; i < argc; ++i) {
-                actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-            }
-            int totalArgc = static_cast<int>(actualArgs.size());
 
+            int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+            
             if (fnDef->hasRestParam) {
                 int fixedMax = fnDef->maxArity - 1;
                 if (totalArgc < fnDef->arity) {
@@ -154,19 +151,37 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 ObjList* restList = GcHeap::get().allocate<ObjList>();
                 if (totalArgc > fixedMax) {
                     int restCount = totalArgc - fixedMax;
-                    restList->vec.resize(restCount);
+                    restList->vec.reserve(restCount);
                     for (int j = 0; j < restCount; j++) {
-                        restList->vec[j] = actualArgs[fixedMax + j];
+                        int srcIdx = fixedMax + j;
+                        if (closure->isUFCS && srcIdx == 0) restList->vec.push_back(closure->boundSelf);
+                        else restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + srcIdx - ufcsOffset]);
                     }
-                    actualArgs.resize(fixedMax);
                 }
-                while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
-                actualArgs.push_back(Value(restList));
+                
+                for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                    if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
+                    else registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i - ufcsOffset];
+                }
+                for (int i = totalArgc; i < fixedMax; ++i) {
+                    registers[newBase + i] = Value::uninit();
+                }
+                registers[newBase + fixedMax] = Value(restList);
             } else {
                 if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                     throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                 }
-                while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
+                for (int i = 0; i < totalArgc; ++i) {
+                    if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
+                    else registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i - ufcsOffset];
+                }
+                for (int i = totalArgc; i < fnDef->maxArity; ++i) {
+                    registers[newBase + i] = Value::uninit();
+                }
+            }
+
+            for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+                registers[newBase + i] = Value::none();
             }
 
             if (isTailCall) {
@@ -181,13 +196,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 currentFrame->selfContext = closure->boundSelf;
                 currentFrame->classContext = closure->boundClass;
                 
-                for (size_t i = 0; i < actualArgs.size(); ++i) {
-                    registers[currentFrame->registerBase + i] = actualArgs[i];
-                }
-                for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                    registers[currentFrame->registerBase + i] = Value::none();
-                }
-                
                 populateRefParams(*currentFrame, fnDef.get());
                 return;
             }
@@ -196,18 +204,11 @@ void VM::execCall(int a, int b, bool isTailCall) {
             newFrame.function = fnDef.get();
             newFrame.chunk = &fnDef->chunk;
             newFrame.ip = 0;
-            newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+            newFrame.registerBase = newBase;
             newFrame.returnRegister = a;
             newFrame.closure = closure;
             newFrame.selfContext = closure->boundSelf;
             newFrame.classContext = closure->boundClass;
-            
-            for (size_t i = 0; i < actualArgs.size(); ++i) {
-                registers[newFrame.registerBase + i] = actualArgs[i];
-            }
-            for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                registers[newFrame.registerBase + i] = Value::none();
-            }
             
             populateRefParams(newFrame, fnDef.get());
             
@@ -274,11 +275,8 @@ void VM::execCall(int a, int b, bool isTailCall) {
             if (initMethod->isBytecode()) {
                 auto& fnDef = compiledFunctions[initMethod->compiledFnIndex];
                 
-                std::vector<Value> actualArgs;
-                for (int i = 0; i < argc; ++i) {
-                    actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-                }
-                int totalArgc = static_cast<int>(actualArgs.size());
+                int totalArgc = argc;
+                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -288,19 +286,33 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     ObjList* restList = GcHeap::get().allocate<ObjList>();
                     if (totalArgc > fixedMax) {
                         int restCount = totalArgc - fixedMax;
-                        restList->vec.resize(restCount);
+                        restList->vec.reserve(restCount);
                         for (int j = 0; j < restCount; j++) {
-                            restList->vec[j] = actualArgs[fixedMax + j];
+                            restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + fixedMax + j]);
                         }
-                        actualArgs.resize(fixedMax);
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
-                    actualArgs.push_back(Value(restList));
+                    
+                    for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                    }
+                    for (int i = totalArgc; i < fixedMax; ++i) {
+                        registers[newBase + i] = Value::uninit();
+                    }
+                    registers[newBase + fixedMax] = Value(restList);
                 } else {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
+                    for (int i = 0; i < totalArgc; ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                    }
+                    for (int i = totalArgc; i < fnDef->maxArity; ++i) {
+                        registers[newBase + i] = Value::uninit();
+                    }
+                }
+
+                for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+                    registers[newBase + i] = Value::none();
                 }
 
                 if (isTailCall) {
@@ -315,13 +327,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     currentFrame->selfContext = Value(instance);
                     currentFrame->classContext = Value(cls);
                     
-                    for (size_t i = 0; i < actualArgs.size(); ++i) {
-                        registers[currentFrame->registerBase + i] = actualArgs[i];
-                    }
-                    for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                        registers[currentFrame->registerBase + i] = Value::none();
-                    }
-                    
                     populateRefParams(*currentFrame, fnDef.get());
                     return;
                 }
@@ -330,18 +335,11 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.function = fnDef.get();
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
-                newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+                newFrame.registerBase = newBase;
                 newFrame.returnRegister = a;
                 newFrame.closure = initMethod;
                 newFrame.selfContext = Value(instance);
                 newFrame.classContext = Value(cls);
-                
-                for (size_t i = 0; i < actualArgs.size(); ++i) {
-                    registers[newFrame.registerBase + i] = actualArgs[i];
-                }
-                for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                    registers[newFrame.registerBase + i] = Value::none();
-                }
                 
                 populateRefParams(newFrame, fnDef.get());
                 
@@ -393,11 +391,8 @@ void VM::execCall(int a, int b, bool isTailCall) {
             if (method->isBytecode()) {
                 auto& fnDef = compiledFunctions[method->compiledFnIndex];
                 
-                std::vector<Value> actualArgs;
-                for (int i = 0; i < argc; ++i) {
-                    actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-                }
-                int totalArgc = static_cast<int>(actualArgs.size());
+                int totalArgc = argc;
+                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -407,19 +402,33 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     ObjList* restList = GcHeap::get().allocate<ObjList>();
                     if (totalArgc > fixedMax) {
                         int restCount = totalArgc - fixedMax;
-                        restList->vec.resize(restCount);
+                        restList->vec.reserve(restCount);
                         for (int j = 0; j < restCount; j++) {
-                            restList->vec[j] = actualArgs[fixedMax + j];
+                            restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + fixedMax + j]);
                         }
-                        actualArgs.resize(fixedMax);
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
-                    actualArgs.push_back(Value(restList));
+                    
+                    for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                    }
+                    for (int i = totalArgc; i < fixedMax; ++i) {
+                        registers[newBase + i] = Value::uninit();
+                    }
+                    registers[newBase + fixedMax] = Value(restList);
                 } else {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
-                    while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
+                    for (int i = 0; i < totalArgc; ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                    }
+                    for (int i = totalArgc; i < fnDef->maxArity; ++i) {
+                        registers[newBase + i] = Value::uninit();
+                    }
+                }
+
+                for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+                    registers[newBase + i] = Value::none();
                 }
 
                 if (isTailCall) {
@@ -434,13 +443,6 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     currentFrame->selfContext = callee;
                     currentFrame->classContext = Value(owningClass);
                     
-                    for (size_t i = 0; i < actualArgs.size(); ++i) {
-                        registers[currentFrame->registerBase + i] = actualArgs[i];
-                    }
-                    for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                        registers[currentFrame->registerBase + i] = Value::none();
-                    }
-                    
                     populateRefParams(*currentFrame, fnDef.get());
                     return;
                 }
@@ -449,18 +451,11 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.function = fnDef.get();
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
-                newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+                newFrame.registerBase = newBase;
                 newFrame.returnRegister = a;
                 newFrame.closure = method;
                 newFrame.selfContext = callee;
                 newFrame.classContext = Value(owningClass);
-                
-                for (size_t i = 0; i < actualArgs.size(); ++i) {
-                    registers[newFrame.registerBase + i] = actualArgs[i];
-                }
-                for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                    registers[newFrame.registerBase + i] = Value::none();
-                }
                 
                 populateRefParams(newFrame, fnDef.get());
                 
@@ -632,8 +627,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         newFrame.selfContext = Value(inst);
         newFrame.classContext = Value(inst->classDef);
         
-        std::vector<Value> actualArgs = args;
-        int totalArgc = static_cast<int>(actualArgs.size());
+        int totalArgc = static_cast<int>(args.size());
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -643,25 +637,32 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
                 int restCount = totalArgc - fixedMax;
-                restList->vec.resize(restCount);
+                restList->vec.reserve(restCount);
                 for (int j = 0; j < restCount; j++) {
-                    restList->vec[j] = actualArgs[fixedMax + j];
+                    restList->vec.push_back(args[fixedMax + j]);
                 }
-                actualArgs.resize(fixedMax);
             }
-            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
-            actualArgs.push_back(Value(restList));
+            
+            for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                registers[newBase + i] = args[i];
+            }
+            for (int i = totalArgc; i < fixedMax; ++i) {
+                registers[newBase + i] = Value::uninit();
+            }
+            registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
+            for (int i = 0; i < totalArgc; ++i) {
+                registers[newBase + i] = args[i];
+            }
+            for (int i = totalArgc; i < fnDef->maxArity; ++i) {
+                registers[newBase + i] = Value::uninit();
+            }
         }
 
-        for (size_t i = 0; i < actualArgs.size(); ++i) {
-            registers[newBase + i] = actualArgs[i];
-        }
-        for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
+        for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
             registers[newBase + i] = Value::none();
         }
         
@@ -993,11 +994,8 @@ invoke_method:
     if (method->isBytecode()) {
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
         
-        std::vector<Value> actualArgs;
-        for (int i = 0; i < argc; ++i) {
-            actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-        }
-        int totalArgc = static_cast<int>(actualArgs.size());
+        int totalArgc = argc;
+        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -1007,19 +1005,33 @@ invoke_method:
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
                 int restCount = totalArgc - fixedMax;
-                restList->vec.resize(restCount);
+                restList->vec.reserve(restCount);
                 for (int j = 0; j < restCount; j++) {
-                    restList->vec[j] = actualArgs[fixedMax + j];
+                    restList->vec[j] = registers[currentFrame->registerBase + a + 1 + fixedMax + j];
                 }
-                actualArgs.resize(fixedMax);
             }
-            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
-            actualArgs.push_back(Value(restList));
+            
+            for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+            }
+            for (int i = totalArgc; i < fixedMax; ++i) {
+                registers[newBase + i] = Value::uninit();
+            }
+            registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
+            for (int i = 0; i < totalArgc; ++i) {
+                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+            }
+            for (int i = totalArgc; i < fnDef->maxArity; ++i) {
+                registers[newBase + i] = Value::uninit();
+            }
+        }
+
+        for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+            registers[newBase + i] = Value::none();
         }
 
         if (isTailCall) {
@@ -1034,13 +1046,6 @@ invoke_method:
             currentFrame->selfContext = obj;
             currentFrame->classContext = owningClass ? Value(owningClass) : Value::none();
             
-            for (size_t i = 0; i < actualArgs.size(); ++i) {
-                registers[currentFrame->registerBase + i] = actualArgs[i];
-            }
-            for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                registers[currentFrame->registerBase + i] = Value::none();
-            }
-            
             populateRefParams(*currentFrame, fnDef.get());
             return;
         }
@@ -1049,18 +1054,11 @@ invoke_method:
         newFrame.function = fnDef.get();
         newFrame.chunk = &fnDef->chunk;
         newFrame.ip = 0;
-        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        newFrame.registerBase = newBase;
         newFrame.returnRegister = a;
         newFrame.closure = method;
         newFrame.selfContext = obj;
         newFrame.classContext = owningClass ? Value(owningClass) : Value::none();
-        
-        for (size_t i = 0; i < actualArgs.size(); ++i) {
-            registers[newFrame.registerBase + i] = actualArgs[i];
-        }
-        for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-            registers[newFrame.registerBase + i] = Value::none();
-        }
         
         populateRefParams(newFrame, fnDef.get());
         
@@ -1129,11 +1127,8 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
     if (method->isBytecode()) {
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
         
-        std::vector<Value> actualArgs;
-        for (int i = 0; i < argc; ++i) {
-            actualArgs.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-        }
-        int totalArgc = static_cast<int>(actualArgs.size());
+        int totalArgc = argc;
+        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -1143,19 +1138,33 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
                 int restCount = totalArgc - fixedMax;
-                restList->vec.resize(restCount);
+                restList->vec.reserve(restCount);
                 for (int j = 0; j < restCount; j++) {
-                    restList->vec[j] = actualArgs[fixedMax + j];
+                    restList->vec[j] = registers[currentFrame->registerBase + a + 1 + fixedMax + j];
                 }
-                actualArgs.resize(fixedMax);
             }
-            while (actualArgs.size() < static_cast<size_t>(fixedMax)) actualArgs.push_back(Value::uninit());
-            actualArgs.push_back(Value(restList));
+            
+            for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+            }
+            for (int i = totalArgc; i < fixedMax; ++i) {
+                registers[newBase + i] = Value::uninit();
+            }
+            registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
+            for (int i = 0; i < totalArgc; ++i) {
+                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+            }
+            for (int i = totalArgc; i < fnDef->maxArity; ++i) {
+                registers[newBase + i] = Value::uninit();
+            }
+        }
+
+        for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+            registers[newBase + i] = Value::none();
         }
 
         if (isTailCall) {
@@ -1170,13 +1179,6 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             currentFrame->selfContext = Value(inst);
             currentFrame->classContext = Value(owningClass);
             
-            for (size_t i = 0; i < actualArgs.size(); ++i) {
-                registers[currentFrame->registerBase + i] = actualArgs[i];
-            }
-            for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-                registers[currentFrame->registerBase + i] = Value::none();
-            }
-            
             populateRefParams(*currentFrame, fnDef.get());
             return;
         }
@@ -1185,18 +1187,11 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         newFrame.function = fnDef.get();
         newFrame.chunk = &fnDef->chunk;
         newFrame.ip = 0;
-        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        newFrame.registerBase = newBase;
         newFrame.returnRegister = a;
         newFrame.closure = method;
         newFrame.selfContext = Value(inst);
         newFrame.classContext = Value(owningClass);
-        
-        for (size_t i = 0; i < actualArgs.size(); ++i) {
-            registers[newFrame.registerBase + i] = actualArgs[i];
-        }
-        for (int i = static_cast<int>(actualArgs.size()); i < fnDef->localCount; ++i) {
-            registers[newFrame.registerBase + i] = Value::none();
-        }
         
         populateRefParams(newFrame, fnDef.get());
         
@@ -2482,7 +2477,9 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::NOT: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                getReg(a) = Value(!evaluateTruthiness(getReg(b)));
+                Value& val = getReg(b);
+                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                getReg(a) = Value(!cond);
                 break;
             }
             case OpCode::BNOT: {
@@ -2496,7 +2493,9 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::TO_BOOL: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                getReg(a) = Value(evaluateTruthiness(getReg(b)));
+                Value& val = getReg(b);
+                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                getReg(a) = Value(cond);
                 break;
             }
             case OpCode::EQ: {
@@ -2608,12 +2607,16 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::JMP_TRUE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (evaluateTruthiness(getReg(a))) frame->ip += sbx;
+                Value& val = getReg(a);
+                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                if (cond) frame->ip += sbx;
                 break;
             }
             case OpCode::JMP_FALSE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (!evaluateTruthiness(getReg(a))) frame->ip += sbx;
+                Value& val = getReg(a);
+                bool cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                if (!cond) frame->ip += sbx;
                 break;
             }
             case OpCode::BUILD_LIST: {

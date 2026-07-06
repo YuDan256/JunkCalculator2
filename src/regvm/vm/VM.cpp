@@ -2501,6 +2501,11 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::EQ: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
+                if (vb.as_bits == vc.as_bits) {
+                    if (!vb.isDouble() || vb.asDoubleRaw() == vc.asDoubleRaw()) {
+                        getReg(a) = Value(true); break;
+                    }
+                }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
                 bool bIsInt = vb.isInt32() || vb.isBool();
                 bool cIsInt = vc.isInt32() || vc.isBool();
@@ -2522,6 +2527,11 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::NEQ: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 Value vb = getRK(b); Value vc = getRK(c);
+                if (vb.as_bits == vc.as_bits) {
+                    if (!vb.isDouble() || vb.asDoubleRaw() == vc.asDoubleRaw()) {
+                        getReg(a) = Value(false); break;
+                    }
+                }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() != vc.asDoubleRaw()); break; }
                 bool bIsInt = vb.isInt32() || vb.isBool();
                 bool cIsInt = vc.isInt32() || vc.isBool();
@@ -2947,30 +2957,7 @@ Value VM::run(int targetFrameDepth) {
                 if (dims == 1) {
                     Value idx = getReg(b + 1);
                     Value result;
-                    if (obj.isObjType(ObjType::DICT)) {
-                        auto dict = static_cast<ObjDict*>(obj.asObj());
-                        auto it = dict->keyMap.find(idx);
-                        if (it == dict->keyMap.end()) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("RegVM Error: Key not found.");
-                        } else {
-                            result = dict->elements[it->second].second;
-                        }
-                    } else if (obj.isObjType(ObjType::NAMESPACE)) {
-                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
-                        if (!idx.isString()) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
-                        } else {
-                            auto it = ns->fields.find(idx.asString());
-                            if (it == ns->fields.end()) {
-                                if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("RegVM Error: Key not found in namespace.");
-                            } else {
-                                result = *(it->second.upval->location);
-                            }
-                        }
-                    } else if (obj.isObjType(ObjType::LIST)) {
+                    if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = static_cast<int>(list->vec.size());
@@ -2980,6 +2967,23 @@ Value VM::run(int targetFrameDepth) {
                             else throw std::out_of_range("RegVM Error: List index out of bounds.");
                         } else {
                             result = list->vec[i];
+                        }
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                        const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        } else {
+                            if (m.getRows() == 1) result = Value(m(0, i));
+                            else if (m.getCols() == 1) result = Value(m(i, 0));
+                            else {
+                                std::vector<double> row(m.getCols());
+                                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                                result = Value(RealMatrix(1, m.getCols(), row));
+                            }
                         }
                     } else if (obj.isString()) {
                         ObjString* objStr = obj.asObjString();
@@ -2991,6 +2995,15 @@ Value VM::run(int targetFrameDepth) {
                             else throw std::out_of_range("RegVM Error: String index out of bounds.");
                         } else {
                             result = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
+                        }
+                    } else if (obj.isObjType(ObjType::DICT)) {
+                        auto dict = static_cast<ObjDict*>(obj.asObj());
+                        auto it = dict->keyMap.find(idx);
+                        if (it == dict->keyMap.end()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("RegVM Error: Key not found.");
+                        } else {
+                            result = dict->elements[it->second].second;
                         }
                     } else if (obj.isInstance()) {
                         auto inst = obj.asInstance();
@@ -3015,7 +3028,21 @@ Value VM::run(int targetFrameDepth) {
                             if (noThrow) result = Value::uninit();
                             else throw std::runtime_error("RegVM Error: Cannot index this instance (no __getitem__).");
                         }
-                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                        if (!idx.isString()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
+                        } else {
+                            auto it = ns->fields.find(idx.asString());
+                            if (it == ns->fields.end()) {
+                                if (noThrow) result = Value::uninit();
+                                else throw std::runtime_error("RegVM Error: Key not found in namespace.");
+                            } else {
+                                result = *(it->second.upval->location);
+                            }
+                        }
+                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                         const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
@@ -3126,31 +3153,35 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (c == 1) {
                     Value idx = getReg(a + 1);
-                    if (obj.isObjType(ObjType::DICT)) {
-                        auto dict = static_cast<ObjDict*>(obj.asObj());
-                        dict->set(idx, val);
-                    } else if (obj.isObjType(ObjType::NAMESPACE)) {
-                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
-                        if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");
-                        if (!idx.isString()) throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
-                        std::string key = idx.asString();
-                        auto it = ns->fields.find(key);
-                        if (it != ns->fields.end()) {
-                            if (it->second.isConst) throw std::runtime_error("RegVM Error: Cannot modify const field '" + key + "'.");
-                            *(it->second.upval->location) = val;
-                        } else {
-                            ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
-                            uv->closed = val;
-                            uv->location = &uv->closed;
-                            ns->fields[key] = { uv, false };
-                        }
-                    } else if (obj.isObjType(ObjType::LIST)) {
+                    if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = static_cast<int>(list->vec.size());
                         if (i < 0) i = n + i;
                         if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: List index out of bounds.");
                         list->mut()[i] = val;
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                        if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                        auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
+                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
+                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                        if (i < 0) i = n + i;
+                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        
+                        if (m.getRows() == 1) m(0, i) = val.asDouble();
+                        else if (m.getCols() == 1) m(i, 0) = val.asDouble();
+                        else {
+                            if (val.isObjType(ObjType::REAL_MATRIX)) {
+                                const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
+                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
+                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
+                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
+                            } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
+                        }
+                        getReg(a) = obj;
+                    } else if (obj.isObjType(ObjType::DICT)) {
+                        auto dict = static_cast<ObjDict*>(obj.asObj());
+                        dict->set(idx, val);
                     } else if (obj.isInstance()) {
                         auto inst = obj.asInstance();
                         inst->checkModify();
@@ -3169,7 +3200,22 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             throw std::runtime_error("RegVM Error: Cannot assign index on this instance (no __setitem__).");
                         }
-                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                        if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");
+                        if (!idx.isString()) throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
+                        std::string key = idx.asString();
+                        auto it = ns->fields.find(key);
+                        if (it != ns->fields.end()) {
+                            if (it->second.isConst) throw std::runtime_error("RegVM Error: Cannot modify const field '" + key + "'.");
+                            *(it->second.upval->location) = val;
+                        } else {
+                            ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
+                            uv->closed = val;
+                            uv->location = &uv->closed;
+                            ns->fields[key] = { uv, false };
+                        }
+                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                         if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
                         auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());

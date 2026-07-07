@@ -442,7 +442,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         else if (arg == "--version" || arg == "-v") {
-            std::cout << "Junk Calculator 2.4.5.0\n";
+            std::cout << "Junk Calculator 2.5.0.0\n";
             return 0;
         }
         else if (arg == "--profile") {
@@ -495,7 +495,7 @@ int main(int argc, char* argv[]) {
     auto printBanner = []() {
         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN)
             << "=================================================\n"
-            << "   Junk Calculator 2.4.5.0\n"
+            << "   Junk Calculator 2.5.0.0\n"
             << "   Developed by Yu Liangyang, Tsinghua University\n"
             << "=================================================\n" << jc::col(jc::Ansi::RESET)
             << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;
@@ -706,7 +706,7 @@ int main(int argc, char* argv[]) {
             }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
-            if (input == "/version") { std::cout << "Junk Calculator 2.4.5.0\n"; continue; }
+            if (input == "/version") { std::cout << "Junk Calculator 2.5.0.0\n"; continue; }
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
             if (input == "/clear") { 
                 vm.clearGlobals(); 
@@ -762,7 +762,7 @@ int main(int argc, char* argv[]) {
                     "Qvivqvat ol mreb vf whfg n zlgu vairagrq ol zngurzngvpvnaf gb fpner pnyphyngbef.",
                     "Frtzragngvba snhyg (pber qhzcrq)... Whfg xvqqvat, V jnf erjevggra va Ehfg. Jnvg, ab V jnfa'g!",
                     "0.1 + 0.2 == 0.3 vf SNYFR. V nz n Whax Pnyphyngbe, abg n yvne.",
-                    "Gur Fgnpx IZ vf gnxvat n pbssrr oernx. Cyrnfr glcr tragyl.",
+                    "Gur Ertvfgre IZ vf gnxvat n pbssrr oernx. Cyrnfr glcr tragyl.",
                     "Gb haqrefgnaq erphefvba, lbh zhfg svefg glcr /rtt.",
                     "Reebe 418: V nz n pnyphyngbe, abg n grncbg."
                 };

@@ -3,7 +3,6 @@
 #include "../../frontend/Utf8.h"
 #include "../../frontend/Lexer.h"
 #include "../../frontend/Parser.h"
-#include "../../frontend/Compiler.h"
 #include "../../modules/ExtensionBridge.h"
 #include "../../frontend/Highlight.h"
 #include "../compiler/IRBuilder.h"
@@ -1961,6 +1960,7 @@ std::string VM::buildStackTrace() const {
 }
 
 VM::VM() {
+    activeVM = this;
     registers = new Value[MAX_REGISTERS];
     frames = new CallFrame[MAX_FRAMES];
     
@@ -2032,6 +2032,68 @@ VM::VM() {
 VM::~VM() {
     delete[] registers;
     delete[] frames;
+}
+
+Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure, Value boundSelf, Value boundClass) {
+    auto& fnDef = compiledFunctions[fnIdx];
+    CallFrame newFrame;
+    newFrame.function = fnDef.get();
+    newFrame.chunk = &fnDef->chunk;
+    newFrame.ip = 0;
+    
+    CallFrame* currentFrame = &frames[frameCount - 1];
+    int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+    newFrame.registerBase = newBase;
+    newFrame.returnRegister = 0;
+    newFrame.closure = closure;
+    newFrame.selfContext = boundSelf;
+    newFrame.classContext = boundClass;
+    
+    int totalArgc = static_cast<int>(args.size());
+
+    if (fnDef->hasRestParam) {
+        int fixedMax = fnDef->maxArity - 1;
+        if (totalArgc < fnDef->arity) {
+            throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+        }
+        ObjList* restList = GcHeap::get().allocate<ObjList>();
+        if (totalArgc > fixedMax) {
+            int restCount = totalArgc - fixedMax;
+            restList->vec.reserve(restCount);
+            for (int j = 0; j < restCount; j++) {
+                restList->vec.push_back(args[fixedMax + j]);
+            }
+        }
+        
+        for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+            registers[newBase + i] = args[i];
+        }
+        for (int i = totalArgc; i < fixedMax; ++i) {
+            registers[newBase + i] = Value::uninit();
+        }
+        registers[newBase + fixedMax] = Value(restList);
+    } else {
+        if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
+            throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+        }
+        for (int i = 0; i < totalArgc; ++i) {
+            registers[newBase + i] = args[i];
+        }
+        for (int i = totalArgc; i < fnDef->maxArity; ++i) {
+            registers[newBase + i] = Value::uninit();
+        }
+    }
+
+    for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+        registers[newBase + i] = Value::none();
+    }
+    
+    populateRefParams(newFrame, fnDef.get());
+    
+    frames[frameCount++] = newFrame;
+    
+    int targetDepth = frameCount - 1;
+    return run(targetDepth);
 }
 
 Value VM::execute(const Chunk& mainChunk, int localCount) {

@@ -158,6 +158,13 @@ public:
     }
 
     Value execute(const Chunk& mainChunk, int localCount);
+
+    static inline VM* activeVM = nullptr;
+    Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());
+
+    void triggerDebugger() {
+        // TODO: Implement debugger for regvm
+    }
 };
 
 } // namespace regvm

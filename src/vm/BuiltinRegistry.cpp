@@ -6,8 +6,11 @@
 #include "../frontend/Utf8.h"
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
-#include "../frontend/Compiler.h"
-#include "VM.h"
+#include "../regvm/compiler/IRBuilder.h"
+#include "../regvm/compiler/IROptimizer.h"
+#include "../regvm/compiler/RegisterAllocator.h"
+#include "../regvm/compiler/Emitter.h"
+#include "../regvm/vm/VM.h"
 #include "../memory/GcHeap.h"
 #include "HelpRouter.h"         // ★ HelpRouter, DynamicHelp
 #ifdef _MSC_VER
@@ -85,7 +88,7 @@ namespace jc {
             return {true, result};
         }
         else if (method->isBytecode()) {
-            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef))};
+            return {true, regvm::VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef))};
         }
         return {false, Value::none()};
     }
@@ -1564,15 +1567,17 @@ void BuiltinRegistry::registerSystemUtils() {
         // 1. 清理符号表达式的弱引用池
         jc::SymExpr::cleanupPool();
 
-        if (!VM::activeVM) return Value(0.0);
+        if (!regvm::VM::activeVM) return Value(0.0);
 
         // ★ gc(true) = 激进模式：先清掉 ANS 避免它充当隐形保护伞
         bool aggressive = (args.size() == 1 && args[0].truthy());
         if (aggressive) {
-            VM::activeVM->setGlobal("ANS", Value::none());
+            regvm::VM::activeVM->setGlobal("ANS", Value::none());
         }
 
-        int freed = VM::activeVM->runGC();
+        if (GcHeap::get().markCallback) GcHeap::get().markCallback();
+        if (GcHeap::get().sweepCallback) GcHeap::get().sweepCallback();
+        int freed = GcHeap::get().sweep();
 
         std::cout << "[GC] Collected " << freed << " unreachable object(s). "
             << "Tracked: " << GcHeap::get().trackedCount() << std::endl;
@@ -3459,7 +3464,7 @@ void BuiltinRegistry::registerHigherOrder() {
             if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: apply() currying expects a function.");
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "apply_curried", nullptr);
             bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([applyCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([applyCore](const std::vector<Value>& innerArgs) -> Value {
                 return applyCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
             });
             return Value(bound);
@@ -3547,7 +3552,7 @@ void BuiltinRegistry::registerHigherOrder() {
             if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: map() currying expects a function.");
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "map_curried", nullptr);
             bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([mapCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([mapCore](const std::vector<Value>& innerArgs) -> Value {
                 return mapCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
             });
             return Value(bound);
@@ -3603,7 +3608,7 @@ void BuiltinRegistry::registerHigherOrder() {
             if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: filter() currying expects a function.");
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "filter_curried", nullptr);
             bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([filterCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([filterCore](const std::vector<Value>& innerArgs) -> Value {
                 return filterCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
             });
             return Value(bound);
@@ -3655,7 +3660,7 @@ void BuiltinRegistry::registerHigherOrder() {
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "reduce_curried", nullptr);
             bound->boundSelf = capturedFn;   // ★ 让 GC 追踪
             bound->boundClass = capturedInit; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([reduceCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([reduceCore](const std::vector<Value>& innerArgs) -> Value {
                 return reduceCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction(), helpers::nativeClassStack.back());
             });
             return Value(bound);
@@ -3701,7 +3706,7 @@ void BuiltinRegistry::registerHigherOrder() {
             if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: any() currying expects a function.");
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "any_curried", nullptr);
             bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([anyCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([anyCore](const std::vector<Value>& innerArgs) -> Value {
                 return anyCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
             });
             return Value(bound);
@@ -3721,7 +3726,7 @@ void BuiltinRegistry::registerHigherOrder() {
             if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: all() currying expects a function.");
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "all_curried", nullptr);
             bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([allCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([allCore](const std::vector<Value>& innerArgs) -> Value {
                 return allCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
             });
             return Value(bound);
@@ -3752,7 +3757,7 @@ void BuiltinRegistry::registerHigherOrder() {
             if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: countIf() currying expects a function.");
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "countIf_curried", nullptr);
             bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([countIfCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([countIfCore](const std::vector<Value>& innerArgs) -> Value {
                 return countIfCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
             });
             return Value(bound);
@@ -3810,7 +3815,7 @@ void BuiltinRegistry::registerHigherOrder() {
             Value capturedFn = args[0];
             auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "sort_curried", nullptr);
             bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = VM::makeNativeFn([sortCore](const std::vector<Value>& innerArgs) -> Value {
+            bound->nativeFn = std::make_any<NativeCallable>([sortCore](const std::vector<Value>& innerArgs) -> Value {
                 return sortCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
             });
             return Value(bound);
@@ -4249,24 +4254,38 @@ void BuiltinRegistry::registerSystemShell() {
         jc::Parser parser(tokens);
         auto ast = parser.parse();
         
-        jc::Compiler compiler;
-        compiler.setCompiledFunctions(VM::activeVM->getCompiledFunctions());
-        compiler.setFunctionIndexOffset(0);
-        
-        Chunk chunk = compiler.compile(ast.get(), "<compileCode>");
-        
-        auto mainFn = std::make_shared<CompiledFunction>();
+        auto mainFn = std::make_shared<regvm::CompiledFunction>();
         mainFn->name = "<compiled_code>";
         mainFn->sourceFile = "<compileCode>";
-        mainFn->chunk = std::move(chunk);
         mainFn->arity = 0;
         mainFn->maxArity = 0;
-        mainFn->localCount = compiler.getTopLevelLocalCount();
+        mainFn->hasRestParam = false;
         
-        auto fns = compiler.getCompiledFunctions();
+        auto fns = regvm::VM::activeVM->getCompiledFunctions();
+        
+        regvm::IRGraph fnGraph;
+        regvm::IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
+        fnBuilder.build(ast.get());
+        
+        regvm::IROptimizer::optimize(&fnGraph);
+        regvm::RegisterAllocator::allocate(&fnGraph);
+        
+        for (auto& target : fnBuilder.upvalueTargets) {
+            if (target.isLocal && target.localNode) {
+                regvm::IRNode* localNode = target.localNode;
+                int upvalIdx = target.index;
+                regvm::CompiledFunction* childFn = mainFn.get();
+                fnGraph.postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                    childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
+                });
+            }
+        }
+        
+        mainFn->localCount = regvm::Emitter::emit(&fnGraph, mainFn->chunk);
+        
         fns.push_back(mainFn);
         int mainFnIdx = static_cast<int>(fns.size()) - 1;
-        VM::activeVM->setCompiledFunctions(fns);
+        regvm::VM::activeVM->setCompiledFunctions(fns);
         
         ObjClosure* cls = GcHeap::get().allocate<ObjClosure>(
             std::vector<std::string>{}, std::vector<bool>{}, "<compiled_code>", nullptr
@@ -4294,34 +4313,48 @@ void BuiltinRegistry::registerSystemShell() {
         jc::Parser parser(tokens);
         auto ast = parser.parse();
         
-        jc::Compiler compiler;
-        compiler.setCompiledFunctions(VM::activeVM->getCompiledFunctions());
-        compiler.setFunctionIndexOffset(0);
-        
-        Chunk chunk = compiler.compile(ast.get(), resolved);
-        
-        auto mainFn = std::make_shared<CompiledFunction>();
+        auto mainFn = std::make_shared<regvm::CompiledFunction>();
         mainFn->name = "<compiled_file>";
         mainFn->sourceFile = resolved;
-        mainFn->chunk = std::move(chunk);
         mainFn->arity = 0;
         mainFn->maxArity = 0;
-        mainFn->localCount = compiler.getTopLevelLocalCount();
+        mainFn->hasRestParam = false;
         
-        auto fns = compiler.getCompiledFunctions();
+        auto fns = regvm::VM::activeVM->getCompiledFunctions();
+        
+        regvm::IRGraph fnGraph;
+        regvm::IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
+        fnBuilder.build(ast.get());
+        
+        regvm::IROptimizer::optimize(&fnGraph);
+        regvm::RegisterAllocator::allocate(&fnGraph);
+        
+        for (auto& target : fnBuilder.upvalueTargets) {
+            if (target.isLocal && target.localNode) {
+                regvm::IRNode* localNode = target.localNode;
+                int upvalIdx = target.index;
+                regvm::CompiledFunction* childFn = mainFn.get();
+                fnGraph.postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                    childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
+                });
+            }
+        }
+        
+        mainFn->localCount = regvm::Emitter::emit(&fnGraph, mainFn->chunk);
+        
         fns.push_back(mainFn);
         int mainFnIdx = static_cast<int>(fns.size()) - 1;
-        VM::activeVM->setCompiledFunctions(fns);
+        regvm::VM::activeVM->setCompiledFunctions(fns);
 
         // ★ 核心：使用原生闭包代理，保护相对路径上下文！
         std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
-        VM* vm = VM::activeVM;
+        regvm::VM* vm = regvm::VM::activeVM;
         
         ObjClosure* proxy = GcHeap::get().allocate<ObjClosure>(
             std::vector<std::string>{}, std::vector<bool>{}, "<compiled_file_proxy>", nullptr
         );
         
-        proxy->nativeFn = VM::makeNativeFn([vm, mainFnIdx, scriptDir](const std::vector<Value>& callArgs) -> Value {
+        proxy->nativeFn = std::make_any<NativeCallable>([vm, mainFnIdx, scriptDir](const std::vector<Value>& callArgs) -> Value {
             helpers::g_scriptDirStack.push_back(scriptDir);
             Value result;
             try {
@@ -4365,8 +4398,8 @@ void BuiltinRegistry::registerSystemShell() {
         });
 
     reg("breakpoint", { 0 }, [](const std::vector<Value>&) -> Value {
-        if (VM::activeVM) {
-            VM::activeVM->triggerDebugger();
+        if (regvm::VM::activeVM) {
+            regvm::VM::activeVM->triggerDebugger();
         }
         return Value::none();
         });
@@ -4379,8 +4412,8 @@ void BuiltinRegistry::registerSystemShell() {
         }
         auto cl = args[0].asFunction();
         if (cl->compiledFnIndex >= 0) {
-            if (VM::activeVM) {
-                auto fns = VM::activeVM->getCompiledFunctions();
+            if (regvm::VM::activeVM) {
+                auto fns = regvm::VM::activeVM->getCompiledFunctions();
                 if (cl->compiledFnIndex < static_cast<int>(fns.size())) {
                     auto fn = fns[cl->compiledFnIndex];
                     fn->chunk.disassemble(fn->name.empty() ? "Function" : fn->name);
@@ -5172,9 +5205,9 @@ void BuiltinRegistry::registerCAS() {
         );
         cls->defaultValues.resize(argCount, jc::Value::none());
         jc::SymbolicFuncResolver resolver = [](const std::string& name, const std::vector<jc::Value>& fnArgs) -> jc::Value {
-            if (!jc::VM::activeVM) throw std::runtime_error("toFunc error: VM context lost.");
+            if (!jc::regvm::VM::activeVM) throw std::runtime_error("toFunc error: VM context lost.");
 
-            const auto& builtins = jc::VM::activeVM->getNativeBuiltins();
+            const auto& builtins = jc::regvm::VM::activeVM->getNativeBuiltins();
             auto it = builtins.find(name);
             if (it != builtins.end()) {
                 return it->second(fnArgs);
@@ -5205,7 +5238,7 @@ void BuiltinRegistry::registerCAS() {
 
             return jc::evalUniversal(ast.ptr, valEnv, resolver);
             };
-        cls->nativeFn = VM::makeNativeFn(std::move(jc_caller));
+        cls->nativeFn = std::make_any<NativeCallable>(std::move(jc_caller));
         return jc::Value(cls);
         });
 

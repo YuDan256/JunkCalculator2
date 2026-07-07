@@ -1744,9 +1744,9 @@
       "",
       "  Generation",
       "  ──────────────────────",
-      "    range(n)            [0, 1, ..., n-1]",
-      "    range(a, b)         [a, a+1, ..., b-1]",
-      "    range(a, b, step)   Custom stepping",
+      "    range(n)            Returns a lightweight iterator for 0 to n-1",
+      "    range(a, b)         Returns a lightweight iterator for a to b-1",
+      "    range(a, b, step)   Custom stepping iterator",
       "    fill(val, n)        n copies of val",
       "    linspace(a, b, n)   n evenly-spaced points from a to b",
       "",
@@ -4342,8 +4342,8 @@
     },
     "range": {
       "signature": "range([start], end, [step])",
-      "desc": "Generates a sequence of numbers.",
-      "examples": ["range(5)", "range(1, 10, 2)"]
+      "desc": "Returns a lightweight iterable range object that generates a sequence of numbers. Use toList(range(...)) if you need a physical list.",
+      "examples": ["range(5)", "range(1, 10, 2)", "toList(range(5))"]
     },
     "fill": {
       "signature": "fill(val, n)",

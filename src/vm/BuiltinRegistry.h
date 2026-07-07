@@ -270,5 +270,7 @@ private:
     void registerSetFunctions();
 };
 
+void registerPredefinedClasses();
+
 } // namespace jc
 #endif // JC2_BUILTIN_REGISTRY_H

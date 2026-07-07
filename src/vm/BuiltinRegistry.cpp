@@ -1090,11 +1090,11 @@ void BuiltinRegistry::registerMatrixOps() {
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) return Value(0.0);
-            Value s = L[0];
+            Value listSum = L[0];
             for (size_t i = 1; i < L.size(); ++i) {
-                s = s + L[i];  // 利用 Value 的重载 +
+                listSum = listSum + L[i];  // 利用 Value 的重载 +
             }
-            return s;
+            return listSum;
         }
         return matrixDispatch1(arg, [](const auto& m) { return m.sum(); });
         });
@@ -1115,11 +1115,11 @@ void BuiltinRegistry::registerMatrixOps() {
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) return Value(1.0);
-            Value p = L[0];
+            Value listProd = L[0];
             for (size_t i = 1; i < L.size(); ++i) {
-                p = p * L[i];  // 利用 Value 的重载 *
+                listProd = listProd * L[i];  // 利用 Value 的重载 *
             }
-            return p;
+            return listProd;
         }
         return matrixDispatch1(arg, [](const auto& m) { return m.product(); });
         });    
@@ -1477,13 +1477,13 @@ void BuiltinRegistry::registerStatistics() {
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute max of empty list.");
-            Value mx = L[0];
+            Value listMx = L[0];
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
                 // ★ 正确的 C++ 比较
-                if (helpers::checkGreater(v, mx)) mx = v;
+                if (helpers::checkGreater(v, listMx)) listMx = v;
             }
-            return mx;
+            return listMx;
         }
         auto d = extractDS(arg, "max");
         double mx_d = d[0]; for (double v : d) if (v > mx_d) mx_d = v; return Value(mx_d);
@@ -1504,13 +1504,13 @@ void BuiltinRegistry::registerStatistics() {
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute min of empty list.");
-            Value mn = L[0];
+            Value listMn = L[0];
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
                 // ★ 正确的 C++ 比较
-                if (helpers::checkLess(v, mn)) mn = v;
+                if (helpers::checkLess(v, listMn)) listMn = v;
             }
-            return mn;
+            return listMn;
         }
         auto d = extractDS(arg, "min");
         double mn_d = d[0]; for (double v : d) if (v < mn_d) mn_d = v; return Value(mn_d);
@@ -1534,16 +1534,16 @@ void BuiltinRegistry::registerStatistics() {
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute span of empty list.");
-            Value mn = L[0];
-            Value mx = L[0];
+            Value listMn = L[0];
+            Value listMx = L[0];
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
                 // ★ 正确的 C++ 比较
-                if (helpers::checkGreater(v, mx)) mx = v;
-                if (helpers::checkLess(v, mn)) mn = v;
+                if (helpers::checkGreater(v, listMx)) listMx = v;
+                if (helpers::checkLess(v, listMn)) listMn = v;
             }
             // 利用 Value 的重载减法返回 span
-            return mx - mn;
+            return listMx - listMn;
         }
         auto d = extractDS(arg, "span");
         double mx_d = d[0], mn_d = d[0];
@@ -2866,31 +2866,31 @@ void BuiltinRegistry::registerArrayFunctions() {
         }
         if (arg.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(arg.asObj());
-            int c = 0;
-            for (const auto& e : l->vec) { if (Value::equals(e, args[1])) c++; }
-            return Value::fromInt32(c);
+            int countVal = 0;
+            for (const auto& e : l->vec) { if (Value::equals(e, args[1])) countVal++; }
+            return Value::fromInt32(countVal);
         } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
             auto& m = static_cast<ObjRealMatrix*>(arg.asObj())->mat;
-            int c = 0;
+            int countVal = 0;
             try {
                 double target = args[1].asDouble();
-                for (const auto& x : m.rawData()) if (x == target) c++;
+                for (const auto& x : m.rawData()) if (x == target) countVal++;
             } catch (...) {}
-            return Value::fromInt32(c);
+            return Value::fromInt32(countVal);
         } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto& m = static_cast<ObjComplexMatrix*>(arg.asObj())->mat;
-            int c = 0;
+            int countVal = 0;
             try {
                 Complex target = args[1].asComplex();
-                for (const auto& x : m.rawData()) if (x == target) c++;
+                for (const auto& x : m.rawData()) if (x == target) countVal++;
             } catch (...) {}
-            return Value::fromInt32(c);
+            return Value::fromInt32(countVal);
         } else if (arg.isObjType(ObjType::STRING_MATRIX)) {
             auto& m = static_cast<ObjStringMatrix*>(arg.asObj())->mat;
-            int c = 0;
+            int countVal = 0;
             std::string target = args[1].isString() ? args[1].asString() : args[1].toString();
-            for (const auto& x : m.rawData()) if (x == target) c++;
-            return Value::fromInt32(c);
+            for (const auto& x : m.rawData()) if (x == target) countVal++;
+            return Value::fromInt32(countVal);
         }
         return expectContainer("count");
         });
@@ -2925,22 +2925,22 @@ void BuiltinRegistry::registerArrayFunctions() {
                 for (size_t i = 1; i < l->vec.size(); ++i) { result.append(delim); result.append(l->vec[i].asString()); }
                 return Value(result);
             }
-            std::ostringstream oss;
-            for (size_t i = 0; i < l->vec.size(); ++i) { if (i > 0) oss << delim; oss << l->vec[i]; }
-            return Value(oss.str());
+            std::ostringstream listOss;
+            for (size_t i = 0; i < l->vec.size(); ++i) { if (i > 0) listOss << delim; listOss << l->vec[i]; }
+            return Value(listOss.str());
         } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
             auto& m = static_cast<ObjRealMatrix*>(arg.asObj())->mat;
-            std::ostringstream oss; auto v = m.rawData();
+            std::ostringstream matOss; auto v = m.rawData();
             for (size_t i = 0; i < v.size(); ++i) {
-                if (i > 0) oss << delim;
-                oss << Value(v[i]);
+                if (i > 0) matOss << delim;
+                matOss << Value(v[i]);
             }
-            return Value(oss.str());
+            return Value(matOss.str());
         } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto& m = static_cast<ObjComplexMatrix*>(arg.asObj())->mat;
-            std::ostringstream oss; auto v = m.rawData();
-            for (size_t i = 0; i < v.size(); ++i) { if (i > 0) oss << delim; oss << Value(v[i]); }
-            return Value(oss.str());
+            std::ostringstream cmatOss; auto v = m.rawData();
+            for (size_t i = 0; i < v.size(); ++i) { if (i > 0) cmatOss << delim; cmatOss << Value(v[i]); }
+            return Value(cmatOss.str());
         } else if (arg.isObjType(ObjType::STRING_MATRIX)) {
             auto& m = static_cast<ObjStringMatrix*>(arg.asObj())->mat;
             auto v = m.rawData();
@@ -3312,12 +3312,12 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
-            std::vector<std::string> flat;
+            std::vector<std::string> listFlat;
             for (const auto& v : L) {
-                if (v.isString()) flat.push_back(v.asString());
-                else { std::ostringstream oss; oss << v; flat.push_back(oss.str()); }
+                if (v.isString()) listFlat.push_back(v.asString());
+                else { std::ostringstream oss; oss << v; listFlat.push_back(oss.str()); }
             }
-            return Value(StringMatrix(static_cast<int>(flat.size()), 1, flat));
+            return Value(StringMatrix(static_cast<int>(listFlat.size()), 1, listFlat));
         }
         if (arg.isObjType(ObjType::STRING_MATRIX)) return arg;
         throw std::runtime_error("Type Error: toStrVec() expects a List, StringMatrix, or Iterable.");
@@ -3334,9 +3334,9 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (!arg.isObjType(ObjType::LIST)) throw std::runtime_error("Type Error: expects a List or Iterable.");
         const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
-        std::vector<double> flat;
-        for (const auto& v : L) flat.push_back(v.asDouble());
-        return Value(RealMatrix(1, static_cast<int>(flat.size()), flat));
+        std::vector<double> listFlat;
+        for (const auto& v : L) listFlat.push_back(v.asDouble());
+        return Value(RealMatrix(1, static_cast<int>(listFlat.size()), listFlat));
         });
 
     reg("toMatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
@@ -3623,13 +3623,13 @@ void BuiltinRegistry::registerHigherOrder() {
         }
 
         if (iterable.isObjType(ObjType::LIST)) {
-            ObjList* result = GcHeap::get().allocate<ObjList>();
-            GcObjGuard guard(result);
+            ObjList* listResult = GcHeap::get().allocate<ObjList>();
+            GcObjGuard listGuard(listResult);
             for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
                 jc::checkInterrupt();
-                result->vec.push_back(safeCallFunction(cl, { e }));
+                listResult->vec.push_back(safeCallFunction(cl, { e }));
             }
-            return Value(result);
+            return Value(listResult);
         } else if (iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) || iterable.isObjType(ObjType::STRING_MATRIX)) {
             int rows = 1, cols = 1;
             std::vector<Value> flatVals;
@@ -3648,7 +3648,7 @@ void BuiltinRegistry::registerHigherOrder() {
             }
 
             ObjList* fallback = GcHeap::get().allocate<ObjList>();
-            GcObjGuard guard(fallback);
+            GcObjGuard fallbackGuard(fallback);
             bool typeConflict = false;
             bool hasString = false, hasComp = false;
             std::vector<double> rd; std::vector<Complex> rc; std::vector<std::string> rs;
@@ -3722,40 +3722,40 @@ void BuiltinRegistry::registerHigherOrder() {
         }
 
         if (iterable.isObjType(ObjType::LIST)) {
-            ObjList* result = GcHeap::get().allocate<ObjList>();
-            GcObjGuard guard(result);
+            ObjList* listResult = GcHeap::get().allocate<ObjList>();
+            GcObjGuard listGuard(listResult);
             for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { e }).truthy()) result->vec.push_back(e);
+                if (safeCallFunction(cl, { e }).truthy()) listResult->vec.push_back(e);
             }
-            return Value(result);
+            return Value(listResult);
         } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
-            std::vector<double> result;
+            std::vector<double> matResult;
             for (const auto& x : static_cast<ObjRealMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { Value(x) }).truthy()) result.push_back(x);
+                if (safeCallFunction(cl, { Value(x) }).truthy()) matResult.push_back(x);
             }
-            int n = static_cast<int>(result.size());
+            int n = static_cast<int>(matResult.size());
             if (n == 0) return Value(RealMatrix(1, 0));
-            return Value(RealMatrix(1, n, result));
+            return Value(RealMatrix(1, n, matResult));
         } else if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
-            std::vector<Complex> result;
+            std::vector<Complex> matResult;
             for (const auto& x : static_cast<ObjComplexMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { Value(x) }).truthy()) result.push_back(x);
+                if (safeCallFunction(cl, { Value(x) }).truthy()) matResult.push_back(x);
             }
-            int n = static_cast<int>(result.size());
+            int n = static_cast<int>(matResult.size());
             if (n == 0) return Value(ComplexMatrix(1, 0));
-            return Value(ComplexMatrix(1, n, result));
+            return Value(ComplexMatrix(1, n, matResult));
         } else if (iterable.isObjType(ObjType::STRING_MATRIX)) {
-            std::vector<std::string> result;
+            std::vector<std::string> matResult;
             for (const auto& x : static_cast<ObjStringMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { Value(x) }).truthy()) result.push_back(x);
+                if (safeCallFunction(cl, { Value(x) }).truthy()) matResult.push_back(x);
             }
-            int n = static_cast<int>(result.size());
+            int n = static_cast<int>(matResult.size());
             if (n == 0) return Value(StringMatrix(1, 0));
-            return Value(StringMatrix(1, n, result));
+            return Value(StringMatrix(1, n, matResult));
         }
         throw std::runtime_error("Type Error: filter() expects a vector/matrix/list.");
     };
@@ -3795,15 +3795,15 @@ void BuiltinRegistry::registerHigherOrder() {
 
         if (iterable.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(iterable.asObj());
-            Value acc; size_t startIdx = 0;
-            if (!initVal.isNone()) { acc = initVal; }
-            else { if (l->vec.empty()) throw std::runtime_error("Runtime Error: reduce() on empty."); acc = l->vec[0]; startIdx = 1; }
-            GcValueGuard guard(acc);
+            Value listAcc; size_t startIdx = 0;
+            if (!initVal.isNone()) { listAcc = initVal; }
+            else { if (l->vec.empty()) throw std::runtime_error("Runtime Error: reduce() on empty."); listAcc = l->vec[0]; startIdx = 1; }
+            GcValueGuard listGuard(listAcc);
             for (size_t i = startIdx; i < l->vec.size(); ++i) { 
                 jc::checkInterrupt(); 
-                acc = safeCallFunction(cl, { acc, l->vec[i] }); 
+                listAcc = safeCallFunction(cl, { listAcc, l->vec[i] }); 
             }
-            return acc;
+            return listAcc;
         } else if (iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) || iterable.isObjType(ObjType::STRING_MATRIX)) {
             std::vector<Value> flatVals;
             if (iterable.isObjType(ObjType::REAL_MATRIX)) {
@@ -3813,15 +3813,15 @@ void BuiltinRegistry::registerHigherOrder() {
             } else {
                 for (auto s : static_cast<ObjStringMatrix*>(iterable.asObj())->mat.rawData()) flatVals.push_back(Value(s));
             }
-            Value acc; size_t startIdx = 0;
-            if (!initVal.isNone()) { acc = initVal; }
-            else { if (flatVals.empty()) throw std::runtime_error("Runtime Error: reduce() on empty."); acc = flatVals[0]; startIdx = 1; }
-            GcValueGuard guard(acc);
+            Value matAcc; size_t startIdx = 0;
+            if (!initVal.isNone()) { matAcc = initVal; }
+            else { if (flatVals.empty()) throw std::runtime_error("Runtime Error: reduce() on empty."); matAcc = flatVals[0]; startIdx = 1; }
+            GcValueGuard matGuard(matAcc);
             for (size_t i = startIdx; i < flatVals.size(); ++i) { 
                 jc::checkInterrupt(); 
-                acc = safeCallFunction(cl, { acc, flatVals[i] }); 
+                matAcc = safeCallFunction(cl, { matAcc, flatVals[i] }); 
             }
-            return acc;
+            return matAcc;
         }
         throw std::runtime_error("Type Error: reduce() expects a vector/matrix/list.");
     };

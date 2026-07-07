@@ -3845,7 +3845,6 @@ Value VM::run(int targetFrameDepth) {
                             break;
                         }
                     }
-                }
                 
                 Value iterObj = state->vec[0];
                 if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {

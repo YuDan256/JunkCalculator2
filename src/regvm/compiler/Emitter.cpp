@@ -221,6 +221,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         }
                         break;
                     }
+                    case IROp::FreeReg: {
+                        auto w = buildInstA(OpCode::LOAD_NIL, node->physicalReg);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::UpdateCaptured: {
                         int dst = node->dataInputs[0]->physicalReg;
                         int src = ensureReg(node->dataInputs[1], inst.words, chunk, 124);

@@ -513,6 +513,72 @@ void RegisterAllocator::allocate(IRGraph* graph) {
             node->physicalReg = color[node->virtualReg];
         }
     }
+
+    // 9. 插入 FreeReg 指令以帮助 GC 及时回收死对象
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        auto& bb = blocks[i];
+        
+        bool hasTerminal = false;
+        for (IRNode* inst : bb->instructions) {
+            if (inst->op == IROp::Return || inst->op == IROp::Throw || 
+                inst->op == IROp::TailCall || inst->op == IROp::TailInvoke || 
+                inst->op == IROp::TailInvokeFallback || inst->op == IROp::TailSuperInvoke) {
+                hasTerminal = true;
+                break;
+            }
+        }
+        if (hasTerminal) continue; // 包含终端指令的块，VM 会在退出时自动清空整个调用帧
+        
+        std::unordered_set<int> physLiveOut;
+        std::unordered_set<int> physUsed;
+        
+        for (int v = 0; v < numVRegs; ++v) {
+            if (color[v] != -1) {
+                if (liveOut[i][v]) physLiveOut.insert(color[v]);
+                if (liveIn[i][v] || def[i][v]) physUsed.insert(color[v]);
+            }
+        }
+        
+        std::vector<int> deadRegs;
+        for (int p : physUsed) {
+            if (physLiveOut.find(p) == physLiveOut.end()) {
+                deadRegs.push_back(p);
+            }
+        }
+        
+        IRNode* cNode = bb->controlNode;
+        if (cNode) {
+            if (cNode->op == IROp::If && cNode->dataInputs.size() > 0 && cNode->dataInputs[0]) {
+                int p = cNode->dataInputs[0]->physicalReg;
+                if (p != -1) {
+                    auto it = std::find(deadRegs.begin(), deadRegs.end(), p);
+                    if (it != deadRegs.end()) deadRegs.erase(it);
+                }
+            } else if (cNode->op == IROp::TryBegin) {
+                BasicBlock* catchBlock = nullptr;
+                for (auto* succ : bb->succs) {
+                    if (succ->controlNode->op == IROp::Catch) {
+                        catchBlock = succ;
+                        break;
+                    }
+                }
+                if (catchBlock && catchBlock->controlNode) {
+                    int p = catchBlock->controlNode->physicalReg;
+                    if (p != -1) {
+                        auto it = std::find(deadRegs.begin(), deadRegs.end(), p);
+                        if (it != deadRegs.end()) deadRegs.erase(it);
+                    }
+                }
+            }
+        }
+        
+        for (int p : deadRegs) {
+            IRNode* freeNode = graph->createNode(IROp::FreeReg);
+            freeNode->physicalReg = p;
+            freeNode->setControl(cNode);
+            bb->instructions.push_back(freeNode);
+        }
+    }
 }
 
 } // namespace regvm

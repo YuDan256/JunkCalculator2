@@ -121,7 +121,8 @@ enum class IROp {
     MatchShape,
 
     // 寄存器操作 (用于 Phi 去结构化和寄存器溢出)
-    Move        // 寄存器间移动
+    Move,       // 寄存器间移动
+    FreeReg     // 释放寄存器 (帮助 GC)
 };
 
 inline std::string irOpToString(IROp op) {
@@ -220,6 +221,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::MatchType: return "MatchType";
         case IROp::MatchShape: return "MatchShape";
         case IROp::Move: return "Move";
+        case IROp::FreeReg: return "FreeReg";
         default: return "Unknown";
     }
 }

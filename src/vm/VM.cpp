@@ -2027,6 +2027,19 @@ VM::VM() {
             }
         }
     };
+
+    nativeBuiltins["__dbg_reg"] = [this](const std::vector<Value>& args) -> Value {
+        if (!currentDebuggerFrame) throw std::runtime_error("Debugger not active.");
+        int reg = static_cast<int>(args[0].asDouble());
+        CallFrame* frame = currentDebuggerFrame;
+        int maxRegs = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
+        if (reg >= 0 && reg < maxRegs) {
+            int locals = frame->function ? frame->function->localCount : 0;
+            return (reg < locals) ? registers[frame->registerBase + reg] : registers[frame->refParamsBase + (reg - locals)];
+        }
+        throw std::runtime_error("Register out of bounds.");
+    };
+    builtinArity["__dbg_reg"] = {1};
 }
 
 VM::~VM() {
@@ -2282,27 +2295,22 @@ Value VM::run(int targetFrameDepth) {
                             std::cout << "All breakpoints and watchpoints cleared.\n";
                         } else if (line.substr(0, 2) == "p ") {
                             std::string expr = line.substr(2);
-                            int reg; char dummy;
-                            if (sscanf(expr.c_str(), " R(%d) %c", &reg, &dummy) == 1) {
-                                int maxRegs = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
-                                if (reg >= 0 && reg < maxRegs) {
-                                    int locals = frame->function ? frame->function->localCount : 0;
-                                    Value v = (reg < locals) ? registers[frame->registerBase + reg] : registers[frame->refParamsBase + (reg - locals)];
-                                    std::cout << v << "\n";
-                                } else {
-                                    std::cout << "Register out of bounds.\n";
+                            size_t pos = 0;
+                            while ((pos = expr.find("R(", pos)) != std::string::npos) {
+                                expr.replace(pos, 2, "__dbg_reg(");
+                                pos += 10;
+                            }
+                            if (helpers::evalCallback) {
+                                currentDebuggerFrame = frame;
+                                try {
+                                    Value res = helpers::evalCallback(expr);
+                                    std::cout << res << "\n";
+                                } catch (const std::exception& e) {
+                                    std::cout << "Error: " << e.what() << "\n";
                                 }
+                                currentDebuggerFrame = nullptr;
                             } else {
-                                if (helpers::evalCallback) {
-                                    try {
-                                        Value res = helpers::evalCallback(expr);
-                                        std::cout << res << "\n";
-                                    } catch (const std::exception& e) {
-                                        std::cout << "Error: " << e.what() << "\n";
-                                    }
-                                } else {
-                                    std::cout << "Eval not available.\n";
-                                }
+                                std::cout << "Eval not available.\n";
                             }
                         } else if (line == "r" || line == "regs") {
                             int params = frame->function ? frame->function->maxArity : 0;

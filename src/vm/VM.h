@@ -162,6 +162,7 @@ public:
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());
 
     void triggerDebugger();
+    CallFrame* currentDebuggerFrame = nullptr;
 
     struct WatchPoint {
         int reg = -1;

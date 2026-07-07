@@ -14,8 +14,7 @@ class FpsProbe {
         self.idx = (self.idx + 1) % self.max_samples
         
         if (self.idx % 10 == 0) {
-            sum_dt = 0.0
-            for (i in range(self.max_samples)) { sum_dt += self.history[i] }
+            sum_dt = sum(self.history)
             avg_dt = sum_dt / double(self.max_samples)
             if (avg_dt > 0.0) self.avg_fps = int(1.0 / avg_dt)
         }
@@ -39,7 +38,7 @@ class FpsProbe {
         // ★ 修复重叠：图在下面 (从底部往上画)
         graph_bottom = base_y + box_height - 5
         
-        for (i in range(self.max_samples)) {
+        for (i = 0; i < self.max_samples; i += 1) {
             read_idx = (self.idx + i) % self.max_samples
             dt_ms = self.history[read_idx] * 1000.0 
             
@@ -161,13 +160,13 @@ class Raycaster3D extends engine.GameEngine {
             r = int(curr[0]); c = int(curr[1])
             dirs = list(list(2,0), list(-2,0), list(0,2), list(0,-2))
             
-            for (k in range(6)) {
+            for (k = 0; k < 6; k += 1) {
                 i1 = randint(0, 3); i2 = randint(0, 3)
                 [dirs[i2], dirs[i1]] = [dirs[i1], dirs[i2]]// Destructuring swap
             }
             
             moved = false
-            for (i in range(4)) {
+            for (i = 0; i < 4; i += 1) {
                 dr = int(dirs[i][0]); dc = int(dirs[i][1])
                 nr = r + dr; nc = c + dc
                 if (nr > 0 && nr < self.size - 1 && nc > 0 && nc < self.size - 1) {
@@ -183,8 +182,8 @@ class Raycaster3D extends engine.GameEngine {
             if (!moved) path_stack.pop() 
         }
         
-        for (r in range(self.size)) {
-            for (c in range(self.size)) {
+        for (r = 0; r < self.size; r += 1) {
+            for (c = 0; c < self.size; c += 1) {
                 if (self.map[r, c] == 1.0) self.map[r, c] = double(randint(1, 4))
             }
         }
@@ -193,8 +192,8 @@ class Raycaster3D extends engine.GameEngine {
         self.zombies = list()
         self.items = list()
         
-        for (r in range(2, self.size - 2)) {
-            for (c in range(2, self.size - 2)) {
+        for (r = 2; r < self.size - 2; r += 1) {
+            for (c = 2; c < self.size - 2; c += 1) {
                 if (self.map[r, c] == 0.0) {
                     // 留出玩家出生地(1,1)周围的安全空间
                     if (r > 5 || c > 5) {
@@ -438,7 +437,7 @@ class Raycaster3D extends engine.GameEngine {
             if (perp_dist <= 0.0001) perp_dist = 0.0001
             
             // ★ 注册 ZBuffer 深度，跨步跳跃优化
-            for (w in range(x, x + self.STRIP_WIDTH)) {
+            for (w = x; w < x + self.STRIP_WIDTH; w += 1) {
                 if (w < self.W) self.ZBuffer[w] = perp_dist
             }
             
@@ -504,7 +503,7 @@ class Raycaster3D extends engine.GameEngine {
                 tex_art = self.tex[tex_name]
 
                 // 纹理光栅化投射
-                for (spt_x in range(int(start_x), int(end_x), self.STRIP_WIDTH)) {
+                for (spt_x = int(start_x); spt_x < int(end_x); spt_x += self.STRIP_WIDTH) {
                     if (transY < self.ZBuffer[spt_x]) {
                         
                         tx = int((spt_x - (sx - s_w / 2.0)) * 8.0 / s_w)
@@ -512,7 +511,7 @@ class Raycaster3D extends engine.GameEngine {
                         if (tx > 7) tx = 7
                         
                         pixel_h = s_h / 8.0
-                        for (ty in range(8)) {
+                        for (ty = 0; ty < 8; ty += 1) {
                             char = tex_art[ty][tx] 
                             
                             if (char != ".") { 
@@ -573,8 +572,8 @@ class Raycaster3D extends engine.GameEngine {
             rx = self.W - 160; ry = 60
             r_cell = [2, int(130 / self.size)].max() 
             im.fillRect(rx - 5, ry - 5, self.size * r_cell + 10, self.size * r_cell + 10, "#111111")
-            for (r in range(self.size)) {
-                for (c in range(self.size)) {
+            for (r = 0; r < self.size; r += 1) {
+                for (c = 0; c < self.size; c += 1) {
                     val = self.map[c, r]
                     if (val > 0.0 && val < 5.0) im.fillRect(rx + r * r_cell, ry + c * r_cell, r_cell-1, r_cell-1, "#666666")
                     if (val == 5.0) im.fillRect(rx + r * r_cell, ry + c * r_cell, r_cell-1, r_cell-1, "#FFFFFF") 

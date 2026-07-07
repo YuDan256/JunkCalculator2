@@ -814,14 +814,14 @@ bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& 
 
 void VM::execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches[icIdx]);
+    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
     if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
-        ic.cachedBuiltinType = parseBuiltinType(currentFrame->function->chunk.constants[ic.nameIdx].asString());
+        ic.cachedBuiltinType = parseBuiltinType(currentFrame->function->chunk.constants.data()[ic.nameIdx].asString());
     }
-    const std::string& expectedType = currentFrame->function->chunk.constants[ic.nameIdx].asString();
+    const std::string& expectedType = currentFrame->function->chunk.constants.data()[ic.nameIdx].asString();
 
     if (!checkValueType(val, ic.cachedBuiltinType, expectedType)) {
-        const std::string& paramName = currentFrame->function->chunk.constants[nameIdx].asString();
+        const std::string& paramName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
         throw std::runtime_error("TypeError: Parameter '" + paramName +
             "' expected type '" + expectedType +
             "', got '" + getTypeName(val) + "'.");
@@ -830,11 +830,11 @@ void VM::execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx)
 
 void VM::execAssertReturnType(const Value& val, uint32_t icIdx) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches[icIdx]);
+    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
     if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
-        ic.cachedBuiltinType = parseBuiltinType(currentFrame->function->chunk.constants[ic.nameIdx].asString());
+        ic.cachedBuiltinType = parseBuiltinType(currentFrame->function->chunk.constants.data()[ic.nameIdx].asString());
     }
-    const std::string& expectedType = currentFrame->function->chunk.constants[ic.nameIdx].asString();
+    const std::string& expectedType = currentFrame->function->chunk.constants.data()[ic.nameIdx].asString();
 
     if (!checkValueType(val, ic.cachedBuiltinType, expectedType)) {
         throw std::runtime_error("TypeError: Function '" + currentFrame->function->name +
@@ -845,9 +845,9 @@ void VM::execAssertReturnType(const Value& val, uint32_t icIdx) {
 
 void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches[icIdx]);
+    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
     uint32_t nameIdx = ic.nameIdx;
-    const std::string& methodName = currentFrame->function->chunk.constants[nameIdx].asString();
+    const std::string& methodName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
     
     int argc = b;
     const Value& obj = registers[currentFrame->registerBase + a];
@@ -857,7 +857,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
 
     if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
-        auto it = d->keyMap.find(currentFrame->function->chunk.constants[nameIdx]);
+        auto it = d->keyMap.find(currentFrame->function->chunk.constants.data()[nameIdx]);
         if (it != d->keyMap.end()) {
             Value fv = d->elements[it->second].second;
             if (fv.isFunctionClosure()) {
@@ -886,7 +886,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
         bool foundInField = false;
 
         if (ic.cachedClass == inst->classDef && ic.cachedMethod) {
-            if (!inst->fields || inst->fields->keyMap.find(currentFrame->function->chunk.constants[nameIdx]) == inst->fields->keyMap.end()) {
+            if (!inst->fields || inst->fields->keyMap.find(currentFrame->function->chunk.constants.data()[nameIdx]) == inst->fields->keyMap.end()) {
                 method = ic.cachedMethod;
                 owningClass = ic.cachedClass;
                 goto invoke_method;
@@ -894,7 +894,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
         }
 
         if (inst->fields) {
-            auto it = inst->fields->keyMap.find(currentFrame->function->chunk.constants[nameIdx]);
+            auto it = inst->fields->keyMap.find(currentFrame->function->chunk.constants.data()[nameIdx]);
             if (it != inst->fields->keyMap.end()) {
                 Value fv = inst->fields->elements[it->second].second;
                 if (fv.isFunctionClosure()) {
@@ -1142,7 +1142,7 @@ invoke_method:
 
 void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    const std::string& methodName = currentFrame->function->chunk.constants[nameIdx].asString();
+    const std::string& methodName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
     const Value& selfVal = registers[currentFrame->registerBase + a];
     int argc = b;
     
@@ -1952,81 +1952,63 @@ Value VM::run(int targetFrameDepth) {
     int ip = frame->ip;
     
     // 提取 EXTRAARG 扩展操作数 (24-bit)
-    auto fetchExtra = [&]() -> int {
-        Instruction ext = code[ip++];
-        return GET_Ax(ext);
-    };
+    #define FETCH_EXTRA() (code[ip++] >> 8)
 
     // 获取物理寄存器或溢出槽 (Unified Address Space)
     #define getReg(idx) frameRegs[idx]
 
-    // K-Bit 机制：解析寄存器或常量池索引
-    auto getRK = [&](int rk) -> const Value& {
-        if (ISK(rk)) {
-            if (rk == ESCAPE_KBIT_CONST) {
-                int idx = fetchExtra();
-                return chunk->constants[idx];
-            } else {
-                int idx = INDEXK(rk);
-                return chunk->constants[idx];
-            }
-        } else {
-            if (rk == ESCAPE_KBIT_REG) rk = fetchExtra();
-            return frameRegs[rk];
-        }
-    };
+    // K-Bit 机制：解析寄存器或常量池索引 (按值返回，强制放入寄存器，消除内存间接访问)
+    #define GET_RK(rk) (ISK(rk) ? ((rk) == ESCAPE_KBIT_CONST ? chunk->constants.data()[FETCH_EXTRA()] : chunk->constants.data()[INDEXK(rk)]) : ((rk) == ESCAPE_KBIT_REG ? frameRegs[FETCH_EXTRA()] : frameRegs[rk]))
 
     while (true) {
         try {
             while (true) {
                 Instruction instruction = code[ip++];
-                OpCode op = GET_OPCODE(instruction);
+                OpCode op = static_cast<OpCode>(instruction & 0xFF);
                 
-                int a = GET_A(instruction);
-                int b = GET_B(instruction);
-                int c = GET_C(instruction);
-                int bx = GET_Bx(instruction);
-                int sbx = GET_sBx(instruction);
-                int ax = GET_Ax(instruction);
-                (void)ax;
-                int sax = GET_sAx(instruction);
+                int a = (instruction >> 8) & 0xFF;
+                int b = (instruction >> 16) & 0xFF;
+                int c = instruction >> 24;
+                int bx = instruction >> 16;
+                int sbx = bx - 0x7FFF;
+                int sax = static_cast<int>(instruction >> 8) - 0x7FFFFF;
 
                 switch (op) {
             case OpCode::MOVE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 getReg(a) = getReg(b);
                 break;
             }
             case OpCode::LOADK: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
-                getReg(a) = chunk->constants[bx];
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                getReg(a) = chunk->constants.data()[bx];
                 break;
             }
             case OpCode::LOAD_NIL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 getReg(a) = Value::none();
                 break;
             }
             case OpCode::LOAD_BOOL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 getReg(a) = Value(b != 0);
                 break;
             }
             case OpCode::GET_GLOBAL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[bx]);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[bx]);
                 if (ic.cachedGlobalSlot >= 0) {
-                    getReg(a) = globals[ic.cachedGlobalSlot];
+                    getReg(a) = globals.data()[ic.cachedGlobalSlot];
                 } else if (ic.cachedGlobalSlot == -2) {
                     if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
                     getReg(a) = frame->classContext;
                 } else if (ic.cachedGlobalSlot == -3) {
                     getReg(a) = ic.cachedValue;
                 } else {
-                    const std::string& name = chunk->constants[ic.nameIdx].asString();
+                    const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                     if (name == "__class__") {
                         ic.cachedGlobalSlot = -2;
                         if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
@@ -2036,7 +2018,7 @@ Value VM::run(int targetFrameDepth) {
                     auto it = globalNames.find(name);
                     if (it != globalNames.end()) {
                         ic.cachedGlobalSlot = it->second;
-                        getReg(a) = globals[it->second];
+                        getReg(a) = globals.data()[it->second];
                     } else {
                         Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
                         if (!builtinVal.isNone()) {
@@ -2053,10 +2035,10 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::SET_GLOBAL:
             case OpCode::SET_GLOBAL_REF:
             case OpCode::DEFINE_CONST_GLOBAL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[bx]);
-                const std::string& name = chunk->constants[ic.nameIdx].asString();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[bx]);
+                const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                 if (name == "__class__") throw std::runtime_error("Syntax Error: cannot override context keyword '" + name + "'.");
                 
                 if (constGlobals.count(name) && op != OpCode::DEFINE_CONST_GLOBAL) {
@@ -2089,12 +2071,12 @@ Value VM::run(int targetFrameDepth) {
                 }
 
                 if (ic.cachedGlobalSlot != -1) {
-                    globals[ic.cachedGlobalSlot] = val;
+                    globals.data()[ic.cachedGlobalSlot] = val;
                 } else {
                     auto it = globalNames.find(name);
                     if (it != globalNames.end()) {
                         ic.cachedGlobalSlot = it->second;
-                        globals[it->second] = val;
+                        globals.data()[it->second] = val;
                     } else {
                         ic.cachedGlobalSlot = static_cast<int>(globals.size());
                         globalNames[name] = ic.cachedGlobalSlot;
@@ -2108,8 +2090,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::DELETE_GLOBAL: {
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
-                const std::string& name = chunk->constants[bx].asString();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                const std::string& name = chunk->constants.data()[bx].asString();
                 if (constGlobals.count(name)) {
                     throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
                 }
@@ -2124,16 +2106,16 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::IS_UNINIT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 getReg(a) = Value(getReg(b).isUninit());
                 break;
             }
             case OpCode::CLOSURE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                         
-                int fnIdx = static_cast<int>(std::round(chunk->constants[bx].asDouble()));
+                int fnIdx = static_cast<int>(std::round(chunk->constants.data()[bx].asDouble()));
                 if (fnIdx < 0 || fnIdx >= static_cast<int>(compiledFunctions.size()))
                     throw std::runtime_error("RegVM Error: Invalid function index.");
 
@@ -2299,38 +2281,38 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::GET_UPVAL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
                     throw std::runtime_error("RegVM Error: Invalid upvalue index.");
                 getReg(a) = *(frame->closure->upvalues[b]->location);
                 break;
             }
             case OpCode::SET_UPVAL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
                     throw std::runtime_error("RegVM Error: Invalid upvalue index.");
                 *(frame->closure->upvalues[b]->location) = getReg(a);
                 break;
             }
             case OpCode::GET_REF_PARAM: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 if (frame->refParamsBase == -1) throw std::runtime_error("RegVM Error: Invalid ref param index.");
                 getReg(a) = *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location);
                 break;
             }
             case OpCode::SET_REF_PARAM: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 if (frame->refParamsBase == -1) throw std::runtime_error("RegVM Error: Invalid ref param index.");
                 *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location) = getReg(a);
                 break;
             }
             case OpCode::PASS_REFS: {
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
-                const auto& sig = chunk->callSignatures[bx];
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                const auto& sig = chunk->callSignatures.data()[bx];
                 pendingCallRefs.clear();
                 for (const auto& ref : sig.refs) {
                     uint8_t argIndex = ref.argIndex;
@@ -2340,7 +2322,7 @@ Value VM::run(int targetFrameDepth) {
                     ObjUpVal* upval = nullptr;
                     switch (sourceType) {
                         case 1: {
-                            std::string name = chunk->constants[sourceRef].asString();
+                            std::string name = chunk->constants.data()[sourceRef].asString();
                             upval = GcHeap::get().allocate<ObjUpVal>();
                             auto it = globalNames.find(name);
                             if (it == globalNames.end()) {
@@ -2373,12 +2355,13 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::ADD: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() + vc.asDoubleRaw()); break; }
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) + vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
+                } else if (vb.isDouble() && vc.isDouble()) { 
+                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() + vc.asDoubleRaw()); break; 
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_ADD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RADD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
@@ -2386,12 +2369,13 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::SUB: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() - vc.asDoubleRaw()); break; }
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) - vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
+                } else if (vb.isDouble() && vc.isDouble()) { 
+                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() - vc.asDoubleRaw()); break; 
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_SUB)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RSUB)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
@@ -2399,12 +2383,13 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::MUL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() * vc.asDoubleRaw()); break; }
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) * vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
+                } else if (vb.isDouble() && vc.isDouble()) { 
+                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() * vc.asDoubleRaw()); break; 
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MUL)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMUL)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
@@ -2412,11 +2397,11 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::DIV: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { 
                     if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
-                    getReg(a) = Value(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
+                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_DIV)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RDIV)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
@@ -2424,80 +2409,80 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::MOD: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MOD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMOD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb % vc;
                 break;
             }
             case OpCode::POW: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_POW)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RPOW)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb ^ vc;
                 break;
             }
             case OpCode::LDIV: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LDIV)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RLDIV)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = ldivide(vb, vc);
                 break;
             }
             case OpCode::BAND: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITAND)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITAND)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb & vc;
                 break;
             }
             case OpCode::BOR: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITOR)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITOR)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb | vc;
                 break;
             }
             case OpCode::BXOR: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITXOR)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITXOR)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = bitXor(vb, vc);
                 break;
             }
             case OpCode::SHL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LSHIFT)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RLSHIFT)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb << vc;
                 break;
             }
             case OpCode::SHR: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_RSHIFT)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RRSHIFT)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb >> vc;
                 break;
             }
             case OpCode::UNM: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value vb = getReg(b);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEG)) { getReg(a) = callDunder(vb, meth, {}); break; } }
                 getReg(a) = -vb;
                 break;
             }
             case OpCode::NOT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value& val = getReg(b);
                 bool cond;
                 if (val.isBool()) cond = val.asBool();
@@ -2508,16 +2493,16 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::BNOT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value vb = getReg(b);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITNOT)) { getReg(a) = callDunder(vb, meth, {}); break; } }
                 getReg(a) = ~vb;
                 break;
             }
             case OpCode::TO_BOOL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value& val = getReg(b);
                 bool cond;
                 if (val.isBool()) cond = val.asBool();
@@ -2528,12 +2513,11 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::EQ: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.as_bits == vc.as_bits) {
-                    if (!vb.isDouble() || vb.asDoubleRaw() == vc.asDoubleRaw()) {
-                        getReg(a) = Value(true); break;
-                    }
+                    getReg(a) = Value(!vb.isDouble() || !std::isnan(vb.asDoubleRaw()));
+                    break;
                 }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
@@ -2548,12 +2532,11 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::NEQ: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.as_bits == vc.as_bits) {
-                    if (!vb.isDouble() || vb.asDoubleRaw() == vc.asDoubleRaw()) {
-                        getReg(a) = Value(false); break;
-                    }
+                    getReg(a) = Value(vb.isDouble() && std::isnan(vb.asDoubleRaw()));
+                    break;
                 }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() != vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(true); break; }
@@ -2569,8 +2552,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::LT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() < vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2578,8 +2561,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::LE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2587,8 +2570,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::GT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() > vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2596,8 +2579,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::GE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                const Value& vb = getRK(b); const Value& vc = getRK(c);
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2609,7 +2592,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::JMP_TRUE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value& val = getReg(a);
                 bool cond;
                 if (val.isBool()) cond = val.asBool();
@@ -2620,7 +2603,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::JMP_FALSE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value& val = getReg(a);
                 bool cond;
                 if (val.isBool()) cond = val.asBool();
@@ -2631,9 +2614,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::BUILD_LIST: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 ObjList* list = GcHeap::get().allocate<ObjList>();
                 getReg(a) = Value(list); // ★ 立即 Root 防止 GC 误杀
                 list->vec.reserve(c);
@@ -2643,9 +2626,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::BUILD_DICT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 ObjDict* dict = GcHeap::get().allocate<ObjDict>();
                 getReg(a) = Value(dict); // ★ 立即 Root 防止 GC 误杀
                 dict->elements.reserve(c);
@@ -2656,9 +2639,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::BUILD_SET: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 ObjSet* set = GcHeap::get().allocate<ObjSet>();
                 getReg(a) = Value(set); // ★ 立即 Root 防止 GC 误杀
                 set->elements.reserve(c);
@@ -2669,11 +2652,11 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::BUILD_MATRIX: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                const auto& shape = chunk->matrixShapes[c];
+                const auto& shape = chunk->matrixShapes.data()[c];
                 uint16_t rows = shape.rows;
                 const std::vector<uint16_t>& rowCols = shape.rowCols;
 
@@ -2826,13 +2809,13 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::LIST_INIT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 getReg(a) = Value(GcHeap::get().allocate<ObjList>());
                 break;
             }
             case OpCode::LIST_APPEND: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value& listVal = getReg(a);
                 if (listVal.isObjType(ObjType::LIST)) {
                     static_cast<ObjList*>(listVal.asObj())->mut().push_back(getReg(b));
@@ -2842,8 +2825,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::STRINGIFY: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value v = getReg(b);
                 if (v.isString()) {
                     getReg(a) = v;
@@ -2861,9 +2844,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::CONCAT_STRINGS: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 bool allStrings = true;
                 size_t totalLen = 0;
@@ -2900,11 +2883,11 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::FORMAT_STRING: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                const std::string& spec = chunk->constants[c].asString();
+                const std::string& spec = chunk->constants.data()[c].asString();
                 Value val = getReg(b);
 
                 char align = '\0';
@@ -2947,9 +2930,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::INDEX_GET: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 bool noThrow = (c & 0x80) != 0;
                 int dims = c & 0x7F;
@@ -3129,8 +3112,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::INDEX_SET: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 Value obj = getReg(a);
                 Value val = getReg(a + c + 1);
@@ -3284,9 +3267,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::ITER_INIT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 uint8_t destructFlag = static_cast<uint8_t>(c);
                 Value iterable = getReg(b);
@@ -3376,8 +3359,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::ITER_NEXT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 
                 Value& stateVal = getReg(b);
                 
@@ -3483,9 +3466,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::IN: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 Value needle = getReg(b);
                 Value haystack = getReg(c);
@@ -3587,7 +3570,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::TRY_BEGIN: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 ExceptionHandler handler;
                 handler.frameIndex = frameCount - 1;
                 handler.ip = ip + sbx;
@@ -3603,25 +3586,25 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::THROW: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value errVal = getReg(a);
                 throw ValueException(errVal);
             }
             case OpCode::CLASS: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
-                const std::string& name = chunk->constants[bx].asString();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                const std::string& name = chunk->constants.data()[bx].asString();
                 auto cls = GcHeap::get().allocate<ObjClass>();
                 cls->name = name;
                 getReg(a) = Value(cls);
                 break;
             }
             case OpCode::METHOD: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                const std::string& methodName = chunk->constants[b].asString();
+                const std::string& methodName = chunk->constants.data()[b].asString();
                 Value classVal = getReg(a);
                 Value closureVal = getReg(c);
                 
@@ -3636,8 +3619,8 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::INHERIT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 
                 Value subClass = getReg(a);
                 Value superClass = getReg(b);
@@ -3655,12 +3638,12 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::GET_PROP: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[c]);
-                const std::string& field = chunk->constants[ic.nameIdx].asString();
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[c]);
+                const std::string& field = chunk->constants.data()[ic.nameIdx].asString();
                 Value obj = getReg(b);
                 bool found = false;
                 Value result;
@@ -3669,14 +3652,14 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
                         Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
-                        if (cachedKey.as_bits == chunk->constants[ic.nameIdx].as_bits || cachedKey.asString() == field) {
+                        if (cachedKey.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || cachedKey.asString() == field) {
                             result = inst->fields->elements[ic.cachedFieldIndex].second;
                             found = true;
                         }
                     }
                     if (!found) {
                         if (inst->fields) {
-                            auto it = inst->fields->keyMap.find(chunk->constants[ic.nameIdx]);
+                            auto it = inst->fields->keyMap.find(chunk->constants.data()[ic.nameIdx]);
                             if (it != inst->fields->keyMap.end()) {
                                 result = inst->fields->elements[it->second].second;
                                 found = true;
@@ -3751,13 +3734,13 @@ Value VM::run(int targetFrameDepth) {
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
-                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
                             result = d->elements[ic.cachedFieldIndex].second;
                             found = true;
                         }
                     }
                     if (!found) {
-                        auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
+                        auto it = d->keyMap.find(chunk->constants.data()[ic.nameIdx]);
                         if (it != d->keyMap.end()) {
                             result = d->elements[it->second].second;
                             found = true;
@@ -3916,12 +3899,12 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::TRY_GET_PROP: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[c]);
-                const std::string& field = chunk->constants[ic.nameIdx].asString();
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[c]);
+                const std::string& field = chunk->constants.data()[ic.nameIdx].asString();
                 Value obj = getReg(b);
                 bool found = false;
                 Value result;
@@ -3930,14 +3913,14 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
                         Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
-                        if (cachedKey.as_bits == chunk->constants[ic.nameIdx].as_bits || cachedKey.asString() == field) {
+                        if (cachedKey.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || cachedKey.asString() == field) {
                             result = inst->fields->elements[ic.cachedFieldIndex].second;
                             found = true;
                         }
                     }
                     if (!found) {
                         if (inst->fields) {
-                            auto it = inst->fields->keyMap.find(chunk->constants[ic.nameIdx]);
+                            auto it = inst->fields->keyMap.find(chunk->constants.data()[ic.nameIdx]);
                             if (it != inst->fields->keyMap.end()) {
                                 result = inst->fields->elements[it->second].second;
                                 found = true;
@@ -4016,13 +3999,13 @@ Value VM::run(int targetFrameDepth) {
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
-                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
                             result = d->elements[ic.cachedFieldIndex].second;
                             found = true;
                         }
                     }
                     if (!found) {
-                        auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
+                        auto it = d->keyMap.find(chunk->constants.data()[ic.nameIdx]);
                         if (it != d->keyMap.end()) {
                             result = d->elements[it->second].second;
                             found = true;
@@ -4184,12 +4167,12 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::SET_PROP: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[b]);
-                const std::string& field = chunk->constants[ic.nameIdx].asString();
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[b]);
+                const std::string& field = chunk->constants.data()[ic.nameIdx].asString();
                 Value obj = getReg(a);
                 Value val = getReg(c);
                 
@@ -4201,7 +4184,7 @@ Value VM::run(int targetFrameDepth) {
                         callDunder(obj, setattrMethod, {Value(field), val});
                     } else {
                         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
-                        Value key = chunk->constants[ic.nameIdx];
+                        Value key = chunk->constants.data()[ic.nameIdx];
                         if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
                             Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
                             if (cachedKey.as_bits == key.as_bits || cachedKey.asString() == field) {
@@ -4227,13 +4210,13 @@ Value VM::run(int targetFrameDepth) {
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
-                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
                             d->elements[ic.cachedFieldIndex].second = val;
                             goto set_prop_dict_done;
                         }
                     }
                     {
-                        auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
+                        auto it = d->keyMap.find(chunk->constants.data()[ic.nameIdx]);
                         if (it != d->keyMap.end()) {
                             d->elements[it->second].second = val;
                             ic.cachedBuiltinType = BuiltinType::DICT;
@@ -4241,8 +4224,8 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             ic.cachedBuiltinType = BuiltinType::DICT;
                             ic.cachedFieldIndex = static_cast<int>(d->elements.size());
-                            d->keyMap[chunk->constants[ic.nameIdx]] = d->elements.size();
-                            d->elements.push_back({chunk->constants[ic.nameIdx], val});
+                            d->keyMap[chunk->constants.data()[ic.nameIdx]] = d->elements.size();
+                            d->elements.push_back({chunk->constants.data()[ic.nameIdx], val});
                         }
                     }
                 set_prop_dict_done:;
@@ -4265,9 +4248,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::DICT_REST: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 Value obj = getReg(b);
                 Value excludeKeysVal = getReg(c);
@@ -4304,11 +4287,11 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::BUILD_NAMESPACE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                const std::string& nsName = chunk->constants[b].asString();
+                const std::string& nsName = chunk->constants.data()[b].asString();
                 ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
                 getReg(a) = Value(ns); // ★ 立即 Root 防止 GC 误杀
                 ns->name = nsName;
@@ -4328,7 +4311,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::LIST_COMP_END: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value arg = getReg(a);
                 if (!arg.isObjType(ObjType::LIST)) break;
                 
@@ -4446,58 +4429,58 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::SLICE_GET: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 execSliceGet(a, b, static_cast<uint8_t>(c));
                 break;
             }
             case OpCode::SLICE_SET: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 execSliceSet(a, c, static_cast<uint8_t>(c));
                 break;
             }
             case OpCode::IMPORT: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value pathVal = getReg(b);
                 if (!pathVal.isString()) throw std::runtime_error("RegVM Error: import requires a string path.");
                 getReg(a) = execImport(pathVal.asString());
                 break;
             }
             case OpCode::ASSERT_PARAM_TYPE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 execAssertParamType(getReg(a), b, c);
                 break;
             }
             case OpCode::ASSERT_RETURN_TYPE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 execAssertReturnType(getReg(a), b);
                 break;
             }
             case OpCode::MATCH_TYPE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[c]);
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[c]);
                 if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
-                    ic.cachedBuiltinType = parseBuiltinType(chunk->constants[ic.nameIdx].asString());
+                    ic.cachedBuiltinType = parseBuiltinType(chunk->constants.data()[ic.nameIdx].asString());
                 }
-                const std::string& typeStr = chunk->constants[ic.nameIdx].asString();
+                const std::string& typeStr = chunk->constants.data()[ic.nameIdx].asString();
                 getReg(a) = Value(checkValueType(getReg(b), ic.cachedBuiltinType, typeStr));
                 break;
             }
             case OpCode::MATCH_SHAPE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                const auto& sp = chunk->shapePatterns[c];
+                const auto& sp = chunk->shapePatterns.data()[c];
                 uint32_t minRows = sp.minRows;
                 uint32_t maxRows = sp.maxRows;
                 uint32_t minCols = sp.minCols;
@@ -4557,16 +4540,16 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::INVOKE:
             case OpCode::TAIL_INVOKE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE);
                 frame->ip = ip;
                 int prevIp = ip;
                 
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[c]);
-                std::string methodName = chunk->constants[ic.nameIdx].asString();
+                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[c]);
+                std::string methodName = chunk->constants.data()[ic.nameIdx].asString();
                 
                 execInvoke(a, b, c, isTailCall, -1);
                 
@@ -4601,9 +4584,9 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::INVOKE_FALLBACK:
             case OpCode::TAIL_INVOKE_FALLBACK: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE_FALLBACK);
                 frame->ip = ip;
@@ -4639,11 +4622,11 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::GET_SUPER: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                const std::string& field = chunk->constants[c].asString();
+                const std::string& field = chunk->constants.data()[c].asString();
                 Value selfVal = getReg(b);
                 if (!selfVal.isInstance()) throw std::runtime_error("RegVM Error: 'super' requires an instance context.");
                 auto inst = selfVal.asInstance();
@@ -4692,9 +4675,9 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::SUPER_INVOKE:
             case OpCode::TAIL_SUPER_INVOKE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 bool isTailCall = (op == OpCode::TAIL_SUPER_INVOKE);
                 frame->ip = ip;
@@ -4730,21 +4713,21 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::GET_SELF: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (frame->selfContext.isNone()) throw std::runtime_error("RegVM Error: 'self' accessed outside of context.");
                 getReg(a) = frame->selfContext;
                 break;
             }
             case OpCode::GET_CURRENT_CLOSURE: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 getReg(a) = Value(frame->closure);
                 break;
             }
             case OpCode::CALL:
             case OpCode::TAIL_CALL: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                if (b == ESCAPE_NORMAL_8) b = fetchExtra();
-                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 bool isTailCall = (op == OpCode::TAIL_CALL);
                 frame->ip = ip; // 保存当前 IP
@@ -4780,7 +4763,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::RETURN: {
-                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value res = std::move(getReg(a));
                 
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {

@@ -240,10 +240,10 @@ inline OpCode GET_OPCODE(Instruction i) { return static_cast<OpCode>(i & 0xFF); 
 inline int GET_A(Instruction i) { return (i >> 8) & 0xFF; }
 inline int GET_B(Instruction i) { return (i >> 16) & 0xFF; }
 inline int GET_C(Instruction i) { return (i >> 24) & 0xFF; }
-inline int GET_Bx(Instruction i) { return (i >> 16) & 0xFFFF; }
-inline int GET_sBx(Instruction i) { return static_cast<int>(GET_Bx(i)) - 0x7FFF; } // 偏移量 0x7FFF
-inline int GET_Ax(Instruction i) { return (i >> 8) & 0xFFFFFF; }
-inline int GET_sAx(Instruction i) { return static_cast<int>(GET_Ax(i)) - 0x7FFFFF; } // 偏移量 0x7FFFFF
+inline int GET_Bx(Instruction i) { return i >> 16; }
+inline int GET_sBx(Instruction i) { return static_cast<int>(i >> 16) - 0x7FFF; } // 偏移量 0x7FFF
+inline int GET_Ax(Instruction i) { return i >> 8; }
+inline int GET_sAx(Instruction i) { return static_cast<int>(i >> 8) - 0x7FFFFF; } // 偏移量 0x7FFFFF
 
 // 构造指令
 inline Instruction CREATE_ABC(OpCode op, int a, int b, int c) {

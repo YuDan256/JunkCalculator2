@@ -24,7 +24,7 @@ void registerPredefinedClasses() {
 
     // --- Range Class ---
     ObjClass* rangeClass = GcHeap::get().allocate<ObjClass>();
-    rangeClass->name = "range";
+    rangeClass->name = "Range";
 
     // __init__(*args)
     auto rangeInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"...args"}, std::vector<bool>{false}, "init", nullptr, true);
@@ -101,7 +101,7 @@ void registerPredefinedClasses() {
 
     // --- RangeIterator Class ---
     ObjClass* rangeIterClass = GcHeap::get().allocate<ObjClass>();
-    rangeIterClass->name = "range_iterator";
+    rangeIterClass->name = "RangeIterator";
 
     // __iter__() for Range
     auto rangeIter = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__iter__", nullptr);

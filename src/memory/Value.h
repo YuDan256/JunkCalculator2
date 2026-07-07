@@ -923,6 +923,7 @@ namespace jc {
                         if (r < 0) { r += q; k -= 1; }
                         if (k != 0 && r != 0) {
                             Value exactPart = lhs ^ Value(BigInt(k));
+                            GcValueGuard guard(exactPart);
                             Value symPart = Value(SymExpr(Fraction(aNum, aDen)) ^ SymExpr(Fraction(BigInt(r), BigInt(q))));
                             return exactPart * symPart;
                         }

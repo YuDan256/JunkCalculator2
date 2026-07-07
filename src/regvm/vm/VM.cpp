@@ -623,6 +623,10 @@ bool VM::evaluateTruthiness(const Value& val) {
 }
 
 Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args) {
+    std::vector<Value> rootedArgs = args;
+    std::vector<std::unique_ptr<GcValueGuard>> guards;
+    for (auto& arg : rootedArgs) guards.push_back(std::make_unique<GcValueGuard>(arg));
+
     auto inst = obj.asInstance();
     if (method->isNative() && !method->isBytecode()) {
         helpers::nativeSelfStack.push_back(Value(inst));
@@ -631,7 +635,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         Value result;
         try {
             auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
-            result = fn(args);
+            result = fn(rootedArgs);
         } catch (...) {
             helpers::nativeSelfStack.pop_back();
             helpers::nativeClassStack.pop_back();
@@ -667,12 +671,12 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
                 int restCount = totalArgc - fixedMax;
                 restList->vec.reserve(restCount);
                 for (int j = 0; j < restCount; j++) {
-                    restList->vec.push_back(args[fixedMax + j]);
+                    restList->vec.push_back(rootedArgs[fixedMax + j]);
                 }
             }
             
             for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
-                registers[newBase + i] = args[i];
+                registers[newBase + i] = rootedArgs[i];
             }
             for (int i = totalArgc; i < fixedMax; ++i) {
                 registers[newBase + i] = Value::uninit();
@@ -683,7 +687,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = 0; i < totalArgc; ++i) {
-                registers[newBase + i] = args[i];
+                registers[newBase + i] = rootedArgs[i];
             }
             for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                 registers[newBase + i] = Value::uninit();
@@ -1932,6 +1936,12 @@ VM::VM() {
             GcHeap::get().markValue(f.selfContext);
             GcHeap::get().markValue(f.classContext);
             if (f.closure) GcHeap::get().markObj(f.closure);
+            if (f.chunk) {
+                for (auto& v : f.chunk->constants) GcHeap::get().markValue(v);
+                for (auto& ic : f.chunk->inlineCaches) {
+                    if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
+                }
+            }
             
             int frameEnd = f.registerBase + f.function->localCount + f.function->refCount;
             if (frameEnd > maxReg) maxReg = frameEnd;
@@ -1959,8 +1969,9 @@ VM::VM() {
         
         for (auto& fn : compiledFunctions) {
             if (fn) {
-                for (auto& v : fn->chunk.constants) {
-                    GcHeap::get().markValue(v);
+                for (auto& v : fn->chunk.constants) GcHeap::get().markValue(v);
+                for (auto& ic : fn->chunk.inlineCaches) {
+                    if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
                 }
             }
         }

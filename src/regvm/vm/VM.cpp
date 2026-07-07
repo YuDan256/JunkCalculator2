@@ -113,7 +113,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             std::vector<Value> args;
             args.reserve(argc);
             for (int i = 0; i < argc; ++i) {
-                args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+                args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
             }
             pendingCallRefs.clear();
             registers[currentFrame->registerBase + dstReg] = nIt->second(args);
@@ -302,7 +302,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
                     for (int i = totalArgc - 1; i >= 0; --i) {
-                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
                     }
                     for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                         registers[newBase + i] = Value::uninit();
@@ -418,7 +418,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
                     for (int i = totalArgc - 1; i >= 0; --i) {
-                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
                     }
                     for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                         registers[newBase + i] = Value::uninit();
@@ -1037,7 +1037,7 @@ invoke_method:
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = totalArgc - 1; i >= 0; --i) {
-                registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
+                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
             }
             for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                 registers[newBase + i] = Value::uninit();
@@ -1170,7 +1170,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = totalArgc - 1; i >= 0; --i) {
-                registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
+                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
             }
             for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                 registers[newBase + i] = Value::uninit();

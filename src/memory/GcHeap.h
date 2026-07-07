@@ -55,32 +55,42 @@ namespace jc {
         int sweep() {
             Obj** object = &objects_;
             int freed = 0;
-            std::vector<Obj*> garbage;
+            size_t surviving = 0;
+            Obj* garbageList = nullptr;
 
             while (*object != nullptr) {
                 if (!(*object)->isMarked) {
                     Obj* unreached = *object;
                     *object = unreached->next;
-                    garbage.push_back(unreached);
+                    
+                    unreached->next = garbageList;
+                    garbageList = unreached;
+                    
                     freed++;
                 } else {
                     (*object)->isMarked = false;
                     object = &(*object)->next;
+                    surviving++;
                 }
             }
 
             // ★ 核心修复：先统一触发 clearTotal() 断开所有 Value 引用，防止 A->B->A 循环引用时，
             // A 被 delete 后，B 的析构函数再去减 A 的 refCount 导致 Use-After-Free 崩溃！
-            for (Obj* unreached : garbage) {
-                unreached->clearTotal();
+            Obj* curr = garbageList;
+            while (curr != nullptr) {
+                curr->clearTotal();
+                curr = curr->next;
             }
 
-            for (Obj* unreached : garbage) {
-                delete unreached;
+            curr = garbageList;
+            while (curr != nullptr) {
+                Obj* next = curr->next;
+                delete curr;
+                curr = next;
             }
 
             allocsSinceGc_ = 0;
-            gcThreshold_ = std::max(static_cast<size_t>(256), trackedCount() * 2);
+            gcThreshold_ = std::max(static_cast<size_t>(256), surviving * 2);
             return freed;
         }
 

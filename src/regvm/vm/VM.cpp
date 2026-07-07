@@ -903,10 +903,10 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
         auto inst = obj.asInstance();
         bool foundInField = false;
 
-        if (ic.cachedClass == inst->classDef && ic.cachedMethod) {
+        if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
             if (!inst->fields || inst->fields->keyMap.find(currentFrame->function->chunk.constants.data()[nameIdx]) == inst->fields->keyMap.end()) {
                 method = ic.cachedMethod;
-                owningClass = ic.cachedClass;
+                owningClass = inst->classDef;
                 goto invoke_method;
             }
         }
@@ -940,7 +940,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
             }
             
             if (method) {
-                ic.cachedClass = inst->classDef;
+                ic.cachedClassId = inst->classDef->classId;
                 ic.cachedMethod = method;
             }
 
@@ -986,7 +986,7 @@ invoke_method:
                 argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
             pendingCallRefs.clear();
-            auto& fn = std::any_cast<NativeCallable&>(ic.cachedValue.asFunction()->nativeFn);
+            auto& fn = std::any_cast<NativeCallable&>(ic.cachedNativeFn);
             registers[currentFrame->registerBase + a] = fn(argsVec);
             return;
         }
@@ -1013,9 +1013,7 @@ invoke_method:
             pendingCallRefs.clear();
             
             ic.cachedGlobalSlot = -4;
-            auto cachedClosure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, methodName, nullptr);
-            cachedClosure->nativeFn = std::make_any<NativeCallable>(nIt->second);
-            ic.cachedValue = Value(cachedClosure);
+            ic.cachedNativeFn = std::make_any<NativeCallable>(nIt->second);
             
             registers[currentFrame->registerBase + a] = nIt->second(argsVec);
             return;
@@ -2041,8 +2039,6 @@ Value VM::run(int targetFrameDepth) {
                 } else if (ic.cachedGlobalSlot == -2) {
                     if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
                     getReg(a) = frame->classContext;
-                } else if (ic.cachedGlobalSlot == -3) {
-                    getReg(a) = ic.cachedValue;
                 } else {
                     const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                     if (name == "__class__") {
@@ -2058,8 +2054,9 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
                         if (!builtinVal.isNone()) {
-                            ic.cachedGlobalSlot = -3;
-                            ic.cachedValue = builtinVal;
+                            ic.cachedGlobalSlot = static_cast<int>(globals.size());
+                            globalNames[name] = ic.cachedGlobalSlot;
+                            globals.push_back(builtinVal);
                             getReg(a) = builtinVal;
                         } else {
                             throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
@@ -3686,7 +3683,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
                         Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
                         if (cachedKey.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || cachedKey.asString() == field) {
                             result = inst->fields->elements[ic.cachedFieldIndex].second;
@@ -3699,12 +3696,12 @@ Value VM::run(int targetFrameDepth) {
                             if (it != inst->fields->keyMap.end()) {
                                 result = inst->fields->elements[it->second].second;
                                 found = true;
-                                ic.cachedClass = inst->classDef;
+                                ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedFieldIndex = static_cast<int>(it->second);
                             }
                         }
                     }
-                    if (!found && ic.cachedClass == inst->classDef && ic.cachedMethod) {
+                    if (!found && ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
                         auto rawMethod = ic.cachedMethod;
                         auto bound = GcHeap::get().allocate<ObjClosure>(
                             std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -3733,7 +3730,7 @@ Value VM::run(int targetFrameDepth) {
                             auto it = cls->methods.find(field);
                             if (it != cls->methods.end()) {
                                 auto rawMethod = it->second;
-                                ic.cachedClass = inst->classDef;
+                                ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
                                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -3799,7 +3796,7 @@ Value VM::run(int targetFrameDepth) {
                             std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                         );
                         bound->boundSelf = obj;
-                        bound->nativeFn = ic.cachedValue.asFunction()->nativeFn;
+                        bound->nativeFn = ic.cachedNativeFn;
                         result = Value(bound);
                         found = true;
                     } else {
@@ -3836,9 +3833,7 @@ Value VM::run(int targetFrameDepth) {
                             );
                             
                             ic.cachedGlobalSlot = -4;
-                            auto cachedClosure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, field, nullptr);
-                            cachedClosure->nativeFn = bound->nativeFn;
-                            ic.cachedValue = Value(cachedClosure);
+                            ic.cachedNativeFn = bound->nativeFn;
                             
                             result = Value(bound);
                             found = true;
@@ -3947,7 +3942,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
                         Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
                         if (cachedKey.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || cachedKey.asString() == field) {
                             result = inst->fields->elements[ic.cachedFieldIndex].second;
@@ -3960,11 +3955,11 @@ Value VM::run(int targetFrameDepth) {
                             if (it != inst->fields->keyMap.end()) {
                                 result = inst->fields->elements[it->second].second;
                                 found = true;
-                                ic.cachedClass = inst->classDef;
+                                ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedFieldIndex = static_cast<int>(it->second);
                             }
                         }
-                        if (!found && ic.cachedClass == inst->classDef && ic.cachedMethod) {
+                        if (!found && ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
                             auto rawMethod = ic.cachedMethod;
                             auto bound = GcHeap::get().allocate<ObjClosure>(
                                 std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -3993,7 +3988,7 @@ Value VM::run(int targetFrameDepth) {
                                 auto it = cls->methods.find(field);
                                 if (it != cls->methods.end()) {
                                     auto rawMethod = it->second;
-                                    ic.cachedClass = inst->classDef;
+                                    ic.cachedClassId = inst->classDef->classId;
                                     ic.cachedMethod = rawMethod;
                                     auto bound = GcHeap::get().allocate<ObjClosure>(
                                         std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -4064,7 +4059,7 @@ Value VM::run(int targetFrameDepth) {
                             std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                         );
                         bound->boundSelf = obj;
-                        bound->nativeFn = ic.cachedValue.asFunction()->nativeFn;
+                        bound->nativeFn = ic.cachedNativeFn;
                         result = Value(bound);
                         found = true;
                     } else {
@@ -4101,9 +4096,7 @@ Value VM::run(int targetFrameDepth) {
                             );
                             
                             ic.cachedGlobalSlot = -4;
-                            auto cachedClosure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, field, nullptr);
-                            cachedClosure->nativeFn = bound->nativeFn;
-                            ic.cachedValue = Value(cachedClosure);
+                            ic.cachedNativeFn = bound->nativeFn;
                             
                             result = Value(bound);
                             found = true;
@@ -4221,7 +4214,7 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                         Value key = chunk->constants.data()[ic.nameIdx];
-                        if (ic.cachedClass == inst->classDef && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                        if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
                             Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
                             if (cachedKey.as_bits == key.as_bits || cachedKey.asString() == field) {
                                 inst->fields->elements[ic.cachedFieldIndex].second = val;
@@ -4232,10 +4225,10 @@ Value VM::run(int targetFrameDepth) {
                             auto it = inst->fields->keyMap.find(key);
                             if (it != inst->fields->keyMap.end()) {
                                 inst->fields->elements[it->second].second = val;
-                                ic.cachedClass = inst->classDef;
+                                ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedFieldIndex = static_cast<int>(it->second);
                             } else {
-                                ic.cachedClass = inst->classDef;
+                                ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedFieldIndex = static_cast<int>(inst->fields->elements.size());
                                 inst->fields->keyMap[key] = inst->fields->elements.size();
                                 inst->fields->elements.push_back({key, val});

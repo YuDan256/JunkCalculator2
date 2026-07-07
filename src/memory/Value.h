@@ -141,10 +141,15 @@ namespace jc {
         ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
     };
     struct ObjClass : public Obj {
+        uint64_t classId;
         std::string name;
         ObjClass* parent = nullptr;
         std::map<std::string, ObjClosure*> methods;
-        ObjClass() { type = ObjType::CLASS; }
+        ObjClass() { 
+            static uint64_t nextId = 1;
+            classId = nextId++;
+            type = ObjType::CLASS; 
+        }
     };
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;

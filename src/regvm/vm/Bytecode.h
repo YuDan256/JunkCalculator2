@@ -302,11 +302,11 @@ enum class BuiltinType : int8_t {
 struct InlineCache {
     uint32_t nameIdx = 0;
     int cachedGlobalSlot = -1;
-    ObjClass* cachedClass = nullptr;
+    uint64_t cachedClassId = 0;
     ObjClosure* cachedMethod = nullptr;
     int cachedFieldIndex = -1;
     BuiltinType cachedBuiltinType = BuiltinType::UNKNOWN;
-    Value cachedValue = Value::none();
+    std::any cachedNativeFn;
 };
 
 struct ShapePattern {

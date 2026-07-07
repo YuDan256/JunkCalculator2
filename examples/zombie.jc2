@@ -42,7 +42,7 @@ class FpsProbe {
             read_idx = (self.idx + i) % self.max_samples
             dt_ms = self.history[read_idx] * 1000.0 
             
-            bar_h = int([dt_ms, 40.0].min())
+            bar_h = int(dt_ms < 40.0 ? dt_ms : 40.0)
             
             color = "#00FF33"
             if (dt_ms > 16.5) color = "#FFCC00"  // 低于 60帧
@@ -141,6 +141,19 @@ class Raycaster3D extends engine.GameEngine {
             "X": "#151515", "G": "#00AA44", "R": "#FF0033", 
             "0": "#FFFFFF", "W": "#EEEEEE", "Y": "#FFCC00", 
             "D": "#550011", "r": "#990022"
+        }
+        
+        self.compiled_tex = dict()
+        for ([name, art] in self.tex) {
+            mat = strmat(8, 8)
+            for (r = 0; r < 8; r += 1) {
+                for (c = 0; c < 8; c += 1) {
+                    char = art[r][c]
+                    if (char == ".") mat[r, c] = ""
+                    else mat[r, c] = self.pal[char]
+                }
+            }
+            self.compiled_tex[name] = mat
         }
     }
 
@@ -364,10 +377,12 @@ class Raycaster3D extends engine.GameEngine {
             
             if (dist < 0.6) { // 玩家走到足够近时自动拾取
                 if (item.type == "HP" && self.hp < 100.0) {
-                    self.hp = [100.0, self.hp + 25.0].min()
+                    self.hp = self.hp + 25.0
+                    if (self.hp > 100.0) self.hp = 100.0
                     item.active = false // 标记为已吃掉
                 } else if (item.type == "AMMO" && self.ammo < self.max_ammo) {
-                    self.ammo = [self.max_ammo, self.ammo + 15].min()
+                    self.ammo = self.ammo + 15
+                    if (self.ammo > self.max_ammo) self.ammo = self.max_ammo
                     item.active = false
                 }
             }
@@ -442,8 +457,12 @@ class Raycaster3D extends engine.GameEngine {
             }
             
             line_height = self.H / perp_dist
-            draw_start = [0.0, -line_height / 2.0 + self.H / 2.0].max()
-            draw_end = [self.H - 1.0, line_height / 2.0 + self.H / 2.0].min()
+            half_line = line_height / 2.0
+            half_H = self.H / 2.0
+            ds = -half_line + half_H
+            de = half_line + half_H
+            draw_start = ds > 0.0 ? ds : 0.0
+            draw_end = de < self.H - 1.0 ? de : self.H - 1.0
             
             color_idx = int(self.map[map_x, map_y])
             c_hex = (side == 1) ? self.shades[color_idx] : self.colors[color_idx]
@@ -492,15 +511,17 @@ class Raycaster3D extends engine.GameEngine {
                 floor_y = self.H / 2.0 + base_h / 2.0
                 sprite_top = floor_y - s_h  // 精灵的绘制起点 Y
                 
-                start_x = [0.0, sx - s_w / 2.0].max()
-                end_x = [self.W - 1.0, sx + s_w / 2.0].min()
+                sx_start = sx - s_w / 2.0
+                sx_end = sx + s_w / 2.0
+                start_x = sx_start > 0.0 ? sx_start : 0.0
+                end_x = sx_end < self.W - 1.0 ? sx_end : self.W - 1.0
 
                 // 判断贴图
                 tex_name = "ZOMBIE"
                 if (e.is_zombie) tex_name = (e.status == "DEAD") ? "DEAD" : "ZOMBIE"
                 else tex_name = e.type 
                 
-                tex_art = self.tex[tex_name]
+                tex_art = self.compiled_tex[tex_name]
 
                 // 纹理光栅化投射
                 for (spt_x = int(start_x); spt_x < int(end_x); spt_x += self.STRIP_WIDTH) {
@@ -512,14 +533,12 @@ class Raycaster3D extends engine.GameEngine {
                         
                         pixel_h = s_h / 8.0
                         for (ty = 0; ty < 8; ty += 1) {
-                            char = tex_art[ty][tx] 
+                            c_hex = tex_art[ty, tx] 
                             
-                            if (char != ".") { 
+                            if (c_hex != "") { 
 
                                 if (e.is_zombie && e.status != "DEAD" && e.hurt_timer > 0.0) {
                                     c_hex = "#FFFFFF" 
-                                } else {
-                                    c_hex = self.pal[char]
                                 }
                                 
                                 // 以前是按屏幕中心，现在按真实物理 sprite_top 往下推
@@ -527,8 +546,8 @@ class Raycaster3D extends engine.GameEngine {
                                 y1 = sprite_top + (ty + 1) * pixel_h
                                 
                                 // 只画处于屏幕区域内的像素（超出屏幕的进行几何裁剪）
-                                clip_y0 = [0.0, y0].max()
-                                clip_y1 = [self.H - 1.0, y1].min()
+                                clip_y0 = y0 > 0.0 ? y0 : 0.0
+                                clip_y1 = y1 < self.H - 1.0 ? y1 : self.H - 1.0
                                 block_h = clip_y1 - clip_y0
                                 
                                 if (block_h > 0.0) {
@@ -562,7 +581,8 @@ class Raycaster3D extends engine.GameEngine {
         hp_color = (self.hp < 30.0) ? "#FF0055" : "#00FFCC"
         ammo_color = (self.ammo == 0) ? "#FF0055" : "#FFCC00"
         
-        im.text(f"HP: {int([self.hp, 0.0].max())}%", 20, self.H - 40, hp_color, 2)
+        disp_hp = self.hp > 0.0 ? self.hp : 0.0
+        im.text(f"HP: {int(disp_hp)}%", 20, self.H - 40, hp_color, 2)
         im.text(f"AMMO: {self.ammo.int()}", 180, self.H - 40, ammo_color, 2)
         im.text(f"SCORE: {self.score}", 350, self.H - 40, "#FFFFFF", 2)
         im.text(f"SECTOR: {self.level} / {self.MAX_LEVEL}", self.W - 220, self.H - 40, "#00AADD", 2)
@@ -570,7 +590,8 @@ class Raycaster3D extends engine.GameEngine {
         // 🛰️ 简易雷达 (仅画墙体)
         if (self.show_map) {
             rx = self.W - 160; ry = 60
-            r_cell = [2, int(130 / self.size)].max() 
+            r_cell = int(130 / self.size)
+            if (r_cell < 2) r_cell = 2
             im.fillRect(rx - 5, ry - 5, self.size * r_cell + 10, self.size * r_cell + 10, "#111111")
             for (r = 0; r < self.size; r += 1) {
                 for (c = 0; c < self.size; c += 1) {

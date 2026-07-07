@@ -54,6 +54,10 @@ private:
     std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
     std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
 
+    std::unordered_map<std::string, NativeCallable> nativeBuiltins;
+    std::unordered_map<std::string, std::set<int>> builtinArity;
+    std::unordered_map<std::string, Value> builtinClosures;
+
     ObjUpVal* openUpvalues = nullptr;
     void closeUpvalues(int lastRegIndex);
     ObjUpVal* captureUpvalue(int regIndex);
@@ -108,6 +112,7 @@ public:
         constGlobals.clear();
         importedModules.clear();
         loadedModules.clear();
+        builtinClosures.clear();
         openUpvalues = nullptr;
         clearAllGlobalICs();
     }
@@ -137,6 +142,11 @@ public:
             globals.push_back(val);
         }
     }
+
+    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity);
+    Value getBuiltinClosure(const std::string& name);
+    const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
+    const std::unordered_map<std::string, std::set<int>>& getBuiltinArity() const { return builtinArity; }
 
     void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
         compiledFunctions = fns;

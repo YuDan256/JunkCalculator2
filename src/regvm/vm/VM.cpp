@@ -4,8 +4,6 @@
 #include "../../frontend/Lexer.h"
 #include "../../frontend/Parser.h"
 #include "../../frontend/Compiler.h"
-#include "../../vm/VM.h"
-#include "../../vm/BuiltinRegistry.h"
 #include "../../modules/ExtensionBridge.h"
 #include "../../frontend/Highlight.h"
 #include "../compiler/IRBuilder.h"
@@ -34,6 +32,44 @@ extern bool g_showIR;
 namespace jc {
 
 namespace regvm {
+
+void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity) {
+    nativeBuiltins[name] = fn;
+    builtinArity[name] = arity;
+}
+
+Value VM::getBuiltinClosure(const std::string& name) {
+    auto it = builtinClosures.find(name);
+    if (it != builtinClosures.end()) {
+        return it->second;
+    }
+    auto nit = nativeBuiltins.find(name);
+    if (nit != nativeBuiltins.end()) {
+        auto closure = GcHeap::get().allocate<ObjClosure>(
+            std::vector<std::string>{},
+            std::vector<bool>{},
+            name,
+            nullptr
+        );
+        closure->nativeFn = std::make_any<NativeCallable>(nit->second);
+        auto ait = builtinArity.find(name);
+        if (ait != builtinArity.end() && !ait->second.empty()) {
+            int maxA = *ait->second.rbegin();
+            int minA = *ait->second.begin();
+            for (int j = 0; j < maxA; ++j) {
+                closure->paramNames.push_back("_" + std::to_string(j));
+                closure->isRef.push_back(false);
+            }
+            for (int j = minA; j < maxA; ++j) {
+                closure->defaultValues.push_back(Value::none());
+            }
+        }
+        Value val(closure);
+        builtinClosures[name] = val;
+        return val;
+    }
+    return Value::none();
+}
 
 ObjUpVal* VM::captureUpvalue(int regIndex) {
     ObjUpVal* prevUpval = nullptr;
@@ -109,8 +145,8 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
     
     if (callee.isString()) {
         const std::string& tag = callee.asString();
-        auto nIt = jc::VM::activeVM->getNativeBuiltins().find(tag);
-        if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+        auto nIt = nativeBuiltins.find(tag);
+        if (nIt != nativeBuiltins.end()) {
             std::vector<Value> args;
             args.reserve(argc);
             for (int i = 0; i < argc; ++i) {
@@ -232,8 +268,8 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
             frames[frameCount++] = newFrame;
         } else if (closure->isNative()) {
-            auto ait = jc::VM::activeVM->getBuiltinArity().find(closure->rawBody);
-            if (ait != jc::VM::activeVM->getBuiltinArity().end() && !ait->second.empty()) {
+            auto ait = builtinArity.find(closure->rawBody);
+            if (ait != builtinArity.end() && !ait->second.empty()) {
                 if (ait->second.find(argc) == ait->second.end()) {
                     std::string expected;
                     for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
@@ -1009,11 +1045,11 @@ invoke_method:
             return;
         }
         
-        auto nIt = jc::VM::activeVM->getNativeBuiltins().find(methodName);
-        if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
-            auto ait = jc::VM::activeVM->getBuiltinArity().find(methodName);
+        auto nIt = nativeBuiltins.find(methodName);
+        if (nIt != nativeBuiltins.end()) {
+            auto ait = builtinArity.find(methodName);
             int totalArgs = argc + 1;
-            if (ait != jc::VM::activeVM->getBuiltinArity().end() && !ait->second.empty() && ait->second.find(totalArgs) == ait->second.end()) {
+            if (ait != builtinArity.end() && !ait->second.empty() && ait->second.find(totalArgs) == ait->second.end()) {
                 std::string expected;
                 for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
                     if (aIt != ait->second.begin()) expected += " or ";
@@ -1965,6 +2001,10 @@ VM::VM() {
             GcHeap::get().markValue(v);
         }
         
+        for (auto& [k, v] : builtinClosures) {
+            GcHeap::get().markValue(v);
+        }
+
         for (auto& v : helpers::nativeSelfStack) GcHeap::get().markValue(v);
         for (auto& v : helpers::nativeClassStack) GcHeap::get().markValue(v);
         
@@ -2129,7 +2169,7 @@ Value VM::run(int targetFrameDepth) {
                         ic.cachedGlobalSlot = it->second;
                         getReg(a) = globals.data()[it->second];
                     } else {
-                        Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
+                        Value builtinVal = getBuiltinClosure(name);
                         if (!builtinVal.isNone()) {
                             ic.cachedGlobalSlot = static_cast<int>(globals.size());
                             globalNames[name] = ic.cachedGlobalSlot;
@@ -2165,17 +2205,17 @@ Value VM::run(int targetFrameDepth) {
                     throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
                 }
                 if (op == OpCode::SET_GLOBAL_REF) {
-                    if (globalNames.find(name) == globalNames.end() && jc::VM::activeVM->getNativeBuiltins().find(name) == jc::VM::activeVM->getNativeBuiltins().end()) {
+                    if (globalNames.find(name) == globalNames.end() && nativeBuiltins.find(name) == nativeBuiltins.end()) {
                         throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
                     }
                 }
 
                 if (val.isFunctionClosure()) {
-                    auto nit = jc::VM::activeVM->getNativeBuiltins().find(name);
-                    if (nit != jc::VM::activeVM->getNativeBuiltins().end()) {
-                        auto ait = jc::VM::activeVM->getBuiltinArity().find(name);
+                    auto nit = nativeBuiltins.find(name);
+                    if (nit != nativeBuiltins.end()) {
+                        auto ait = builtinArity.find(name);
                         auto closure = val.asFunction();
-                        if (ait == jc::VM::activeVM->getBuiltinArity().end() || ait->second.empty()) {
+                        if (ait == builtinArity.end() || ait->second.empty()) {
                             throw std::runtime_error("Runtime Error: Cannot redefine '" + name + "' — it is a variadic built-in function.");
                         }
                         for (int argC = closure->minArgs(); argC <= closure->maxArgs(); ++argC) {
@@ -2265,7 +2305,7 @@ Value VM::run(int targetFrameDepth) {
                                         if (it != globalNames.end()) {
                                             dummy->location = &globals[it->second];
                                         } else {
-                                            Value builtinVal = jc::VM::activeVM->getBuiltinClosure(uv.name);
+                                            Value builtinVal = getBuiltinClosure(uv.name);
                                             globalNames[uv.name] = static_cast<uint32_t>(globals.size());
                                             globals.push_back(builtinVal.isNone() ? Value::uninit() : builtinVal);
                                             dummy->location = &globals.back();
@@ -2286,7 +2326,7 @@ Value VM::run(int targetFrameDepth) {
                                 if (it != globalNames.end()) {
                                     dummy->closed = globals[it->second];
                                 } else {
-                                    Value builtinVal = jc::VM::activeVM->getBuiltinClosure(uv.name);
+                                    Value builtinVal = getBuiltinClosure(uv.name);
                                     if (!builtinVal.isNone()) {
                                         dummy->closed = builtinVal;
                                     } else {
@@ -2441,7 +2481,7 @@ Value VM::run(int targetFrameDepth) {
                             upval = GcHeap::get().allocate<ObjUpVal>();
                             auto it = globalNames.find(name);
                             if (it == globalNames.end()) {
-                                Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
+                                Value builtinVal = getBuiltinClosure(name);
                                 globalNames[name] = static_cast<uint32_t>(globals.size());
                                 globals.push_back(builtinVal.isNone() ? Value::none() : builtinVal);
                             }
@@ -3876,17 +3916,17 @@ Value VM::run(int targetFrameDepth) {
                         result = Value(bound);
                         found = true;
                     } else {
-                        auto nIt = jc::VM::activeVM->getNativeBuiltins().find(field);
-                        if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+                        auto nIt = nativeBuiltins.find(field);
+                        if (nIt != nativeBuiltins.end()) {
                             auto bound = GcHeap::get().allocate<ObjClosure>(
                                 std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                             );
                             bound->boundSelf = obj;
                             NativeCallable nativeFn = nIt->second;
                             
-                            auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
+                            auto ait = builtinArity.find(field);
                             std::set<int> allowedArities;
-                            if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
+                            if (ait != builtinArity.end()) allowedArities = ait->second;
 
                             bound->nativeFn = std::make_any<NativeCallable>(
                                 [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
@@ -4140,17 +4180,17 @@ Value VM::run(int targetFrameDepth) {
                         result = Value(bound);
                         found = true;
                     } else {
-                        auto nIt = jc::VM::activeVM->getNativeBuiltins().find(field);
-                        if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+                        auto nIt = nativeBuiltins.find(field);
+                        if (nIt != nativeBuiltins.end()) {
                             auto bound = GcHeap::get().allocate<ObjClosure>(
                                 std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                             );
                             bound->boundSelf = obj;
                             NativeCallable nativeFn = nIt->second;
                             
-                            auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
+                            auto ait = builtinArity.find(field);
                             std::set<int> allowedArities;
-                            if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
+                            if (ait != builtinArity.end()) allowedArities = ait->second;
 
                             bound->nativeFn = std::make_any<NativeCallable>(
                                 [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {

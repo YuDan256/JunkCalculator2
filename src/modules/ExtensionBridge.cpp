@@ -1,7 +1,7 @@
 #include "ExtensionBridge.h"
 #include "../vm/HelpRouter.h"
 #include "../vm/BuiltinRegistry.h"
-#include "../regvm/vm/VM.h"
+#include "../vm/VM.h"
 #include <stdexcept>
 
 namespace jc {
@@ -87,7 +87,7 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
         }
         for (size_t i = 0; i < args.size(); ++i) c_args.push_back(args[i].as_bits);
         try {
-            JC2_ValueHandle res = fn(regvm::VM::activeVM, static_cast<int>(c_args.size()), c_args.data(), user_data);
+            JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(c_args.size()), c_args.data(), user_data);
             return from_handle(res);
         } catch (...) {
             throw;
@@ -143,7 +143,7 @@ static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const ch
         for (size_t i = 0; i < args.size(); ++i) c_args[i] = args[i].as_bits;
         
         try {
-            JC2_ValueHandle res = fn(regvm::VM::activeVM, static_cast<int>(args.size()), c_args.data(), user_data);
+            JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(args.size()), c_args.data(), user_data);
             return from_handle(res);
         } catch (...) {
             throw; // 拦截 C++ 异常，交由 VM 处理
@@ -547,13 +547,13 @@ static JC2_ValueHandle host_dict_keys(JC2_VMContext, JC2_ValueHandle dict) {
 }
 
 static JC2_ValueHandle host_get_global(JC2_VMContext, const char* name) {
-    if (!regvm::VM::activeVM) return Value::none().as_bits;
-    auto globals = regvm::VM::activeVM->getGlobals();
+    if (!VM::activeVM) return Value::none().as_bits;
+    auto globals = VM::activeVM->getGlobals();
     auto it = globals.find(name);
     if (it != globals.end()) {
         return it->second.as_bits;
     }
-    Value builtinVal = regvm::VM::activeVM->getBuiltinClosure(name);
+    Value builtinVal = VM::activeVM->getBuiltinClosure(name);
     if (!builtinVal.isNone()) {
         return builtinVal.as_bits;
     }

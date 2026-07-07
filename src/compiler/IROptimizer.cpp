@@ -6,7 +6,6 @@
 #include <cmath>
 
 namespace jc {
-namespace regvm {
 
 void IROptimizer::optimize(IRGraph* graph) {
     bool changed;
@@ -659,5 +658,4 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
     return changed;
 }
 
-} // namespace regvm
 } // namespace jc

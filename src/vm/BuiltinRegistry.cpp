@@ -6,11 +6,11 @@
 #include "../frontend/Utf8.h"
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
-#include "../regvm/compiler/IRBuilder.h"
-#include "../regvm/compiler/IROptimizer.h"
-#include "../regvm/compiler/RegisterAllocator.h"
-#include "../regvm/compiler/Emitter.h"
-#include "../regvm/vm/VM.h"
+#include "../compiler/IRBuilder.h"
+#include "../compiler/IROptimizer.h"
+#include "../compiler/RegisterAllocator.h"
+#include "../compiler/Emitter.h"
+#include "../vm/VM.h"
 #include "../memory/GcHeap.h"
 #include "HelpRouter.h"         // ★ HelpRouter, DynamicHelp
 #ifdef _MSC_VER
@@ -88,7 +88,7 @@ namespace jc {
             return {true, result};
         }
         else if (method->isBytecode()) {
-            return {true, regvm::VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef))};
+            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef))};
         }
         return {false, Value::none()};
     }
@@ -1567,12 +1567,12 @@ void BuiltinRegistry::registerSystemUtils() {
         // 1. 清理符号表达式的弱引用池
         jc::SymExpr::cleanupPool();
 
-        if (!regvm::VM::activeVM) return Value(0.0);
+        if (!VM::activeVM) return Value(0.0);
 
         // ★ gc(true) = 激进模式：先清掉 ANS 避免它充当隐形保护伞
         bool aggressive = (args.size() == 1 && args[0].truthy());
         if (aggressive) {
-            regvm::VM::activeVM->setGlobal("ANS", Value::none());
+            VM::activeVM->setGlobal("ANS", Value::none());
         }
 
         if (GcHeap::get().markCallback) GcHeap::get().markCallback();
@@ -4254,38 +4254,38 @@ void BuiltinRegistry::registerSystemShell() {
         jc::Parser parser(tokens);
         auto ast = parser.parse();
         
-        auto mainFn = std::make_shared<regvm::CompiledFunction>();
+        auto mainFn = std::make_shared<CompiledFunction>();
         mainFn->name = "<compiled_code>";
         mainFn->sourceFile = "<compileCode>";
         mainFn->arity = 0;
         mainFn->maxArity = 0;
         mainFn->hasRestParam = false;
         
-        auto fns = regvm::VM::activeVM->getCompiledFunctions();
+        auto fns = VM::activeVM->getCompiledFunctions();
         
-        regvm::IRGraph fnGraph;
-        regvm::IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
+        IRGraph fnGraph;
+        IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
         fnBuilder.build(ast.get());
         
-        regvm::IROptimizer::optimize(&fnGraph);
-        regvm::RegisterAllocator::allocate(&fnGraph);
+        IROptimizer::optimize(&fnGraph);
+        RegisterAllocator::allocate(&fnGraph);
         
         for (auto& target : fnBuilder.upvalueTargets) {
             if (target.isLocal && target.localNode) {
-                regvm::IRNode* localNode = target.localNode;
+                IRNode* localNode = target.localNode;
                 int upvalIdx = target.index;
-                regvm::CompiledFunction* childFn = mainFn.get();
+                CompiledFunction* childFn = mainFn.get();
                 fnGraph.postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
                     childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
                 });
             }
         }
         
-        mainFn->localCount = regvm::Emitter::emit(&fnGraph, mainFn->chunk);
+        mainFn->localCount = Emitter::emit(&fnGraph, mainFn->chunk);
         
         fns.push_back(mainFn);
         int mainFnIdx = static_cast<int>(fns.size()) - 1;
-        regvm::VM::activeVM->setCompiledFunctions(fns);
+        VM::activeVM->setCompiledFunctions(fns);
         
         ObjClosure* cls = GcHeap::get().allocate<ObjClosure>(
             std::vector<std::string>{}, std::vector<bool>{}, "<compiled_code>", nullptr
@@ -4313,42 +4313,42 @@ void BuiltinRegistry::registerSystemShell() {
         jc::Parser parser(tokens);
         auto ast = parser.parse();
         
-        auto mainFn = std::make_shared<regvm::CompiledFunction>();
+        auto mainFn = std::make_shared<CompiledFunction>();
         mainFn->name = "<compiled_file>";
         mainFn->sourceFile = resolved;
         mainFn->arity = 0;
         mainFn->maxArity = 0;
         mainFn->hasRestParam = false;
         
-        auto fns = regvm::VM::activeVM->getCompiledFunctions();
+        auto fns = VM::activeVM->getCompiledFunctions();
         
-        regvm::IRGraph fnGraph;
-        regvm::IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
+        IRGraph fnGraph;
+        IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
         fnBuilder.build(ast.get());
         
-        regvm::IROptimizer::optimize(&fnGraph);
-        regvm::RegisterAllocator::allocate(&fnGraph);
+        IROptimizer::optimize(&fnGraph);
+        RegisterAllocator::allocate(&fnGraph);
         
         for (auto& target : fnBuilder.upvalueTargets) {
             if (target.isLocal && target.localNode) {
-                regvm::IRNode* localNode = target.localNode;
+                IRNode* localNode = target.localNode;
                 int upvalIdx = target.index;
-                regvm::CompiledFunction* childFn = mainFn.get();
+                CompiledFunction* childFn = mainFn.get();
                 fnGraph.postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
                     childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
                 });
             }
         }
         
-        mainFn->localCount = regvm::Emitter::emit(&fnGraph, mainFn->chunk);
+        mainFn->localCount = Emitter::emit(&fnGraph, mainFn->chunk);
         
         fns.push_back(mainFn);
         int mainFnIdx = static_cast<int>(fns.size()) - 1;
-        regvm::VM::activeVM->setCompiledFunctions(fns);
+        VM::activeVM->setCompiledFunctions(fns);
 
         // ★ 核心：使用原生闭包代理，保护相对路径上下文！
         std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
-        regvm::VM* vm = regvm::VM::activeVM;
+        VM* vm = VM::activeVM;
         
         ObjClosure* proxy = GcHeap::get().allocate<ObjClosure>(
             std::vector<std::string>{}, std::vector<bool>{}, "<compiled_file_proxy>", nullptr
@@ -4398,8 +4398,8 @@ void BuiltinRegistry::registerSystemShell() {
         });
 
     reg("breakpoint", { 0 }, [](const std::vector<Value>&) -> Value {
-        if (regvm::VM::activeVM) {
-            regvm::VM::activeVM->triggerDebugger();
+        if (VM::activeVM) {
+            VM::activeVM->triggerDebugger();
         }
         return Value::none();
         });
@@ -4412,8 +4412,8 @@ void BuiltinRegistry::registerSystemShell() {
         }
         auto cl = args[0].asFunction();
         if (cl->compiledFnIndex >= 0) {
-            if (regvm::VM::activeVM) {
-                auto fns = regvm::VM::activeVM->getCompiledFunctions();
+            if (VM::activeVM) {
+                auto fns = VM::activeVM->getCompiledFunctions();
                 if (cl->compiledFnIndex < static_cast<int>(fns.size())) {
                     auto fn = fns[cl->compiledFnIndex];
                     fn->chunk.disassemble(fn->name.empty() ? "Function" : fn->name);
@@ -5205,9 +5205,9 @@ void BuiltinRegistry::registerCAS() {
         );
         cls->defaultValues.resize(argCount, jc::Value::none());
         jc::SymbolicFuncResolver resolver = [](const std::string& name, const std::vector<jc::Value>& fnArgs) -> jc::Value {
-            if (!jc::regvm::VM::activeVM) throw std::runtime_error("toFunc error: VM context lost.");
+            if (!jc::VM::activeVM) throw std::runtime_error("toFunc error: VM context lost.");
 
-            const auto& builtins = jc::regvm::VM::activeVM->getNativeBuiltins();
+            const auto& builtins = jc::VM::activeVM->getNativeBuiltins();
             auto it = builtins.find(name);
             if (it != builtins.end()) {
                 return it->second(fnArgs);

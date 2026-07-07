@@ -1,11 +1,10 @@
-#ifndef JC2_REGVM_EMITTER_H
-#define JC2_REGVM_EMITTER_H
+#ifndef JC2_COMPILER_EMITTER_H
+#define JC2_COMPILER_EMITTER_H
 
 #include "IR.h"
 #include "../vm/Bytecode.h"
 
 namespace jc {
-namespace regvm {
 
 class Emitter {
 public:
@@ -13,7 +12,6 @@ public:
     static int emit(IRGraph* graph, Chunk& chunk);
 };
 
-} // namespace regvm
 } // namespace jc
 
-#endif // JC2_REGVM_EMITTER_H
+#endif // JC2_COMPILER_EMITTER_H

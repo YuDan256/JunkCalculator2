@@ -13,11 +13,11 @@
 #include "vm/HelpRouter.h"
 #include "frontend/Highlight.h"
 #include "vm/BuiltinRegistry.h"
-#include "regvm/compiler/IRBuilder.h"
-#include "regvm/compiler/IROptimizer.h"
-#include "regvm/compiler/RegisterAllocator.h"
-#include "regvm/compiler/Emitter.h"
-#include "regvm/vm/VM.h"
+#include "compiler/IRBuilder.h"
+#include "compiler/IROptimizer.h"
+#include "compiler/RegisterAllocator.h"
+#include "compiler/Emitter.h"
+#include "vm/VM.h"
 #include <csignal>
 #include <atomic>
 #include <random>
@@ -107,7 +107,7 @@ void printHelpTopic(const std::string& topic) {
 }
 
 // 核心 VM 实例和全局上下文
-jc::regvm::VM vm;
+jc::VM vm;
 bool g_showDisasm = false;  // ★ 新增：字节码反汇编开关
 bool g_showIR = false;      // ★ 新增：IR 图打印开关
 bool g_autoDebug = false;
@@ -126,20 +126,20 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     auto& fns = vm.getCompiledFunctions();
     size_t currentFnsSize = fns.size();
     
-    jc::regvm::IRGraph graph;
-    jc::regvm::IRBuilder builder(&graph, &fns);
+    jc::IRGraph graph;
+    jc::IRBuilder builder(&graph, &fns);
     builder.build(ast.get());
     
     if (g_showIR) graph.print(isFile ? "Script Unoptimized" : "REPL Unoptimized");
     
-    jc::regvm::IROptimizer::optimize(&graph);
+    jc::IROptimizer::optimize(&graph);
     if (g_showIR) graph.print(isFile ? "Script Optimized" : "REPL Optimized");
     
-    jc::regvm::RegisterAllocator::allocate(&graph);
+    jc::RegisterAllocator::allocate(&graph);
     if (g_showIR) graph.print(isFile ? "Script Allocated" : "REPL Allocated");
     
-    jc::regvm::Chunk chunk;
-    int localCount = jc::regvm::Emitter::emit(&graph, chunk);
+    jc::Chunk chunk;
+    int localCount = jc::Emitter::emit(&graph, chunk);
     
     if (g_showDisasm) {
         for (size_t i = currentFnsSize; i < fns.size(); ++i) {

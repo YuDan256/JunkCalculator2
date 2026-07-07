@@ -1,9 +1,9 @@
-#ifndef JC2_REGVM_IRBUILDER_H
-#define JC2_REGVM_IRBUILDER_H
+#ifndef JC2_COMPILER_IRBUILDER_H
+#define JC2_COMPILER_IRBUILDER_H
 
 #include "IR.h"
 #include "../vm/Bytecode.h"
-#include "../../frontend/Expr.h"
+#include "../frontend/Expr.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -11,7 +11,6 @@
 #include <stdexcept>
 
 namespace jc {
-namespace regvm {
 
 class IRBuilder : public ExprVisitor {
 private:
@@ -141,7 +140,6 @@ public:
     void visitGroupingExpr(GroupingExpr* expr) override;
 };
 
-} // namespace regvm
 } // namespace jc
 
-#endif // JC2_REGVM_IRBUILDER_H
+#endif // JC2_COMPILER_IRBUILDER_H

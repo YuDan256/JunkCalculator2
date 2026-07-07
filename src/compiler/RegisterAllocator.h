@@ -1,10 +1,9 @@
-#ifndef JC2_REGVM_REGISTER_ALLOCATOR_H
-#define JC2_REGVM_REGISTER_ALLOCATOR_H
+#ifndef JC2_COMPILER_REGISTER_ALLOCATOR_H
+#define JC2_COMPILER_REGISTER_ALLOCATOR_H
 
 #include "IR.h"
 
 namespace jc {
-namespace regvm {
 
 class RegisterAllocator {
 public:
@@ -12,7 +11,6 @@ public:
     static void allocate(IRGraph* graph);
 };
 
-} // namespace regvm
 } // namespace jc
 
-#endif // JC2_REGVM_REGISTER_ALLOCATOR_H
+#endif // JC2_COMPILER_REGISTER_ALLOCATOR_H

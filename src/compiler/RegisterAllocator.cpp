@@ -7,7 +7,6 @@
 #include <functional>
 
 namespace jc {
-namespace regvm {
 
 // 判断节点是否属于控制流骨架 (Control Spine)
 static bool isControlSpine(IROp op) {
@@ -581,5 +580,4 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     }
 }
 
-} // namespace regvm
 } // namespace jc

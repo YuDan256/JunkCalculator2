@@ -1,10 +1,10 @@
 #include "VM.h"
-#include "../../memory/GcHeap.h"
-#include "../../frontend/Utf8.h"
-#include "../../frontend/Lexer.h"
-#include "../../frontend/Parser.h"
-#include "../../modules/ExtensionBridge.h"
-#include "../../frontend/Highlight.h"
+#include "../memory/GcHeap.h"
+#include "../frontend/Utf8.h"
+#include "../frontend/Lexer.h"
+#include "../frontend/Parser.h"
+#include "../modules/ExtensionBridge.h"
+#include "../frontend/Highlight.h"
 #include "../compiler/IRBuilder.h"
 #include "../compiler/IROptimizer.h"
 #include "../compiler/RegisterAllocator.h"
@@ -29,8 +29,6 @@ extern bool g_showIR;
 #endif
 
 namespace jc {
-
-namespace regvm {
 
 void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity) {
     nativeBuiltins[name] = fn;
@@ -5082,5 +5080,4 @@ Value VM::run(int targetFrameDepth) {
     #undef getReg
 }
 
-} // namespace regvm
 } // namespace jc

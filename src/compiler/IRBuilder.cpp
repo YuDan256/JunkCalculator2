@@ -6,7 +6,6 @@
 extern bool g_showIR;
 
 namespace jc {
-namespace regvm {
 
 static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars) {
     if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
@@ -4143,5 +4142,4 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     lastValue = resultPhi;
 }
 
-} // namespace regvm
 } // namespace jc

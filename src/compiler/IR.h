@@ -1,15 +1,14 @@
-#ifndef JC2_REGVM_IR_H
-#define JC2_REGVM_IR_H
+#ifndef JC2_COMPILER_IR_H
+#define JC2_COMPILER_IR_H
 
 #include <vector>
 #include <string>
 #include <memory>
 #include <functional>
 #include <iostream>
-#include "../../memory/Value.h"
+#include "../memory/Value.h"
 
 namespace jc {
-namespace regvm {
 
 // ============================================================================
 // IR 节点操作码 (Sea of Nodes)
@@ -405,7 +404,6 @@ public:
     }
 };
 
-} // namespace regvm
 } // namespace jc
 
-#endif // JC2_REGVM_IR_H
+#endif // JC2_COMPILER_IR_H

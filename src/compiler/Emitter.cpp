@@ -3,7 +3,6 @@
 #include <unordered_map>
 
 namespace jc {
-namespace regvm {
 
 struct EncodedInst {
     IRNode* node = nullptr;
@@ -841,5 +840,4 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
     return absoluteMaxReg;
 }
 
-} // namespace regvm
 } // namespace jc

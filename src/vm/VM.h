@@ -1,16 +1,15 @@
-#ifndef JC2_REGVM_VM_H
-#define JC2_REGVM_VM_H
+#ifndef JC2_VM_H
+#define JC2_VM_H
 
 #include "Bytecode.h"
-#include "../../memory/Value.h"
-#include "../../vm/BuiltinRegistry.h"
+#include "../memory/Value.h"
+#include "BuiltinRegistry.h"
 #include <vector>
 #include <unordered_map>
 #include <memory>
 #include <set>
 
 namespace jc {
-namespace regvm {
 
 struct ValueException : public std::exception {
     Value val;
@@ -167,7 +166,6 @@ public:
     }
 };
 
-} // namespace regvm
 } // namespace jc
 
-#endif // JC2_REGVM_VM_H
+#endif // JC2_VM_H

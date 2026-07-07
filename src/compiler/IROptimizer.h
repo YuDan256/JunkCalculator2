@@ -1,10 +1,9 @@
-#ifndef JC2_REGVM_IROPTIMIZER_H
-#define JC2_REGVM_IROPTIMIZER_H
+#ifndef JC2_COMPILER_IROPTIMIZER_H
+#define JC2_COMPILER_IROPTIMIZER_H
 
 #include "IR.h"
 
 namespace jc {
-namespace regvm {
 
 class IROptimizer {
 public:
@@ -25,7 +24,6 @@ private:
     static bool hasSideEffects(IROp op);
 };
 
-} // namespace regvm
 } // namespace jc
 
-#endif // JC2_REGVM_IROPTIMIZER_H
+#endif // JC2_COMPILER_IROPTIMIZER_H

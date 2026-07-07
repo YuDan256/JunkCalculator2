@@ -195,11 +195,8 @@ class Raycaster3D extends engine.GameEngine {
             if (!moved) path_stack.pop() 
         }
         
-        for (r = 0; r < self.size; r += 1) {
-            for (c = 0; c < self.size; c += 1) {
-                if (self.map[r, c] == 1.0) self.map[r, c] = double(randint(1, 4))
-            }
-        }
+        // ★ 向量化替换：将所有 1.0 的墙体随机替换为 1~4 的纹理索引
+        self.map = whereE(eqE(self.map, 1.0), randimat(self.size, self.size, 1, 4), self.map)
         self.map[self.size - 2, self.size - 2] = 5.0
         
         self.zombies = list()
@@ -451,10 +448,9 @@ class Raycaster3D extends engine.GameEngine {
             perp_dist = (side == 0) ? (side_dist_x - delta_x) : (side_dist_y - delta_y)
             if (perp_dist <= 0.0001) perp_dist = 0.0001
             
-            // ★ 注册 ZBuffer 深度，跨步跳跃优化
-            for (w = x; w < x + self.STRIP_WIDTH; w += 1) {
-                if (w < self.W) self.ZBuffer[w] = perp_dist
-            }
+            // ★ 注册 ZBuffer 深度，向量化切片赋值
+            end_w = x + self.STRIP_WIDTH
+            self.ZBuffer[x : (end_w > self.W ? self.W : end_w)] = perp_dist
             
             line_height = self.H / perp_dist
             half_line = line_height / 2.0
@@ -523,35 +519,37 @@ class Raycaster3D extends engine.GameEngine {
                 
                 tex_art = self.compiled_tex[tex_name]
 
+                // ★ 预计算 8 个 ty 的 Y 坐标和高度，避免在双重循环中重复计算
+                pixel_h = s_h / 8.0
+                y_coords = zeros(1, 8)
+                h_coords = zeros(1, 8)
+                for (ty = 0; ty < 8; ty += 1) {
+                    y0 = sprite_top + ty * pixel_h
+                    y1 = sprite_top + (ty + 1) * pixel_h
+                    clip_y0 = y0 > 0.0 ? y0 : 0.0
+                    clip_y1 = y1 < self.H - 1.0 ? y1 : self.H - 1.0
+                    y_coords[ty] = clip_y0
+                    h_coords[ty] = clip_y1 - clip_y0
+                }
+
                 // 纹理光栅化投射
                 for (spt_x = int(start_x); spt_x < int(end_x); spt_x += self.STRIP_WIDTH) {
                     if (transY < self.ZBuffer[spt_x]) {
                         
-                        tx = int((spt_x - (sx - s_w / 2.0)) * 8.0 / s_w)
+                        tx = int((spt_x - sx_start) * 8.0 / s_w)
                         if (tx < 0) tx = 0
                         if (tx > 7) tx = 7
                         
-                        pixel_h = s_h / 8.0
                         for (ty = 0; ty < 8; ty += 1) {
                             c_hex = tex_art[ty, tx] 
                             
                             if (c_hex != "") { 
-
-                                if (e.is_zombie && e.status != "DEAD" && e.hurt_timer > 0.0) {
-                                    c_hex = "#FFFFFF" 
-                                }
-                                
-                                // 以前是按屏幕中心，现在按真实物理 sprite_top 往下推
-                                y0 = sprite_top + ty * pixel_h
-                                y1 = sprite_top + (ty + 1) * pixel_h
-                                
-                                // 只画处于屏幕区域内的像素（超出屏幕的进行几何裁剪）
-                                clip_y0 = y0 > 0.0 ? y0 : 0.0
-                                clip_y1 = y1 < self.H - 1.0 ? y1 : self.H - 1.0
-                                block_h = clip_y1 - clip_y0
-                                
+                                block_h = h_coords[ty]
                                 if (block_h > 0.0) {
-                                    im.fillRect(spt_x, int(clip_y0), self.STRIP_WIDTH + 1, int(block_h) + 1, c_hex)
+                                    if (e.is_zombie && e.status != "DEAD" && e.hurt_timer > 0.0) {
+                                        c_hex = "#FFFFFF" 
+                                    }
+                                    im.fillRect(spt_x, int(y_coords[ty]), self.STRIP_WIDTH + 1, int(block_h) + 1, c_hex)
                                 }
                             }
                         }

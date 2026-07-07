@@ -102,10 +102,9 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
     pendingCallRefs.clear();
 }
 
-void VM::execCall(int a, int b, bool isTailCall) {
+void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    const Value& callee = registers[currentFrame->registerBase + a];
-    int argc = b;
+    const Value& callee = registers[currentFrame->registerBase + calleeReg];
     
     if (callee.isString()) {
         const std::string& tag = callee.asString();
@@ -117,12 +116,12 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
             pendingCallRefs.clear();
-            registers[currentFrame->registerBase + a] = nIt->second(args);
+            registers[currentFrame->registerBase + dstReg] = nIt->second(args);
             return;
         }
         auto it = globalNames.find(tag);
         if (it != globalNames.end()) {
-            registers[currentFrame->registerBase + a] = globals[it->second];
+            registers[currentFrame->registerBase + dstReg] = globals[it->second];
         } else {
             throw std::runtime_error("RegVM Error: Unknown function or not callable '" + tag + "()'.");
         }
@@ -140,7 +139,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (auto& pr : pendingCallRefs) pr.first += 1;
             }
 
-            int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+            int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
 
             if (fnDef->hasRestParam) {
                 int fixedMax = fnDef->maxArity - 1;
@@ -154,13 +153,13 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     for (int j = 0; j < restCount; j++) {
                         int srcIdx = fixedMax + j;
                         if (closure->isUFCS && srcIdx == 0) restList->vec.push_back(closure->boundSelf);
-                        else restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + srcIdx - ufcsOffset]);
+                        else restList->vec.push_back(registers[currentFrame->registerBase + calleeReg + 1 + srcIdx - ufcsOffset]);
                     }
                 }
                 
                 for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
                     if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
-                    else registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i - ufcsOffset];
+                    else registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i - ufcsOffset];
                 }
                 for (int i = totalArgc; i < fixedMax; ++i) {
                     registers[newBase + i] = Value::uninit();
@@ -172,7 +171,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 }
                 for (int i = totalArgc - 1; i >= 0; --i) {
                     if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
-                    else registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i - ufcsOffset];
+                    else registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i - ufcsOffset];
                 }
                 for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                     registers[newBase + i] = Value::uninit();
@@ -204,7 +203,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
             newFrame.chunk = &fnDef->chunk;
             newFrame.ip = 0;
             newFrame.registerBase = newBase;
-            newFrame.returnRegister = a;
+            newFrame.returnRegister = dstReg;
             newFrame.closure = closure;
             newFrame.selfContext = closure->boundSelf;
             newFrame.classContext = closure->boundClass;
@@ -239,12 +238,12 @@ void VM::execCall(int a, int b, bool isTailCall) {
             std::vector<Value> args;
             args.reserve(argc);
             for (int i = 0; i < argc; ++i) {
-                args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+                args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
             }
             pendingCallRefs.clear();
             try {
                 auto& fn = std::any_cast<NativeCallable&>(closure->nativeFn);
-                registers[currentFrame->registerBase + a] = fn(args);
+                registers[currentFrame->registerBase + dstReg] = fn(args);
             } catch (...) {
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
@@ -256,7 +255,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
         auto instance = GcHeap::get().allocate<ObjInstance>();
-        registers[currentFrame->registerBase + a] = Value(instance); // ★ 立即 Root 防止 GC 误杀
+        registers[currentFrame->registerBase + dstReg] = Value(instance); // ★ 立即 Root 防止 GC 误杀
         instance->classDef = cls;
         
         ObjClosure* initMethod = nullptr;
@@ -275,7 +274,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 auto& fnDef = compiledFunctions[initMethod->compiledFnIndex];
                 
                 int totalArgc = argc;
-                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -287,12 +286,12 @@ void VM::execCall(int a, int b, bool isTailCall) {
                         int restCount = totalArgc - fixedMax;
                         restList->vec.reserve(restCount);
                         for (int j = 0; j < restCount; j++) {
-                            restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + fixedMax + j]);
+                            restList->vec.push_back(registers[currentFrame->registerBase + calleeReg + 1 + fixedMax + j]);
                         }
                     }
                     
                     for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
-                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
                     }
                     for (int i = totalArgc; i < fixedMax; ++i) {
                         registers[newBase + i] = Value::uninit();
@@ -335,7 +334,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
                 newFrame.registerBase = newBase;
-                newFrame.returnRegister = a;
+                newFrame.returnRegister = dstReg;
                 newFrame.closure = initMethod;
                 newFrame.selfContext = Value(instance);
                 newFrame.classContext = Value(cls);
@@ -349,7 +348,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 helpers::nativeClassStack.push_back(Value(cls));
                 std::vector<Value> args;
                 args.reserve(argc);
-                for (int i = 0; i < argc; ++i) args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+                for (int i = 0; i < argc; ++i) args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
                 pendingCallRefs.clear();
                 try {
                     auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
@@ -361,14 +360,14 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 }
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
-                registers[currentFrame->registerBase + a] = Value(instance);
+                registers[currentFrame->registerBase + dstReg] = Value(instance);
             }
         } else {
             if (argc > 0) {
                 pendingCallRefs.clear();
                 throw std::runtime_error("TypeError: Class takes no arguments directly.");
             }
-            registers[currentFrame->registerBase + a] = Value(instance);
+            registers[currentFrame->registerBase + dstReg] = Value(instance);
             pendingCallRefs.clear();
         }
     } else if (callee.isInstance()) {
@@ -391,7 +390,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 auto& fnDef = compiledFunctions[method->compiledFnIndex];
                 
                 int totalArgc = argc;
-                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -403,12 +402,12 @@ void VM::execCall(int a, int b, bool isTailCall) {
                         int restCount = totalArgc - fixedMax;
                         restList->vec.reserve(restCount);
                         for (int j = 0; j < restCount; j++) {
-                            restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + fixedMax + j]);
+                            restList->vec.push_back(registers[currentFrame->registerBase + calleeReg + 1 + fixedMax + j]);
                         }
                     }
                     
                     for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
-                        registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
                     }
                     for (int i = totalArgc; i < fixedMax; ++i) {
                         registers[newBase + i] = Value::uninit();
@@ -451,7 +450,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 newFrame.chunk = &fnDef->chunk;
                 newFrame.ip = 0;
                 newFrame.registerBase = newBase;
-                newFrame.returnRegister = a;
+                newFrame.returnRegister = dstReg;
                 newFrame.closure = method;
                 newFrame.selfContext = callee;
                 newFrame.classContext = Value(owningClass);
@@ -466,12 +465,12 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 std::vector<Value> args;
                 args.reserve(argc);
                 for (int i = 0; i < argc; ++i) {
-                    args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+                    args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
                 }
                 pendingCallRefs.clear();
                 try {
                     auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
-                    registers[currentFrame->registerBase + a] = fn(args);
+                    registers[currentFrame->registerBase + dstReg] = fn(args);
                 } catch (...) {
                     helpers::nativeSelfStack.pop_back();
                     helpers::nativeClassStack.pop_back();
@@ -853,7 +852,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
                 method = fv.asFunction();
             } else {
                 registers[currentFrame->registerBase + a] = fv;
-                execCall(a, b, isTailCall);
+                execCall(a, b, a, isTailCall);
                 return;
             }
         }
@@ -866,7 +865,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
                 method = fv.asFunction();
             } else {
                 registers[currentFrame->registerBase + a] = fv;
-                execCall(a, b, isTailCall);
+                execCall(a, b, a, isTailCall);
                 return;
             }
         }
@@ -892,7 +891,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
                     foundInField = true;
                 } else {
                     registers[currentFrame->registerBase + a] = fv;
-                    execCall(a, b, isTailCall);
+                    execCall(a, b, a, isTailCall);
                     return;
                 }
             }
@@ -925,7 +924,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
                         owningClass = inst->classDef;
                     } else {
                         registers[currentFrame->registerBase + a] = fv;
-                        execCall(a, b, isTailCall);
+                        execCall(a, b, a, isTailCall);
                         return;
                     }
                 }
@@ -945,7 +944,7 @@ invoke_method:
             for (auto& pr : pendingCallRefs) {
                 pr.first += 1;
             }
-            execCall(a, argc + 1, isTailCall);
+            execCall(a, argc + 1, a, isTailCall);
             return;
         }
         
@@ -983,7 +982,7 @@ invoke_method:
                 for (auto& pr : pendingCallRefs) {
                     pr.first += 1;
                 }
-                execCall(a, argc + 1, isTailCall);
+                execCall(a, argc + 1, a, isTailCall);
                 return;
             }
         } else {
@@ -998,7 +997,7 @@ invoke_method:
                 for (auto& pr : pendingCallRefs) {
                     pr.first += 1;
                 }
-                execCall(a, argc + 1, isTailCall);
+                execCall(a, argc + 1, a, isTailCall);
                 return;
             }
         }
@@ -1038,7 +1037,7 @@ invoke_method:
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = totalArgc - 1; i >= 0; --i) {
-                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
             }
             for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                 registers[newBase + i] = Value::uninit();
@@ -1171,7 +1170,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = totalArgc - 1; i >= 0; --i) {
-                registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
+                registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
             }
             for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                 registers[newBase + i] = Value::uninit();
@@ -4598,11 +4597,12 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::TAIL_CALL: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
                 bool isTailCall = (op == OpCode::TAIL_CALL);
                 frame->ip = ip; // 保存当前 IP
                 int prevIp = ip;
-                execCall(a, b, isTailCall);
+                execCall(b, c, a, isTailCall);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = std::move(getReg(a));
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {

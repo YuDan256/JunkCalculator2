@@ -323,12 +323,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::Call:
                     case IROp::TailCall: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
-                        auto call = buildInstAB(node->op == IROp::Call ? OpCode::CALL : OpCode::TAIL_CALL, spillBase, node->payload1);
+                        auto call = buildInstABC(node->op == IROp::Call ? OpCode::CALL : OpCode::TAIL_CALL, node->physicalReg, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), call.begin(), call.end());
-                        if (node->physicalReg != spillBase) {
-                            auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
-                            inst.words.insert(inst.words.end(), loadRes.begin(), loadRes.end());
-                        }
                         break;
                     }
                     case IROp::Invoke:
@@ -700,8 +696,32 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
             inst.offset = offset;
             offset += static_cast<int>(inst.words.size());
         }
-        for (auto& inst : insts) {
+        for (size_t i = 0; i < insts.size(); ++i) {
+            auto& inst = insts[i];
             if (inst.isJump) {
+                if ((inst.jumpOp == OpCode::JMP_FALSE || inst.jumpOp == OpCode::JMP_TRUE) && i + 1 < insts.size()) {
+                    auto& nextInst = insts[i + 1];
+                    if (nextInst.isJump && nextInst.jumpOp == OpCode::JMP) {
+                        int targetIdx = blockToInstIdx[inst.jumpTarget];
+                        int actualNext = static_cast<int>(i) + 2;
+                        while (actualNext < static_cast<int>(insts.size()) && insts[actualNext].words.empty() && !insts[actualNext].isJump) {
+                            actualNext++;
+                        }
+                        int actualTarget = targetIdx;
+                        while (actualTarget < static_cast<int>(insts.size()) && insts[actualTarget].words.empty() && !insts[actualTarget].isJump) {
+                            actualTarget++;
+                        }
+                        if (actualTarget == actualNext) {
+                            inst.jumpOp = (inst.jumpOp == OpCode::JMP_FALSE) ? OpCode::JMP_TRUE : OpCode::JMP_FALSE;
+                            inst.jumpTarget = nextInst.jumpTarget;
+                            nextInst.isJump = false;
+                            nextInst.words.clear();
+                            changed = true;
+                            continue;
+                        }
+                    }
+                }
+
                 // Jump Threading
                 int targetIdx = blockToInstIdx[inst.jumpTarget];
                 std::unordered_set<int> visited;

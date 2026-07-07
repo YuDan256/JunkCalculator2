@@ -65,8 +65,8 @@ enum class OpCode : uint8_t {
     JMP_FALSE,      // if (!R(A) truthy) PC += sBx
 
     // 函数调用与返回
-    CALL,           // R(A) := Call(callee = R(A), args = R(A+1)...R(A+B)) [Ext A, B]
-    TAIL_CALL,      // 尾调用 [Ext A, B]
+    CALL,           // R(A) := Call(callee = R(B), args = R(B+1)...R(B+C)) [Ext A, B, C]
+    TAIL_CALL,      // 尾调用 [Ext A, B, C]
     RETURN,         // return R(A)
     CLOSURE,        // R(A) := Closure(fnIdx = Bx) [Ext]
 
@@ -486,10 +486,13 @@ public:
             case OpCode::MOVE: case OpCode::LOAD_NIL:
             case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
             case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
-            case OpCode::CALL: case OpCode::TAIL_CALL:
             case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::STRINGIFY:
             case OpCode::ITER_NEXT: case OpCode::IMPORT:
                 std::cout << "R(" << a << ") " << b;
+                break;
+
+            case OpCode::CALL: case OpCode::TAIL_CALL:
+                std::cout << "R(" << a << ") " << b << " " << c;
                 break;
 
             case OpCode::LOAD_BOOL:

@@ -1457,11 +1457,13 @@ void IRBuilder::build(Expr* ast) {
         currentControl = assertNode;
     }
 
-    IRNode* retNode = graph->createNode(IROp::Return);
-    retNode->setControl(currentControl);
-    retNode->addData(retVal);
-    recordExitNode(retNode);
-    currentControl = retNode;
+    if (currentControl->op != IROp::Return && currentControl->op != IROp::Throw) {
+        IRNode* retNode = graph->createNode(IROp::Return);
+        retNode->setControl(currentControl);
+        retNode->addData(retVal);
+        recordExitNode(retNode);
+        currentControl = retNode;
+    }
 
     // 为所有退出节点添加被捕获变量的伪依赖，延长其生命周期
     for (auto& info : exitNodes) {

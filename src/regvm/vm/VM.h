@@ -66,7 +66,7 @@ private:
     bool handleExceptionUnwind(Value errVal);
     std::string buildStackTrace() const;
 
-    void execCall(int a, int b, bool isTailCall = false);
+    void execCall(int calleeReg, int argc, int dstReg, bool isTailCall = false);
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
     void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType);

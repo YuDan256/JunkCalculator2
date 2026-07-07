@@ -32,18 +32,16 @@ void registerPredefinedClasses() {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
         
-        auto restList = static_cast<ObjList*>(args[0].asObj())->vec;
-        
         double start = 0, end = 0, step = 1;
-        if (restList.size() == 1) {
-            end = restList[0].asDouble();
-        } else if (restList.size() == 2) {
-            start = restList[0].asDouble();
-            end = restList[1].asDouble();
-        } else if (restList.size() == 3) {
-            start = restList[0].asDouble();
-            end = restList[1].asDouble();
-            step = restList[2].asDouble();
+        if (args.size() == 1) {
+            end = args[0].asDouble();
+        } else if (args.size() == 2) {
+            start = args[0].asDouble();
+            end = args[1].asDouble();
+        } else if (args.size() == 3) {
+            start = args[0].asDouble();
+            end = args[1].asDouble();
+            step = args[2].asDouble();
         } else {
             throw std::runtime_error("TypeError: range expected 1 to 3 arguments.");
         }

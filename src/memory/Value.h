@@ -753,7 +753,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() * rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Multiplication not supported for these types.");
+        throw std::runtime_error("Type Error: Cannot multiply '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator/(const Value& lhs, const Value& rhs) {
@@ -828,7 +828,7 @@ namespace jc {
                 return Value(lhs.asDouble() / b);
             }
         
-        throw std::runtime_error("Type Error: Division not supported for these types.");
+        throw std::runtime_error("Type Error: Cannot divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
     }
 
     inline Value operator^(const Value& lhs, const Value& rhs) {
@@ -933,7 +933,7 @@ namespace jc {
             double res = std::pow(a, b);
             return Value(res);
 
-        throw std::runtime_error("Type Error: Power operation not supported for these types.");
+        throw std::runtime_error("Type Error: Power operation not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline bool operator<(const Value& a, const Value& b) {
@@ -1037,7 +1037,7 @@ namespace jc {
             if (lhs.isObjType(ObjType::FRACTION) && rhsIsExactInt) return Value::fromFraction(static_cast<ObjFraction*>(lhs.asObj())->frac % Fraction(rhs.asBigInt()));
             if (lhsIsExactInt && rhs.isObjType(ObjType::FRACTION)) return Value::fromFraction(Fraction(lhs.asBigInt()) % static_cast<ObjFraction*>(rhs.asObj())->frac);
         
-        throw std::runtime_error("Type Error: Modulo not supported for these types.");
+        throw std::runtime_error("Type Error: Modulo not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator&(const Value& lhs, const Value& rhs) {
@@ -1066,7 +1066,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitAnd(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set AND '&' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise/Set AND '&' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator<<(const Value& lhs, const Value& rhs) {
@@ -1090,7 +1090,7 @@ namespace jc {
             BigInt lVal = lhs.isBool() ? BigInt(lhs.asBool() ? 1 : 0) : lhs.asBigInt();
             return Value(lVal * BigInt(2).pow(shift));
         }
-        throw std::runtime_error("Type Error: Bitwise SHIFT LEFT '<<' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise SHIFT LEFT '<<' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator>>(const Value& lhs, const Value& rhs) {
@@ -1114,7 +1114,7 @@ namespace jc {
             }
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise SHIFT RIGHT '>>' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise SHIFT RIGHT '>>' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator|(const Value& lhs, const Value& rhs) {
@@ -1140,7 +1140,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitOr(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set OR '|' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise/Set OR '|' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value bitXor(const Value& lhs, const Value& rhs) {
@@ -1174,7 +1174,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitXor(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set XOR '^^' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise/Set XOR '^^' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline std::string Value::toJC2Expression() const {
@@ -1767,7 +1767,7 @@ namespace jc {
             return Value(BaseNum(-base.getValue() - BigInt(1), base.getRadix()));
         }
         if (isBigInt()) return Value(-asBigInt() - BigInt(1));
-        throw std::runtime_error("Type Error: Bitwise NOT '~' not supported for this type.");
+        throw std::runtime_error("Type Error: Bitwise NOT '~' not supported for '" + typeName() + "'.");
     }
 
     inline Value Value::operator-() const {
@@ -1791,7 +1791,7 @@ namespace jc {
                 default: break;
             }
         }
-        throw std::runtime_error("Type Error: Cannot negate this type.");
+        throw std::runtime_error("Type Error: Cannot negate '" + typeName() + "'.");
     }
 
     inline Value operator+(const Value& lhs, const Value& rhs) {
@@ -1897,7 +1897,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() + rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Cannot add these types.");
+        throw std::runtime_error("Type Error: Cannot add '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator-(const Value& lhs, const Value& rhs) {
@@ -2018,7 +2018,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() - rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Subtraction not supported for these types.");
+        throw std::runtime_error("Type Error: Cannot subtract '" + rhs.typeName() + "' from '" + lhs.typeName() + "'.");
     }
 
 inline ObjClosure* Value::asFunction() const {

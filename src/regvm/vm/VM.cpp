@@ -104,7 +104,7 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
 
 void VM::execCall(int a, int b, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    Value callee = registers[currentFrame->registerBase + a];
+    const Value& callee = registers[currentFrame->registerBase + a];
     int argc = b;
     
     if (callee.isString()) {
@@ -122,8 +122,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
         }
         auto it = globalNames.find(tag);
         if (it != globalNames.end()) {
-            callee = globals[it->second];
-            registers[currentFrame->registerBase + a] = callee;
+            registers[currentFrame->registerBase + a] = globals[it->second];
         } else {
             throw std::runtime_error("RegVM Error: Unknown function or not callable '" + tag + "()'.");
         }
@@ -840,7 +839,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
     const std::string& methodName = currentFrame->function->chunk.constants[nameIdx].asString();
     
     int argc = b;
-    Value obj = registers[currentFrame->registerBase + a];
+    const Value& obj = registers[currentFrame->registerBase + a];
 
     ObjClosure* method = nullptr;
     ObjClass* owningClass = nullptr;
@@ -1098,7 +1097,7 @@ invoke_method:
 void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     const std::string& methodName = currentFrame->function->chunk.constants[nameIdx].asString();
-    Value selfVal = registers[currentFrame->registerBase + a];
+    const Value& selfVal = registers[currentFrame->registerBase + a];
     int argc = b;
     
     if (!selfVal.isInstance()) throw std::runtime_error("RegVM Error: 'super' requires an instance context.");
@@ -1230,7 +1229,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
 
 void VM::execSliceGet(int a, int b, uint8_t dims) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    Value obj = registers[currentFrame->registerBase + b];
+    const Value& obj = registers[currentFrame->registerBase + b];
     
     auto readOptionalInt = [&](int idx) -> std::pair<bool, int> {
         Value v = registers[currentFrame->registerBase + b + 1 + idx];
@@ -1373,7 +1372,7 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
     (void)c;
     CallFrame* currentFrame = &frames[frameCount - 1];
     Value obj = registers[currentFrame->registerBase + a];
-    Value val = registers[currentFrame->registerBase + a + 3 * dims + 1];
+    const Value& val = registers[currentFrame->registerBase + a + 3 * dims + 1];
     
     auto readOptionalInt = [&](int idx) -> std::pair<bool, int> {
         Value v = registers[currentFrame->registerBase + a + 1 + idx];
@@ -1904,20 +1903,19 @@ Value VM::run(int targetFrameDepth) {
     const Chunk* chunk = frame->chunk;
     const Instruction* code = chunk->code.data();
     Value* frameRegs = &registers[frame->registerBase];
+    int ip = frame->ip;
     
     // 提取 EXTRAARG 扩展操作数 (24-bit)
     auto fetchExtra = [&]() -> int {
-        Instruction ext = code[frame->ip++];
+        Instruction ext = code[ip++];
         return GET_Ax(ext);
     };
 
     // 获取物理寄存器或溢出槽 (Unified Address Space)
-    auto getReg = [&](int idx) -> Value& {
-        return frameRegs[idx];
-    };
+    #define getReg(idx) frameRegs[idx]
 
     // K-Bit 机制：解析寄存器或常量池索引
-    auto getRK = [&](int rk) -> Value {
+    auto getRK = [&](int rk) -> const Value& {
         if (ISK(rk)) {
             if (rk == ESCAPE_KBIT_CONST) {
                 int idx = fetchExtra();
@@ -1928,25 +1926,26 @@ Value VM::run(int targetFrameDepth) {
             }
         } else {
             if (rk == ESCAPE_KBIT_REG) rk = fetchExtra();
-            return getReg(rk);
+            return frameRegs[rk];
         }
     };
 
     while (true) {
         try {
-        Instruction instruction = code[frame->ip++];
-        OpCode op = GET_OPCODE(instruction);
-        
-        int a = GET_A(instruction);
-        int b = GET_B(instruction);
-        int c = GET_C(instruction);
-        int bx = GET_Bx(instruction);
-        int sbx = GET_sBx(instruction);
-        int ax = GET_Ax(instruction);
-        (void)ax;
-        int sax = GET_sAx(instruction);
+            while (true) {
+                Instruction instruction = code[ip++];
+                OpCode op = GET_OPCODE(instruction);
+                
+                int a = GET_A(instruction);
+                int b = GET_B(instruction);
+                int c = GET_C(instruction);
+                int bx = GET_Bx(instruction);
+                int sbx = GET_sBx(instruction);
+                int ax = GET_Ax(instruction);
+                (void)ax;
+                int sax = GET_sAx(instruction);
 
-        switch (op) {
+                switch (op) {
             case OpCode::MOVE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
@@ -2321,7 +2320,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::ADD: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() + vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) + vc.asInt32();
@@ -2329,18 +2328,12 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_ADD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RADD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                try { getReg(a) = vb + vc; } catch (const std::exception& e) {
-                    std::string msg = e.what();
-                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot add") != std::string::npos) {
-                        throw std::runtime_error("Type Error: Cannot add '" + getTypeName(vb) + "' and '" + getTypeName(vc) + "'.");
-                    }
-                    throw;
-                }
+                getReg(a) = vb + vc;
                 break;
             }
             case OpCode::SUB: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() - vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) - vc.asInt32();
@@ -2348,18 +2341,12 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_SUB)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RSUB)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                try { getReg(a) = vb - vc; } catch (const std::exception& e) {
-                    std::string msg = e.what();
-                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot subtract") != std::string::npos) {
-                        throw std::runtime_error("Type Error: Cannot subtract '" + getTypeName(vc) + "' from '" + getTypeName(vb) + "'.");
-                    }
-                    throw;
-                }
+                getReg(a) = vb - vc;
                 break;
             }
             case OpCode::MUL: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() * vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) * vc.asInt32();
@@ -2367,36 +2354,24 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MUL)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMUL)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                try { getReg(a) = vb * vc; } catch (const std::exception& e) {
-                    std::string msg = e.what();
-                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot multiply") != std::string::npos) {
-                        throw std::runtime_error("Type Error: Cannot multiply '" + getTypeName(vb) + "' and '" + getTypeName(vc) + "'.");
-                    }
-                    throw;
-                }
+                getReg(a) = vb * vc;
                 break;
             }
             case OpCode::DIV: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { 
                     if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
                     getReg(a) = Value(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
                 }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_DIV)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RDIV)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
-                try { getReg(a) = vb / vc; } catch (const std::exception& e) {
-                    std::string msg = e.what();
-                    if (msg.find("Type Error") != std::string::npos || msg.find("Cannot divide") != std::string::npos) {
-                        throw std::runtime_error("Type Error: Cannot divide '" + getTypeName(vb) + "' by '" + getTypeName(vc) + "'.");
-                    }
-                    throw;
-                }
+                getReg(a) = vb / vc;
                 break;
             }
             case OpCode::MOD: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MOD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMOD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb % vc;
@@ -2404,7 +2379,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::POW: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_POW)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RPOW)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb ^ vc;
@@ -2412,7 +2387,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::LDIV: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LDIV)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RLDIV)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = ldivide(vb, vc);
@@ -2420,7 +2395,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::BAND: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITAND)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITAND)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb & vc;
@@ -2428,7 +2403,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::BOR: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITOR)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITOR)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb | vc;
@@ -2436,7 +2411,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::BXOR: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITXOR)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITXOR)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = bitXor(vb, vc);
@@ -2444,7 +2419,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::SHL: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LSHIFT)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RLSHIFT)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb << vc;
@@ -2452,7 +2427,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::SHR: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_RSHIFT)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
                 if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RRSHIFT)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
                 getReg(a) = vb >> vc;
@@ -2500,7 +2475,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::EQ: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.as_bits == vc.as_bits) {
                     if (!vb.isDouble() || vb.asDoubleRaw() == vc.asDoubleRaw()) {
                         getReg(a) = Value(true); break;
@@ -2520,7 +2495,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::NEQ: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.as_bits == vc.as_bits) {
                     if (!vb.isDouble() || vb.asDoubleRaw() == vc.asDoubleRaw()) {
                         getReg(a) = Value(false); break;
@@ -2541,7 +2516,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::LT: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() < vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2550,7 +2525,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::LE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2559,7 +2534,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::GT: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() > vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2568,7 +2543,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::GE: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value vb = getRK(b); Value vc = getRK(c);
+                const Value& vb = getRK(b); const Value& vc = getRK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
@@ -2576,7 +2551,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::JMP: {
-                frame->ip += sax;
+                ip += sax;
                 break;
             }
             case OpCode::JMP_TRUE: {
@@ -2587,7 +2562,7 @@ Value VM::run(int targetFrameDepth) {
                 else if (val.isInt32()) cond = val.asInt32() != 0;
                 else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
                 else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
-                if (cond) frame->ip += sbx;
+                if (cond) ip += sbx;
                 break;
             }
             case OpCode::JMP_FALSE: {
@@ -2598,7 +2573,7 @@ Value VM::run(int targetFrameDepth) {
                 else if (val.isInt32()) cond = val.asInt32() != 0;
                 else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
                 else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
-                if (!cond) frame->ip += sbx;
+                if (!cond) ip += sbx;
                 break;
             }
             case OpCode::BUILD_LIST: {
@@ -3561,7 +3536,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 ExceptionHandler handler;
                 handler.frameIndex = frameCount - 1;
-                handler.ip = frame->ip + sbx;
+                handler.ip = ip + sbx;
                 handler.registerBase = frame->registerBase;
                 handler.errReg = a;
                 exceptionHandlers.push_back(handler);
@@ -4326,7 +4301,8 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE);
-                int prevIp = frame->ip;
+                frame->ip = ip;
+                int prevIp = ip;
                 
                 InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[c]);
                 std::string methodName = chunk->constants[ic.nameIdx].asString();
@@ -4334,7 +4310,7 @@ Value VM::run(int targetFrameDepth) {
                 execInvoke(a, b, c, isTailCall, -1);
                 
                 if (isTailCall && frame->ip == prevIp) {
-                    Value res = getReg(a);
+                    Value res = std::move(getReg(a));
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
                     }
@@ -4358,6 +4334,7 @@ Value VM::run(int targetFrameDepth) {
                     chunk = frame->chunk;
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
                 }
                 break;
             }
@@ -4368,10 +4345,11 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
                 bool isTailCall = (op == OpCode::TAIL_INVOKE_FALLBACK);
-                int prevIp = frame->ip;
+                frame->ip = ip;
+                int prevIp = ip;
                 execInvoke(a, b, c, isTailCall, 1);
                 if (isTailCall && frame->ip == prevIp) {
-                    Value res = getReg(a);
+                    Value res = std::move(getReg(a));
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
                     }
@@ -4395,6 +4373,7 @@ Value VM::run(int targetFrameDepth) {
                     chunk = frame->chunk;
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
                 }
                 break;
             }
@@ -4457,10 +4436,11 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                 
                 bool isTailCall = (op == OpCode::TAIL_SUPER_INVOKE);
-                int prevIp = frame->ip;
+                frame->ip = ip;
+                int prevIp = ip;
                 execSuperInvoke(a, b, c, isTailCall);
                 if (isTailCall && frame->ip == prevIp) {
-                    Value res = getReg(a);
+                    Value res = std::move(getReg(a));
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
                     }
@@ -4484,6 +4464,7 @@ Value VM::run(int targetFrameDepth) {
                     chunk = frame->chunk;
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
                 }
                 break;
             }
@@ -4499,10 +4480,11 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                 
                 bool isTailCall = (op == OpCode::TAIL_CALL);
-                int prevIp = frame->ip;
+                frame->ip = ip; // 保存当前 IP
+                int prevIp = ip;
                 execCall(a, b, isTailCall);
                 if (isTailCall && frame->ip == prevIp) {
-                    Value res = getReg(a);
+                    Value res = std::move(getReg(a));
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
                     }
@@ -4526,12 +4508,13 @@ Value VM::run(int targetFrameDepth) {
                     chunk = frame->chunk;
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
                 }
                 break;
             }
             case OpCode::RETURN: {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                Value res = getReg(a);
+                Value res = std::move(getReg(a));
                 
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                     exceptionHandlers.pop_back();
@@ -4553,6 +4536,7 @@ Value VM::run(int targetFrameDepth) {
                 chunk = frame->chunk;
                 code = chunk->code.data();
                 frameRegs = &registers[frame->registerBase];
+                ip = frame->ip;
                 
                 if (isInit) {
                     getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
@@ -4561,10 +4545,12 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
-            default:
-                throw std::runtime_error("RegVM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
-        }
+                    default:
+                        throw std::runtime_error("RegVM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
+                }
+            }
         } catch (const ValueException& ex) {
+            frame->ip = ip;
             if (!handleExceptionUnwind(ex.val)) {
                 std::string msg = ex.val.isString() ? ex.val.asString() : "ValueException";
                 throw std::runtime_error(msg + buildStackTrace());
@@ -4573,7 +4559,9 @@ Value VM::run(int targetFrameDepth) {
             chunk = frame->chunk;
             code = chunk->code.data();
             frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
         } catch (const std::exception& ex) {
+            frame->ip = ip;
             if (!handleExceptionUnwind(Value(ex.what()))) {
                 std::string msg = ex.what();
                 if (msg.find("[Line ") == 0) {
@@ -4591,7 +4579,9 @@ Value VM::run(int targetFrameDepth) {
             chunk = frame->chunk;
             code = chunk->code.data();
             frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
         } catch (...) {
+            frame->ip = ip;
             if (!handleExceptionUnwind(Value("Unknown VM Error"))) {
                 throw std::runtime_error("Unknown VM Error" + buildStackTrace());
             }
@@ -4599,8 +4589,10 @@ Value VM::run(int targetFrameDepth) {
             chunk = frame->chunk;
             code = chunk->code.data();
             frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
         }
     }
+    #undef getReg
 }
 
 } // namespace regvm

@@ -121,7 +121,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
         cb();
     }
 
-    int maxReg = 127;
+    int maxReg = -1;
     for (auto& nodePtr : graph->getNodes()) {
         if (nodePtr->physicalReg > maxReg) maxReg = nodePtr->physicalReg;
     }
@@ -541,6 +541,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::GetSelf: {
                         auto w = buildInstA(OpCode::GET_SELF, node->physicalReg);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::GetCurrentClosure: {
+                        auto w = buildInstA(OpCode::GET_CURRENT_CLOSURE, node->physicalReg);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

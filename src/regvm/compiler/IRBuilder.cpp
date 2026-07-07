@@ -42,6 +42,12 @@ IRNode* IRBuilder::readVariable(const std::string& name) {
     if (localNode) return localNode;
 
     if (currentFunction) {
+        if (currentFunction->name == name) {
+            IRNode* node = graph->createValueNode(IROp::GetCurrentClosure);
+            node->name = name;
+            node->setControl(currentControl);
+            return node;
+        }
         for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
             if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isCapturedState || currentFunction->upvalues[i].isRef)) {
                 IRNode* node = graph->createValueNode(IROp::GetUpvalue);

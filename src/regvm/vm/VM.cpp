@@ -140,8 +140,8 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 for (auto& pr : pendingCallRefs) pr.first += 1;
             }
 
-            int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
-            
+            int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+
             if (fnDef->hasRestParam) {
                 int fixedMax = fnDef->maxArity - 1;
                 if (totalArgc < fnDef->arity) {
@@ -158,7 +158,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     }
                 }
                 
-                for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
                     if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
                     else registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i - ufcsOffset];
                 }
@@ -170,7 +170,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                     throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                 }
-                for (int i = 0; i < totalArgc; ++i) {
+                for (int i = totalArgc - 1; i >= 0; --i) {
                     if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
                     else registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i - ufcsOffset];
                 }
@@ -275,7 +275,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 auto& fnDef = compiledFunctions[initMethod->compiledFnIndex];
                 
                 int totalArgc = argc;
-                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -291,7 +291,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                         }
                     }
                     
-                    for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                    for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
                         registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
                     }
                     for (int i = totalArgc; i < fixedMax; ++i) {
@@ -302,7 +302,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
-                    for (int i = 0; i < totalArgc; ++i) {
+                    for (int i = totalArgc - 1; i >= 0; --i) {
                         registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
                     }
                     for (int i = totalArgc; i < fnDef->maxArity; ++i) {
@@ -391,7 +391,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                 auto& fnDef = compiledFunctions[method->compiledFnIndex];
                 
                 int totalArgc = argc;
-                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -407,7 +407,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                         }
                     }
                     
-                    for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                    for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
                         registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
                     }
                     for (int i = totalArgc; i < fixedMax; ++i) {
@@ -418,7 +418,7 @@ void VM::execCall(int a, int b, bool isTailCall) {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                         throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
-                    for (int i = 0; i < totalArgc; ++i) {
+                    for (int i = totalArgc - 1; i >= 0; --i) {
                         registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
                     }
                     for (int i = totalArgc; i < fnDef->maxArity; ++i) {
@@ -1010,7 +1010,7 @@ invoke_method:
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
         
         int totalArgc = argc;
-        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -1022,11 +1022,11 @@ invoke_method:
                 int restCount = totalArgc - fixedMax;
                 restList->vec.reserve(restCount);
                 for (int j = 0; j < restCount; j++) {
-                    restList->vec[j] = registers[currentFrame->registerBase + a + 1 + fixedMax + j];
+                    restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + fixedMax + j]);
                 }
             }
             
-            for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+            for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
                 registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
             }
             for (int i = totalArgc; i < fixedMax; ++i) {
@@ -1037,7 +1037,7 @@ invoke_method:
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            for (int i = 0; i < totalArgc; ++i) {
+            for (int i = totalArgc - 1; i >= 0; --i) {
                 registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
             }
             for (int i = totalArgc; i < fnDef->maxArity; ++i) {
@@ -1143,7 +1143,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
         
         int totalArgc = argc;
-        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -1155,11 +1155,11 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
                 int restCount = totalArgc - fixedMax;
                 restList->vec.reserve(restCount);
                 for (int j = 0; j < restCount; j++) {
-                    restList->vec[j] = registers[currentFrame->registerBase + a + 1 + fixedMax + j];
+                    restList->vec.push_back(registers[currentFrame->registerBase + a + 1 + fixedMax + j]);
                 }
             }
             
-            for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+            for (int i = std::min(totalArgc, fixedMax) - 1; i >= 0; --i) {
                 registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
             }
             for (int i = totalArgc; i < fixedMax; ++i) {
@@ -1170,7 +1170,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                 throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
-            for (int i = 0; i < totalArgc; ++i) {
+            for (int i = totalArgc - 1; i >= 0; --i) {
                 registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
             }
             for (int i = totalArgc; i < fnDef->maxArity; ++i) {
@@ -4587,6 +4587,11 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (frame->selfContext.isNone()) throw std::runtime_error("RegVM Error: 'self' accessed outside of context.");
                 getReg(a) = frame->selfContext;
+                break;
+            }
+            case OpCode::GET_CURRENT_CLOSURE: {
+                if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                getReg(a) = Value(frame->closure);
                 break;
             }
             case OpCode::CALL:

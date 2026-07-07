@@ -109,6 +109,7 @@ enum class IROp {
     SetProperty,
     GetSuper,
     GetSelf,
+    GetCurrentClosure,
 
     // 模块导入
     Import,
@@ -212,6 +213,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::SetProperty: return "SetProperty";
         case IROp::GetSuper: return "GetSuper";
         case IROp::GetSelf: return "GetSelf";
+        case IROp::GetCurrentClosure: return "GetCurrentClosure";
         case IROp::Import: return "Import";
         case IROp::AssertParamType: return "AssertParamType";
         case IROp::AssertReturnType: return "AssertReturnType";

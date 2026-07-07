@@ -87,6 +87,7 @@ enum class OpCode : uint8_t {
     SUPER_INVOKE,   // R(A) := SuperInvoke(self = R(A), args = R(A+1)...R(A+B), nameIdx = C) [Ext A, B, C]
     TAIL_SUPER_INVOKE, // [Ext A, B, C]
     GET_SELF,       // R(A) := self
+    GET_CURRENT_CLOSURE, // R(A) := current_closure
     CLASS,          // R(A) := Class(nameIdx = Bx) [Ext]
     METHOD,         // R(A).Method(nameIdx = B) := R(C) [Ext]
     INHERIT,        // R(A) inherits R(B)
@@ -189,6 +190,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::SUPER_INVOKE: return "SUPER_INVOKE";
         case OpCode::TAIL_SUPER_INVOKE: return "TAIL_SUPER_INVOKE";
         case OpCode::GET_SELF: return "GET_SELF";
+        case OpCode::GET_CURRENT_CLOSURE: return "GET_CURRENT_CLOSURE";
         case OpCode::CLASS: return "CLASS";
         case OpCode::METHOD: return "METHOD";
         case OpCode::INHERIT: return "INHERIT";
@@ -512,8 +514,8 @@ public:
                 }
                 break;
 
-            case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::LIST_INIT:
-            case OpCode::LIST_COMP_END: case OpCode::TRY_END: case OpCode::THROW:
+            case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
+            case OpCode::LIST_INIT: case OpCode::LIST_COMP_END: case OpCode::TRY_END: case OpCode::THROW:
                 std::cout << "R(" << a << ")";
                 break;
 

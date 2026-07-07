@@ -91,12 +91,12 @@ bool IROptimizer::eliminateCommonSubexpressions(IRGraph* graph) {
     
     struct NodeHasher {
         size_t operator()(const IRNode* n) const {
-            size_t h = std::hash<int>()(static_cast<int>(n->op));
+            size_t h = static_cast<size_t>(n->op);
             for (auto* in : n->dataInputs) {
-                h ^= std::hash<void*>()(in) + 0x9e3779b9 + (h << 6) + (h >> 2);
+                h ^= reinterpret_cast<size_t>(in) + 0x9e3779b9 + (h << 6) + (h >> 2);
             }
-            h ^= std::hash<void*>()(n->controlInput) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= std::hash<uint32_t>()(n->payload1) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= reinterpret_cast<size_t>(n->controlInput) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= static_cast<size_t>(n->payload1) + 0x9e3779b9 + (h << 6) + (h >> 2);
             return h;
         }
     };

@@ -973,18 +973,34 @@ invoke_method:
             return;
         }
         
-        auto gIt = globalNames.find(methodName);
-        if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
-            for (int i = argc - 1; i >= 0; --i) {
-                registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
+        if (ic.cachedGlobalSlot >= 0) {
+            if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
+                for (int i = argc - 1; i >= 0; --i) {
+                    registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
+                }
+                registers[currentFrame->registerBase + a + 1] = obj;
+                registers[currentFrame->registerBase + a] = globals[ic.cachedGlobalSlot];
+                for (auto& pr : pendingCallRefs) {
+                    pr.first += 1;
+                }
+                execCall(a, argc + 1, isTailCall);
+                return;
             }
-            registers[currentFrame->registerBase + a + 1] = obj;
-            registers[currentFrame->registerBase + a] = globals[gIt->second];
-            for (auto& pr : pendingCallRefs) {
-                pr.first += 1;
+        } else {
+            auto gIt = globalNames.find(methodName);
+            if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
+                ic.cachedGlobalSlot = gIt->second;
+                for (int i = argc - 1; i >= 0; --i) {
+                    registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
+                }
+                registers[currentFrame->registerBase + a + 1] = obj;
+                registers[currentFrame->registerBase + a] = globals[gIt->second];
+                for (auto& pr : pendingCallRefs) {
+                    pr.first += 1;
+                }
+                execCall(a, argc + 1, isTailCall);
+                return;
             }
-            execCall(a, argc + 1, isTailCall);
-            return;
         }
         
         throw std::runtime_error("RegVM Error: Cannot invoke method '" + methodName + "' on this type.");
@@ -1972,11 +1988,23 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                 if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
                 InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[bx]);
-                if (ic.cachedGlobalSlot != -1) {
+                if (ic.cachedGlobalSlot >= 0) {
                     getReg(a) = globals[ic.cachedGlobalSlot];
+                } else if (ic.cachedGlobalSlot == -2) {
+                    if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
+                    getReg(a) = frame->classContext;
+                } else if (ic.cachedGlobalSlot == -3) {
+                    const std::string& name = chunk->constants[ic.nameIdx].asString();
+                    Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
+                    if (!builtinVal.isNone()) {
+                        getReg(a) = builtinVal;
+                    } else {
+                        throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
+                    }
                 } else {
                     const std::string& name = chunk->constants[ic.nameIdx].asString();
                     if (name == "__class__") {
+                        ic.cachedGlobalSlot = -2;
                         if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
                         getReg(a) = frame->classContext;
                         break;
@@ -1988,6 +2016,7 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
                         if (!builtinVal.isNone()) {
+                            ic.cachedGlobalSlot = -3;
                             getReg(a) = builtinVal;
                         } else {
                             throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
@@ -3720,45 +3749,88 @@ Value VM::run(int targetFrameDepth) {
                         result = Value(bound);
                         found = true;
                     } else {
-                        auto gIt = globalNames.find(field);
-                        if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
-                            auto bound = GcHeap::get().allocate<ObjClosure>(
-                                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                            );
-                            bound->boundSelf = obj;
-                            ObjClosure* targetFn = globals[gIt->second].asFunction();
-                        
-                            if (targetFn->isBytecode()) {
-                                bound->compiledFnIndex = targetFn->compiledFnIndex;
-                                if (targetFn->upvalueCount > 0) {
-                                    bound->upvalueCount = targetFn->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = targetFn->upvalues[i];
-                                    }
-                                }
-                                bound->hasRestParam = targetFn->hasRestParam;
-                                bound->paramNames = targetFn->paramNames;
-                                bound->isRef = targetFn->isRef;
-                                bound->defaultValues = targetFn->defaultValues;
-                                bound->isUFCS = true;
-                                bound->nativeFn = targetFn->nativeFn;
-                            } else {
-                                bound->nativeFn = std::make_any<NativeCallable>(
-                                    [](const std::vector<Value>& args) -> Value {
-                                        Value capturedObj = helpers::nativeSelfStack.back();
-                                        ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
-                                        std::vector<Value> fullArgs;
-                                        fullArgs.reserve(args.size() + 1);
-                                        fullArgs.push_back(capturedObj);
-                                        fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                        return helpers::safeCallFunction(fn, fullArgs);
-                                    }
+                        if (ic.cachedGlobalSlot >= 0) {
+                            if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );
-                                bound->boundClass = Value(targetFn);
+                                bound->boundSelf = obj;
+                                ObjClosure* targetFn = globals[ic.cachedGlobalSlot].asFunction();
+                            
+                                if (targetFn->isBytecode()) {
+                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
+                                    if (targetFn->upvalueCount > 0) {
+                                        bound->upvalueCount = targetFn->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = targetFn->upvalues[i];
+                                        }
+                                    }
+                                    bound->hasRestParam = targetFn->hasRestParam;
+                                    bound->paramNames = targetFn->paramNames;
+                                    bound->isRef = targetFn->isRef;
+                                    bound->defaultValues = targetFn->defaultValues;
+                                    bound->isUFCS = true;
+                                    bound->nativeFn = targetFn->nativeFn;
+                                } else {
+                                    bound->nativeFn = std::make_any<NativeCallable>(
+                                        [](const std::vector<Value>& args) -> Value {
+                                            Value capturedObj = helpers::nativeSelfStack.back();
+                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
+                                            std::vector<Value> fullArgs;
+                                            fullArgs.reserve(args.size() + 1);
+                                            fullArgs.push_back(capturedObj);
+                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                            return helpers::safeCallFunction(fn, fullArgs);
+                                        }
+                                    );
+                                    bound->boundClass = Value(targetFn);
+                                }
+                                result = Value(bound);
+                                found = true;
                             }
-                            result = Value(bound);
-                            found = true;
+                        } else {
+                            auto gIt = globalNames.find(field);
+                            if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
+                                ic.cachedGlobalSlot = gIt->second;
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                                );
+                                bound->boundSelf = obj;
+                                ObjClosure* targetFn = globals[gIt->second].asFunction();
+                            
+                                if (targetFn->isBytecode()) {
+                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
+                                    if (targetFn->upvalueCount > 0) {
+                                        bound->upvalueCount = targetFn->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = targetFn->upvalues[i];
+                                        }
+                                    }
+                                    bound->hasRestParam = targetFn->hasRestParam;
+                                    bound->paramNames = targetFn->paramNames;
+                                    bound->isRef = targetFn->isRef;
+                                    bound->defaultValues = targetFn->defaultValues;
+                                    bound->isUFCS = true;
+                                    bound->nativeFn = targetFn->nativeFn;
+                                } else {
+                                    bound->nativeFn = std::make_any<NativeCallable>(
+                                        [](const std::vector<Value>& args) -> Value {
+                                            Value capturedObj = helpers::nativeSelfStack.back();
+                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
+                                            std::vector<Value> fullArgs;
+                                            fullArgs.reserve(args.size() + 1);
+                                            fullArgs.push_back(capturedObj);
+                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                            return helpers::safeCallFunction(fn, fullArgs);
+                                        }
+                                    );
+                                    bound->boundClass = Value(targetFn);
+                                }
+                                result = Value(bound);
+                                found = true;
+                            }
                         }
                     }
                 }
@@ -3891,45 +3963,88 @@ Value VM::run(int targetFrameDepth) {
                         result = Value(bound);
                         found = true;
                     } else {
-                        auto gIt = globalNames.find(field);
-                        if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
-                            auto bound = GcHeap::get().allocate<ObjClosure>(
-                                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                            );
-                            bound->boundSelf = obj;
-                            ObjClosure* targetFn = globals[gIt->second].asFunction();
-                        
-                            if (targetFn->isBytecode()) {
-                                bound->compiledFnIndex = targetFn->compiledFnIndex;
-                                if (targetFn->upvalueCount > 0) {
-                                    bound->upvalueCount = targetFn->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = targetFn->upvalues[i];
-                                    }
-                                }
-                                bound->hasRestParam = targetFn->hasRestParam;
-                                bound->paramNames = targetFn->paramNames;
-                                bound->isRef = targetFn->isRef;
-                                bound->defaultValues = targetFn->defaultValues;
-                                bound->isUFCS = true;
-                                bound->nativeFn = targetFn->nativeFn;
-                            } else {
-                                bound->nativeFn = std::make_any<NativeCallable>(
-                                    [](const std::vector<Value>& args) -> Value {
-                                        Value capturedObj = helpers::nativeSelfStack.back();
-                                        ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
-                                        std::vector<Value> fullArgs;
-                                        fullArgs.reserve(args.size() + 1);
-                                        fullArgs.push_back(capturedObj);
-                                        fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                        return helpers::safeCallFunction(fn, fullArgs);
-                                    }
+                        if (ic.cachedGlobalSlot >= 0) {
+                            if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );
-                                bound->boundClass = Value(targetFn);
+                                bound->boundSelf = obj;
+                                ObjClosure* targetFn = globals[ic.cachedGlobalSlot].asFunction();
+                            
+                                if (targetFn->isBytecode()) {
+                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
+                                    if (targetFn->upvalueCount > 0) {
+                                        bound->upvalueCount = targetFn->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = targetFn->upvalues[i];
+                                        }
+                                    }
+                                    bound->hasRestParam = targetFn->hasRestParam;
+                                    bound->paramNames = targetFn->paramNames;
+                                    bound->isRef = targetFn->isRef;
+                                    bound->defaultValues = targetFn->defaultValues;
+                                    bound->isUFCS = true;
+                                    bound->nativeFn = targetFn->nativeFn;
+                                } else {
+                                    bound->nativeFn = std::make_any<NativeCallable>(
+                                        [](const std::vector<Value>& args) -> Value {
+                                            Value capturedObj = helpers::nativeSelfStack.back();
+                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
+                                            std::vector<Value> fullArgs;
+                                            fullArgs.reserve(args.size() + 1);
+                                            fullArgs.push_back(capturedObj);
+                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                            return helpers::safeCallFunction(fn, fullArgs);
+                                        }
+                                    );
+                                    bound->boundClass = Value(targetFn);
+                                }
+                                result = Value(bound);
+                                found = true;
                             }
-                            result = Value(bound);
-                            found = true;
+                        } else {
+                            auto gIt = globalNames.find(field);
+                            if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
+                                ic.cachedGlobalSlot = gIt->second;
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                                );
+                                bound->boundSelf = obj;
+                                ObjClosure* targetFn = globals[gIt->second].asFunction();
+                            
+                                if (targetFn->isBytecode()) {
+                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
+                                    if (targetFn->upvalueCount > 0) {
+                                        bound->upvalueCount = targetFn->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = targetFn->upvalues[i];
+                                        }
+                                    }
+                                    bound->hasRestParam = targetFn->hasRestParam;
+                                    bound->paramNames = targetFn->paramNames;
+                                    bound->isRef = targetFn->isRef;
+                                    bound->defaultValues = targetFn->defaultValues;
+                                    bound->isUFCS = true;
+                                    bound->nativeFn = targetFn->nativeFn;
+                                } else {
+                                    bound->nativeFn = std::make_any<NativeCallable>(
+                                        [](const std::vector<Value>& args) -> Value {
+                                            Value capturedObj = helpers::nativeSelfStack.back();
+                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
+                                            std::vector<Value> fullArgs;
+                                            fullArgs.reserve(args.size() + 1);
+                                            fullArgs.push_back(capturedObj);
+                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                            return helpers::safeCallFunction(fn, fullArgs);
+                                        }
+                                    );
+                                    bound->boundClass = Value(targetFn);
+                                }
+                                result = Value(bound);
+                                found = true;
+                            }
                         }
                     }
                 }

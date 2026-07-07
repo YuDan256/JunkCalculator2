@@ -865,7 +865,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
     uint32_t nameIdx = ic.nameIdx;
-    const std::string& methodName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
+    Value keyVal = currentFrame->function->chunk.constants.data()[nameIdx];
     
     int argc = b;
     const Value& obj = registers[currentFrame->registerBase + a];
@@ -873,9 +873,22 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
     ObjClosure* method = nullptr;
     ObjClass* owningClass = nullptr;
 
+    const std::string& methodName = keyVal.asString();
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
+            if (!inst->fields || inst->fields->keyMap.find(keyVal) == inst->fields->keyMap.end()) {
+                method = ic.cachedMethod;
+                owningClass = inst->classDef;
+                goto invoke_method;
+            }
+        }
+    }
+
     if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
-        auto it = d->keyMap.find(currentFrame->function->chunk.constants.data()[nameIdx]);
+        auto it = d->keyMap.find(keyVal);
         if (it != d->keyMap.end()) {
             Value fv = d->elements[it->second].second;
             if (fv.isFunctionClosure()) {
@@ -888,7 +901,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
         }
     } else if (obj.isObjType(ObjType::NAMESPACE)) {
         auto ns = static_cast<ObjNamespace*>(obj.asObj());
-        auto it = ns->fields.find(methodName);
+        auto it = ns->fields.find(keyVal.asString());
         if (it != ns->fields.end()) {
             Value fv = *(it->second.upval->location);
             if (fv.isFunctionClosure()) {
@@ -904,7 +917,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
         bool foundInField = false;
 
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
-            if (!inst->fields || inst->fields->keyMap.find(currentFrame->function->chunk.constants.data()[nameIdx]) == inst->fields->keyMap.end()) {
+            if (!inst->fields || inst->fields->keyMap.find(keyVal) == inst->fields->keyMap.end()) {
                 method = ic.cachedMethod;
                 owningClass = inst->classDef;
                 goto invoke_method;
@@ -912,7 +925,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
         }
 
         if (inst->fields) {
-            auto it = inst->fields->keyMap.find(currentFrame->function->chunk.constants.data()[nameIdx]);
+            auto it = inst->fields->keyMap.find(keyVal);
             if (it != inst->fields->keyMap.end()) {
                 Value fv = inst->fields->elements[it->second].second;
                 if (fv.isFunctionClosure()) {
@@ -947,7 +960,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
             if (!method) {
                 auto getattrMethod = findDunder(obj, "__getattr__");
                 if (getattrMethod) {
-                    std::vector<Value> args = { Value(methodName) };
+                    std::vector<Value> args = { keyVal };
                     Value fv = callDunder(obj, getattrMethod, args);
                     if (fv.isFunctionClosure()) {
                         method = fv.asFunction();
@@ -2071,6 +2084,13 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[bx]);
+                Value val = getReg(a);
+
+                if (ic.cachedGlobalSlot >= 0 && op == OpCode::SET_GLOBAL && !val.isFunctionClosure()) {
+                    globals.data()[ic.cachedGlobalSlot] = val;
+                    break;
+                }
+
                 const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                 if (name == "__class__") throw std::runtime_error("Syntax Error: cannot override context keyword '" + name + "'.");
                 
@@ -2086,7 +2106,6 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
 
-                Value val = getReg(a);
                 if (val.isFunctionClosure()) {
                     auto nit = jc::VM::activeVM->getNativeBuiltins().find(name);
                     if (nit != jc::VM::activeVM->getNativeBuiltins().end()) {
@@ -3669,32 +3688,50 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[c]);
-                const std::string& field = chunk->constants.data()[ic.nameIdx].asString();
+                Value keyVal = chunk->constants.data()[ic.nameIdx];
                 Value obj = getReg(b);
+                
+                if (obj.isInstance()) {
+                    auto inst = obj.asInstance();
+                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
+                        if (inst->fields->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                            getReg(a) = inst->fields->elements[ic.cachedFieldIndex].second;
+                            break;
+                        }
+                    }
+                    if (inst->fields) {
+                        auto it = inst->fields->keyMap.find(keyVal);
+                        if (it != inst->fields->keyMap.end()) {
+                            getReg(a) = inst->fields->elements[it->second].second;
+                            ic.cachedClassId = inst->classDef->classId;
+                            ic.cachedFieldIndex = static_cast<int>(it->second);
+                            break;
+                        }
+                    }
+                } else if (obj.isObjType(ObjType::DICT)) {
+                    auto d = static_cast<ObjDict*>(obj.asObj());
+                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                            getReg(a) = d->elements[ic.cachedFieldIndex].second;
+                            break;
+                        }
+                    }
+                    auto it = d->keyMap.find(keyVal);
+                    if (it != d->keyMap.end()) {
+                        getReg(a) = d->elements[it->second].second;
+                        ic.cachedBuiltinType = BuiltinType::DICT;
+                        ic.cachedFieldIndex = static_cast<int>(it->second);
+                        break;
+                    }
+                }
+
+                const std::string& field = keyVal.asString();
                 bool found = false;
                 Value result;
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                        Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
-                        if (cachedKey.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || cachedKey.asString() == field) {
-                            result = inst->fields->elements[ic.cachedFieldIndex].second;
-                            found = true;
-                        }
-                    }
-                    if (!found) {
-                        if (inst->fields) {
-                            auto it = inst->fields->keyMap.find(chunk->constants.data()[ic.nameIdx]);
-                            if (it != inst->fields->keyMap.end()) {
-                                result = inst->fields->elements[it->second].second;
-                                found = true;
-                                ic.cachedClassId = inst->classDef->classId;
-                                ic.cachedFieldIndex = static_cast<int>(it->second);
-                            }
-                        }
-                    }
-                    if (!found && ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
+                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
                         auto rawMethod = ic.cachedMethod;
                         auto bound = GcHeap::get().allocate<ObjClosure>(
                             std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -3750,28 +3787,11 @@ Value VM::run(int targetFrameDepth) {
                             cls = cls->parent;
                         }
                         if (!found) {
-                            auto getattrMethod = findDunder(obj, DUNDER_GETATTR);
+                            auto getattrMethod = findDunder(obj, "__getattr__");
                             if (getattrMethod) {
                                 result = callDunder(obj, getattrMethod, {Value(field)});
                                 found = true;
                             }
-                        }
-                    }
-                } else if (obj.isObjType(ObjType::DICT)) {
-                    auto d = static_cast<ObjDict*>(obj.asObj());
-                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
-                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
-                            result = d->elements[ic.cachedFieldIndex].second;
-                            found = true;
-                        }
-                    }
-                    if (!found) {
-                        auto it = d->keyMap.find(chunk->constants.data()[ic.nameIdx]);
-                        if (it != d->keyMap.end()) {
-                            result = d->elements[it->second].second;
-                            found = true;
-                            ic.cachedBuiltinType = BuiltinType::DICT;
-                            ic.cachedFieldIndex = static_cast<int>(it->second);
                         }
                     }
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
@@ -3928,113 +3948,114 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[c]);
-                const std::string& field = chunk->constants.data()[ic.nameIdx].asString();
+                Value keyVal = chunk->constants.data()[ic.nameIdx];
                 Value obj = getReg(b);
-                bool found = false;
-                Value result;
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                        Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
-                        if (cachedKey.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || cachedKey.asString() == field) {
-                            result = inst->fields->elements[ic.cachedFieldIndex].second;
-                            found = true;
+                        if (inst->fields->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                            getReg(a) = inst->fields->elements[ic.cachedFieldIndex].second;
+                            break;
                         }
                     }
-                    if (!found) {
-                        if (inst->fields) {
-                            auto it = inst->fields->keyMap.find(chunk->constants.data()[ic.nameIdx]);
-                            if (it != inst->fields->keyMap.end()) {
-                                result = inst->fields->elements[it->second].second;
-                                found = true;
-                                ic.cachedClassId = inst->classDef->classId;
-                                ic.cachedFieldIndex = static_cast<int>(it->second);
-                            }
-                        }
-                        if (!found && ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
-                            auto rawMethod = ic.cachedMethod;
-                            auto bound = GcHeap::get().allocate<ObjClosure>(
-                                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                            );
-                            bound->paramNames = rawMethod->paramNames;
-                            bound->isRef = rawMethod->isRef;
-                            bound->defaultValues = rawMethod->defaultValues;
-                            bound->hasRestParam = rawMethod->hasRestParam;
-                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                            if (rawMethod->upvalueCount > 0) {
-                                bound->upvalueCount = rawMethod->upvalueCount;
-                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                for (int i = 0; i < bound->upvalueCount; ++i) {
-                                    bound->upvalues[i] = rawMethod->upvalues[i];
-                                }
-                            }
-                            bound->nativeFn = rawMethod->nativeFn;
-                            bound->boundSelf = Value(inst);
-                            bound->boundClass = Value(inst->classDef);
-                            result = Value(bound);
-                            found = true;
-                        }
-                        if (!found) {
-                            auto cls = inst->classDef;
-                            while (cls) {
-                                auto it = cls->methods.find(field);
-                                if (it != cls->methods.end()) {
-                                    auto rawMethod = it->second;
-                                    ic.cachedClassId = inst->classDef->classId;
-                                    ic.cachedMethod = rawMethod;
-                                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                    );
-                                    bound->paramNames = rawMethod->paramNames;
-                                    bound->isRef = rawMethod->isRef;
-                                    bound->defaultValues = rawMethod->defaultValues;
-                                    bound->hasRestParam = rawMethod->hasRestParam;
-                                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                    if (rawMethod->upvalueCount > 0) {
-                                        bound->upvalueCount = rawMethod->upvalueCount;
-                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                                            bound->upvalues[i] = rawMethod->upvalues[i];
-                                        }
-                                    }
-                                    bound->nativeFn = rawMethod->nativeFn;
-                                    bound->boundSelf = Value(inst);
-                                    bound->boundClass = Value(cls);
-                                    result = Value(bound);
-                                    found = true;
-                                    break;
-                                }
-                                cls = cls->parent;
-                            }
-                            if (!found) {
-                                auto getattrMethod = findDunder(obj, "__getattr__");
-                                if (getattrMethod) {
-                                    try {
-                                        result = callDunder(obj, getattrMethod, {Value(field)});
-                                        found = true;
-                                    } catch (...) {
-                                        found = false;
-                                    }
-                                }
-                            }
+                    if (inst->fields) {
+                        auto it = inst->fields->keyMap.find(keyVal);
+                        if (it != inst->fields->keyMap.end()) {
+                            getReg(a) = inst->fields->elements[it->second].second;
+                            ic.cachedClassId = inst->classDef->classId;
+                            ic.cachedFieldIndex = static_cast<int>(it->second);
+                            break;
                         }
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
-                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
-                            result = d->elements[ic.cachedFieldIndex].second;
-                            found = true;
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                            getReg(a) = d->elements[ic.cachedFieldIndex].second;
+                            break;
                         }
                     }
+                    auto it = d->keyMap.find(keyVal);
+                    if (it != d->keyMap.end()) {
+                        getReg(a) = d->elements[it->second].second;
+                        ic.cachedBuiltinType = BuiltinType::DICT;
+                        ic.cachedFieldIndex = static_cast<int>(it->second);
+                        break;
+                    }
+                }
+
+                const std::string& field = keyVal.asString();
+                bool found = false;
+                Value result;
+                
+                if (obj.isInstance()) {
+                    auto inst = obj.asInstance();
+                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
+                        auto rawMethod = ic.cachedMethod;
+                        auto bound = GcHeap::get().allocate<ObjClosure>(
+                            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                        );
+                        bound->paramNames = rawMethod->paramNames;
+                        bound->isRef = rawMethod->isRef;
+                        bound->defaultValues = rawMethod->defaultValues;
+                        bound->hasRestParam = rawMethod->hasRestParam;
+                        bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                        if (rawMethod->upvalueCount > 0) {
+                            bound->upvalueCount = rawMethod->upvalueCount;
+                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                            for (int i = 0; i < bound->upvalueCount; ++i) {
+                                bound->upvalues[i] = rawMethod->upvalues[i];
+                            }
+                        }
+                        bound->nativeFn = rawMethod->nativeFn;
+                        bound->boundSelf = Value(inst);
+                        bound->boundClass = Value(inst->classDef);
+                        result = Value(bound);
+                        found = true;
+                    }
                     if (!found) {
-                        auto it = d->keyMap.find(chunk->constants.data()[ic.nameIdx]);
-                        if (it != d->keyMap.end()) {
-                            result = d->elements[it->second].second;
-                            found = true;
-                            ic.cachedBuiltinType = BuiltinType::DICT;
-                            ic.cachedFieldIndex = static_cast<int>(it->second);
+                        auto cls = inst->classDef;
+                        while (cls) {
+                            auto it = cls->methods.find(field);
+                            if (it != cls->methods.end()) {
+                                auto rawMethod = it->second;
+                                ic.cachedClassId = inst->classDef->classId;
+                                ic.cachedMethod = rawMethod;
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                                );
+                                bound->paramNames = rawMethod->paramNames;
+                                bound->isRef = rawMethod->isRef;
+                                bound->defaultValues = rawMethod->defaultValues;
+                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                if (rawMethod->upvalueCount > 0) {
+                                    bound->upvalueCount = rawMethod->upvalueCount;
+                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                        bound->upvalues[i] = rawMethod->upvalues[i];
+                                    }
+                                }
+                                bound->nativeFn = rawMethod->nativeFn;
+                                bound->boundSelf = Value(inst);
+                                bound->boundClass = Value(cls);
+                                result = Value(bound);
+                                found = true;
+                                break;
+                            }
+                            cls = cls->parent;
+                        }
+                        if (!found) {
+                            auto getattrMethod = findDunder(obj, "__getattr__");
+                            if (getattrMethod) {
+                                try {
+                                    result = callDunder(obj, getattrMethod, {Value(field)});
+                                    found = true;
+                                } catch (...) {
+                                    found = false;
+                                }
+                            }
                         }
                     }
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
@@ -4194,7 +4215,7 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[b]);
-                const std::string& field = chunk->constants.data()[ic.nameIdx].asString();
+                Value keyVal = chunk->constants.data()[ic.nameIdx];
                 Value obj = getReg(a);
                 Value val = getReg(c);
                 
@@ -4203,19 +4224,17 @@ Value VM::run(int targetFrameDepth) {
                     inst->checkModify();
                     auto setattrMethod = findDunder(obj, DUNDER_SETATTR);
                     if (setattrMethod) {
-                        callDunder(obj, setattrMethod, {Value(field), val});
+                        callDunder(obj, setattrMethod, {keyVal, val});
                     } else {
                         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
-                        Value key = chunk->constants.data()[ic.nameIdx];
                         if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                            Value cachedKey = inst->fields->elements[ic.cachedFieldIndex].first;
-                            if (cachedKey.as_bits == key.as_bits || cachedKey.asString() == field) {
+                            if (inst->fields->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                                 inst->fields->elements[ic.cachedFieldIndex].second = val;
                                 goto set_prop_done;
                             }
                         }
                         {
-                            auto it = inst->fields->keyMap.find(key);
+                            auto it = inst->fields->keyMap.find(keyVal);
                             if (it != inst->fields->keyMap.end()) {
                                 inst->fields->elements[it->second].second = val;
                                 ic.cachedClassId = inst->classDef->classId;
@@ -4223,8 +4242,8 @@ Value VM::run(int targetFrameDepth) {
                             } else {
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedFieldIndex = static_cast<int>(inst->fields->elements.size());
-                                inst->fields->keyMap[key] = inst->fields->elements.size();
-                                inst->fields->elements.push_back({key, val});
+                                inst->fields->keyMap[keyVal] = inst->fields->elements.size();
+                                inst->fields->elements.push_back({keyVal, val});
                             }
                         }
                     set_prop_done:;
@@ -4232,13 +4251,13 @@ Value VM::run(int targetFrameDepth) {
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
-                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants.data()[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                             d->elements[ic.cachedFieldIndex].second = val;
                             goto set_prop_dict_done;
                         }
                     }
                     {
-                        auto it = d->keyMap.find(chunk->constants.data()[ic.nameIdx]);
+                        auto it = d->keyMap.find(keyVal);
                         if (it != d->keyMap.end()) {
                             d->elements[it->second].second = val;
                             ic.cachedBuiltinType = BuiltinType::DICT;
@@ -4246,14 +4265,15 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             ic.cachedBuiltinType = BuiltinType::DICT;
                             ic.cachedFieldIndex = static_cast<int>(d->elements.size());
-                            d->keyMap[chunk->constants.data()[ic.nameIdx]] = d->elements.size();
-                            d->elements.push_back({chunk->constants.data()[ic.nameIdx], val});
+                            d->keyMap[keyVal] = d->elements.size();
+                            d->elements.push_back({keyVal, val});
                         }
                     }
                 set_prop_dict_done:;
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
                     if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");
+                    const std::string& field = keyVal.asString();
                     auto it = ns->fields.find(field);
                     if (it != ns->fields.end()) {
                         if (it->second.isConst) throw std::runtime_error("RegVM Error: Cannot modify const field '" + field + "'.");

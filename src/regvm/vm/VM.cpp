@@ -2555,13 +2555,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                bool eq = false;
-                if (vb.isString() && vc.isString()) {
-                    eq = (vb.asString() == vc.asString());
-                } else {
-                    eq = Value::equals(vb, vc);
-                }
-                getReg(a) = Value(eq);
+                getReg(a) = Value(Value::equals(vb, vc));
                 break;
             }
             case OpCode::NEQ: {
@@ -2575,13 +2569,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(true); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                bool eq = false;
-                if (vb.isString() && vc.isString()) {
-                    eq = (vb.asString() == vc.asString());
-                } else {
-                    eq = Value::equals(vb, vc);
-                }
-                getReg(a) = Value(!eq);
+                getReg(a) = Value(!Value::equals(vb, vc));
                 break;
             }
             case OpCode::LT: {
@@ -3045,7 +3033,12 @@ Value VM::run(int targetFrameDepth) {
                             if (noThrow) result = Value::uninit();
                             else throw std::out_of_range("RegVM Error: String index out of bounds.");
                         } else {
-                            result = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
+                            if (objStr->isAscii) {
+                                char c_str[2] = { objStr->str[i], '\0' };
+                                result = Value(c_str);
+                            } else {
+                                result = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
+                            }
                         }
                     } else if (obj.isObjType(ObjType::DICT)) {
                         auto dict = static_cast<ObjDict*>(obj.asObj());

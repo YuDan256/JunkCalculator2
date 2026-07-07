@@ -220,7 +220,8 @@ _re_rm_one(node: dict, text: string, pos: whole, tl: whole) -> whole = {
     }
 }
 
-_re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = match (node) {
+_re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = {
+    match (node) {
     {type: "group", inner, idx} => {
         r = _re_rm(inner, 0, text, pos, tl, caps)
         if (r >= 0) caps.set(idx, pos, r)
@@ -242,6 +243,7 @@ _re_rm_single(node: dict, text: string, pos: whole, tl: whole, caps: _ReCaps) ->
         return -1
     },
     _ => _re_rm_one(node, text, pos, tl)
+    }
 }
 
 _re_rm(nodes: list, idx: whole, text: string, pos: whole, tl: whole, caps: _ReCaps) -> whole = {

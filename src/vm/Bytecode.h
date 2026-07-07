@@ -3,728 +3,616 @@
 
 #include "../memory/Value.h"
 #include <cstdint>
-#include <iomanip>
-#include <iostream>
 #include <string>
 #include <vector>
+#include <iostream>
+#include <iomanip>
 
 namespace jc {
 
-    // ═══════════════════════════════════════════
-    // 操作码 (Opcode)
-    // ═══════════════════════════════════════════
-    enum class OpCode : uint8_t {
-        // 栈操作
-        OP_CONSTANT,        // 压入常量: [idx:16bit]
-        OP_NONE,            // 压入 none
-        OP_TRUE,            // 压入 1.0
-        OP_FALSE,           // 压入 0.0
-        OP_POP,             // 弹出栈顶
+// ============================================================================
+// 寄存器虚拟机操作码 (Register VM OpCodes)
+// ============================================================================
+enum class OpCode : uint8_t {
+    // 寄存器与常量加载
+    MOVE,           // R(A) := R(B)
+    LOADK,          // R(A) := Kst(Bx) [Ext]
+    EXTRAARG,       // 扩展参数 Ax (24-bit)，紧跟在需要扩展的指令后
+    LOAD_NIL,       // R(A) := none
+    LOAD_BOOL,      // R(A) := (bool)B
+    
+    // 全局变量与上值
+    GET_GLOBAL,     // R(A) := Globals[Bx] [Ext]
+    SET_GLOBAL,     // Globals[Bx] := R(A) [Ext]
+    SET_GLOBAL_REF, // Globals[Bx] := ref R(A) [Ext]
+    DEFINE_CONST_GLOBAL, // Globals[Bx] := const R(A) [Ext]
+    GET_UPVAL,      // R(A) := UpValue[B] [Ext]
+    SET_UPVAL,      // UpValue[B] := R(A) [Ext]
+    DELETE_GLOBAL,  // Delete Globals[Bx] [Ext]
+    IS_UNINIT,      // R(A) := is_uninit(R(B))
 
-        // 算术
-        OP_ADD,
-        OP_SUBTRACT,
-        OP_MULTIPLY,
-        OP_DIVIDE,
-        OP_MODULO,
-        OP_POWER,
-        OP_LEFT_DIVIDE,     // ★ \ 左除
-        OP_NEGATE,          // 一元取负
-        OP_NOT,             // 逻辑取反
-        OP_TO_BOOL,         // ★ 强制转为布尔值
-        OP_BIT_NOT,         // ★ ~ 按位取反
-        OP_BIT_AND,         // ★ & 
-        OP_BIT_OR,          // ★ |
-        OP_BIT_XOR,         // ★ ^^
-        OP_BIT_SHIFT_LEFT,  // ★ <<
-        OP_BIT_SHIFT_RIGHT, // ★ >>
+    // 算术与逻辑运算 (支持 K-Bit: B 和 C 可以是寄存器或常量)
+    ADD,            // R(A) := RK(B) + RK(C)
+    SUB,            // R(A) := RK(B) - RK(C)
+    MUL,            // R(A) := RK(B) * RK(C)
+    DIV,            // R(A) := RK(B) / RK(C)
+    MOD,            // R(A) := RK(B) % RK(C)
+    POW,            // R(A) := RK(B) ^ RK(C)
+    LDIV,           // R(A) := RK(B) \ RK(C)
+    BAND,           // R(A) := RK(B) & RK(C)
+    BOR,            // R(A) := RK(B) | RK(C)
+    BXOR,           // R(A) := RK(B) ^^ RK(C)
+    SHL,            // R(A) := RK(B) << RK(C)
+    SHR,            // R(A) := RK(B) >> RK(C)
+    
+    // 一元运算
+    UNM,            // R(A) := -R(B)
+    NOT,            // R(A) := !R(B)
+    BNOT,           // R(A) := ~R(B)
+    TO_BOOL,        // R(A) := !!R(B)
 
-        // 比较
-        OP_EQUAL,
-        OP_NOT_EQUAL,
-        OP_LESS,
-        OP_LESS_EQUAL,
-        OP_GREATER,
-        OP_GREATER_EQUAL,
+    // 比较与跳转
+    EQ,             // R(A) := RK(B) == RK(C)
+    NEQ,            // R(A) := RK(B) != RK(C)
+    LT,             // R(A) := RK(B) <  RK(C)
+    LE,             // R(A) := RK(B) <= RK(C)
+    GT,             // R(A) := RK(B) >  RK(C)
+    GE,             // R(A) := RK(B) >= RK(C)
+    
+    JMP,            // PC += sAx (24-bit 超大范围跳转)
+    JMP_TRUE,       // if (R(A) truthy) PC += sBx
+    JMP_FALSE,      // if (!R(A) truthy) PC += sBx
 
-        // 全局变量
-        OP_GET_GLOBAL,      // [ic_idx:16bit]
-        OP_SET_GLOBAL,      // [ic_idx:16bit]
-        OP_SET_GLOBAL_REF,  // [ic_idx:16bit]
-        OP_DEFINE_CONST_GLOBAL, // [ic_idx:16bit]
-        OP_DELETE_GLOBAL,   // [name_idx:16bit] ★ 新增
-        OP_IS_UNINIT,       // 检查栈顶是否为 UNINIT，返回 bool
+    // 函数调用与返回
+    CALL,           // R(A) := Call(callee = R(B), args = R(B+1)...R(B+C)) [Ext A, B, C]
+    TAIL_CALL,      // 尾调用 [Ext A, B, C]
+    RETURN,         // return R(A)
+    CLOSURE,        // R(A) := Closure(fnIdx = Bx) [Ext]
 
-        // 局部变量
-        OP_GET_LOCAL,       // [slot:16bit]
-        OP_SET_LOCAL,       // [slot:16bit]
+    // 引用参数
+    GET_REF_PARAM,  // R(A) := RefParam[Bx] [Ext]
+    SET_REF_PARAM,  // RefParam[Bx] := R(A) [Ext]
+    PASS_REFS,      // pass_refs(sigIdx = Bx) [Ext]
 
-        // 跳转
-        OP_JUMP,            // 无条件跳转 [offset:16bit]
-        OP_JUMP_IF_FALSE,   // 条件跳转 [offset:16bit]
-        OP_JUMP_IF_TRUE,    // 条件跳转 [offset:16bit]
-        OP_LOOP,            // 回跳 [offset:16bit]
+    // 面向对象与属性
+    GET_PROP,       // R(A) := R(B)[icIdx = C] [Ext A, B, C]
+    TRY_GET_PROP,   // R(A), R(A+1) := try_get(R(B), icIdx = C) [Ext A, B, C]
+    SET_PROP,       // R(A)[icIdx = B] := R(C) [Ext A, B, C]
+    INVOKE,         // R(A) := Invoke(obj = R(A), args = R(A+1)...R(A+B), icIdx = C) [Ext A, B, C]
+    TAIL_INVOKE,    // [Ext A, B, C]
+    INVOKE_FALLBACK,// R(A) := InvokeFallback(obj = R(A), args = R(A+1)...R(A+B), fallback = R(A+B+1), icIdx = C) [Ext A, B, C]
+    TAIL_INVOKE_FALLBACK, // [Ext A, B, C]
+    GET_SUPER,      // R(A) := super(self = R(B), nameIdx = C) [Ext A, B, C]
+    SUPER_INVOKE,   // R(A) := SuperInvoke(self = R(A), args = R(A+1)...R(A+B), nameIdx = C) [Ext A, B, C]
+    TAIL_SUPER_INVOKE, // [Ext A, B, C]
+    GET_SELF,       // R(A) := self
+    GET_CURRENT_CLOSURE, // R(A) := current_closure
+    CLASS,          // R(A) := Class(nameIdx = Bx) [Ext]
+    METHOD,         // R(A).Method(nameIdx = B) := R(C) [Ext]
+    INHERIT,        // R(A) inherits R(B)
 
-        // 函数
-        OP_CALL,            // [arg_count:8bit]
-        OP_RETURN,
+    // 容器构建与操作
+    BUILD_LIST,     // R(A) := List(R(B) ... R(B+C-1)) [Ext B, C]
+    BUILD_DICT,     // R(A) := Dict(R(B) ... R(B+C-1)) [Ext B, C]
+    DICT_REST,      // R(A) := dict_rest(R(B), exclude_keys = R(C)) [Ext C]
+    BUILD_SET,      // R(A) := Set(R(B) ... R(B+C-1)) [Ext B, C]
+    BUILD_MATRIX,   // R(A) := Matrix(elements = R(B)..., shapeIdx = C) [Ext A, B, C]
+    BUILD_NAMESPACE,// R(A) := Namespace(nameIdx = B, count = C). Triplets (key, slot, isConst) start at R(A+1) [Ext A, B, C]
+    LIST_INIT,      // R(A) := []
+    LIST_APPEND,    // R(A).append(R(B))
+    LIST_COMP_END,  // R(A) := comp_end(R(A))
+    INDEX_GET,      // R(A) := R(B)[R(B+1)...R(B+C)] [Ext A, B, C]
+    INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(A+C+1) [Ext A, C]
+    SLICE_GET,      // R(A) := slice_get(R(B), dims = C, args = R(B+1)...) [Ext A, B, C]
+    SLICE_SET,      // slice_set(R(A), dims = C, args = R(A+1)..., val = R(A + 3*C + 1)) [Ext A, C]
 
-        // 索引
-        OP_INDEX_GET,       // [dim_count:8bit]
-        OP_INDEX_SET,       // [dim_count:8bit]
+    // 字符串操作
+    STRINGIFY,      // R(A) := str(R(B))
+    CONCAT_STRINGS, // R(A) := concat(R(B) ... R(B+C-1)) [Ext B, C]
+    FORMAT_STRING,  // R(A) := format(R(B), Kst(C))
 
-        // 字符串/矩阵
-        OP_BUILD_LIST,      // [count:16bit]
-        OP_BUILD_MATRIX,    // [shape_idx:16bit]
+    // 异常处理
+    TRY_BEGIN,      // Push Try Handler (catch PC = PC + sBx, errReg = A)
+    TRY_END,        // Pop Try Handler
+    THROW,          // Throw R(A)
 
-        // 函数（扩展）
-        OP_CLOSURE,         // 创建闭包: [func_idx:16bit]
+    // 迭代器与包含
+    ITER_INIT,      // R(A) := Iter(R(B), destruct = C)
+    ITER_NEXT,      // R(A) := Next(R(B)). Returns uninit if exhausted.
+    IN,             // R(A) := R(B) in R(C)
 
-        // 复合赋值辅助
-        OP_DUP,             // 复制栈顶
+    // 模块导入
+    IMPORT,         // R(A) := import(R(B))
 
-        // for-in
-        OP_ITER_INIT,       // 将可迭代对象转换为内部迭代器
-        OP_ITER_NEXT,       // 取下一个元素，如果结束则跳转 [offset:16bit]
-        OP_IN,
+    // 类型与断言
+    ASSERT_PARAM_TYPE,  // assert_param(R(A), typeIC = B, nameKst = C) [Ext B, C]
+    ASSERT_RETURN_TYPE, // assert_return(R(A), typeIC = B) [Ext]
+    MATCH_TYPE,         // R(A) := match_type(R(B), typeIC = C) [Ext]
+    MATCH_SHAPE,        // R(A) := match_shape(R(B), shapeIdx = C) [Ext]
+};
 
-        // 字符串
-        OP_STRINGIFY,       // 将栈顶转为字符串
-        OP_CONCAT_STRINGS,  // [count:16bit] 拼接 N 个字符串
+inline std::string opCodeToString(OpCode op) {
+    switch (op) {
+        case OpCode::MOVE: return "MOVE";
+        case OpCode::LOADK: return "LOADK";
+        case OpCode::EXTRAARG: return "EXTRAARG";
+        case OpCode::LOAD_NIL: return "LOAD_NIL";
+        case OpCode::LOAD_BOOL: return "LOAD_BOOL";
+        case OpCode::GET_GLOBAL: return "GET_GLOBAL";
+        case OpCode::SET_GLOBAL: return "SET_GLOBAL";
+        case OpCode::SET_GLOBAL_REF: return "SET_GLOBAL_REF";
+        case OpCode::DEFINE_CONST_GLOBAL: return "DEFINE_CONST_GLOBAL";
+        case OpCode::GET_UPVAL: return "GET_UPVAL";
+        case OpCode::SET_UPVAL: return "SET_UPVAL";
+        case OpCode::DELETE_GLOBAL: return "DELETE_GLOBAL";
+        case OpCode::IS_UNINIT: return "IS_UNINIT";
+        case OpCode::ADD: return "ADD";
+        case OpCode::SUB: return "SUB";
+        case OpCode::MUL: return "MUL";
+        case OpCode::DIV: return "DIV";
+        case OpCode::MOD: return "MOD";
+        case OpCode::POW: return "POW";
+        case OpCode::LDIV: return "LDIV";
+        case OpCode::BAND: return "BAND";
+        case OpCode::BOR: return "BOR";
+        case OpCode::BXOR: return "BXOR";
+        case OpCode::SHL: return "SHL";
+        case OpCode::SHR: return "SHR";
+        case OpCode::UNM: return "UNM";
+        case OpCode::NOT: return "NOT";
+        case OpCode::BNOT: return "BNOT";
+        case OpCode::TO_BOOL: return "TO_BOOL";
+        case OpCode::EQ: return "EQ";
+        case OpCode::NEQ: return "NEQ";
+        case OpCode::LT: return "LT";
+        case OpCode::LE: return "LE";
+        case OpCode::GT: return "GT";
+        case OpCode::GE: return "GE";
+        case OpCode::JMP: return "JMP";
+        case OpCode::JMP_TRUE: return "JMP_TRUE";
+        case OpCode::JMP_FALSE: return "JMP_FALSE";
+        case OpCode::CALL: return "CALL";
+        case OpCode::TAIL_CALL: return "TAIL_CALL";
+        case OpCode::RETURN: return "RETURN";
+        case OpCode::CLOSURE: return "CLOSURE";
+        case OpCode::GET_REF_PARAM: return "GET_REF_PARAM";
+        case OpCode::SET_REF_PARAM: return "SET_REF_PARAM";
+        case OpCode::PASS_REFS: return "PASS_REFS";
+        case OpCode::GET_PROP: return "GET_PROP";
+        case OpCode::TRY_GET_PROP: return "TRY_GET_PROP";
+        case OpCode::SET_PROP: return "SET_PROP";
+        case OpCode::INVOKE: return "INVOKE";
+        case OpCode::TAIL_INVOKE: return "TAIL_INVOKE";
+        case OpCode::INVOKE_FALLBACK: return "INVOKE_FALLBACK";
+        case OpCode::TAIL_INVOKE_FALLBACK: return "TAIL_INVOKE_FALLBACK";
+        case OpCode::GET_SUPER: return "GET_SUPER";
+        case OpCode::SUPER_INVOKE: return "SUPER_INVOKE";
+        case OpCode::TAIL_SUPER_INVOKE: return "TAIL_SUPER_INVOKE";
+        case OpCode::GET_SELF: return "GET_SELF";
+        case OpCode::GET_CURRENT_CLOSURE: return "GET_CURRENT_CLOSURE";
+        case OpCode::CLASS: return "CLASS";
+        case OpCode::METHOD: return "METHOD";
+        case OpCode::INHERIT: return "INHERIT";
+        case OpCode::BUILD_LIST: return "BUILD_LIST";
+        case OpCode::BUILD_DICT: return "BUILD_DICT";
+        case OpCode::DICT_REST: return "DICT_REST";
+        case OpCode::BUILD_SET: return "BUILD_SET";
+        case OpCode::BUILD_MATRIX: return "BUILD_MATRIX";
+        case OpCode::BUILD_NAMESPACE: return "BUILD_NAMESPACE";
+        case OpCode::LIST_INIT: return "LIST_INIT";
+        case OpCode::LIST_APPEND: return "LIST_APPEND";
+        case OpCode::LIST_COMP_END: return "LIST_COMP_END";
+        case OpCode::INDEX_GET: return "INDEX_GET";
+        case OpCode::INDEX_SET: return "INDEX_SET";
+        case OpCode::SLICE_GET: return "SLICE_GET";
+        case OpCode::SLICE_SET: return "SLICE_SET";
+        case OpCode::STRINGIFY: return "STRINGIFY";
+        case OpCode::CONCAT_STRINGS: return "CONCAT_STRINGS";
+        case OpCode::FORMAT_STRING: return "FORMAT_STRING";
+        case OpCode::TRY_BEGIN: return "TRY_BEGIN";
+        case OpCode::TRY_END: return "TRY_END";
+        case OpCode::THROW: return "THROW";
+        case OpCode::ITER_INIT: return "ITER_INIT";
+        case OpCode::ITER_NEXT: return "ITER_NEXT";
+        case OpCode::IN: return "IN";
+        case OpCode::IMPORT: return "IMPORT";
+        case OpCode::ASSERT_PARAM_TYPE: return "ASSERT_PARAM_TYPE";
+        case OpCode::ASSERT_RETURN_TYPE: return "ASSERT_RETURN_TYPE";
+        case OpCode::MATCH_TYPE: return "MATCH_TYPE";
+        case OpCode::MATCH_SHAPE: return "MATCH_SHAPE";
+        default: return "UNKNOWN";
+    }
+}
 
-        // 异常处理
-        OP_TRY_BEGIN,       // [catch_offset:16bit] 设置异常处理器
-        OP_TRY_END,         // 移除异常处理器
-        OP_THROW,           // 抛出异常
+// ============================================================================
+// 32-bit 指令编码与解码宏
+// 格式 A (iABC) : [OpCode:8] [A:8] [B:8] [C:8]
+// 格式 B (iABx) : [OpCode:8] [A:8] [Bx:16]
+// 格式 C (iAsBx): [OpCode:8] [A:8] [sBx:16]
+// 格式 D (iAx)  : [OpCode:8] [Ax:24]
+// 格式 E (isAx) : [OpCode:8] [sAx:24]
+// ============================================================================
+using Instruction = uint32_t;
 
-        // 字典
-        OP_BUILD_DICT,      // [count:16bit] 从 2N 个值构建字典
-        OP_DICT_REST,       // [count:16bit] ★ 新增
-        OP_BUILD_NAMESPACE, // [name_idx:16bit, count:16bit] ★ 新增
-        OP_BUILD_SET,       // [count:16bit] ★ 新增：从 N 个值构建集合
+// 提取字段
+inline OpCode GET_OPCODE(Instruction i) { return static_cast<OpCode>(i & 0xFF); }
+inline int GET_A(Instruction i) { return (i >> 8) & 0xFF; }
+inline int GET_B(Instruction i) { return (i >> 16) & 0xFF; }
+inline int GET_C(Instruction i) { return (i >> 24) & 0xFF; }
+inline int GET_Bx(Instruction i) { return i >> 16; }
+inline int GET_sBx(Instruction i) { return static_cast<int>(i >> 16) - 0x7FFF; } // 偏移量 0x7FFF
+inline int GET_Ax(Instruction i) { return i >> 8; }
+inline int GET_sAx(Instruction i) { return static_cast<int>(i >> 8) - 0x7FFFFF; } // 偏移量 0x7FFFFF
 
-        // 格式化字符串
-        OP_FORMAT_STRING,   // [spec_idx:16bit] 格式化栈顶值
+// 构造指令
+inline Instruction CREATE_ABC(OpCode op, int a, int b, int c) {
+    return (static_cast<uint32_t>(op) & 0xFF) |
+           ((static_cast<uint32_t>(a) & 0xFF) << 8) |
+           ((static_cast<uint32_t>(b) & 0xFF) << 16) |
+           ((static_cast<uint32_t>(c) & 0xFF) << 24);
+}
 
-        // 列表推导式
-        OP_LIST_INIT,       // 压入空 List
-        OP_LIST_APPEND,     // 将栈顶值追加到栈中第 N 位置的 List
-        OP_LIST_COMP_END,   // ★ 新增：列表推导式结束，执行智能降维
+inline Instruction CREATE_ABx(OpCode op, int a, int bx) {
+    return (static_cast<uint32_t>(op) & 0xFF) |
+           ((static_cast<uint32_t>(a) & 0xFF) << 8) |
+           ((static_cast<uint32_t>(bx) & 0xFFFF) << 16);
+}
 
-        // 闭包上值
-        OP_GET_UPVALUE,     // [idx:16bit]
-        OP_SET_UPVALUE,     // [idx:16bit]
+inline Instruction CREATE_AsBx(OpCode op, int a, int sbx) {
+    return CREATE_ABx(op, a, sbx + 0x7FFF);
+}
 
-        // 类 & OOP
-        OP_CLASS,           // [name_idx:16bit] 创建 ClassDefinition
-        OP_METHOD,          // [name_idx:16bit] 添加方法到类
-        OP_INHERIT,         // 继承
-        OP_GET_PROPERTY,    // [ic_idx:16bit]
-        OP_TRY_GET_PROPERTY,// [ic_idx:16bit]
-        OP_SET_PROPERTY,    // [ic_idx:16bit]
-        OP_INVOKE,          // [argc:8bit, ic_idx:16bit]
-        OP_GET_SUPER,       // [name_idx:16bit]
-        OP_SUPER_INVOKE,    // [name_idx:16bit, argc:8bit]
-        OP_GET_SELF,        // ★ 新增
+inline Instruction CREATE_Ax(OpCode op, int ax) {
+    return (static_cast<uint32_t>(op) & 0xFF) |
+           ((static_cast<uint32_t>(ax) & 0xFFFFFF) << 8);
+}
 
-        OP_TAIL_CALL,       // [arg_count:8bit]
-        OP_TAIL_INVOKE,     // [argc:8bit, ic_idx:16bit]
-        OP_TAIL_SUPER_INVOKE, // [name_idx:16bit, argc:8bit]
-        OP_INVOKE_FALLBACK, // [argc:8bit, ic_idx:16bit] ★ 新增
-        OP_TAIL_INVOKE_FALLBACK, // [argc:8bit, ic_idx:16bit] ★ 新增
+inline Instruction CREATE_sAx(OpCode op, int sax) {
+    return CREATE_Ax(op, sax + 0x7FFFFF);
+}
 
-        // 导入
-        OP_IMPORT,          // [path_idx:16bit]
+// ============================================================================
+// K-Bit 常量复用机制与 EXTRAARG 转义标志
+// B 和 C 操作数的最高位 (第 8 位，即 0x80) 为 1 时，表示常量池索引 (0~127)
+// ============================================================================
+constexpr int BITRK = 0x80;
+inline bool ISK(int x) { return (x & BITRK) != 0; }
+inline int INDEXK(int x) { return x & ~BITRK; }
+inline int RKASK(int x) { return x | BITRK; }
 
-        // 切片
-        OP_SLICE_GET,       // 切片索引读取
-        OP_SLICE_SET,
-        OP_GET_REF_PARAM,   // [idx:16bit] ★ 新增
-        OP_SET_REF_PARAM,   // [idx:16bit] ★ 新增
-        OP_PASS_REFS,       // [sig_idx:16bit] ★ 新增
+// 转义标志定义
+constexpr int ESCAPE_NORMAL_8 = 0xFF;    // 普通 8-bit 操作数 (如 A) 的转义标志
+constexpr int ESCAPE_NORMAL_16 = 0xFFFF; // 普通 16-bit 操作数 (如 Bx) 的转义标志
+constexpr int ESCAPE_KBIT_REG = 0x7F;    // K-Bit 寄存器的转义标志 (127)
+constexpr int ESCAPE_KBIT_CONST = 0xFF;  // K-Bit 常量的转义标志 (255)
 
-        OP_ASSERT_PARAM_TYPE,   // 参数断言：[type_idx:16bit, name_idx:16bit]
-        OP_ASSERT_RETURN_TYPE,  // 返回值断言：[type_idx:16bit]
+// ============================================================================
+// 寄存器机 Chunk (存储字节码与元数据)
+// ============================================================================
+enum class BuiltinType : int8_t {
+    UNKNOWN = -1,
+    ANY, INT, FLOAT, REAL, NUMBER, WHOLE, EXACT, STRING, BOOL, BINARY, NONE_TYPE,
+    LIST, DICT, SET, FRACTION, COMPLEX, BASENUM, SYMBOLIC,
+    REALMAT, COMPLEXMAT, STRINGMAT, MATRIX, FUNC, CLASS, INSTANCE, NAMESPACE,
+    ITERABLE, CALLABLE, INDEXABLE, HASHABLE, NUMERIC,
+    CUSTOM_CLASS
+};
 
-        OP_MATCH_TYPE,          // [type_idx:16bit] 检查栈顶类型，返回 bool
-        OP_MATCH_SHAPE,         // [shape_idx:16bit] 检查栈顶形状，返回 bool
+struct InlineCache {
+    uint32_t nameIdx = 0;
+    int cachedGlobalSlot = -1;
+    uint64_t cachedClassId = 0;
+    ObjClosure* cachedMethod = nullptr;
+    int cachedFieldIndex = -1;
+    BuiltinType cachedBuiltinType = BuiltinType::UNKNOWN;
+    std::any cachedNativeFn;
+};
 
-        OP_EXTEND,              // ★ 新增：扩展下一个操作数为 32 位 [high16:16bit]
-    };
+struct ShapePattern {
+    uint32_t minRows;
+    uint32_t maxRows;
+    uint32_t minCols;
+    uint32_t maxCols;
+    uint8_t exactMask;
+};
 
-    // =================================================================
-// ★ 统一的 OpCode 字符串映射 (供反汇编器与 Profiler 共享)
-// =================================================================
-    inline std::string opCodeToString(OpCode op) {
-        switch (op) {
-        case OpCode::OP_CONSTANT: return "OP_CONSTANT";
-        case OpCode::OP_NONE: return "OP_NONE";
-        case OpCode::OP_TRUE: return "OP_TRUE";
-        case OpCode::OP_FALSE: return "OP_FALSE";
-        case OpCode::OP_POP: return "OP_POP";
-        case OpCode::OP_ADD: return "OP_ADD";
-        case OpCode::OP_SUBTRACT: return "OP_SUBTRACT";
-        case OpCode::OP_MULTIPLY: return "OP_MULTIPLY";
-        case OpCode::OP_DIVIDE: return "OP_DIVIDE";
-        case OpCode::OP_MODULO: return "OP_MODULO";
-        case OpCode::OP_POWER: return "OP_POWER";
-        case OpCode::OP_LEFT_DIVIDE: return "OP_LEFT_DIVIDE";
-        case OpCode::OP_NEGATE: return "OP_NEGATE";
-        case OpCode::OP_NOT: return "OP_NOT";
-        case OpCode::OP_TO_BOOL: return "OP_TO_BOOL";
-        case OpCode::OP_BIT_NOT: return "OP_BIT_NOT";
-        case OpCode::OP_EQUAL: return "OP_EQUAL";
-        case OpCode::OP_NOT_EQUAL: return "OP_NOT_EQUAL";
-        case OpCode::OP_LESS: return "OP_LESS";
-        case OpCode::OP_LESS_EQUAL: return "OP_LESS_EQUAL";
-        case OpCode::OP_GREATER: return "OP_GREATER";
-        case OpCode::OP_GREATER_EQUAL: return "OP_GREATER_EQUAL";
-        case OpCode::OP_GET_GLOBAL: return "OP_GET_GLOBAL";
-        case OpCode::OP_SET_GLOBAL: return "OP_SET_GLOBAL";
-        case OpCode::OP_SET_GLOBAL_REF: return "OP_SET_GLOBAL_REF";
-        case OpCode::OP_DEFINE_CONST_GLOBAL: return "OP_DEFINE_CONST_GLOBAL";
-        case OpCode::OP_DELETE_GLOBAL: return "OP_DELETE_GLOBAL";
-        case OpCode::OP_IS_UNINIT: return "OP_IS_UNINIT";
-        case OpCode::OP_GET_LOCAL: return "OP_GET_LOCAL";
-        case OpCode::OP_SET_LOCAL: return "OP_SET_LOCAL";
-        case OpCode::OP_JUMP: return "OP_JUMP";
-        case OpCode::OP_JUMP_IF_FALSE: return "OP_JUMP_IF_FALSE";
-        case OpCode::OP_JUMP_IF_TRUE: return "OP_JUMP_IF_TRUE";
-        case OpCode::OP_LOOP: return "OP_LOOP";
-        case OpCode::OP_CALL: return "OP_CALL";
-        case OpCode::OP_RETURN: return "OP_RETURN";
-        case OpCode::OP_INDEX_GET: return "OP_INDEX_GET";
-        case OpCode::OP_INDEX_SET: return "OP_INDEX_SET";
-        case OpCode::OP_BUILD_LIST: return "OP_BUILD_LIST";
-        case OpCode::OP_BUILD_MATRIX: return "OP_BUILD_MATRIX";
-        case OpCode::OP_CLOSURE: return "OP_CLOSURE";
-        case OpCode::OP_DUP: return "OP_DUP";
-        case OpCode::OP_ITER_INIT: return "OP_ITER_INIT";
-        case OpCode::OP_ITER_NEXT: return "OP_ITER_NEXT";
-        case OpCode::OP_IN: return "OP_IN";
-        case OpCode::OP_STRINGIFY: return "OP_STRINGIFY";
-        case OpCode::OP_CONCAT_STRINGS: return "OP_CONCAT_STRINGS";
-        case OpCode::OP_TRY_BEGIN: return "OP_TRY_BEGIN";
-        case OpCode::OP_TRY_END: return "OP_TRY_END";
-        case OpCode::OP_THROW: return "OP_THROW";
-        case OpCode::OP_BUILD_DICT: return "OP_BUILD_DICT";
-        case OpCode::OP_DICT_REST: return "OP_DICT_REST";
-        case OpCode::OP_BUILD_NAMESPACE: return "OP_BUILD_NAMESPACE";
-        case OpCode::OP_BUILD_SET: return "OP_BUILD_SET";
-        case OpCode::OP_FORMAT_STRING: return "OP_FORMAT_STRING";
-        case OpCode::OP_LIST_INIT: return "OP_LIST_INIT";
-        case OpCode::OP_LIST_APPEND: return "OP_LIST_APPEND";
-        case OpCode::OP_LIST_COMP_END: return "OP_LIST_COMP_END";
-        case OpCode::OP_GET_UPVALUE: return "OP_GET_UPVALUE";
-        case OpCode::OP_SET_UPVALUE: return "OP_SET_UPVALUE";
-        case OpCode::OP_CLASS: return "OP_CLASS";
-        case OpCode::OP_METHOD: return "OP_METHOD";
-        case OpCode::OP_INHERIT: return "OP_INHERIT";
-        case OpCode::OP_GET_PROPERTY: return "OP_GET_PROPERTY";
-        case OpCode::OP_TRY_GET_PROPERTY: return "OP_TRY_GET_PROPERTY";
-        case OpCode::OP_SET_PROPERTY: return "OP_SET_PROPERTY";
-        case OpCode::OP_INVOKE: return "OP_INVOKE";
-        case OpCode::OP_GET_SUPER: return "OP_GET_SUPER";
-        case OpCode::OP_SUPER_INVOKE: return "OP_SUPER_INVOKE";
-        case OpCode::OP_GET_SELF: return "OP_GET_SELF";
-        case OpCode::OP_IMPORT: return "OP_IMPORT";
-        case OpCode::OP_SLICE_GET: return "OP_SLICE_GET";
-        case OpCode::OP_SLICE_SET: return "OP_SLICE_SET";
-        case OpCode::OP_GET_REF_PARAM: return "OP_GET_REF_PARAM";
-        case OpCode::OP_SET_REF_PARAM: return "OP_SET_REF_PARAM";
-        case OpCode::OP_PASS_REFS: return "OP_PASS_REFS";
-        case OpCode::OP_BIT_AND: return "OP_BIT_AND";
-        case OpCode::OP_BIT_OR: return "OP_BIT_OR";
-        case OpCode::OP_BIT_XOR: return "OP_BIT_XOR";
-        case OpCode::OP_BIT_SHIFT_LEFT: return "OP_BIT_SHIFT_LEFT";
-        case OpCode::OP_BIT_SHIFT_RIGHT: return "OP_BIT_SHIFT_RIGHT";
-        case OpCode::OP_ASSERT_PARAM_TYPE: return "OP_ASSERT_PARAM_TYPE";
-        case OpCode::OP_ASSERT_RETURN_TYPE: return "OP_ASSERT_RETURN_TYPE";
-        case OpCode::OP_MATCH_TYPE: return "OP_MATCH_TYPE";
-        case OpCode::OP_MATCH_SHAPE: return "OP_MATCH_SHAPE";
-        case OpCode::OP_TAIL_CALL: return "OP_TAIL_CALL";
-        case OpCode::OP_TAIL_INVOKE: return "OP_TAIL_INVOKE";
-        case OpCode::OP_TAIL_SUPER_INVOKE: return "OP_TAIL_SUPER_INVOKE";
-        case OpCode::OP_INVOKE_FALLBACK: return "OP_INVOKE_FALLBACK";
-        case OpCode::OP_TAIL_INVOKE_FALLBACK: return "OP_TAIL_INVOKE_FALLBACK";
-        case OpCode::OP_EXTEND: return "OP_EXTEND";
-        default: return "UNKNOWN_OP";
-        }
+struct MatrixShape {
+    uint16_t rows;
+    std::vector<uint16_t> rowCols;
+};
+
+struct ArgSource {
+    uint8_t argIndex;
+    uint8_t sourceType;
+    uint32_t sourceRef;
+};
+
+struct CallSignature {
+    std::vector<ArgSource> refs;
+};
+
+class Chunk {
+public:
+    std::vector<Instruction> code;
+    std::vector<Value> constants;
+    std::vector<int> lines;
+    std::vector<InlineCache> inlineCaches;
+    std::vector<ShapePattern> shapePatterns;
+    std::vector<MatrixShape> matrixShapes;
+    std::vector<CallSignature> callSignatures;
+
+    void write(Instruction inst, int line) {
+        code.push_back(inst);
+        lines.push_back(line);
     }
 
-    enum class BuiltinType : int8_t {
-        UNKNOWN = -1,
-        ANY, INT, FLOAT, REAL, NUMBER, WHOLE, EXACT, STRING, BOOL, BINARY, NONE_TYPE,
-        LIST, DICT, SET, FRACTION, COMPLEX, BASENUM, SYMBOLIC,
-        REALMAT, COMPLEXMAT, STRINGMAT, MATRIX, FUNC, CLASS, INSTANCE, NAMESPACE,
-        ITERABLE, CALLABLE, INDEXABLE, HASHABLE, NUMERIC,
-        CUSTOM_CLASS
-    };
+    uint32_t addConstant(const Value& val) {
+        constants.push_back(val);
+        return static_cast<uint32_t>(constants.size() - 1);
+    }
 
-    struct InlineCache {
-        uint32_t nameIdx = 0;
-        ObjClass* cachedClass = nullptr;
-        ObjClosure* cachedMethod = nullptr;
-        int cachedFieldIndex = -1;
-        int cachedGlobalSlot = -1;
-        BuiltinType cachedBuiltinType = BuiltinType::UNKNOWN;
-    };
+    uint32_t addInlineCache(uint32_t nameIdx) {
+        inlineCaches.push_back(InlineCache{nameIdx, -1});
+        return static_cast<uint32_t>(inlineCaches.size() - 1);
+    }
 
-    struct ShapePattern {
-        uint32_t minRows;
-        uint32_t maxRows;
-        uint32_t minCols;
-        uint32_t maxCols;
-        uint8_t exactMask;
-    };
+    uint32_t addShapePattern(uint32_t minR, uint32_t maxR, uint32_t minC, uint32_t maxC, uint8_t mask) {
+        shapePatterns.push_back({minR, maxR, minC, maxC, mask});
+        return static_cast<uint32_t>(shapePatterns.size() - 1);
+    }
 
-    struct MatrixShape {
-        uint16_t rows;
-        std::vector<uint16_t> rowCols;
-    };
+    uint32_t addMatrixShape(uint16_t rows, const std::vector<uint16_t>& rowCols) {
+        matrixShapes.push_back({rows, rowCols});
+        return static_cast<uint32_t>(matrixShapes.size() - 1);
+    }
 
-    struct ArgSource {
-        uint8_t argIndex;
-        uint8_t sourceType;
-        uint32_t sourceRef;
-    };
+    uint32_t addCallSignature(const std::vector<ArgSource>& refs) {
+        callSignatures.push_back({refs});
+        return static_cast<uint32_t>(callSignatures.size() - 1);
+    }
 
-    struct CallSignature {
-        std::vector<ArgSource> refs;
-    };
-
-    // ═══════════════════════════════════════════
-    // 字节码块 (Chunk)
-    // 存储一段编译后的字节码 + 常量池 + 行号信息
-    // ═══════════════════════════════════════════
-    class Chunk {
-    public:
-        std::vector<uint8_t> code;      // 字节码流
-        std::vector<Value> constants;   // 常量池
-        std::vector<int> lines;         // 每条指令对应的源码行号
-        std::vector<InlineCache> inlineCaches; // ★ 内联缓存池
-        std::vector<ShapePattern> shapePatterns; // ★ 形状匹配模式池
-        std::vector<MatrixShape> matrixShapes;   // ★ 矩阵形状池
-        std::vector<CallSignature> callSignatures; // ★ 调用签名池
-
-        // ── 写入接口 ──
-
-        void write(uint8_t byte, int line) {
-            code.push_back(byte);
-            lines.push_back(line);
+    void disassemble(const std::string& name) const {
+        std::cout << "=== " << name << " ===" << std::endl;
+        for (int offset = 0; offset < static_cast<int>(code.size()); ++offset) {
+            disassembleInstruction(offset);
         }
+        std::cout << "==================" << std::endl;
+    }
 
-        void write(OpCode op, int line) {
-            write(static_cast<uint8_t>(op), line);
-        }
+    void disassembleInstruction(int offset) const {
+        Instruction inst = code[offset];
+        std::cout << std::right << std::setw(4) << std::setfill('0') << offset << "  " << std::setfill(' ');
 
-        // 写入 16-bit 操作数 (大端序)
-        void write16(uint16_t val, int line) {
-            write(static_cast<uint8_t>((val >> 8) & 0xFF), line);
-            write(static_cast<uint8_t>(val & 0xFF), line);
-        }
+        if (offset > 0 && lines[offset] == lines[offset - 1])
+            std::cout << "   | ";
+        else
+            std::cout << std::right << std::setw(4) << lines[offset] << " ";
 
-        // 添加常量到常量池，返回索引
-        uint32_t addConstant(const Value& val) {
-            constants.push_back(val);
-            return static_cast<uint32_t>(constants.size() - 1);
-        }
+        OpCode op = GET_OPCODE(inst);
+        std::string opName = opCodeToString(op);
+        std::cout << std::left << std::setw(20) << opName;
 
-        // 添加常量并生成 OP_CONSTANT 指令
-        void emitConstant(const Value& val, int line) {
-            uint32_t idx = addConstant(val);
-            if (idx > 0xFFFF) {
-                write(OpCode::OP_EXTEND, line);
-                write(0, line); // opIdx = 0
-                write16(static_cast<uint16_t>(idx >> 16), line);
-            }
-            write(OpCode::OP_CONSTANT, line);
-            write16(static_cast<uint16_t>(idx & 0xFFFF), line);
-        }
+        int a = GET_A(inst);
+        int b = GET_B(inst);
+        int c = GET_C(inst);
+        int bx = GET_Bx(inst);
+        int sbx = GET_sBx(inst);
+        int ax = GET_Ax(inst);
+        int sax = GET_sAx(inst);
 
-        uint32_t addInlineCache(uint32_t nameIdx) {
-            inlineCaches.push_back(InlineCache{nameIdx, nullptr, nullptr, -1, -1, BuiltinType::UNKNOWN});
-            return static_cast<uint32_t>(inlineCaches.size() - 1);
-        }
+        auto formatConstant = [&](int idx) -> std::string {
+            if (idx < 0 || idx >= static_cast<int>(constants.size())) return "?";
+            const Value& v = constants[idx];
+            if (v.isString()) return "\"" + v.asString() + "\"";
+            std::ostringstream oss; oss << v; return oss.str();
+        };
 
-        uint32_t addShapePattern(uint32_t minR, uint32_t maxR, uint32_t minC, uint32_t maxC, uint8_t mask) {
-            shapePatterns.push_back({minR, maxR, minC, maxC, mask});
-            return static_cast<uint32_t>(shapePatterns.size() - 1);
-        }
-
-        uint32_t addMatrixShape(uint16_t rows, const std::vector<uint16_t>& rowCols) {
-            matrixShapes.push_back({rows, rowCols});
-            return static_cast<uint32_t>(matrixShapes.size() - 1);
-        }
-
-        uint32_t addCallSignature(const std::vector<ArgSource>& refs) {
-            callSignatures.push_back({refs});
-            return static_cast<uint32_t>(callSignatures.size() - 1);
-        }
-
-        // 生成跳转指令，返回需要回填的偏移位置
-        int emitJump(OpCode op, int line) {
-            write(op, line);
-            write(0xFF, line);  // 占位
-            write(0xFF, line);  // 占位
-            return static_cast<int>(code.size()) - 2;
-        }
-
-        // 回填跳转偏移
-        void patchJump(int offset) {
-            int jump = static_cast<int>(code.size()) - offset - 2;
-            if (jump > 65535)
-                throw std::runtime_error("Compiler Error: Jump too large.");
-            code[offset] = static_cast<uint8_t>((jump >> 8) & 0xFF);
-            code[offset + 1] = static_cast<uint8_t>(jump & 0xFF);
-        }
-
-        // 生成回跳（用于循环）
-        void emitLoop(int loopStart, int line) {
-            write(OpCode::OP_LOOP, line);
-            int offset = static_cast<int>(code.size()) - loopStart + 2;
-            if (offset > 65535)
-                throw std::runtime_error("Compiler Error: Loop body too large.");
-            write16(static_cast<uint16_t>(offset), line);
-        }
-
-        // 读取 16-bit 操作数
-        uint16_t read16(int offset) const {
-            return static_cast<uint16_t>((code[offset] << 8) | code[offset + 1]);
-        }
-
-        // ── 反汇编器（调试用）──
-
-        void disassemble(const std::string& name) const {
-            std::cout << "=== " << name << " ===" << std::endl;
-            int offset = 0;
-            uint32_t extensionMap[4] = {0};
-            uint8_t currentOpIdx = 0;
-            while (offset < static_cast<int>(code.size())) {
-                offset = disassembleInstruction(offset, extensionMap, currentOpIdx);
-            }
-            std::cout << "==================" << std::endl;
-        }
-
-        int disassembleInstruction(int offset, uint32_t* extensionMap, uint8_t& currentOpIdx) const {
-            std::cout << std::right << std::setw(4) << std::setfill('0') << offset << "  " << std::setfill(' ');
-
-            if (offset > 0 && lines[offset] == lines[offset - 1])
-                std::cout << "   | ";
-            else
-                std::cout << std::right << std::setw(4) << lines[offset] << " ";
-
-            auto op = static_cast<OpCode>(code[offset]);
-            if (op != OpCode::OP_EXTEND) currentOpIdx = 0;
-
-            // ★ 一键提取并左对齐 18 个字符宽，告别过去那种拼凑空格的痛苦
-            std::string opName = opCodeToString(op);
-            std::cout << std::left << std::setw(18) << opName;
-
-            switch (op) {
-                // ============================================
-                // 格式 0: 无操作数 (1 字节)
-                // ============================================
-            case OpCode::OP_NONE: case OpCode::OP_TRUE: case OpCode::OP_FALSE:
-            case OpCode::OP_POP: case OpCode::OP_ADD: case OpCode::OP_SUBTRACT:
-            case OpCode::OP_MULTIPLY: case OpCode::OP_DIVIDE: case OpCode::OP_MODULO:
-            case OpCode::OP_POWER: case OpCode::OP_LEFT_DIVIDE: case OpCode::OP_NEGATE: case OpCode::OP_NOT:
-            case OpCode::OP_TO_BOOL: case OpCode::OP_BIT_NOT:
-            case OpCode::OP_EQUAL: case OpCode::OP_NOT_EQUAL: case OpCode::OP_LESS:
-            case OpCode::OP_LESS_EQUAL: case OpCode::OP_GREATER: case OpCode::OP_GREATER_EQUAL:
-            case OpCode::OP_RETURN: case OpCode::OP_DUP:
-            case OpCode::OP_IN: case OpCode::OP_STRINGIFY: case OpCode::OP_TRY_END:
-            case OpCode::OP_THROW: case OpCode::OP_LIST_INIT: case OpCode::OP_INHERIT:
-            case OpCode::OP_IMPORT: case OpCode::OP_BIT_AND: case OpCode::OP_BIT_OR:
-            case OpCode::OP_BIT_XOR:
-            case OpCode::OP_BIT_SHIFT_LEFT: case OpCode::OP_BIT_SHIFT_RIGHT:
-            case OpCode::OP_GET_SELF: case OpCode::OP_LIST_COMP_END:
-            case OpCode::OP_IS_UNINIT:
-                std::cout << std::endl;
-                return offset + 1;
-
-            // ============================================
-            // 格式 1: 1 个 uint8_t 操作数 (2 字节)
-            // ============================================
-            case OpCode::OP_CALL:
-            case OpCode::OP_TAIL_CALL: {
-                uint8_t argc = code[offset + 1];
-                std::cout << static_cast<int>(argc) << " args" << std::endl;
-                return offset + 2;
-            }
-            case OpCode::OP_INDEX_GET:
-            case OpCode::OP_INDEX_SET:
-            case OpCode::OP_SLICE_GET:
-            case OpCode::OP_SLICE_SET: {
-                uint8_t dims = code[offset + 1];
-                std::cout << static_cast<int>(dims) << " dims" << std::endl;
-                return offset + 2;
-            }
-            case OpCode::OP_ITER_INIT: {
-                uint8_t flag = code[offset + 1];
-                std::cout << (flag ? "destruct" : "normal") << std::endl;
-                return offset + 2;
-            }
-
-            case OpCode::OP_EXTEND: {
-                uint8_t opIdx = code[offset + 1];
-                uint16_t high16 = read16(offset + 2);
-                if (opIdx < 4) extensionMap[opIdx] = static_cast<uint32_t>(high16) << 16;
-                std::cout << "opIdx:" << static_cast<int>(opIdx) << " high16:" << high16 << std::endl;
-                return offset + 4;
-            }
-
-            // ============================================
-            // 格式 2: 1 个 uint16_t 常量池引用 (3 字节)
-            // ============================================
-            case OpCode::OP_CONSTANT:
-            case OpCode::OP_CLASS:
-            case OpCode::OP_METHOD:
-            case OpCode::OP_DELETE_GLOBAL:
-            case OpCode::OP_GET_SUPER: 
-            case OpCode::OP_MATCH_SHAPE: {
-                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                if (op == OpCode::OP_MATCH_SHAPE) {
-                    if (idx < shapePatterns.size()) {
-                        const auto& sp = shapePatterns[idx];
-                        std::cout << "shape_idx:" << idx << " [" << sp.minRows << "~" << (sp.maxRows == 0xFFFFFFFF ? "inf" : std::to_string(sp.maxRows)) 
-                                  << "]x[" << sp.minCols << "~" << (sp.maxCols == 0xFFFFFFFF ? "inf" : std::to_string(sp.maxCols)) 
-                                  << "] (mask:" << static_cast<int>(sp.exactMask) << ")" << std::endl;
-                    } else {
-                        std::cout << "INVALID_SHAPE_IDX" << std::endl;
-                    }
-                } else {
-                    std::cout << idx << " (";
-                    if (idx < constants.size()) {
-                        if (constants[idx].isString())
-                            std::cout << constants[idx].asString();
-                        else
-                            std::cout << constants[idx];
-                    }
-                    std::cout << ")" << std::endl;
+        auto formatRK = [&](int rk) {
+            if (ISK(rk)) {
+                int idx = INDEXK(rk);
+                if (idx != ESCAPE_KBIT_CONST) {
+                    return "K(" + std::to_string(idx) + ":" + formatConstant(idx) + ")";
                 }
-                return offset + 3;
+                return "K(" + std::to_string(idx) + ")";
             }
+            return "R(" + std::to_string(rk) + ")";
+        };
 
-            case OpCode::OP_GET_GLOBAL:
-            case OpCode::OP_SET_GLOBAL:
-            case OpCode::OP_SET_GLOBAL_REF:
-            case OpCode::OP_DEFINE_CONST_GLOBAL:
-            case OpCode::OP_GET_PROPERTY:
-            case OpCode::OP_TRY_GET_PROPERTY:
-            case OpCode::OP_SET_PROPERTY:
-            case OpCode::OP_ASSERT_RETURN_TYPE:
-            case OpCode::OP_MATCH_TYPE: {
-                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                std::cout << "[IC:" << icIdx << "]";
-                if (icIdx < inlineCaches.size()) {
-                    uint32_t nameIdx = inlineCaches[icIdx].nameIdx;
-                    std::cout << " -> " << nameIdx << " (";
-                    if (nameIdx < constants.size() && constants[nameIdx].isString())
-                        std::cout << constants[nameIdx].asString();
-                    std::cout << ")";
+        switch (op) {
+            case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV:
+            case OpCode::MOD: case OpCode::POW: case OpCode::LDIV: case OpCode::BAND:
+            case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL: case OpCode::SHR:
+            case OpCode::EQ: case OpCode::NEQ: case OpCode::LT: case OpCode::LE:
+            case OpCode::GT: case OpCode::GE:
+                std::cout << "R(" << a << ") " << formatRK(b) << " " << formatRK(c);
+                break;
+            
+            case OpCode::BUILD_LIST: case OpCode::BUILD_DICT: case OpCode::BUILD_SET:
+            case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
+            case OpCode::INDEX_GET: case OpCode::INDEX_SET: 
+            case OpCode::SLICE_GET: case OpCode::SLICE_SET: 
+            case OpCode::ITER_INIT: case OpCode::IN: case OpCode::MATCH_SHAPE:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                break;
+
+            case OpCode::FORMAT_STRING:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << formatConstant(c);
                 }
-                std::cout << std::endl;
-                return offset + 3;
-            }
+                break;
 
-            // ============================================
-            // 格式 3: 1 个 uint16_t 槽位/数量/偏移等 (3 字节)
-            // ============================================
-            case OpCode::OP_GET_LOCAL:
-            case OpCode::OP_SET_LOCAL:
-            case OpCode::OP_GET_UPVALUE:
-            case OpCode::OP_SET_UPVALUE: {
-                uint32_t slot = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                std::cout << "slot " << slot << std::endl;
-                return offset + 3;
-            }
-            case OpCode::OP_GET_REF_PARAM:
-            case OpCode::OP_SET_REF_PARAM: {
-                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                std::cout << "idx " << idx << std::endl;
-                return offset + 3;
-            }
-            case OpCode::OP_PASS_REFS: {
-                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                std::cout << "sig_idx:" << idx;
-                if (idx < callSignatures.size()) {
-                    const auto& sig = callSignatures[idx];
-                    std::cout << " (" << sig.refs.size() << " refs)";
-                    for (const auto& ref : sig.refs) {
-                        std::string typeName = (ref.sourceType == 1) ? "global" : ((ref.sourceType == 2) ? "local" : ((ref.sourceType == 3) ? "upvalue" : "refparam"));
-                        std::cout << "\n         |                  arg " << static_cast<int>(ref.argIndex)
-                            << " -> " << typeName << " " << ref.sourceRef;
+            case OpCode::BUILD_NAMESPACE:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[b].asString();
+                }
+                break;
+
+            case OpCode::ASSERT_PARAM_TYPE:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[c].asString();
+                }
+                break;
+
+            case OpCode::MATCH_TYPE:
+            case OpCode::GET_PROP: case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: 
+            case OpCode::INVOKE: case OpCode::TAIL_INVOKE: 
+            case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(inlineCaches.size())) {
+                    int nameIdx = inlineCaches[c].nameIdx;
+                    if (nameIdx < static_cast<int>(constants.size())) {
+                        std::cout << "  ; " << constants[nameIdx].asString();
                     }
                 }
-                std::cout << std::endl;
-                return offset + 3;
-            }
-            case OpCode::OP_JUMP:
-            case OpCode::OP_JUMP_IF_FALSE:
-            case OpCode::OP_JUMP_IF_TRUE:
-            case OpCode::OP_ITER_NEXT: {
-                uint16_t jump = read16(offset + 1);
-                std::cout << "-> " << (offset + 3 + jump) << std::endl;
-                return offset + 3;
-            }
-            case OpCode::OP_LOOP: {
-                uint16_t jump = read16(offset + 1);
-                std::cout << "-> " << (offset + 3 - jump) << std::endl;
-                return offset + 3;
-            }
-            case OpCode::OP_BUILD_LIST:
-            case OpCode::OP_CONCAT_STRINGS:
-            case OpCode::OP_BUILD_DICT:
-            case OpCode::OP_DICT_REST:
-            case OpCode::OP_BUILD_SET: {
-                uint32_t count = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                std::cout << count << " items" << std::endl;
-                return offset + 3;
-            }
-            case OpCode::OP_BUILD_MATRIX: {
-                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                if (idx < matrixShapes.size()) {
-                    const auto& shape = matrixShapes[idx];
-                    std::cout << "shape_idx:" << idx << " (" << shape.rows << " rows: ";
-                    for (uint16_t c : shape.rowCols) std::cout << c << " ";
-                    std::cout << ")" << std::endl;
-                } else {
-                    std::cout << "INVALID_SHAPE_IDX" << std::endl;
-                }
-                return offset + 3;
-            }
-            case OpCode::OP_BUILD_NAMESPACE: {
-                uint32_t nameIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                uint32_t count = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 3);
-                std::cout << nameIdx << " (";
-                if (nameIdx < constants.size() && constants[nameIdx].isString())
-                    std::cout << constants[nameIdx].asString();
-                std::cout << ") " << count << " items" << std::endl;
-                return offset + 5;
-            }
-            case OpCode::OP_CLOSURE:
-            case OpCode::OP_FORMAT_STRING:
-            case OpCode::OP_LIST_APPEND: {
-                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                std::cout << idx << std::endl;
-                return offset + 3;
-            }
+                break;
 
-            // ============================================
-            // 格式 4: uint16_t 名称索引 + uint8_t 参数个数 (4 字节)
-            // ============================================
-            case OpCode::OP_SUPER_INVOKE:
-            case OpCode::OP_TAIL_SUPER_INVOKE: {
-                uint32_t idx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                uint8_t argc = code[offset + 3];
-                std::cout << idx << " (";
-                if (idx < constants.size() && constants[idx].isString())
-                    std::cout << constants[idx].asString();
-                std::cout << ") " << static_cast<int>(argc) << " args" << std::endl;
-                return offset + 4;
-            }
-            case OpCode::OP_INVOKE:
-            case OpCode::OP_TAIL_INVOKE: {
-                uint8_t argc = code[offset + 1];
-                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 2);
-                std::cout << static_cast<int>(argc) << " args [IC:" << icIdx << "]";
-                if (icIdx < inlineCaches.size()) {
-                    uint32_t nameIdx = inlineCaches[icIdx].nameIdx;
-                    std::cout << " -> " << nameIdx << " (";
-                    if (nameIdx < constants.size() && constants[nameIdx].isString())
-                        std::cout << constants[nameIdx].asString();
-                    std::cout << ")";
+            case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[c].asString();
                 }
-                std::cout << std::endl;
-                return offset + 4;
-            }
-            case OpCode::OP_INVOKE_FALLBACK:
-            case OpCode::OP_TAIL_INVOKE_FALLBACK: {
-                uint8_t argc = code[offset + 1];
-                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 2);
-                uint8_t fbType = code[offset + 4];
-                uint32_t fbIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 5);
-                std::cout << static_cast<int>(argc) << " args [IC:" << icIdx << "] FB:" << static_cast<int>(fbType) << ":" << fbIdx;
-                if (icIdx < inlineCaches.size()) {
-                    uint32_t nameIdx = inlineCaches[icIdx].nameIdx;
-                    std::cout << " -> " << nameIdx << " (";
-                    if (nameIdx < constants.size() && constants[nameIdx].isString())
-                        std::cout << constants[nameIdx].asString();
-                    std::cout << ")";
-                }
-                std::cout << std::endl;
-                return offset + 7;
-            }
+                break;
 
-            // ============================================
-            // 格式 5: 定长双短参数 (5 字节)
-            // ============================================
-            case OpCode::OP_TRY_BEGIN: {
-                uint32_t nameIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                uint32_t jump = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 3);
-                std::cout << "catch -> " << (offset + 5 + jump);
-                if (nameIdx < constants.size() && constants[nameIdx].isString())
-                    std::cout << " (var: " << constants[nameIdx].asString() << ")";
-                std::cout << std::endl;
-                return offset + 5;
-            }
-            case OpCode::OP_ASSERT_PARAM_TYPE: {      // ★ 新增一整块
-                uint32_t icIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 1);
-                uint32_t nameIdx = std::exchange(extensionMap[currentOpIdx++], 0) | read16(offset + 3);
-                std::cout << "typeIC: " << icIdx << ", nameConst: " << nameIdx << std::endl;
-                return offset + 5;
-            }
+            case OpCode::METHOD:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[b].asString();
+                }
+                break;
+
+            case OpCode::MOVE: case OpCode::LOAD_NIL:
+            case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
+            case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
+            case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::STRINGIFY:
+            case OpCode::ITER_NEXT: case OpCode::IMPORT:
+                std::cout << "R(" << a << ") " << b;
+                break;
+
+            case OpCode::CALL: case OpCode::TAIL_CALL:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                break;
+
+            case OpCode::LOAD_BOOL:
+                std::cout << "R(" << a << ") " << b;
+                std::cout << "  ; " << (b ? "true" : "false");
+                break;
+
+            case OpCode::ASSERT_RETURN_TYPE:
+                std::cout << "R(" << a << ") " << b;
+                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(inlineCaches.size())) {
+                    int nameIdx = inlineCaches[b].nameIdx;
+                    if (nameIdx < static_cast<int>(constants.size())) {
+                        std::cout << "  ; " << constants[nameIdx].asString();
+                    }
+                }
+                break;
+
+            case OpCode::GET_SUPER:
+                std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[c].asString();
+                }
+                break;
+
+            case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
+            case OpCode::LIST_INIT: case OpCode::LIST_COMP_END: case OpCode::TRY_END: case OpCode::THROW:
+                std::cout << "R(" << a << ")";
+                break;
+
+            case OpCode::LOADK:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << formatConstant(bx);
+                }
+                break;
+
+            case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
+            case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(inlineCaches.size())) {
+                    int nameIdx = inlineCaches[bx].nameIdx;
+                    if (nameIdx < static_cast<int>(constants.size())) {
+                        std::cout << "  ; " << constants[nameIdx].asString();
+                    }
+                }
+                break;
+
+            case OpCode::CLASS:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[bx].asString();
+                }
+                break;
+
+            case OpCode::CLOSURE:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; fnIdx=" << constants[bx].asDouble();
+                }
+                break;
+
+            case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
+                std::cout << "R(" << a << ") " << bx;
+                break;
+
+            case OpCode::DELETE_GLOBAL:
+                std::cout << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[bx].asString();
+                }
+                break;
+
+            case OpCode::PASS_REFS:
+                std::cout << bx;
+                break;
+
+            case OpCode::JMP_TRUE: case OpCode::JMP_FALSE: case OpCode::TRY_BEGIN:
+                std::cout << "R(" << a << ") " << sbx;
+                break;
+
+            case OpCode::EXTRAARG:
+                std::cout << ax;
+                break;
+
+            case OpCode::JMP:
+                std::cout << sax;
+                break;
 
             default:
-                std::cout << "UNKNOWN FORMAT" << std::endl;
-                return offset + 1;
-            }
+                std::cout << "?";
+                break;
         }
-    };
+        std::cout << std::endl;
+    }
+};
 
-    struct CompiledFunction {
+struct CompiledFunction {
+    std::string name;
+    std::string sourceFile;
+    int arity = 0;
+    int maxArity = 0;
+    int localCount = 0;
+    bool hasRestParam = false;
+    Chunk chunk;
+
+    struct UpvalueInfo {
         std::string name;
-        std::string sourceFile;
-        int arity = 0;
-        int maxArity = 0;
-        int localCount = 0;
-        bool hasRestParam = false;
-        Chunk chunk;
-
-        // ★ 上值捕获信息
-        struct UpvalueInfo {
-            std::string name;
-            bool isLocal;   // true=来自外层局部变量, false=来自外层上值
-            int index;      // 对应的 slot 或 upvalue index
-            bool isRef = false; // ★ 新增：是否按引用捕获
-            bool isGlobal = false; // ★ 新增：是否来自全局变量
-            bool isExplicitState = false; // ★ 新增：是否是显式初始化的 state
-            bool isRefParam = false; // ★ 新增：是否来自外层的 ref 参数
-        };
-        std::vector<UpvalueInfo> upvalues;
-        std::vector<bool> paramIsRef;
-        std::vector<bool> paramIsConst; // ★ 新增
-        int refCount = 0; // ★ 新增：预计算的引用参数数量
+        bool isLocal;
+        int index;
+        bool isRef = false;
+        bool isGlobal = false;
+        bool isExplicitState = false;
+        bool isRefParam = false;
+        bool isCapturedState = false;
     };
-
-    // ═══════════════════════════════════════════
-    // 调用帧 (Call Frame)
-    // ═══════════════════════════════════════════
-    struct CallFrame {
-        const CompiledFunction* function = nullptr;
-        int ip = 0;
-        int stackBase = 0;
-        
-        // ★ 彻底抛弃 shared_ptr 和 vector
-        ObjClosure* closure = nullptr; // 直接持有闭包指针以访问 upvalues
-        int refParamsBase = -1;        // 引用参数在全局 stack 上的起始索引
-
-        // ★ 新增：独立与当前调用帧绑定的物理上下文寄存器！
-        Value selfContext = Value::none();
-        Value classContext = Value::none();
-    };
-
+    std::vector<UpvalueInfo> upvalues;
+    std::vector<bool> paramIsRef;
+    std::vector<bool> paramIsConst;
+    int refCount = 0;
+};
 
 } // namespace jc
 

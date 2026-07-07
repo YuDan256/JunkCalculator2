@@ -38,8 +38,18 @@ namespace jc {
             return instance;
         }
 
+        std::function<void()> markCallback;
+        std::function<void()> sweepCallback;
+
+        void markObj(Obj* obj);
+        void markValue(const Value& val);
+        void collectGarbage();
+
         template<typename T, typename... Args>
         T* allocate(Args&&... args) {
+            if (shouldCollect()) {
+                collectGarbage();
+            }
             T* object = new T(std::forward<Args>(args)...);
             object->isMarked = false;
             object->next = objects_;
@@ -55,32 +65,48 @@ namespace jc {
         int sweep() {
             Obj** object = &objects_;
             int freed = 0;
-            std::vector<Obj*> garbage;
+            size_t surviving = 0;
+            Obj* garbageList = nullptr;
 
             while (*object != nullptr) {
                 if (!(*object)->isMarked) {
                     Obj* unreached = *object;
                     *object = unreached->next;
-                    garbage.push_back(unreached);
+                    
+                    unreached->next = garbageList;
+                    garbageList = unreached;
+                    
                     freed++;
                 } else {
                     (*object)->isMarked = false;
                     object = &(*object)->next;
+                    surviving++;
                 }
             }
 
             // ★ 核心修复：先统一触发 clearTotal() 断开所有 Value 引用，防止 A->B->A 循环引用时，
             // A 被 delete 后，B 的析构函数再去减 A 的 refCount 导致 Use-After-Free 崩溃！
-            for (Obj* unreached : garbage) {
-                unreached->clearTotal();
+            // 优化：只对包含 Value 引用的复杂对象调用 clearTotal，跳过大量基础类型（如 String, Matrix）的虚函数开销
+            Obj* curr = garbageList;
+            while (curr != nullptr) {
+                if (curr->type == ObjType::LIST || curr->type == ObjType::DICT || 
+                    curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
+                    curr->type == ObjType::INSTANCE || curr->type == ObjType::NAMESPACE || 
+                    curr->type == ObjType::UPVALUE) {
+                    curr->clearTotal();
+                }
+                curr = curr->next;
             }
 
-            for (Obj* unreached : garbage) {
-                delete unreached;
+            curr = garbageList;
+            while (curr != nullptr) {
+                Obj* next = curr->next;
+                delete curr;
+                curr = next;
             }
 
             allocsSinceGc_ = 0;
-            gcThreshold_ = std::max(static_cast<size_t>(256), trackedCount() * 2);
+            gcThreshold_ = std::max(static_cast<size_t>(65536), surviving * 2);
             return freed;
         }
 
@@ -107,7 +133,7 @@ namespace jc {
         std::vector<Value*> tempValueRoots_;
         Obj* objects_ = nullptr;
         size_t allocsSinceGc_ = 0;
-        size_t gcThreshold_ = 256;
+        size_t gcThreshold_ = 65536;
     };
 
     struct GcObjGuard {

@@ -3,260 +3,168 @@
 
 #include "Bytecode.h"
 #include "../memory/Value.h"
-#include <chrono>
-#include <functional>
-#include <unordered_map>
-#include <unordered_set>
-#include <map>
-#include <set>
-#include <string>
+#include "BuiltinRegistry.h"
 #include <vector>
-#include <cstring>
+#include <unordered_map>
+#include <memory>
+#include <set>
 
 namespace jc {
 
-    using NativeCallable = std::function<Value(const std::vector<Value>&)>;
+struct ValueException : public std::exception {
+    Value val;
+    explicit ValueException(Value v) : val(std::move(v)) {}
+    const char* what() const noexcept override { return "ValueException"; }
+};
 
-    struct ValueException {
-        Value val;
-        explicit ValueException(Value v) : val(std::move(v)) {}
+// ============================================================================
+// 寄存器机调用帧 (Register Window Frame)
+// ============================================================================
+struct CallFrame {
+    const CompiledFunction* function = nullptr;
+    const Chunk* chunk = nullptr;
+    int ip = 0;
+    int registerBase = 0; // 寄存器窗口基址 (指向全局 registers 数组)
+    int returnRegister = 0; // ★ 记录当前帧返回时，结果应写入父帧的哪个物理寄存器
+    ObjClosure* closure = nullptr;
+    int refParamsBase = -1;
+    Value selfContext = Value::none();
+    Value classContext = Value::none();
+};
+
+// ============================================================================
+// 寄存器虚拟机核心引擎
+// ============================================================================
+class VM {
+private:
+    // 统一地址空间：100万个槽位，足以容纳极深的调用栈和海量的溢出槽
+    static constexpr int MAX_REGISTERS = 1024 * 1024; 
+    static constexpr int MAX_FRAMES = 1024;
+
+    Value* registers = nullptr;
+    CallFrame* frames = nullptr;
+    int frameCount = 0;
+
+    std::vector<Value> globals;
+    std::unordered_map<std::string, uint32_t> globalNames;
+    std::unordered_set<std::string> constGlobals;
+    std::unordered_map<std::string, Value> loadedModules;
+    std::unordered_set<std::string> importedModules;
+
+    std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
+    std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
+
+    std::unordered_map<std::string, NativeCallable> nativeBuiltins;
+    std::unordered_map<std::string, std::set<int>> builtinArity;
+    std::unordered_map<std::string, Value> builtinClosures;
+
+    ObjUpVal* openUpvalues = nullptr;
+    void closeUpvalues(int lastRegIndex);
+    ObjUpVal* captureUpvalue(int regIndex);
+
+    struct ExceptionHandler {
+        int frameIndex = 0;
+        int ip = 0;
+        int registerBase = 0;
+        int errReg = 0;
     };
+    std::vector<ExceptionHandler> exceptionHandlers;
 
-    class VM {
-    private:
+    int currentTargetFrameDepth = 0;
 
-        std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
+    Value run(int targetFrameDepth = 0);
+    bool handleExceptionUnwind(Value errVal);
+    std::string buildStackTrace() const;
 
-        // ★ 多帧栈：支持嵌套函数调用
-        CallFrame* frames = nullptr;
-        int frameCount = 0;
-        static constexpr int MAX_FRAMES = 1024;
+    void execCall(int calleeReg, int argc, int dstReg, bool isTailCall = false);
+    void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
-        CallFrame& frame() { return frames[frameCount - 1]; }
-        const Chunk& currentChunk() { return frame().function->chunk; }
+    void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType);
+    void execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall);
+    void execSliceGet(int a, int b, uint8_t dims);
+    void execSliceSet(int a, int c, uint8_t dims);
+    Value execImport(const std::string& name);
 
-        Value* stack = nullptr;
-        Value* stackTop = nullptr;
-        Value* stackLimit = nullptr;
-        static constexpr int MAX_STACK = 65536;
+    void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
+    void execAssertReturnType(const Value& val, uint32_t icIdx);
 
-        std::vector<Value> globalValues;
-        std::unordered_map<std::string, uint32_t> globalNamesToSlots;
-        std::unordered_map<std::string, NativeCallable> nativeBuiltins;
-        std::unordered_map<std::string, Value> builtinClosures;    // ★ 新增：内置函数闭包缓存
-        std::unordered_set<std::string> constGlobals;              // ★ 新增：const 变量追踪
+    bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
+    std::string getTypeName(const Value& val);
+    ObjClosure* findDunder(const Value& val, const std::string& name);
+    Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
+    bool evaluateTruthiness(const Value& val);
 
-        // ★ 存储编译后的函数对象
-        std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
+public:
+    VM();
+    ~VM();
 
-        // 栈操作 (Inline 优化)
-        inline void push(const Value& val) {
-            if (stackTop >= stackLimit)
-                throw std::runtime_error("VM Error: Stack overflow.");
-            *stackTop++ = val;
-        }
-        inline void push(Value&& val) {
-            if (stackTop >= stackLimit)
-                throw std::runtime_error("VM Error: Stack overflow.");
-            *stackTop++ = std::move(val);
-        }
-        inline Value pop() {
-            stackTop--;
-            Value val = std::move(*stackTop);
-            return val;
-        }
-        inline Value& peek(int distance = 0) {
-            return *(stackTop - 1 - distance);
-        }
-        
-        inline size_t getStackSize() const {
-            return static_cast<size_t>(stackTop - stack);
-        }
-        inline void setStackSize(size_t newSize) {
-            while (getStackSize() > newSize) {
-                pop();
-            }
-            stackTop = stack + newSize;
-        }
-        inline void eraseStack(int indexFromTop) {
-            Value* target = stackTop - 1 - indexFromTop;
-            if (target < stackTop - 1) {
-                std::memmove(target, target + 1, (stackTop - 1 - target) * sizeof(Value));
-            }
-            stackTop--;
-            *stackTop = Value::none();
-        }
-        inline void insertStack(int indexFromTop, const Value& val) {
-            Value* target = stackTop - indexFromTop;
-            if (target < stackTop) {
-                std::memmove(target + 1, target, (stackTop - target) * sizeof(Value));
-            }
-            *target = val;
-            stackTop++;
-        }
-
-        inline static bool isTruthy(const Value& val) { return val.truthy(); }
-
-        // ★ 执行主循环
-        Value run(int targetFrameDepth = 0);
-        int currentTargetFrameDepth = 0;
-
-        struct ExceptionHandler {
-            int frameIndex = 0;     // 哪个 CallFrame
-            int ip = 0;             // catch 块的起始地址
-            int stackSize = 0;      // 进入 try 时的栈大小
-            std::string catchVarName = ""; // catch 变量名（空则不绑定）
-        };
-        std::vector<ExceptionHandler> exceptionHandlers;
-
-        // ★ 开放上值追踪 (Open Upvalues)
-        ObjUpVal* openUpvalues = nullptr; // 改为侵入式链表
-        void closeUpvalues(int lastStackIndex);
-        ObjUpVal* captureUpvalue(Value* local);
-
-        // ==============================================================
-        // ★ 新增：干净统一的异常回滚处理与栈轨迹抓取 (Stack Trace)
-        // ==============================================================
-        bool handleExceptionUnwind(Value errVal);
-        std::string buildStackTrace(const std::string& errorMsg);
-        Value callDunder(const Value& obj, ObjClosure* method,
-            const Value* args, size_t argc);
-
-        // ★ 类型检查冷路径：让繁重的字符串操作离开核心循环
-        [[noreturn]] void triggerParamTypeError(const Value& val, uint32_t icIdx, uint32_t nameIdx);
-        [[noreturn]] void triggerReturnTypeError(const Value& val, uint32_t icIdx);
-
-        std::string getTypeName(const Value& val);
-        bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
-
-        std::unordered_map<std::string, std::set<int>> builtinArity;  // ★ 新增
-        std::unordered_set<std::string> importedModules;               // ★ 防重复导入
-        std::unordered_map<std::string, Value> loadedModules;          // ★ 缓存模块的 Namespace
-
-        int currentLine();
-
-        // ★ 调试器专属状态
-        bool debugMode = false;
-        bool stepNextLine = false;
-        int lastDebugLine = -1;
-        std::set<int> breakpoints;
-        void debugPrompt(); // 交互式调试终端
-
-        //★ 性能探针 Profiler 专属状态
-        bool profileMode = false;
-
-        // 统计每种 OpCode 的执行总次数
-        std::map<OpCode, uint64_t> opCounts;
-
-        // 统计每个函数的调用次数和总耗时
-        struct FuncProfile {
-            uint64_t callCount = 0;
-            double totalTimeMs = 0.0;
-        };
-        std::map<std::string, FuncProfile> funcProfiles;
-        // 当一次完整的脚本执行完，打印报告
-           // ═══ 垃圾回收器 (Mark-and-Sweep GC) ═══
-        void collectGarbage();
-        void markValue(const Value& val);
-        void markObject(Obj* obj);
-        void traceReferences();
-        std::vector<Obj*> grayStack;
-        int gcInstructionCounter_ = 0;
-
-        void execCall(uint8_t argc, bool isTailCall = false);
-        void execIndexGet(uint8_t dims);
-        void execIndexSet(uint8_t dims);
-        void execSliceGet(uint8_t dims);
-        void execSliceSet(uint8_t dims);
-        void execBuildMatrix(uint32_t shapeIdx);
-        void execIn();
-        Value execReturn(bool& shouldExit);
-        void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
-        void execInvoke(uint8_t argc, uint32_t icIdx, bool isTailCall = false, int fbType = -1, uint32_t fbIdx = 0);
-        void execSuperInvoke(uint32_t nameIdx, uint8_t argc, bool isTailCall = false);
-        void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
-        void execAssertReturnType(const Value& val, uint32_t icIdx);
-
-    public:
-        VM();
-        ~VM();
-
-        void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity);
-        Value getBuiltinClosure(const std::string& name);
-        void setGlobal(const std::string& name, const Value& val);
-        inline static VM* activeVM = nullptr;
-        static std::any makeNativeFn(NativeCallable fn);
-        // ★ 接受编译后的函数列表
-        void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
-            compiledFunctions = fns;  // ★ 拷贝，不移动
-        }
-        const std::vector<std::shared_ptr<CompiledFunction>>& getCompiledFunctions() const {
-            return compiledFunctions;
-        }
-
-        Value callVMFunction(int fnIdx, const std::vector<Value>& args,
-            ObjClosure* closure = nullptr,
-            Value boundSelf = Value::none(), Value boundClass = Value::none());
-        Value callVMFunction(int fnIdx, const Value* args, size_t argc,
-            ObjClosure* closure = nullptr,
-            Value boundSelf = Value::none(), Value boundClass = Value::none());
-        const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
-
-
-        Value execute(const Chunk& mainChunk);
-
-        std::unordered_map<std::string, Value> getGlobals() const {
-            std::unordered_map<std::string, Value> res;
-            for (const auto& [k, v] : globalNamesToSlots) res[k] = globalValues[v];
-            return res;
-        }
-        void clearAllGlobalICs() {
-            for (auto& fn : compiledFunctions) {
-                for (auto& ic : fn->chunk.inlineCaches) {
-                    ic.cachedGlobalSlot = -1;
-                }
+    void clearAllGlobalICs() {
+        for (auto& fn : compiledFunctions) {
+            for (auto& ic : fn->chunk.inlineCaches) {
+                ic.cachedGlobalSlot = -1;
             }
         }
-        void clearGlobals() {
-            globalValues.clear();
-            globalNamesToSlots.clear();
-            constGlobals.clear();
-            importedModules.clear(); // ★ 核心修复：彻底粉碎模块导入的防环缓存！
-            loadedModules.clear();
-            openUpvalues = nullptr;
-            clearAllGlobalICs();
-            // ★ 贴心修复：清理全局变量后，自动把系统必不可少的基础常量重新注入环境
-            setGlobal("PI", Value(3.14159265358979323846));
-            setGlobal("E", Value(2.71828182845904523536));
-            setGlobal("i", Value(Complex(0.0, 1.0)));
-            setGlobal("I", Value(Complex(0.0, 1.0)));
-        }
-        void removeGlobal(const std::string& name) {
-            auto it = globalNamesToSlots.find(name);
-            if (it != globalNamesToSlots.end()) {
-                globalValues[it->second] = Value::none();
-                globalNamesToSlots.erase(it);
-            }
-            constGlobals.erase(name);
-            clearAllGlobalICs();
-        }
+    }
 
-        void triggerDebugger() {
-            debugMode = true;
-            stepNextLine = true; // 立刻在下一行停下
-            lastDebugLine = -1;  // 强制打破防抖
+    void clearGlobals() {
+        globals.clear();
+        globalNames.clear();
+        constGlobals.clear();
+        importedModules.clear();
+        loadedModules.clear();
+        builtinClosures.clear();
+        openUpvalues = nullptr;
+        clearAllGlobalICs();
+    }
+
+    void removeGlobal(const std::string& name) {
+        auto it = globalNames.find(name);
+        if (it != globalNames.end()) {
+            globals[it->second] = Value::none();
+            globalNames.erase(it);
         }
+        constGlobals.erase(name);
+        clearAllGlobalICs();
+    }
 
-        void disableDebugger() {
-            debugMode = false;
-            stepNextLine = false;
+    std::unordered_map<std::string, Value> getGlobals() const {
+        std::unordered_map<std::string, Value> res;
+        for (const auto& [k, v] : globalNames) res[k] = globals[v];
+        return res;
+    }
+
+    void setGlobal(const std::string& name, const Value& val) {
+        auto it = globalNames.find(name);
+        if (it != globalNames.end()) {
+            globals[it->second] = val;
+        } else {
+            globalNames[name] = static_cast<uint32_t>(globals.size());
+            globals.push_back(val);
         }
+    }
 
-        void printProfileReport();
-        void enableProfiler(bool enable) { profileMode = enable; }
+    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity);
+    Value getBuiltinClosure(const std::string& name);
+    const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
+    const std::unordered_map<std::string, std::set<int>>& getBuiltinArity() const { return builtinArity; }
 
-        int runGC();
-    };
+    void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
+        compiledFunctions = fns;
+    }
+    
+    std::vector<std::shared_ptr<CompiledFunction>>& getCompiledFunctions() {
+        return compiledFunctions;
+    }
+
+    Value execute(const Chunk& mainChunk, int localCount);
+
+    static inline VM* activeVM = nullptr;
+    Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());
+
+    void triggerDebugger() {
+        // TODO: Implement debugger for regvm
+    }
+};
 
 } // namespace jc
 

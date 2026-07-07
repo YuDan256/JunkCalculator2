@@ -12,9 +12,12 @@
 #include "memory/SipHash.h"
 #include "vm/HelpRouter.h"
 #include "frontend/Highlight.h"
-#include "frontend/Compiler.h"
-#include "vm/VM.h"
 #include "vm/BuiltinRegistry.h"
+#include "compiler/IRBuilder.h"
+#include "compiler/IROptimizer.h"
+#include "compiler/RegisterAllocator.h"
+#include "compiler/Emitter.h"
+#include "vm/VM.h"
 #include <csignal>
 #include <atomic>
 #include <random>
@@ -106,6 +109,7 @@ void printHelpTopic(const std::string& topic) {
 // 核心 VM 实例和全局上下文
 jc::VM vm;
 bool g_showDisasm = false;  // ★ 新增：字节码反汇编开关
+bool g_showIR = false;      // ★ 新增：IR 图打印开关
 bool g_autoDebug = false;
 bool g_profile = false;
 bool g_quiet = false;
@@ -119,60 +123,38 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     jc::Parser parser(tokens, sourceFile);                   // ★
     auto ast = parser.parse();
     
-    jc::Compiler compiler;
-    // ★ 核心修复：每次编译前，从 VM 获取最新、最权威的函数列表！
-    auto currentFns = vm.getCompiledFunctions();
-    compiler.setCompiledFunctions(currentFns);
-    compiler.setFunctionIndexOffset(0);
+    auto& fns = vm.getCompiledFunctions();
+    size_t currentFnsSize = fns.size();
     
-    jc::Chunk chunk = compiler.compile(ast.get(), sourceFile); // ★
-
-    auto evalFn = std::make_shared<jc::CompiledFunction>();
-    evalFn->name = isFile ? "<script>" : "<eval>";
-    evalFn->arity = 0;
-    evalFn->maxArity = 0;
-    evalFn->localCount = compiler.getTopLevelLocalCount();
-    evalFn->chunk = chunk;
-    evalFn->sourceFile = sourceFile;
-
-    auto fns = compiler.getCompiledFunctions();
-    fns.push_back(evalFn);
-    int evalIdx = static_cast<int>(fns.size()) - 1;
+    jc::IRGraph graph;
+    jc::IRBuilder builder(&graph, &fns);
+    builder.build(ast.get());
     
-    vm.setCompiledFunctions(fns);
-
+    if (g_showIR) graph.print(isFile ? "Script Unoptimized" : "REPL Unoptimized");
+    
+    jc::IROptimizer::optimize(&graph);
+    if (g_showIR) graph.print(isFile ? "Script Optimized" : "REPL Optimized");
+    
+    jc::RegisterAllocator::allocate(&graph);
+    if (g_showIR) graph.print(isFile ? "Script Allocated" : "REPL Allocated");
+    
+    jc::Chunk chunk;
+    int localCount = jc::Emitter::emit(&graph, chunk);
+    
     if (g_showDisasm) {
-        for (size_t i = currentFns.size(); i < fns.size(); ++i) {
+        for (size_t i = currentFnsSize; i < fns.size(); ++i) {
             std::string chunkName = fns[i]->name;
-            if (chunkName == "<eval>" || chunkName == "<script>") {
-                chunkName = isFile ? "Script Chunk" : "REPL Chunk";
-            } else {
-                chunkName = "Function: " + chunkName;
-            }
+            chunkName = "Function: " + chunkName + " (RegVM)";
             fns[i]->chunk.disassemble(chunkName);
         }
+        chunk.disassemble(isFile ? "Script Chunk (RegVM)" : "REPL Chunk (RegVM)");
     }
-
+    
     if (g_autoDebug) {
-        if (jc::VM::activeVM) {
-            jc::VM::activeVM->triggerDebugger(); // ★ 一进虚拟机立刻触发下一行暂停！
-        }
+        std::cout << "Warning: Debugger is not yet supported in RegVM.\n";
     }
-
-    // ★ 核心修复：执行完毕后，将顶层 evalFn 从 VM 的函数列表中移除，避免 REPL 历史堆积导致内存泄漏
-    struct EvalFnCleanup {
-        jc::VM& vmRef;
-        std::shared_ptr<jc::CompiledFunction> fn;
-        ~EvalFnCleanup() {
-            auto currFns = vmRef.getCompiledFunctions();
-            if (!currFns.empty() && currFns.back() == fn) {
-                currFns.pop_back();
-                vmRef.setCompiledFunctions(currFns);
-            }
-        }
-    } cleanup{vm, evalFn};
-
-    return vm.callVMFunction(evalIdx, nullptr, 0);
+    
+    return vm.execute(chunk, localCount);
 }
 
 void runScript(const std::string& filepath, bool isImport = false) {
@@ -200,7 +182,9 @@ void runScript(const std::string& filepath, bool isImport = false) {
     try {
         // ★ 将 resolvedPath 传进虚拟机
         jc::Value result = evalCode(code, resolvedPath, true);
-        if (!result.isNone()) vm.setGlobal("ANS", result);
+        if (!result.isNone()) {
+            vm.setGlobal("ANS", result);
+        }
     }
     catch (const jc::EngineInterruptError&) {
         if (isImport) throw;
@@ -212,9 +196,6 @@ void runScript(const std::string& filepath, bool isImport = false) {
         std::cerr << "\n" << jc::col(jc::Ansi::BRIGHT_RED)
             << "Error in '" << resolvedPath << "':\n"
             << ex.what() << std::endl;
-    }
-    if (g_profile && jc::VM::activeVM) {
-        jc::VM::activeVM->printProfileReport();
     }
 
     jc::helpers::g_scriptDirStack.pop_back();
@@ -232,7 +213,8 @@ void saveWorkspace(const std::string& filename) {
     std::ofstream out((dir / (filename + ".jc2")).string());
 
     int count = 0;
-    for (const auto& [name, value] : vm.getGlobals()) {
+    auto globals = vm.getGlobals();
+    for (const auto& [name, value] : globals) {
         if (name == "PI" || name == "E" || name == "i" || name == "I" || name == "ANS") continue;
         out << name << " = " << value.toJC2Expression() << "\n";
         count++;
@@ -374,11 +356,18 @@ int main(int argc, char* argv[]) {
     vm.setGlobal("ANS", jc::Value::none());
 
     // 绑定虚拟机外包服务给系统级运行时回调！
-    jc::helpers::setGlobalCallback = [](const std::string& name, const jc::Value& val) { vm.setGlobal(name, val); };
+    jc::helpers::setGlobalCallback = [](const std::string& name, const jc::Value& val) { 
+        vm.setGlobal(name, val); 
+    };
     jc::helpers::evalCallback = [](const std::string& code) -> jc::Value { return evalCode(code, "<eval>", false); };
     jc::helpers::runFileCallback = [](const std::string& path) { runScript(path, true); };
     jc::helpers::callFunctionCallback = [](jc::ObjClosure* closure, const std::vector<jc::Value>& args) -> jc::Value {
-        if (closure->isNative() && !closure->isBytecode()) {
+        if (closure->isBytecode()) {
+            jc::Value s = !jc::helpers::nativeSelfStack.empty() ? jc::helpers::nativeSelfStack.back() : closure->boundSelf;
+            jc::Value c = !jc::helpers::nativeClassStack.empty() ? jc::helpers::nativeClassStack.back() : closure->boundClass;
+            return vm.callVMFunction(closure->compiledFnIndex, args, closure, s, c);
+        }
+        if (closure->nativeFn.has_value()) {
             jc::helpers::nativeSelfStack.push_back(closure->boundSelf);
             jc::helpers::nativeClassStack.push_back(closure->boundClass);
             jc::Value result;
@@ -393,10 +382,8 @@ int main(int argc, char* argv[]) {
             jc::helpers::nativeSelfStack.pop_back();
             jc::helpers::nativeClassStack.pop_back();
             return result;
-        } else if (closure->isBytecode()) {
-            return vm.callVMFunction(closure->compiledFnIndex, args, closure, closure->boundSelf, closure->boundClass);
         }
-        throw std::runtime_error("Runtime Error: Invalid closure.");
+        throw std::runtime_error("RegVM Error: Invalid closure in callback.");
     };
     jc::helpers::resolvePathCallback = [exeDir](const std::string& path) -> std::string {
         namespace fs = std::filesystem;
@@ -435,6 +422,9 @@ int main(int argc, char* argv[]) {
         else if (arg == "-d") {
             g_showDisasm = true;
         }
+        else if (arg == "--ir") {
+            g_showIR = true;
+        }
         else if (arg == "--debug") {    // ★ 拦截 --debug 启动项
             g_autoDebug = true;
         }
@@ -452,12 +442,12 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         else if (arg == "--version" || arg == "-v") {
-            std::cout << "Junk Calculator 2.4.5.0\n";
+            std::cout << "Junk Calculator 2.5.0.0\n";
             return 0;
         }
         else if (arg == "--profile") {
             g_profile = true;
-            vm.enableProfiler(true);
+            std::cout << "Warning: Profiler is not yet supported in RegVM.\n";
         }
         else if (arg == "--test") {
             runTests = true;
@@ -505,7 +495,7 @@ int main(int argc, char* argv[]) {
     auto printBanner = []() {
         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN)
             << "=================================================\n"
-            << "   Junk Calculator 2.4.5.0\n"
+            << "   Junk Calculator 2.5.0.0\n"
             << "   Developed by Yu Liangyang, Tsinghua University\n"
             << "=================================================\n" << jc::col(jc::Ansi::RESET)
             << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;
@@ -662,6 +652,16 @@ int main(int argc, char* argv[]) {
                 std::cout << "Bytecode disassembly disabled.\n";
                 continue;
             }
+            if (input == "/ir on") {
+                g_showIR = true;
+                std::cout << "IR Graph printing enabled.\n";
+                continue;
+            }
+            if (input == "/ir off") {
+                g_showIR = false;
+                std::cout << "IR Graph printing disabled.\n";
+                continue;
+            }
 
             // ★ 随时开关全局单步 Debugger
             if (input == "/debug on") {
@@ -671,19 +671,16 @@ int main(int argc, char* argv[]) {
             }
             if (input == "/debug off") {
                 g_autoDebug = false;
-                if (jc::VM::activeVM) jc::VM::activeVM->disableDebugger(); // ★ 强制拉闸
                 std::cout << "Interactive Step-Debugger disabled.\n";
                 continue;
             }
             if (input == "/profile on") {
                 g_profile = true;
-                if (jc::VM::activeVM) jc::VM::activeVM->enableProfiler(true);
-                std::cout << "Profiler enabled. Will print report after execution.\n";
+                std::cout << "Warning: Profiler is not yet supported in RegVM.\n";
                 continue;
             }
             if (input == "/profile off") {
                 g_profile = false;
-                if (jc::VM::activeVM) jc::VM::activeVM->enableProfiler(false);
                 std::cout << "Profiler disabled.\n";
                 continue;
             }
@@ -709,9 +706,13 @@ int main(int argc, char* argv[]) {
             }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
-            if (input == "/version") { std::cout << "Junk Calculator 2.4.5.0\n"; continue; }
+            if (input == "/version") { std::cout << "Junk Calculator 2.5.0.0\n"; continue; }
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
-            if (input == "/clear") { vm.clearGlobals(); std::cout << "All variables cleared.\n"; continue; }
+            if (input == "/clear") { 
+                vm.clearGlobals(); 
+                std::cout << "All variables cleared.\n"; 
+                continue; 
+            }
             if (input == "/cls") {
 #ifdef _WIN32
                 std::system("cls");
@@ -761,7 +762,7 @@ int main(int argc, char* argv[]) {
                     "Qvivqvat ol mreb vf whfg n zlgu vairagrq ol zngurzngvpvnaf gb fpner pnyphyngbef.",
                     "Frtzragngvba snhyg (pber qhzcrq)... Whfg xvqqvat, V jnf erjevggra va Ehfg. Jnvg, ab V jnfa'g!",
                     "0.1 + 0.2 == 0.3 vf SNYFR. V nz n Whax Pnyphyngbe, abg n yvne.",
-                    "Gur Fgnpx IZ vf gnxvat n pbssrr oernx. Cyrnfr glcr tragyl.",
+                    "Gur Ertvfgre IZ vf gnxvat n pbssrr oernx. Cyrnfr glcr tragyl.",
                     "Gb haqrefgnaq erphefvba, lbh zhfg svefg glcr /rtt.",
                     "Reebe 418: V nz n pnyphyngbe, abg n grncbg."
                 };
@@ -786,7 +787,9 @@ int main(int argc, char* argv[]) {
 
         try {
             jc::Value result = evalCode(input, "REPL", false);
-            if (!result.isNone()) vm.setGlobal("ANS", result);
+            if (!result.isNone()) {
+                vm.setGlobal("ANS", result);
+            }
             if (!g_silentRepl && (!result.isNone() || g_showNone)) {
                 std::string typeColor;
                 bool isTopLevelMatrix = false;
@@ -826,9 +829,6 @@ int main(int argc, char* argv[]) {
                 
                 jc::g_printMatrix2D = isTopLevelMatrix;
                 std::cout << typeColor << result << jc::col(jc::Ansi::RESET) << std::endl;
-            }
-            if (g_profile && jc::VM::activeVM) {
-                jc::VM::activeVM->printProfileReport();
             }
         }
         catch (const jc::EngineInterruptError&) {

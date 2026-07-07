@@ -1,7 +1,7 @@
 {
   "topics": {
     "main": [
-      "=================== Junk Calculator 2.4.5.0 — Help ===================",
+      "=================== Junk Calculator 2.5.0.0 — Help ===================",
       "",
       "  Session Commands",
       "  ────────────────────────────────────────────────────────────────────",
@@ -15,6 +15,7 @@
       "    /about                 About JC2 & Author's other works",
       "    /color on | off        Enable/disable REPL syntax highlighting",
       "    /d on | off            Enable/disable real-time bytecode disassembly",
+      "    /ir on | off           Enable/disable real-time IR graph printing",
       "    /debug on | off        Enable/disable global step-debugger",
       "    /profile on | off      Enable/disable execution profiler",
       "    /show_none on | off    Enable/disable printing 'none' at the top level",
@@ -44,7 +45,9 @@
       "    JunkCalculator2 script.jc2         Run a script",
       "    JunkCalculator2 --run script.jc2   Run a script (explicit flag)",
       "    JunkCalculator2 script.jc2 -d      Run with bytecode disassembly output",
+      "    JunkCalculator2 script.jc2 --ir    Run with IR graph printing",
       "    JunkCalculator2 -d                 REPL with bytecode disassembly",
+      "    JunkCalculator2 --ir               REPL with IR graph printing",
       "    JunkCalculator2 -e \"expr\"          Evaluate expression and exit",
       "    JunkCalculator2 -q                 Start REPL in quiet mode (no banner/prompt)",
       "    JunkCalculator2 --test             Run all .jc2 test scripts in the tests/ directory",

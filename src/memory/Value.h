@@ -90,6 +90,7 @@ namespace jc {
     struct ObjUpVal;
     struct NamespaceField;
 
+    inline std::unordered_map<std::string, ObjString*> g_internedStrings;
     ObjString* internString(const std::string& str);
 
     // =======================================================
@@ -141,10 +142,15 @@ namespace jc {
         ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
     };
     struct ObjClass : public Obj {
+        uint64_t classId;
         std::string name;
         ObjClass* parent = nullptr;
         std::map<std::string, ObjClosure*> methods;
-        ObjClass() { type = ObjType::CLASS; }
+        ObjClass() { 
+            static uint64_t nextId = 1;
+            classId = nextId++;
+            type = ObjType::CLASS; 
+        }
     };
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
@@ -753,7 +759,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() * rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Multiplication not supported for these types.");
+        throw std::runtime_error("Type Error: Cannot multiply '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator/(const Value& lhs, const Value& rhs) {
@@ -828,7 +834,7 @@ namespace jc {
                 return Value(lhs.asDouble() / b);
             }
         
-        throw std::runtime_error("Type Error: Division not supported for these types.");
+        throw std::runtime_error("Type Error: Cannot divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
     }
 
     inline Value operator^(const Value& lhs, const Value& rhs) {
@@ -918,6 +924,7 @@ namespace jc {
                         if (r < 0) { r += q; k -= 1; }
                         if (k != 0 && r != 0) {
                             Value exactPart = lhs ^ Value(BigInt(k));
+                            GcValueGuard guard(exactPart);
                             Value symPart = Value(SymExpr(Fraction(aNum, aDen)) ^ SymExpr(Fraction(BigInt(r), BigInt(q))));
                             return exactPart * symPart;
                         }
@@ -933,7 +940,7 @@ namespace jc {
             double res = std::pow(a, b);
             return Value(res);
 
-        throw std::runtime_error("Type Error: Power operation not supported for these types.");
+        throw std::runtime_error("Type Error: Power operation not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline bool operator<(const Value& a, const Value& b) {
@@ -1037,7 +1044,7 @@ namespace jc {
             if (lhs.isObjType(ObjType::FRACTION) && rhsIsExactInt) return Value::fromFraction(static_cast<ObjFraction*>(lhs.asObj())->frac % Fraction(rhs.asBigInt()));
             if (lhsIsExactInt && rhs.isObjType(ObjType::FRACTION)) return Value::fromFraction(Fraction(lhs.asBigInt()) % static_cast<ObjFraction*>(rhs.asObj())->frac);
         
-        throw std::runtime_error("Type Error: Modulo not supported for these types.");
+        throw std::runtime_error("Type Error: Modulo not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator&(const Value& lhs, const Value& rhs) {
@@ -1066,7 +1073,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitAnd(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set AND '&' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise/Set AND '&' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator<<(const Value& lhs, const Value& rhs) {
@@ -1090,7 +1097,7 @@ namespace jc {
             BigInt lVal = lhs.isBool() ? BigInt(lhs.asBool() ? 1 : 0) : lhs.asBigInt();
             return Value(lVal * BigInt(2).pow(shift));
         }
-        throw std::runtime_error("Type Error: Bitwise SHIFT LEFT '<<' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise SHIFT LEFT '<<' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator>>(const Value& lhs, const Value& rhs) {
@@ -1114,7 +1121,7 @@ namespace jc {
             }
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise SHIFT RIGHT '>>' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise SHIFT RIGHT '>>' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator|(const Value& lhs, const Value& rhs) {
@@ -1140,7 +1147,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitOr(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set OR '|' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise/Set OR '|' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value bitXor(const Value& lhs, const Value& rhs) {
@@ -1174,7 +1181,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitXor(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set XOR '^^' not supported for these types.");
+        throw std::runtime_error("Type Error: Bitwise/Set XOR '^^' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline std::string Value::toJC2Expression() const {
@@ -1505,6 +1512,11 @@ namespace jc {
 
         // 防循环递归锁
         static thread_local std::vector<std::pair<const void*, const void*>> comparingPairs;
+        struct CompGuard {
+            std::vector<std::pair<const void*, const void*>>& vec;
+            CompGuard(std::vector<std::pair<const void*, const void*>>& v, const std::pair<const void*, const void*>& p) : vec(v) { vec.push_back(p); }
+            ~CompGuard() { vec.pop_back(); }
+        };
 
         bool lIsInt = lhs.isInt32() || lhs.isBool();
         bool rIsInt = rhs.isInt32() || rhs.isBool();
@@ -1562,13 +1574,12 @@ namespace jc {
                     if (a.size() != b.size()) return false;
                     auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                     if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
-                    comparingPairs.push_back(pair);
+                    CompGuard guard(comparingPairs, pair);
                     bool eq = true;
                     for (size_t i = 0; i < a.size(); ++i) {
                         try { if (!equals(a[i], b[i])) { eq = false; break; } }
                         catch (...) { eq = false; break; }
                     }
-                    comparingPairs.pop_back();
                     return eq;
                 }
                 case ObjType::DICT: {
@@ -1577,7 +1588,7 @@ namespace jc {
                     if (a->elements.size() != b->elements.size()) return false;
                     auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                     if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
-                    comparingPairs.push_back(pair);
+                    CompGuard guard(comparingPairs, pair);
                     bool eq = true;
                     for (const auto& [key, val] : a->elements) {
                         auto it = b->keyMap.find(key);
@@ -1585,7 +1596,6 @@ namespace jc {
                         try { if (!equals(val, b->elements[it->second].second)) { eq = false; break; } }
                         catch (...) { eq = false; break; }
                     }
-                    comparingPairs.pop_back();
                     return eq;
                 }
                 case ObjType::SET: {
@@ -1608,7 +1618,7 @@ namespace jc {
                         if (inst1->fields->elements.size() != inst2->fields->elements.size()) return false;
                         auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                         if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
-                        comparingPairs.push_back(pair);
+                        CompGuard guard(comparingPairs, pair);
                         bool eq = true;
                         for (const auto& [k, v] : inst1->fields->elements) {
                             auto it = inst2->fields->keyMap.find(k);
@@ -1616,7 +1626,6 @@ namespace jc {
                             try { if (!equals(v, inst2->fields->elements[it->second].second)) { eq = false; break; } }
                             catch (...) { eq = false; break; }
                         }
-                        comparingPairs.pop_back();
                         return eq;
                     }
                     return false;
@@ -1767,7 +1776,7 @@ namespace jc {
             return Value(BaseNum(-base.getValue() - BigInt(1), base.getRadix()));
         }
         if (isBigInt()) return Value(-asBigInt() - BigInt(1));
-        throw std::runtime_error("Type Error: Bitwise NOT '~' not supported for this type.");
+        throw std::runtime_error("Type Error: Bitwise NOT '~' not supported for '" + typeName() + "'.");
     }
 
     inline Value Value::operator-() const {
@@ -1791,7 +1800,7 @@ namespace jc {
                 default: break;
             }
         }
-        throw std::runtime_error("Type Error: Cannot negate this type.");
+        throw std::runtime_error("Type Error: Cannot negate '" + typeName() + "'.");
     }
 
     inline Value operator+(const Value& lhs, const Value& rhs) {
@@ -1897,7 +1906,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() + rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Cannot add these types.");
+        throw std::runtime_error("Type Error: Cannot add '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator-(const Value& lhs, const Value& rhs) {
@@ -2018,7 +2027,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() - rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Subtraction not supported for these types.");
+        throw std::runtime_error("Type Error: Cannot subtract '" + rhs.typeName() + "' from '" + lhs.typeName() + "'.");
     }
 
 inline ObjClosure* Value::asFunction() const {
@@ -2340,6 +2349,94 @@ inline size_t ValueHasher::operator()(const Value& v) const {
 
 inline bool ValueEqual::operator()(const Value& lhs, const Value& rhs) const {
     return Value::equals(lhs, rhs);
+}
+
+inline void GcHeap::markObj(Obj* obj) {
+    if (!obj || obj->isMarked) return;
+    obj->isMarked = true;
+    
+    switch (obj->type) {
+        case ObjType::LIST: {
+            for (auto& v : static_cast<ObjList*>(obj)->vec) markValue(v);
+            break;
+        }
+        case ObjType::DICT: {
+            for (auto& [k, v] : static_cast<ObjDict*>(obj)->elements) {
+                markValue(k); markValue(v);
+            }
+            break;
+        }
+        case ObjType::SET: {
+            for (auto& v : static_cast<ObjSet*>(obj)->elements) markValue(v);
+            break;
+        }
+        case ObjType::CLOSURE: {
+            auto closure = static_cast<ObjClosure*>(obj);
+            markValue(closure->boundSelf);
+            markValue(closure->boundClass);
+            for (auto& v : closure->defaultValues) markValue(v);
+            for (int i = 0; i < closure->upvalueCount; ++i) {
+                markObj(closure->upvalues[i]);
+            }
+            break;
+        }
+        case ObjType::CLASS: {
+            auto cls = static_cast<ObjClass*>(obj);
+            markObj(cls->parent);
+            for (auto& [k, v] : cls->methods) markObj(v);
+            break;
+        }
+        case ObjType::INSTANCE: {
+            auto inst = static_cast<ObjInstance*>(obj);
+            markObj(inst->classDef);
+            markObj(inst->fields);
+            break;
+        }
+        case ObjType::SUPER_PROXY: {
+            auto sp = static_cast<ObjSuper*>(obj);
+            markObj(sp->instance);
+            markObj(sp->parentClass);
+            break;
+        }
+        case ObjType::NAMESPACE: {
+            auto ns = static_cast<ObjNamespace*>(obj);
+            for (auto& [k, f] : ns->fields) markObj(f.upval);
+            break;
+        }
+        case ObjType::UPVALUE: {
+            auto uv = static_cast<ObjUpVal*>(obj);
+            markValue(uv->closed);
+            break;
+        }
+        default: break;
+    }
+}
+
+inline void GcHeap::markValue(const Value& val) {
+    if (val.isObj()) markObj(val.asObj());
+}
+
+inline void GcHeap::collectGarbage() {
+    if (markCallback) markCallback();
+    
+    for (Obj* obj : tempObjRoots_) markObj(obj);
+    for (Value* val : tempValueRoots_) {
+        if (val) markValue(*val);
+    }
+
+    if (sweepCallback) sweepCallback();
+
+    sweep();
+}
+
+inline ObjString* internString(const std::string& str) {
+    auto it = g_internedStrings.find(str);
+    if (it != g_internedStrings.end()) {
+        return it->second;
+    }
+    ObjString* obj = GcHeap::get().allocate<ObjString>(str);
+    g_internedStrings[str] = obj;
+    return obj;
 }
 
 } // namespace jc

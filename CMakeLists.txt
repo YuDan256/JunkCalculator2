@@ -1,6 +1,6 @@
 # ==============================================================================
 # Junk Calculator 2 - Ultimate CMake Build Script
-# Version: 2.4.5.0
+# Version: 2.5.0.0
 # ==============================================================================
 cmake_minimum_required(VERSION 3.15)
 
@@ -11,7 +11,7 @@ cmake_policy(SET CMP0091 NEW)
 # This permanently eliminates the "missing VCRUNTIME140.dll" error on target machines!
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(JunkCalculator2 VERSION 2.4.5.0 LANGUAGES CXX)
+project(JunkCalculator2 VERSION 2.5.0.0 LANGUAGES CXX)
 
 # Enforce C++ 20 Standard
 set(CMAKE_CXX_STANDARD 20)
@@ -42,12 +42,13 @@ endif()
 # Core Sources & Headers Collection
 # ==============================================================================
 set(JC2_HEADERS
-    "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/Compiler.h"
+    "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/modules/image/Image.h"
-    "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/VM.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h"
+    "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
+    "src/compiler/IR.h" "src/compiler/IRBuilder.h" "src/compiler/IROptimizer.h" "src/compiler/RegisterAllocator.h" "src/compiler/Emitter.h"
     "src/modules/ExtensionBridge.h"
     "src/modules/jc2_extension_api.h"
     "src/modules/jc2_extension_cpp.h"
@@ -55,8 +56,13 @@ set(JC2_HEADERS
 
 set(JC2_SOURCES
     "src/modules/ExtensionBridge.cpp"
-    "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/Compiler.cpp"
-    "src/vm/VM.cpp" "src/vm/BuiltinRegistry.cpp" "src/main.cpp"
+    "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp"
+    "src/compiler/IRBuilder.cpp"
+    "src/compiler/IROptimizer.cpp"
+    "src/compiler/RegisterAllocator.cpp"
+    "src/compiler/Emitter.cpp"
+    "src/vm/VM.cpp"
+    "src/vm/BuiltinRegistry.cpp" "src/main.cpp"
     "src/cas/Symbolic.cpp" "src/cas/Integration.cpp" "src/cas/Factorization.cpp" "src/cas/Groebner.cpp"
     "src/resource.rc"
 )
@@ -234,7 +240,7 @@ endif()
 
 set(CPACK_GENERATOR "ZIP")
 set(CPACK_PACKAGE_NAME "JunkCalculator2")
-set(CPACK_PACKAGE_VERSION "2.4.5.0")
+set(CPACK_PACKAGE_VERSION "2.5.0.0")
 set(CPACK_PACKAGE_VENDOR "Yu Liangyang")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-Windows-x64")
 include(CPack)

@@ -212,6 +212,7 @@ void saveWorkspace(const std::string& filename) {
     auto globals = vm.getGlobals();
     for (const auto& [name, value] : globals) {
         if (name == "PI" || name == "E" || name == "i" || name == "I" || name == "ANS") continue;
+        if (name.length() >= 2 && name[0] == '_' && name[1] == '_') continue;
         out << name << " = " << value.toJC2Expression() << "\n";
         count++;
     }

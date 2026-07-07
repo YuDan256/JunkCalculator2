@@ -2341,6 +2341,7 @@ Value VM::run(int targetFrameDepth) {
                             }
                         } else if (line == "g" || line == "globals") {
                             for (const auto& [k, v] : globalNames) {
+                                if (k.length() >= 2 && k[0] == '_' && k[1] == '_') continue;
                                 std::cout << "  " << k << " = " << globals[v] << "\n";
                             }
                         } else if (line == "bt" || line == "backtrace") {

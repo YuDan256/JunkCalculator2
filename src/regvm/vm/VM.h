@@ -3,6 +3,7 @@
 
 #include "Bytecode.h"
 #include "../../memory/Value.h"
+#include "../../vm/BuiltinRegistry.h"
 #include <vector>
 #include <unordered_map>
 #include <memory>

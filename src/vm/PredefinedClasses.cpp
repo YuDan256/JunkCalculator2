@@ -68,7 +68,7 @@ void registerPredefinedClasses() {
 
     // __len__()
     auto rangeLen = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__len__", nullptr);
-    rangeLen->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+    rangeLen->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
         return Value(BigInt(data.length));
@@ -77,7 +77,7 @@ void registerPredefinedClasses() {
 
     // __str__()
     auto rangeStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
-    rangeStr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+    rangeStr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
         std::ostringstream oss;
@@ -107,7 +107,7 @@ void registerPredefinedClasses() {
 
     // __iter__() for Range
     auto rangeIter = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__iter__", nullptr);
-    rangeIter->nativeFn = std::make_any<NativeCallable>([rangeIterClass](const std::vector<Value>& args) -> Value {
+    rangeIter->nativeFn = std::make_any<NativeCallable>([rangeIterClass](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         ObjInstance* iterInst = GcHeap::get().allocate<ObjInstance>();
         iterInst->classDef = rangeIterClass;
@@ -125,7 +125,7 @@ void registerPredefinedClasses() {
 
     // __next__() for RangeIterator
     auto rangeIterNext = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__next__", nullptr);
-    rangeIterNext->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+    rangeIterNext->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& iterData = std::any_cast<RangeIterData&>(self.asInstance()->nativeData);
         auto& rangeData = std::any_cast<RangeData&>(iterData.rangeObj.asInstance()->nativeData);

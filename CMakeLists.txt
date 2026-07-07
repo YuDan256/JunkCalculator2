@@ -46,7 +46,7 @@ set(JC2_HEADERS
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/modules/image/Image.h"
-    "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/BuiltinRegistry.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
+    "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/BuiltinRegistry.h" "src/vm/PredefinedClasses.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/compiler/IR.h" "src/compiler/IRBuilder.h" "src/compiler/IROptimizer.h" "src/compiler/RegisterAllocator.h" "src/compiler/Emitter.h"
     "src/modules/ExtensionBridge.h"
@@ -62,7 +62,7 @@ set(JC2_SOURCES
     "src/compiler/RegisterAllocator.cpp"
     "src/compiler/Emitter.cpp"
     "src/vm/VM.cpp"
-    "src/vm/BuiltinRegistry.cpp" "src/main.cpp"
+    "src/vm/BuiltinRegistry.cpp" "src/vm/PredefinedClasses.cpp" "src/main.cpp"
     "src/cas/Symbolic.cpp" "src/cas/Integration.cpp" "src/cas/Factorization.cpp" "src/cas/Groebner.cpp"
     "src/resource.rc"
 )

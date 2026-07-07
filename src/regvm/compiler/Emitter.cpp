@@ -101,9 +101,17 @@ static int ensureReg(IRNode* in, std::vector<uint32_t>& preWords, Chunk& chunk, 
 static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& args, Chunk& chunk, int dynamicSpillBase) {
     int base = dynamicSpillBase;
     for (size_t i = 0; i < args.size(); ++i) {
-        int reg = ensureReg(args[i], words, chunk, 124);
-        auto move = buildInstAB(OpCode::MOVE, base + static_cast<int>(i), reg);
-        words.insert(words.end(), move.begin(), move.end());
+        if (args[i]->op == IROp::Constant && args[i]->physicalReg == -1) {
+            int idx = chunk.addConstant(args[i]->constVal);
+            auto loadk = buildInstABx(OpCode::LOADK, base + static_cast<int>(i), idx);
+            words.insert(words.end(), loadk.begin(), loadk.end());
+        } else {
+            int reg = ensureReg(args[i], words, chunk, 124);
+            if (base + static_cast<int>(i) != reg) {
+                auto move = buildInstAB(OpCode::MOVE, base + static_cast<int>(i), reg);
+                words.insert(words.end(), move.begin(), move.end());
+            }
+        }
     }
     return base;
 }
@@ -200,10 +208,16 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::Move: {
-                        int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        if (node->physicalReg != b) {
-                            auto w = buildInstAB(OpCode::MOVE, node->physicalReg, b);
+                        if (node->dataInputs[0]->op == IROp::Constant && node->dataInputs[0]->physicalReg == -1) {
+                            int idx = chunk.addConstant(node->dataInputs[0]->constVal);
+                            auto w = buildInstABx(OpCode::LOADK, node->physicalReg, idx);
                             inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        } else {
+                            int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                            if (node->physicalReg != b) {
+                                auto w = buildInstAB(OpCode::MOVE, node->physicalReg, b);
+                                inst.words.insert(inst.words.end(), w.begin(), w.end());
+                            }
                         }
                         break;
                     }
@@ -563,9 +577,17 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::Return: {
-                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto ret = buildInstA(OpCode::RETURN, a);
-                        inst.words.insert(inst.words.end(), ret.begin(), ret.end());
+                        if (node->dataInputs[0]->op == IROp::Constant && node->dataInputs[0]->physicalReg == -1) {
+                            int idx = chunk.addConstant(node->dataInputs[0]->constVal);
+                            auto loadk = buildInstABx(OpCode::LOADK, 124, idx);
+                            inst.words.insert(inst.words.end(), loadk.begin(), loadk.end());
+                            auto ret = buildInstA(OpCode::RETURN, 124);
+                            inst.words.insert(inst.words.end(), ret.begin(), ret.end());
+                        } else {
+                            int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                            auto ret = buildInstA(OpCode::RETURN, a);
+                            inst.words.insert(inst.words.end(), ret.begin(), ret.end());
+                        }
                         break;
                     }
                     case IROp::Throw: {
@@ -675,6 +697,28 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
         }
         for (auto& inst : insts) {
             if (inst.isJump) {
+                // Jump Threading
+                int targetIdx = blockToInstIdx[inst.jumpTarget];
+                std::unordered_set<int> visited;
+                while (targetIdx < static_cast<int>(insts.size())) {
+                    if (visited.count(targetIdx)) break;
+                    visited.insert(targetIdx);
+                    
+                    int nextIdx = targetIdx;
+                    while (nextIdx < static_cast<int>(insts.size()) && insts[nextIdx].words.empty() && !insts[nextIdx].isJump) {
+                        nextIdx++;
+                    }
+                    if (nextIdx < static_cast<int>(insts.size()) && insts[nextIdx].isJump && insts[nextIdx].jumpOp == OpCode::JMP) {
+                        if (inst.jumpTarget != insts[nextIdx].jumpTarget) {
+                            inst.jumpTarget = insts[nextIdx].jumpTarget;
+                            targetIdx = blockToInstIdx[inst.jumpTarget];
+                            changed = true;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
                 int targetOffset = insts[blockToInstIdx[inst.jumpTarget]].offset;
                 int relOffset = targetOffset - (inst.offset + static_cast<int>(inst.words.size()));
                 

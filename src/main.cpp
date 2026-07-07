@@ -362,6 +362,11 @@ int main(int argc, char* argv[]) {
     jc::helpers::evalCallback = [](const std::string& code) -> jc::Value { return evalCode(code, "<eval>", false); };
     jc::helpers::runFileCallback = [](const std::string& path) { runScript(path, true); };
     jc::helpers::callFunctionCallback = [](jc::ObjClosure* closure, const std::vector<jc::Value>& args) -> jc::Value {
+        if (closure->isBytecode()) {
+            jc::Value s = !jc::helpers::nativeSelfStack.empty() ? jc::helpers::nativeSelfStack.back() : closure->boundSelf;
+            jc::Value c = !jc::helpers::nativeClassStack.empty() ? jc::helpers::nativeClassStack.back() : closure->boundClass;
+            return vm.callVMFunction(closure->compiledFnIndex, args, closure, s, c);
+        }
         if (closure->nativeFn.has_value()) {
             jc::helpers::nativeSelfStack.push_back(closure->boundSelf);
             jc::helpers::nativeClassStack.push_back(closure->boundClass);

@@ -2260,9 +2260,9 @@ void BuiltinRegistry::registerStringFunctions() {
     reg("eval", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: eval() expects a string.");
-        if (!evalCallback)
+        if (!helpers::evalCallback)
             throw std::runtime_error("Runtime Error: eval() not available in this context.");
-        return evalCallback(args[0].asString());
+        return helpers::evalCallback(args[0].asString());
         });
 
     reg("substr", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: substr() expects a string."); ObjString* objStr = args[0].asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[1].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args.size()==2) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[2].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); });

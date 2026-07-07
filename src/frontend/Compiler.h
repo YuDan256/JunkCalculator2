@@ -37,6 +37,7 @@ namespace jc {
 
     class Compiler : public ExprVisitor {
     private:
+        std::vector<std::shared_ptr<CompiledFunction>> scriptFunctions;
         size_t lastInstructionStart = std::string::npos;
         size_t lastOpcodeOffset = std::string::npos;
         uint8_t operandCountSinceOpcode = 0;
@@ -107,6 +108,10 @@ namespace jc {
         void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars);
 
     public:
+        Compiler();
+        ~Compiler();
+        void markRoots();
+
         Chunk compile(Expr* ast, const std::string& sourceFile = "");
         Chunk compileModule(Expr* ast, const std::string& sourceFile, const std::string& moduleName);
 

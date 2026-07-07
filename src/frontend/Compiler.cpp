@@ -3,8 +3,54 @@
 #include <functional>
 #include <filesystem>
 #include <stdexcept>
+#include <algorithm>
 
 namespace jc {
+
+    Compiler::Compiler() {
+        if (VM::activeVM) {
+            VM::activeVM->activeCompilers.push_back(this);
+        }
+    }
+
+    Compiler::~Compiler() {
+        if (VM::activeVM) {
+            auto& list = VM::activeVM->activeCompilers;
+            list.erase(std::remove(list.begin(), list.end(), this), list.end());
+        }
+    }
+
+    void Compiler::markRoots() {
+        for (const auto& fn : compiledFunctions) {
+            for (const auto& c : fn->chunk.constants) GcHeap::get().markValue(c);
+            for (auto& ic : fn->chunk.inlineCaches) {
+                if (ic.cachedClass) GcHeap::get().markObj(ic.cachedClass);
+                if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
+            }
+        }
+        for (const auto& fn : scriptFunctions) {
+            for (const auto& c : fn->chunk.constants) GcHeap::get().markValue(c);
+            for (auto& ic : fn->chunk.inlineCaches) {
+                if (ic.cachedClass) GcHeap::get().markObj(ic.cachedClass);
+                if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
+            }
+        }
+        for (const auto& state : stateStack) {
+            if (state.function) {
+                for (const auto& c : state.function->chunk.constants) GcHeap::get().markValue(c);
+                for (auto& ic : state.function->chunk.inlineCaches) {
+                    if (ic.cachedClass) GcHeap::get().markObj(ic.cachedClass);
+                    if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
+                }
+            }
+            for (const auto& local : state.locals) {
+                if (local.constValue) GcHeap::get().markValue(*local.constValue);
+            }
+        }
+        for (const auto& [k, v] : knownConstGlobals) {
+            GcHeap::get().markValue(v);
+        }
+    }
 
     static bool isStructuredPattern(Pattern* p) {
         if (dynamic_cast<ListPattern*>(p)) return true;
@@ -402,6 +448,7 @@ namespace jc {
             mainFn->localCount = current().maxLocals;
             topLevelLocalCount = current().maxLocals;
             stateStack.pop_back();
+            scriptFunctions.push_back(mainFn);
             return mainFn->chunk;
         }
         catch (const std::exception& e) {

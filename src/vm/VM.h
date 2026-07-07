@@ -22,10 +22,13 @@ namespace jc {
         explicit ValueException(Value v) : val(std::move(v)) {}
     };
 
+    class Compiler;
+
     class VM {
     private:
 
         std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
+        std::vector<std::shared_ptr<CompiledFunction>> exceptionRoots;
 
         // ★ 多帧栈：支持嵌套函数调用
         CallFrame* frames = nullptr;
@@ -185,6 +188,7 @@ namespace jc {
         Value getBuiltinClosure(const std::string& name);
         void setGlobal(const std::string& name, const Value& val);
         inline static VM* activeVM = nullptr;
+        std::vector<Compiler*> activeCompilers;
         static std::any makeNativeFn(NativeCallable fn);
         // ★ 接受编译后的函数列表
         void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
@@ -224,6 +228,7 @@ namespace jc {
             importedModules.clear(); // ★ 核心修复：彻底粉碎模块导入的防环缓存！
             loadedModules.clear();
             openUpvalues = nullptr;
+            exceptionRoots.clear();
             clearAllGlobalICs();
             // ★ 贴心修复：清理全局变量后，自动把系统必不可少的基础常量重新注入环境
             setGlobal("PI", Value(3.14159265358979323846));

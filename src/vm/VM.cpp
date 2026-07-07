@@ -497,6 +497,16 @@ namespace jc {
             for (const auto& pr : pendingCallRefs) {
                 if (pr.second) markObject(pr.second);
             }
+            for (const auto& fn : exceptionRoots) {
+                for (const auto& c : fn->chunk.constants) markValue(c);
+                for (auto& ic : fn->chunk.inlineCaches) {
+                    if (ic.cachedClass) markObject(ic.cachedClass);
+                    if (ic.cachedMethod) markObject(ic.cachedMethod);
+                }
+            }
+            for (Compiler* comp : activeCompilers) {
+                comp->markRoots();
+            }
             traceReferences();
         };
 
@@ -576,6 +586,7 @@ namespace jc {
     }
 
     Value VM::execute(const Chunk& c) {
+        exceptionRoots.clear();
         activeVM = this;
         auto mainFn = std::make_shared<CompiledFunction>();
         mainFn->name = "<script>";
@@ -595,7 +606,12 @@ namespace jc {
         mainFrame.ip = 0;
         mainFrame.stackBase = 0;
         frames[frameCount++] = mainFrame;
-        return run(0);
+        try {
+            return run(0);
+        } catch (...) {
+            exceptionRoots.push_back(mainFn);
+            throw;
+        }
     }
 
     Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args,

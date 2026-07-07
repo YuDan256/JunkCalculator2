@@ -460,6 +460,62 @@ namespace jc {
         setGlobal("E", Value(2.71828182845904523536));
         setGlobal("i", Value(Complex(0.0, 1.0)));
         setGlobal("I", Value(Complex(0.0, 1.0)));
+
+        GcHeap::get().markCallback = [this]() {
+            for (const auto& val : globalValues) markValue(val);
+            for (const auto& [name, val] : loadedModules) markValue(val);
+            for (Value* p = stack; p < stackTop; ++p) markValue(*p);
+            for (int i = 0; i < frameCount; ++i) {
+                const auto& f = frames[i];
+                if (f.closure) markObject(f.closure);
+                markValue(f.selfContext);
+                markValue(f.classContext);
+                if (f.function) {
+                    for (const auto& c : f.function->chunk.constants) markValue(c);
+                    for (auto& ic : f.function->chunk.inlineCaches) {
+                        if (ic.cachedClass) markObject(ic.cachedClass);
+                        if (ic.cachedMethod) markObject(ic.cachedMethod);
+                    }
+                }
+            }
+            for (const auto& fn : compiledFunctions) {
+                for (const auto& c : fn->chunk.constants) markValue(c);
+                for (auto& ic : fn->chunk.inlineCaches) {
+                    if (ic.cachedClass) markObject(ic.cachedClass);
+                    if (ic.cachedMethod) markObject(ic.cachedMethod);
+                }
+            }
+            for (const auto& val : helpers::nativeSelfStack) markValue(val);
+            for (const auto& val : helpers::nativeClassStack) markValue(val);
+            for (Obj* obj : GcHeap::get().getTempObjRoots()) markObject(obj);
+            for (Value* val : GcHeap::get().getTempValueRoots()) markValue(*val);
+            ObjUpVal* uv = openUpvalues;
+            while (uv) {
+                markObject(uv);
+                uv = uv->nextOpen;
+            }
+            for (const auto& pr : pendingCallRefs) {
+                if (pr.second) markObject(pr.second);
+            }
+            traceReferences();
+        };
+
+        GcHeap::get().sweepCallback = [this]() {
+            for (auto it = g_internedStrings.begin(); it != g_internedStrings.end(); ) {
+                if (!it->second->isMarked) {
+                    it = g_internedStrings.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            for (auto it = builtinClosures.begin(); it != builtinClosures.end(); ) {
+                if (it->second.isObj() && !it->second.asObj()->isMarked) {
+                    it = builtinClosures.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        };
     }
 
     VM::~VM() {
@@ -3105,154 +3161,12 @@ namespace jc {
     }
 
     void VM::collectGarbage() {
-        // ═══ Phase 1: MARK ═══
-
-        // 根集合 1: 全局变量
-        for (const auto& val : globalValues)
-            markValue(val);
-
-        // 根集合 1.5: 已加载的模块缓存
-        for (const auto& [name, val] : loadedModules)
-            markValue(val);
-
-        // 根集合 2: 虚拟机求值栈
-        for (Value* p = stack; p < stackTop; ++p)
-            markValue(*p);
-
-        // 根集合 3: 所有调用帧的闭包上值，以及存活帧的上下文引擎！
-        for (int i = 0; i < frameCount; ++i) {
-            const auto& f = frames[i];
-            if (f.closure) {
-                markObject(f.closure);
-            }
-            // ★ 世纪补漏：必须追踪目前存活函数的上下文环境！
-            markValue(f.selfContext);
-            markValue(f.classContext);
-            
-            // ★ 终极补漏：主脚本的常量池不在 compiledFunctions 中，必须通过活跃帧扫描！
-            if (f.function) {
-                for (const auto& c : f.function->chunk.constants)
-                    markValue(c);
-            }
-        }
-
-        // 根集合 4: 常量池 (编译后的函数里缓存的字面量) 和 内联缓存
-        for (const auto& fn : compiledFunctions) {
-            for (const auto& c : fn->chunk.constants)
-                markValue(c);
-            for (auto& ic : fn->chunk.inlineCaches) {
-                if (ic.cachedClass) markObject(ic.cachedClass);
-                if (ic.cachedMethod) markObject(ic.cachedMethod);
-            }
-        }
-
-        // 根集合 5: C++ 层当前正在执行跨界调用的原生对象栈！
-        for (const auto& val : helpers::nativeSelfStack) markValue(val);
-        for (const auto& val : helpers::nativeClassStack) markValue(val);
-
-        // 根集合 6: C++ 层 RAII 临时保护的 GC 根
-        for (Obj* obj : GcHeap::get().getTempObjRoots()) markObject(obj);
-        for (Value* val : GcHeap::get().getTempValueRoots()) markValue(*val);
-
-        // 根集合 7: 开放上值链表
-        ObjUpVal* uv = openUpvalues;
-        while (uv) {
-            markObject(uv);
-            uv = uv->nextOpen;
-        }
-
-        // 根集合 8: 挂起的引用参数
-        for (const auto& pr : pendingCallRefs) {
-            if (pr.second) markObject(pr.second);
-        }
-
-        traceReferences();
-
-        // ★ 在 sweep 之前，清理驻留池中未被标记的字符串
-        for (auto it = g_internedStrings.begin(); it != g_internedStrings.end(); ) {
-            if (!it->second->isMarked) {
-                it = g_internedStrings.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        // ★ 在 sweep 之前，清理未被标记的内置函数闭包缓存 (弱引用)
-        for (auto it = builtinClosures.begin(); it != builtinClosures.end(); ) {
-            if (it->second.isObj() && !it->second.asObj()->isMarked) {
-                it = builtinClosures.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        // ═══ Phase 2: SWEEP ═══
-        GcHeap::get().sweep();
+        GcHeap::get().collectGarbage();
     }
 
     int VM::runGC() {
-        for (const auto& val : globalValues)  markValue(val);
-        for (const auto& [name, val] : loadedModules) markValue(val);
-        for (Value* p = stack; p < stackTop; ++p) markValue(*p);
-        for (int i = 0; i < frameCount; ++i) {
-            const auto& f = frames[i];
-            if (f.closure) {
-                markObject(f.closure);
-            }
-            // ★ 防止手动 gc() 触发对象丢失
-            markValue(f.selfContext);
-            markValue(f.classContext);
-            
-            if (f.function) {
-                for (const auto& c : f.function->chunk.constants)
-                    markValue(c);
-            }
-        }
-        for (const auto& fn : compiledFunctions) {
-            for (const auto& c : fn->chunk.constants) markValue(c);
-            for (auto& ic : fn->chunk.inlineCaches) {
-                if (ic.cachedClass) markObject(ic.cachedClass);
-                if (ic.cachedMethod) markObject(ic.cachedMethod);
-            }
-        }
-
-        // ★ C++ 原生堆栈手动同步
-        for (const auto& val : helpers::nativeSelfStack) markValue(val);
-        for (const auto& val : helpers::nativeClassStack) markValue(val);
-
-        for (Obj* obj : GcHeap::get().getTempObjRoots()) markObject(obj);
-        for (Value* val : GcHeap::get().getTempValueRoots()) markValue(*val);
-
-        ObjUpVal* uv = openUpvalues;
-        while (uv) {
-            markObject(uv);
-            uv = uv->nextOpen;
-        }
-
-        for (const auto& pr : pendingCallRefs) {
-            if (pr.second) markObject(pr.second);
-        }
-
-        traceReferences();
-
-        // ★ 在 sweep 之前，清理驻留池中未被标记的字符串
-        for (auto it = g_internedStrings.begin(); it != g_internedStrings.end(); ) {
-            if (!it->second->isMarked) {
-                it = g_internedStrings.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
-        // ★ 在 sweep 之前，清理未被标记的内置函数闭包缓存 (弱引用)
-        for (auto it = builtinClosures.begin(); it != builtinClosures.end(); ) {
-            if (it->second.isObj() && !it->second.asObj()->isMarked) {
-                it = builtinClosures.erase(it);
-            } else {
-                ++it;
-            }
-        }
-
+        if (GcHeap::get().markCallback) GcHeap::get().markCallback();
+        if (GcHeap::get().sweepCallback) GcHeap::get().sweepCallback();
         return GcHeap::get().sweep();
     }
 

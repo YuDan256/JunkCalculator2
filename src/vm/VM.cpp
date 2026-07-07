@@ -5207,7 +5207,7 @@ Value VM::run(int targetFrameDepth) {
                         throw std::runtime_error("VM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
                 }
             }
-        } catch (const EngineInterruptError& ex) {
+        } catch (const EngineInterruptError&) {
             throw;
         } catch (const ValueException& ex) {
             frame->ip = ip;

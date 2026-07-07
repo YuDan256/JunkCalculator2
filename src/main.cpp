@@ -144,14 +144,10 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     if (g_showDisasm) {
         for (size_t i = currentFnsSize; i < fns.size(); ++i) {
             std::string chunkName = fns[i]->name;
-            chunkName = "Function: " + chunkName + " (RegVM)";
+            chunkName = "Function: " + chunkName;
             fns[i]->chunk.disassemble(chunkName);
         }
-        chunk.disassemble(isFile ? "Script Chunk (RegVM)" : "REPL Chunk (RegVM)");
-    }
-    
-    if (g_autoDebug) {
-        std::cout << "Warning: Debugger is not yet supported in RegVM.\n";
+        chunk.disassemble(isFile ? "Script Chunk" : "REPL Chunk");
     }
     
     return vm.execute(chunk, localCount);
@@ -383,7 +379,7 @@ int main(int argc, char* argv[]) {
             jc::helpers::nativeClassStack.pop_back();
             return result;
         }
-        throw std::runtime_error("RegVM Error: Invalid closure in callback.");
+        throw std::runtime_error("VM Error: Invalid closure in callback.");
     };
     jc::helpers::resolvePathCallback = [exeDir](const std::string& path) -> std::string {
         namespace fs = std::filesystem;
@@ -447,7 +443,7 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--profile") {
             g_profile = true;
-            std::cout << "Warning: Profiler is not yet supported in RegVM.\n";
+            std::cout << "Warning: Profiler is not yet supported in VM.\n";
         }
         else if (arg == "--test") {
             runTests = true;
@@ -676,7 +672,7 @@ int main(int argc, char* argv[]) {
             }
             if (input == "/profile on") {
                 g_profile = true;
-                std::cout << "Warning: Profiler is not yet supported in RegVM.\n";
+                std::cout << "Warning: Profiler is not yet supported in VM.\n";
                 continue;
             }
             if (input == "/profile off") {

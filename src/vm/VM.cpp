@@ -18,6 +18,7 @@
 #include <fstream>
 
 extern bool g_showIR;
+extern bool g_autoDebug;
 
 #if defined(_WIN32)
 #define NOMINMAX
@@ -157,7 +158,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
         if (it != globalNames.end()) {
             registers[currentFrame->registerBase + dstReg] = globals[it->second];
         } else {
-            throw std::runtime_error("RegVM Error: Unknown function or not callable '" + tag + "()'.");
+            throw std::runtime_error("VM Error: Unknown function or not callable '" + tag + "()'.");
         }
     }
 
@@ -178,7 +179,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             if (fnDef->hasRestParam) {
                 int fixedMax = fnDef->maxArity - 1;
                 if (totalArgc < fnDef->arity) {
-                    throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                    throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                 }
                 ObjList* restList = GcHeap::get().allocate<ObjList>();
                 if (totalArgc > fixedMax) {
@@ -207,7 +208,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 registers[newBase + fixedMax] = Value(restList);
             } else {
                 if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                    throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                    throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                 }
                 if (closure->isUFCS) {
                     registers[newBase] = closure->boundSelf;
@@ -262,7 +263,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             
             populateRefParams(newFrame, fnDef.get());
             
-            if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+            if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
             frames[frameCount++] = newFrame;
         } else if (closure->isNative()) {
             auto ait = builtinArity.find(closure->rawBody);
@@ -331,7 +332,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
                     if (totalArgc < fnDef->arity) {
-                        throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                        throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                     ObjList* restList = GcHeap::get().allocate<ObjList>();
                     if (totalArgc > fixedMax) {
@@ -351,7 +352,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     registers[newBase + fixedMax] = Value(restList);
                 } else {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                        throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                        throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
                     for (int i = 0; i < totalArgc; ++i) {
                         registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
@@ -399,7 +400,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 
                 populateRefParams(newFrame, fnDef.get());
                 
-                if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                 frames[frameCount++] = newFrame;
             } else if (initMethod->isNative()) {
                 helpers::nativeSelfStack.push_back(Value(instance));
@@ -453,7 +454,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
                     if (totalArgc < fnDef->arity) {
-                        throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                        throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                     ObjList* restList = GcHeap::get().allocate<ObjList>();
                     if (totalArgc > fixedMax) {
@@ -473,7 +474,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     registers[newBase + fixedMax] = Value(restList);
                 } else {
                     if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                        throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                        throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                     }
                     for (int i = 0; i < totalArgc; ++i) {
                         registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
@@ -521,7 +522,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 
                 populateRefParams(newFrame, fnDef.get());
                 
-                if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
                 frames[frameCount++] = newFrame;
             } else if (method->isNative()) {
                 helpers::nativeSelfStack.push_back(callee);
@@ -544,10 +545,10 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 helpers::nativeClassStack.pop_back();
             }
         } else {
-            throw std::runtime_error("RegVM Error: Target is not callable.");
+            throw std::runtime_error("VM Error: Target is not callable.");
         }
     } else {
-        throw std::runtime_error("RegVM Error: Target is not callable.");
+        throw std::runtime_error("VM Error: Target is not callable.");
     }
 }
 
@@ -698,7 +699,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
             if (totalArgc < fnDef->arity) {
-                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
@@ -718,7 +719,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
             registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = 0; i < totalArgc; ++i) {
                 registers[newBase + i] = rootedArgs[i];
@@ -739,7 +740,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         int targetDepth = frameCount - 1;
         return run(targetDepth);
     }
-    throw std::runtime_error("RegVM Error: Dunder method is not callable.");
+    throw std::runtime_error("VM Error: Dunder method is not callable.");
 }
 
 bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr) {
@@ -1100,7 +1101,7 @@ invoke_method:
             }
         }
         
-        throw std::runtime_error("RegVM Error: Cannot invoke method '" + methodName + "' on this type.");
+        throw std::runtime_error("VM Error: Cannot invoke method '" + methodName + "' on this type.");
     }
 
     if (method->isBytecode()) {
@@ -1112,7 +1113,7 @@ invoke_method:
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
             if (totalArgc < fnDef->arity) {
-                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
@@ -1132,7 +1133,7 @@ invoke_method:
             registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = 0; i < totalArgc; ++i) {
                 registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
@@ -1174,7 +1175,7 @@ invoke_method:
         
         populateRefParams(newFrame, fnDef.get());
         
-        if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+        if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
         frames[frameCount++] = newFrame;
     } else if (method->isNative()) {
         if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
@@ -1213,14 +1214,14 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
     const Value& selfVal = registers[currentFrame->registerBase + a];
     int argc = b;
     
-    if (!selfVal.isInstance()) throw std::runtime_error("RegVM Error: 'super' requires an instance context.");
+    if (!selfVal.isInstance()) throw std::runtime_error("VM Error: 'super' requires an instance context.");
     auto inst = selfVal.asInstance();
     
     Value classVal = currentFrame->classContext;
-    if (!classVal.isClass()) throw std::runtime_error("RegVM Error: 'super' requires class context.");
+    if (!classVal.isClass()) throw std::runtime_error("VM Error: 'super' requires class context.");
     auto currentClass = static_cast<ObjClass*>(classVal.asObj());
     auto parentClass = currentClass->parent;
-    if (!parentClass) throw std::runtime_error("RegVM Error: No parent class.");
+    if (!parentClass) throw std::runtime_error("VM Error: No parent class.");
     
     ObjClosure* method = nullptr;
     ObjClass* owningClass = nullptr;
@@ -1234,7 +1235,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         }
         c = c->parent;
     }
-    if (!method) throw std::runtime_error("RegVM Error: Parent class has no method '" + methodName + "'.");
+    if (!method) throw std::runtime_error("VM Error: Parent class has no method '" + methodName + "'.");
     
     if (method->isBytecode()) {
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
@@ -1245,7 +1246,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
             if (totalArgc < fnDef->arity) {
-                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
@@ -1265,7 +1266,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = 0; i < totalArgc; ++i) {
                 registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
@@ -1313,7 +1314,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         
         populateRefParams(newFrame, fnDef.get());
         
-        if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+        if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
         frames[frameCount++] = newFrame;
     } else if (method->isNative()) {
         if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
@@ -1364,7 +1365,7 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
         if (step.first && sp == 0) {
             int idx = start.first ? start.second : 0;
             if (idx < 0) idx = dimSize + idx;
-            if (idx < 0 || idx >= dimSize) throw std::out_of_range("RegVM Error: Index out of bounds.");
+            if (idx < 0 || idx >= dimSize) throw std::out_of_range("VM Error: Index out of bounds.");
             return { idx, 0, 1 };
         }
         int st, en;
@@ -1447,7 +1448,7 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
             return;
         }
         
-        throw std::runtime_error("RegVM Error: Cannot slice a value of type '" + getTypeName(obj) + "'.");
+        throw std::runtime_error("VM Error: Cannot slice a value of type '" + getTypeName(obj) + "'.");
     } else if (dims == 2) {
         auto rStart = readOptionalInt(0);
         auto rEnd = readOptionalInt(1);
@@ -1480,10 +1481,10 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
         } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
             processMatSlice(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
         } else {
-            throw std::runtime_error("RegVM Error: 2D slicing requires a matrix.");
+            throw std::runtime_error("VM Error: 2D slicing requires a matrix.");
         }
     } else {
-        throw std::runtime_error("RegVM Error: Unsupported slice dimensionality.");
+        throw std::runtime_error("VM Error: Unsupported slice dimensionality.");
     }
 }
 
@@ -1507,7 +1508,7 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
         if (step.first && sp == 0) {
             int idx = start.first ? start.second : 0;
             if (idx < 0) idx = dimSize + idx;
-            if (idx < 0 || idx >= dimSize) throw std::out_of_range("RegVM Error: Index out of bounds.");
+            if (idx < 0 || idx >= dimSize) throw std::out_of_range("VM Error: Index out of bounds.");
             return { idx, 0, 1 };
         }
         int st, en;
@@ -1546,7 +1547,7 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
             auto info = buildSliceInfo(static_cast<int>(list->vec.size()), start, end, step);
             if (val.isObjType(ObjType::LIST)) {
                 const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
-                if (static_cast<int>(srcL.size()) != info.count) throw std::runtime_error("RegVM Error: Slice assignment size mismatch.");
+                if (static_cast<int>(srcL.size()) != info.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
                 for (int k = 0; k < info.count; ++k) list->mut()[info.start + k * info.step] = srcL[k];
             } else {
                 for (int i = 0; i < info.count; ++i) list->mut()[info.start + i * info.step] = val;
@@ -1573,25 +1574,25 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
                 const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                 auto srcFlat = src.rawData();
                 if (m.getRows() == 1 || m.getCols() == 1) {
-                    if (static_cast<int>(srcFlat.size()) != info.count) throw std::runtime_error("RegVM Error: Slice assignment size mismatch.");
+                    if (static_cast<int>(srcFlat.size()) != info.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
                     if (m.getRows() == 1) {
                         for (int k = 0; k < info.count; ++k) m(0, info.start + k * info.step) = srcFlat[k];
                     } else {
                         for (int k = 0; k < info.count; ++k) m(info.start + k * info.step, 0) = srcFlat[k];
                     }
                 } else {
-                    if (static_cast<int>(srcFlat.size()) != info.count * m.getCols()) throw std::runtime_error("RegVM Error: Slice assignment size mismatch for matrix row.");
+                    if (static_cast<int>(srcFlat.size()) != info.count * m.getCols()) throw std::runtime_error("VM Error: Slice assignment size mismatch for matrix row.");
                     for (int k = 0; k < info.count; ++k) {
                         int id = info.start + k * info.step;
                         for (int j = 0; j < m.getCols(); ++j) m(id, j) = srcFlat[k * m.getCols() + j];
                     }
                 }
             } else {
-                throw std::runtime_error("RegVM Error: Cannot assign this type to slice.");
+                throw std::runtime_error("VM Error: Cannot assign this type to slice.");
             }
             registers[currentFrame->registerBase + a] = obj;
         } else {
-            throw std::runtime_error("RegVM Error: Cannot slice-assign a value of type '" + getTypeName(obj) + "'.");
+            throw std::runtime_error("VM Error: Cannot slice-assign a value of type '" + getTypeName(obj) + "'.");
         }
     } else if (dims == 2) {
         auto rStart = readOptionalInt(0);
@@ -1621,7 +1622,7 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
                     srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows();
                     srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols();
                 }
-                if (srcR != dstR || srcC != dstC) throw std::runtime_error("RegVM Error: Slice assignment size mismatch.");
+                if (srcR != dstR || srcC != dstC) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
                 
                 for (int i = 0; i < dstR; ++i) {
                     int ri = rInfo.start + i * rInfo.step;
@@ -1629,11 +1630,11 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
                         int ci = cInfo.start + j * cInfo.step;
                         if constexpr (std::is_same_v<ElemType, double>) {
                             if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j);
-                            else throw std::runtime_error("RegVM Error: Cannot assign complex/string matrix to real matrix slice.");
+                            else throw std::runtime_error("VM Error: Cannot assign complex/string matrix to real matrix slice.");
                         } else if constexpr (std::is_same_v<ElemType, Complex>) {
                             if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(ri, ci) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j);
                             else if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
-                            else throw std::runtime_error("RegVM Error: Cannot assign string matrix to complex matrix slice.");
+                            else throw std::runtime_error("VM Error: Cannot assign string matrix to complex matrix slice.");
                         } else if constexpr (std::is_same_v<ElemType, std::string>) {
                             std::ostringstream oss;
                             if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(i, j);
@@ -1674,10 +1675,10 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
             processMatSliceSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
             registers[currentFrame->registerBase + a] = obj;
         } else {
-            throw std::runtime_error("RegVM Error: 2D slice assignment requires a matrix.");
+            throw std::runtime_error("VM Error: 2D slice assignment requires a matrix.");
         }
     } else {
-        throw std::runtime_error("RegVM Error: Unsupported slice assignment dimensionality.");
+        throw std::runtime_error("VM Error: Unsupported slice assignment dimensionality.");
     }
 }
 
@@ -1736,7 +1737,7 @@ Value VM::execImport(const std::string& name) {
 
     if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
         loadedModules.erase(name);
-        throw std::runtime_error("RegVM Error: Cannot find module '" + name + "'.");
+        throw std::runtime_error("VM Error: Cannot find module '" + name + "'.");
     }
 
     importedModules.insert(name);
@@ -1745,16 +1746,16 @@ Value VM::execImport(const std::string& name) {
     if (ext == ".dll" || ext == ".so") {
 #if defined(_WIN32)
         HMODULE handle = LoadLibraryA(resolved.c_str());
-        if (!handle) { loadedModules.erase(name); throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "'."); }
+        if (!handle) { loadedModules.erase(name); throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "'."); }
         auto init_fn = (JC2_ExtensionInitFunc)GetProcAddress(handle, "jc2_extension_init");
 #else
         void* handle = dlopen(resolved.c_str(), RTLD_NOW);
-        if (!handle) { loadedModules.erase(name); throw std::runtime_error("RegVM Error: Failed to load dynamic library '" + resolved + "': " + dlerror()); }
+        if (!handle) { loadedModules.erase(name); throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "': " + dlerror()); }
         auto init_fn = (JC2_ExtensionInitFunc)dlsym(handle, "jc2_extension_init");
 #endif
         if (!init_fn) {
             loadedModules.erase(name);
-            throw std::runtime_error("RegVM Error: Dynamic library '" + resolved + "' does not export 'jc2_extension_init'.");
+            throw std::runtime_error("VM Error: Dynamic library '" + resolved + "' does not export 'jc2_extension_init'.");
         }
 
         std::unordered_map<std::string, Value> tempGlobals;
@@ -1766,7 +1767,7 @@ Value VM::execImport(const std::string& name) {
         int res = init_fn(reinterpret_cast<JC2_VMContext>(this), &mctx, get_host_api());
         if (res != 0) {
             loadedModules.erase(name);
-            throw std::runtime_error("RegVM Error: Extension initialization failed with code " + std::to_string(res));
+            throw std::runtime_error("VM Error: Extension initialization failed with code " + std::to_string(res));
         }
 
         for (const auto& kv : tempGlobals) {
@@ -1867,7 +1868,7 @@ Value VM::execImport(const std::string& name) {
         
         populateRefParams(newFrame, modFn.get());
         
-        if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+        if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
         frames[frameCount++] = newFrame;
 
         std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
@@ -1884,7 +1885,7 @@ Value VM::execImport(const std::string& name) {
 
         if (!nsVal.isObjType(ObjType::NAMESPACE)) {
             loadedModules.erase(name);
-            throw std::runtime_error("RegVM Error: Module script must not use top-level 'return'.");
+            throw std::runtime_error("VM Error: Module script must not use top-level 'return'.");
         }
         ns = static_cast<ObjNamespace*>(nsVal.asObj());
         loadedModules[name] = Value(ns);
@@ -2032,6 +2033,11 @@ VM::~VM() {
     delete[] frames;
 }
 
+void VM::triggerDebugger() {
+    g_autoDebug = true;
+    std::cout << jc::col(jc::Ansi::BRIGHT_YELLOW) << "=== Breakpoint Hit ===" << jc::col(jc::Ansi::RESET) << "\n";
+}
+
 Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure, Value boundSelf, Value boundClass) {
     auto& fnDef = compiledFunctions[fnIdx];
     CallFrame newFrame;
@@ -2052,7 +2058,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     if (fnDef->hasRestParam) {
         int fixedMax = fnDef->maxArity - 1;
         if (totalArgc < fnDef->arity) {
-            throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+            throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
         }
         ObjList* restList = GcHeap::get().allocate<ObjList>();
         if (totalArgc > fixedMax) {
@@ -2072,7 +2078,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         registers[newBase + fixedMax] = Value(restList);
     } else {
         if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-            throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
         }
         for (int i = 0; i < totalArgc; ++i) {
             registers[newBase + i] = args[i];
@@ -2113,7 +2119,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     }
     mainFrame.returnRegister = 0;
     
-    if (frameCount >= MAX_FRAMES) throw std::runtime_error("RegVM Error: CallFrame stack overflow.");
+    if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
     
     int targetDepth = frameCount;
     frames[frameCount++] = mainFrame;
@@ -2174,6 +2180,37 @@ Value VM::run(int targetFrameDepth) {
     while (true) {
         try {
             while (true) {
+                if (g_autoDebug) {
+                    std::cout << "\n";
+                    chunk->disassembleInstruction(ip);
+                    while (true) {
+                        std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "(debug) " << jc::col(jc::Ansi::RESET);
+                        std::string line;
+                        if (!std::getline(std::cin, line)) std::exit(1);
+                        if (line.empty() || line == "s" || line == "step") {
+                            break;
+                        } else if (line == "c" || line == "continue") {
+                            g_autoDebug = false;
+                            break;
+                        } else if (line == "q" || line == "quit") {
+                            std::exit(0);
+                        } else if (line == "r" || line == "regs") {
+                            int count = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
+                            std::cout << "Registers (" << count << "):\n";
+                            for (int i = 0; i < count; ++i) {
+                                std::cout << "  R(" << i << ") = " << registers[frame->registerBase + i] << "\n";
+                            }
+                        } else if (line == "g" || line == "globals") {
+                            for (const auto& [k, v] : globalNames) {
+                                std::cout << "  " << k << " = " << globals[v] << "\n";
+                            }
+                        } else if (line == "bt" || line == "backtrace") {
+                            std::cout << buildStackTrace();
+                        } else {
+                            std::cout << "Commands: [Enter]/s (step), c (continue), r (regs), g (globals), bt (backtrace), q (quit)\n";
+                        }
+                    }
+                }
                 Instruction instruction = code[ip++];
                 OpCode op = static_cast<OpCode>(instruction & 0xFF);
                 
@@ -2214,13 +2251,13 @@ Value VM::run(int targetFrameDepth) {
                 if (ic.cachedGlobalSlot >= 0) {
                     getReg(a) = globals.data()[ic.cachedGlobalSlot];
                 } else if (ic.cachedGlobalSlot == -2) {
-                    if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
+                    if (frame->classContext.isNone()) throw std::runtime_error("VM Error: '__class__' accessed outside of context.");
                     getReg(a) = frame->classContext;
                 } else {
                     const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                     if (name == "__class__") {
                         ic.cachedGlobalSlot = -2;
-                        if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
+                        if (frame->classContext.isNone()) throw std::runtime_error("VM Error: '__class__' accessed outside of context.");
                         getReg(a) = frame->classContext;
                         break;
                     }
@@ -2236,7 +2273,7 @@ Value VM::run(int targetFrameDepth) {
                             globals.push_back(builtinVal);
                             getReg(a) = builtinVal;
                         } else {
-                            throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
+                            throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
                         }
                     }
                 }
@@ -2317,7 +2354,7 @@ Value VM::run(int targetFrameDepth) {
                     globalNames.erase(it);
                     clearAllGlobalICs();
                 } else {
-                    throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
+                    throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
                 }
                 break;
             }
@@ -2333,7 +2370,7 @@ Value VM::run(int targetFrameDepth) {
                         
                 int fnIdx = static_cast<int>(std::round(chunk->constants.data()[bx].asDouble()));
                 if (fnIdx < 0 || fnIdx >= static_cast<int>(compiledFunctions.size()))
-                    throw std::runtime_error("RegVM Error: Invalid function index.");
+                    throw std::runtime_error("VM Error: Invalid function index.");
 
                 auto& fn = compiledFunctions[fnIdx];
                 auto closure = GcHeap::get().allocate<ObjClosure>(
@@ -2390,7 +2427,7 @@ Value VM::run(int targetFrameDepth) {
                                     if (!builtinVal.isNone()) {
                                         dummy->closed = builtinVal;
                                     } else {
-                                        throw std::runtime_error("RegVM Error: Undefined variable '" + uv.name + "'.");
+                                        throw std::runtime_error("VM Error: Undefined variable '" + uv.name + "'.");
                                     }
                                 }
                             } else if (uv.isLocal) {
@@ -2431,7 +2468,7 @@ Value VM::run(int targetFrameDepth) {
                         if (fnDef->hasRestParam) {
                             int fixedMax = fnDef->maxArity - 1;
                             if (totalArgc < fnDef->arity) {
-                                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                             }
                             ObjList* restList = GcHeap::get().allocate<ObjList>();
                             if (totalArgc > fixedMax) {
@@ -2446,7 +2483,7 @@ Value VM::run(int targetFrameDepth) {
                             actualArgs.push_back(Value(restList));
                         } else {
                             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                                throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                             }
                             while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
                         }
@@ -2499,7 +2536,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
-                    throw std::runtime_error("RegVM Error: Invalid upvalue index.");
+                    throw std::runtime_error("VM Error: Invalid upvalue index.");
                 getReg(a) = *(frame->closure->upvalues[b]->location);
                 break;
             }
@@ -2507,21 +2544,21 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
-                    throw std::runtime_error("RegVM Error: Invalid upvalue index.");
+                    throw std::runtime_error("VM Error: Invalid upvalue index.");
                 *(frame->closure->upvalues[b]->location) = getReg(a);
                 break;
             }
             case OpCode::GET_REF_PARAM: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
-                if (frame->refParamsBase == -1) throw std::runtime_error("RegVM Error: Invalid ref param index.");
+                if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
                 getReg(a) = *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location);
                 break;
             }
             case OpCode::SET_REF_PARAM: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
-                if (frame->refParamsBase == -1) throw std::runtime_error("RegVM Error: Invalid ref param index.");
+                if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
                 *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location) = getReg(a);
                 break;
             }
@@ -2979,7 +3016,7 @@ Value VM::run(int targetFrameDepth) {
                             }
                             result = matResult;
                         } catch (...) {
-                            throw std::runtime_error("RegVM Error: Dimension mismatch during block matrix concatenation.");
+                            throw std::runtime_error("VM Error: Dimension mismatch during block matrix concatenation.");
                         }
                     } else {
                         int expectedCols = rows > 0 ? rowCols[0] : 0;
@@ -2987,7 +3024,7 @@ Value VM::run(int targetFrameDepth) {
                         for (int i = 1; i < rows; ++i) {
                             if (rowCols[i] != expectedCols) { uniformCols = false; break; }
                         }
-                        if (!uniformCols) throw std::runtime_error("RegVM Error: Matrix rows must have the same number of columns.");
+                        if (!uniformCols) throw std::runtime_error("VM Error: Matrix rows must have the same number of columns.");
 
                         if (hasString) {
                             std::vector<std::string> flat(total);
@@ -3023,7 +3060,7 @@ Value VM::run(int targetFrameDepth) {
                 if (listVal.isObjType(ObjType::LIST)) {
                     static_cast<ObjList*>(listVal.asObj())->mut().push_back(getReg(b));
                 } else {
-                    throw std::runtime_error("RegVM Error: LIST_APPEND target is not a list.");
+                    throw std::runtime_error("VM Error: LIST_APPEND target is not a list.");
                 }
                 break;
             }
@@ -3151,7 +3188,7 @@ Value VM::run(int targetFrameDepth) {
                         if (i < 0) i = n + i;
                         if (i < 0 || i >= n) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: List index out of bounds.");
+                            else throw std::out_of_range("VM Error: List index out of bounds.");
                         } else {
                             result = list->vec[i];
                         }
@@ -3162,7 +3199,7 @@ Value VM::run(int targetFrameDepth) {
                         if (i < 0) i = n + i;
                         if (i < 0 || i >= n) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         } else {
                             if (m.getRows() == 1) result = Value(m(0, i));
                             else if (m.getCols() == 1) result = Value(m(i, 0));
@@ -3179,7 +3216,7 @@ Value VM::run(int targetFrameDepth) {
                         if (i < 0) i = n + i;
                         if (i < 0 || i >= n) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         } else {
                             if (m.getRows() == 1) result = Value(m(0, i));
                             else if (m.getCols() == 1) result = Value(m(i, 0));
@@ -3196,7 +3233,7 @@ Value VM::run(int targetFrameDepth) {
                         if (i < 0) i = n + i;
                         if (i < 0 || i >= n) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         } else {
                             if (m.getRows() == 1) result = Value(m(0, i));
                             else if (m.getCols() == 1) result = Value(m(i, 0));
@@ -3213,7 +3250,7 @@ Value VM::run(int targetFrameDepth) {
                         if (i < 0) i = len + i;
                         if (i < 0 || i >= len) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: String index out of bounds.");
+                            else throw std::out_of_range("VM Error: String index out of bounds.");
                         } else {
                             if (objStr->isAscii) {
                                 char c_str[2] = { objStr->str[i], '\0' };
@@ -3227,7 +3264,7 @@ Value VM::run(int targetFrameDepth) {
                         auto it = dict->keyMap.find(idx);
                         if (it == dict->keyMap.end()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("RegVM Error: Key not found.");
+                            else throw std::runtime_error("VM Error: Key not found.");
                         } else {
                             result = dict->elements[it->second].second;
                         }
@@ -3252,25 +3289,25 @@ Value VM::run(int targetFrameDepth) {
                             }
                         } else {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("RegVM Error: Cannot index this instance (no __getitem__).");
+                            else throw std::runtime_error("VM Error: Cannot index this instance (no __getitem__).");
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
                         if (!idx.isString()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
+                            else throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         } else {
                             auto it = ns->fields.find(idx.asString());
                             if (it == ns->fields.end()) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("RegVM Error: Key not found in namespace.");
+                                else throw std::runtime_error("VM Error: Key not found in namespace.");
                             } else {
                                 result = *(it->second.upval->location);
                             }
                         }
                     } else {
                         if (noThrow) result = Value::uninit();
-                        else throw std::runtime_error("RegVM Error: Unsupported 1D index get.");
+                        else throw std::runtime_error("VM Error: Unsupported 1D index get.");
                     }
                     getReg(a) = result;
                 } else if (dims == 2) {
@@ -3285,7 +3322,7 @@ Value VM::run(int targetFrameDepth) {
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         } else {
                             result = Value(m(r, c_idx));
                         }
@@ -3295,7 +3332,7 @@ Value VM::run(int targetFrameDepth) {
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         } else {
                             result = Value(m(r, c_idx));
                         }
@@ -3305,17 +3342,17 @@ Value VM::run(int targetFrameDepth) {
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
                         if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         } else {
                             result = Value(m(r, c_idx));
                         }
                     } else {
                         if (noThrow) result = Value::uninit();
-                        else throw std::runtime_error("RegVM Error: Unsupported 2D index get.");
+                        else throw std::runtime_error("VM Error: Unsupported 2D index get.");
                     }
                     getReg(a) = result;
                 } else {
-                    throw std::runtime_error("RegVM Error: Unsupported index dimensionality.");
+                    throw std::runtime_error("VM Error: Unsupported index dimensionality.");
                 }
                 break;
             }
@@ -3333,7 +3370,7 @@ Value VM::run(int targetFrameDepth) {
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = static_cast<int>(list->vec.size());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: List index out of bounds.");
+                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: List index out of bounds.");
                         list->mut()[i] = val;
                     } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
                         if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
@@ -3341,7 +3378,7 @@ Value VM::run(int targetFrameDepth) {
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         
                         if (m.getRows() == 1) m(0, i) = val.asDouble();
                         else if (m.getCols() == 1) m(i, 0) = val.asDouble();
@@ -3350,8 +3387,8 @@ Value VM::run(int targetFrameDepth) {
                                 const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                                 if (src.getRows() == 1 && src.getCols() == m.getCols()) {
                                     for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
-                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
-                            } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
+                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
+                            } else throw std::runtime_error("VM Error: Matrix row assignment requires a row vector.");
                         }
                         getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -3360,7 +3397,7 @@ Value VM::run(int targetFrameDepth) {
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         
                         if (m.getRows() == 1) m(0, i) = val.asComplex();
                         else if (m.getCols() == 1) m(i, 0) = val.asComplex();
@@ -3369,13 +3406,13 @@ Value VM::run(int targetFrameDepth) {
                                 const auto& src = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
                                 if (src.getRows() == 1 && src.getCols() == m.getCols()) {
                                     for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
-                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
+                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
                             } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                                 const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                                 if (src.getRows() == 1 && src.getCols() == m.getCols()) {
                                     for (int j = 0; j < m.getCols(); ++j) m(i, j) = Complex(src(0, j));
-                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
-                            } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
+                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
+                            } else throw std::runtime_error("VM Error: Matrix row assignment requires a row vector.");
                         }
                         getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
@@ -3384,7 +3421,7 @@ Value VM::run(int targetFrameDepth) {
                         int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
                         int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                         if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         
                         if (m.getRows() == 1) m(0, i) = val.asString();
                         else if (m.getCols() == 1) m(i, 0) = val.asString();
@@ -3393,8 +3430,8 @@ Value VM::run(int targetFrameDepth) {
                                 const auto& src = static_cast<ObjStringMatrix*>(val.asObj())->mat;
                                 if (src.getRows() == 1 && src.getCols() == m.getCols()) {
                                     for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
-                                } else throw std::runtime_error("RegVM Error: Matrix row assignment dimension mismatch.");
-                            } else throw std::runtime_error("RegVM Error: Matrix row assignment requires a row vector.");
+                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
+                            } else throw std::runtime_error("VM Error: Matrix row assignment requires a row vector.");
                         }
                         getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::DICT)) {
@@ -3416,16 +3453,16 @@ Value VM::run(int targetFrameDepth) {
                         if (setitemMethod) {
                             callDunder(obj, setitemMethod, {idx, val});
                         } else {
-                            throw std::runtime_error("RegVM Error: Cannot assign index on this instance (no __setitem__).");
+                            throw std::runtime_error("VM Error: Cannot assign index on this instance (no __setitem__).");
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
-                        if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");
-                        if (!idx.isString()) throw std::runtime_error("RegVM Error: Namespace keys must be strings.");
+                        if (ns->is_frozen) throw std::runtime_error("VM Error: Cannot modify frozen namespace.");
+                        if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         std::string key = idx.asString();
                         auto it = ns->fields.find(key);
                         if (it != ns->fields.end()) {
-                            if (it->second.isConst) throw std::runtime_error("RegVM Error: Cannot modify const field '" + key + "'.");
+                            if (it->second.isConst) throw std::runtime_error("VM Error: Cannot modify const field '" + key + "'.");
                             *(it->second.upval->location) = val;
                         } else {
                             ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
@@ -3434,7 +3471,7 @@ Value VM::run(int targetFrameDepth) {
                             ns->fields[key] = { uv, false };
                         }
                     } else {
-                        throw std::runtime_error("RegVM Error: Unsupported 1D index set.");
+                        throw std::runtime_error("VM Error: Unsupported 1D index set.");
                     }
                 } else if (c == 2) {
                     Value row = getReg(a + 1);
@@ -3446,7 +3483,7 @@ Value VM::run(int targetFrameDepth) {
                         auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
                         if (r < 0) r = m.getRows() + r;
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         m(r, c_idx) = val.asDouble();
                         getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -3454,7 +3491,7 @@ Value VM::run(int targetFrameDepth) {
                         auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
                         if (r < 0) r = m.getRows() + r;
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         m(r, c_idx) = val.asComplex();
                         getReg(a) = obj;
                     } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
@@ -3462,15 +3499,15 @@ Value VM::run(int targetFrameDepth) {
                         auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
                         if (r < 0) r = m.getRows() + r;
                         if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("RegVM Error: Matrix index out of bounds.");
+                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("VM Error: Matrix index out of bounds.");
                         if (val.isString()) m(r, c_idx) = val.asString();
                         else { std::ostringstream oss; oss << val; m(r, c_idx) = oss.str(); }
                         getReg(a) = obj;
                     } else {
-                        throw std::runtime_error("RegVM Error: Unsupported 2D index set.");
+                        throw std::runtime_error("VM Error: Unsupported 2D index set.");
                     }
                 } else {
-                    throw std::runtime_error("RegVM Error: Unsupported index dimensionality.");
+                    throw std::runtime_error("VM Error: Unsupported index dimensionality.");
                 }
                 break;
             }
@@ -3557,7 +3594,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 } else {
-                    throw std::runtime_error("RegVM Error: Cannot iterate over this type.");
+                    throw std::runtime_error("VM Error: Cannot iterate over this type.");
                 }
                 
                 ObjList* state = GcHeap::get().allocate<ObjList>();
@@ -3663,7 +3700,7 @@ Value VM::run(int targetFrameDepth) {
                 }
                 
                 auto method = findDunder(stateVal, DUNDER_NEXT);
-                if (!method) throw std::runtime_error("RegVM Error: Iterator missing __next__ method.");
+                if (!method) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
                 
                 Value nextVal = callDunder(stateVal, method, {});
                 if (nextVal.isNone()) {
@@ -3771,7 +3808,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 } else {
-                    throw std::runtime_error("RegVM Error: 'in' requires a string, list, dict, set, matrix, or instance.");
+                    throw std::runtime_error("VM Error: 'in' requires a string, list, dict, set, matrix, or instance.");
                 }
                 
                 getReg(a) = Value(found);
@@ -3816,13 +3853,13 @@ Value VM::run(int targetFrameDepth) {
                 Value classVal = getReg(a);
                 Value closureVal = getReg(c);
                 
-                if (!classVal.isClass()) throw std::runtime_error("RegVM Error: METHOD requires a class.");
+                if (!classVal.isClass()) throw std::runtime_error("VM Error: METHOD requires a class.");
                 auto cls = static_cast<ObjClass*>(classVal.asObj());
                 
                 if (closureVal.isFunctionClosure()) {
                     cls->methods[methodName] = closureVal.asFunction();
                 } else {
-                    throw std::runtime_error("RegVM Error: Invalid closure type for method.");
+                    throw std::runtime_error("VM Error: Invalid closure type for method.");
                 }
                 break;
             }
@@ -3833,7 +3870,7 @@ Value VM::run(int targetFrameDepth) {
                 Value subClass = getReg(a);
                 Value superClass = getReg(b);
                 
-                if (!subClass.isClass() || !superClass.isClass()) throw std::runtime_error("RegVM Error: Inheritance requires two classes.");
+                if (!subClass.isClass() || !superClass.isClass()) throw std::runtime_error("VM Error: Inheritance requires two classes.");
                 auto sub = static_cast<ObjClass*>(subClass.asObj());
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
                 
@@ -4101,7 +4138,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
 
-                if (!found) throw std::runtime_error("RegVM Error: Property '" + field + "' not found.");
+                if (!found) throw std::runtime_error("VM Error: Property '" + field + "' not found.");
                 getReg(a) = result;
                 break;
             }
@@ -4435,11 +4472,11 @@ Value VM::run(int targetFrameDepth) {
                 set_prop_dict_done:;
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
-                    if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");
+                    if (ns->is_frozen) throw std::runtime_error("VM Error: Cannot modify frozen namespace.");
                     const std::string& field = keyVal.asString();
                     auto it = ns->fields.find(field);
                     if (it != ns->fields.end()) {
-                        if (it->second.isConst) throw std::runtime_error("RegVM Error: Cannot modify const field '" + field + "'.");
+                        if (it->second.isConst) throw std::runtime_error("VM Error: Cannot modify const field '" + field + "'.");
                         *(it->second.upval->location) = val;
                     } else {
                         ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
@@ -4448,7 +4485,7 @@ Value VM::run(int targetFrameDepth) {
                         ns->fields[field] = { uv, false };
                     }
                 } else {
-                    throw std::runtime_error("RegVM Error: Cannot set property on this type.");
+                    throw std::runtime_error("VM Error: Cannot set property on this type.");
                 }
                 break;
             }
@@ -4607,7 +4644,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         getReg(a) = rowResult;
                     } catch (...) {
-                        throw std::runtime_error("RegVM Error: Dimension mismatch during list comprehension matrix concatenation.");
+                        throw std::runtime_error("VM Error: Dimension mismatch during list comprehension matrix concatenation.");
                     }
                 } else if (hasString) {
                     std::vector<std::string> flat(total);
@@ -4650,7 +4687,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value pathVal = getReg(b);
-                if (!pathVal.isString()) throw std::runtime_error("RegVM Error: import requires a string path.");
+                if (!pathVal.isString()) throw std::runtime_error("VM Error: import requires a string path.");
                 getReg(a) = execImport(pathVal.asString());
                 break;
             }
@@ -4845,14 +4882,14 @@ Value VM::run(int targetFrameDepth) {
                 
                 const std::string& field = chunk->constants.data()[c].asString();
                 Value selfVal = getReg(b);
-                if (!selfVal.isInstance()) throw std::runtime_error("RegVM Error: 'super' requires an instance context.");
+                if (!selfVal.isInstance()) throw std::runtime_error("VM Error: 'super' requires an instance context.");
                 auto inst = selfVal.asInstance();
                 
                 Value classVal = frame->classContext;
-                if (!classVal.isClass()) throw std::runtime_error("RegVM Error: 'super' requires class context.");
+                if (!classVal.isClass()) throw std::runtime_error("VM Error: 'super' requires class context.");
                 auto currentClass = static_cast<ObjClass*>(classVal.asObj());
                 auto parentClass = currentClass->parent;
-                if (!parentClass) throw std::runtime_error("RegVM Error: No parent class.");
+                if (!parentClass) throw std::runtime_error("VM Error: No parent class.");
                 
                 ObjClosure* rawMethod = nullptr;
                 ObjClass* ownerClass = nullptr;
@@ -4866,7 +4903,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     cls = cls->parent;
                 }
-                if (!rawMethod) throw std::runtime_error("RegVM Error: Parent class has no method '" + field + "'.");
+                if (!rawMethod) throw std::runtime_error("VM Error: Parent class has no method '" + field + "'.");
                 
                 auto bound = GcHeap::get().allocate<ObjClosure>(
                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -4937,7 +4974,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::GET_SELF: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                if (frame->selfContext.isNone()) throw std::runtime_error("RegVM Error: 'self' accessed outside of context.");
+                if (frame->selfContext.isNone()) throw std::runtime_error("VM Error: 'self' accessed outside of context.");
                 getReg(a) = frame->selfContext;
                 break;
             }
@@ -5031,7 +5068,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
                     default:
-                        throw std::runtime_error("RegVM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
+                        throw std::runtime_error("VM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
                 }
             }
         } catch (const ValueException& ex) {

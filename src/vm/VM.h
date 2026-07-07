@@ -161,9 +161,15 @@ public:
     static inline VM* activeVM = nullptr;
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());
 
-    void triggerDebugger() {
-        // TODO: Implement debugger for regvm
-    }
+    void triggerDebugger();
+
+    struct WatchPoint {
+        int reg = -1;
+        std::string op;
+        double val = 0.0;
+    };
+    std::vector<WatchPoint> watchpoints;
+    std::set<int> breakpoints;
 };
 
 } // namespace jc

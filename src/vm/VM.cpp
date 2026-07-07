@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "VM.h"
 #include "../memory/GcHeap.h"
 #include "../frontend/Utf8.h"
@@ -2177,28 +2178,151 @@ Value VM::run(int targetFrameDepth) {
     // K-Bit 机制：解析寄存器或常量池索引 (按值返回，强制放入寄存器，消除内存间接访问)
     #define GET_RK(rk) (ISK(rk) ? ((rk) == ESCAPE_KBIT_CONST ? chunk->constants.data()[FETCH_EXTRA()] : chunk->constants.data()[INDEXK(rk)]) : ((rk) == ESCAPE_KBIT_REG ? frameRegs[FETCH_EXTRA()] : frameRegs[rk]))
 
+    int prevLine = -1;
+    int lastBrokenLine = -1;
+
     while (true) {
         try {
             while (true) {
-                if (g_autoDebug) {
+                int currentLine = (ip < static_cast<int>(chunk->lines.size())) ? chunk->lines[ip] : 0;
+                if (currentLine != prevLine) {
+                    prevLine = currentLine;
+                    lastBrokenLine = -1;
+                }
+
+                bool breakHit = g_autoDebug;
+                
+                if (!breakHit && currentLine > 0 && currentLine != lastBrokenLine) {
+                    if (breakpoints.count(currentLine)) {
+                        breakHit = true;
+                        std::cout << jc::col(jc::Ansi::BRIGHT_YELLOW) << "=== Breakpoint Hit at Line " << currentLine << " ===" << jc::col(jc::Ansi::RESET) << "\n";
+                    }
+                }
+                
+                if (!breakHit && !watchpoints.empty()) {
+                    int maxRegs = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
+                    int locals = frame->function ? frame->function->localCount : 0;
+                    for (const auto& wp : watchpoints) {
+                        if (wp.reg >= 0 && wp.reg < maxRegs) {
+                            Value v = (wp.reg < locals) ? registers[frame->registerBase + wp.reg] : registers[frame->refParamsBase + (wp.reg - locals)];
+                            bool cond = false;
+                            if (v.isDouble() || v.isInt32()) {
+                                double d = v.isDouble() ? v.asDoubleRaw() : v.asInt32();
+                                if (wp.op == "==") cond = (d == wp.val);
+                                else if (wp.op == "!=") cond = (d != wp.val);
+                                else if (wp.op == ">") cond = (d > wp.val);
+                                else if (wp.op == "<") cond = (d < wp.val);
+                                else if (wp.op == ">=") cond = (d >= wp.val);
+                                else if (wp.op == "<=") cond = (d <= wp.val);
+                            }
+                            if (cond) {
+                                breakHit = true;
+                                std::cout << jc::col(jc::Ansi::BRIGHT_YELLOW) << "=== Watchpoint Hit: R(" << wp.reg << ") " << wp.op << " " << wp.val << " ===" << jc::col(jc::Ansi::RESET) << "\n";
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (breakHit) {
+                    lastBrokenLine = currentLine;
+                    g_autoDebug = true;
                     std::cout << "\n";
                     chunk->disassembleInstruction(ip);
                     while (true) {
                         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "(debug) " << jc::col(jc::Ansi::RESET);
                         std::string line;
                         if (!std::getline(std::cin, line)) std::exit(1);
+                        
                         if (line.empty() || line == "s" || line == "step") {
                             break;
                         } else if (line == "c" || line == "continue") {
                             g_autoDebug = false;
                             break;
+                        } else if (line == "detach") {
+                            g_autoDebug = false;
+                            breakpoints.clear();
+                            watchpoints.clear();
+                            break;
                         } else if (line == "q" || line == "quit") {
                             std::exit(0);
+                        } else if (line == "h" || line == "help") {
+                            std::cout << "Debugger Commands:\n"
+                                      << "  h, help                 Show this help message\n"
+                                      << "  s, step                 Step to the next instruction\n"
+                                      << "  c, continue             Continue execution until next breakpoint\n"
+                                      << "  detach                  Disable debugger and continue execution\n"
+                                      << "  b <line>, break <line>  Set a breakpoint at <line>\n"
+                                      << "  break if R(<r>) <op> <v> Set a conditional breakpoint (e.g., break if R(0) > 5)\n"
+                                      << "  clear breaks            Clear all breakpoints and watchpoints\n"
+                                      << "  p <expr>                Evaluate and print expression (or R(x))\n"
+                                      << "  r, regs                 Show all registers in current frame\n"
+                                      << "  g, globals              Show all global variables\n"
+                                      << "  bt, backtrace           Show call stack\n"
+                                      << "  q, quit                 Exit the program\n";
+                        } else if (line.substr(0, 8) == "break if") {
+                            int reg; char opStr[3]; double val;
+                            if (sscanf(line.c_str(), "break if R(%d) %2s %lf", &reg, opStr, &val) == 3) {
+                                watchpoints.push_back({reg, opStr, val});
+                                std::cout << "Condition breakpoint added: R(" << reg << ") " << opStr << " " << val << "\n";
+                            } else {
+                                std::cout << "Invalid format. Use: break if R(x) > 5\n";
+                            }
+                        } else if (line.substr(0, 6) == "break " || line.substr(0, 2) == "b ") {
+                            try {
+                                int ln = std::stoi(line.substr(line.find(' ') + 1));
+                                breakpoints.insert(ln);
+                                std::cout << "Breakpoint added at line " << ln << "\n";
+                            } catch (...) {
+                                std::cout << "Invalid line number.\n";
+                            }
+                        } else if (line == "clear breaks") {
+                            breakpoints.clear();
+                            watchpoints.clear();
+                            std::cout << "All breakpoints and watchpoints cleared.\n";
+                        } else if (line.substr(0, 2) == "p ") {
+                            std::string expr = line.substr(2);
+                            int reg; char dummy;
+                            if (sscanf(expr.c_str(), " R(%d) %c", &reg, &dummy) == 1) {
+                                int maxRegs = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
+                                if (reg >= 0 && reg < maxRegs) {
+                                    int locals = frame->function ? frame->function->localCount : 0;
+                                    Value v = (reg < locals) ? registers[frame->registerBase + reg] : registers[frame->refParamsBase + (reg - locals)];
+                                    std::cout << v << "\n";
+                                } else {
+                                    std::cout << "Register out of bounds.\n";
+                                }
+                            } else {
+                                if (helpers::evalCallback) {
+                                    try {
+                                        Value res = helpers::evalCallback(expr);
+                                        std::cout << res << "\n";
+                                    } catch (const std::exception& e) {
+                                        std::cout << "Error: " << e.what() << "\n";
+                                    }
+                                } else {
+                                    std::cout << "Eval not available.\n";
+                                }
+                            }
                         } else if (line == "r" || line == "regs") {
-                            int count = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
-                            std::cout << "Registers (" << count << "):\n";
-                            for (int i = 0; i < count; ++i) {
-                                std::cout << "  R(" << i << ") = " << registers[frame->registerBase + i] << "\n";
+                            int params = frame->function ? frame->function->maxArity : 0;
+                            int locals = frame->function ? frame->function->localCount : 0;
+                            int refs = frame->function ? frame->function->refCount : 0;
+                            
+                            std::cout << "Registers (Total: " << (locals + refs) << "):\n";
+                            for (int i = 0; i < locals; ++i) {
+                                std::string group = "Local";
+                                if (i < params) group = "Param";
+                                else if (i >= 128) group = "Spill";
+                                
+                                Value v = registers[frame->registerBase + i];
+                                std::cout << "  [" << std::setw(5) << group << "] R(" << i << ") = " 
+                                          << std::left << std::setw(15) << getTypeName(v) << " " << v << "\n";
+                            }
+                            for (int i = 0; i < refs; ++i) {
+                                Value v = registers[frame->refParamsBase + i];
+                                std::cout << "  [ Ref  ] R(" << (locals + i) << ") = " 
+                                          << std::left << std::setw(15) << getTypeName(v) << " " << v << "\n";
                             }
                         } else if (line == "g" || line == "globals") {
                             for (const auto& [k, v] : globalNames) {
@@ -2207,7 +2331,7 @@ Value VM::run(int targetFrameDepth) {
                         } else if (line == "bt" || line == "backtrace") {
                             std::cout << buildStackTrace();
                         } else {
-                            std::cout << "Commands: [Enter]/s (step), c (continue), r (regs), g (globals), bt (backtrace), q (quit)\n";
+                            std::cout << "Unknown command. Type 'h' or 'help' for a list of commands.\n";
                         }
                     }
                 }

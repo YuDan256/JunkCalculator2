@@ -195,6 +195,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             }
 
             if (isTailCall) {
+                int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                     exceptionHandlers.pop_back();
                 }
@@ -207,6 +208,11 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 currentFrame->classContext = closure->boundClass;
                 
                 populateRefParams(*currentFrame, fnDef.get());
+                
+                int newTotalCount = fnDef->localCount + fnDef->refCount;
+                for (int i = newTotalCount; i < oldTotalCount; ++i) {
+                    registers[newBase + i] = Value::none();
+                }
                 return;
             }
             
@@ -326,6 +332,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 }
 
                 if (isTailCall) {
+                    int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
                     }
@@ -338,6 +345,11 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     currentFrame->classContext = Value(cls);
                     
                     populateRefParams(*currentFrame, fnDef.get());
+                    
+                    int newTotalCount = fnDef->localCount + fnDef->refCount;
+                    for (int i = newTotalCount; i < oldTotalCount; ++i) {
+                        registers[newBase + i] = Value::none();
+                    }
                     return;
                 }
 
@@ -442,6 +454,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 }
 
                 if (isTailCall) {
+                    int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
                     }
@@ -454,6 +467,11 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     currentFrame->classContext = Value(owningClass);
                     
                     populateRefParams(*currentFrame, fnDef.get());
+                    
+                    int newTotalCount = fnDef->localCount + fnDef->refCount;
+                    for (int i = newTotalCount; i < oldTotalCount; ++i) {
+                        registers[newBase + i] = Value::none();
+                    }
                     return;
                 }
                 
@@ -1213,6 +1231,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         }
 
         if (isTailCall) {
+            int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
             while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                 exceptionHandlers.pop_back();
             }
@@ -1225,6 +1244,11 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             currentFrame->classContext = Value(owningClass);
             
             populateRefParams(*currentFrame, fnDef.get());
+            
+            int newTotalCount = fnDef->localCount + fnDef->refCount;
+            for (int i = newTotalCount; i < oldTotalCount; ++i) {
+                registers[newBase + i] = Value::none();
+            }
             return;
         }
         
@@ -1827,10 +1851,16 @@ bool VM::handleExceptionUnwind(Value errVal) {
         exceptionHandlers.pop_back();
         
         while (frameCount > handler.frameIndex + 1) {
-            frames[frameCount - 1].selfContext = Value::none();
-            frames[frameCount - 1].classContext = Value::none();
-            frames[frameCount - 1].closure = nullptr;
-            frames[frameCount - 1].refParamsBase = -1;
+            CallFrame* f = &frames[frameCount - 1];
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
             frameCount--;
         }
         
@@ -1925,10 +1955,16 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             exceptionHandlers.pop_back();
         }
         while (frameCount > targetDepth) {
-            frames[frameCount - 1].selfContext = Value::none();
-            frames[frameCount - 1].classContext = Value::none();
-            frames[frameCount - 1].closure = nullptr;
-            frames[frameCount - 1].refParamsBase = -1;
+            CallFrame* f = &frames[frameCount - 1];
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
             frameCount--;
         }
         pendingCallRefs.clear();
@@ -4563,6 +4599,12 @@ Value VM::run(int targetFrameDepth) {
                     bool isInit = (frame->function && frame->function->name == "init");
                     Value selfCtx = frame->selfContext;
 
+                    int clearBase = frame->registerBase;
+                    int clearCount = frame->function->localCount + frame->function->refCount;
+                    for (int i = 0; i < clearCount; ++i) {
+                        registers[clearBase + i] = Value::none();
+                    }
+
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
                     
@@ -4601,6 +4643,12 @@ Value VM::run(int targetFrameDepth) {
                     int targetReg = frame->returnRegister;
                     bool isInit = (frame->function && frame->function->name == "init");
                     Value selfCtx = frame->selfContext;
+
+                    int clearBase = frame->registerBase;
+                    int clearCount = frame->function->localCount + frame->function->refCount;
+                    for (int i = 0; i < clearCount; ++i) {
+                        registers[clearBase + i] = Value::none();
+                    }
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -4693,6 +4741,12 @@ Value VM::run(int targetFrameDepth) {
                     bool isInit = (frame->function && frame->function->name == "init");
                     Value selfCtx = frame->selfContext;
 
+                    int clearBase = frame->registerBase;
+                    int clearCount = frame->function->localCount + frame->function->refCount;
+                    for (int i = 0; i < clearCount; ++i) {
+                        registers[clearBase + i] = Value::none();
+                    }
+
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
                     
@@ -4743,6 +4797,12 @@ Value VM::run(int targetFrameDepth) {
                     bool isInit = (frame->function && frame->function->name == "init");
                     Value selfCtx = frame->selfContext;
 
+                    int clearBase = frame->registerBase;
+                    int clearCount = frame->function->localCount + frame->function->refCount;
+                    for (int i = 0; i < clearCount; ++i) {
+                        registers[clearBase + i] = Value::none();
+                    }
+
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
                     
@@ -4775,6 +4835,12 @@ Value VM::run(int targetFrameDepth) {
                 int targetReg = frame->returnRegister;
                 bool isInit = (frame->function && frame->function->name == "init");
                 Value selfCtx = frame->selfContext;
+
+                int clearBase = frame->registerBase;
+                int clearCount = frame->function->localCount + frame->function->refCount;
+                for (int i = 0; i < clearCount; ++i) {
+                    registers[clearBase + i] = Value::none();
+                }
 
                 frameCount--;
                 if (frameCount <= targetFrameDepth) {

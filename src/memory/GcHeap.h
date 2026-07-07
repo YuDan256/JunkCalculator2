@@ -76,9 +76,15 @@ namespace jc {
 
             // ★ 核心修复：先统一触发 clearTotal() 断开所有 Value 引用，防止 A->B->A 循环引用时，
             // A 被 delete 后，B 的析构函数再去减 A 的 refCount 导致 Use-After-Free 崩溃！
+            // 优化：只对包含 Value 引用的复杂对象调用 clearTotal，跳过大量基础类型（如 String, Matrix）的虚函数开销
             Obj* curr = garbageList;
             while (curr != nullptr) {
-                curr->clearTotal();
+                if (curr->type == ObjType::LIST || curr->type == ObjType::DICT || 
+                    curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
+                    curr->type == ObjType::INSTANCE || curr->type == ObjType::NAMESPACE || 
+                    curr->type == ObjType::UPVALUE) {
+                    curr->clearTotal();
+                }
                 curr = curr->next;
             }
 
@@ -90,7 +96,7 @@ namespace jc {
             }
 
             allocsSinceGc_ = 0;
-            gcThreshold_ = std::max(static_cast<size_t>(256), surviving * 2);
+            gcThreshold_ = std::max(static_cast<size_t>(65536), surviving * 2);
             return freed;
         }
 
@@ -117,7 +123,7 @@ namespace jc {
         std::vector<Value*> tempValueRoots_;
         Obj* objects_ = nullptr;
         size_t allocsSinceGc_ = 0;
-        size_t gcThreshold_ = 256;
+        size_t gcThreshold_ = 65536;
     };
 
     struct GcObjGuard {

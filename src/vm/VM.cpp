@@ -10,6 +10,7 @@
 #include "../compiler/IROptimizer.h"
 #include "../compiler/RegisterAllocator.h"
 #include "../compiler/Emitter.h"
+#include "EngineInterrupt.h"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -2258,7 +2259,10 @@ Value VM::run(int targetFrameDepth) {
                             watchpoints.clear();
                             break;
                         } else if (line == "q" || line == "quit") {
-                            std::exit(0);
+                            g_autoDebug = false;
+                            breakpoints.clear();
+                            watchpoints.clear();
+                            throw EngineInterruptError();
                         } else if (line == "h" || line == "help") {
                             std::cout << "Debugger Commands:\n"
                                       << "  h, help                 Show this help message\n"
@@ -2272,7 +2276,7 @@ Value VM::run(int targetFrameDepth) {
                                       << "  r, regs                 Show all registers in current frame\n"
                                       << "  g, globals              Show all global variables\n"
                                       << "  bt, backtrace           Show call stack\n"
-                                      << "  q, quit                 Exit the program\n";
+                                      << "  q, quit                 Terminate debugger and return to REPL\n";
                         } else if (line.substr(0, 8) == "break if") {
                             int reg; char opStr[3]; double val;
                             if (sscanf(line.c_str(), "break if R(%d) %2s %lf", &reg, opStr, &val) == 3) {
@@ -5203,6 +5207,8 @@ Value VM::run(int targetFrameDepth) {
                         throw std::runtime_error("VM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
                 }
             }
+        } catch (const EngineInterruptError& ex) {
+            throw;
         } catch (const ValueException& ex) {
             frame->ip = ip;
             if (!handleExceptionUnwind(ex.val)) {

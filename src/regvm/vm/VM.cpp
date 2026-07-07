@@ -4,7 +4,7 @@
 #include "../../frontend/Lexer.h"
 #include "../../frontend/Parser.h"
 #include "../../frontend/Compiler.h"
-#include "../../vm/VM.h" // For ValueException
+#include "../../vm/VM.h"
 #include "../../vm/BuiltinRegistry.h"
 #include "../../modules/ExtensionBridge.h"
 #include "../../frontend/Highlight.h"
@@ -948,6 +948,19 @@ invoke_method:
             return;
         }
         
+        if (ic.cachedGlobalSlot == -4) {
+            std::vector<Value> argsVec;
+            argsVec.reserve(argc + 1);
+            argsVec.push_back(obj);
+            for (int i = 0; i < argc; ++i) {
+                argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+            }
+            pendingCallRefs.clear();
+            auto& fn = std::any_cast<NativeCallable&>(ic.cachedValue.asFunction()->nativeFn);
+            registers[currentFrame->registerBase + a] = fn(argsVec);
+            return;
+        }
+        
         auto nIt = jc::VM::activeVM->getNativeBuiltins().find(methodName);
         if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
             auto ait = jc::VM::activeVM->getBuiltinArity().find(methodName);
@@ -968,6 +981,12 @@ invoke_method:
                 argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
             }
             pendingCallRefs.clear();
+            
+            ic.cachedGlobalSlot = -4;
+            auto cachedClosure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, methodName, nullptr);
+            cachedClosure->nativeFn = std::make_any<NativeCallable>(nIt->second);
+            ic.cachedValue = Value(cachedClosure);
+            
             registers[currentFrame->registerBase + a] = nIt->second(argsVec);
             return;
         }
@@ -1993,13 +2012,7 @@ Value VM::run(int targetFrameDepth) {
                     if (frame->classContext.isNone()) throw std::runtime_error("RegVM Error: '__class__' accessed outside of context.");
                     getReg(a) = frame->classContext;
                 } else if (ic.cachedGlobalSlot == -3) {
-                    const std::string& name = chunk->constants[ic.nameIdx].asString();
-                    Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
-                    if (!builtinVal.isNone()) {
-                        getReg(a) = builtinVal;
-                    } else {
-                        throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
-                    }
+                    getReg(a) = ic.cachedValue;
                 } else {
                     const std::string& name = chunk->constants[ic.nameIdx].asString();
                     if (name == "__class__") {
@@ -2016,6 +2029,7 @@ Value VM::run(int targetFrameDepth) {
                         Value builtinVal = jc::VM::activeVM->getBuiltinClosure(name);
                         if (!builtinVal.isNone()) {
                             ic.cachedGlobalSlot = -3;
+                            ic.cachedValue = builtinVal;
                             getReg(a) = builtinVal;
                         } else {
                             throw std::runtime_error("RegVM Error: Undefined global variable '" + name + "'.");
@@ -3659,12 +3673,37 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                     }
+                    if (!found && ic.cachedClass == inst->classDef && ic.cachedMethod) {
+                        auto rawMethod = ic.cachedMethod;
+                        auto bound = GcHeap::get().allocate<ObjClosure>(
+                            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                        );
+                        bound->paramNames = rawMethod->paramNames;
+                        bound->isRef = rawMethod->isRef;
+                        bound->defaultValues = rawMethod->defaultValues;
+                        bound->hasRestParam = rawMethod->hasRestParam;
+                        bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                        if (rawMethod->upvalueCount > 0) {
+                            bound->upvalueCount = rawMethod->upvalueCount;
+                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                            for (int i = 0; i < bound->upvalueCount; ++i) {
+                                bound->upvalues[i] = rawMethod->upvalues[i];
+                            }
+                        }
+                        bound->nativeFn = rawMethod->nativeFn;
+                        bound->boundSelf = Value(inst);
+                        bound->boundClass = Value(inst->classDef);
+                        result = Value(bound);
+                        found = true;
+                    }
                     if (!found) {
                         auto cls = inst->classDef;
                         while (cls) {
                             auto it = cls->methods.find(field);
                             if (it != cls->methods.end()) {
                                 auto rawMethod = it->second;
+                                ic.cachedClass = inst->classDef;
+                                ic.cachedMethod = rawMethod;
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
                                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );
@@ -3699,10 +3738,20 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
-                    auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
-                    if (it != d->keyMap.end()) {
-                        result = d->elements[it->second].second;
-                        found = true;
+                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
+                            result = d->elements[ic.cachedFieldIndex].second;
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
+                        if (it != d->keyMap.end()) {
+                            result = d->elements[it->second].second;
+                            found = true;
+                            ic.cachedBuiltinType = BuiltinType::DICT;
+                            ic.cachedFieldIndex = static_cast<int>(it->second);
+                        }
                     }
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
@@ -3714,40 +3763,55 @@ Value VM::run(int targetFrameDepth) {
                 }
                 
                 if (!found) {
-                    auto nIt = jc::VM::activeVM->getNativeBuiltins().find(field);
-                    if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+                    if (ic.cachedGlobalSlot == -4) {
                         auto bound = GcHeap::get().allocate<ObjClosure>(
                             std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                         );
                         bound->boundSelf = obj;
-                        NativeCallable nativeFn = nIt->second;
-                        
-                        auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
-                        std::set<int> allowedArities;
-                        if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
-
-                        bound->nativeFn = std::make_any<NativeCallable>(
-                            [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
-                                Value capturedObj = helpers::nativeSelfStack.back();
-                                int totalArgs = static_cast<int>(args.size()) + 1;
-                                if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
-                                    std::string expected;
-                                    for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
-                                        if (aIt != allowedArities.begin()) expected += " or ";
-                                        expected += std::to_string(*aIt - 1);
-                                    }
-                                    throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
-                                }
-                                std::vector<Value> fullArgs;
-                                fullArgs.reserve(totalArgs);
-                                fullArgs.push_back(capturedObj);
-                                fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                return nativeFn(fullArgs);
-                            }
-                        );
+                        bound->nativeFn = ic.cachedValue.asFunction()->nativeFn;
                         result = Value(bound);
                         found = true;
                     } else {
+                        auto nIt = jc::VM::activeVM->getNativeBuiltins().find(field);
+                        if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+                            auto bound = GcHeap::get().allocate<ObjClosure>(
+                                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                            );
+                            bound->boundSelf = obj;
+                            NativeCallable nativeFn = nIt->second;
+                            
+                            auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
+                            std::set<int> allowedArities;
+                            if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
+
+                            bound->nativeFn = std::make_any<NativeCallable>(
+                                [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
+                                    Value capturedObj = helpers::nativeSelfStack.back();
+                                    int totalArgs = static_cast<int>(args.size()) + 1;
+                                    if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
+                                        std::string expected;
+                                        for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
+                                            if (aIt != allowedArities.begin()) expected += " or ";
+                                            expected += std::to_string(*aIt - 1);
+                                        }
+                                        throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                                    }
+                                    std::vector<Value> fullArgs;
+                                    fullArgs.reserve(totalArgs);
+                                    fullArgs.push_back(capturedObj);
+                                    fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                    return nativeFn(fullArgs);
+                                }
+                            );
+                            
+                            ic.cachedGlobalSlot = -4;
+                            auto cachedClosure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, field, nullptr);
+                            cachedClosure->nativeFn = bound->nativeFn;
+                            ic.cachedValue = Value(cachedClosure);
+                            
+                            result = Value(bound);
+                            found = true;
+                        } else {
                         if (ic.cachedGlobalSlot >= 0) {
                             if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
@@ -3831,6 +3895,7 @@ Value VM::run(int targetFrameDepth) {
                                 found = true;
                             }
                         }
+                        }
                     }
                 }
 
@@ -3868,12 +3933,37 @@ Value VM::run(int targetFrameDepth) {
                                 ic.cachedFieldIndex = static_cast<int>(it->second);
                             }
                         }
+                        if (!found && ic.cachedClass == inst->classDef && ic.cachedMethod) {
+                            auto rawMethod = ic.cachedMethod;
+                            auto bound = GcHeap::get().allocate<ObjClosure>(
+                                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                            );
+                            bound->paramNames = rawMethod->paramNames;
+                            bound->isRef = rawMethod->isRef;
+                            bound->defaultValues = rawMethod->defaultValues;
+                            bound->hasRestParam = rawMethod->hasRestParam;
+                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                            if (rawMethod->upvalueCount > 0) {
+                                bound->upvalueCount = rawMethod->upvalueCount;
+                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                for (int i = 0; i < bound->upvalueCount; ++i) {
+                                    bound->upvalues[i] = rawMethod->upvalues[i];
+                                }
+                            }
+                            bound->nativeFn = rawMethod->nativeFn;
+                            bound->boundSelf = Value(inst);
+                            bound->boundClass = Value(inst->classDef);
+                            result = Value(bound);
+                            found = true;
+                        }
                         if (!found) {
                             auto cls = inst->classDef;
                             while (cls) {
                                 auto it = cls->methods.find(field);
                                 if (it != cls->methods.end()) {
                                     auto rawMethod = it->second;
+                                    ic.cachedClass = inst->classDef;
+                                    ic.cachedMethod = rawMethod;
                                     auto bound = GcHeap::get().allocate<ObjClosure>(
                                         std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                     );
@@ -3913,10 +4003,20 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
-                    auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
-                    if (it != d->keyMap.end()) {
-                        result = d->elements[it->second].second;
-                        found = true;
+                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
+                            result = d->elements[ic.cachedFieldIndex].second;
+                            found = true;
+                        }
+                    }
+                    if (!found) {
+                        auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
+                        if (it != d->keyMap.end()) {
+                            result = d->elements[it->second].second;
+                            found = true;
+                            ic.cachedBuiltinType = BuiltinType::DICT;
+                            ic.cachedFieldIndex = static_cast<int>(it->second);
+                        }
                     }
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
@@ -3928,40 +4028,55 @@ Value VM::run(int targetFrameDepth) {
                 }
                 
                 if (!found) {
-                    auto nIt = jc::VM::activeVM->getNativeBuiltins().find(field);
-                    if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+                    if (ic.cachedGlobalSlot == -4) {
                         auto bound = GcHeap::get().allocate<ObjClosure>(
                             std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                         );
                         bound->boundSelf = obj;
-                        NativeCallable nativeFn = nIt->second;
-                        
-                        auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
-                        std::set<int> allowedArities;
-                        if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
-
-                        bound->nativeFn = std::make_any<NativeCallable>(
-                            [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
-                                Value capturedObj = helpers::nativeSelfStack.back();
-                                int totalArgs = static_cast<int>(args.size()) + 1;
-                                if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
-                                    std::string expected;
-                                    for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
-                                        if (aIt != allowedArities.begin()) expected += " or ";
-                                        expected += std::to_string(*aIt - 1);
-                                    }
-                                    throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
-                                }
-                                std::vector<Value> fullArgs;
-                                fullArgs.reserve(totalArgs);
-                                fullArgs.push_back(capturedObj);
-                                fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                return nativeFn(fullArgs);
-                            }
-                        );
+                        bound->nativeFn = ic.cachedValue.asFunction()->nativeFn;
                         result = Value(bound);
                         found = true;
                     } else {
+                        auto nIt = jc::VM::activeVM->getNativeBuiltins().find(field);
+                        if (nIt != jc::VM::activeVM->getNativeBuiltins().end()) {
+                            auto bound = GcHeap::get().allocate<ObjClosure>(
+                                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                            );
+                            bound->boundSelf = obj;
+                            NativeCallable nativeFn = nIt->second;
+                            
+                            auto ait = jc::VM::activeVM->getBuiltinArity().find(field);
+                            std::set<int> allowedArities;
+                            if (ait != jc::VM::activeVM->getBuiltinArity().end()) allowedArities = ait->second;
+
+                            bound->nativeFn = std::make_any<NativeCallable>(
+                                [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
+                                    Value capturedObj = helpers::nativeSelfStack.back();
+                                    int totalArgs = static_cast<int>(args.size()) + 1;
+                                    if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
+                                        std::string expected;
+                                        for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
+                                            if (aIt != allowedArities.begin()) expected += " or ";
+                                            expected += std::to_string(*aIt - 1);
+                                        }
+                                        throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                                    }
+                                    std::vector<Value> fullArgs;
+                                    fullArgs.reserve(totalArgs);
+                                    fullArgs.push_back(capturedObj);
+                                    fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                                    return nativeFn(fullArgs);
+                                }
+                            );
+                            
+                            ic.cachedGlobalSlot = -4;
+                            auto cachedClosure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, field, nullptr);
+                            cachedClosure->nativeFn = bound->nativeFn;
+                            ic.cachedValue = Value(cachedClosure);
+                            
+                            result = Value(bound);
+                            found = true;
+                        } else {
                         if (ic.cachedGlobalSlot >= 0) {
                             if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
@@ -4044,6 +4159,7 @@ Value VM::run(int targetFrameDepth) {
                                 result = Value(bound);
                                 found = true;
                             }
+                        }
                         }
                     }
                 }
@@ -4098,7 +4214,26 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
-                    d->set(chunk->constants[ic.nameIdx], val);
+                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+                        if (d->elements[ic.cachedFieldIndex].first.as_bits == chunk->constants[ic.nameIdx].as_bits || d->elements[ic.cachedFieldIndex].first.asString() == field) {
+                            d->elements[ic.cachedFieldIndex].second = val;
+                            goto set_prop_dict_done;
+                        }
+                    }
+                    {
+                        auto it = d->keyMap.find(chunk->constants[ic.nameIdx]);
+                        if (it != d->keyMap.end()) {
+                            d->elements[it->second].second = val;
+                            ic.cachedBuiltinType = BuiltinType::DICT;
+                            ic.cachedFieldIndex = static_cast<int>(it->second);
+                        } else {
+                            ic.cachedBuiltinType = BuiltinType::DICT;
+                            ic.cachedFieldIndex = static_cast<int>(d->elements.size());
+                            d->keyMap[chunk->constants[ic.nameIdx]] = d->elements.size();
+                            d->elements.push_back({chunk->constants[ic.nameIdx], val});
+                        }
+                    }
+                set_prop_dict_done:;
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
                     if (ns->is_frozen) throw std::runtime_error("RegVM Error: Cannot modify frozen namespace.");

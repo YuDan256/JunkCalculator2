@@ -306,6 +306,7 @@ struct InlineCache {
     ObjClosure* cachedMethod = nullptr;
     int cachedFieldIndex = -1;
     BuiltinType cachedBuiltinType = BuiltinType::UNKNOWN;
+    Value cachedValue = Value::none();
 };
 
 struct ShapePattern {

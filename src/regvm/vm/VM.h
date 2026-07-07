@@ -11,6 +11,12 @@
 namespace jc {
 namespace regvm {
 
+struct ValueException : public std::exception {
+    Value val;
+    explicit ValueException(Value v) : val(std::move(v)) {}
+    const char* what() const noexcept override { return "ValueException"; }
+};
+
 // ============================================================================
 // 寄存器机调用帧 (Register Window Frame)
 // ============================================================================

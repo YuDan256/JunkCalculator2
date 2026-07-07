@@ -3663,6 +3663,7 @@ Value VM::run(int targetFrameDepth) {
                     auto method = findDunder(iterable, DUNDER_ITER);
                     if (method) {
                         Value iterObj = callDunder(iterable, method, {});
+                        GcValueGuard iterGuard(iterObj);
                         ObjList* state = GcHeap::get().allocate<ObjList>();
                         state->vec.push_back(iterObj);
                         if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {

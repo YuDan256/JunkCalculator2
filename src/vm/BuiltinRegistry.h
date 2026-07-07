@@ -179,6 +179,7 @@ namespace helpers {
             auto inst = iterable.asInstance();
             auto [hasIter, iterObj] = invokeDunder(inst, "__iter__");
             if (hasIter) {
+                GcValueGuard guard(iterObj);
                 auto iterInst = iterObj.asInstance();
                 if (iterInst->c_nativeNext) {
                     while (true) {

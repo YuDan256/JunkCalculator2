@@ -145,6 +145,7 @@ namespace jc {
             auto inst = v.asInstance();
             auto [found, res] = invokeDunder(inst, DUNDER_HASH, {});
             if (found) {
+                GcValueGuard resGuard(res);
                 oss << res.toString();
             } else {
                 oss << inst;
@@ -1077,6 +1078,7 @@ void BuiltinRegistry::registerMatrixOps() {
     reg("sum", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value s(0.0);
+        GcValueGuard sGuard(s);
         bool first = true;
         if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
             if (first) { s = nextVal; first = false; }
@@ -1091,6 +1093,7 @@ void BuiltinRegistry::registerMatrixOps() {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) return Value(0.0);
             Value listSum = L[0];
+            GcValueGuard listSumGuard(listSum);
             for (size_t i = 1; i < L.size(); ++i) {
                 listSum = listSum + L[i];  // 利用 Value 的重载 +
             }
@@ -1102,6 +1105,7 @@ void BuiltinRegistry::registerMatrixOps() {
     reg("prod", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value p(1.0);
+        GcValueGuard pGuard(p);
         bool first = true;
         if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
             if (first) { p = nextVal; first = false; }
@@ -1116,6 +1120,7 @@ void BuiltinRegistry::registerMatrixOps() {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) return Value(1.0);
             Value listProd = L[0];
+            GcValueGuard listProdGuard(listProd);
             for (size_t i = 1; i < L.size(); ++i) {
                 listProd = listProd * L[i];  // 利用 Value 的重载 *
             }
@@ -1192,6 +1197,7 @@ void BuiltinRegistry::registerMatrixOps() {
 void BuiltinRegistry::registerDecompositions() {
     reg("qr", { 1 }, [](const std::vector<Value>& args) -> Value {
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
             auto [Q, R] = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.qrDecomposition();
             L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
@@ -1203,6 +1209,7 @@ void BuiltinRegistry::registerDecompositions() {
     });
     reg("lu", { 1 }, [](const std::vector<Value>& args) -> Value {
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
             auto res = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.luDecomposition();
             L->vec.push_back(Value(res.L)); L->vec.push_back(Value(res.U)); L->vec.push_back(Value(res.P));
@@ -1218,6 +1225,7 @@ void BuiltinRegistry::registerDecompositions() {
         ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix();
         auto [P, D] = diagonalize(A);
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         L->vec.push_back(Value(P)); L->vec.push_back(Value(D));
         L->is_frozen = true; return Value(L);
     });
@@ -1465,6 +1473,7 @@ void BuiltinRegistry::registerStatistics() {
     reg("max", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value mx;
+        GcValueGuard mxGuard(mx);
         bool first = true;
         if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
             if (first) { mx = nextVal; first = false; }
@@ -1478,6 +1487,7 @@ void BuiltinRegistry::registerStatistics() {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute max of empty list.");
             Value listMx = L[0];
+            GcValueGuard listMxGuard(listMx);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
                 // ★ 正确的 C++ 比较
@@ -1492,6 +1502,7 @@ void BuiltinRegistry::registerStatistics() {
     reg("min", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value mn;
+        GcValueGuard mnGuard(mn);
         bool first = true;
         if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
             if (first) { mn = nextVal; first = false; }
@@ -1505,6 +1516,7 @@ void BuiltinRegistry::registerStatistics() {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute min of empty list.");
             Value listMn = L[0];
+            GcValueGuard listMnGuard(listMn);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
                 // ★ 正确的 C++ 比较
@@ -1519,6 +1531,8 @@ void BuiltinRegistry::registerStatistics() {
     reg("span", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value mn, mx;
+        GcValueGuard mnGuard(mn);
+        GcValueGuard mxGuard(mx);
         bool first = true;
         if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
             if (first) { mn = nextVal; mx = nextVal; first = false; }
@@ -1536,6 +1550,8 @@ void BuiltinRegistry::registerStatistics() {
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute span of empty list.");
             Value listMn = L[0];
             Value listMx = L[0];
+            GcValueGuard listMnGuard(listMn);
+            GcValueGuard listMxGuard(listMx);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
                 // ★ 正确的 C++ 比较
@@ -1596,6 +1612,7 @@ void BuiltinRegistry::registerStatistics() {
         std::cout << "Linear Model: Y = " << a << " + " << b << " * X" << std::endl;
         std::cout << "Correlation r: " << computeCorr(X, Y) << std::endl;
         ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
         L->vec.push_back(Value(a)); L->vec.push_back(Value(b));
         L->is_frozen = true; return Value(L);
     });
@@ -2962,7 +2979,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             ObjList* result = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(result);
             if (l->vec.empty()) return Value(result);
-            Value acc = l->vec[0]; result->vec.push_back(acc);
+            Value acc = l->vec[0]; 
+            GcValueGuard accGuard(acc);
+            result->vec.push_back(acc);
             for (size_t i = 1; i < l->vec.size(); ++i) { acc = opBody(acc, l->vec[i]); result->vec.push_back(acc); }
             return Value(result);
         } else if (val.isObjType(ObjType::REAL_MATRIX)) {
@@ -3197,7 +3216,7 @@ void BuiltinRegistry::registerDictFunctions() {
 // [20] List & Conversion
 // =================================================================
 void BuiltinRegistry::registerListConversion() {
-    reg("list", {}, [](const std::vector<Value>& args) -> Value { ObjList* L = GcHeap::get().allocate<ObjList>(); for (const auto& a : args) L->vec.push_back(a); return Value(L); });
+    reg("list", {}, [](const std::vector<Value>& args) -> Value { ObjList* L = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(L); for (const auto& a : args) L->vec.push_back(a); return Value(L); });
 
     reg("toList", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -3207,6 +3226,7 @@ void BuiltinRegistry::registerListConversion() {
             auto inst = arg.asInstance();
             auto [hasIter, iterObj] = invokeDunder(inst, DUNDER_ITER, {});
             if (hasIter) {
+                GcValueGuard iterGuard(iterObj);
                 ObjList* L = GcHeap::get().allocate<ObjList>();
                 GcObjGuard guard(L);
                 auto iterInst = iterObj.asInstance();
@@ -4302,6 +4322,7 @@ void BuiltinRegistry::registerErrorHandling() {
 
         try {
             Value result = safeCallFunction(cl, {});
+            GcValueGuard resGuard(result);
             ObjList* L = GcHeap::get().allocate<ObjList>();
             L->vec.push_back(Value(true)); L->vec.push_back(result);
             L->is_frozen = true; return Value(L);
@@ -5084,6 +5105,7 @@ void BuiltinRegistry::registerSetFunctions() {
             auto inst = args[0].asInstance();
             auto [hasIter, iterObj] = invokeDunder(inst, DUNDER_ITER, {});
             if (hasIter) {
+                GcValueGuard iterGuard(iterObj);
                 auto iterInst = iterObj.asInstance();
                 if (iterInst->c_nativeNext) {
                     while (true) {

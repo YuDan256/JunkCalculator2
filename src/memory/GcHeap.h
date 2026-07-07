@@ -38,8 +38,17 @@ namespace jc {
             return instance;
         }
 
+        std::function<void()> markCallback;
+
+        void markObj(Obj* obj);
+        void markValue(const Value& val);
+        void collectGarbage();
+
         template<typename T, typename... Args>
         T* allocate(Args&&... args) {
+            if (shouldCollect()) {
+                collectGarbage();
+            }
             T* object = new T(std::forward<Args>(args)...);
             object->isMarked = false;
             object->next = objects_;

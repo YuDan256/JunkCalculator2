@@ -1742,7 +1742,7 @@ Value VM::execImport(const std::string& name) {
             auto closure = GcHeap::get().allocate<ObjClosure>(
                 std::vector<std::string>{}, std::vector<bool>{}, kv.first, nullptr
             );
-            globals.push_back(Value(closure)); // ★ 临时 Root 防止 GC 误杀
+            GcObjGuard closureGuard(closure);
             closure->nativeFn = std::make_any<NativeCallable>(kv.second);
             
             auto ait = tempArity.find(kv.first);
@@ -1762,7 +1762,6 @@ Value VM::execImport(const std::string& name) {
             uv->closed = Value(closure);
             uv->location = &uv->closed;
             ns->fields[kv.first] = { uv, true };
-            globals.pop_back();
         }
     } else {
         std::ifstream file(resolved);
@@ -1923,6 +1922,49 @@ std::string VM::buildStackTrace() const {
 VM::VM() {
     registers = new Value[MAX_REGISTERS];
     frames = new CallFrame[MAX_FRAMES];
+    
+    GcHeap::get().markCallback = [this]() {
+        for (auto& v : globals) GcHeap::get().markValue(v);
+        
+        int maxReg = 0;
+        for (int i = 0; i < frameCount; ++i) {
+            CallFrame& f = frames[i];
+            GcHeap::get().markValue(f.selfContext);
+            GcHeap::get().markValue(f.classContext);
+            if (f.closure) GcHeap::get().markObj(f.closure);
+            
+            int frameEnd = f.registerBase + f.function->localCount + f.function->refCount;
+            if (frameEnd > maxReg) maxReg = frameEnd;
+        }
+        for (int i = 0; i < maxReg; ++i) {
+            GcHeap::get().markValue(registers[i]);
+        }
+        
+        ObjUpVal* uv = openUpvalues;
+        while (uv) {
+            GcHeap::get().markObj(uv);
+            uv = uv->nextOpen;
+        }
+        
+        for (auto& pr : pendingCallRefs) {
+            GcHeap::get().markObj(pr.second);
+        }
+        
+        for (auto& [k, v] : loadedModules) {
+            GcHeap::get().markValue(v);
+        }
+        
+        for (auto& v : helpers::nativeSelfStack) GcHeap::get().markValue(v);
+        for (auto& v : helpers::nativeClassStack) GcHeap::get().markValue(v);
+        
+        for (auto& fn : compiledFunctions) {
+            if (fn) {
+                for (auto& v : fn->chunk.constants) {
+                    GcHeap::get().markValue(v);
+                }
+            }
+        }
+    };
 }
 
 VM::~VM() {
@@ -2175,7 +2217,7 @@ Value VM::run(int targetFrameDepth) {
                 auto closure = GcHeap::get().allocate<ObjClosure>(
                     std::vector<std::string>{}, std::vector<bool>{}, fn->name, nullptr
                 );
-                globals.push_back(Value(closure)); // ★ 临时 Root 防止 GC 误杀
+                GcObjGuard closureGuard(closure);
                 closure->compiledFnIndex = fnIdx;
 
                 if (!fn->upvalues.empty()) {
@@ -2248,8 +2290,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                         
-                getReg(a) = globals.back();
-                globals.pop_back();
+                getReg(a) = Value(closure);
                         
                 int capturedFnIdx = fnIdx;
                 VM* vm = this;

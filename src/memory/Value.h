@@ -1510,6 +1510,11 @@ namespace jc {
 
         // 防循环递归锁
         static thread_local std::vector<std::pair<const void*, const void*>> comparingPairs;
+        struct CompGuard {
+            std::vector<std::pair<const void*, const void*>>& vec;
+            CompGuard(std::vector<std::pair<const void*, const void*>>& v, const std::pair<const void*, const void*>& p) : vec(v) { vec.push_back(p); }
+            ~CompGuard() { vec.pop_back(); }
+        };
 
         bool lIsInt = lhs.isInt32() || lhs.isBool();
         bool rIsInt = rhs.isInt32() || rhs.isBool();
@@ -1567,13 +1572,12 @@ namespace jc {
                     if (a.size() != b.size()) return false;
                     auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                     if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
-                    comparingPairs.push_back(pair);
+                    CompGuard guard(comparingPairs, pair);
                     bool eq = true;
                     for (size_t i = 0; i < a.size(); ++i) {
                         try { if (!equals(a[i], b[i])) { eq = false; break; } }
                         catch (...) { eq = false; break; }
                     }
-                    comparingPairs.pop_back();
                     return eq;
                 }
                 case ObjType::DICT: {
@@ -1582,7 +1586,7 @@ namespace jc {
                     if (a->elements.size() != b->elements.size()) return false;
                     auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                     if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
-                    comparingPairs.push_back(pair);
+                    CompGuard guard(comparingPairs, pair);
                     bool eq = true;
                     for (const auto& [key, val] : a->elements) {
                         auto it = b->keyMap.find(key);
@@ -1590,7 +1594,6 @@ namespace jc {
                         try { if (!equals(val, b->elements[it->second].second)) { eq = false; break; } }
                         catch (...) { eq = false; break; }
                     }
-                    comparingPairs.pop_back();
                     return eq;
                 }
                 case ObjType::SET: {
@@ -1613,7 +1616,7 @@ namespace jc {
                         if (inst1->fields->elements.size() != inst2->fields->elements.size()) return false;
                         auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                         if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
-                        comparingPairs.push_back(pair);
+                        CompGuard guard(comparingPairs, pair);
                         bool eq = true;
                         for (const auto& [k, v] : inst1->fields->elements) {
                             auto it = inst2->fields->keyMap.find(k);
@@ -1621,7 +1624,6 @@ namespace jc {
                             try { if (!equals(v, inst2->fields->elements[it->second].second)) { eq = false; break; } }
                             catch (...) { eq = false; break; }
                         }
-                        comparingPairs.pop_back();
                         return eq;
                     }
                     return false;
@@ -2345,6 +2347,82 @@ inline size_t ValueHasher::operator()(const Value& v) const {
 
 inline bool ValueEqual::operator()(const Value& lhs, const Value& rhs) const {
     return Value::equals(lhs, rhs);
+}
+
+inline void GcHeap::markObj(Obj* obj) {
+    if (!obj || obj->isMarked) return;
+    obj->isMarked = true;
+    
+    switch (obj->type) {
+        case ObjType::LIST: {
+            for (auto& v : static_cast<ObjList*>(obj)->vec) markValue(v);
+            break;
+        }
+        case ObjType::DICT: {
+            for (auto& [k, v] : static_cast<ObjDict*>(obj)->elements) {
+                markValue(k); markValue(v);
+            }
+            break;
+        }
+        case ObjType::SET: {
+            for (auto& v : static_cast<ObjSet*>(obj)->elements) markValue(v);
+            break;
+        }
+        case ObjType::CLOSURE: {
+            auto closure = static_cast<ObjClosure*>(obj);
+            markValue(closure->boundSelf);
+            markValue(closure->boundClass);
+            for (auto& v : closure->defaultValues) markValue(v);
+            for (int i = 0; i < closure->upvalueCount; ++i) {
+                markObj(closure->upvalues[i]);
+            }
+            break;
+        }
+        case ObjType::CLASS: {
+            auto cls = static_cast<ObjClass*>(obj);
+            markObj(cls->parent);
+            for (auto& [k, v] : cls->methods) markObj(v);
+            break;
+        }
+        case ObjType::INSTANCE: {
+            auto inst = static_cast<ObjInstance*>(obj);
+            markObj(inst->classDef);
+            markObj(inst->fields);
+            break;
+        }
+        case ObjType::SUPER_PROXY: {
+            auto sp = static_cast<ObjSuper*>(obj);
+            markObj(sp->instance);
+            markObj(sp->parentClass);
+            break;
+        }
+        case ObjType::NAMESPACE: {
+            auto ns = static_cast<ObjNamespace*>(obj);
+            for (auto& [k, f] : ns->fields) markObj(f.upval);
+            break;
+        }
+        case ObjType::UPVALUE: {
+            auto uv = static_cast<ObjUpVal*>(obj);
+            markValue(uv->closed);
+            break;
+        }
+        default: break;
+    }
+}
+
+inline void GcHeap::markValue(const Value& val) {
+    if (val.isObj()) markObj(val.asObj());
+}
+
+inline void GcHeap::collectGarbage() {
+    if (markCallback) markCallback();
+    
+    for (Obj* obj : tempObjRoots_) markObj(obj);
+    for (Value* val : tempValueRoots_) {
+        if (val) markValue(*val);
+    }
+
+    sweep();
 }
 
 } // namespace jc

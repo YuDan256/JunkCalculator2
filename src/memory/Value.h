@@ -729,6 +729,7 @@ namespace jc {
                 ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
                 ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
                 ObjSet* res = GcHeap::get().allocate<ObjSet>();
+                GcObjGuard guard(res);
                 for (const auto& v1 : s1->elements) {
                     for (const auto& v2 : s2->elements) {
                         ObjList* pair = GcHeap::get().allocate<ObjList>();

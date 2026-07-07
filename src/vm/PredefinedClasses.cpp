@@ -24,10 +24,12 @@ void registerPredefinedClasses() {
 
     // --- Range Class ---
     ObjClass* rangeClass = GcHeap::get().allocate<ObjClass>();
+    GcObjGuard rcGuard(rangeClass);
     rangeClass->name = "Range";
 
     // __init__(*args)
     auto rangeInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"...args"}, std::vector<bool>{false}, "init", nullptr, true);
+    GcObjGuard riGuard(rangeInit);
     rangeInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
@@ -66,6 +68,7 @@ void registerPredefinedClasses() {
 
     // __len__()
     auto rangeLen = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__len__", nullptr);
+    GcObjGuard rlGuard(rangeLen);
     rangeLen->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
@@ -75,6 +78,7 @@ void registerPredefinedClasses() {
 
     // __str__()
     auto rangeStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
+    GcObjGuard rsGuard(rangeStr);
     rangeStr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
@@ -86,6 +90,7 @@ void registerPredefinedClasses() {
 
     // __getitem__(idx)
     auto rangeGetItem = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx"}, std::vector<bool>{false}, "__getitem__", nullptr);
+    GcObjGuard rgiGuard(rangeGetItem);
     rangeGetItem->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
@@ -101,13 +106,16 @@ void registerPredefinedClasses() {
 
     // --- RangeIterator Class ---
     ObjClass* rangeIterClass = GcHeap::get().allocate<ObjClass>();
+    GcObjGuard ricGuard(rangeIterClass);
     rangeIterClass->name = "RangeIterator";
 
     // __iter__() for Range
     auto rangeIter = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__iter__", nullptr);
+    GcObjGuard riterGuard(rangeIter);
     rangeIter->nativeFn = std::make_any<NativeCallable>([rangeIterClass](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         ObjInstance* iterInst = GcHeap::get().allocate<ObjInstance>();
+        GcObjGuard guard(iterInst);
         iterInst->classDef = rangeIterClass;
         
         RangeIterData iterData{self, 0};
@@ -133,6 +141,7 @@ void registerPredefinedClasses() {
 
     // __next__() for RangeIterator
     auto rangeIterNext = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__next__", nullptr);
+    GcObjGuard rinGuard(rangeIterNext);
     rangeIterNext->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& iterData = std::any_cast<RangeIterData&>(self.asInstance()->nativeData);

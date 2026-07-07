@@ -1968,6 +1968,7 @@ void BuiltinRegistry::registerSystemUtils() {
     reg("symconfig", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {
             ObjDict* d = GcHeap::get().allocate<ObjDict>();
+            GcObjGuard guard(d);
             auto setField = [&](const std::string& k, Value v) {
                 Value key(k);
                 d->keyMap[key] = d->elements.size();

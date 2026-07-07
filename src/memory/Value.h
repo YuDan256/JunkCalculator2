@@ -90,6 +90,7 @@ namespace jc {
     struct ObjUpVal;
     struct NamespaceField;
 
+    inline std::unordered_map<std::string, ObjString*> g_internedStrings;
     ObjString* internString(const std::string& str);
 
     // =======================================================
@@ -2423,7 +2424,19 @@ inline void GcHeap::collectGarbage() {
         if (val) markValue(*val);
     }
 
+    if (sweepCallback) sweepCallback();
+
     sweep();
+}
+
+inline ObjString* internString(const std::string& str) {
+    auto it = g_internedStrings.find(str);
+    if (it != g_internedStrings.end()) {
+        return it->second;
+    }
+    ObjString* obj = GcHeap::get().allocate<ObjString>(str);
+    g_internedStrings[str] = obj;
+    return obj;
 }
 
 } // namespace jc

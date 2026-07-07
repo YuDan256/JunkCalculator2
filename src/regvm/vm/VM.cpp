@@ -32,6 +32,7 @@ extern bool g_showIR;
 #endif
 
 namespace jc {
+
 namespace regvm {
 
 ObjUpVal* VM::captureUpvalue(int regIndex) {
@@ -1973,6 +1974,16 @@ VM::VM() {
                 for (auto& ic : fn->chunk.inlineCaches) {
                     if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
                 }
+            }
+        }
+    };
+
+    GcHeap::get().sweepCallback = []() {
+        for (auto it = g_internedStrings.begin(); it != g_internedStrings.end(); ) {
+            if (!it->second->isMarked) {
+                it = g_internedStrings.erase(it);
+            } else {
+                ++it;
             }
         }
     };

@@ -29,21 +29,6 @@
 namespace jc {
 
     // =======================================================
-    // ★ 字符串驻留池 (String Interning)
-    // =======================================================
-    std::unordered_map<std::string, ObjString*> g_internedStrings;
-
-    ObjString* internString(const std::string& str) {
-        auto it = g_internedStrings.find(str);
-        if (it != g_internedStrings.end()) {
-            return it->second;
-        }
-        ObjString* obj = GcHeap::get().allocate<ObjString>(str);
-        g_internedStrings[str] = obj;
-        return obj;
-    }
-
-    // =======================================================
     // ★ 统一拦截与展开 Try-Catch 栈
     // =======================================================
     bool VM::handleExceptionUnwind(Value errVal) {

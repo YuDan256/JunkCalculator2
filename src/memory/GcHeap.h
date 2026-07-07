@@ -39,6 +39,7 @@ namespace jc {
         }
 
         std::function<void()> markCallback;
+        std::function<void()> sweepCallback;
 
         void markObj(Obj* obj);
         void markValue(const Value& val);

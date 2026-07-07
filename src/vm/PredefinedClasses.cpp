@@ -113,6 +113,16 @@ void registerPredefinedClasses() {
         RangeIterData iterData{self, 0};
         iterInst->nativeData = std::make_any<RangeIterData>(iterData);
         
+        iterInst->c_nativeNext = [](ObjInstance* inst) -> Value {
+            auto& iterData = std::any_cast<RangeIterData&>(inst->nativeData);
+            auto& rangeData = std::any_cast<RangeData&>(iterData.rangeObj.asInstance()->nativeData);
+            if (iterData.currentIndex >= rangeData.length) return Value::uninit();
+            double val = rangeData.start + iterData.currentIndex * rangeData.step;
+            iterData.currentIndex++;
+            if (rangeData.isInt) return Value(BigInt(static_cast<int64_t>(val)));
+            return Value(val);
+        };
+        
         // 为了让 GC 追踪 rangeObj，我们把它也放到 fields 里
         iterInst->fields = GcHeap::get().allocate<ObjDict>();
         iterInst->fields->set(Value("range"), self);

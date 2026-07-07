@@ -173,6 +173,32 @@ namespace helpers {
     inline std::function<void(const std::string&)> runFileCallback = nullptr;
     inline std::vector<std::string> g_scriptDirStack;
 
+    template<typename Func>
+    inline bool iterateIterable(const Value& iterable, Func callback) {
+        if (iterable.isInstance() && hasDunder(iterable, "__iter__")) {
+            auto inst = iterable.asInstance();
+            auto [hasIter, iterObj] = invokeDunder(inst, "__iter__");
+            if (hasIter) {
+                auto iterInst = iterObj.asInstance();
+                if (iterInst->c_nativeNext) {
+                    while (true) {
+                        Value nextVal = iterInst->c_nativeNext(iterInst);
+                        if (nextVal.isUninit()) break;
+                        if (!callback(nextVal)) break;
+                    }
+                } else {
+                    while (true) {
+                        auto [hasNext, nextVal] = invokeDunder(iterInst, "__next__");
+                        if (!hasNext || nextVal.isNone()) break;
+                        if (!callback(nextVal)) break;
+                    }
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
 // ═══════════════════════════════════════════
 // 值比较引擎 (Value Comparison)
 // ═══════════════════════════════════════════

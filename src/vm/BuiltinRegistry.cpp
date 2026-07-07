@@ -1076,8 +1076,15 @@ void BuiltinRegistry::registerMatrixOps() {
     reg("perm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.permanent(); }); });
     reg("sum", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        Value s(0.0);
+        bool first = true;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (first) { s = nextVal; first = false; }
+            else s = s + nextVal;
+            return true;
+        })) {
+            if (first) return Value(0.0);
+            return s;
         }
         // ★ 新增：无缝支持 List 容器
         if (arg.isObjType(ObjType::LIST)) {
@@ -1094,8 +1101,15 @@ void BuiltinRegistry::registerMatrixOps() {
 
     reg("prod", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        Value p(1.0);
+        bool first = true;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (first) { p = nextVal; first = false; }
+            else p = p * nextVal;
+            return true;
+        })) {
+            if (first) return Value(1.0);
+            return p;
         }
         // ★ 新增：无缝支持 List 容器
         if (arg.isObjType(ObjType::LIST)) {
@@ -1450,8 +1464,15 @@ void BuiltinRegistry::registerStatistics() {
     reg("sstd", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "sstd"); if (d.size()<2) throw std::runtime_error("Math Error: Sample std requires at least 2 data points."); return Value(std::sqrt(computeSvar(d))); });
     reg("max", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        Value mx;
+        bool first = true;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (first) { mx = nextVal; first = false; }
+            else if (helpers::checkGreater(nextVal, mx)) mx = nextVal;
+            return true;
+        })) {
+            if (first) throw std::runtime_error("Math Error: Cannot compute max of empty iterable.");
+            return mx;
         }
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
@@ -1465,13 +1486,20 @@ void BuiltinRegistry::registerStatistics() {
             return mx;
         }
         auto d = extractDS(arg, "max");
-        double mx = d[0]; for (double v : d) if (v > mx) mx = v; return Value(mx);
+        double mx_d = d[0]; for (double v : d) if (v > mx_d) mx_d = v; return Value(mx_d);
         });
 
     reg("min", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        Value mn;
+        bool first = true;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (first) { mn = nextVal; first = false; }
+            else if (helpers::checkLess(nextVal, mn)) mn = nextVal;
+            return true;
+        })) {
+            if (first) throw std::runtime_error("Math Error: Cannot compute min of empty iterable.");
+            return mn;
         }
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
@@ -1485,13 +1513,23 @@ void BuiltinRegistry::registerStatistics() {
             return mn;
         }
         auto d = extractDS(arg, "min");
-        double mn = d[0]; for (double v : d) if (v < mn) mn = v; return Value(mn);
+        double mn_d = d[0]; for (double v : d) if (v < mn_d) mn_d = v; return Value(mn_d);
         });
 
     reg("span", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        Value mn, mx;
+        bool first = true;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (first) { mn = nextVal; mx = nextVal; first = false; }
+            else {
+                if (helpers::checkGreater(nextVal, mx)) mx = nextVal;
+                if (helpers::checkLess(nextVal, mn)) mn = nextVal;
+            }
+            return true;
+        })) {
+            if (first) throw std::runtime_error("Math Error: Cannot compute span of empty iterable.");
+            return mx - mn;
         }
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
@@ -1508,9 +1546,9 @@ void BuiltinRegistry::registerStatistics() {
             return mx - mn;
         }
         auto d = extractDS(arg, "span");
-        double mx = d[0], mn = d[0];
-        for (double v : d) { if (v > mx) mx = v; if (v < mn) mn = v; }
-        return Value(mx - mn);
+        double mx_d = d[0], mn_d = d[0];
+        for (double v : d) { if (v > mx_d) mx_d = v; if (v < mn_d) mn_d = v; }
+        return Value(mx_d - mn_d);
         });
 
     reg("perc", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -2773,8 +2811,17 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     reg("indexOf", { 2 }, [expectContainer, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        int idx = 0;
+        int foundIdx = -1;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (Value::equals(nextVal, args[1])) {
+                foundIdx = idx;
+                return false; // break
+            }
+            idx++;
+            return true;
+        })) {
+            return Value::fromInt32(foundIdx);
         }
         if (arg.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(arg.asObj());
@@ -2810,8 +2857,12 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     reg("count", { 2 }, [expectContainer, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        int c = 0;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (Value::equals(nextVal, args[1])) c++;
+            return true;
+        })) {
+            return Value::fromInt32(c);
         }
         if (arg.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(arg.asObj());
@@ -2848,8 +2899,16 @@ void BuiltinRegistry::registerArrayFunctions() {
         if (!args[1].isString()) throw std::runtime_error("Type Error: delimiter must be a string.");
         const std::string& delim = args[1].asString();
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        std::ostringstream oss;
+        bool first = true;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (!first) oss << delim;
+            if (nextVal.isString()) oss << nextVal.asString();
+            else oss << nextVal;
+            first = false;
+            return true;
+        })) {
+            return Value(oss.str());
         }
         if (arg.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(arg.asObj());
@@ -3151,10 +3210,18 @@ void BuiltinRegistry::registerListConversion() {
                 ObjList* L = GcHeap::get().allocate<ObjList>();
                 GcObjGuard guard(L);
                 auto iterInst = iterObj.asInstance();
-                while (true) {
-                    auto [hasNext, nextVal] = invokeDunder(iterInst, DUNDER_NEXT, {});
-                    if (!hasNext || nextVal.isNone()) break;
-                    L->vec.push_back(nextVal);
+                if (iterInst->c_nativeNext) {
+                    while (true) {
+                        Value nextVal = iterInst->c_nativeNext(iterInst);
+                        if (nextVal.isUninit()) break;
+                        L->vec.push_back(nextVal);
+                    }
+                } else {
+                    while (true) {
+                        auto [hasNext, nextVal] = invokeDunder(iterInst, DUNDER_NEXT, {});
+                        if (!hasNext || nextVal.isNone()) break;
+                        L->vec.push_back(nextVal);
+                    }
                 }
                 return Value(L);
             }
@@ -3235,8 +3302,13 @@ void BuiltinRegistry::registerListConversion() {
 
     reg("toStrVec", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        std::vector<std::string> flat;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            if (nextVal.isString()) flat.push_back(nextVal.asString());
+            else { std::ostringstream oss; oss << nextVal; flat.push_back(oss.str()); }
+            return true;
+        })) {
+            return Value(StringMatrix(static_cast<int>(flat.size()), 1, flat));
         }
         if (arg.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
@@ -3253,8 +3325,12 @@ void BuiltinRegistry::registerListConversion() {
 
     reg("toArray", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+        std::vector<double> flat;
+        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+            flat.push_back(nextVal.asDouble());
+            return true;
+        })) {
+            return Value(RealMatrix(1, static_cast<int>(flat.size()), flat));
         }
         if (!arg.isObjType(ObjType::LIST)) throw std::runtime_error("Type Error: expects a List or Iterable.");
         const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
@@ -3481,8 +3557,11 @@ void BuiltinRegistry::registerHigherOrder() {
         GcObjGuard guard(unpackedList);
         
         Value iterable = argList;
-        if (iterable.isInstance() && helpers::hasDunder(iterable, DUNDER_ITER)) {
-            iterable = builtins["toList"]({iterable});
+        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
+            unpackedList->vec.push_back(nextVal);
+            return true;
+        })) {
+            return safeCallFunction(cl, unpackedList->vec);
         }
 
         if (iterable.isObjType(ObjType::LIST)) {
@@ -3533,8 +3612,14 @@ void BuiltinRegistry::registerHigherOrder() {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: map() requires a single-parameter function.");
 
         Value iterable = argList;
-        if (iterable.isInstance() && helpers::hasDunder(iterable, DUNDER_ITER)) {
-            iterable = builtins["toList"]({iterable});
+        ObjList* result = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(result);
+        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
+            jc::checkInterrupt();
+            result->vec.push_back(safeCallFunction(cl, { nextVal }));
+            return true;
+        })) {
+            return Value(result);
         }
 
         if (iterable.isObjType(ObjType::LIST)) {
@@ -3626,8 +3711,14 @@ void BuiltinRegistry::registerHigherOrder() {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: filter() requires a single-parameter function.");
 
         Value iterable = argList;
-        if (iterable.isInstance() && helpers::hasDunder(iterable, DUNDER_ITER)) {
-            iterable = builtins["toList"]({iterable});
+        ObjList* result = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(result);
+        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
+            jc::checkInterrupt();
+            if (safeCallFunction(cl, { nextVal }).truthy()) result->vec.push_back(nextVal);
+            return true;
+        })) {
+            return Value(result);
         }
 
         if (iterable.isObjType(ObjType::LIST)) {
@@ -3687,8 +3778,19 @@ void BuiltinRegistry::registerHigherOrder() {
         if (!cl->acceptsArgCount(2)) throw std::runtime_error("Runtime Error: reduce() requires a two-parameter function.");
 
         Value iterable = argList;
-        if (iterable.isInstance() && helpers::hasDunder(iterable, DUNDER_ITER)) {
-            iterable = builtins["toList"]({iterable});
+        Value acc;
+        bool first = true;
+        if (!initVal.isNone()) { acc = initVal; first = false; }
+        GcValueGuard guard(acc);
+        
+        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
+            jc::checkInterrupt();
+            if (first) { acc = nextVal; first = false; }
+            else acc = safeCallFunction(cl, { acc, nextVal });
+            return true;
+        })) {
+            if (first) throw std::runtime_error("Runtime Error: reduce() on empty.");
+            return acc;
         }
 
         if (iterable.isObjType(ObjType::LIST)) {
@@ -3742,8 +3844,16 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto iterateAndCheck = [this](const Value& argList, ObjClosure* cl, auto checkFn) -> Value {
         Value iterable = argList;
-        if (iterable.isInstance() && helpers::hasDunder(iterable, DUNDER_ITER)) {
-            iterable = builtins["toList"]({iterable});
+        bool found = false;
+        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
+            jc::checkInterrupt();
+            if (checkFn(safeCallFunction(cl, { nextVal }).truthy())) {
+                found = true;
+                return false; // break
+            }
+            return true;
+        })) {
+            return Value(found);
         }
         if (iterable.isObjType(ObjType::LIST)) {
             for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
@@ -3813,6 +3923,13 @@ void BuiltinRegistry::registerHigherOrder() {
     auto countIfCore = [](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: countIf() requires a single-parameter function.");
         int c = 0;
+        if (helpers::iterateIterable(argList, [&](const Value& nextVal) {
+            jc::checkInterrupt();
+            if (safeCallFunction(cl, { nextVal }).truthy()) c++;
+            return true;
+        })) {
+            return Value::fromInt32(c);
+        }
         if (argList.isObjType(ObjType::LIST)) {
             for (const auto& e : static_cast<ObjList*>(argList.asObj())->vec) { jc::checkInterrupt(); if (safeCallFunction(cl, { e }).truthy()) c++; }
         } else if (argList.isObjType(ObjType::REAL_MATRIX)) {
@@ -3844,7 +3961,13 @@ void BuiltinRegistry::registerHigherOrder() {
     auto sortCore = [this](const Value& argList, ObjClosure* cmp) -> Value {
         Value arg = argList;
         if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            arg = builtins["toList"]({arg});
+            ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
+            helpers::iterateIterable(arg, [&](const Value& nextVal) {
+                L->vec.push_back(nextVal);
+                return true;
+            });
+            arg = Value(L);
         }
         if (cmp) {
             if (!cmp->acceptsArgCount(2)) throw std::runtime_error("Runtime Error: sort() comparator must be a 2-parameter function.");
@@ -4962,10 +5085,18 @@ void BuiltinRegistry::registerSetFunctions() {
             auto [hasIter, iterObj] = invokeDunder(inst, DUNDER_ITER, {});
             if (hasIter) {
                 auto iterInst = iterObj.asInstance();
-                while (true) {
-                    auto [hasNext, nextVal] = invokeDunder(iterInst, DUNDER_NEXT, {});
-                    if (!hasNext || nextVal.isNone()) break;
-                    if (s->keys.find(nextVal) == s->keys.end()) { s->keys.insert(nextVal); s->elements.push_back(nextVal); }
+                if (iterInst->c_nativeNext) {
+                    while (true) {
+                        Value nextVal = iterInst->c_nativeNext(iterInst);
+                        if (nextVal.isUninit()) break;
+                        if (s->keys.find(nextVal) == s->keys.end()) { s->keys.insert(nextVal); s->elements.push_back(nextVal); }
+                    }
+                } else {
+                    while (true) {
+                        auto [hasNext, nextVal] = invokeDunder(iterInst, DUNDER_NEXT, {});
+                        if (!hasNext || nextVal.isNone()) break;
+                        if (s->keys.find(nextVal) == s->keys.end()) { s->keys.insert(nextVal); s->elements.push_back(nextVal); }
+                    }
                 }
                 return Value(s);
             }

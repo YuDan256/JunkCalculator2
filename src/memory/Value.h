@@ -158,6 +158,7 @@ namespace jc {
         std::any nativeData;
         void* c_nativeData = nullptr;
         void (*c_nativeDtor)(void*) = nullptr;
+        Value (*c_nativeNext)(ObjInstance*) = nullptr;
         bool is_frozen = false;
         mutable bool is_hashable_cached = false;
         mutable bool has_cached_hash = false;

@@ -3663,7 +3663,16 @@ Value VM::run(int targetFrameDepth) {
                     auto method = findDunder(iterable, DUNDER_ITER);
                     if (method) {
                         Value iterObj = callDunder(iterable, method, {});
-                        getReg(a) = iterObj; // Custom iterator
+                        ObjList* state = GcHeap::get().allocate<ObjList>();
+                        state->vec.push_back(iterObj);
+                        if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {
+                            state->vec.push_back(Value::none());
+                        } else {
+                            auto nextMethod = findDunder(iterObj, DUNDER_NEXT);
+                            if (!nextMethod) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
+                            state->vec.push_back(Value(nextMethod));
+                        }
+                        getReg(a) = Value(state);
                         break;
                     }
                 }
@@ -3749,13 +3758,12 @@ Value VM::run(int targetFrameDepth) {
                 
                 Value& stateVal = getReg(b);
                 
-                if (stateVal.isObjType(ObjType::LIST)) {
-                    auto state = static_cast<ObjList*>(stateVal.asObj());
-                    if (state->vec.size() == 2 && state->vec[1].isInt32()) {
-                        Value iterTarget = state->vec[0];
-                        int i = state->vec[1].asInt32();
-                    
-                        if (iterTarget.isObjType(ObjType::LIST)) {
+                auto state = static_cast<ObjList*>(stateVal.asObj());
+                if (state->vec.size() >= 2 && state->vec[1].isInt32()) {
+                    Value iterTarget = state->vec[0];
+                    int i = state->vec[1].asInt32();
+                
+                    if (iterTarget.isObjType(ObjType::LIST)) {
                             const auto& elems = static_cast<ObjList*>(iterTarget.asObj())->vec;
                             if (i >= static_cast<int>(elems.size())) {
                                 getReg(a) = Value::uninit();
@@ -3839,14 +3847,17 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 
-                auto method = findDunder(stateVal, DUNDER_NEXT);
-                if (!method) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
-                
-                Value nextVal = callDunder(stateVal, method, {});
-                if (nextVal.isNone()) {
-                    getReg(a) = Value::uninit();
+                Value iterObj = state->vec[0];
+                if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {
+                    getReg(a) = iterObj.asInstance()->c_nativeNext(iterObj.asInstance());
                 } else {
-                    getReg(a) = nextVal;
+                    ObjClosure* method = state->vec[1].asFunction();
+                    Value nextVal = callDunder(iterObj, method, {});
+                    if (nextVal.isNone()) {
+                        getReg(a) = Value::uninit();
+                    } else {
+                        getReg(a) = nextVal;
+                    }
                 }
                 break;
             }

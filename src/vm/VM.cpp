@@ -2306,12 +2306,15 @@ Value VM::run(int targetFrameDepth) {
                             }
                             if (helpers::evalCallback) {
                                 currentDebuggerFrame = frame;
+                                bool prevDebug = g_autoDebug;
+                                g_autoDebug = false;
                                 try {
                                     Value res = helpers::evalCallback(expr);
                                     std::cout << res << "\n";
                                 } catch (const std::exception& e) {
                                     std::cout << "Error: " << e.what() << "\n";
                                 }
+                                g_autoDebug = prevDebug;
                                 currentDebuggerFrame = nullptr;
                             } else {
                                 std::cout << "Eval not available.\n";

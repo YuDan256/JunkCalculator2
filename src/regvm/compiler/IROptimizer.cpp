@@ -540,24 +540,29 @@ bool IROptimizer::simplifyPhis(IRGraph* graph) {
 bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
     bool changed = false;
     
+    int maxId = 0;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->id > maxId) maxId = nodePtr->id;
+    }
+    
     // 1. 正向传播控制流可达性 (Forward Control Flow Reachability)
-    std::unordered_set<IRNode*> reachableControl;
+    std::vector<bool> reachableControl(maxId + 1, false);
     std::vector<IRNode*> ctrlWorklist;
     
     if (graph->startNode) {
-        reachableControl.insert(graph->startNode);
+        reachableControl[graph->startNode->id] = true;
         ctrlWorklist.push_back(graph->startNode);
     }
     
-    std::unordered_map<IRNode*, std::vector<IRNode*>> ctrlUses;
+    std::vector<std::vector<IRNode*>> ctrlUses(maxId + 1);
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* n = nodePtr.get();
         if (n->controlInput) {
-            ctrlUses[n->controlInput].push_back(n);
+            ctrlUses[n->controlInput->id].push_back(n);
         }
         if (n->op == IROp::Merge || n->op == IROp::Loop) {
             for (IRNode* din : n->dataInputs) {
-                if (din) ctrlUses[din].push_back(n);
+                if (din) ctrlUses[din->id].push_back(n);
             }
         }
     }
@@ -565,9 +570,9 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
     while (!ctrlWorklist.empty()) {
         IRNode* curr = ctrlWorklist.back();
         ctrlWorklist.pop_back();
-        for (IRNode* use : ctrlUses[curr]) {
-            if (reachableControl.find(use) == reachableControl.end()) {
-                reachableControl.insert(use);
+        for (IRNode* use : ctrlUses[curr->id]) {
+            if (!reachableControl[use->id]) {
+                reachableControl[use->id] = true;
                 // 任何被控制流边连接的节点都属于控制流图的一部分，继续传播
                 ctrlWorklist.push_back(use);
             }
@@ -575,7 +580,7 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
     }
     
     // 2. 标记所有可达的副作用节点为存活 (Roots)
-    std::unordered_set<IRNode*> used;
+    std::vector<bool> used(maxId + 1, false);
     std::vector<IRNode*> worklist;
     
     for (auto& nodePtr : graph->getNodes()) {
@@ -583,8 +588,8 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
         if (node->op == IROp::Nop) continue;
         if (hasSideEffects(node->op)) {
             // 只要节点在控制流可达集合中，它就是存活的 Root
-            if (reachableControl.find(node) != reachableControl.end()) {
-                used.insert(node);
+            if (reachableControl[node->id]) {
+                used[node->id] = true;
                 worklist.push_back(node);
             }
         }
@@ -595,15 +600,15 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
         IRNode* curr = worklist.back();
         worklist.pop_back();
         
-        if (curr->controlInput && used.find(curr->controlInput) == used.end()) {
-            used.insert(curr->controlInput);
+        if (curr->controlInput && !used[curr->controlInput->id]) {
+            used[curr->controlInput->id] = true;
             worklist.push_back(curr->controlInput);
         }
         
         if (curr->op == IROp::Merge || curr->op == IROp::Loop) {
             for (IRNode* in : curr->dataInputs) {
-                if (in && reachableControl.find(in) != reachableControl.end() && used.find(in) == used.end()) {
-                    used.insert(in);
+                if (in && reachableControl[in->id] && !used[in->id]) {
+                    used[in->id] = true;
                     worklist.push_back(in);
                 }
             }
@@ -612,11 +617,11 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
             if (merge && (merge->op == IROp::Merge || merge->op == IROp::Loop)) {
                 for (size_t i = 0; i < curr->dataInputs.size(); ++i) {
                     IRNode* in = curr->dataInputs[i];
-                    if (in && used.find(in) == used.end()) {
+                    if (in && !used[in->id]) {
                         if (i < merge->dataInputs.size()) {
                             IRNode* ctrlIn = merge->dataInputs[i];
-                            if (ctrlIn && reachableControl.find(ctrlIn) != reachableControl.end()) {
-                                used.insert(in);
+                            if (ctrlIn && reachableControl[ctrlIn->id]) {
+                                used[in->id] = true;
                                 worklist.push_back(in);
                             }
                         }
@@ -624,16 +629,16 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
                 }
             } else {
                 for (IRNode* in : curr->dataInputs) {
-                    if (in && used.find(in) == used.end()) {
-                        used.insert(in);
+                    if (in && !used[in->id]) {
+                        used[in->id] = true;
                         worklist.push_back(in);
                     }
                 }
             }
         } else {
             for (IRNode* in : curr->dataInputs) {
-                if (in && used.find(in) == used.end()) {
-                    used.insert(in);
+                if (in && !used[in->id]) {
+                    used[in->id] = true;
                     worklist.push_back(in);
                 }
             }
@@ -643,7 +648,7 @@ bool IROptimizer::eliminateDeadCode(IRGraph* graph) {
     // 4. 清除未被标记的节点 (Sweep)
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
-        if (node->op != IROp::Nop && used.find(node) == used.end()) {
+        if (node->op != IROp::Nop && !used[node->id]) {
             node->op = IROp::Nop;
             node->dataInputs.clear();
             node->controlInput = nullptr;

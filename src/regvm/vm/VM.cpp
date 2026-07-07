@@ -157,9 +157,15 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     }
                 }
                 
-                for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
-                    if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
-                    else registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i - ufcsOffset];
+                if (closure->isUFCS) {
+                    registers[newBase] = closure->boundSelf;
+                    for (int i = 1; i < std::min(totalArgc, fixedMax); ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + i];
+                    }
+                } else {
+                    for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
+                    }
                 }
                 for (int i = totalArgc; i < fixedMax; ++i) {
                     registers[newBase + i] = Value::uninit();
@@ -169,9 +175,15 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
                     throw std::runtime_error("RegVM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                 }
-                for (int i = 0; i < totalArgc; ++i) {
-                    if (closure->isUFCS && i == 0) registers[newBase + i] = closure->boundSelf;
-                    else registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i - ufcsOffset];
+                if (closure->isUFCS) {
+                    registers[newBase] = closure->boundSelf;
+                    for (int i = 1; i < totalArgc; ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + i];
+                    }
+                } else {
+                    for (int i = 0; i < totalArgc; ++i) {
+                        registers[newBase + i] = registers[currentFrame->registerBase + calleeReg + 1 + i];
+                    }
                 }
                 for (int i = totalArgc; i < fnDef->maxArity; ++i) {
                     registers[newBase + i] = Value::uninit();

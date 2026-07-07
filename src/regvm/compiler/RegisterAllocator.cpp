@@ -226,16 +226,22 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         }
     }
 
-    for (auto& bb : blocks) {
+    std::vector<std::vector<bool>> liveIn(blocks.size(), std::vector<bool>(numVRegs, false));
+    std::vector<std::vector<bool>> liveOut(blocks.size(), std::vector<bool>(numVRegs, false));
+    std::vector<std::vector<bool>> def(blocks.size(), std::vector<bool>(numVRegs, false));
+    std::vector<std::vector<bool>> use(blocks.size(), std::vector<bool>(numVRegs, false));
+
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        auto& bb = blocks[i];
         for (IRNode* inst : bb->instructions) {
-            if (inst->virtualReg != -1 && isUncoloredConst[inst->virtualReg]) continue; // 未捕获的常量不占用物理寄存器
+            if (inst->virtualReg != -1 && isUncoloredConst[inst->virtualReg]) continue;
             for (IRNode* src : inst->dataInputs) {
-                if (src && src->virtualReg != -1 && !isUncoloredConst[src->virtualReg] && !bb->def.count(src->virtualReg)) {
-                    bb->use.insert(src->virtualReg);
+                if (src && src->virtualReg != -1 && !isUncoloredConst[src->virtualReg] && !def[i][src->virtualReg]) {
+                    use[i][src->virtualReg] = true;
                 }
             }
             if (inst->virtualReg != -1) {
-                bb->def.insert(inst->virtualReg);
+                def[i][inst->virtualReg] = true;
             }
         }
     }
@@ -243,69 +249,76 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     bool changed = true;
     while (changed) {
         changed = false;
-        for (auto it = blocks.rbegin(); it != blocks.rend(); ++it) {
-            auto& bb = *it;
-            size_t oldOut = bb->liveOut.size();
-            size_t oldIn = bb->liveIn.size();
-
+        for (int i = static_cast<int>(blocks.size()) - 1; i >= 0; --i) {
+            auto& bb = blocks[i];
+            
             for (BasicBlock* succ : bb->succs) {
-                bb->liveOut.insert(succ->liveIn.begin(), succ->liveIn.end());
+                int sIdx = succ->id;
+                for (int v = 0; v < numVRegs; ++v) {
+                    if (liveIn[sIdx][v] && !liveOut[i][v]) {
+                        liveOut[i][v] = true;
+                        changed = true;
+                    }
+                }
             }
 
-            bb->liveIn = bb->use;
-            for (int v : bb->liveOut) {
-                if (!bb->def.count(v)) bb->liveIn.insert(v);
-            }
-
-            if (bb->liveOut.size() != oldOut || bb->liveIn.size() != oldIn) {
-                changed = true;
+            for (int v = 0; v < numVRegs; ++v) {
+                bool newVal = use[i][v] || (liveOut[i][v] && !def[i][v]);
+                if (newVal != liveIn[i][v]) {
+                    liveIn[i][v] = newVal;
+                    changed = true;
+                }
             }
         }
     }
 
     // 6. 构建冲突图 (Interference Graph) 与 Move 偏好
-    std::vector<std::unordered_set<int>> adj(numVRegs);
+    std::vector<std::vector<bool>> adjMatrix(numVRegs, std::vector<bool>(numVRegs, false));
+    std::vector<std::vector<int>> adjList(numVRegs);
     std::vector<int> degree(numVRegs, 0);
-    std::unordered_map<int, std::unordered_set<int>> moveHints; // 记录 Move 指令的源和目标，用于着色偏好
+    std::vector<std::vector<int>> moveHints(numVRegs);
 
     auto addEdge = [&](int u, int v) {
-        if (u != v && !adj[u].count(v)) {
-            adj[u].insert(v);
-            adj[v].insert(u);
+        if (u != v && !adjMatrix[u][v]) {
+            adjMatrix[u][v] = true;
+            adjMatrix[v][u] = true;
+            adjList[u].push_back(v);
+            adjList[v].push_back(u);
             degree[u]++;
             degree[v]++;
         }
     };
 
-    for (auto& bb : blocks) {
-        std::unordered_set<int> live = bb->liveOut;
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        auto& bb = blocks[i];
+        std::vector<bool> live = liveOut[i];
         for (auto it = bb->instructions.rbegin(); it != bb->instructions.rend(); ++it) {
             IRNode* inst = *it;
             
-            // 收集 Move 偏好
             if (inst->op == IROp::Move && inst->dataInputs.size() == 1 && inst->dataInputs[0]) {
                 int srcReg = inst->dataInputs[0]->virtualReg;
                 int dstReg = inst->virtualReg;
                 if (srcReg != -1 && dstReg != -1) {
-                    moveHints[dstReg].insert(srcReg);
-                    moveHints[srcReg].insert(dstReg);
+                    moveHints[dstReg].push_back(srcReg);
+                    moveHints[srcReg].push_back(dstReg);
                 }
             }
 
             if (inst->virtualReg != -1) {
-                live.erase(inst->virtualReg);
-                for (int l : live) {
-                    // ★ 核心优化：Move 指令的目标寄存器不与源寄存器产生冲突
-                    if (inst->op == IROp::Move && inst->dataInputs.size() == 1 && 
-                        inst->dataInputs[0] && inst->dataInputs[0]->virtualReg == l) {
-                        continue;
+                live[inst->virtualReg] = false;
+                for (int l = 0; l < numVRegs; ++l) {
+                    if (live[l]) {
+                        if (inst->op == IROp::Move && inst->dataInputs.size() == 1 && 
+                            inst->dataInputs[0] && inst->dataInputs[0]->virtualReg == l) {
+                            continue;
+                        }
+                        addEdge(inst->virtualReg, l);
                     }
-                    addEdge(inst->virtualReg, l);
                 }
             }
             for (IRNode* src : inst->dataInputs) {
                 if (src && src->virtualReg != -1 && !isUncoloredConst[src->virtualReg]) {
-                    live.insert(src->virtualReg);
+                    live[src->virtualReg] = true;
                 }
             }
         }
@@ -351,7 +364,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                 if (u != -1 && v != -1 && !isUncoloredConst[u] && !isUncoloredConst[v]) {
                     int rootU = getAlias(getAlias, u);
                     int rootV = getAlias(getAlias, v);
-                    if (rootU != rootV && !adj[rootU].count(rootV)) {
+                    if (rootU != rootV && !adjMatrix[rootU][rootV]) {
                         int cU = color[rootU];
                         int cV = color[rootV];
                         if (cU != -1 && cV != -1 && cU != cV) continue; // 预着色冲突，不能合并
@@ -359,11 +372,10 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                         if (cV != -1 && cU == -1) std::swap(rootU, rootV);
                         
                         alias[rootV] = rootU;
-                        for (int neighbor : adj[rootV]) {
+                        for (int neighbor : adjList[rootV]) {
                             int rootN = getAlias(getAlias, neighbor);
                             if (rootN != rootU) {
-                                adj[rootU].insert(rootN);
-                                adj[rootN].insert(rootU);
+                                addEdge(rootU, rootN);
                             }
                         }
                         coalesced = true;
@@ -379,12 +391,14 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                 removed[i] = true;
             } else {
                 degree[i] = 0;
-                std::unordered_set<int> newAdj;
-                for (int neighbor : adj[i]) {
+                std::vector<int> newAdj;
+                for (int neighbor : adjList[i]) {
                     int rootN = getAlias(getAlias, neighbor);
-                    if (rootN != i) newAdj.insert(rootN);
+                    if (rootN != i && std::find(newAdj.begin(), newAdj.end(), rootN) == newAdj.end()) {
+                        newAdj.push_back(rootN);
+                    }
                 }
-                adj[i] = newAdj;
+                adjList[i] = newAdj;
                 degree[i] = static_cast<int>(newAdj.size());
             }
         }
@@ -398,11 +412,11 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     int nodesRemaining = 0;
     for (int i = 0; i < numVRegs; ++i) {
         if (removed[i]) continue;
-        bool used = false;
-        for (auto& bb : blocks) {
-            if (bb->def.count(i) || bb->use.count(i)) { used = true; break; }
+        bool isUsed = false;
+        for (size_t bIdx = 0; bIdx < blocks.size(); ++bIdx) {
+            if (def[bIdx][i] || use[bIdx][i]) { isUsed = true; break; }
         }
-        if (used) nodesRemaining++;
+        if (isUsed) nodesRemaining++;
         else removed[i] = true;
     }
 
@@ -431,7 +445,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         selectStack.push(pick);
         nodesRemaining--;
 
-        for (int neighbor : adj[pick]) {
+        for (int neighbor : adjList[pick]) {
             if (!removed[neighbor]) degree[neighbor]--;
         }
     }
@@ -450,7 +464,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         selectStack.pop();
 
         std::vector<bool> usedColors(K, false);
-        for (int neighbor : adj[v]) {
+        for (int neighbor : adjList[v]) {
             if (color[neighbor] != -1 && color[neighbor] < K) {
                 usedColors[color[neighbor]] = true;
             }

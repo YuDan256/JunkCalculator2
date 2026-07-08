@@ -490,7 +490,11 @@ public:
     }
 
     void visitMacroCallExpr(MacroCallExpr* expr) override {
-        expr->argument->accept(*this); Value arg = result;
+        Value arg = Value::none();
+        if (expr->argument) {
+            expr->argument->accept(*this);
+            arg = result;
+        }
         result = makeASTNode("MacroCallExpr", expr->macroName.line, {
             {"macroName", Value(expr->macroName.lexeme)},
             {"argument", arg}

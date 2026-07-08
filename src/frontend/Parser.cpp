@@ -1243,17 +1243,6 @@ namespace jc {
             }
             if (check(TokenType::IDENTIFIER)) {
                 Token macroName = advance();
-                std::unique_ptr<Expr> arg;
-                if (check(TokenType::LBRACE)) {
-                    arg = parseBlock();
-                } else if (match({ TokenType::LPAREN })) {
-                    arg = expression();
-                    consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro argument.");
-                } else {
-                    throw std::runtime_error("Parser Error: Expect '{' or '(' after macro name.");
-                }
-                
-                Value argVal = AST_to_JC2(arg.get());
                 
                 std::string internalName = "__macro_" + macroName.lexeme;
                 auto globals = VM::activeVM->getGlobals();
@@ -1263,7 +1252,31 @@ namespace jc {
                 }
                 
                 ObjClosure* macroFn = it->second.asFunction();
-                Value resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, {argVal}, macroFn);
+                std::unique_ptr<Expr> arg = nullptr;
+                
+                if (macroFn->arity > 0) {
+                    if (check(TokenType::LBRACE)) {
+                        arg = parseBlock();
+                    } else if (match({ TokenType::LPAREN })) {
+                        arg = expression();
+                        consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro argument.");
+                    } else {
+                        throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects 1 argument.");
+                    }
+                } else {
+                    if (match({ TokenType::LPAREN })) {
+                        consume(TokenType::RPAREN, "Parser Error: Macro '" + macroName.lexeme + "' expects 0 arguments.");
+                    }
+                }
+                
+                Value argVal = arg ? AST_to_JC2(arg.get()) : Value::none();
+                
+                std::vector<Value> callArgs;
+                if (macroFn->arity > 0) {
+                    callArgs.push_back(argVal);
+                }
+                
+                Value resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, callArgs, macroFn);
                 
                 auto expandedAst = JC2_to_AST(resultVal);
                 if (!expandedAst) throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
@@ -1330,15 +1343,31 @@ namespace jc {
     std::unique_ptr<Expr> Parser::macroDefExpr() {
         Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name.");
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after macro name.");
-        Token param = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro parameter name.");
+        Token param(TokenType::IDENTIFIER, "", name.position, name.line);
+        if (!check(TokenType::RPAREN)) {
+            param = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro parameter name.");
+        }
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro parameter.");
         consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
         auto body = parseStatementOrBlock();
         
+        std::vector<Token> params;
+        std::vector<bool> paramIsRef;
+        std::vector<bool> paramIsConst;
+        std::vector<std::shared_ptr<Expr>> defaultExprs;
+        std::vector<std::string> paramTypes;
+        if (!param.lexeme.empty()) {
+            params.push_back(param);
+            paramIsRef.push_back(false);
+            paramIsConst.push_back(false);
+            defaultExprs.push_back(nullptr);
+            paramTypes.push_back("");
+        }
+
         auto lambda = std::make_unique<LambdaExpr>(
-            name.lexeme, std::vector<Token>{param}, std::vector<bool>{false}, std::vector<bool>{false},
-            std::vector<std::shared_ptr<Expr>>{nullptr}, false,
-            std::vector<std::string>{""}, "",
+            name.lexeme, std::move(params), std::move(paramIsRef), std::move(paramIsConst),
+            std::move(defaultExprs), false,
+            std::move(paramTypes), "",
             "<macro_body>", std::shared_ptr<Expr>(body.release())
         );
         Token internalName = name;

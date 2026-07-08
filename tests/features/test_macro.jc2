@@ -125,3 +125,29 @@ test_macro_generate_function() = {
     assert(add_five(10) == 15, "Macro generating function failed")
 }
 test_macro_generate_function()
+
+test_no_arg_macro() = {
+    macro inject_logger() = {
+        return quote {
+            logger = (msg) => msg
+        }
+    }
+    
+    @inject_logger()
+    assert(logger("hello") == "hello", "No-arg macro failed")
+    
+    @inject_logger
+    assert(logger("world") == "world", "No-arg macro without parens failed")
+}
+test_no_arg_macro()
+
+test_no_arg_macro_safety() = {
+    macro get_one() = {
+        return quote { 1 }
+    }
+    
+    // 确保无参宏后面的 { 2 } 不会被当作宏参数吃掉
+    arr = [@get_one, { 2 }]
+    assert(arr[0] == 1, "No-arg macro safety failed")
+}
+test_no_arg_macro_safety()

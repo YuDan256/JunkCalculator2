@@ -116,6 +116,7 @@ namespace jc {
     struct MacroCallExpr;    // ★ 新增
     struct QuoteExpr;        // ★ 新增
     struct UnquoteExpr;      // ★ 新增
+    struct ExprAssign;       // ★ 新增
 
     struct DefaultPattern;   // ★ 新增
 

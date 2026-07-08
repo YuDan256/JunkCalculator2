@@ -209,8 +209,7 @@ test_macro_identifier_unquote() = {
     local my_fib
     @def_memo(my_fib, n, {
         eval_count += 1;
-        if (n <= 1) return n;
-        return my_fib(n - 1) + my_fib(n - 2);
+        if (n <= 1) n else my_fib(n - 1) + my_fib(n - 2)
     })
     
     res = my_fib(10)

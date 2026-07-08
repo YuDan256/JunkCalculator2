@@ -335,14 +335,14 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     } else if (type == "IndexAssign") {
         Token name(TokenType::IDENTIFIER, getProp("name").asString(), line);
         auto objExpr = JC2_to_AST(getProp("objectExpr"));
-        auto val = JC2_to_AST(getProp("value"));
+        auto valExpr = JC2_to_AST(getProp("value"));
         std::vector<std::vector<std::unique_ptr<Expr>>> chain;
         Value chainVal = getProp("indexChain");
         if (chainVal.isObjType(ObjType::LIST)) {
             for (const auto& levelVal : static_cast<ObjList*>(chainVal.asObj())->vec) chain.push_back(getExprList(levelVal));
         }
-        if (objExpr) return std::make_unique<IndexAssign>(std::move(objExpr), std::move(chain), std::move(val));
-        return std::make_unique<IndexAssign>(name, std::move(chain), std::move(val));
+        if (objExpr) return std::make_unique<IndexAssign>(std::move(objExpr), std::move(chain), std::move(valExpr));
+        return std::make_unique<IndexAssign>(name, std::move(chain), std::move(valExpr));
     } else if (type == "LocalDecl") {
         return std::make_unique<LocalDecl>(Token(TokenType::IDENTIFIER, getProp("name").asString(), line), getProp("isConst").truthy());
     } else if (type == "RefDecl") {

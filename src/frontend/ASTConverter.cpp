@@ -776,9 +776,13 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         if (typesVal.isObjType(ObjType::LIST)) {
             for (const auto& v : static_cast<ObjList*>(typesVal.asObj())->vec) paramTypes.push_back(v.asString());
         }
+        std::vector<std::shared_ptr<Expr>> defaultExprs;
+        for (auto& e : getExprList(getProp("defaultExprs"))) {
+            defaultExprs.push_back(std::shared_ptr<Expr>(e.release()));
+        }
         return std::make_unique<LambdaExpr>(
             getProp("name").asString(), std::move(params), std::move(paramIsRef), std::move(paramIsConst),
-            getExprList(getProp("defaultExprs")), getProp("hasRestParam").truthy(),
+            std::move(defaultExprs), getProp("hasRestParam").truthy(),
             std::move(paramTypes), getProp("returnType").asString(),
             getProp("rawBody").asString(), std::shared_ptr<Expr>(JC2_to_AST(getProp("body")).release())
         );

@@ -101,8 +101,9 @@ test_ast_tamper()
 
 test_macro_control_flow() = {
     macro repeat_three(node) = {
+        i_var = gensym("i")
         return quote {
-            for (local __i = 0; __i < 3; __i += 1) {
+            for (local $i_var = 0; $i_var < 3; $i_var += 1) {
                 $node
             }
         }
@@ -154,8 +155,9 @@ test_no_arg_macro_safety()
 
 test_multi_arg_macro() = {
     macro repeat(n_node, body_node) = {
+        i_var = gensym("i")
         return quote {
-            for (local __i = 0; __i < $n_node; __i += 1) {
+            for (local $i_var = 0; $i_var < $n_node; $i_var += 1) {
                 $body_node
             }
         }
@@ -191,15 +193,17 @@ test_variadic_macro()
 
 test_macro_identifier_unquote() = {
     macro def_memo(func_name, arg_name, body) = {
+        cache_var = gensym("cache")
+        res_var = gensym("res")
         return quote {
-            local __cache = {}
+            local $cache_var = {}
             $func_name($arg_name) = {
-                if ($arg_name in __cache) {
-                    return __cache[$arg_name]
+                if ($arg_name in $cache_var) {
+                    return $cache_var[$arg_name]
                 }
-                local __res = $body
-                __cache[$arg_name] = __res
-                return __res
+                local $res_var = $body
+                $cache_var[$arg_name] = $res_var
+                return $res_var
             }
             none
         }

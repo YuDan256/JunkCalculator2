@@ -1289,7 +1289,7 @@ namespace jc {
             if (check(TokenType::IDENTIFIER)) {
                 Token macroName = advance();
                 
-                std::string internalName = "__macro_" + macroName.lexeme;
+                std::string internalName = "<macro_" + macroName.lexeme + ">";
                 auto globals = VM::activeVM->getGlobals();
                 auto it = globals.find(internalName);
                 if (it == globals.end() || !it->second.isFunctionClosure()) {
@@ -1462,7 +1462,7 @@ namespace jc {
             "<macro_body>", std::shared_ptr<Expr>(body.release())
         );
         Token internalName = name;
-        internalName.lexeme = "__macro_" + name.lexeme;
+        internalName.lexeme = "<macro_" + name.lexeme + ">";
         auto assign = std::make_unique<Assign>(internalName, std::move(lambda), false, false, false, false);
 
         IRGraph fnGraph;

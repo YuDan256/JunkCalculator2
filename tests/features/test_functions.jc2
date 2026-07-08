@@ -4,7 +4,7 @@ check(name, actual, expected) = {
 
 test_const_params() = {
     try {
-        compileCode("f(const x) = { x = 2 }; f(1)")
+        eval("f(const x) = { x = 2 }; f(1)")
         assert(false, "Should throw when modifying const param")
     } catch (e) {
         assert("Cannot modify const variable" in str(e), "Wrong error for const param")

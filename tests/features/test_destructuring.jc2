@@ -159,7 +159,7 @@ test_nested_destruct()
 
 test_destruct_const() = {
     try {
-        compileCode("f() = { const {a, b} = {a: 1, b: 2}; a = 10 }; f()")
+        eval("f() = { const {a, b} = {a: 1, b: 2}; a = 10 }; f()")
         assert(false, "Should throw when modifying const destructured variable")
     } catch (e) {
         assert("Cannot modify const variable" in str(e), "Wrong error for const destruct")

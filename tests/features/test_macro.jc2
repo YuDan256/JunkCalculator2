@@ -47,21 +47,21 @@ test_quote_returns_ast()
 
 test_macro_errors() = {
     try {
-        compileCode("macro bad(n) = { return 1 }; @bad { 1 }")
+        eval("macro bad(n) = { return 1 }; @bad { 1 }")
         assert(false, "Should throw when macro doesn't return ASTNode")
     } catch (e) {
         assert("Macro Error: Expected ASTNode instance" in str(e) || "did not return a valid ASTNode" in str(e), "Wrong error for invalid macro return")
     }
 
     try {
-        compileCode("x = 1; $x")
+        eval("x = 1; $x")
         assert(false, "Should throw when unquote is used outside quote")
     } catch (e) {
         assert("Syntax Error" in str(e), "Wrong error for unquote outside quote")
     }
     
     try {
-        compileCode("macro foo(n) = { return quote { 1 } }; foo(1)")
+        eval("macro foo(n) = { return quote { 1 } }; foo(1)")
         assert(false, "Should throw when macro is called as a normal function")
     } catch (e) {
         assert("Undefined" in str(e) || "not defined" in str(e), "Wrong error for normal macro call")

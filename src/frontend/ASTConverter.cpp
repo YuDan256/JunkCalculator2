@@ -755,6 +755,222 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         return std::make_unique<SequenceExpr>(getExprList(getProp("expressions")));
     } else if (type == "GroupingExpr") {
         return std::make_unique<GroupingExpr>(JC2_to_AST(getProp("expression")));
+    } else if (type == "LambdaExpr") {
+        std::vector<Token> params;
+        Value paramsVal = getProp("params");
+        if (paramsVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(paramsVal.asObj())->vec) {
+                params.push_back(Token(TokenType::IDENTIFIER, v.asString(), line));
+            }
+        }
+        std::vector<bool> paramIsRef, paramIsConst;
+        Value refVal = getProp("paramIsRef"), constVal = getProp("paramIsConst");
+        if (refVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(refVal.asObj())->vec) paramIsRef.push_back(v.truthy());
+        }
+        if (constVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(constVal.asObj())->vec) paramIsConst.push_back(v.truthy());
+        }
+        std::vector<std::string> paramTypes;
+        Value typesVal = getProp("paramTypes");
+        if (typesVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(typesVal.asObj())->vec) paramTypes.push_back(v.asString());
+        }
+        return std::make_unique<LambdaExpr>(
+            getProp("name").asString(), std::move(params), std::move(paramIsRef), std::move(paramIsConst),
+            getExprList(getProp("defaultExprs")), getProp("hasRestParam").truthy(),
+            std::move(paramTypes), getProp("returnType").asString(),
+            getProp("rawBody").asString(), std::shared_ptr<Expr>(JC2_to_AST(getProp("body")).release())
+        );
+    } else if (type == "ForInExpr") {
+        return std::make_unique<ForInExpr>(
+            jc2ToPattern(getProp("pattern")),
+            JC2_to_AST(getProp("iterable")),
+            JC2_to_AST(getProp("body")),
+            getProp("isLocal").truthy(),
+            getProp("isConst").truthy()
+        );
+    } else if (type == "TryCatchExpr") {
+        return std::make_unique<TryCatchExpr>(
+            JC2_to_AST(getProp("tryBody")),
+            jc2ToPattern(getProp("catchPattern")),
+            JC2_to_AST(getProp("catchBody"))
+        );
+    } else if (type == "SwitchExpr") {
+        std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases;
+        Value casesVal = getProp("cases");
+        if (casesVal.isObjType(ObjType::LIST)) {
+            for (const auto& cVal : static_cast<ObjList*>(casesVal.asObj())->vec) {
+                if (cVal.isObjType(ObjType::LIST)) {
+                    auto cList = static_cast<ObjList*>(cVal.asObj());
+                    if (cList->vec.size() >= 2) {
+                        std::vector<std::unique_ptr<Expr>> vals;
+                        if (cList->vec[0].isObjType(ObjType::LIST)) {
+                            for (const auto& v : static_cast<ObjList*>(cList->vec[0].asObj())->vec) {
+                                vals.push_back(JC2_to_AST(v));
+                            }
+                        }
+                        cases.push_back({std::move(vals), JC2_to_AST(cList->vec[1])});
+                    }
+                }
+            }
+        }
+        return std::make_unique<SwitchExpr>(
+            JC2_to_AST(getProp("subject")),
+            std::move(cases),
+            JC2_to_AST(getProp("defaultBody"))
+        );
+    } else if (type == "ClassDefExpr") {
+        std::vector<ClassDefExpr::MethodDef> methods;
+        Value methodsVal = getProp("methods");
+        if (methodsVal.isObjType(ObjType::LIST)) {
+            for (const auto& mVal : static_cast<ObjList*>(methodsVal.asObj())->vec) {
+                auto mInst = mVal.asInstance();
+                auto getMProp = [&](const std::string& key) -> Value {
+                    Value kv(key);
+                    if (mInst->fields && mInst->fields->keyMap.count(kv)) {
+                        return mInst->fields->elements[mInst->fields->keyMap[kv]].second;
+                    }
+                    return Value::none();
+                };
+                ClassDefExpr::MethodDef method{
+                    Token(TokenType::IDENTIFIER, getMProp("name").asString(), line),
+                    {}, {}, {}, {}, false, {}, "", "", nullptr, -1
+                };
+                Value paramsVal = getMProp("params");
+                if (paramsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& pVal : static_cast<ObjList*>(paramsVal.asObj())->vec) {
+                        method.params.push_back(Token(TokenType::IDENTIFIER, pVal.asString(), line));
+                    }
+                }
+                Value refVal = getMProp("paramIsRef");
+                if (refVal.isObjType(ObjType::LIST)) {
+                    for (const auto& rVal : static_cast<ObjList*>(refVal.asObj())->vec) method.paramIsRef.push_back(rVal.truthy());
+                }
+                Value constVal = getMProp("paramIsConst");
+                if (constVal.isObjType(ObjType::LIST)) {
+                    for (const auto& cVal : static_cast<ObjList*>(constVal.asObj())->vec) method.paramIsConst.push_back(cVal.truthy());
+                }
+                Value defsVal = getMProp("defaultExprs");
+                if (defsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& dVal : static_cast<ObjList*>(defsVal.asObj())->vec) {
+                        method.defaultExprs.push_back(std::shared_ptr<Expr>(JC2_to_AST(dVal).release()));
+                    }
+                }
+                method.hasRestParam = getMProp("hasRestParam").truthy();
+                Value typesVal = getMProp("paramTypes");
+                if (typesVal.isObjType(ObjType::LIST)) {
+                    for (const auto& tVal : static_cast<ObjList*>(typesVal.asObj())->vec) method.paramTypes.push_back(tVal.asString());
+                }
+                method.returnType = getMProp("returnType").asString();
+                method.rawBody = getMProp("rawBody").asString();
+                method.body = std::shared_ptr<Expr>(JC2_to_AST(getMProp("body")).release());
+                methods.push_back(std::move(method));
+            }
+        }
+        return std::make_unique<ClassDefExpr>(
+            Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
+            JC2_to_AST(getProp("superClassExpr")),
+            std::move(methods)
+        );
+    } else if (type == "NamespaceDecl") {
+        return std::make_unique<NamespaceDecl>(
+            Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
+            JC2_to_AST(getProp("body"))
+        );
+    } else if (type == "DestructAssign") {
+        return std::make_unique<DestructAssign>(
+            jc2ToPattern(getProp("pattern")),
+            JC2_to_AST(getProp("value")),
+            getProp("isRef").truthy(),
+            getProp("isState").truthy(),
+            getProp("isLocal").truthy(),
+            getProp("isConst").truthy()
+        );
+    } else if (type == "ListCompExpr") {
+        std::vector<ListCompExpr::CompClause> clauses;
+        Value clausesVal = getProp("clauses");
+        if (clausesVal.isObjType(ObjType::LIST)) {
+            for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
+                auto cInst = cVal.asInstance();
+                auto getCProp = [&](const std::string& key) -> Value {
+                    Value kv(key);
+                    if (cInst->fields && cInst->fields->keyMap.count(kv)) {
+                        return cInst->fields->elements[cInst->fields->keyMap[kv]].second;
+                    }
+                    return Value::none();
+                };
+                ListCompExpr::CompClause clause(
+                    jc2ToPattern(getCProp("pattern")),
+                    std::shared_ptr<Expr>(JC2_to_AST(getCProp("iterable")).release())
+                );
+                Value condsVal = getCProp("conditions");
+                if (condsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& condVal : static_cast<ObjList*>(condsVal.asObj())->vec) {
+                        clause.conditions.push_back(std::shared_ptr<Expr>(JC2_to_AST(condVal).release()));
+                    }
+                }
+                clauses.push_back(std::move(clause));
+            }
+        }
+        return std::make_unique<ListCompExpr>(
+            JC2_to_AST(getProp("valueExpr")),
+            std::move(clauses),
+            getProp("forceList").truthy()
+        );
+    } else if (type == "MatchExpr") {
+        std::vector<MatchBranch> branches;
+        Value branchesVal = getProp("branches");
+        if (branchesVal.isObjType(ObjType::LIST)) {
+            for (const auto& bVal : static_cast<ObjList*>(branchesVal.asObj())->vec) {
+                auto bInst = bVal.asInstance();
+                auto getBProp = [&](const std::string& key) -> Value {
+                    Value kv(key);
+                    if (bInst->fields && bInst->fields->keyMap.count(kv)) {
+                        return bInst->fields->elements[bInst->fields->keyMap[kv]].second;
+                    }
+                    return Value::none();
+                };
+                MatchBranch branch;
+                Value patsVal = getBProp("patterns");
+                if (patsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& pVal : static_cast<ObjList*>(patsVal.asObj())->vec) {
+                        branch.patterns.push_back(jc2ToPattern(pVal));
+                    }
+                }
+                branch.guard = JC2_to_AST(getBProp("guard"));
+                branch.body = JC2_to_AST(getBProp("body"));
+                branches.push_back(std::move(branch));
+            }
+        }
+        return std::make_unique<MatchExpr>(
+            JC2_to_AST(getProp("subject")),
+            std::move(branches)
+        );
+    } else if (type == "MacroDefExpr") {
+        return std::make_unique<MacroDefExpr>(
+            Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
+            Token(TokenType::IDENTIFIER, getProp("param").asString(), line),
+            JC2_to_AST(getProp("body"))
+        );
+    } else if (type == "MacroCallExpr") {
+        return std::make_unique<MacroCallExpr>(
+            Token(TokenType::IDENTIFIER, getProp("macroName").asString(), line),
+            JC2_to_AST(getProp("argument"))
+        );
+    } else if (type == "QuoteExpr") {
+        return std::make_unique<QuoteExpr>(JC2_to_AST(getProp("body")));
+    } else if (type == "UnquoteExpr") {
+        return std::make_unique<UnquoteExpr>(JC2_to_AST(getProp("expr")));
+    } else if (type == "ExprAssign") {
+        return std::make_unique<ExprAssign>(
+            JC2_to_AST(getProp("target")),
+            JC2_to_AST(getProp("value")),
+            getProp("isRef").truthy(),
+            getProp("isState").truthy(),
+            getProp("isLocal").truthy(),
+            getProp("isConst").truthy()
+        );
     }
 
     throw std::runtime_error("JC2_to_AST: Unsupported node type '" + type + "'");

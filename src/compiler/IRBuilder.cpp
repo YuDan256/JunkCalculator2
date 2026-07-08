@@ -4066,23 +4066,23 @@ void IRBuilder::visitSequenceExpr(SequenceExpr* expr) {
 }
 
 void IRBuilder::visitMacroDefExpr(MacroDefExpr*) {
-    error("Internal Compiler Error: MacroDefExpr should be eliminated during parsing.");
+    error("Syntax Error: Macro definition is not allowed here.");
 }
 
 void IRBuilder::visitMacroCallExpr(MacroCallExpr*) {
-    error("Internal Compiler Error: MacroCallExpr should be eliminated during parsing.");
+    error("Syntax Error: Macro call is not allowed here.");
 }
 
 void IRBuilder::visitQuoteExpr(QuoteExpr*) {
-    error("Internal Compiler Error: QuoteExpr should be eliminated during parsing.");
+    error("Syntax Error: 'quote' block is not allowed here.");
 }
 
 void IRBuilder::visitUnquoteExpr(UnquoteExpr*) {
-    error("Internal Compiler Error: UnquoteExpr should be eliminated during parsing.");
+    error("Syntax Error: Unquote '$' can only be used inside a 'quote' block.");
 }
 
 void IRBuilder::visitExprAssign(ExprAssign*) {
-    error("Internal Compiler Error: ExprAssign should be eliminated during parsing.");
+    error("Syntax Error: Invalid assignment target.");
 }
 
 void IRBuilder::visitMatchExpr(MatchExpr* expr) {

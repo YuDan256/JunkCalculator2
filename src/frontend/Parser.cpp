@@ -581,10 +581,9 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::unary() {
-        if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS, TokenType::DOLLAR })) {  // ★ 加 BANG, TILDE, DOLLAR
+        if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS })) {
             Token op = previous();
             auto right = unary();
-            if (op.type == TokenType::DOLLAR) return std::make_unique<UnquoteExpr>(std::move(right));
             return std::make_unique<Unary>(op, std::move(right));
         }
         return power();
@@ -1021,6 +1020,10 @@ namespace jc {
                 "' is a reserved keyword and cannot be used as a variable name.");
         }
 
+        if (match({ TokenType::DOLLAR })) {
+            auto right = primary();
+            return std::make_unique<UnquoteExpr>(std::move(right));
+        }
 
         if (match({ TokenType::NUMBER }))     return std::make_unique<Literal>(previous().lexeme);
         if (match({ TokenType::IMAGINARY })) {  // ★

@@ -70,7 +70,8 @@ public:
         });
     }
 
-    Value makeExprList(const std::vector<std::unique_ptr<Expr>>& exprs) {
+    template<typename T>
+    Value makeExprListT(const std::vector<T>& exprs) {
         ObjList* list = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(list);
         for (const auto& e : exprs) {
@@ -84,20 +85,94 @@ public:
         return Value(list);
     }
 
+    Value patternToJC2(Pattern* pat) {
+        if (!pat) return Value::none();
+        if (auto* lp = dynamic_cast<LiteralPattern*>(pat)) {
+            lp->literal->accept(*this);
+            return makeASTNode("LiteralPattern", 0, {{"literal", result}});
+        }
+        if (auto* ep = dynamic_cast<ExprPattern*>(pat)) {
+            ep->expr->accept(*this);
+            return makeASTNode("ExprPattern", 0, {{"expr", result}});
+        }
+        if (auto* dp = dynamic_cast<DynamicAssertPattern*>(pat)) {
+            dp->expr->accept(*this);
+            return makeASTNode("DynamicAssertPattern", 0, {{"expr", result}});
+        }
+        if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+            return makeASTNode("VariablePattern", vp->name.line, {
+                {"name", Value(vp->name.lexeme)},
+                {"modifier", Value(static_cast<double>(vp->modifier))},
+                {"isConst", Value(vp->isConst)}
+            });
+        }
+        if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
+            return makeASTNode("RestPattern", rp->name.line, {
+                {"name", Value(rp->name.lexeme)},
+                {"modifier", Value(static_cast<double>(rp->modifier))},
+                {"isConst", Value(rp->isConst)}
+            });
+        }
+        if (auto* listp = dynamic_cast<ListPattern*>(pat)) {
+            ObjList* elems = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(elems);
+            for (auto& e : listp->elements) elems->vec.push_back(patternToJC2(e.get()));
+            return makeASTNode("ListPattern", 0, {
+                {"elements", Value(elems)},
+                {"rest", patternToJC2(listp->rest.get())}
+            });
+        }
+        if (auto* matp = dynamic_cast<MatrixPattern*>(pat)) {
+            ObjList* rows = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(rows);
+            for (auto& row : matp->rows) {
+                ObjList* r = GcHeap::get().allocate<ObjList>();
+                for (auto& e : row) r->vec.push_back(patternToJC2(e.get()));
+                rows->vec.push_back(Value(r));
+            }
+            return makeASTNode("MatrixPattern", 0, {
+                {"rows", Value(rows)},
+                {"restRow", patternToJC2(matp->restRow.get())}
+            });
+        }
+        if (auto* dictp = dynamic_cast<DictPattern*>(pat)) {
+            ObjList* entries = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(entries);
+            for (auto& e : dictp->entries) {
+                ObjList* kv = GcHeap::get().allocate<ObjList>();
+                kv->vec.push_back(Value(e.first));
+                kv->vec.push_back(patternToJC2(e.second.get()));
+                entries->vec.push_back(Value(kv));
+            }
+            return makeASTNode("DictPattern", 0, {
+                {"entries", Value(entries)},
+                {"rest", patternToJC2(dictp->rest.get())}
+            });
+        }
+        if (auto* defp = dynamic_cast<DefaultPattern*>(pat)) {
+            defp->defaultExpr->accept(*this); Value defVal = result;
+            return makeASTNode("DefaultPattern", 0, {
+                {"inner", patternToJC2(defp->inner.get())},
+                {"defaultExpr", defVal}
+            });
+        }
+        throw std::runtime_error("AST_to_JC2: Unsupported pattern type");
+    }
+
     void visitBlock(Block* expr) override {
-        result = makeASTNode("Block", 0, {{"statements", makeExprList(expr->statements)}});
+        result = makeASTNode("Block", 0, {{"statements", makeExprListT(expr->statements)}});
     }
 
     void visitCall(Call* expr) override {
         result = makeASTNode("Call", expr->callee.line, {
             {"callee", Value(expr->callee.lexeme)},
-            {"arguments", makeExprList(expr->arguments)}
+            {"arguments", makeExprListT(expr->arguments)}
         });
     }
     void visitMatrixNode(MatrixNode* expr) override {
         ObjList* rows = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(rows);
-        for (auto& row : expr->elements) rows->vec.push_back(makeExprList(row));
+        for (auto& row : expr->elements) rows->vec.push_back(makeExprListT(row));
         result = makeASTNode("MatrixNode", 0, {{"elements", Value(rows)}, {"forceList", Value(expr->forceList)}});
     }
     void visitIfExpr(IfExpr* expr) override {
@@ -128,17 +203,17 @@ public:
     }
     void visitIndexAccess(IndexAccess* expr) override {
         expr->object->accept(*this); Value obj = result;
-        result = makeASTNode("IndexAccess", 0, {{"object", obj}, {"indices", makeExprList(expr->indices)}});
+        result = makeASTNode("IndexAccess", 0, {{"object", obj}, {"indices", makeExprListT(expr->indices)}});
     }
     void visitIndexAssign(IndexAssign* expr) override {
         Value objExpr = Value::none();
         if (expr->objectExpr) { expr->objectExpr->accept(*this); objExpr = result; }
         ObjList* chain = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(chain);
-        for (auto& level : expr->indexChain) chain->vec.push_back(makeExprList(level));
-        expr->value->accept(*this); Value val = result;
+        for (auto& level : expr->indexChain) chain->vec.push_back(makeExprListT(level));
+        expr->value->accept(*this); Value valExpr = result;
         result = makeASTNode("IndexAssign", expr->name.line, {
-            {"name", Value(expr->name.lexeme)}, {"objectExpr", objExpr}, {"indexChain", Value(chain)}, {"value", val}
+            {"name", Value(expr->name.lexeme)}, {"objectExpr", objExpr}, {"indexChain", Value(chain)}, {"value", valExpr}
         });
     }
     void visitLocalDecl(LocalDecl* expr) override { result = makeASTNode("LocalDecl", expr->name.line, {{"name", Value(expr->name.lexeme)}, {"isConst", Value(expr->isConst)}}); }
@@ -161,7 +236,7 @@ public:
     }
     void visitInvokeExpr(InvokeExpr* expr) override {
         expr->callee->accept(*this); Value callee = result;
-        result = makeASTNode("InvokeExpr", 0, {{"callee", callee}, {"arguments", makeExprList(expr->arguments)}});
+        result = makeASTNode("InvokeExpr", 0, {{"callee", callee}, {"arguments", makeExprListT(expr->arguments)}});
     }
     void visitThrowExpr(ThrowExpr* expr) override {
         expr->value->accept(*this); Value val = result;
@@ -182,7 +257,7 @@ public:
     }
     void visitMethodCallExpr(MethodCallExpr* expr) override {
         expr->object->accept(*this); Value obj = result;
-        result = makeASTNode("MethodCallExpr", expr->method.line, {{"object", obj}, {"method", Value(expr->method.lexeme)}, {"arguments", makeExprList(expr->arguments)}});
+        result = makeASTNode("MethodCallExpr", expr->method.line, {{"object", obj}, {"method", Value(expr->method.lexeme)}, {"arguments", makeExprListT(expr->arguments)}});
     }
     void visitSuperExpr(SuperExpr*) override { result = makeASTNode("SuperExpr", 0, {}); }
     void visitSelfExpr(SelfExpr*) override { result = makeASTNode("SelfExpr", 0, {}); }
@@ -193,7 +268,7 @@ public:
         ObjList* specs = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard2(specs);
         for (auto& s : expr->formatSpecs) specs->vec.push_back(Value(s));
-        result = makeASTNode("FStringExpr", 0, {{"literals", Value(lits)}, {"exprs", makeExprList(expr->exprs)}, {"formatSpecs", Value(specs)}});
+        result = makeASTNode("FStringExpr", 0, {{"literals", Value(lits)}, {"exprs", makeExprListT(expr->exprs)}, {"formatSpecs", Value(specs)}});
     }
     void visitDictLiteral(DictLiteral* expr) override {
         ObjList* entries = GcHeap::get().allocate<ObjList>();
@@ -206,7 +281,7 @@ public:
         }
         result = makeASTNode("DictLiteral", 0, {{"entries", Value(entries)}});
     }
-    void visitSetLiteral(SetLiteral* expr) override { result = makeASTNode("SetLiteral", 0, {{"elements", makeExprList(expr->elements)}}); }
+    void visitSetLiteral(SetLiteral* expr) override { result = makeASTNode("SetLiteral", 0, {{"elements", makeExprListT(expr->elements)}}); }
     void visitSliceExpr(SliceExpr* expr) override {
         Value st = Value::none(), en = Value::none(), sp = Value::none();
         if (expr->start) { expr->start->accept(*this); st = result; }
@@ -214,27 +289,240 @@ public:
         if (expr->step) { expr->step->accept(*this); sp = result; }
         result = makeASTNode("SliceExpr", 0, {{"start", st}, {"end", en}, {"step", sp}});
     }
-    void visitSequenceExpr(SequenceExpr* expr) override { result = makeASTNode("SequenceExpr", 0, {{"expressions", makeExprList(expr->expressions)}}); }
+    void visitSequenceExpr(SequenceExpr* expr) override { result = makeASTNode("SequenceExpr", 0, {{"expressions", makeExprListT(expr->expressions)}}); }
     void visitGroupingExpr(GroupingExpr* expr) override {
         expr->expression->accept(*this); Value inner = result;
         result = makeASTNode("GroupingExpr", 0, {{"expression", inner}});
     }
 
-    // Unimplemented complex nodes
-    void visitLambdaExpr(LambdaExpr*) override { throw std::runtime_error("AST_to_JC2: LambdaExpr not implemented yet"); }
-    void visitForInExpr(ForInExpr*) override { throw std::runtime_error("AST_to_JC2: ForInExpr not implemented yet"); }
-    void visitTryCatchExpr(TryCatchExpr*) override { throw std::runtime_error("AST_to_JC2: TryCatchExpr not implemented yet"); }
-    void visitSwitchExpr(SwitchExpr*) override { throw std::runtime_error("AST_to_JC2: SwitchExpr not implemented yet"); }
-    void visitClassDefExpr(ClassDefExpr*) override { throw std::runtime_error("AST_to_JC2: ClassDefExpr not implemented yet"); }
-    void visitNamespaceDecl(NamespaceDecl*) override { throw std::runtime_error("AST_to_JC2: NamespaceDecl not implemented yet"); }
-    void visitDestructAssign(DestructAssign*) override { throw std::runtime_error("AST_to_JC2: DestructAssign not implemented yet"); }
-    void visitListCompExpr(ListCompExpr*) override { throw std::runtime_error("AST_to_JC2: ListCompExpr not implemented yet"); }
-    void visitMatchExpr(MatchExpr*) override { throw std::runtime_error("AST_to_JC2: MatchExpr not implemented yet"); }
-    void visitMacroDefExpr(MacroDefExpr*) override { throw std::runtime_error("AST_to_JC2: MacroDefExpr not implemented yet"); }
-    void visitMacroCallExpr(MacroCallExpr*) override { throw std::runtime_error("AST_to_JC2: MacroCallExpr not implemented yet"); }
-    void visitQuoteExpr(QuoteExpr*) override { throw std::runtime_error("AST_to_JC2: QuoteExpr not implemented yet"); }
-    void visitUnquoteExpr(UnquoteExpr*) override { throw std::runtime_error("AST_to_JC2: UnquoteExpr not implemented yet"); }
-    void visitExprAssign(ExprAssign*) override { throw std::runtime_error("AST_to_JC2: ExprAssign not implemented yet"); }
+    void visitLambdaExpr(LambdaExpr* expr) override {
+        ObjList* params = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard1(params);
+        for (auto& p : expr->params) params->vec.push_back(Value(p.lexeme));
+        
+        ObjList* paramIsRef = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard2(paramIsRef);
+        for (bool b : expr->paramIsRef) paramIsRef->vec.push_back(Value(b));
+        
+        ObjList* paramIsConst = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard3(paramIsConst);
+        for (bool b : expr->paramIsConst) paramIsConst->vec.push_back(Value(b));
+        
+        ObjList* paramTypes = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard4(paramTypes);
+        for (auto& t : expr->paramTypes) paramTypes->vec.push_back(Value(t));
+        
+        expr->body->accept(*this); Value bodyVal = result;
+        
+        result = makeASTNode("LambdaExpr", 0, {
+            {"name", Value(expr->name)},
+            {"params", Value(params)},
+            {"paramIsRef", Value(paramIsRef)},
+            {"paramIsConst", Value(paramIsConst)},
+            {"defaultExprs", makeExprListT(expr->defaultExprs)},
+            {"hasRestParam", Value(expr->hasRestParam)},
+            {"paramTypes", Value(paramTypes)},
+            {"returnType", Value(expr->returnType)},
+            {"rawBody", Value(expr->rawBody)},
+            {"body", bodyVal}
+        });
+    }
+
+    void visitForInExpr(ForInExpr* expr) override {
+        expr->iterable->accept(*this); Value iter = result;
+        expr->body->accept(*this); Value body = result;
+        result = makeASTNode("ForInExpr", 0, {
+            {"pattern", patternToJC2(expr->pattern.get())},
+            {"iterable", iter},
+            {"body", body},
+            {"isLocal", Value(expr->isLocal)},
+            {"isConst", Value(expr->isConst)}
+        });
+    }
+
+    void visitTryCatchExpr(TryCatchExpr* expr) override {
+        expr->tryBody->accept(*this); Value tryB = result;
+        expr->catchBody->accept(*this); Value catchB = result;
+        result = makeASTNode("TryCatchExpr", 0, {
+            {"tryBody", tryB},
+            {"catchPattern", patternToJC2(expr->catchPattern.get())},
+            {"catchBody", catchB}
+        });
+    }
+
+    void visitSwitchExpr(SwitchExpr* expr) override {
+        expr->subject->accept(*this); Value subj = result;
+        ObjList* cases = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(cases);
+        for (auto& c : expr->cases) {
+            ObjList* casePair = GcHeap::get().allocate<ObjList>();
+            casePair->vec.push_back(makeExprListT(c.first));
+            c.second->accept(*this); casePair->vec.push_back(result);
+            cases->vec.push_back(Value(casePair));
+        }
+        Value defB = Value::none();
+        if (expr->defaultBody) { expr->defaultBody->accept(*this); defB = result; }
+        result = makeASTNode("SwitchExpr", 0, {
+            {"subject", subj},
+            {"cases", Value(cases)},
+            {"defaultBody", defB}
+        });
+    }
+
+    void visitClassDefExpr(ClassDefExpr* expr) override {
+        Value sup = Value::none();
+        if (expr->superClassExpr) { expr->superClassExpr->accept(*this); sup = result; }
+        
+        ObjList* methods = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(methods);
+        for (auto& m : expr->methods) {
+            ObjList* params = GcHeap::get().allocate<ObjList>();
+            for (auto& p : m.params) params->vec.push_back(Value(p.lexeme));
+            
+            ObjList* paramIsRef = GcHeap::get().allocate<ObjList>();
+            for (bool b : m.paramIsRef) paramIsRef->vec.push_back(Value(b));
+            
+            ObjList* paramIsConst = GcHeap::get().allocate<ObjList>();
+            for (bool b : m.paramIsConst) paramIsConst->vec.push_back(Value(b));
+            
+            ObjList* paramTypes = GcHeap::get().allocate<ObjList>();
+            for (auto& t : m.paramTypes) paramTypes->vec.push_back(Value(t));
+            
+            m.body->accept(*this); Value bodyVal = result;
+            
+            Value methodNode = makeASTNode("MethodDef", m.name.line, {
+                {"name", Value(m.name.lexeme)},
+                {"params", Value(params)},
+                {"paramIsRef", Value(paramIsRef)},
+                {"paramIsConst", Value(paramIsConst)},
+                {"defaultExprs", makeExprListT(m.defaultExprs)},
+                {"hasRestParam", Value(m.hasRestParam)},
+                {"paramTypes", Value(paramTypes)},
+                {"returnType", Value(m.returnType)},
+                {"rawBody", Value(m.rawBody)},
+                {"body", bodyVal}
+            });
+            methods->vec.push_back(methodNode);
+        }
+        
+        result = makeASTNode("ClassDefExpr", expr->name.line, {
+            {"name", Value(expr->name.lexeme)},
+            {"superClassExpr", sup},
+            {"methods", Value(methods)}
+        });
+    }
+
+    void visitNamespaceDecl(NamespaceDecl* expr) override {
+        expr->body->accept(*this); Value body = result;
+        result = makeASTNode("NamespaceDecl", expr->name.line, {
+            {"name", Value(expr->name.lexeme)},
+            {"body", body}
+        });
+    }
+
+    void visitDestructAssign(DestructAssign* expr) override {
+        expr->value->accept(*this); Value val = result;
+        result = makeASTNode("DestructAssign", 0, {
+            {"pattern", patternToJC2(expr->pattern.get())},
+            {"value", val},
+            {"isRef", Value(expr->isRef)},
+            {"isState", Value(expr->isState)},
+            {"isLocal", Value(expr->isLocal)},
+            {"isConst", Value(expr->isConst)}
+        });
+    }
+
+    void visitListCompExpr(ListCompExpr* expr) override {
+        expr->valueExpr->accept(*this); Value valExpr = result;
+        ObjList* clauses = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(clauses);
+        for (auto& c : expr->clauses) {
+            c.iterable->accept(*this); Value iter = result;
+            Value pat = patternToJC2(c.pattern.get());
+            Value conds = makeExprListT(c.conditions);
+            Value clauseNode = makeASTNode("CompClause", 0, {
+                {"pattern", pat},
+                {"iterable", iter},
+                {"conditions", conds}
+            });
+            clauses->vec.push_back(clauseNode);
+        }
+        result = makeASTNode("ListCompExpr", 0, {
+            {"valueExpr", valExpr},
+            {"clauses", Value(clauses)},
+            {"forceList", Value(expr->forceList)}
+        });
+    }
+
+    void visitMatchExpr(MatchExpr* expr) override {
+        expr->subject->accept(*this); Value subj = result;
+        ObjList* branches = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(branches);
+        for (auto& b : expr->branches) {
+            ObjList* pats = GcHeap::get().allocate<ObjList>();
+            for (auto& p : b.patterns) pats->vec.push_back(patternToJC2(p.get()));
+            
+            Value guardVal = Value::none();
+            if (b.guard) { b.guard->accept(*this); guardVal = result; }
+            
+            b.body->accept(*this); Value bodyVal = result;
+            
+            Value branchNode = makeASTNode("MatchBranch", 0, {
+                {"patterns", Value(pats)},
+                {"guard", guardVal},
+                {"body", bodyVal}
+            });
+            branches->vec.push_back(branchNode);
+        }
+        result = makeASTNode("MatchExpr", 0, {
+            {"subject", subj},
+            {"branches", Value(branches)}
+        });
+    }
+
+    void visitMacroDefExpr(MacroDefExpr* expr) override {
+        expr->body->accept(*this); Value body = result;
+        result = makeASTNode("MacroDefExpr", expr->name.line, {
+            {"name", Value(expr->name.lexeme)},
+            {"param", Value(expr->param.lexeme)},
+            {"body", body}
+        });
+    }
+
+    void visitMacroCallExpr(MacroCallExpr* expr) override {
+        expr->argument->accept(*this); Value arg = result;
+        result = makeASTNode("MacroCallExpr", expr->macroName.line, {
+            {"macroName", Value(expr->macroName.lexeme)},
+            {"argument", arg}
+        });
+    }
+
+    void visitQuoteExpr(QuoteExpr* expr) override {
+        expr->body->accept(*this); Value body = result;
+        result = makeASTNode("QuoteExpr", 0, {
+            {"body", body}
+        });
+    }
+
+    void visitUnquoteExpr(UnquoteExpr* expr) override {
+        expr->expr->accept(*this); Value inner = result;
+        result = makeASTNode("UnquoteExpr", 0, {
+            {"expr", inner}
+        });
+    }
+
+    void visitExprAssign(ExprAssign* expr) override {
+        expr->target->accept(*this); Value tgt = result;
+        expr->value->accept(*this); Value val = result;
+        result = makeASTNode("ExprAssign", 0, {
+            {"target", tgt},
+            {"value", val},
+            {"isRef", Value(expr->isRef)},
+            {"isState", Value(expr->isState)},
+            {"isLocal", Value(expr->isLocal)},
+            {"isConst", Value(expr->isConst)}
+        });
+    }
 };
 
 Value AST_to_JC2(Expr* expr) {
@@ -242,6 +530,71 @@ Value AST_to_JC2(Expr* expr) {
     ASTToJC2Visitor visitor;
     expr->accept(visitor);
     return visitor.result;
+}
+
+std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
+    if (val.isNone()) return nullptr;
+    auto inst = val.asInstance();
+    auto getProp = [&](const std::string& key) -> Value {
+        Value kv(key);
+        if (inst->fields && inst->fields->keyMap.count(kv)) {
+            return inst->fields->elements[inst->fields->keyMap[kv]].second;
+        }
+        return Value::none();
+    };
+    std::string type = getProp("type").asString();
+    
+    if (type == "LiteralPattern") {
+        return std::make_unique<LiteralPattern>(JC2_to_AST(getProp("literal")));
+    } else if (type == "ExprPattern") {
+        return std::make_unique<ExprPattern>(JC2_to_AST(getProp("expr")));
+    } else if (type == "DynamicAssertPattern") {
+        return std::make_unique<DynamicAssertPattern>(JC2_to_AST(getProp("expr")));
+    } else if (type == "VariablePattern") {
+        Token name(TokenType::IDENTIFIER, getProp("name").asString(), 0);
+        return std::make_unique<VariablePattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy());
+    } else if (type == "RestPattern") {
+        Token name(TokenType::IDENTIFIER, getProp("name").asString(), 0);
+        return std::make_unique<RestPattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy());
+    } else if (type == "ListPattern") {
+        std::vector<std::unique_ptr<Pattern>> elements;
+        Value elemsVal = getProp("elements");
+        if (elemsVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(elemsVal.asObj())->vec) elements.push_back(jc2ToPattern(v));
+        }
+        auto rest = jc2ToPattern(getProp("rest"));
+        return std::make_unique<ListPattern>(std::move(elements), std::unique_ptr<RestPattern>(static_cast<RestPattern*>(rest.release())));
+    } else if (type == "MatrixPattern") {
+        std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
+        Value rowsVal = getProp("rows");
+        if (rowsVal.isObjType(ObjType::LIST)) {
+            for (const auto& rVal : static_cast<ObjList*>(rowsVal.asObj())->vec) {
+                std::vector<std::unique_ptr<Pattern>> row;
+                if (rVal.isObjType(ObjType::LIST)) {
+                    for (const auto& v : static_cast<ObjList*>(rVal.asObj())->vec) row.push_back(jc2ToPattern(v));
+                }
+                rows.push_back(std::move(row));
+            }
+        }
+        auto restRow = jc2ToPattern(getProp("restRow"));
+        return std::make_unique<MatrixPattern>(std::move(rows), std::unique_ptr<RestPattern>(static_cast<RestPattern*>(restRow.release())));
+    } else if (type == "DictPattern") {
+        std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries;
+        Value entriesVal = getProp("entries");
+        if (entriesVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(entriesVal.asObj())->vec) {
+                if (v.isObjType(ObjType::LIST)) {
+                    auto kv = static_cast<ObjList*>(v.asObj());
+                    if (kv->vec.size() >= 2) entries.push_back({kv->vec[0].asString(), jc2ToPattern(kv->vec[1])});
+                }
+            }
+        }
+        auto rest = jc2ToPattern(getProp("rest"));
+        return std::make_unique<DictPattern>(std::move(entries), std::unique_ptr<RestPattern>(static_cast<RestPattern*>(rest.release())));
+    } else if (type == "DefaultPattern") {
+        return std::make_unique<DefaultPattern>(jc2ToPattern(getProp("inner")), JC2_to_AST(getProp("defaultExpr")));
+    }
+    throw std::runtime_error("JC2_to_AST: Unsupported pattern type '" + type + "'");
 }
 
 std::unique_ptr<Expr> JC2_to_AST(const Value& val) {

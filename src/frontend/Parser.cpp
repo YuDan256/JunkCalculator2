@@ -417,6 +417,10 @@ namespace jc {
                 return std::make_unique<Assign>(varExpr->name, std::move(value), isRef, isState, isLocal, isConst);
             }
 
+            if (dynamic_cast<UnquoteExpr*>(expr.get())) {
+                return std::make_unique<ExprAssign>(std::move(expr), std::move(value), isRef, isState, isLocal, isConst);
+            }
+
             // ★ （旧的 Call 拦截已经被上面顶端安全取代，这里删去原来的 Call if 分支即可！）
 
             throw std::runtime_error("Parser Error: Invalid assignment target at '" + equals.lexeme + "'.");
@@ -433,6 +437,11 @@ namespace jc {
                 assign->isRef = isRef;
                 assign->isState = isState;
                 assign->isConst = isConst;
+            } else if (auto* exprAssign = dynamic_cast<ExprAssign*>(expr.get())) {
+                exprAssign->isLocal = isLocal;
+                exprAssign->isRef = isRef;
+                exprAssign->isState = isState;
+                exprAssign->isConst = isConst;
             } else if (auto* un = dynamic_cast<Unary*>(expr.get())) {
                 if (un->op.type == TokenType::ELLIPSIS) {
                     if (auto* restVar = dynamic_cast<Variable*>(un->right.get())) {
@@ -1412,6 +1421,18 @@ namespace jc {
             props.push_back({"isLocal", std::make_unique<Literal>(assign->isLocal ? "true" : "false", false, false, true)});
             props.push_back({"isConst", std::make_unique<Literal>(assign->isConst ? "true" : "false", false, false, true)});
             return makeASTNodeCall("Assign", assign->name.line, std::move(props));
+        }
+        if (auto* exprAssign = dynamic_cast<ExprAssign*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            auto targetAst = transformQuote(exprAssign->target.get());
+            auto nameAccess = std::make_unique<DotAccess>(std::move(targetAst), Token(TokenType::IDENTIFIER, "name", 0, 0));
+            props.push_back({"name", std::move(nameAccess)});
+            props.push_back({"value", transformQuote(exprAssign->value.get())});
+            props.push_back({"isRef", std::make_unique<Literal>(exprAssign->isRef ? "true" : "false", false, false, true)});
+            props.push_back({"isState", std::make_unique<Literal>(exprAssign->isState ? "true" : "false", false, false, true)});
+            props.push_back({"isLocal", std::make_unique<Literal>(exprAssign->isLocal ? "true" : "false", false, false, true)});
+            props.push_back({"isConst", std::make_unique<Literal>(exprAssign->isConst ? "true" : "false", false, false, true)});
+            return makeASTNodeCall("Assign", 0, std::move(props));
         }
         if (auto* block = dynamic_cast<Block*>(expr)) {
             std::vector<std::unique_ptr<Expr>> stmtExprs;

@@ -142,6 +142,7 @@ public:
     void visitMacroCallExpr(MacroCallExpr* expr) override;
     void visitQuoteExpr(QuoteExpr* expr) override;
     void visitUnquoteExpr(UnquoteExpr* expr) override;
+    void visitExprAssign(ExprAssign* expr) override;
 };
 
 } // namespace jc

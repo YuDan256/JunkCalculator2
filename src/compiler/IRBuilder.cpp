@@ -4081,6 +4081,10 @@ void IRBuilder::visitUnquoteExpr(UnquoteExpr*) {
     error("Internal Compiler Error: UnquoteExpr should be eliminated during parsing.");
 }
 
+void IRBuilder::visitExprAssign(ExprAssign*) {
+    error("Internal Compiler Error: ExprAssign should be eliminated during parsing.");
+}
+
 void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     expr->subject->accept(*this);
     IRNode* subjectNode = lastValue;

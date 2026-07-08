@@ -126,6 +126,7 @@ public:
     void visitMacroCallExpr(MacroCallExpr*) override { throw std::runtime_error("AST_to_JC2: MacroCallExpr not implemented yet"); }
     void visitQuoteExpr(QuoteExpr*) override { throw std::runtime_error("AST_to_JC2: QuoteExpr not implemented yet"); }
     void visitUnquoteExpr(UnquoteExpr*) override { throw std::runtime_error("AST_to_JC2: UnquoteExpr not implemented yet"); }
+    void visitExprAssign(ExprAssign*) override { throw std::runtime_error("AST_to_JC2: ExprAssign not implemented yet"); }
 };
 
 Value AST_to_JC2(Expr* expr) {

@@ -249,6 +249,7 @@ namespace jc {
         virtual void visitMacroCallExpr(MacroCallExpr* expr) = 0;
         virtual void visitQuoteExpr(QuoteExpr* expr) = 0;
         virtual void visitUnquoteExpr(UnquoteExpr* expr) = 0;
+        virtual void visitExprAssign(ExprAssign* expr) = 0;
     };
 
     struct Expr {
@@ -789,6 +790,18 @@ namespace jc {
         std::unique_ptr<Expr> expr;
         explicit UnquoteExpr(std::unique_ptr<Expr> expr) : expr(std::move(expr)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitUnquoteExpr(this); }
+    };
+
+    struct ExprAssign : public Expr {
+        std::unique_ptr<Expr> target;
+        std::unique_ptr<Expr> value;
+        bool isRef;
+        bool isState;
+        bool isLocal;
+        bool isConst;
+        ExprAssign(std::unique_ptr<Expr> target, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false, bool isConst = false)
+            : target(std::move(target)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal), isConst(isConst) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitExprAssign(this); }
     };
 
 } // namespace jc

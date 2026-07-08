@@ -151,3 +151,40 @@ test_no_arg_macro_safety() = {
     assert(arr[0] == 1, "No-arg macro safety failed")
 }
 test_no_arg_macro_safety()
+
+test_multi_arg_macro() = {
+    macro repeat(n_node, body_node) = {
+        return quote {
+            for (local __i = 0; __i < $n_node; __i += 1) {
+                $body_node
+            }
+        }
+    }
+    
+    count = 0
+    @repeat(3) {
+        count += 5
+    }
+    assert(count == 15, "Multi-arg macro with trailing block failed")
+    
+    count2 = 0
+    @repeat(2, { count2 += 10 })
+    assert(count2 == 20, "Multi-arg macro with standard call failed")
+}
+test_multi_arg_macro()
+
+test_variadic_macro() = {
+    macro build_list(...nodes) = {
+        return ASTNode("Call", 0, {
+            callee: "list",
+            arguments: nodes
+        })
+    }
+    
+    res = @build_list(1, 2, 3)
+    assert(len(res) == 3 && res[0] == 1 && res[2] == 3, "Variadic macro failed")
+    
+    res2 = @build_list(10) { 20 }
+    assert(len(res2) == 2 && res2[0] == 10 && res2[1] == 20, "Variadic macro with trailing block failed")
+}
+test_variadic_macro()

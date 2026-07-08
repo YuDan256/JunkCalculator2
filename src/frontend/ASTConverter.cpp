@@ -13,6 +13,7 @@ public:
         if (!clsVal.isClass()) throw std::runtime_error("ASTNode class not found");
         
         ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
+        GcObjGuard instGuard(inst);
         inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
         inst->fields = GcHeap::get().allocate<ObjDict>();
         
@@ -27,6 +28,7 @@ public:
 
     void visitBinary(Binary* expr) override {
         expr->left->accept(*this); Value l = result;
+        GcValueGuard lGuard(l);
         expr->right->accept(*this); Value r = result;
         result = makeASTNode("Binary", expr->op.line, {
             {"op", Value(expr->op.lexeme)},
@@ -127,6 +129,7 @@ public:
             GcObjGuard guard(rows);
             for (auto& row : matp->rows) {
                 ObjList* r = GcHeap::get().allocate<ObjList>();
+                GcObjGuard rGuard(r);
                 for (auto& e : row) r->vec.push_back(patternToJC2(e.get()));
                 rows->vec.push_back(Value(r));
             }
@@ -140,6 +143,7 @@ public:
             GcObjGuard guard(entries);
             for (auto& e : dictp->entries) {
                 ObjList* kv = GcHeap::get().allocate<ObjList>();
+                GcObjGuard kvGuard(kv);
                 kv->vec.push_back(Value(e.first));
                 kv->vec.push_back(patternToJC2(e.second.get()));
                 entries->vec.push_back(Value(kv));
@@ -151,6 +155,7 @@ public:
         }
         if (auto* defp = dynamic_cast<DefaultPattern*>(pat)) {
             defp->defaultExpr->accept(*this); Value defVal = result;
+            GcValueGuard defGuard(defVal);
             return makeASTNode("DefaultPattern", 0, {
                 {"inner", patternToJC2(defp->inner.get())},
                 {"defaultExpr", defVal}
@@ -177,20 +182,26 @@ public:
     }
     void visitIfExpr(IfExpr* expr) override {
         expr->condition->accept(*this); Value cond = result;
+        GcValueGuard condGuard(cond);
         expr->thenBranch->accept(*this); Value thenB = result;
+        GcValueGuard thenBGuard(thenB);
         Value elseB = Value::none();
         if (expr->elseBranch) { expr->elseBranch->accept(*this); elseB = result; }
         result = makeASTNode("IfExpr", 0, {{"condition", cond}, {"thenBranch", thenB}, {"elseBranch", elseB}});
     }
     void visitWhileExpr(WhileExpr* expr) override {
         expr->condition->accept(*this); Value cond = result;
+        GcValueGuard condGuard(cond);
         expr->body->accept(*this); Value body = result;
         result = makeASTNode("WhileExpr", 0, {{"condition", cond}, {"body", body}});
     }
     void visitForExpr(ForExpr* expr) override {
         expr->initializer->accept(*this); Value init = result;
+        GcValueGuard initGuard(init);
         expr->condition->accept(*this); Value cond = result;
+        GcValueGuard condGuard(cond);
         expr->update->accept(*this); Value upd = result;
+        GcValueGuard updGuard(upd);
         expr->body->accept(*this); Value body = result;
         result = makeASTNode("ForExpr", 0, {{"initializer", init}, {"condition", cond}, {"update", upd}, {"body", body}});
     }
@@ -208,6 +219,7 @@ public:
     void visitIndexAssign(IndexAssign* expr) override {
         Value objExpr = Value::none();
         if (expr->objectExpr) { expr->objectExpr->accept(*this); objExpr = result; }
+        GcValueGuard objGuard(objExpr);
         ObjList* chain = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(chain);
         for (auto& level : expr->indexChain) chain->vec.push_back(makeExprListT(level));
@@ -228,6 +240,7 @@ public:
     }
     void visitCompoundAssign(CompoundAssign* expr) override {
         expr->target->accept(*this); Value tgt = result;
+        GcValueGuard tgtGuard(tgt);
         expr->value->accept(*this); Value val = result;
         result = makeASTNode("CompoundAssign", 0, {
             {"target", tgt}, {"op", Value(static_cast<double>(expr->op))}, {"value", val},
@@ -252,6 +265,7 @@ public:
     }
     void visitDotAssign(DotAssign* expr) override {
         expr->object->accept(*this); Value obj = result;
+        GcValueGuard objGuard(obj);
         expr->value->accept(*this); Value val = result;
         result = makeASTNode("DotAssign", expr->field.line, {{"object", obj}, {"field", Value(expr->field.lexeme)}, {"value", val}});
     }
@@ -275,6 +289,7 @@ public:
         GcObjGuard guard(entries);
         for (auto& pair : expr->entries) {
             ObjList* kv = GcHeap::get().allocate<ObjList>();
+            GcObjGuard kvGuard(kv);
             pair.first->accept(*this); kv->vec.push_back(result);
             pair.second->accept(*this); kv->vec.push_back(result);
             entries->vec.push_back(Value(kv));
@@ -285,7 +300,9 @@ public:
     void visitSliceExpr(SliceExpr* expr) override {
         Value st = Value::none(), en = Value::none(), sp = Value::none();
         if (expr->start) { expr->start->accept(*this); st = result; }
+        GcValueGuard stGuard(st);
         if (expr->end) { expr->end->accept(*this); en = result; }
+        GcValueGuard enGuard(en);
         if (expr->step) { expr->step->accept(*this); sp = result; }
         result = makeASTNode("SliceExpr", 0, {{"start", st}, {"end", en}, {"step", sp}});
     }
@@ -330,6 +347,7 @@ public:
 
     void visitForInExpr(ForInExpr* expr) override {
         expr->iterable->accept(*this); Value iter = result;
+        GcValueGuard iterGuard(iter);
         expr->body->accept(*this); Value body = result;
         result = makeASTNode("ForInExpr", 0, {
             {"pattern", patternToJC2(expr->pattern.get())},
@@ -342,6 +360,7 @@ public:
 
     void visitTryCatchExpr(TryCatchExpr* expr) override {
         expr->tryBody->accept(*this); Value tryB = result;
+        GcValueGuard tryBGuard(tryB);
         expr->catchBody->accept(*this); Value catchB = result;
         result = makeASTNode("TryCatchExpr", 0, {
             {"tryBody", tryB},
@@ -356,6 +375,7 @@ public:
         GcObjGuard guard(cases);
         for (auto& c : expr->cases) {
             ObjList* casePair = GcHeap::get().allocate<ObjList>();
+            GcObjGuard cpGuard(casePair);
             casePair->vec.push_back(makeExprListT(c.first));
             c.second->accept(*this); casePair->vec.push_back(result);
             cases->vec.push_back(Value(casePair));
@@ -372,20 +392,25 @@ public:
     void visitClassDefExpr(ClassDefExpr* expr) override {
         Value sup = Value::none();
         if (expr->superClassExpr) { expr->superClassExpr->accept(*this); sup = result; }
+        GcValueGuard supGuard(sup);
         
         ObjList* methods = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(methods);
         for (auto& m : expr->methods) {
             ObjList* params = GcHeap::get().allocate<ObjList>();
+            GcObjGuard pGuard(params);
             for (auto& p : m.params) params->vec.push_back(Value(p.lexeme));
             
             ObjList* paramIsRef = GcHeap::get().allocate<ObjList>();
+            GcObjGuard prGuard(paramIsRef);
             for (bool b : m.paramIsRef) paramIsRef->vec.push_back(Value(b));
             
             ObjList* paramIsConst = GcHeap::get().allocate<ObjList>();
+            GcObjGuard pcGuard(paramIsConst);
             for (bool b : m.paramIsConst) paramIsConst->vec.push_back(Value(b));
             
             ObjList* paramTypes = GcHeap::get().allocate<ObjList>();
+            GcObjGuard ptGuard(paramTypes);
             for (auto& t : m.paramTypes) paramTypes->vec.push_back(Value(t));
             
             m.body->accept(*this); Value bodyVal = result;
@@ -422,6 +447,7 @@ public:
 
     void visitDestructAssign(DestructAssign* expr) override {
         expr->value->accept(*this); Value val = result;
+        GcValueGuard valGuard(val);
         result = makeASTNode("DestructAssign", 0, {
             {"pattern", patternToJC2(expr->pattern.get())},
             {"value", val},
@@ -434,11 +460,14 @@ public:
 
     void visitListCompExpr(ListCompExpr* expr) override {
         expr->valueExpr->accept(*this); Value valExpr = result;
+        GcValueGuard valGuard(valExpr);
         ObjList* clauses = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(clauses);
         for (auto& c : expr->clauses) {
             c.iterable->accept(*this); Value iter = result;
+            GcValueGuard iterGuard(iter);
             Value pat = patternToJC2(c.pattern.get());
+            GcValueGuard patGuard(pat);
             Value conds = makeExprListT(c.conditions);
             Value clauseNode = makeASTNode("CompClause", 0, {
                 {"pattern", pat},
@@ -456,14 +485,17 @@ public:
 
     void visitMatchExpr(MatchExpr* expr) override {
         expr->subject->accept(*this); Value subj = result;
+        GcValueGuard subjGuard(subj);
         ObjList* branches = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(branches);
         for (auto& b : expr->branches) {
             ObjList* pats = GcHeap::get().allocate<ObjList>();
+            GcObjGuard patsGuard(pats);
             for (auto& p : b.patterns) pats->vec.push_back(patternToJC2(p.get()));
             
             Value guardVal = Value::none();
             if (b.guard) { b.guard->accept(*this); guardVal = result; }
+            GcValueGuard gGuard(guardVal);
             
             b.body->accept(*this); Value bodyVal = result;
             
@@ -481,23 +513,23 @@ public:
     }
 
     void visitMacroDefExpr(MacroDefExpr* expr) override {
+        ObjList* params = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(params);
+        for (auto& p : expr->params) params->vec.push_back(Value(p.lexeme));
+        
         expr->body->accept(*this); Value body = result;
         result = makeASTNode("MacroDefExpr", expr->name.line, {
             {"name", Value(expr->name.lexeme)},
-            {"param", Value(expr->param.lexeme)},
+            {"params", Value(params)},
+            {"hasRestParam", Value(expr->hasRestParam)},
             {"body", body}
         });
     }
 
     void visitMacroCallExpr(MacroCallExpr* expr) override {
-        Value arg = Value::none();
-        if (expr->argument) {
-            expr->argument->accept(*this);
-            arg = result;
-        }
         result = makeASTNode("MacroCallExpr", expr->macroName.line, {
             {"macroName", Value(expr->macroName.lexeme)},
-            {"argument", arg}
+            {"arguments", makeExprListT(expr->arguments)}
         });
     }
 
@@ -517,6 +549,7 @@ public:
 
     void visitExprAssign(ExprAssign* expr) override {
         expr->target->accept(*this); Value tgt = result;
+        GcValueGuard tgtGuard(tgt);
         expr->value->accept(*this); Value val = result;
         result = makeASTNode("ExprAssign", 0, {
             {"target", tgt},
@@ -1003,15 +1036,23 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             std::move(branches)
         );
     } else if (type == "MacroDefExpr") {
+        std::vector<Token> params;
+        Value paramsVal = getProp("params");
+        if (paramsVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(paramsVal.asObj())->vec) {
+                params.push_back(Token(TokenType::IDENTIFIER, v.asString(), line));
+            }
+        }
         return std::make_unique<MacroDefExpr>(
             Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
-            Token(TokenType::IDENTIFIER, getProp("param").asString(), line),
+            std::move(params),
+            getProp("hasRestParam").truthy(),
             JC2_to_AST(getProp("body"))
         );
     } else if (type == "MacroCallExpr") {
         return std::make_unique<MacroCallExpr>(
             Token(TokenType::IDENTIFIER, getProp("macroName").asString(), line),
-            JC2_to_AST(getProp("argument"))
+            getExprList(getProp("arguments"))
         );
     } else if (type == "QuoteExpr") {
         return std::make_unique<QuoteExpr>(JC2_to_AST(getProp("body")));

@@ -766,18 +766,19 @@ namespace jc {
 
     struct MacroDefExpr : public Expr {
         Token name;
-        Token param;
+        std::vector<Token> params;
+        bool hasRestParam;
         std::unique_ptr<Expr> body;
-        MacroDefExpr(Token name, Token param, std::unique_ptr<Expr> body)
-            : name(std::move(name)), param(std::move(param)), body(std::move(body)) {}
+        MacroDefExpr(Token name, std::vector<Token> params, bool hasRestParam, std::unique_ptr<Expr> body)
+            : name(std::move(name)), params(std::move(params)), hasRestParam(hasRestParam), body(std::move(body)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitMacroDefExpr(this); }
     };
 
     struct MacroCallExpr : public Expr {
         Token macroName;
-        std::unique_ptr<Expr> argument;
-        MacroCallExpr(Token macroName, std::unique_ptr<Expr> argument)
-            : macroName(std::move(macroName)), argument(std::move(argument)) {}
+        std::vector<std::unique_ptr<Expr>> arguments;
+        MacroCallExpr(Token macroName, std::vector<std::unique_ptr<Expr>> arguments)
+            : macroName(std::move(macroName)), arguments(std::move(arguments)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitMacroCallExpr(this); }
     };
 

@@ -1252,31 +1252,37 @@ namespace jc {
                 }
                 
                 ObjClosure* macroFn = it->second.asFunction();
-                std::unique_ptr<Expr> arg = nullptr;
+                std::vector<std::unique_ptr<Expr>> args;
                 
-                if (macroFn->minArgs() > 0) {
-                    if (check(TokenType::LBRACE)) {
-                        arg = parseBlock();
-                    } else if (match({ TokenType::LPAREN })) {
-                        arg = expression();
-                        consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro argument.");
-                    } else {
-                        throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects 1 argument.");
+                if (match({ TokenType::LPAREN })) {
+                    if (!check(TokenType::RPAREN)) {
+                        do {
+                            args.push_back(expression());
+                        } while (match({ TokenType::COMMA }));
                     }
-                } else {
-                    if (match({ TokenType::LPAREN })) {
-                        consume(TokenType::RPAREN, "Parser Error: Macro '" + macroName.lexeme + "' expects 0 arguments.");
+                    consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");
+                }
+                
+                if (check(TokenType::LBRACE)) {
+                    bool canTakeMore = macroFn->hasRestParam || (static_cast<int>(args.size()) < macroFn->maxArgs());
+                    if (canTakeMore) {
+                        args.push_back(parseBlock());
                     }
                 }
                 
-                Value argVal = arg ? AST_to_JC2(arg.get()) : Value::none();
+                if (static_cast<int>(args.size()) < macroFn->minArgs() || (!macroFn->hasRestParam && static_cast<int>(args.size()) > macroFn->maxArgs())) {
+                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(macroFn->minArgs()) + (macroFn->hasRestParam ? " or more" : (macroFn->minArgs() == macroFn->maxArgs() ? "" : " to " + std::to_string(macroFn->maxArgs()))) + " arguments, got " + std::to_string(args.size()) + ".");
+                }
                 
                 std::vector<Value> callArgs;
-                if (macroFn->minArgs() > 0) {
-                    callArgs.push_back(argVal);
+                std::vector<std::unique_ptr<GcValueGuard>> guards;
+                for (auto& a : args) {
+                    callArgs.push_back(AST_to_JC2(a.get()));
+                    guards.push_back(std::make_unique<GcValueGuard>(callArgs.back()));
                 }
                 
                 Value resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, callArgs, macroFn);
+                GcValueGuard resultGuard(resultVal);
                 
                 auto expandedAst = JC2_to_AST(resultVal);
                 if (!expandedAst) throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
@@ -1343,30 +1349,33 @@ namespace jc {
     std::unique_ptr<Expr> Parser::macroDefExpr() {
         Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name.");
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after macro name.");
-        Token param(TokenType::IDENTIFIER, "", name.position, name.line);
+        
+        std::vector<Token> params;
+        bool hasRestParam = false;
+        
         if (!check(TokenType::RPAREN)) {
-            param = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro parameter name.");
+            do {
+                if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                if (match({ TokenType::ELLIPSIS })) {
+                    params.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'."));
+                    hasRestParam = true;
+                } else {
+                    params.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect macro parameter name."));
+                }
+            } while (match({ TokenType::COMMA }));
         }
-        consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro parameter.");
+        consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro parameters.");
         consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
         auto body = parseStatementOrBlock();
         
-        std::vector<Token> params;
-        std::vector<bool> paramIsRef;
-        std::vector<bool> paramIsConst;
-        std::vector<std::shared_ptr<Expr>> defaultExprs;
-        std::vector<std::string> paramTypes;
-        if (!param.lexeme.empty()) {
-            params.push_back(param);
-            paramIsRef.push_back(false);
-            paramIsConst.push_back(false);
-            defaultExprs.push_back(nullptr);
-            paramTypes.push_back("");
-        }
+        std::vector<bool> paramIsRef(params.size(), false);
+        std::vector<bool> paramIsConst(params.size(), false);
+        std::vector<std::shared_ptr<Expr>> defaultExprs(params.size(), nullptr);
+        std::vector<std::string> paramTypes(params.size(), "");
 
         auto lambda = std::make_unique<LambdaExpr>(
-            name.lexeme, std::move(params), std::move(paramIsRef), std::move(paramIsConst),
-            std::move(defaultExprs), false,
+            name.lexeme, params, std::move(paramIsRef), std::move(paramIsConst),
+            std::move(defaultExprs), hasRestParam,
             std::move(paramTypes), "",
             "<macro_body>", std::shared_ptr<Expr>(body.release())
         );
@@ -1874,14 +1883,17 @@ namespace jc {
         if (auto* mdef = dynamic_cast<MacroDefExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"name", std::make_unique<Literal>(mdef->name.lexeme, true)});
-            props.push_back({"param", std::make_unique<Literal>(mdef->param.lexeme, true)});
+            std::vector<std::unique_ptr<Expr>> paramsArgs;
+            for (const auto& p : mdef->params) paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+            props.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
+            props.push_back({"hasRestParam", std::make_unique<Literal>(mdef->hasRestParam ? "true" : "false", false, false, true)});
             props.push_back({"body", transformQuote(mdef->body.get())});
             return makeASTNodeCall("MacroDefExpr", mdef->name.line, std::move(props));
         }
         if (auto* mcall = dynamic_cast<MacroCallExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"macroName", std::make_unique<Literal>(mcall->macroName.lexeme, true)});
-            props.push_back({"argument", transformQuote(mcall->argument.get())});
+            props.push_back({"arguments", makeExprList(mcall->arguments)});
             return makeASTNodeCall("MacroCallExpr", mcall->macroName.line, std::move(props));
         }
         if (auto* qe = dynamic_cast<QuoteExpr*>(expr)) {

@@ -1263,11 +1263,30 @@ namespace jc {
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");
                 }
                 
-                while (match({ TokenType::NEWLINE })) {}
+                bool shouldProbe = false;
+                if (macroFn->hasRestParam) {
+                    shouldProbe = true;
+                } else {
+                    int nArgs = macroFn->maxArgs();
+                    int provided = static_cast<int>(args.size());
+                    if (provided == nArgs - 1) {
+                        shouldProbe = true;
+                    } else if (provided == nArgs) {
+                        shouldProbe = false;
+                    } else if (provided < nArgs - 1) {
+                        throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(nArgs) + " arguments, but only " + std::to_string(provided) + " were provided.");
+                    } else {
+                        shouldProbe = false;
+                    }
+                }
                 
-                if (check(TokenType::LBRACE)) {
-                    bool canTakeMore = macroFn->hasRestParam || (static_cast<int>(args.size()) < macroFn->maxArgs());
-                    if (canTakeMore) {
+                if (shouldProbe) {
+                    int peekPos = current;
+                    while (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::NEWLINE) {
+                        peekPos++;
+                    }
+                    
+                    if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::LBRACE) {
                         args.push_back(parseBlock());
                     }
                 }

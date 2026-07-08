@@ -64,7 +64,7 @@ test_macro_errors() = {
         compileCode("macro foo(n) = { return quote { 1 } }; foo(1)")
         assert(false, "Should throw when macro is called as a normal function")
     } catch (e) {
-        assert("Syntax Error" in str(e) || "not defined" in str(e), "Wrong error for normal macro call")
+        assert("Undefined" in str(e) || "not defined" in str(e), "Wrong error for normal macro call")
     }
 }
 test_macro_errors()

@@ -1254,8 +1254,9 @@ namespace jc {
                 
                 Value argVal = AST_to_JC2(arg.get());
                 
+                std::string internalName = "__macro_" + macroName.lexeme;
                 auto globals = VM::activeVM->getGlobals();
-                auto it = globals.find(macroName.lexeme);
+                auto it = globals.find(internalName);
                 if (it == globals.end() || !it->second.isFunctionClosure()) {
                     throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' is not defined or not a function.");
                 }
@@ -1339,7 +1340,9 @@ namespace jc {
             std::vector<std::string>{""}, "",
             "<macro_body>", std::shared_ptr<Expr>(body.release())
         );
-        auto assign = std::make_unique<Assign>(name, std::move(lambda), false, false, false, false);
+        Token internalName = name;
+        internalName.lexeme = "__macro_" + name.lexeme;
+        auto assign = std::make_unique<Assign>(internalName, std::move(lambda), false, false, false, false);
 
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions());

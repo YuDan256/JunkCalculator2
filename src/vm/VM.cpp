@@ -1155,6 +1155,7 @@ invoke_method:
         }
 
         if (isTailCall) {
+            int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
             while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                 exceptionHandlers.pop_back();
             }
@@ -1167,6 +1168,11 @@ invoke_method:
             currentFrame->classContext = owningClass ? Value(owningClass) : Value::none();
             
             populateRefParams(*currentFrame, fnDef.get());
+            
+            int newTotalCount = fnDef->localCount + fnDef->refCount;
+            for (int i = newTotalCount; i < oldTotalCount; ++i) {
+                registers[newBase + i] = Value::none();
+            }
             return;
         }
         

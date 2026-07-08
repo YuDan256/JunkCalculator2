@@ -1562,6 +1562,101 @@ namespace jc {
             props.push_back({"step", transformQuote(slc->step.get())});
             return makeASTNodeCall("SliceExpr", 0, std::move(props));
         }
+        if (auto* comp = dynamic_cast<CompoundAssign*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"target", transformQuote(comp->target.get())});
+            props.push_back({"op", std::make_unique<Literal>(std::to_string(static_cast<int>(comp->op)))});
+            props.push_back({"value", transformQuote(comp->value.get())});
+            props.push_back({"isRef", std::make_unique<Literal>(comp->isRef ? "true" : "false", false, false, true)});
+            props.push_back({"isState", std::make_unique<Literal>(comp->isState ? "true" : "false", false, false, true)});
+            props.push_back({"isLocal", std::make_unique<Literal>(comp->isLocal ? "true" : "false", false, false, true)});
+            return makeASTNodeCall("CompoundAssign", 0, std::move(props));
+        }
+        if (dynamic_cast<BreakExpr*>(expr)) return makeASTNodeCall("BreakExpr", 0, {});
+        if (dynamic_cast<ContinueExpr*>(expr)) return makeASTNodeCall("ContinueExpr", 0, {});
+        if (dynamic_cast<SuperExpr*>(expr)) return makeASTNodeCall("SuperExpr", 0, {});
+        if (dynamic_cast<SelfExpr*>(expr)) return makeASTNodeCall("SelfExpr", 0, {});
+        if (auto* decl = dynamic_cast<LocalDecl*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            props.push_back({"isConst", std::make_unique<Literal>(decl->isConst ? "true" : "false", false, false, true)});
+            return makeASTNodeCall("LocalDecl", decl->name.line, std::move(props));
+        }
+        if (auto* decl = dynamic_cast<RefDecl*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            props.push_back({"isConst", std::make_unique<Literal>(decl->isConst ? "true" : "false", false, false, true)});
+            return makeASTNodeCall("RefDecl", decl->name.line, std::move(props));
+        }
+        if (auto* decl = dynamic_cast<StateDecl*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            props.push_back({"isConst", std::make_unique<Literal>(decl->isConst ? "true" : "false", false, false, true)});
+            return makeASTNodeCall("StateDecl", decl->name.line, std::move(props));
+        }
+        if (auto* decl = dynamic_cast<ConstDecl*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            return makeASTNodeCall("ConstDecl", decl->name.line, std::move(props));
+        }
+        if (auto* del = dynamic_cast<DeleteExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            std::vector<std::unique_ptr<Expr>> namesArgs;
+            for (const auto& n : del->names) namesArgs.push_back(std::make_unique<Literal>(n.lexeme, true));
+            props.push_back({"names", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(namesArgs))});
+            return makeASTNodeCall("DeleteExpr", 0, std::move(props));
+        }
+        if (auto* thr = dynamic_cast<ThrowExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"value", transformQuote(thr->value.get())});
+            return makeASTNodeCall("ThrowExpr", 0, std::move(props));
+        }
+        if (auto* imp = dynamic_cast<ImportExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"path", transformQuote(imp->path.get())});
+            return makeASTNodeCall("ImportExpr", 0, std::move(props));
+        }
+        if (auto* inv = dynamic_cast<InvokeExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"callee", transformQuote(inv->callee.get())});
+            props.push_back({"arguments", makeExprList(inv->arguments)});
+            return makeASTNodeCall("InvokeExpr", 0, std::move(props));
+        }
+        if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(lam->name, true)});
+            std::vector<std::unique_ptr<Expr>> paramsArgs;
+            for (const auto& p : lam->params) paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+            props.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
+            std::vector<std::unique_ptr<Expr>> refArgs;
+            for (bool b : lam->paramIsRef) refArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
+            props.push_back({"paramIsRef", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(refArgs))});
+            std::vector<std::unique_ptr<Expr>> constArgs;
+            for (bool b : lam->paramIsConst) constArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
+            props.push_back({"paramIsConst", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(constArgs))});
+            std::vector<std::unique_ptr<Expr>> defArgs;
+            for (const auto& d : lam->defaultExprs) defArgs.push_back(transformQuote(d.get()));
+            props.push_back({"defaultExprs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(defArgs))});
+            props.push_back({"hasRestParam", std::make_unique<Literal>(lam->hasRestParam ? "true" : "false", false, false, true)});
+            std::vector<std::unique_ptr<Expr>> typeArgs;
+            for (const auto& t : lam->paramTypes) typeArgs.push_back(std::make_unique<Literal>(t, true));
+            props.push_back({"paramTypes", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(typeArgs))});
+            props.push_back({"returnType", std::make_unique<Literal>(lam->returnType, true)});
+            props.push_back({"rawBody", std::make_unique<Literal>(lam->rawBody, true)});
+            props.push_back({"body", transformQuote(lam->body.get())});
+            return makeASTNodeCall("LambdaExpr", 0, std::move(props));
+        }
+        if (auto* fstr = dynamic_cast<FStringExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            std::vector<std::unique_ptr<Expr>> litArgs;
+            for (const auto& l : fstr->literals) litArgs.push_back(std::make_unique<Literal>(l, true));
+            props.push_back({"literals", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(litArgs))});
+            props.push_back({"exprs", makeExprList(fstr->exprs)});
+            std::vector<std::unique_ptr<Expr>> specArgs;
+            for (const auto& s : fstr->formatSpecs) specArgs.push_back(std::make_unique<Literal>(s, true));
+            props.push_back({"formatSpecs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(specArgs))});
+            return makeASTNodeCall("FStringExpr", 0, std::move(props));
+        }
         
         throw std::runtime_error("Parser Error: Unsupported AST node in quote block.");
     }

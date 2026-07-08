@@ -57,6 +57,7 @@ private:
     std::unordered_map<std::string, NativeCallable> nativeBuiltins;
     std::unordered_map<std::string, std::set<int>> builtinArity;
     std::unordered_map<std::string, Value> builtinClosures;
+    std::unordered_map<std::string, Value> builtinValues;
 
     ObjUpVal* openUpvalues = nullptr;
     void closeUpvalues(int lastRegIndex);
@@ -145,6 +146,11 @@ public:
 
     void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity);
     Value getBuiltinClosure(const std::string& name);
+    void registerBuiltinValue(const std::string& name, const Value& val) { builtinValues[name] = val; }
+    Value getBuiltinValue(const std::string& name) const {
+        auto it = builtinValues.find(name);
+        return it != builtinValues.end() ? it->second : Value::none();
+    }
     const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
     const std::unordered_map<std::string, std::set<int>>& getBuiltinArity() const { return builtinArity; }
 

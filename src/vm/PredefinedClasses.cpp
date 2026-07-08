@@ -160,8 +160,8 @@ void registerPredefinedClasses() {
     rangeIterClass->methods["__next__"] = rangeIterNext;
 
     // 注册到全局
-    VM::activeVM->setGlobal("range", Value(rangeClass));
-    VM::activeVM->setGlobal("__range_iterator", Value(rangeIterClass));
+    VM::activeVM->registerBuiltinValue("range", Value(rangeClass));
+    VM::activeVM->registerBuiltinValue("__range_iterator", Value(rangeIterClass));
 }
 
 } // namespace jc

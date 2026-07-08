@@ -848,6 +848,7 @@ bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& 
         } else {
             auto it = globalNames.find(typeStr);
             if (it != globalNames.end()) typeVal = globals[it->second];
+            else typeVal = getBuiltinValue(typeStr);
         }
 
         if (typeVal.isClass()) {
@@ -2005,6 +2006,10 @@ VM::VM() {
         for (auto& [k, v] : builtinClosures) {
             GcHeap::get().markValue(v);
         }
+        
+        for (auto& [k, v] : builtinValues) {
+            GcHeap::get().markValue(v);
+        }
 
         for (auto& v : helpers::nativeSelfStack) GcHeap::get().markValue(v);
         for (auto& v : helpers::nativeClassStack) GcHeap::get().markValue(v);
@@ -2406,7 +2411,8 @@ Value VM::run(int targetFrameDepth) {
                         ic.cachedGlobalSlot = it->second;
                         getReg(a) = globals.data()[it->second];
                     } else {
-                        Value builtinVal = getBuiltinClosure(name);
+                        Value builtinVal = getBuiltinValue(name);
+                        if (builtinVal.isNone()) builtinVal = getBuiltinClosure(name);
                         if (!builtinVal.isNone()) {
                             ic.cachedGlobalSlot = static_cast<int>(globals.size());
                             globalNames[name] = ic.cachedGlobalSlot;
@@ -2442,7 +2448,7 @@ Value VM::run(int targetFrameDepth) {
                     throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
                 }
                 if (op == OpCode::SET_GLOBAL_REF) {
-                    if (globalNames.find(name) == globalNames.end() && nativeBuiltins.find(name) == nativeBuiltins.end()) {
+                    if (globalNames.find(name) == globalNames.end() && nativeBuiltins.find(name) == nativeBuiltins.end() && builtinValues.find(name) == builtinValues.end()) {
                         throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
                     }
                 }
@@ -2542,7 +2548,8 @@ Value VM::run(int targetFrameDepth) {
                                         if (it != globalNames.end()) {
                                             dummy->location = &globals[it->second];
                                         } else {
-                                            Value builtinVal = getBuiltinClosure(uv.name);
+                                            Value builtinVal = getBuiltinValue(uv.name);
+                                            if (builtinVal.isNone()) builtinVal = getBuiltinClosure(uv.name);
                                             globalNames[uv.name] = static_cast<uint32_t>(globals.size());
                                             globals.push_back(builtinVal.isNone() ? Value::uninit() : builtinVal);
                                             dummy->location = &globals.back();
@@ -2563,7 +2570,8 @@ Value VM::run(int targetFrameDepth) {
                                 if (it != globalNames.end()) {
                                     dummy->closed = globals[it->second];
                                 } else {
-                                    Value builtinVal = getBuiltinClosure(uv.name);
+                                    Value builtinVal = getBuiltinValue(uv.name);
+                                    if (builtinVal.isNone()) builtinVal = getBuiltinClosure(uv.name);
                                     if (!builtinVal.isNone()) {
                                         dummy->closed = builtinVal;
                                     } else {
@@ -2718,7 +2726,8 @@ Value VM::run(int targetFrameDepth) {
                             upval = GcHeap::get().allocate<ObjUpVal>();
                             auto it = globalNames.find(name);
                             if (it == globalNames.end()) {
-                                Value builtinVal = getBuiltinClosure(name);
+                                Value builtinVal = getBuiltinValue(name);
+                                if (builtinVal.isNone()) builtinVal = getBuiltinClosure(name);
                                 globalNames[name] = static_cast<uint32_t>(globals.size());
                                 globals.push_back(builtinVal.isNone() ? Value::none() : builtinVal);
                             }

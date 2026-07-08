@@ -168,11 +168,18 @@ namespace jc {
         if (isRef && isState) throw std::runtime_error("Parser Error: Cannot combine 'ref' and 'state'.");
 
         // ★ 特权推测解析：精准捕获带类型注解的函数定义 f(x: int) -> int = ...
-        if (check(TokenType::IDENTIFIER) &&
-            current + 1 < static_cast<int>(tokens.size()) &&
-            tokens[current + 1].type == TokenType::LPAREN) {
+        bool isFuncDef = false;
+        int peekPos = current;
+        if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::LPAREN) {
+            isFuncDef = true;
+            peekPos = current + 2;
+        } else if (check(TokenType::DOLLAR) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::IDENTIFIER &&
+                   current + 2 < static_cast<int>(tokens.size()) && tokens[current + 2].type == TokenType::LPAREN) {
+            isFuncDef = true;
+            peekPos = current + 3;
+        }
 
-            int peekPos = current + 2;
+        if (isFuncDef) {
             int depth = 1;
             // 快速前扫，跨过括号
             while (peekPos < static_cast<int>(tokens.size()) && depth > 0) {
@@ -196,7 +203,13 @@ namespace jc {
 
                 // 如果结尾是等号，那它 100% 就是一个正经的函数定义！
                 if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::ASSIGN) {
-                    Token funcName = advance(); // 吞掉函数名
+                    Token funcName(TokenType::ERROR, "");
+                    if (match({ TokenType::DOLLAR })) {
+                        Token idTok = consume(TokenType::IDENTIFIER, "");
+                        funcName = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                    } else {
+                        funcName = advance(); // 吞掉函数名
+                    }
                     consume(TokenType::LPAREN, "");
 
                     std::vector<Token> params;
@@ -235,7 +248,12 @@ namespace jc {
 
                             if (match({ TokenType::ELLIPSIS })) {
                                 if (isParamRef) throw std::runtime_error("Parser Error: Rest parameter cannot be ref.");
-                                paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
+                                if (match({ TokenType::DOLLAR })) {
+                                    Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                                    paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                                } else {
+                                    paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
+                                }
                                 isRest = true;
                                 hasRestParam = true;
                             } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
@@ -245,7 +263,12 @@ namespace jc {
                                 paramTok = Token(TokenType::IDENTIFIER, phName, funcName.line);
                                 isDestruct = true;
                             } else {
-                                paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
+                                if (match({ TokenType::DOLLAR })) {
+                                    Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                                    paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                                } else {
+                                    paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
+                                }
                             }
 
                             params.push_back(paramTok);
@@ -322,17 +345,17 @@ namespace jc {
 
         // ★ 新增：直接拦截解构赋值！彻底分离 Pattern 和 Expr 的解析！
         if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
-            int peekPos = current;
+            int destructPeekPos = current;
             int depth = 0;
-            while (peekPos < static_cast<int>(tokens.size())) {
-                TokenType t = tokens[peekPos].type;
+            while (destructPeekPos < static_cast<int>(tokens.size())) {
+                TokenType t = tokens[destructPeekPos].type;
                 if (t == TokenType::LBRACKET || t == TokenType::LBRACE || t == TokenType::LPAREN) depth++;
                 else if (t == TokenType::RBRACKET || t == TokenType::RBRACE || t == TokenType::RPAREN) depth--;
-                peekPos++;
+                destructPeekPos++;
                 if (depth == 0) break;
             }
-            while (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::NEWLINE) peekPos++;
-            if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::ASSIGN) {
+            while (destructPeekPos < static_cast<int>(tokens.size()) && tokens[destructPeekPos].type == TokenType::NEWLINE) destructPeekPos++;
+            if (destructPeekPos < static_cast<int>(tokens.size()) && tokens[destructPeekPos].type == TokenType::ASSIGN) {
                 // 确认是解构赋值，直接解析为纯正的 Pattern！
                 auto pat = parsePrimaryPattern();
                 consume(TokenType::ASSIGN, "Parser Error: Expect '=' after destructuring pattern.");
@@ -582,8 +605,13 @@ namespace jc {
         while (true) {
             // 1. 点属性/方法调用访问 (必须与对象在同一行，或被 () 整体包裹)
             if (match({ TokenType::DOT })) {
-                Token field = consume(TokenType::IDENTIFIER,
-                    "Parser Error: Expect field/method name after '.'.");
+                Token field(TokenType::ERROR, "");
+                if (match({ TokenType::DOLLAR })) {
+                    Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                    field = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                } else {
+                    field = consume(TokenType::IDENTIFIER, "Parser Error: Expect field/method name after '.'.");
+                }
 
                 if (match({ TokenType::LPAREN })) {
                     std::vector<std::unique_ptr<Expr>> args;
@@ -1058,9 +1086,16 @@ namespace jc {
         if (match({ TokenType::QUOTE })) return quoteExpr();
         if (match({ TokenType::DELETE })) {
             std::vector<Token> names;
-            names.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after 'delete'."));
+            auto parseDelName = [&]() {
+                if (match({ TokenType::DOLLAR })) {
+                    Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                    return Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                }
+                return consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after 'delete' or ','.");
+            };
+            names.push_back(parseDelName());
             while (match({ TokenType::COMMA })) {
-                names.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after ','."));
+                names.push_back(parseDelName());
             }
             return std::make_unique<DeleteExpr>(std::move(names));
         }
@@ -1139,7 +1174,12 @@ namespace jc {
 
                         if (match({ TokenType::ELLIPSIS })) {
                             if (isRef) throw std::runtime_error("Parser Error: Rest parameter cannot be ref.");
-                            paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'.");
+                            if (match({ TokenType::DOLLAR })) {
+                                Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                                paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                            } else {
+                                paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'.");
+                            }
                             isRest = true;
                             hasRestParam = true;
                         } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
@@ -1149,7 +1189,12 @@ namespace jc {
                             paramTok = Token(TokenType::IDENTIFIER, phName, previous().line);
                             isDestruct = true;
                         } else {
-                            paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
+                            if (match({ TokenType::DOLLAR })) {
+                                Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                                paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                            } else {
+                                paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
+                            }
                         }
 
                         lambdaParams.push_back(paramTok);
@@ -1368,7 +1413,13 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::macroDefExpr() {
-        Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name.");
+        Token name(TokenType::ERROR, "");
+        if (match({ TokenType::DOLLAR })) {
+            Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+            name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+        } else {
+            name = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name.");
+        }
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after macro name.");
         
         std::vector<Token> params;
@@ -1378,10 +1429,20 @@ namespace jc {
             do {
                 if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
                 if (match({ TokenType::ELLIPSIS })) {
-                    params.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'."));
+                    if (match({ TokenType::DOLLAR })) {
+                        Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                        params.push_back(Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line));
+                    } else {
+                        params.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'."));
+                    }
                     hasRestParam = true;
                 } else {
-                    params.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect macro parameter name."));
+                    if (match({ TokenType::DOLLAR })) {
+                        Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                        params.push_back(Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line));
+                    } else {
+                        params.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect macro parameter name."));
+                    }
                 }
             } while (match({ TokenType::COMMA }));
         }
@@ -1517,14 +1578,26 @@ namespace jc {
             }
             if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
                 std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-                props.push_back({"name", std::make_unique<Literal>(vp->name.lexeme, true)});
+                if (!vp->name.lexeme.empty() && vp->name.lexeme[0] == '$') {
+                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, vp->name.lexeme.substr(1), vp->name.line));
+                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", vp->name.line));
+                    props.push_back({"name", std::move(nameAccess)});
+                } else {
+                    props.push_back({"name", std::make_unique<Literal>(vp->name.lexeme, true)});
+                }
                 props.push_back({"modifier", std::make_unique<Literal>(std::to_string(static_cast<int>(vp->modifier)))});
                 props.push_back({"isConst", std::make_unique<Literal>(vp->isConst ? "true" : "false", false, false, true)});
                 return makeASTNodeCall("VariablePattern", vp->name.line, std::move(props));
             }
             if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
                 std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-                props.push_back({"name", std::make_unique<Literal>(rp->name.lexeme, true)});
+                if (!rp->name.lexeme.empty() && rp->name.lexeme[0] == '$') {
+                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, rp->name.lexeme.substr(1), rp->name.line));
+                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", rp->name.line));
+                    props.push_back({"name", std::move(nameAccess)});
+                } else {
+                    props.push_back({"name", std::make_unique<Literal>(rp->name.lexeme, true)});
+                }
                 props.push_back({"modifier", std::make_unique<Literal>(std::to_string(static_cast<int>(rp->modifier)))});
                 props.push_back({"isConst", std::make_unique<Literal>(rp->isConst ? "true" : "false", false, false, true)});
                 return makeASTNodeCall("RestPattern", rp->name.line, std::move(props));
@@ -1611,20 +1684,38 @@ namespace jc {
         if (auto* dot = dynamic_cast<DotAccess*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"object", transformQuote(dot->object.get())});
-            props.push_back({"field", std::make_unique<Literal>(dot->field.lexeme, true)});
+            if (!dot->field.lexeme.empty() && dot->field.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, dot->field.lexeme.substr(1), dot->field.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", dot->field.line));
+                props.push_back({"field", std::move(nameAccess)});
+            } else {
+                props.push_back({"field", std::make_unique<Literal>(dot->field.lexeme, true)});
+            }
             return makeASTNodeCall("DotAccess", dot->field.line, std::move(props));
         }
         if (auto* dotAssign = dynamic_cast<DotAssign*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"object", transformQuote(dotAssign->object.get())});
-            props.push_back({"field", std::make_unique<Literal>(dotAssign->field.lexeme, true)});
+            if (!dotAssign->field.lexeme.empty() && dotAssign->field.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, dotAssign->field.lexeme.substr(1), dotAssign->field.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", dotAssign->field.line));
+                props.push_back({"field", std::move(nameAccess)});
+            } else {
+                props.push_back({"field", std::make_unique<Literal>(dotAssign->field.lexeme, true)});
+            }
             props.push_back({"value", transformQuote(dotAssign->value.get())});
             return makeASTNodeCall("DotAssign", dotAssign->field.line, std::move(props));
         }
         if (auto* mcall = dynamic_cast<MethodCallExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"object", transformQuote(mcall->object.get())});
-            props.push_back({"method", std::make_unique<Literal>(mcall->method.lexeme, true)});
+            if (!mcall->method.lexeme.empty() && mcall->method.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, mcall->method.lexeme.substr(1), mcall->method.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", mcall->method.line));
+                props.push_back({"method", std::move(nameAccess)});
+            } else {
+                props.push_back({"method", std::make_unique<Literal>(mcall->method.lexeme, true)});
+            }
             props.push_back({"arguments", makeExprList(mcall->arguments)});
             return makeASTNodeCall("MethodCallExpr", mcall->method.line, std::move(props));
         }
@@ -1735,7 +1826,14 @@ namespace jc {
         if (auto* del = dynamic_cast<DeleteExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             std::vector<std::unique_ptr<Expr>> namesArgs;
-            for (const auto& n : del->names) namesArgs.push_back(std::make_unique<Literal>(n.lexeme, true));
+            for (const auto& n : del->names) {
+                if (!n.lexeme.empty() && n.lexeme[0] == '$') {
+                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, n.lexeme.substr(1), n.line));
+                    namesArgs.push_back(std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", n.line)));
+                } else {
+                    namesArgs.push_back(std::make_unique<Literal>(n.lexeme, true));
+                }
+            }
             props.push_back({"names", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(namesArgs))});
             return makeASTNodeCall("DeleteExpr", 0, std::move(props));
         }
@@ -1757,9 +1855,23 @@ namespace jc {
         }
         if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(lam->name, true)});
+            if (!lam->name.empty() && lam->name[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, lam->name.substr(1), 0));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", 0));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(lam->name, true)});
+            }
             std::vector<std::unique_ptr<Expr>> paramsArgs;
-            for (const auto& p : lam->params) paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+            for (const auto& p : lam->params) {
+                if (!p.lexeme.empty() && p.lexeme[0] == '$') {
+                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, p.lexeme.substr(1), p.line));
+                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", p.line));
+                    paramsArgs.push_back(std::move(nameAccess));
+                } else {
+                    paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+                }
+            }
             props.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
             std::vector<std::unique_ptr<Expr>> refArgs;
             for (bool b : lam->paramIsRef) refArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
@@ -1822,14 +1934,34 @@ namespace jc {
         }
         if (auto* cls = dynamic_cast<ClassDefExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(cls->name.lexeme, true)});
+            if (!cls->name.lexeme.empty() && cls->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, cls->name.lexeme.substr(1), cls->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", cls->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(cls->name.lexeme, true)});
+            }
             props.push_back({"superClassExpr", transformQuote(cls->superClassExpr.get())});
             std::vector<std::unique_ptr<Expr>> methodsArgs;
             for (const auto& m : cls->methods) {
                 std::vector<std::pair<std::string, std::unique_ptr<Expr>>> mProps;
-                mProps.push_back({"name", std::make_unique<Literal>(m.name.lexeme, true)});
+                if (!m.name.lexeme.empty() && m.name.lexeme[0] == '$') {
+                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, m.name.lexeme.substr(1), m.name.line));
+                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", m.name.line));
+                    mProps.push_back({"name", std::move(nameAccess)});
+                } else {
+                    mProps.push_back({"name", std::make_unique<Literal>(m.name.lexeme, true)});
+                }
                 std::vector<std::unique_ptr<Expr>> paramsArgs;
-                for (const auto& p : m.params) paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+                for (const auto& p : m.params) {
+                    if (!p.lexeme.empty() && p.lexeme[0] == '$') {
+                        auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, p.lexeme.substr(1), p.line));
+                        auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", p.line));
+                        paramsArgs.push_back(std::move(nameAccess));
+                    } else {
+                        paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+                    }
+                }
                 mProps.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
                 std::vector<std::unique_ptr<Expr>> refArgs;
                 for (bool b : m.paramIsRef) refArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
@@ -1854,7 +1986,13 @@ namespace jc {
         }
         if (auto* ns = dynamic_cast<NamespaceDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(ns->name.lexeme, true)});
+            if (!ns->name.lexeme.empty() && ns->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, ns->name.lexeme.substr(1), ns->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", ns->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(ns->name.lexeme, true)});
+            }
             props.push_back({"body", transformQuote(ns->body.get())});
             return makeASTNodeCall("NamespaceDecl", ns->name.line, std::move(props));
         }
@@ -1903,9 +2041,23 @@ namespace jc {
         }
         if (auto* mdef = dynamic_cast<MacroDefExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(mdef->name.lexeme, true)});
+            if (!mdef->name.lexeme.empty() && mdef->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, mdef->name.lexeme.substr(1), mdef->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", mdef->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(mdef->name.lexeme, true)});
+            }
             std::vector<std::unique_ptr<Expr>> paramsArgs;
-            for (const auto& p : mdef->params) paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+            for (const auto& p : mdef->params) {
+                if (!p.lexeme.empty() && p.lexeme[0] == '$') {
+                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, p.lexeme.substr(1), p.line));
+                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", p.line));
+                    paramsArgs.push_back(std::move(nameAccess));
+                } else {
+                    paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+                }
+            }
             props.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
             props.push_back({"hasRestParam", std::make_unique<Literal>(mdef->hasRestParam ? "true" : "false", false, false, true)});
             props.push_back({"body", transformQuote(mdef->body.get())});
@@ -2003,12 +2155,24 @@ namespace jc {
         }
 
         if (match({TokenType::ELLIPSIS})) {
-            Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+            Token name(TokenType::ERROR, "");
+            if (match({TokenType::DOLLAR})) {
+                Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+            } else {
+                name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+            }
             return std::make_unique<RestPattern>(name, mod, isConst);
         }
         
         if (hasMod) {
-            Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after modifier.");
+            Token name(TokenType::ERROR, "");
+            if (match({TokenType::DOLLAR})) {
+                Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+            } else {
+                name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after modifier.");
+            }
             return std::make_unique<VariablePattern>(name, mod, isConst);
         }
         if (match({TokenType::LBRACKET})) {
@@ -2164,6 +2328,12 @@ namespace jc {
         if (auto* var = dynamic_cast<Variable*>(expr.get())) {
             return std::make_unique<VariablePattern>(var->name, mod, isConst);
         }
+        if (auto* unq = dynamic_cast<UnquoteExpr*>(expr.get())) {
+            if (auto* var = dynamic_cast<Variable*>(unq->expr.get())) {
+                Token nameTok(TokenType::IDENTIFIER, "$" + var->name.lexeme, var->name.position, var->name.line);
+                return std::make_unique<VariablePattern>(nameTok, mod, isConst);
+            }
+        }
         if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
             return std::make_unique<ExprPattern>(std::move(expr));
         }
@@ -2240,7 +2410,13 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::namespaceExpr() {
-        Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect namespace name.");
+        Token name(TokenType::ERROR, "");
+        if (match({ TokenType::DOLLAR })) {
+            Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+            name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+        } else {
+            name = consume(TokenType::IDENTIFIER, "Parser Error: Expect namespace name.");
+        }
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after namespace name.");
         std::vector<std::unique_ptr<Expr>> stmts;
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
@@ -2257,7 +2433,13 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::classDefExpr() {
-        Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect class name after 'class'.");
+        Token name(TokenType::ERROR, "");
+        if (match({ TokenType::DOLLAR })) {
+            Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+            name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+        } else {
+            name = consume(TokenType::IDENTIFIER, "Parser Error: Expect class name after 'class'.");
+        }
 
         while (match({ TokenType::NEWLINE })) {}
 
@@ -2276,7 +2458,13 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
             if (check(TokenType::RBRACE)) break;
 
-            Token methodName = consume(TokenType::IDENTIFIER, "Parser Error: Expect method name.");
+            Token methodName(TokenType::ERROR, "");
+            if (match({ TokenType::DOLLAR })) {
+                Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                methodName = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+            } else {
+                methodName = consume(TokenType::IDENTIFIER, "Parser Error: Expect method name.");
+            }
             consume(TokenType::LPAREN, "Parser Error: Expect '(' after method name.");
 
             std::vector<Token> params;

@@ -188,3 +188,32 @@ test_variadic_macro() = {
     assert(len(res2) == 2 && res2[0] == 10 && res2[1] == 20, "Variadic macro with trailing block failed")
 }
 test_variadic_macro()
+
+test_macro_identifier_unquote() = {
+    macro def_memo(func_name, arg_name, body) = {
+        return quote {
+            local __cache = {}
+            $func_name = ($arg_name) => {
+                if (__cache[$arg_name] != none) {
+                    return __cache[$arg_name]
+                }
+                local __res = $body
+                __cache[$arg_name] = __res
+                return __res
+            }
+            none
+        }
+    }
+    
+    eval_count = 0
+    @def_memo(fib, n, {
+        eval_count += 1
+        if (n <= 1) return n
+        return fib(n - 1) + fib(n - 2)
+    })
+    
+    res = fib(10)
+    assert(res == 55, "Memoized function returned wrong result")
+    assert(eval_count == 11, "Memoized function evaluated too many times")
+}
+test_macro_identifier_unquote()

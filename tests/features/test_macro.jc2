@@ -207,9 +207,9 @@ test_macro_identifier_unquote() = {
     
     eval_count = 0
     @def_memo(fib, n, {
-        eval_count += 1
-        if (n <= 1) return n
-        return fib(n - 1) + fib(n - 2)
+        eval_count += 1;
+        if (n <= 1) return n;
+        return fib(n - 1) + fib(n - 2);
     })
     
     res = fib(10)

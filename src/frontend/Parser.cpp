@@ -1257,7 +1257,7 @@ namespace jc {
                 if (match({ TokenType::LPAREN })) {
                     if (!check(TokenType::RPAREN)) {
                         do {
-                            args.push_back(expression());
+                            args.push_back(assignment());
                         } while (match({ TokenType::COMMA }));
                     }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");

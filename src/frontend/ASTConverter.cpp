@@ -597,6 +597,51 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
     throw std::runtime_error("Macro Error: Unsupported pattern type '" + type + "'");
 }
 
+static TokenType stringToTokenType(const std::string& s) {
+    if (s == "+") return TokenType::PLUS;
+    if (s == "-") return TokenType::MINUS;
+    if (s == "*") return TokenType::STAR;
+    if (s == "/") return TokenType::SLASH;
+    if (s == "^") return TokenType::CARET;
+    if (s == "\\") return TokenType::BACKSLASH;
+    if (s == "%") return TokenType::PERCENT;
+    if (s == "=") return TokenType::ASSIGN;
+    if (s == "==") return TokenType::EQUAL;
+    if (s == "=>") return TokenType::ARROW;
+    if (s == "->") return TokenType::RIGHT_ARROW;
+    if (s == "|>") return TokenType::PIPE;
+    if (s == "!=") return TokenType::BANG_EQUAL;
+    if (s == "+=") return TokenType::PLUS_ASSIGN;
+    if (s == "-=") return TokenType::MINUS_ASSIGN;
+    if (s == "*=") return TokenType::STAR_ASSIGN;
+    if (s == "/=") return TokenType::SLASH_ASSIGN;
+    if (s == "%=") return TokenType::PERCENT_ASSIGN;
+    if (s == "^=") return TokenType::CARET_ASSIGN;
+    if (s == "\\=") return TokenType::BACKSLASH_ASSIGN;
+    if (s == "&=") return TokenType::BIT_AND_ASSIGN;
+    if (s == "|=") return TokenType::BIT_OR_ASSIGN;
+    if (s == "^^=") return TokenType::BIT_XOR_ASSIGN;
+    if (s == "<<=") return TokenType::SHIFT_LEFT_ASSIGN;
+    if (s == ">>=") return TokenType::SHIFT_RIGHT_ASSIGN;
+    if (s == "&&") return TokenType::AND_AND;
+    if (s == "||") return TokenType::OR_OR;
+    if (s == "!") return TokenType::BANG;
+    if (s == "~") return TokenType::TILDE;
+    if (s == "&") return TokenType::BIT_AND;
+    if (s == "|") return TokenType::BIT_OR;
+    if (s == "^^") return TokenType::BIT_XOR;
+    if (s == "<<") return TokenType::SHIFT_LEFT;
+    if (s == ">>") return TokenType::SHIFT_RIGHT;
+    if (s == ">") return TokenType::GREATER;
+    if (s == ">=") return TokenType::GREATER_EQUAL;
+    if (s == "<") return TokenType::LESS;
+    if (s == "<=") return TokenType::LESS_EQUAL;
+    if (s == "in") return TokenType::IN;
+    if (s == "...") return TokenType::ELLIPSIS;
+    if (s == "$") return TokenType::DOLLAR;
+    return TokenType::IDENTIFIER;
+}
+
 std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     if (val.isNone()) return nullptr;
     if (!val.isInstance()) throw std::runtime_error("Macro Error: Expected ASTNode instance");
@@ -632,11 +677,13 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     if (type == "Binary") {
         auto left = JC2_to_AST(getProp("left"));
         auto right = JC2_to_AST(getProp("right"));
-        Token op(TokenType::IDENTIFIER, getProp("op").asString(), line); // Fallback to IDENTIFIER for now
+        std::string opStr = getProp("op").asString();
+        Token op(stringToTokenType(opStr), opStr, line);
         return std::make_unique<Binary>(std::move(left), op, std::move(right));
     } else if (type == "Unary") {
         auto right = JC2_to_AST(getProp("right"));
-        Token op(TokenType::IDENTIFIER, getProp("op").asString(), line);
+        std::string opStr = getProp("op").asString();
+        Token op(stringToTokenType(opStr), opStr, line);
         return std::make_unique<Unary>(op, std::move(right));
     } else if (type == "Literal") {
         return std::make_unique<Literal>(

@@ -1,0 +1,70 @@
+test_basic_quote() = {
+    macro twice(node) = {
+        return quote {
+            $node
+            $node
+        }
+    }
+    
+    counter = 0
+    @twice { counter += 1 }
+    assert(counter == 2, "Basic quote/unquote failed")
+}
+test_basic_quote()
+
+test_ast_manipulation() = {
+    macro swap(node) = {
+        match (node) {
+            {type: "Block", statements: stmts} => {
+                a = stmts[0]
+                b = stmts[1]
+                return quote {
+                    local temp = $a
+                    $a = $b
+                    $b = temp
+                }
+            }
+            _ => throw "Expected a block"
+        }
+    }
+    
+    x = 10
+    y = 20
+    @swap { x; y }
+    assert(x == 20 && y == 10, "AST manipulation (swap) failed")
+}
+test_ast_manipulation()
+
+test_quote_returns_ast() = {
+    node = quote { 1 + 2 }
+    assert(node.type == "Block", "Quote should return ASTNode Block")
+    
+    bin_op = node.statements[0]
+    assert(bin_op.type == "Binary" && bin_op.op == "+", "Quote inner AST structure failed")
+    assert(bin_op.left.value == "1" && bin_op.right.value == "2", "Quote inner AST values failed")
+}
+test_quote_returns_ast()
+
+test_macro_errors() = {
+    try {
+        compileCode("macro bad(n) = { return 1 }; @bad { 1 }")
+        assert(false, "Should throw when macro doesn't return ASTNode")
+    } catch (e) {
+        assert("did not return a valid ASTNode" in str(e), "Wrong error for invalid macro return")
+    }
+
+    try {
+        compileCode("x = 1; $x")
+        assert(false, "Should throw when unquote is used outside quote")
+    } catch (e) {
+        assert("Syntax Error" in str(e), "Wrong error for unquote outside quote")
+    }
+    
+    try {
+        compileCode("macro foo(n) = { return quote { 1 } }; foo(1)")
+        assert(false, "Should throw when macro is called as a normal function")
+    } catch (e) {
+        assert("Syntax Error" in str(e) || "not defined" in str(e), "Wrong error for normal macro call")
+    }
+}
+test_macro_errors()

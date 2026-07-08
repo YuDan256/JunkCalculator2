@@ -2,15 +2,15 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.4.5.0
+# Junk Calculator 2.5.0.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.5.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.0.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
-A scripting language and computer algebra system (CAS) implemented in C++20. It relies on a custom bytecode compiler and a stack-based virtual machine, requiring no third-party dependencies.
+A scripting language and computer algebra system (CAS) implemented in C++20. It relies on a custom bytecode compiler and a register-based virtual machine, requiring no third-party dependencies.
 
 Developed by Yu Liangyang, Tsinghua University.
 
@@ -21,8 +21,8 @@ Developed by Yu Liangyang, Tsinghua University.
 ### Architecture
 - **Lexer**: Tokenizer supporting over 55 token types, including string interpolation (`f""`), raw strings with custom delimiters (`r"TAG()TAG"`), alternating single/double quotes, imaginary suffixes (`3i`), and variadic ellipsis (`...`).
 - **Parser**: Recursive descent parser producing an AST (Abstract Syntax Tree) with over 30 node types. Supports operator precedence, block statements, comma sequence evaluation, and destructuring.
-- **Compiler**: AST-to-bytecode compiler utilizing the Visitor pattern. Handles lexical scoping, auto-local variable declaration, loop patching, and closure capture.
-- **Virtual Machine**: Stack-based bytecode interpreter. Implements inline caching, tail call optimization (TCO), late-binding for function calls, exception handling with line-number unwinding, an interactive step-debugger, execution profiling, and dynamic operator dispatching.
+- **Compiler**: Features a Sea of Nodes Intermediate Representation (IR) and Static Single Assignment (SSA) form. Includes a multi-pass optimization pipeline (CSE, DCE, Constant Folding) and utilizes Graph Coloring for register allocation.
+- **Virtual Machine**: Register-based bytecode interpreter. Implements inline caching, low-level fast paths, tail call optimization (TCO), exception handling with line-number unwinding, an interactive step-debugger, execution profiling, and dynamic operator dispatching.
 
 ### Language Semantics
 - **Type System & Memory Management**: NaN-boxing backed dynamic typing supporting 20+ internal types (including hidden types). 
@@ -68,48 +68,29 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.4.5.0
+## What's New in v2.5.0.0
 
-### Language Features & Syntax
-- **Internationalization & Encoding**: Full UTF-8 support, allowing non-ASCII characters (e.g., Chinese) as identifiers; built-in string functions now process by Codepoint instead of byte.
-- **Comments & Interaction**:
-  - Added nested multi-line comment support `/* ... */`.
-  - Added `/silent` REPL command to suppress expression evaluation output.
-- **Logical Operators**: `&&` and `||` now strictly return boolean values (`true` or `false`) instead of the original operands.
+### Core Architecture Overhaul
+- **Migration to Register VM**: Completely deprecated the Stack VM in favor of a modern Register-based Virtual Machine, unifying the execution engine and semantics.
+- **Sea of Nodes IR & SSA**: Deeply refactored the compiler frontend to introduce a Sea of Nodes Intermediate Representation (IR) and Static Single Assignment (SSA) form.
+- **Graph Coloring Register Allocation**: Implemented a graph coloring register allocator with greedy register coalescing to eliminate redundant data movement instructions.
 
-### Compiler & Frontend Optimizations
-- **Constant Folding Enhancement**: Correctly propagates and reports math errors (e.g., division by zero) during compile-time constant folding.
+### Compiler & Optimizer Enhancements
+- **Multi-Pass Optimization Pipeline**: Added Common Subexpression Elimination (CSE), Dead Code Elimination (DCE), Constant Folding, and Peephole optimizations.
+- **Control Flow & Closures**: Hardened Phi node destruction, SSA boundary handling, destructuring, and complex environment escaping/register pinning during closure upvalue capture.
 
-### Virtual Machine & Memory Management
-- **Hashing & Security**:
-  - Replaced the underlying hash algorithm from `std::hash` to SipHash-2-4 with random seed support, effectively mitigating hash collision and injection attacks.
-  - Unified and hardened equality and hashing rules for numeric types (Fraction, BigInt, double) to ensure precision consistency.
-- **Performance Optimizations**:
-  - Optimized dunder method dispatch by eliminating redundant hash table lookups.
-  - Switched built-in function closures to a weak reference cache mechanism, significantly reducing long-term memory footprint.
+### Extreme Runtime Performance
+- **Inline Caching (IC)**: Introduced inline caching for built-ins, class methods, dictionary properties, and global variables, drastically reducing hash lookup overhead.
+- **Low-Level Fast Paths**: Added fast paths for integer arithmetic, bitwise operations, truthiness checks, and ASCII/UTF-8 string indexing/comparisons.
+- **Iterators & Strings**: Implemented zero-copy `for-in` iteration, native iterator slot caching, and extracted string interning into a standalone global memory pool.
 
-### Mathematics & CAS Engine
-- **BigInt & Factorization**:
-  - Upgraded BigInt underlying storage from base 10^9 to 2^32, completely refactoring core calculation algorithms to eliminate division instructions in inner loops.
-  - Optimized Pollard's rho algorithm (Brent's cycle finding, GCD batching, small prime trial division) and integrated Lenstra Elliptic Curve Factorization (ECM) to drastically improve large integer factorization performance.
-- **Prime Engine Upgrade**:
-  - Upgraded prime table storage to the highly compressed binary JCP1 format, supporting O(1) access and dynamic extension.
-  - Introduced segmented sieve of Eratosthenes and pure 64-bit hardware Miller-Rabin primality testing, boosting prime generation and verification speed by thousands of times.
-- **CAS & Calculus**:
-  - Fixed Gruntz limit algorithm handling of variable exponents (e.g., `x^x`) and hidden logarithmic terms.
-  - Added `toFrac` function to precisely convert floating-point numbers to `Fraction` rationals.
+### Memory Management & GC Robustness
+- **Expanded GC Roots**: Included main script constants, inline caches, temporary locals, and native class allocations in GC Roots, fixing memory leaks during exception unwinding and higher-order functions.
+- **Reduced GC Pressure**: Released dead registers promptly via liveness analysis, eliminating the O(N) sweep scanning overhead during Garbage Collection.
 
-### Native Modules & Standard Library
-- **Module Decoupling & C ABI**:
-  - Completely decoupled all native extension modules (image, tensor, prob, bytes, ffi, socket, json, latex, window) into standalone dynamic libraries (DLL/SO).
-  - Defined a stable pure C ABI extension interface (`jc2_extension_api.h`), supporting third-party extensions written in C/C++, Rust, Zig, etc.
-  - Enabled dynamic libraries to inject help documentation into the main program at initialization.
-- **Tensor Module**: A newly implemented high-performance tensor computation module, fully supporting automatic differentiation (Autograd), multi-dimensional broadcasting, matrix interop, and common machine learning operators.
-- **Regular Expressions**: The `regex` engine now supports lazy quantifiers (e.g., `*?`, `+?`) and backreferences (e.g., `\1`).
-
-### Build System & Testing
-- **Extension Module Build**: Native extension DLLs are now uniformly output to the `modules/` directory, and the `import` instruction prioritizes this directory; added independent test suites for each extension module.
-- **Cross-Platform Compilation**: Added static linking flags for MinGW (GCC) to ensure the generation of portable, dependency-free binaries.
+### Debugging & Toolchain Upgrades
+- **Enhanced Interactive Debugger**: Ported the interactive step-debugger to the register machine with enhanced expression evaluation (supporting direct register expression computation).
+- **IR & Bytecode Analysis**: Added the `/ir` command and `--ir` flag for Intermediate Representation graph output, and refined register bytecode disassembly with inline constants and name annotations.
 
 ---
 
@@ -141,7 +122,8 @@ Requires a C++20 compliant compiler and CMake 3.15+.
 
     +-- src/
     |   +-- main.cpp                Entry point, CLI parser, and Workspace I/O
-    |   +-- frontend/               Frontend components (Lexer, Parser, Compiler, AST, Highlight)
+    |   +-- frontend/               Frontend syntax components (Lexer, Parser, AST, Highlight)
+    |   +-- compiler/               Compiler backend (IRBuilder, Optimizer, Emitter, RegAlloc)
     |   +-- vm/                     Virtual Machine core (VM, Bytecode, Builtins, Interrupts)
     |   +-- memory/                 Memory & Type System (Value variant, GcHeap)
     |   +-- math/                   Math primitives (BigInt, Fraction, Complex, Matrix, Base)

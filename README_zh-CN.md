@@ -2,15 +2,15 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.4.5.0
+# Junk Calculator 2.5.0.0
 
-![Version](https://img.shields.io/badge/Version-v2.4.5.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.0.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
-一个基于 C++20 实现的脚本语言及计算机代数系统 (CAS)。该方案采用自定义字节码编译器和基于栈的虚拟机执行，**完全无第三方依赖**。
+一个基于 C++20 实现的脚本语言及计算机代数系统 (CAS)。该方案采用自定义字节码编译器和基于寄存器的虚拟机执行，**完全无第三方依赖**。
 
 由清华大学 Yu Liangyang 开发。
 
@@ -21,8 +21,8 @@
 ### 底层架构
 - **词法分析器 (Lexer)**：支持超过 55 种词法单元，涵盖字符串插值 (`f""`)、自定义定界符原始字符串 (`r"TAG()TAG"`)、交替单双引号、虚数后缀 (`3i`) 以及可变长参数 (`...`)。
 - **语法分析器 (Parser)**：递归下降解析器，生成包含 30 余种节点类型的抽象语法树 (AST)。支持运算符优先级、块语句、逗号序列求值以及解构提取。
-- **编译器 (Compiler)**：采用访问者模式将 AST 编译为字节码。负责处理词法作用域、自动局部变量声明、循环补丁 (Loop Patching) 以及闭包环境的捕获。
-- **虚拟机 (Virtual Machine)**：基于栈的字节码解释器。实现了内联缓存 (Inline Caching)、尾调用优化 (TCO)、函数调用的延迟绑定 (Late-binding)、带行号回溯的异常处理、交互式步进调试器、执行性能分析器 (Profiler) 以及动态运算符分发。
+- **编译器 (Compiler)**：引入基于“节点海 (Sea of Nodes)”的中间表示 (IR) 和静态单赋值 (SSA) 形式。包含多趟优化流水线（CSE、DCE、常量折叠等），并采用图着色算法进行寄存器分配。
+- **虚拟机 (Virtual Machine)**：基于寄存器的字节码解释器。实现了内联缓存 (Inline Caching)、底层快速路径 (Fast Paths)、尾调用优化 (TCO)、带行号回溯的异常处理、交互式步进调试器、执行性能分析器 (Profiler) 以及动态运算符分发。
 
 ### 语言语义
 - **类型系统与内存管理**：由 NaN-boxing (NaN 装箱) 驱动的动态类型系统，内部包含 20 余种数据类型（含隐藏类型）。
@@ -68,48 +68,29 @@
 
 ---
 
-## v2.4.5.0 版本更新说明
+## v2.5.0.0 版本更新说明
 
-### 语言特性与语法
-- **国际化与字符编码**：全面支持 UTF-8，允许使用中文等非 ASCII 字符作为标识符；内置字符串函数按字符（Codepoint）而非字节处理。
-- **注释与交互**：
-  - 新增嵌套多行注释支持 `/* ... */`。
-  - 新增 `/silent` REPL 命令，可隐藏表达式求值输出。
-- **逻辑运算符**：`&&` 和 `||` 现在严格返回布尔值（`true` 或 `false`），不再返回操作数原始值。
+### 核心架构颠覆
+- **全面迁移至寄存器虚拟机 (Register VM)**：彻底废弃旧版的栈式虚拟机，全面拥抱基于寄存器的虚拟机架构，并统一了相关的执行引擎和语义。
+- **引入 Sea of Nodes IR 与 SSA**：编译器前端深度重构，引入基于“节点海”的中间表示 (IR) 和静态单赋值 (SSA) 形式。
+- **图着色寄存器分配**：实现了基于图着色算法的寄存器分配器，支持贪婪寄存器合并 (Register Coalescing) 以消除冗余的数据移动指令。
 
-### 编译器与前端优化
-- **常量折叠增强**：在编译期常量折叠时，能够正确传播并报告数学错误（如除零异常）。
+### 编译器与优化器增强
+- **多趟优化流水线**：新增公共子表达式消除 (CSE)、死代码消除 (DCE)、常量折叠以及窥孔优化 (Peephole)。
+- **控制流与闭包修复**：完善了 Phi 节点销毁、SSA 边界处理、解构赋值以及闭包上值 (Upvalue) 捕获时的复杂环境逃逸和寄存器固定机制。
 
-### 虚拟机与内存管理
-- **哈希与安全**：
-  - 将底层哈希算法从 `std::hash` 替换为 SipHash-2-4，并引入随机种子，有效抵御哈希碰撞与注入攻击。
-  - 统一并硬化了数值类型（Fraction、BigInt、double）的判等与哈希规则，确保精度一致性。
-- **性能优化**：
-  - 优化魔术方法（Dunder Methods）调度，消除冗余的哈希表查找。
-  - 内置函数闭包改用弱引用缓存机制，显著降低长期驻留内存的开销。
+### 极致的运行时性能优化
+- **内联缓存 (Inline Caching)**：为内置函数、类方法、字典属性访问及全局变量引入内联缓存，大幅降低哈希查找开销。
+- **底层快速路径 (Fast Paths)**：针对整数运算、位运算、真值判断、ASCII/UTF-8 字符串索引与比较添加了底层快速路径。
+- **迭代器与字符串优化**：实现零拷贝的 `for-in` 迭代、原生迭代器槽位缓存，并将字符串驻留 (String Interning) 提取为独立的全局内存池。
 
-### 数学与 CAS 引擎
-- **大整数与分解算法**：
-  - BigInt 底层存储从 $10^9$ 升级为 $2^{32}$ 进制，全面重构核心计算算法，消除内层循环的除法指令。
-  - 优化 Pollard's rho 算法（引入 Brent's 判圈、GCD 批量化及小素数轮除法），并结合 Lenstra 椭圆曲线分解法 (ECM) 大幅提升大整数分解性能。
-- **质数引擎升级**：
-  - 质数表存储格式升级为高压缩率的二进制 JCP1 格式，支持 O(1) 访问与动态扩容。
-  - 引入分段埃拉托斯特尼筛法和纯 64 位硬件级 Miller-Rabin 素性测试，质数生成与校验速度提升数千倍。
-- **CAS 与微积分**：
-  - 修复了 Gruntz 极限算法对变量指数（如 `x^x`）和对数隐藏项的处理。
-  - 新增 `toFrac` 函数，可将浮点数精确还原为 `Fraction` 有理数。
+### 内存管理与 GC 健壮性
+- **GC 根节点扩充**：将主脚本常量、内联缓存、临时局部变量及原生类分配纳入 GC Root，修复大量因异常展开或高阶函数导致的内存泄漏。
+- **降低 GC 压力**：通过活跃度分析 (Liveness Analysis) 及时释放死寄存器，消除 GC 标记-清除阶段的 O(N) 扫描开销。
 
-### 原生模块与标准库
-- **模块解耦与 C ABI**：
-  - 将所有原生扩展模块（image、tensor、prob、bytes、ffi、socket、json、latex、window）彻底解耦为独立的动态链接库（DLL/SO）。
-  - 定义了稳定的纯 C ABI 扩展接口（`jc2_extension_api.h`），支持使用 C/C++、Rust、Zig 等语言编写第三方扩展。
-  - 支持动态库在初始化时向主程序动态注入帮助文档。
-- **Tensor 模块**：全新实现的高性能张量计算模块，完整支持自动微分（Autograd）、多维广播机制、矩阵互操作及常用机器学习算子。
-- **正则表达式**：`regex` 引擎新增对非贪婪量词（如 `*?`, `+?`）和反向引用（如 `\1`）的支持。
-
-### 构建系统与测试
-- **扩展模块构建**：原生扩展 DLL 统一输出至 `modules/` 目录，`import` 指令优先在该目录查找；为每个扩展模块补充了独立的测试套件。
-- **跨平台编译**：为 MinGW (GCC) 补充了静态链接标志，确保生成不依赖外部运行时的绿色版二进制文件。
+### 调试体验与工具链升级
+- **更强大的交互式调试器**：为寄存器机补全了交互式步进调试器，并增强了表达式求值功能（支持直接计算寄存器表达式）。
+- **IR 与字节码分析**：新增 `/ir` 命令和 `--ir` 标志用于输出中间表示图，并完善了寄存器字节码的反汇编输出（附带内联常量和名称注释）。
 
 ---
 
@@ -141,7 +122,8 @@
 
     +-- src/
     |   +-- main.cpp                引擎入口，CLI 解析及工作区环境控制
-    |   +-- frontend/               前端编译组件 (Lexer, Parser, Compiler, AST, Highlight)
+    |   +-- frontend/               前端语法组件 (Lexer, Parser, AST, Highlight)
+    |   +-- compiler/               中后端编译组件 (IRBuilder, Optimizer, Emitter, RegAlloc)
     |   +-- vm/                     虚拟机核心 (VM, Bytecode, BuiltinRegistry, 中断控制)
     |   +-- memory/                 内存与类型系统 (Value 动态类型, GcHeap 垃圾回收)
     |   +-- math/                   基础数学库 (BigInt, Fraction, Complex, Matrix, Base)

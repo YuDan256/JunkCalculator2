@@ -81,6 +81,7 @@
       "    dict        Dictionary (key-value store)",
       "    set         Unordered deduplicated Set (reference semantics)",
       "    class       Classes, instances, inheritance, operator overloading",
+      "    macro       Compile-time Metaprogramming (AST Macros)",
       "    error       Error handling (try/catch/throw/pcall)",
       "    fileio      File I/O (read, write, CSV, directory)",
       "    import      Code reuse (import libraries and scripts)",
@@ -89,7 +90,7 @@
       "  ────────────────────────────────────────────────────────────────────",
       "    if  else  while  for  in  break  continue  return  switch  case  match",
       "    class  extends  super  self  namespace  ref  state  const  delete",
-      "    try  catch  throw  import  true  false  none",
+      "    try  catch  throw  import  true  false  none  macro  quote",
       "",
       "  Native Modules (require `import` before use)",
       "  ────────────────────────────────────────────────────────────────────",
@@ -2469,6 +2470,74 @@
       "    • Variables bound in a pattern are strictly local to that branch's body.",
       "    • Patterns are evaluated top-to-bottom. The first match wins.",
       "    • If no pattern matches, the expression safely returns `none`."
+    ],
+    "macro": [
+      "═══ Compile-Time Metaprogramming (Macros) ═══",
+      "",
+      "  Macros in JC2 allow you to write code that generates code. They run at",
+      "  COMPILE TIME (during parsing), taking Abstract Syntax Tree (AST) nodes",
+      "  as input and returning new AST nodes to replace the macro call.",
+      "",
+      "  Defining a Macro",
+      "  ──────────────────────",
+      "    macro time_it(node) = {",
+      "        return quote {",
+      "            local _start = clock()",
+      "            $node",
+      "            println(\"Execution time:\", clock() - _start)",
+      "        }",
+      "    }",
+      "",
+      "    • Macros are defined using the `macro` keyword.",
+      "    • They must take exactly one parameter (the AST node).",
+      "    • They are executed immediately upon definition by the compiler.",
+      "",
+      "  Calling a Macro",
+      "  ──────────────────────",
+      "    Use the `@` prefix to call a macro. You can pass a block `{}` or an expression `()`.",
+      "      @time_it {",
+      "          sleep(1)",
+      "          print(\"Done!\")",
+      "      }",
+      "",
+      "  Quote and Unquote ($)",
+      "  ──────────────────────",
+      "    • `quote { ... }` packages a block of code into an ASTNode object without",
+      "      executing it.",
+      "    • `$` (Unquote) is used inside a `quote` block to inject an existing ASTNode",
+      "      into the generated code.",
+      "      ",
+      "      macro twice(expr) = {",
+      "          return quote {",
+      "              $expr",
+      "              $expr",
+      "          }",
+      "      }",
+      "",
+      "  ASTNode Manipulation",
+      "  ──────────────────────",
+      "    Macros receive and return instances of the built-in `ASTNode` class.",
+      "    You can inspect and modify these nodes using pattern matching or direct",
+      "    property access.",
+      "",
+      "      macro swap(node) = {",
+      "          match (node) {",
+      "              {type: \"Block\", statements: stmts} => {",
+      "                  a = stmts[0]",
+      "                  b = stmts[1]",
+      "                  return quote {",
+      "                      local temp = $a",
+      "                      $a = $b",
+      "                      $b = temp",
+      "                  }",
+      "              }",
+      "              _ => throw \"Expected a block with 2 statements\"",
+      "          }",
+      "      }",
+      "",
+      "      x = 10; y = 20",
+      "      @swap { x; y }",
+      "      // x is now 20, y is now 10"
     ],
     "error": [
       "═══ Error Handling & Tracebacks ═══",
@@ -5938,6 +6007,31 @@
       "examples": [
         "x = none",
         "if (isnone(x)) print(\"no value\")"
+      ]
+    },
+    "macro": {
+      "signature": "macro name(param) = { body }",
+      "desc": [
+        "Defines a compile-time macro.",
+        "Macros take an ASTNode as input and return an ASTNode.",
+        "They are executed during the parsing phase.",
+        "See also: /help macro (topic)"
+      ],
+      "examples": [
+        "macro debug(expr) = quote { println(\"Value:\", $expr) }"
+      ]
+    },
+    "quote": {
+      "signature": "quote { body }  |  quote expr",
+      "desc": [
+        "Packages a block of code or an expression into an ASTNode without executing it.",
+        "Used inside macros to generate code.",
+        "Use the `$` prefix inside a quote block to inject (unquote) an existing ASTNode.",
+        "See also: /help macro (topic)"
+      ],
+      "examples": [
+        "ast = quote { print(\"Hello\") }",
+        "macro run_twice(n) = quote { $n; $n }"
       ]
     }
   }

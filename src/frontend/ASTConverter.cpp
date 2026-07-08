@@ -156,7 +156,7 @@ public:
                 {"defaultExpr", defVal}
             });
         }
-        throw std::runtime_error("AST_to_JC2: Unsupported pattern type");
+        throw std::runtime_error("Macro Error: Unsupported pattern type");
     }
 
     void visitBlock(Block* expr) override {
@@ -594,16 +594,16 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
     } else if (type == "DefaultPattern") {
         return std::make_unique<DefaultPattern>(jc2ToPattern(getProp("inner")), JC2_to_AST(getProp("defaultExpr")));
     }
-    throw std::runtime_error("JC2_to_AST: Unsupported pattern type '" + type + "'");
+    throw std::runtime_error("Macro Error: Unsupported pattern type '" + type + "'");
 }
 
 std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     if (val.isNone()) return nullptr;
-    if (!val.isInstance()) throw std::runtime_error("JC2_to_AST: Expected ASTNode instance");
+    if (!val.isInstance()) throw std::runtime_error("Macro Error: Expected ASTNode instance");
     
     auto inst = val.asInstance();
     if (!inst->classDef || inst->classDef->name != "ASTNode") {
-        throw std::runtime_error("JC2_to_AST: Expected ASTNode instance");
+        throw std::runtime_error("Macro Error: Expected ASTNode instance");
     }
     
     auto getProp = [&](const std::string& key) -> Value {
@@ -977,7 +977,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         );
     }
 
-    throw std::runtime_error("JC2_to_AST: Unsupported node type '" + type + "'");
+    throw std::runtime_error("Macro Error: Unsupported node type '" + type + "'");
 }
 
 } // namespace jc

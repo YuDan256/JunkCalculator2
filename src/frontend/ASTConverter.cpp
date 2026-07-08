@@ -83,49 +83,49 @@ public:
     }
 
     // TODO: Implement other visitor methods as needed for macros
-    void visitCall(Call* expr) override { throw std::runtime_error("AST_to_JC2: Call not implemented yet"); }
-    void visitMatrixNode(MatrixNode* expr) override { throw std::runtime_error("AST_to_JC2: MatrixNode not implemented yet"); }
-    void visitIfExpr(IfExpr* expr) override { throw std::runtime_error("AST_to_JC2: IfExpr not implemented yet"); }
-    void visitWhileExpr(WhileExpr* expr) override { throw std::runtime_error("AST_to_JC2: WhileExpr not implemented yet"); }
-    void visitForExpr(ForExpr* expr) override { throw std::runtime_error("AST_to_JC2: ForExpr not implemented yet"); }
-    void visitBreakExpr(BreakExpr* expr) override { throw std::runtime_error("AST_to_JC2: BreakExpr not implemented yet"); }
-    void visitContinueExpr(ContinueExpr* expr) override { throw std::runtime_error("AST_to_JC2: ContinueExpr not implemented yet"); }
-    void visitReturnExpr(ReturnExpr* expr) override { throw std::runtime_error("AST_to_JC2: ReturnExpr not implemented yet"); }
-    void visitIndexAccess(IndexAccess* expr) override { throw std::runtime_error("AST_to_JC2: IndexAccess not implemented yet"); }
-    void visitIndexAssign(IndexAssign* expr) override { throw std::runtime_error("AST_to_JC2: IndexAssign not implemented yet"); }
-    void visitLocalDecl(LocalDecl* expr) override { throw std::runtime_error("AST_to_JC2: LocalDecl not implemented yet"); }
-    void visitRefDecl(RefDecl* expr) override { throw std::runtime_error("AST_to_JC2: RefDecl not implemented yet"); }
-    void visitStateDecl(StateDecl* expr) override { throw std::runtime_error("AST_to_JC2: StateDecl not implemented yet"); }
-    void visitConstDecl(ConstDecl* expr) override { throw std::runtime_error("AST_to_JC2: ConstDecl not implemented yet"); }
-    void visitDeleteExpr(DeleteExpr* expr) override { throw std::runtime_error("AST_to_JC2: DeleteExpr not implemented yet"); }
-    void visitCompoundAssign(CompoundAssign* expr) override { throw std::runtime_error("AST_to_JC2: CompoundAssign not implemented yet"); }
-    void visitLambdaExpr(LambdaExpr* expr) override { throw std::runtime_error("AST_to_JC2: LambdaExpr not implemented yet"); }
-    void visitInvokeExpr(InvokeExpr* expr) override { throw std::runtime_error("AST_to_JC2: InvokeExpr not implemented yet"); }
-    void visitForInExpr(ForInExpr* expr) override { throw std::runtime_error("AST_to_JC2: ForInExpr not implemented yet"); }
-    void visitThrowExpr(ThrowExpr* expr) override { throw std::runtime_error("AST_to_JC2: ThrowExpr not implemented yet"); }
-    void visitTryCatchExpr(TryCatchExpr* expr) override { throw std::runtime_error("AST_to_JC2: TryCatchExpr not implemented yet"); }
-    void visitImportExpr(ImportExpr* expr) override { throw std::runtime_error("AST_to_JC2: ImportExpr not implemented yet"); }
-    void visitSwitchExpr(SwitchExpr* expr) override { throw std::runtime_error("AST_to_JC2: SwitchExpr not implemented yet"); }
-    void visitClassDefExpr(ClassDefExpr* expr) override { throw std::runtime_error("AST_to_JC2: ClassDefExpr not implemented yet"); }
-    void visitNamespaceDecl(NamespaceDecl* expr) override { throw std::runtime_error("AST_to_JC2: NamespaceDecl not implemented yet"); }
-    void visitDotAccess(DotAccess* expr) override { throw std::runtime_error("AST_to_JC2: DotAccess not implemented yet"); }
-    void visitDotAssign(DotAssign* expr) override { throw std::runtime_error("AST_to_JC2: DotAssign not implemented yet"); }
-    void visitMethodCallExpr(MethodCallExpr* expr) override { throw std::runtime_error("AST_to_JC2: MethodCallExpr not implemented yet"); }
-    void visitSuperExpr(SuperExpr* expr) override { throw std::runtime_error("AST_to_JC2: SuperExpr not implemented yet"); }
-    void visitSelfExpr(SelfExpr* expr) override { throw std::runtime_error("AST_to_JC2: SelfExpr not implemented yet"); }
-    void visitDestructAssign(DestructAssign* expr) override { throw std::runtime_error("AST_to_JC2: DestructAssign not implemented yet"); }
-    void visitFStringExpr(FStringExpr* expr) override { throw std::runtime_error("AST_to_JC2: FStringExpr not implemented yet"); }
-    void visitListCompExpr(ListCompExpr* expr) override { throw std::runtime_error("AST_to_JC2: ListCompExpr not implemented yet"); }
-    void visitDictLiteral(DictLiteral* expr) override { throw std::runtime_error("AST_to_JC2: DictLiteral not implemented yet"); }
-    void visitSetLiteral(SetLiteral* expr) override { throw std::runtime_error("AST_to_JC2: SetLiteral not implemented yet"); }
-    void visitSliceExpr(SliceExpr* expr) override { throw std::runtime_error("AST_to_JC2: SliceExpr not implemented yet"); }
-    void visitSequenceExpr(SequenceExpr* expr) override { throw std::runtime_error("AST_to_JC2: SequenceExpr not implemented yet"); }
-    void visitMatchExpr(MatchExpr* expr) override { throw std::runtime_error("AST_to_JC2: MatchExpr not implemented yet"); }
-    void visitGroupingExpr(GroupingExpr* expr) override { throw std::runtime_error("AST_to_JC2: GroupingExpr not implemented yet"); }
-    void visitMacroDefExpr(MacroDefExpr* expr) override { throw std::runtime_error("AST_to_JC2: MacroDefExpr not implemented yet"); }
-    void visitMacroCallExpr(MacroCallExpr* expr) override { throw std::runtime_error("AST_to_JC2: MacroCallExpr not implemented yet"); }
-    void visitQuoteExpr(QuoteExpr* expr) override { throw std::runtime_error("AST_to_JC2: QuoteExpr not implemented yet"); }
-    void visitUnquoteExpr(UnquoteExpr* expr) override { throw std::runtime_error("AST_to_JC2: UnquoteExpr not implemented yet"); }
+    void visitCall(Call*) override { throw std::runtime_error("AST_to_JC2: Call not implemented yet"); }
+    void visitMatrixNode(MatrixNode*) override { throw std::runtime_error("AST_to_JC2: MatrixNode not implemented yet"); }
+    void visitIfExpr(IfExpr*) override { throw std::runtime_error("AST_to_JC2: IfExpr not implemented yet"); }
+    void visitWhileExpr(WhileExpr*) override { throw std::runtime_error("AST_to_JC2: WhileExpr not implemented yet"); }
+    void visitForExpr(ForExpr*) override { throw std::runtime_error("AST_to_JC2: ForExpr not implemented yet"); }
+    void visitBreakExpr(BreakExpr*) override { throw std::runtime_error("AST_to_JC2: BreakExpr not implemented yet"); }
+    void visitContinueExpr(ContinueExpr*) override { throw std::runtime_error("AST_to_JC2: ContinueExpr not implemented yet"); }
+    void visitReturnExpr(ReturnExpr*) override { throw std::runtime_error("AST_to_JC2: ReturnExpr not implemented yet"); }
+    void visitIndexAccess(IndexAccess*) override { throw std::runtime_error("AST_to_JC2: IndexAccess not implemented yet"); }
+    void visitIndexAssign(IndexAssign*) override { throw std::runtime_error("AST_to_JC2: IndexAssign not implemented yet"); }
+    void visitLocalDecl(LocalDecl*) override { throw std::runtime_error("AST_to_JC2: LocalDecl not implemented yet"); }
+    void visitRefDecl(RefDecl*) override { throw std::runtime_error("AST_to_JC2: RefDecl not implemented yet"); }
+    void visitStateDecl(StateDecl*) override { throw std::runtime_error("AST_to_JC2: StateDecl not implemented yet"); }
+    void visitConstDecl(ConstDecl*) override { throw std::runtime_error("AST_to_JC2: ConstDecl not implemented yet"); }
+    void visitDeleteExpr(DeleteExpr*) override { throw std::runtime_error("AST_to_JC2: DeleteExpr not implemented yet"); }
+    void visitCompoundAssign(CompoundAssign*) override { throw std::runtime_error("AST_to_JC2: CompoundAssign not implemented yet"); }
+    void visitLambdaExpr(LambdaExpr*) override { throw std::runtime_error("AST_to_JC2: LambdaExpr not implemented yet"); }
+    void visitInvokeExpr(InvokeExpr*) override { throw std::runtime_error("AST_to_JC2: InvokeExpr not implemented yet"); }
+    void visitForInExpr(ForInExpr*) override { throw std::runtime_error("AST_to_JC2: ForInExpr not implemented yet"); }
+    void visitThrowExpr(ThrowExpr*) override { throw std::runtime_error("AST_to_JC2: ThrowExpr not implemented yet"); }
+    void visitTryCatchExpr(TryCatchExpr*) override { throw std::runtime_error("AST_to_JC2: TryCatchExpr not implemented yet"); }
+    void visitImportExpr(ImportExpr*) override { throw std::runtime_error("AST_to_JC2: ImportExpr not implemented yet"); }
+    void visitSwitchExpr(SwitchExpr*) override { throw std::runtime_error("AST_to_JC2: SwitchExpr not implemented yet"); }
+    void visitClassDefExpr(ClassDefExpr*) override { throw std::runtime_error("AST_to_JC2: ClassDefExpr not implemented yet"); }
+    void visitNamespaceDecl(NamespaceDecl*) override { throw std::runtime_error("AST_to_JC2: NamespaceDecl not implemented yet"); }
+    void visitDotAccess(DotAccess*) override { throw std::runtime_error("AST_to_JC2: DotAccess not implemented yet"); }
+    void visitDotAssign(DotAssign*) override { throw std::runtime_error("AST_to_JC2: DotAssign not implemented yet"); }
+    void visitMethodCallExpr(MethodCallExpr*) override { throw std::runtime_error("AST_to_JC2: MethodCallExpr not implemented yet"); }
+    void visitSuperExpr(SuperExpr*) override { throw std::runtime_error("AST_to_JC2: SuperExpr not implemented yet"); }
+    void visitSelfExpr(SelfExpr*) override { throw std::runtime_error("AST_to_JC2: SelfExpr not implemented yet"); }
+    void visitDestructAssign(DestructAssign*) override { throw std::runtime_error("AST_to_JC2: DestructAssign not implemented yet"); }
+    void visitFStringExpr(FStringExpr*) override { throw std::runtime_error("AST_to_JC2: FStringExpr not implemented yet"); }
+    void visitListCompExpr(ListCompExpr*) override { throw std::runtime_error("AST_to_JC2: ListCompExpr not implemented yet"); }
+    void visitDictLiteral(DictLiteral*) override { throw std::runtime_error("AST_to_JC2: DictLiteral not implemented yet"); }
+    void visitSetLiteral(SetLiteral*) override { throw std::runtime_error("AST_to_JC2: SetLiteral not implemented yet"); }
+    void visitSliceExpr(SliceExpr*) override { throw std::runtime_error("AST_to_JC2: SliceExpr not implemented yet"); }
+    void visitSequenceExpr(SequenceExpr*) override { throw std::runtime_error("AST_to_JC2: SequenceExpr not implemented yet"); }
+    void visitMatchExpr(MatchExpr*) override { throw std::runtime_error("AST_to_JC2: MatchExpr not implemented yet"); }
+    void visitGroupingExpr(GroupingExpr*) override { throw std::runtime_error("AST_to_JC2: GroupingExpr not implemented yet"); }
+    void visitMacroDefExpr(MacroDefExpr*) override { throw std::runtime_error("AST_to_JC2: MacroDefExpr not implemented yet"); }
+    void visitMacroCallExpr(MacroCallExpr*) override { throw std::runtime_error("AST_to_JC2: MacroCallExpr not implemented yet"); }
+    void visitQuoteExpr(QuoteExpr*) override { throw std::runtime_error("AST_to_JC2: QuoteExpr not implemented yet"); }
+    void visitUnquoteExpr(UnquoteExpr*) override { throw std::runtime_error("AST_to_JC2: UnquoteExpr not implemented yet"); }
 };
 
 Value AST_to_JC2(Expr* expr) {

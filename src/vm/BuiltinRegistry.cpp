@@ -1642,6 +1642,30 @@ void BuiltinRegistry::registerSystemUtils() {
     reg("convertPrimes", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString() || !args[1].isString()) throw std::runtime_error("Type Error: convertPrimes() expects two strings (txtPath, binPath)."); BigInt::convertTxtToJCP1(helpers::safeResolvePath(args[0].asString()), helpers::safeResolvePath(args[1].asString())); return Value::none(); });
     reg("verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); });
     reg("sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); });
+
+    reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+        static uint64_t counter = 0;
+        std::string prefix = "gensym";
+        if (args.size() == 1 && args[0].isString()) {
+            prefix = args[0].asString();
+        }
+        // ★ 使用尖括号包裹，生成词法上“非法”但 VM 合法的绝对安全标识符
+        std::string uniqueName = "<" + prefix + "_" + std::to_string(counter++) + ">";
+        
+        auto clsVal = VM::activeVM->getBuiltinValue("ASTNode");
+        if (!clsVal.isClass()) throw std::runtime_error("ASTNode class not found");
+        
+        ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
+        GcObjGuard instGuard(inst);
+        inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
+        inst->fields = GcHeap::get().allocate<ObjDict>();
+        
+        inst->fields->set(Value("type"), Value("Variable"));
+        inst->fields->set(Value("line"), Value::fromInt32(0));
+        inst->fields->set(Value("name"), Value(uniqueName));
+        
+        return Value(inst);
+    });
     reg("gc", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         // 1. 清理符号表达式的弱引用池
         jc::SymExpr::cleanupPool();

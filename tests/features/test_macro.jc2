@@ -217,3 +217,20 @@ test_macro_identifier_unquote() = {
     assert(eval_count == 11, "Memoized function evaluated too many times")
 }
 test_macro_identifier_unquote()
+
+test_hygienic_macro() = {
+    macro hygienic_swap(a_node, b_node) = {
+        temp_var = gensym("temp")
+        return quote {
+            local $temp_var = $a_node
+            $a_node = $b_node
+            $b_node = $temp_var
+        }
+    }
+    
+    temp = 100
+    x = 10
+    @hygienic_swap(temp, x)
+    assert(temp == 10 && x == 100, "Hygienic macro failed")
+}
+test_hygienic_macro()

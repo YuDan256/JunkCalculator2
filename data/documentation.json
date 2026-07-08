@@ -2522,6 +2522,20 @@
       "          }",
       "      }",
       "",
+      "  Hygienic Macros (gensym)",
+      "  ──────────────────────",
+      "    To avoid accidental variable capture (name collisions) in macros, use",
+      "    `gensym(\"prefix\")` to generate a globally unique AST Variable node.",
+      "    ",
+      "      macro hygienic_swap(a, b) = {",
+      "          temp = gensym(\"temp\")",
+      "          return quote {",
+      "              local $temp = $a",
+      "              $a = $b",
+      "              $b = $temp",
+      "          }",
+      "      }",
+      "",
       "  ASTNode Manipulation",
       "  ──────────────────────",
       "    Macros receive and return instances of the built-in `ASTNode` class.",
@@ -6040,6 +6054,16 @@
       "examples": [
         "ast = quote { print(\"Hello\") }",
         "macro run_twice(n) = quote { $n; $n }"
+      ]
+    },
+    "gensym": {
+      "signature": "gensym([prefix])",
+      "desc": [
+        "Generates a globally unique AST Variable node.",
+        "Used in macros to create hygienic variables that will never collide with user variables."
+      ],
+      "examples": [
+        "temp_var = gensym(\"temp\")"
       ]
     }
   }

@@ -1,6 +1,12 @@
 #include "Lexer.h"  // ★ f-string 子解析需要
 #include "Parser.h"
 #include <filesystem>
+#include "../compiler/IRBuilder.h"
+#include "../compiler/IROptimizer.h"
+#include "../compiler/RegisterAllocator.h"
+#include "../compiler/Emitter.h"
+#include "../vm/VM.h"
+#include "ASTConverter.h"
 
 namespace jc {
 
@@ -1236,7 +1242,22 @@ namespace jc {
                 } else {
                     throw std::runtime_error("Parser Error: Expect '{' or '(' after macro name.");
                 }
-                return std::make_unique<MacroCallExpr>(macroName, std::move(arg));
+                
+                Value argVal = AST_to_JC2(arg.get());
+                
+                auto globals = VM::activeVM->getGlobals();
+                auto it = globals.find(macroName.lexeme);
+                if (it == globals.end() || !it->second.isFunctionClosure()) {
+                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' is not defined or not a function.");
+                }
+                
+                ObjClosure* macroFn = it->second.asFunction();
+                Value resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, {argVal}, macroFn);
+                
+                auto expandedAst = JC2_to_AST(resultVal);
+                if (!expandedAst) throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
+                
+                return expandedAst;
             }
             if (!check(TokenType::LBRACKET)) {
                 throw std::runtime_error("Parser Error: Expect '[', '{', or identifier after '@'.");
@@ -1302,12 +1323,114 @@ namespace jc {
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro parameter.");
         consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
         auto body = parseStatementOrBlock();
-        return std::make_unique<MacroDefExpr>(name, param, std::move(body));
+        
+        auto lambda = std::make_unique<LambdaExpr>(
+            name.lexeme, std::vector<Token>{param}, std::vector<bool>{false}, std::vector<bool>{false},
+            std::vector<std::shared_ptr<Expr>>{nullptr}, false,
+            std::vector<std::string>{""}, "",
+            "<macro_body>", std::shared_ptr<Expr>(body.release())
+        );
+        auto assign = std::make_unique<Assign>(name, std::move(lambda), false, false, false, false);
+
+        auto modFn = std::make_shared<CompiledFunction>();
+        modFn->name = "<macro_def " + name.lexeme + ">";
+        modFn->sourceFile = sourceFile;
+        modFn->arity = 0;
+        modFn->maxArity = 0;
+        modFn->hasRestParam = false;
+
+        IRGraph fnGraph;
+        IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions(), nullptr, modFn.get());
+        fnBuilder.build(assign.get());
+
+        IROptimizer::optimize(&fnGraph);
+        RegisterAllocator::allocate(&fnGraph);
+        modFn->localCount = Emitter::emit(&fnGraph, modFn->chunk);
+
+        VM::activeVM->execute(modFn->chunk, modFn->localCount);
+
+        return std::make_unique<Literal>("0");
+    }
+
+    std::unique_ptr<Expr> Parser::transformQuote(Expr* expr) {
+        if (!expr) return std::make_unique<Literal>("none", false, false, true);
+        
+        if (auto* unquote = dynamic_cast<UnquoteExpr*>(expr)) {
+            return std::move(unquote->expr);
+        }
+        
+        auto makeASTNodeCall = [&](const std::string& type, int line, std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props) {
+            std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> dictEntries;
+            for (auto& p : props) {
+                dictEntries.push_back({
+                    std::make_unique<Literal>(p.first, true),
+                    std::move(p.second)
+                });
+            }
+            auto dictExpr = std::make_unique<DictLiteral>(std::move(dictEntries));
+            
+            std::vector<std::unique_ptr<Expr>> args;
+            args.push_back(std::make_unique<Literal>(type, true));
+            args.push_back(std::make_unique<Literal>(std::to_string(line)));
+            args.push_back(std::move(dictExpr));
+            
+            return std::make_unique<Call>(Token(TokenType::IDENTIFIER, "ASTNode", 0, line), std::move(args));
+        };
+
+        if (auto* bin = dynamic_cast<Binary*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"op", std::make_unique<Literal>(bin->op.lexeme, true)});
+            props.push_back({"left", transformQuote(bin->left.get())});
+            props.push_back({"right", transformQuote(bin->right.get())});
+            return makeASTNodeCall("Binary", bin->op.line, std::move(props));
+        }
+        if (auto* un = dynamic_cast<Unary*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"op", std::make_unique<Literal>(un->op.lexeme, true)});
+            props.push_back({"right", transformQuote(un->right.get())});
+            return makeASTNodeCall("Unary", un->op.line, std::move(props));
+        }
+        if (auto* lit = dynamic_cast<Literal*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"value", std::make_unique<Literal>(lit->value, true)});
+            props.push_back({"isString", std::make_unique<Literal>(lit->isString ? "true" : "false", false, false, true)});
+            props.push_back({"isImaginary", std::make_unique<Literal>(lit->isImaginary ? "true" : "false", false, false, true)});
+            props.push_back({"isKeyword", std::make_unique<Literal>(lit->isKeyword ? "true" : "false", false, false, true)});
+            return makeASTNodeCall("Literal", 0, std::move(props));
+        }
+        if (auto* var = dynamic_cast<Variable*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(var->name.lexeme, true)});
+            return makeASTNodeCall("Variable", var->name.line, std::move(props));
+        }
+        if (auto* assign = dynamic_cast<Assign*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(assign->name.lexeme, true)});
+            props.push_back({"value", transformQuote(assign->value.get())});
+            props.push_back({"isRef", std::make_unique<Literal>(assign->isRef ? "true" : "false", false, false, true)});
+            props.push_back({"isState", std::make_unique<Literal>(assign->isState ? "true" : "false", false, false, true)});
+            props.push_back({"isLocal", std::make_unique<Literal>(assign->isLocal ? "true" : "false", false, false, true)});
+            props.push_back({"isConst", std::make_unique<Literal>(assign->isConst ? "true" : "false", false, false, true)});
+            return makeASTNodeCall("Assign", assign->name.line, std::move(props));
+        }
+        if (auto* block = dynamic_cast<Block*>(expr)) {
+            std::vector<std::unique_ptr<Expr>> stmtExprs;
+            for (auto& stmt : block->statements) {
+                stmtExprs.push_back(transformQuote(stmt.get()));
+            }
+            auto listCall = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(stmtExprs));
+            
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"statements", std::move(listCall)});
+            return makeASTNodeCall("Block", 0, std::move(props));
+        }
+        
+        throw std::runtime_error("Parser Error: Unsupported AST node in quote block.");
     }
 
     std::unique_ptr<Expr> Parser::quoteExpr() {
         auto body = parseStatementOrBlock();
-        return std::make_unique<QuoteExpr>(std::move(body));
+        return transformQuote(body.get());
     }
 
     std::unique_ptr<Expr> Parser::switchExpr() {

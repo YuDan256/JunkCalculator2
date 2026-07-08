@@ -122,6 +122,10 @@ public:
     void visitSequenceExpr(SequenceExpr* expr) override { throw std::runtime_error("AST_to_JC2: SequenceExpr not implemented yet"); }
     void visitMatchExpr(MatchExpr* expr) override { throw std::runtime_error("AST_to_JC2: MatchExpr not implemented yet"); }
     void visitGroupingExpr(GroupingExpr* expr) override { throw std::runtime_error("AST_to_JC2: GroupingExpr not implemented yet"); }
+    void visitMacroDefExpr(MacroDefExpr* expr) override { throw std::runtime_error("AST_to_JC2: MacroDefExpr not implemented yet"); }
+    void visitMacroCallExpr(MacroCallExpr* expr) override { throw std::runtime_error("AST_to_JC2: MacroCallExpr not implemented yet"); }
+    void visitQuoteExpr(QuoteExpr* expr) override { throw std::runtime_error("AST_to_JC2: QuoteExpr not implemented yet"); }
+    void visitUnquoteExpr(UnquoteExpr* expr) override { throw std::runtime_error("AST_to_JC2: UnquoteExpr not implemented yet"); }
 };
 
 Value AST_to_JC2(Expr* expr) {

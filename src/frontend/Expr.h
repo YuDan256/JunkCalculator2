@@ -112,6 +112,10 @@ namespace jc {
     struct SequenceExpr;
     struct MatchExpr;
     struct GroupingExpr;     // ★ 新增
+    struct MacroDefExpr;     // ★ 新增
+    struct MacroCallExpr;    // ★ 新增
+    struct QuoteExpr;        // ★ 新增
+    struct UnquoteExpr;      // ★ 新增
 
     struct DefaultPattern;   // ★ 新增
 
@@ -241,6 +245,10 @@ namespace jc {
         virtual void visitSequenceExpr(SequenceExpr* expr) = 0;
         virtual void visitMatchExpr(MatchExpr* expr) = 0;
         virtual void visitGroupingExpr(GroupingExpr* expr) = 0;
+        virtual void visitMacroDefExpr(MacroDefExpr* expr) = 0;
+        virtual void visitMacroCallExpr(MacroCallExpr* expr) = 0;
+        virtual void visitQuoteExpr(QuoteExpr* expr) = 0;
+        virtual void visitUnquoteExpr(UnquoteExpr* expr) = 0;
     };
 
     struct Expr {
@@ -752,6 +760,35 @@ namespace jc {
         explicit GroupingExpr(std::unique_ptr<Expr> expression)
             : expression(std::move(expression)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitGroupingExpr(this); }
+    };
+
+    struct MacroDefExpr : public Expr {
+        Token name;
+        Token param;
+        std::unique_ptr<Expr> body;
+        MacroDefExpr(Token name, Token param, std::unique_ptr<Expr> body)
+            : name(std::move(name)), param(std::move(param)), body(std::move(body)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitMacroDefExpr(this); }
+    };
+
+    struct MacroCallExpr : public Expr {
+        Token macroName;
+        std::unique_ptr<Expr> argument;
+        MacroCallExpr(Token macroName, std::unique_ptr<Expr> argument)
+            : macroName(std::move(macroName)), argument(std::move(argument)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitMacroCallExpr(this); }
+    };
+
+    struct QuoteExpr : public Expr {
+        std::unique_ptr<Expr> body;
+        explicit QuoteExpr(std::unique_ptr<Expr> body) : body(std::move(body)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitQuoteExpr(this); }
+    };
+
+    struct UnquoteExpr : public Expr {
+        std::unique_ptr<Expr> expr;
+        explicit UnquoteExpr(std::unique_ptr<Expr> expr) : expr(std::move(expr)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitUnquoteExpr(this); }
     };
 
 } // namespace jc

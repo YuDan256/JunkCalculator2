@@ -542,9 +542,10 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::unary() {
-        if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS })) {  // ★ 加 BANG, TILDE
+        if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS, TokenType::DOLLAR })) {  // ★ 加 BANG, TILDE, DOLLAR
             Token op = previous();
             auto right = unary();
+            if (op.type == TokenType::DOLLAR) return std::make_unique<UnquoteExpr>(std::move(right));
             return std::make_unique<Unary>(op, std::move(right));
         }
         return power();
@@ -965,7 +966,7 @@ namespace jc {
                 t == TokenType::STATE ||                          // ★
                 t == TokenType::IMPORT || t == TokenType::SWITCH ||  // ★
                 t == TokenType::CASE || t == TokenType::DEFAULT ||
-                t == TokenType::MATCH ||
+                t == TokenType::MATCH || t == TokenType::MACRO || t == TokenType::QUOTE ||
                 t == TokenType::SUPER || t == TokenType::CLASS || t == TokenType::SELF ||
                 t == TokenType::TRUE_KW || t == TokenType::FALSE_KW || t == TokenType::NONE_KW ||
                 t == TokenType::NAMESPACE; // ★ 新增
@@ -1037,6 +1038,8 @@ namespace jc {
         }
         if (match({ TokenType::SWITCH })) return switchExpr();
         if (match({ TokenType::MATCH })) return matchExpr();
+        if (match({ TokenType::MACRO })) return macroDefExpr();
+        if (match({ TokenType::QUOTE })) return quoteExpr();
         if (match({ TokenType::DELETE })) {
             std::vector<Token> names;
             names.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after 'delete'."));
@@ -1222,8 +1225,21 @@ namespace jc {
             if (check(TokenType::LBRACE)) {
                 return parseSetLiteral();
             }
+            if (check(TokenType::IDENTIFIER)) {
+                Token macroName = advance();
+                std::unique_ptr<Expr> arg;
+                if (check(TokenType::LBRACE)) {
+                    arg = parseBlock();
+                } else if (match({ TokenType::LPAREN })) {
+                    arg = expression();
+                    consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro argument.");
+                } else {
+                    throw std::runtime_error("Parser Error: Expect '{' or '(' after macro name.");
+                }
+                return std::make_unique<MacroCallExpr>(macroName, std::move(arg));
+            }
             if (!check(TokenType::LBRACKET)) {
-                throw std::runtime_error("Parser Error: Expect '[' or '{' after '@'.");
+                throw std::runtime_error("Parser Error: Expect '[', '{', or identifier after '@'.");
             }
             forceList = true;
         }
@@ -1277,6 +1293,21 @@ namespace jc {
             return std::make_unique<MatrixNode>(std::move(matrixElements), forceList);
         }
         throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");
+    }
+
+    std::unique_ptr<Expr> Parser::macroDefExpr() {
+        Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name.");
+        consume(TokenType::LPAREN, "Parser Error: Expect '(' after macro name.");
+        Token param = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro parameter name.");
+        consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro parameter.");
+        consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
+        auto body = parseStatementOrBlock();
+        return std::make_unique<MacroDefExpr>(name, param, std::move(body));
+    }
+
+    std::unique_ptr<Expr> Parser::quoteExpr() {
+        auto body = parseStatementOrBlock();
+        return std::make_unique<QuoteExpr>(std::move(body));
     }
 
     std::unique_ptr<Expr> Parser::switchExpr() {

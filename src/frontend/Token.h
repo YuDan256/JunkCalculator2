@@ -41,6 +41,7 @@ namespace jc {
         COLON,               // ★ :
         DOT, ELLIPSIS,
         AT,                  // ★ 新增：@
+        DOLLAR,              // ★ 新增：$
 
         // --- 控制流关键字 ---     // ★ 新增
         IF, ELSE, WHILE, FOR, IN,
@@ -57,6 +58,8 @@ namespace jc {
         CASE,                // ★
         DEFAULT,             // ★
         MATCH,               // ★ 新增
+        MACRO,               // ★ 新增
+        QUOTE,               // ★ 新增
         CLASS,
         NAMESPACE,           // ★ 新增
         SUPER,
@@ -148,6 +151,7 @@ namespace jc {
         case TokenType::DOT:           return "DOT(.)";
         case TokenType::ELLIPSIS:      return "ELLIPSIS(...)";
         case TokenType::AT:            return "AT(@)";
+        case TokenType::DOLLAR:        return "DOLLAR($)";
         case TokenType::CLASS:         return "CLASS";
         case TokenType::NAMESPACE:     return "NAMESPACE";
         case TokenType::SUPER:         return "SUPER";
@@ -167,6 +171,8 @@ namespace jc {
         case TokenType::CASE:          return "CASE";
         case TokenType::DEFAULT:       return "DEFAULT";
         case TokenType::MATCH:         return "MATCH";
+        case TokenType::MACRO:         return "MACRO";
+        case TokenType::QUOTE:         return "QUOTE";
         case TokenType::LOCAL:         return "LOCAL";
         case TokenType::IMPORT:        return "IMPORT";
         case TokenType::REF:           return "REF";

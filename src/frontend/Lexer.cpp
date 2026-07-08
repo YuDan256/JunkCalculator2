@@ -30,6 +30,8 @@ namespace jc {
         {"case",     TokenType::CASE},         // ★
         {"default",  TokenType::DEFAULT},      // ★
         {"match",    TokenType::MATCH},        // ★
+        {"macro",    TokenType::MACRO},        // ★
+        {"quote",    TokenType::QUOTE},        // ★
         {"class",    TokenType::CLASS},
         {"namespace",TokenType::NAMESPACE},
         {"super",    TokenType::SUPER},
@@ -130,6 +132,7 @@ namespace jc {
         case '?': addToken(TokenType::QUESTION); break;    // ★
         case ':': addToken(TokenType::COLON); break;       // ★
         case '@': addToken(TokenType::AT); break;          // ★
+        case '$': addToken(TokenType::DOLLAR); break;      // ★
         case '.':
             if (match('.') && match('.')) {
                 addToken(TokenType::ELLIPSIS);

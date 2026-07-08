@@ -707,7 +707,12 @@ int main(int argc, char* argv[]) {
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
             if (input == "/clear") { 
                 vm.clearGlobals(); 
-                std::cout << "All variables cleared.\n"; 
+                vm.setGlobal("PI", jc::Value(3.14159265358979323846));
+                vm.setGlobal("E", jc::Value(2.71828182845904523536));
+                vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
+                vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
+                vm.setGlobal("ANS", jc::Value::none());
+                std::cout << "All variables cleared (system constants restored).\n"; 
                 continue; 
             }
             if (input == "/cls") {

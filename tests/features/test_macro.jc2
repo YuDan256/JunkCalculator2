@@ -68,3 +68,60 @@ test_macro_errors() = {
     }
 }
 test_macro_errors()
+
+test_macro_expr_arg() = {
+    macro square_macro(node) = {
+        return quote {
+            $node * $node
+        }
+    }
+    
+    res = @square_macro(5 + 2)
+    assert(res == 49, "Macro with expression argument failed")
+}
+test_macro_expr_arg()
+
+test_ast_tamper() = {
+    macro tamper(node) = {
+        match (node) {
+            {type: "Block", statements: stmts} => {
+                bin_op = stmts[0]
+                // 把加号强行篡改为乘号
+                bin_op.op = "*"
+                return quote { $bin_op }
+            }
+            _ => throw "Expected a block"
+        }
+    }
+
+    res = @tamper { 2 + 3 }
+    assert(res == 6, "AST tampering failed")
+}
+test_ast_tamper()
+
+test_macro_control_flow() = {
+    macro repeat_three(node) = {
+        return quote {
+            for (local __i = 0; __i < 3; __i += 1) {
+                $node
+            }
+        }
+    }
+    
+    count = 0
+    @repeat_three { count += 10 }
+    assert(count == 30, "Macro generating control flow failed")
+}
+test_macro_control_flow()
+
+test_macro_generate_function() = {
+    macro make_adder(node) = {
+        return quote {
+            (x) => x + $node
+        }
+    }
+    
+    add_five = @make_adder(5)
+    assert(add_five(10) == 15, "Macro generating function failed")
+}
+test_macro_generate_function()

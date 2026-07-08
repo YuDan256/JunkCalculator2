@@ -1263,6 +1263,8 @@ namespace jc {
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");
                 }
                 
+                while (match({ TokenType::NEWLINE })) {}
+                
                 if (check(TokenType::LBRACE)) {
                     bool canTakeMore = macroFn->hasRestParam || (static_cast<int>(args.size()) < macroFn->maxArgs());
                     if (canTakeMore) {

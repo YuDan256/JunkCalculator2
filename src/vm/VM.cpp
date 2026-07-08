@@ -688,8 +688,12 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         newFrame.chunk = &fnDef->chunk;
         newFrame.ip = 0;
         
-        CallFrame* currentFrame = &frames[frameCount - 1];
-        int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        int newBase = 0;
+        if (frameCount > 0) {
+            CallFrame* currentFrame = &frames[frameCount - 1];
+            newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        }
+        
         newFrame.registerBase = newBase;
         newFrame.returnRegister = 0;
         newFrame.closure = method;
@@ -2065,8 +2069,12 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     newFrame.chunk = &fnDef->chunk;
     newFrame.ip = 0;
     
-    CallFrame* currentFrame = &frames[frameCount - 1];
-    int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+    int newBase = 0;
+    if (frameCount > 0) {
+        CallFrame* currentFrame = &frames[frameCount - 1];
+        newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+    }
+    
     newFrame.registerBase = newBase;
     newFrame.returnRegister = 0;
     newFrame.closure = closure;

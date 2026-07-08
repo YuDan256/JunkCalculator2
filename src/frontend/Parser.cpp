@@ -1254,7 +1254,7 @@ namespace jc {
                 ObjClosure* macroFn = it->second.asFunction();
                 std::unique_ptr<Expr> arg = nullptr;
                 
-                if (macroFn->arity > 0) {
+                if (macroFn->minArgs() > 0) {
                     if (check(TokenType::LBRACE)) {
                         arg = parseBlock();
                     } else if (match({ TokenType::LPAREN })) {
@@ -1272,7 +1272,7 @@ namespace jc {
                 Value argVal = arg ? AST_to_JC2(arg.get()) : Value::none();
                 
                 std::vector<Value> callArgs;
-                if (macroFn->arity > 0) {
+                if (macroFn->minArgs() > 0) {
                     callArgs.push_back(argVal);
                 }
                 

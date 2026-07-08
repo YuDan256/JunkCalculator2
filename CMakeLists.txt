@@ -42,7 +42,7 @@ endif()
 # Core Sources & Headers Collection
 # ==============================================================================
 set(JC2_HEADERS
-    "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h"
+    "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/ASTConverter.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/modules/image/Image.h"
@@ -56,7 +56,7 @@ set(JC2_HEADERS
 
 set(JC2_SOURCES
     "src/modules/ExtensionBridge.cpp"
-    "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp"
+    "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/ASTConverter.cpp"
     "src/compiler/IRBuilder.cpp"
     "src/compiler/IROptimizer.cpp"
     "src/compiler/RegisterAllocator.cpp"

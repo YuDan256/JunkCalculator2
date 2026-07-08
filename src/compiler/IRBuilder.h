@@ -138,6 +138,10 @@ public:
     void visitSequenceExpr(SequenceExpr* expr) override;
     void visitMatchExpr(MatchExpr* expr) override;
     void visitGroupingExpr(GroupingExpr* expr) override;
+    void visitMacroDefExpr(MacroDefExpr* expr) override;
+    void visitMacroCallExpr(MacroCallExpr* expr) override;
+    void visitQuoteExpr(QuoteExpr* expr) override;
+    void visitUnquoteExpr(UnquoteExpr* expr) override;
 };
 
 } // namespace jc

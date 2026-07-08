@@ -4065,6 +4065,22 @@ void IRBuilder::visitSequenceExpr(SequenceExpr* expr) {
     }
 }
 
+void IRBuilder::visitMacroDefExpr(MacroDefExpr*) {
+    error("Internal Compiler Error: MacroDefExpr should be eliminated during parsing.");
+}
+
+void IRBuilder::visitMacroCallExpr(MacroCallExpr*) {
+    error("Internal Compiler Error: MacroCallExpr should be eliminated during parsing.");
+}
+
+void IRBuilder::visitQuoteExpr(QuoteExpr*) {
+    error("Internal Compiler Error: QuoteExpr should be eliminated during parsing.");
+}
+
+void IRBuilder::visitUnquoteExpr(UnquoteExpr*) {
+    error("Internal Compiler Error: UnquoteExpr should be eliminated during parsing.");
+}
+
 void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     expr->subject->accept(*this);
     IRNode* subjectNode = lastValue;

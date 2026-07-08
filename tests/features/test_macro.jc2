@@ -193,8 +193,8 @@ test_macro_identifier_unquote() = {
     macro def_memo(func_name, arg_name, body) = {
         return quote {
             local __cache = {}
-            $func_name = ($arg_name) => {
-                if (__cache[$arg_name] != none) {
+            $func_name($arg_name) = {
+                if ($arg_name in __cache) {
                     return __cache[$arg_name]
                 }
                 local __res = $body
@@ -206,13 +206,14 @@ test_macro_identifier_unquote() = {
     }
     
     eval_count = 0
-    @def_memo(fib, n, {
+    local my_fib
+    @def_memo(my_fib, n, {
         eval_count += 1;
         if (n <= 1) return n;
-        return fib(n - 1) + fib(n - 2);
+        return my_fib(n - 1) + my_fib(n - 2);
     })
     
-    res = fib(10)
+    res = my_fib(10)
     assert(res == 55, "Memoized function returned wrong result")
     assert(eval_count == 11, "Memoized function evaluated too many times")
 }

@@ -1533,7 +1533,13 @@ namespace jc {
         }
         if (auto* assign = dynamic_cast<Assign*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(assign->name.lexeme, true)});
+            if (!assign->name.lexeme.empty() && assign->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, assign->name.lexeme.substr(1), assign->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", assign->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(assign->name.lexeme, true)});
+            }
             props.push_back({"value", transformQuote(assign->value.get())});
             props.push_back({"isRef", std::make_unique<Literal>(assign->isRef ? "true" : "false", false, false, true)});
             props.push_back({"isState", std::make_unique<Literal>(assign->isState ? "true" : "false", false, false, true)});
@@ -1802,25 +1808,49 @@ namespace jc {
         if (dynamic_cast<SelfExpr*>(expr)) return makeASTNodeCall("SelfExpr", 0, {});
         if (auto* decl = dynamic_cast<LocalDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            }
             props.push_back({"isConst", std::make_unique<Literal>(decl->isConst ? "true" : "false", false, false, true)});
             return makeASTNodeCall("LocalDecl", decl->name.line, std::move(props));
         }
         if (auto* decl = dynamic_cast<RefDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            }
             props.push_back({"isConst", std::make_unique<Literal>(decl->isConst ? "true" : "false", false, false, true)});
             return makeASTNodeCall("RefDecl", decl->name.line, std::move(props));
         }
         if (auto* decl = dynamic_cast<StateDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            }
             props.push_back({"isConst", std::make_unique<Literal>(decl->isConst ? "true" : "false", false, false, true)});
             return makeASTNodeCall("StateDecl", decl->name.line, std::move(props));
         }
         if (auto* decl = dynamic_cast<ConstDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
+                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
+                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
+                props.push_back({"name", std::move(nameAccess)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
+            }
             return makeASTNodeCall("ConstDecl", decl->name.line, std::move(props));
         }
         if (auto* del = dynamic_cast<DeleteExpr*>(expr)) {

@@ -1341,24 +1341,19 @@ namespace jc {
         );
         auto assign = std::make_unique<Assign>(name, std::move(lambda), false, false, false, false);
 
-        auto modFn = std::make_shared<CompiledFunction>();
-        modFn->name = "<macro_def " + name.lexeme + ">";
-        modFn->sourceFile = sourceFile;
-        modFn->arity = 0;
-        modFn->maxArity = 0;
-        modFn->hasRestParam = false;
-
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions(), nullptr, modFn.get());
+        IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions());
         fnBuilder.build(assign.get());
 
         IROptimizer::optimize(&fnGraph);
         RegisterAllocator::allocate(&fnGraph);
-        modFn->localCount = Emitter::emit(&fnGraph, modFn->chunk);
+        
+        Chunk chunk;
+        int localCount = Emitter::emit(&fnGraph, chunk);
 
-        VM::activeVM->execute(modFn->chunk, modFn->localCount);
+        VM::activeVM->execute(chunk, localCount);
 
-        return std::make_unique<Literal>("0");
+        return std::make_unique<Literal>("none", false, false, true);
     }
 
     std::unique_ptr<Expr> Parser::transformQuote(Expr* expr) {

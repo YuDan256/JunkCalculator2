@@ -3445,8 +3445,18 @@ Value VM::run(int targetFrameDepth) {
                                 else throw;
                             }
                         } else {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("VM Error: Cannot index this instance (no __getitem__).");
+                            bool found = false;
+                            if (idx.isString() && inst->fields) {
+                                auto it = inst->fields->keyMap.find(idx);
+                                if (it != inst->fields->keyMap.end()) {
+                                    result = inst->fields->elements[it->second].second;
+                                    found = true;
+                                }
+                            }
+                            if (!found) {
+                                if (noThrow) result = Value::uninit();
+                                else throw std::runtime_error("VM Error: Cannot index this instance (no __getitem__).");
+                            }
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
@@ -3610,7 +3620,12 @@ Value VM::run(int targetFrameDepth) {
                         if (setitemMethod) {
                             callDunder(obj, setitemMethod, {idx, val});
                         } else {
-                            throw std::runtime_error("VM Error: Cannot assign index on this instance (no __setitem__).");
+                            if (idx.isString()) {
+                                if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
+                                inst->fields->set(idx, val);
+                            } else {
+                                throw std::runtime_error("VM Error: Cannot assign index on this instance (no __setitem__).");
+                            }
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());

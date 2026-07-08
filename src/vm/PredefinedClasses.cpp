@@ -159,9 +159,35 @@ void registerPredefinedClasses() {
     });
     rangeIterClass->methods["__next__"] = rangeIterNext;
 
+    // --- ASTNode Class (For Macros) ---
+    ObjClass* astNodeClass = GcHeap::get().allocate<ObjClass>();
+    GcObjGuard astGuard(astNodeClass);
+    astNodeClass->name = "ASTNode";
+
+    auto astInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "line", "props"}, std::vector<bool>{false, false, false}, "init", nullptr);
+    GcObjGuard astInitGuard(astInit);
+    astInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
+        
+        inst->fields->set(Value("type"), args[0]);
+        inst->fields->set(Value("line"), args[1]);
+        
+        if (args.size() > 2 && args[2].isObjType(ObjType::DICT)) {
+            auto props = static_cast<ObjDict*>(args[2].asObj());
+            for (const auto& [k, v] : props->elements) {
+                inst->fields->set(k, v);
+            }
+        }
+        return self;
+    });
+    astNodeClass->methods["init"] = astInit;
+
     // 注册到全局
     VM::activeVM->registerBuiltinValue("range", Value(rangeClass));
     VM::activeVM->registerBuiltinValue("__range_iterator", Value(rangeIterClass));
+    VM::activeVM->registerBuiltinValue("ASTNode", Value(astNodeClass));
 }
 
 } // namespace jc

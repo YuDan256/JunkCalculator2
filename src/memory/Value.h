@@ -1258,6 +1258,16 @@ namespace jc {
             case ObjType::CLASS: return "\"<class " + static_cast<ObjClass*>(obj)->name + ">\"";
             case ObjType::INSTANCE: {
                 auto inst = static_cast<ObjInstance*>(obj);
+                try {
+                    auto [foundRepl, replRes] = invokeDunder(inst, "__repl__");
+                    if (foundRepl) {
+                        return replRes.toJC2Expression();
+                    }
+                    auto [foundStr, strRes] = invokeDunder(inst, "__str__");
+                    if (foundStr) {
+                        return strRes.toJC2Expression();
+                    }
+                } catch (...) {}
                 return "\"<" + (inst->classDef ? inst->classDef->name : "unknown") + " instance>\"";
             }
             case ObjType::SUPER_PROXY: return "\"<super>\"";
@@ -2136,6 +2146,21 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             std::string cname = inst->classDef ? inst->classDef->name : "unknown";
             if (guard.isCycle) { os << "<" << cname << " {...}>"; break; }
             
+            try {
+                auto [foundRepl, replRes] = invokeDunder(inst, "__repl__");
+                if (foundRepl) {
+                    if (replRes.isString()) os << replRes.asString();
+                    else os << replRes;
+                    break;
+                }
+                auto [foundStr, strRes] = invokeDunder(inst, "__str__");
+                if (foundStr) {
+                    if (strRes.isString()) os << strRes.asString();
+                    else os << strRes;
+                    break;
+                }
+            } catch (...) {}
+
             bool printedNative = false;
             if (inst->nativeData.has_value()) {
                 if (inst->nativeData.type() == typeid(std::shared_ptr<Image>)) {

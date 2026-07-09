@@ -88,6 +88,7 @@ void registerPredefinedClasses() {
         return Value(oss.str());
     });
     rangeClass->methods["__str__"] = rangeStr;
+    rangeClass->methods["__repl__"] = rangeStr;
 
     // __getitem__(idx)
     auto rangeGetItem = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx"}, std::vector<bool>{false}, "__getitem__", nullptr);
@@ -200,6 +201,7 @@ void registerPredefinedClasses() {
         return Value("<ASTNode " + typeStr + ">");
     });
     astNodeClass->methods["__str__"] = astStr;
+    astNodeClass->methods["__repl__"] = astStr;
 
     // --- Exception Class ---
     ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();
@@ -221,6 +223,20 @@ void registerPredefinedClasses() {
         return self;
     });
     exceptionClass->methods["init"] = excInit;
+
+    auto excRepl = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repl__", nullptr);
+    GcObjGuard excReplGuard(excRepl);
+    excRepl->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        std::string msg = "Unknown Error";
+        if (inst->fields) {
+            auto itMsg = inst->fields->keyMap.find(Value("message"));
+            if (itMsg != inst->fields->keyMap.end()) msg = inst->fields->elements[itMsg->second].second.asString();
+        }
+        return Value("<Exception: " + msg + ">");
+    });
+    exceptionClass->methods["__repl__"] = excRepl;
 
     auto excStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
     GcObjGuard excStrGuard(excStr);

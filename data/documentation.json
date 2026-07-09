@@ -2305,6 +2305,7 @@
       "",
       "    Conversion & Hashing hooks:",
       "      __str__()    → str(obj), print(obj), f\"{obj}\", format(\"{}\", obj)",
+      "      __repl__()   → Custom representation in the REPL and object dumps",
       "      __len__()    → len(obj)",
       "      __abs__()    → abs(obj)",
       "      __bool__()   → bool(obj)",

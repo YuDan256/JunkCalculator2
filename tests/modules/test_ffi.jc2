@@ -5,7 +5,7 @@ test_ffi_load_error() = {
         ffi.load("non_existent_library_12345.dll")
         assert(false, "Should throw error for non-existent library")
     } catch (e) {
-        assert("Failed to load library" in e, "Wrong error message thrown for ffi.load")
+        assert("Failed to load library" in e.message, "Wrong error message thrown for ffi.load")
     }
 }
 test_ffi_load_error()

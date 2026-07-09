@@ -31,7 +31,7 @@ test_assert() = {
         assert(1 == 2, "Math is broken")
     } catch (e) {
         caught = true
-        assert("Math is broken" in e, "assert message mismatch")
+        assert("Math is broken" in e.message, "assert message mismatch")
     }
     assert(caught, "assert failed to throw")
 }

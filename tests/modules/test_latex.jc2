@@ -28,7 +28,7 @@ test_latex_parse_error() = {
         latex.eval(r"\frac{1}")
         assert(false, "Should throw parse error for incomplete frac")
     } catch (e) {
-        assert("Expected" in e || "Missing" in e, "Wrong error message thrown")
+        assert("Expected" in e.message || "Missing" in e.message, "Wrong error message thrown")
     }
 }
 test_latex_parse_error()

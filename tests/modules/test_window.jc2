@@ -18,7 +18,7 @@ test_window_basic() = {
         
     } catch (e) {
         // 兼容非 Win32 平台：如果抛出平台不支持的错误，则视为测试通过
-        assert("Win32" in e, "Unexpected error thrown: " + str(e))
+        assert("Win32" in e.message, "Unexpected error thrown: " + str(e))
     }
 }
 test_window_basic()
@@ -28,7 +28,7 @@ test_window_invalid_args() = {
         window.Window("Test")
         assert(false, "Should throw error for missing arguments")
     } catch (e) {
-        assert("exactly 3 arguments" in e, "Wrong error message thrown for invalid args")
+        assert("exactly 3 arguments" in e.message, "Wrong error message thrown for invalid args")
     }
 }
 test_window_invalid_args()

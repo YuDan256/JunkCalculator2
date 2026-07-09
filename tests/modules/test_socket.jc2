@@ -35,7 +35,7 @@ test_socket_connect_error() = {
         socket.connect("127.0.0.1", 54322)
         assert(false, "Should throw connection refused error")
     } catch (e) {
-        assert("Connection refused" in e, "Wrong error message thrown for connection refused")
+        assert("Connection refused" in e.message, "Wrong error message thrown for connection refused")
     }
 }
 test_socket_connect_error()

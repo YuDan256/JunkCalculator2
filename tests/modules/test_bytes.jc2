@@ -31,7 +31,7 @@ test_bytes_out_of_bounds() = {
         b.get(2, "u32")
         assert(false, "Should throw out of bounds error")
     } catch (e) {
-        assert("out of bounds" in e, "Wrong error message thrown")
+        assert("out of bounds" in e.message, "Wrong error message thrown")
     }
 }
 test_bytes_out_of_bounds()

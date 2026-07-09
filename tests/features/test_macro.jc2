@@ -50,21 +50,21 @@ test_macro_errors() = {
         eval("macro bad(n) = { return 1 }; @bad { 1 }")
         assert(false, "Should throw when macro doesn't return ASTNode")
     } catch (e) {
-        assert("Macro Error: Expected ASTNode instance" in str(e) || "did not return a valid ASTNode" in str(e), "Wrong error for invalid macro return")
+        assert("Macro Error: Expected ASTNode instance" in e.message || "did not return a valid ASTNode" in e.message, "Wrong error for invalid macro return")
     }
 
     try {
         eval("x = 1; $x")
         assert(false, "Should throw when unquote is used outside quote")
     } catch (e) {
-        assert("Syntax Error" in str(e), "Wrong error for unquote outside quote")
+        assert("Syntax Error" in e.message, "Wrong error for unquote outside quote")
     }
     
     try {
         eval("macro foo(n) = { return quote { 1 } }; foo(1)")
         assert(false, "Should throw when macro is called as a normal function")
     } catch (e) {
-        assert("Undefined" in str(e) || "not defined" in str(e), "Wrong error for normal macro call")
+        assert("Undefined" in e.message || "not defined" in e.message, "Wrong error for normal macro call")
     }
 }
 test_macro_errors()
@@ -249,7 +249,7 @@ test_local_macro_scope() = {
         eval("@local_mac()")
         assert(false, "Local macro should not leak outside its scope")
     } catch (e) {
-        assert("not defined" in str(e) || "Undefined" in str(e), "Expected undefined macro error")
+        assert("not defined" in e.message || "Undefined" in e.message, "Expected undefined macro error")
     }
 }
 test_local_macro_scope()
@@ -282,7 +282,7 @@ test_macro_deletion() = {
         eval("@temp_mac()")
         assert(false, "Deleted macro should not be accessible")
     } catch (e) {
-        assert("not defined" in str(e) || "Undefined" in str(e), "Expected undefined macro error after deletion")
+        assert("not defined" in e.message || "Undefined" in e.message, "Expected undefined macro error after deletion")
     }
 }
 test_macro_deletion()

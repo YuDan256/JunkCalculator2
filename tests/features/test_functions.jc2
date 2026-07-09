@@ -7,7 +7,7 @@ test_const_params() = {
         eval("f(const x) = { x = 2 }; f(1)")
         assert(false, "Should throw when modifying const param")
     } catch (e) {
-        assert("Cannot modify const variable" in str(e), "Wrong error for const param")
+        assert("Cannot modify const variable" in e.message, "Wrong error for const param")
     }
 }
 test_const_params()

@@ -26,7 +26,7 @@ test_json_parse_error() = {
         json.decode("{ invalid json }")
         assert(false, "Should throw parse error for invalid JSON")
     } catch (e) {
-        assert("JSON Parse Error" in e, "Wrong error message thrown")
+        assert("JSON Parse Error" in e.message, "Wrong error message thrown")
     }
 }
 test_json_parse_error()

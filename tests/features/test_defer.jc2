@@ -76,3 +76,19 @@ test_defer_with_macros() = {
     assert(res == @["start_task", "doing_task", "end_task"], "Defer macro splicing failed")
 }
 test_defer_with_macros()
+
+test_defer_suppressed_exceptions() = {
+    try {
+        defer throw "Secondary Error 1"
+        defer throw "Secondary Error 2"
+        throw "Primary Error"
+    } catch (e) {
+        assert("Primary Error" in e.message, "Primary exception message mismatch")
+        assert(len(e.suppressed) == 2, "Should have exactly 2 suppressed exceptions")
+        
+        // defer 是 LIFO 执行的，所以 Error 2 会先被捕获并压入 suppressed 列表
+        assert("Secondary Error 2" in e.suppressed[0].message, "First suppressed exception mismatch")
+        assert("Secondary Error 1" in e.suppressed[1].message, "Second suppressed exception mismatch")
+    }
+}
+test_defer_suppressed_exceptions()

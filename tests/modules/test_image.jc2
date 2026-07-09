@@ -33,7 +33,7 @@ test_image_invalid_size() = {
         image.img(-10, 100)
         assert(false, "Should throw error for negative dimensions")
     } catch (e) {
-        assert("Dimensions must be positive" in e, "Wrong error message thrown")
+        assert("Dimensions must be positive" in e.message, "Wrong error message thrown")
     }
 }
 test_image_invalid_size()

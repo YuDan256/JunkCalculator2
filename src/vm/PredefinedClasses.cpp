@@ -1,6 +1,7 @@
 #include "PredefinedClasses.h"
 #include "VM.h"
 #include "../memory/GcHeap.h"
+#include "../frontend/Highlight.h"
 #include <cmath>
 #include <sstream>
 

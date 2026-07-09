@@ -286,3 +286,22 @@ test_macro_deletion() = {
     }
 }
 test_macro_deletion()
+
+test_comptime_import() = {
+    // 动态创建一个包含辅助函数和宏的库文件
+    lib_code = "func make_prefix(name) = \"PREFIX_\" + name\n" +
+               "macro generate_var(name) = {\n" +
+               "    new_name = make_prefix(name.value)\n" +
+               "    return quote {\n" +
+               "        local $new_name = 42\n" +
+               "    }\n" +
+               "}\n"
+    writeFile("temp_macro_lib.jc2", lib_code)
+    
+    // 在编译期导入该库，并调用宏
+    res = eval("import @temp_macro_lib\n@generate_var(\"test\")\nPREFIX_test")
+    assert(res == 42, "Compile-time import and execution failed")
+    
+    deleteFile("temp_macro_lib.jc2")
+}
+test_comptime_import()

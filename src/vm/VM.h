@@ -171,6 +171,7 @@ public:
     }
 
     Value execute(const Chunk& mainChunk, int localCount);
+    void execCompileTimeImport(const std::string& name);
 
     static inline VM* activeVM = nullptr;
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());

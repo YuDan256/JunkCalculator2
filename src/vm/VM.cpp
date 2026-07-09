@@ -1907,6 +1907,116 @@ Value VM::execImport(const std::string& name) {
     return Value(ns);
 }
 
+void VM::execCompileTimeImport(const std::string& name) {
+    std::string resolved = "";
+    
+    resolved = helpers::safeResolvePath(name);
+    if (!std::filesystem::is_regular_file(resolved)) {
+        resolved = helpers::safeResolvePath(name + ".jc2");
+    }
+
+    if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
+        throw std::runtime_error("VM Error: Cannot find compile-time module '" + name + "'.");
+    }
+
+    std::ifstream file(resolved);
+    if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read compile-time module script.");
+    std::string code, line;
+    while (std::getline(file, line)) code += line + "\n";
+    file.close();
+
+    jc::Lexer lexer(code, resolved);
+    auto tokens = lexer.tokenize();
+    jc::Parser parser(tokens, resolved);
+    auto ast = parser.parse();
+
+    auto modFn = std::make_shared<CompiledFunction>();
+    modFn->name = "<comptime " + name + ">";
+    modFn->sourceFile = resolved;
+    modFn->arity = 0;
+    modFn->maxArity = 0;
+    modFn->hasRestParam = false;
+
+    IRGraph fnGraph;
+    IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get());
+    fnBuilder.build(ast.get());
+
+    IROptimizer::optimize(&fnGraph);
+    RegisterAllocator::allocate(&fnGraph);
+
+    for (auto& target : fnBuilder.upvalueTargets) {
+        if (target.isLocal && target.localNode) {
+            IRNode* localNode = target.localNode;
+            int upvalIdx = target.index;
+            CompiledFunction* childFn = modFn.get();
+            fnGraph.postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                childFn->upvalues[upvalIdx].index = localNode->physicalReg;
+            });
+        }
+    }
+
+    modFn->localCount = Emitter::emit(&fnGraph, modFn->chunk);
+    compiledFunctions.push_back(modFn);
+
+    CallFrame newFrame;
+    newFrame.function = modFn.get();
+    newFrame.chunk = &modFn->chunk;
+    newFrame.ip = 0;
+    
+    if (frameCount > 0) {
+        CallFrame* prev = &frames[frameCount - 1];
+        newFrame.registerBase = prev->registerBase + prev->function->localCount + prev->function->refCount;
+    } else {
+        newFrame.registerBase = 0;
+    }
+    newFrame.returnRegister = 0;
+    newFrame.closure = nullptr;
+    newFrame.selfContext = Value::none();
+    newFrame.classContext = Value::none();
+    
+    for (int i = 0; i < modFn->localCount; ++i) {
+        registers[newFrame.registerBase + i] = Value::none();
+    }
+    
+    populateRefParams(newFrame, modFn.get());
+    
+    if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+    
+    int targetDepth = frameCount;
+    frames[frameCount++] = newFrame;
+
+    std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
+    helpers::g_scriptDirStack.push_back(scriptDir);
+    try {
+        run(targetDepth);
+        frames[frameCount].selfContext = Value::none();
+        frames[frameCount].classContext = Value::none();
+        frames[frameCount].closure = nullptr;
+        frames[frameCount].refParamsBase = -1;
+    } catch (...) {
+        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
+            exceptionHandlers.pop_back();
+        }
+        while (frameCount > targetDepth) {
+            CallFrame* f = &frames[frameCount - 1];
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
+            frameCount--;
+        }
+        pendingCallRefs.clear();
+        helpers::g_scriptDirStack.pop_back();
+        throw;
+    }
+    helpers::g_scriptDirStack.pop_back();
+}
+
 bool VM::handleExceptionUnwind(Value errVal) {
     if (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= currentTargetFrameDepth) {
         auto handler = exceptionHandlers.back();

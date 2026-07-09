@@ -1127,13 +1127,25 @@ namespace jc {
             return std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody));
         }
         if (match({ TokenType::IMPORT })) {
+            bool isComptime = match({ TokenType::AT });
+            
             if (check(TokenType::IDENTIFIER)) {
                 Token nameTok = advance();
+                if (isComptime) {
+                    VM::activeVM->execCompileTimeImport(nameTok.lexeme);
+                }
                 auto pathExpr = std::make_unique<Literal>(nameTok.lexeme, true);
                 auto importExpr = std::make_unique<ImportExpr>(std::move(pathExpr));
                 return std::make_unique<Assign>(nameTok, std::move(importExpr));
             } else {
                 auto path = assignment();  // ★ 降级：防止逗号被误吞
+                if (isComptime) {
+                    if (auto* lit = dynamic_cast<Literal*>(path.get())) {
+                        VM::activeVM->execCompileTimeImport(lit->value);
+                    } else {
+                        throw std::runtime_error("Parser Error: Compile-time import (@) requires a static string or identifier.");
+                    }
+                }
                 return std::make_unique<ImportExpr>(std::move(path));
             }
         }

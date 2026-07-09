@@ -45,17 +45,17 @@ set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/ASTConverter.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
-    "src/modules/image/Image.h"
+    "src/lib/image/Image.h"
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/BuiltinRegistry.h" "src/vm/PredefinedClasses.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
     "src/compiler/IR.h" "src/compiler/IRBuilder.h" "src/compiler/IROptimizer.h" "src/compiler/RegisterAllocator.h" "src/compiler/Emitter.h"
-    "src/modules/ExtensionBridge.h"
-    "src/modules/jc2_extension_api.h"
-    "src/modules/jc2_extension_cpp.h"
+    "src/lib/ExtensionBridge.h"
+    "src/lib/jc2_extension_api.h"
+    "src/lib/jc2_extension_cpp.h"
 )
 
 set(JC2_SOURCES
-    "src/modules/ExtensionBridge.cpp"
+    "src/lib/ExtensionBridge.cpp"
     "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/ASTConverter.cpp"
     "src/compiler/IRBuilder.cpp"
     "src/compiler/IROptimizer.cpp"
@@ -71,47 +71,47 @@ add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build Image Module as a standalone DLL
-add_library(image SHARED "src/modules/image/image_module.cpp")
+add_library(image SHARED "src/lib/image/image_module.cpp")
 target_include_directories(image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(image PROPERTIES PREFIX "") # Output image.dll instead of libimage.dll
 
 # ★ Build Tensor Module as a standalone DLL
-add_library(tensor SHARED "src/modules/tensor/tensor_module.cpp")
+add_library(tensor SHARED "src/lib/tensor/tensor_module.cpp")
 target_include_directories(tensor PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(tensor PROPERTIES PREFIX "") # Output tensor.dll instead of libtensor.dll
 
 # ★ Build Prob Module as a standalone DLL
-add_library(prob SHARED "src/modules/prob/prob_module.cpp")
+add_library(prob SHARED "src/lib/prob/prob_module.cpp")
 target_include_directories(prob PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(prob PROPERTIES PREFIX "") # Output prob.dll instead of libprob.dll
 
 # ★ Build Bytes Module as a standalone DLL
-add_library(bytes SHARED "src/modules/bytes/bytes_module.cpp")
+add_library(bytes SHARED "src/lib/bytes/bytes_module.cpp")
 target_include_directories(bytes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(bytes PROPERTIES PREFIX "") # Output bytes.dll instead of libbytes.dll
 
 # ★ Build FFI Module as a standalone DLL
-add_library(ffi SHARED "src/modules/ffi/ffi_module.cpp")
+add_library(ffi SHARED "src/lib/ffi/ffi_module.cpp")
 target_include_directories(ffi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(ffi PROPERTIES PREFIX "") # Output ffi.dll instead of libffi.dll
 
 # ★ Build Socket Module as a standalone DLL
-add_library(socket SHARED "src/modules/socket/socket_module.cpp")
+add_library(socket SHARED "src/lib/socket/socket_module.cpp")
 target_include_directories(socket PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(socket PROPERTIES PREFIX "") # Output socket.dll instead of libsocket.dll
 
 # ★ Build JSON Module as a standalone DLL
-add_library(json SHARED "src/modules/json/json_module.cpp")
+add_library(json SHARED "src/lib/json/json_module.cpp")
 target_include_directories(json PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(json PROPERTIES PREFIX "") # Output json.dll instead of libjson.dll
 
 # ★ Build Latex Module as a standalone DLL
-add_library(latex SHARED "src/modules/latex/latex_module.cpp")
+add_library(latex SHARED "src/lib/latex/latex_module.cpp")
 target_include_directories(latex PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(latex PROPERTIES PREFIX "") # Output latex.dll instead of liblatex.dll
 
 # ★ Build Window Module as a standalone DLL
-add_library(window SHARED "src/modules/window/window_module.cpp")
+add_library(window SHARED "src/lib/window/window_module.cpp")
 target_include_directories(window PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(window PROPERTIES PREFIX "") # Output window.dll instead of libwindow.dll
 
@@ -123,13 +123,13 @@ if(WIN32)
     target_link_libraries(window PRIVATE User32 Gdi32 imm32)
 endif()
 
-# ★ Output modules directly to the modules/ directory
-set(JC2_MODULES image tensor prob bytes ffi socket json latex window)
-foreach(mod ${JC2_MODULES})
+# ★ Output libraries directly to the lib/ directory
+set(JC2_LIBS image tensor prob bytes ffi socket json latex window)
+foreach(mod ${JC2_LIBS})
     set_target_properties(${mod} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules"
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/modules"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
     )
 endforeach()
 
@@ -138,7 +138,7 @@ endforeach()
 # ==============================================================================
 if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
-    foreach(target JunkCalculator2 ${JC2_MODULES})
+    foreach(target JunkCalculator2 ${JC2_LIBS})
         target_compile_options(${target} PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     endforeach()
     
@@ -147,7 +147,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
 else()
-    foreach(target JunkCalculator2 ${JC2_MODULES})
+    foreach(target JunkCalculator2 ${JC2_LIBS})
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -O3 -march=native)
         # Force static linking for MinGW to ensure portability (Green version)
         if(MINGW OR CYGWIN)
@@ -159,7 +159,7 @@ else()
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported)
     if(ipo_supported)
-        set_target_properties(JunkCalculator2 ${JC2_MODULES} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        set_target_properties(JunkCalculator2 ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 
@@ -178,9 +178,9 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
     set(SYNC_CMD_DATA COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/data" "$<TARGET_FILE_DIR:JunkCalculator2>/data")
 endif()
 
-set(SYNC_CMD_LIB "")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib")
-    set(SYNC_CMD_LIB COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/lib" "$<TARGET_FILE_DIR:JunkCalculator2>/lib")
+set(SYNC_CMD_MODULES "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules")
+    set(SYNC_CMD_MODULES COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/modules" "$<TARGET_FILE_DIR:JunkCalculator2>/modules")
 endif()
 
 set(SYNC_CMD_EXAMPLES "")
@@ -195,10 +195,10 @@ endif()
 
 add_custom_target(SyncResources ALL
     ${SYNC_CMD_DATA}
-    ${SYNC_CMD_LIB}
+    ${SYNC_CMD_MODULES}
     ${SYNC_CMD_EXAMPLES}
     ${SYNC_CMD_TESTS}
-    COMMENT "Syncing resource directories (data, lib, examples, tests) to build output..."
+    COMMENT "Syncing resource directories (data, modules, examples, tests) to build output..."
 )
 add_dependencies(SyncResources JunkCalculator2)
 
@@ -206,9 +206,9 @@ add_dependencies(SyncResources JunkCalculator2)
 # CPack Installation & Release Packaging Rules
 # ==============================================================================
 install(TARGETS JunkCalculator2 RUNTIME DESTINATION bin)
-install(TARGETS ${JC2_MODULES}
-    RUNTIME DESTINATION bin/modules
-    LIBRARY DESTINATION bin/modules
+install(TARGETS ${JC2_LIBS}
+    RUNTIME DESTINATION bin/lib
+    LIBRARY DESTINATION bin/lib
 )
 if(WIN32)
     install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
@@ -219,8 +219,8 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/data" DESTINATION bin PATTERN "Prime.bin" EXCLUDE)
 endif()
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lib")
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lib" DESTINATION bin)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/modules")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/modules" DESTINATION bin)
 endif()
 # ★ Make sure examples are included in the released ZIP!
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")

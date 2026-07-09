@@ -4468,9 +4468,9 @@ void BuiltinRegistry::registerSystemShell() {
         return Value::none();
         });
 
-    reg("modules", { 0 }, [](const std::vector<Value>&) -> Value {
-        std::cout << "  Native modules are now loaded dynamically via DLL/SO files.\n";
-        std::cout << "  Use `import \"module_name\"` to load them.\n";
+    reg("libs", { 0 }, [](const std::vector<Value>&) -> Value {
+        std::cout << "  Native libraries are now loaded dynamically via DLL/SO files.\n";
+        std::cout << "  Use `import \"lib_name\"` to load them.\n";
         return Value::none();
         });
 

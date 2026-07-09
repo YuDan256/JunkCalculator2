@@ -4,7 +4,7 @@
 #include "../frontend/Utf8.h"
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
-#include "../modules/ExtensionBridge.h"
+#include "../lib/ExtensionBridge.h"
 #include "../frontend/Highlight.h"
 #include "../compiler/IRBuilder.h"
 #include "../compiler/IROptimizer.h"
@@ -1718,18 +1718,18 @@ Value VM::execImport(const std::string& name) {
         nativeName += nativeExt;
     }
 
-    // 1. 优先查找 <exe_dir>/modules/ 下的原生模块
+    // 1. 优先查找 <exe_dir>/lib/ 下的原生库
 #if defined(_WIN32)
     char exePath[MAX_PATH];
     if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
-        std::string modPath = (std::filesystem::path(exePath).parent_path() / "modules" / nativeName).string();
+        std::string modPath = (std::filesystem::path(exePath).parent_path() / "lib" / nativeName).string();
         if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
     }
 #else
     char exePath[4096];
     ssize_t count = readlink("/proc/self/exe", exePath, 4096);
     if (count != -1) {
-        std::string modPath = (std::filesystem::path(std::string(exePath, count)).parent_path() / "modules" / nativeName).string();
+        std::string modPath = (std::filesystem::path(std::string(exePath, count)).parent_path() / "lib" / nativeName).string();
         if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
     }
 #endif
@@ -1750,7 +1750,7 @@ Value VM::execImport(const std::string& name) {
 
     if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
         loadedModules.erase(name);
-        throw std::runtime_error("VM Error: Cannot find module '" + name + "'.");
+        throw std::runtime_error("VM Error: Cannot find library or module '" + name + "'.");
     }
 
     importedModules.insert(name);

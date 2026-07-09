@@ -593,7 +593,7 @@ namespace jc {
 
         const char* what() const noexcept override {
             if (whatBuffer.empty()) {
-                std::string msgStr = message.isString() ? message.asString() : message.toRepr();
+                std::string msgStr = message.isString() ? message.asString() : message.toString();
                 if (type.empty()) {
                     whatBuffer = msgStr;
                 } else {

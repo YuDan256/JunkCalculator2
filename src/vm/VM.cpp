@@ -1908,6 +1908,12 @@ Value VM::execImport(const std::string& name) {
 }
 
 void VM::execCompileTimeImport(const std::string& name) {
+    std::string baseName = std::filesystem::path(name).stem().string();
+
+    if (loadedModules.count(name)) {
+        return;
+    }
+
     std::string resolved = "";
     
     resolved = helpers::safeResolvePath(name);
@@ -1924,6 +1930,9 @@ void VM::execCompileTimeImport(const std::string& name) {
     std::string code, line;
     while (std::getline(file, line)) code += line + "\n";
     file.close();
+
+    std::unordered_set<std::string> existingGlobals;
+    for (const auto& kv : globalNames) existingGlobals.insert(kv.first);
 
     jc::Lexer lexer(code, resolved);
     auto tokens = lexer.tokenize();
@@ -2015,6 +2024,22 @@ void VM::execCompileTimeImport(const std::string& name) {
         throw;
     }
     helpers::g_scriptDirStack.pop_back();
+
+    ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+    ns->name = baseName;
+    
+    for (const auto& kv : globalNames) {
+        if (existingGlobals.find(kv.first) == existingGlobals.end()) {
+            ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
+            uv->closed = globals[kv.second];
+            uv->location = &uv->closed;
+            bool isConst = constGlobals.count(kv.first) > 0;
+            ns->fields[kv.first] = { uv, isConst };
+        }
+    }
+    
+    loadedModules[name] = Value(ns);
+    importedModules.insert(name);
 }
 
 bool VM::handleExceptionUnwind(Value errVal) {

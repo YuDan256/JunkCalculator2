@@ -2123,7 +2123,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         }
         pendingCallRefs.clear();
         helpers::g_scriptDirStack.pop_back();
-        throw std::runtime_error(formatException(ex.val));
+        throw RuntimeError("", ex.val);
     } catch (RuntimeError& ex) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
@@ -2511,7 +2511,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             frameCount--;
         }
         pendingCallRefs.clear();
-        throw std::runtime_error(formatException(ex.val));
+        throw RuntimeError("", ex.val);
     } catch (RuntimeError& ex) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();

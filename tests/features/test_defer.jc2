@@ -1,16 +1,16 @@
 test_basic_lifo() = {
-    res = []
+    res = list()
     {
         defer res.push(1)
         defer res.push(2)
         res.push(0)
     }
-    assert(res == [0, 2, 1], "Basic LIFO execution order failed")
+    assert(res == @[0, 2, 1], "Basic LIFO execution order failed")
 }
 test_basic_lifo()
 
 test_defer_on_return() = {
-    res = []
+    res = list()
     f() = {
         defer res.push("deferred")
         res.push("running")
@@ -20,12 +20,12 @@ test_defer_on_return() = {
     
     val = f()
     assert(val == 42, "Function return value is wrong")
-    assert(res == ["running", "deferred"], "Defer on return failed")
+    assert(res == @["running", "deferred"], "Defer on return failed")
 }
 test_defer_on_return()
 
 test_defer_in_loops() = {
-    res = []
+    res = list()
     for (local i = 0; i < 3; i += 1) {
         defer res.push(i)
         
@@ -38,12 +38,12 @@ test_defer_in_loops() = {
     // i = 0: res.push(0), defer res.push(0) -> [0, 0]
     // i = 1: continue, defer res.push(1)    -> [0, 0, 1]
     // i = 2: break, defer res.push(2)       -> [0, 0, 1, 2]
-    assert(res == [0, 0, 1, 2], "Defer with break/continue failed")
+    assert(res == @[0, 0, 1, 2], "Defer with break/continue failed")
 }
 test_defer_in_loops()
 
 test_defer_exception_unwinding() = {
-    res = []
+    res = list()
     try {
         defer res.push("outer_defer")
         {
@@ -55,7 +55,7 @@ test_defer_exception_unwinding() = {
         res.push("caught")
     }
     
-    assert(res == ["inner_defer", "outer_defer", "caught"], "Defer exception unwinding failed")
+    assert(res == @["inner_defer", "outer_defer", "caught"], "Defer exception unwinding failed")
 }
 test_defer_exception_unwinding()
 
@@ -68,11 +68,11 @@ test_defer_with_macros() = {
         ]
     }
     
-    res = []
+    res = list()
     {
         @with_log("task", res.push("doing_task"))
     }
     
-    assert(res == ["start_task", "doing_task", "end_task"], "Defer macro splicing failed")
+    assert(res == @["start_task", "doing_task", "end_task"], "Defer macro splicing failed")
 }
 test_defer_with_macros()

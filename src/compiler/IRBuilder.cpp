@@ -2215,7 +2215,8 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     currentControl = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}});
+    IRNode* continueMerge = graph->createNode(IROp::Merge);
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -2234,6 +2235,25 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     
     currentControl = ifTrue;
     expr->body->accept(*this);
+    
+    continueMerge->addData(currentControl);
+    loopStack.back().continueEnvs.push_back(envStack);
+    
+    currentControl = continueMerge;
+    
+    auto& continueEnvs = loopStack.back().continueEnvs;
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            const std::string& name = pair.first;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(continueMerge);
+            for (auto& env : continueEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            }
+            phi->name = name;
+            envStack[i][name] = phi;
+        }
+    }
     
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
@@ -2292,7 +2312,8 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     currentControl = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}});
+    IRNode* continueMerge = graph->createNode(IROp::Merge);
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -2311,6 +2332,26 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     
     currentControl = ifTrue;
     expr->body->accept(*this);
+    
+    continueMerge->addData(currentControl);
+    loopStack.back().continueEnvs.push_back(envStack);
+    
+    currentControl = continueMerge;
+    
+    auto& continueEnvs = loopStack.back().continueEnvs;
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            const std::string& name = pair.first;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(continueMerge);
+            for (auto& env : continueEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            }
+            phi->name = name;
+            envStack[i][name] = phi;
+        }
+    }
+    
     expr->update->accept(*this);
     
     loopNode->addData(currentControl);
@@ -2387,10 +2428,15 @@ void IRBuilder::visitContinueExpr(ContinueExpr*) {
         currentControl = runNode;
     }
     
-    loop.loopNode->addData(currentControl);
-    for (size_t i = 0; i < loop.loopPhisStack.size(); ++i) {
-        for (auto& pair : loop.loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+    if (loop.continueMerge) {
+        loop.continueMerge->addData(currentControl);
+        loop.continueEnvs.push_back(envStack);
+    } else {
+        loop.loopNode->addData(currentControl);
+        for (size_t i = 0; i < loop.loopPhisStack.size(); ++i) {
+            for (auto& pair : loop.loopPhisStack[i]) {
+                pair.second->addData(readVariable(pair.first));
+            }
         }
     }
     
@@ -3202,7 +3248,8 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     currentControl = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}});
+    IRNode* continueMerge = graph->createNode(IROp::Merge);
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}});
     
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     nextNode->setControl(currentControl);
@@ -3232,6 +3279,25 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst, true);
     
     expr->body->accept(*this);
+    
+    continueMerge->addData(currentControl);
+    loopStack.back().continueEnvs.push_back(envStack);
+    
+    currentControl = continueMerge;
+    
+    auto& continueEnvs = loopStack.back().continueEnvs;
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            const std::string& name = pair.first;
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(continueMerge);
+            for (auto& env : continueEnvs) {
+                phi->addData(env[i].count(name) ? env[i].at(name) : graph->createConstant(Value::none()));
+            }
+            phi->name = name;
+            envStack[i][name] = phi;
+        }
+    }
     
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {

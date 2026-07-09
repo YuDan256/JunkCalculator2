@@ -66,6 +66,8 @@ private:
         std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack;
         IRNode* breakMerge;
         std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> breakEnvs;
+        IRNode* continueMerge;
+        std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> continueEnvs;
     };
     std::vector<IRLoopInfo> loopStack;
 

@@ -1656,19 +1656,36 @@ namespace jc {
         }
         if (auto* exprAssign = dynamic_cast<ExprAssign*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            auto targetAst1 = transformQuote(exprAssign->target.get());
-            auto targetAst2 = transformQuote(exprAssign->target.get());
-            auto targetAst3 = transformQuote(exprAssign->target.get());
+            
+            auto tmpParam = Token(TokenType::IDENTIFIER, "<tmp_name>", 0);
+            auto varExpr1 = std::make_unique<Variable>(tmpParam);
+            auto varExpr2 = std::make_unique<Variable>(tmpParam);
+            auto varExpr3 = std::make_unique<Variable>(tmpParam);
             
             std::vector<std::unique_ptr<Expr>> typeArgs;
-            typeArgs.push_back(std::move(targetAst1));
+            typeArgs.push_back(std::move(varExpr1));
             auto typeCall = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "type", 0), std::move(typeArgs));
             auto strLit = std::make_unique<Literal>("string", true);
             auto cond = std::make_unique<Binary>(std::move(typeCall), Token(TokenType::EQUAL, "==", 0), std::move(strLit));
-            auto nameAccess = std::make_unique<DotAccess>(std::move(targetAst3), Token(TokenType::IDENTIFIER, "name", 0));
-            auto ternary = std::make_unique<IfExpr>(std::move(cond), std::move(targetAst2), std::move(nameAccess));
+            auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr3), Token(TokenType::IDENTIFIER, "name", 0));
+            auto ternary = std::make_unique<IfExpr>(std::move(cond), std::move(varExpr2), std::move(nameAccess));
             
-            props.push_back({"name", std::move(ternary)});
+            std::vector<Token> params = { tmpParam };
+            std::vector<bool> paramIsRef = { false };
+            std::vector<bool> paramIsConst = { false };
+            std::vector<std::shared_ptr<Expr>> defaultExprs = { nullptr };
+            std::vector<std::string> paramTypes = { "" };
+            
+            auto lambda = std::make_unique<LambdaExpr>(
+                "<name_resolver>", params, paramIsRef, paramIsConst, defaultExprs, false,
+                paramTypes, "", "", std::move(ternary)
+            );
+            
+            std::vector<std::unique_ptr<Expr>> callArgs;
+            callArgs.push_back(transformQuote(exprAssign->target.get()));
+            auto iife = std::make_unique<InvokeExpr>(std::move(lambda), std::move(callArgs));
+            
+            props.push_back({"name", std::move(iife)});
             props.push_back({"value", transformQuote(exprAssign->value.get())});
             props.push_back({"isRef", std::make_unique<Literal>(exprAssign->isRef ? "true" : "false", false, false, true)});
             props.push_back({"isState", std::make_unique<Literal>(exprAssign->isState ? "true" : "false", false, false, true)});

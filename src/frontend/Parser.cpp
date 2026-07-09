@@ -2227,7 +2227,8 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::quoteExpr() {
-        auto body = parseStatementOrBlock();
+        while (match({ TokenType::NEWLINE })) {}
+        auto body = assignment();
         return transformQuote(body.get());
     }
 

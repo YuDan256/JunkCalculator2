@@ -115,7 +115,17 @@ public:
         loadedModules.clear();
         builtinClosures.clear();
         openUpvalues = nullptr;
+        comptimeGlobals.clear();
         clearAllGlobalICs();
+    }
+
+    int parsingDepth = 0;
+    std::vector<std::string> comptimeGlobals;
+    void cleanupComptimeGlobals(size_t restoreToSize) {
+        while (comptimeGlobals.size() > restoreToSize) {
+            removeGlobal(comptimeGlobals.back());
+            comptimeGlobals.pop_back();
+        }
     }
 
     void removeGlobal(const std::string& name) {

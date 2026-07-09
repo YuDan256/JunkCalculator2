@@ -2036,6 +2036,7 @@ void VM::execCompileTimeImport(const std::string& name) {
             globalNames[k] = static_cast<uint32_t>(globals.size());
             globals.push_back(*(field.upval->location));
             if (field.isConst) constGlobals.insert(k);
+            comptimeGlobals.push_back(k);
         } else {
             globals[it->second] = *(field.upval->location);
         }

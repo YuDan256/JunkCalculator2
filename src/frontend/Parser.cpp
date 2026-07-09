@@ -139,6 +139,7 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::parse() {
+        if (VM::activeVM) VM::activeVM->parsingDepth++;
         try {
             std::vector<std::unique_ptr<Expr>> stmts;
             while (!isAtEnd()) {
@@ -150,11 +151,23 @@ namespace jc {
                 }
                 while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
             }
+            if (VM::activeVM) {
+                VM::activeVM->parsingDepth--;
+                if (VM::activeVM->parsingDepth == 0) {
+                    VM::activeVM->cleanupComptimeGlobals(0);
+                }
+            }
             if (stmts.empty()) return std::make_unique<Literal>("0");
             if (stmts.size() == 1) return std::move(stmts[0]);
             return std::make_unique<Block>(std::move(stmts));
         }
         catch (const std::exception& e) {
+            if (VM::activeVM) {
+                VM::activeVM->parsingDepth--;
+                if (VM::activeVM->parsingDepth == 0) {
+                    VM::activeVM->cleanupComptimeGlobals(0);
+                }
+            }
             std::string msg = e.what();
             if (msg.find("[") != 0) { 
                 int errLine = 0;
@@ -1566,6 +1579,23 @@ namespace jc {
             return std::move(unquote->expr);
         }
         
+        auto makeGetNameExpr = [&](const std::string& varName, int line) -> std::unique_ptr<Expr> {
+            auto varExpr1 = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, varName, line));
+            auto varExpr2 = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, varName, line));
+            auto varExpr3 = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, varName, line));
+            
+            std::vector<std::unique_ptr<Expr>> typeArgs;
+            typeArgs.push_back(std::move(varExpr1));
+            auto typeCall = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "type", line), std::move(typeArgs));
+            
+            auto strLit = std::make_unique<Literal>("string", true);
+            auto cond = std::make_unique<Binary>(std::move(typeCall), Token(TokenType::EQUAL, "==", line), std::move(strLit));
+            
+            auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr3), Token(TokenType::IDENTIFIER, "name", line));
+            
+            return std::make_unique<IfExpr>(std::move(cond), std::move(varExpr2), std::move(nameAccess));
+        };
+
         auto makeASTNodeCall = [&](const std::string& type, int line, std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props) {
             std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> dictEntries;
             for (auto& p : props) {
@@ -1613,9 +1643,7 @@ namespace jc {
         if (auto* assign = dynamic_cast<Assign*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!assign->name.lexeme.empty() && assign->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, assign->name.lexeme.substr(1), assign->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", assign->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(assign->name.lexeme.substr(1), assign->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(assign->name.lexeme, true)});
             }
@@ -1628,9 +1656,19 @@ namespace jc {
         }
         if (auto* exprAssign = dynamic_cast<ExprAssign*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            auto targetAst = transformQuote(exprAssign->target.get());
-            auto nameAccess = std::make_unique<DotAccess>(std::move(targetAst), Token(TokenType::IDENTIFIER, "name", 0, 0));
-            props.push_back({"name", std::move(nameAccess)});
+            auto targetAst1 = transformQuote(exprAssign->target.get());
+            auto targetAst2 = transformQuote(exprAssign->target.get());
+            auto targetAst3 = transformQuote(exprAssign->target.get());
+            
+            std::vector<std::unique_ptr<Expr>> typeArgs;
+            typeArgs.push_back(std::move(targetAst1));
+            auto typeCall = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "type", 0), std::move(typeArgs));
+            auto strLit = std::make_unique<Literal>("string", true);
+            auto cond = std::make_unique<Binary>(std::move(typeCall), Token(TokenType::EQUAL, "==", 0), std::move(strLit));
+            auto nameAccess = std::make_unique<DotAccess>(std::move(targetAst3), Token(TokenType::IDENTIFIER, "name", 0));
+            auto ternary = std::make_unique<IfExpr>(std::move(cond), std::move(targetAst2), std::move(nameAccess));
+            
+            props.push_back({"name", std::move(ternary)});
             props.push_back({"value", transformQuote(exprAssign->value.get())});
             props.push_back({"isRef", std::make_unique<Literal>(exprAssign->isRef ? "true" : "false", false, false, true)});
             props.push_back({"isState", std::make_unique<Literal>(exprAssign->isState ? "true" : "false", false, false, true)});
@@ -1664,9 +1702,7 @@ namespace jc {
             if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
                 std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
                 if (!vp->name.lexeme.empty() && vp->name.lexeme[0] == '$') {
-                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, vp->name.lexeme.substr(1), vp->name.line));
-                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", vp->name.line));
-                    props.push_back({"name", std::move(nameAccess)});
+                    props.push_back({"name", makeGetNameExpr(vp->name.lexeme.substr(1), vp->name.line)});
                 } else {
                     props.push_back({"name", std::make_unique<Literal>(vp->name.lexeme, true)});
                 }
@@ -1677,9 +1713,7 @@ namespace jc {
             if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
                 std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
                 if (!rp->name.lexeme.empty() && rp->name.lexeme[0] == '$') {
-                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, rp->name.lexeme.substr(1), rp->name.line));
-                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", rp->name.line));
-                    props.push_back({"name", std::move(nameAccess)});
+                    props.push_back({"name", makeGetNameExpr(rp->name.lexeme.substr(1), rp->name.line)});
                 } else {
                     props.push_back({"name", std::make_unique<Literal>(rp->name.lexeme, true)});
                 }
@@ -1770,9 +1804,7 @@ namespace jc {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"object", transformQuote(dot->object.get())});
             if (!dot->field.lexeme.empty() && dot->field.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, dot->field.lexeme.substr(1), dot->field.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", dot->field.line));
-                props.push_back({"field", std::move(nameAccess)});
+                props.push_back({"field", makeGetNameExpr(dot->field.lexeme.substr(1), dot->field.line)});
             } else {
                 props.push_back({"field", std::make_unique<Literal>(dot->field.lexeme, true)});
             }
@@ -1782,9 +1814,7 @@ namespace jc {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"object", transformQuote(dotAssign->object.get())});
             if (!dotAssign->field.lexeme.empty() && dotAssign->field.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, dotAssign->field.lexeme.substr(1), dotAssign->field.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", dotAssign->field.line));
-                props.push_back({"field", std::move(nameAccess)});
+                props.push_back({"field", makeGetNameExpr(dotAssign->field.lexeme.substr(1), dotAssign->field.line)});
             } else {
                 props.push_back({"field", std::make_unique<Literal>(dotAssign->field.lexeme, true)});
             }
@@ -1795,9 +1825,7 @@ namespace jc {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"object", transformQuote(mcall->object.get())});
             if (!mcall->method.lexeme.empty() && mcall->method.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, mcall->method.lexeme.substr(1), mcall->method.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", mcall->method.line));
-                props.push_back({"method", std::move(nameAccess)});
+                props.push_back({"method", makeGetNameExpr(mcall->method.lexeme.substr(1), mcall->method.line)});
             } else {
                 props.push_back({"method", std::make_unique<Literal>(mcall->method.lexeme, true)});
             }
@@ -1888,9 +1916,7 @@ namespace jc {
         if (auto* decl = dynamic_cast<LocalDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(decl->name.lexeme.substr(1), decl->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
             }
@@ -1900,9 +1926,7 @@ namespace jc {
         if (auto* decl = dynamic_cast<RefDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(decl->name.lexeme.substr(1), decl->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
             }
@@ -1912,9 +1936,7 @@ namespace jc {
         if (auto* decl = dynamic_cast<StateDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(decl->name.lexeme.substr(1), decl->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
             }
@@ -1924,9 +1946,7 @@ namespace jc {
         if (auto* decl = dynamic_cast<ConstDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!decl->name.lexeme.empty() && decl->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, decl->name.lexeme.substr(1), decl->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", decl->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(decl->name.lexeme.substr(1), decl->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(decl->name.lexeme, true)});
             }
@@ -1937,8 +1957,7 @@ namespace jc {
             std::vector<std::unique_ptr<Expr>> namesArgs;
             for (const auto& n : del->names) {
                 if (!n.lexeme.empty() && n.lexeme[0] == '$') {
-                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, n.lexeme.substr(1), n.line));
-                    namesArgs.push_back(std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", n.line)));
+                    namesArgs.push_back(makeGetNameExpr(n.lexeme.substr(1), n.line));
                 } else {
                     namesArgs.push_back(std::make_unique<Literal>(n.lexeme, true));
                 }
@@ -1965,18 +1984,14 @@ namespace jc {
         if (auto* lam = dynamic_cast<LambdaExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!lam->name.empty() && lam->name[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, lam->name.substr(1), 0));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", 0));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(lam->name.substr(1), 0)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(lam->name, true)});
             }
             std::vector<std::unique_ptr<Expr>> paramsArgs;
             for (const auto& p : lam->params) {
                 if (!p.lexeme.empty() && p.lexeme[0] == '$') {
-                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, p.lexeme.substr(1), p.line));
-                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", p.line));
-                    paramsArgs.push_back(std::move(nameAccess));
+                    paramsArgs.push_back(makeGetNameExpr(p.lexeme.substr(1), p.line));
                 } else {
                     paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
                 }
@@ -2044,9 +2059,7 @@ namespace jc {
         if (auto* cls = dynamic_cast<ClassDefExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!cls->name.lexeme.empty() && cls->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, cls->name.lexeme.substr(1), cls->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", cls->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(cls->name.lexeme.substr(1), cls->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(cls->name.lexeme, true)});
             }
@@ -2055,18 +2068,14 @@ namespace jc {
             for (const auto& m : cls->methods) {
                 std::vector<std::pair<std::string, std::unique_ptr<Expr>>> mProps;
                 if (!m.name.lexeme.empty() && m.name.lexeme[0] == '$') {
-                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, m.name.lexeme.substr(1), m.name.line));
-                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", m.name.line));
-                    mProps.push_back({"name", std::move(nameAccess)});
+                    mProps.push_back({"name", makeGetNameExpr(m.name.lexeme.substr(1), m.name.line)});
                 } else {
                     mProps.push_back({"name", std::make_unique<Literal>(m.name.lexeme, true)});
                 }
                 std::vector<std::unique_ptr<Expr>> paramsArgs;
                 for (const auto& p : m.params) {
                     if (!p.lexeme.empty() && p.lexeme[0] == '$') {
-                        auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, p.lexeme.substr(1), p.line));
-                        auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", p.line));
-                        paramsArgs.push_back(std::move(nameAccess));
+                        paramsArgs.push_back(makeGetNameExpr(p.lexeme.substr(1), p.line));
                     } else {
                         paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
                     }
@@ -2096,9 +2105,7 @@ namespace jc {
         if (auto* ns = dynamic_cast<NamespaceDecl*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!ns->name.lexeme.empty() && ns->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, ns->name.lexeme.substr(1), ns->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", ns->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(ns->name.lexeme.substr(1), ns->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(ns->name.lexeme, true)});
             }
@@ -2151,18 +2158,14 @@ namespace jc {
         if (auto* mdef = dynamic_cast<MacroDefExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!mdef->name.lexeme.empty() && mdef->name.lexeme[0] == '$') {
-                auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, mdef->name.lexeme.substr(1), mdef->name.line));
-                auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", mdef->name.line));
-                props.push_back({"name", std::move(nameAccess)});
+                props.push_back({"name", makeGetNameExpr(mdef->name.lexeme.substr(1), mdef->name.line)});
             } else {
                 props.push_back({"name", std::make_unique<Literal>(mdef->name.lexeme, true)});
             }
             std::vector<std::unique_ptr<Expr>> paramsArgs;
             for (const auto& p : mdef->params) {
                 if (!p.lexeme.empty() && p.lexeme[0] == '$') {
-                    auto varExpr = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, p.lexeme.substr(1), p.line));
-                    auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr), Token(TokenType::IDENTIFIER, "name", p.line));
-                    paramsArgs.push_back(std::move(nameAccess));
+                    paramsArgs.push_back(makeGetNameExpr(p.lexeme.substr(1), p.line));
                 } else {
                     paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
                 }

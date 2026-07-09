@@ -982,12 +982,7 @@ namespace jc {
         std::vector<std::unique_ptr<Expr>> stmts;
         {
             MacroScopeGuard guard(this);
-            auto expr = expression();
-            if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
-                for (auto& e : seq->expressions) stmts.push_back(std::move(e));
-            } else {
-                stmts.push_back(std::move(expr));
-            }
+            stmts.push_back(assignment());
         }
         return std::make_unique<Block>(std::move(stmts));
     }
@@ -1203,8 +1198,16 @@ namespace jc {
                 return consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after 'delete' or ','.");
             };
             names.push_back(parseDelName());
-            while (match({ TokenType::COMMA })) {
-                names.push_back(parseDelName());
+            while (check(TokenType::COMMA)) {
+                int peekPos = current + 1;
+                while (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::NEWLINE) peekPos++;
+                if (peekPos < static_cast<int>(tokens.size()) && (tokens[peekPos].type == TokenType::IDENTIFIER || tokens[peekPos].type == TokenType::DOLLAR)) {
+                    advance(); // 吞掉逗号
+                    while (match({ TokenType::NEWLINE })) {}
+                    names.push_back(parseDelName());
+                } else {
+                    break; // 智能探测：后面不是变量名，把逗号留给外层
+                }
             }
             return std::make_unique<DeleteExpr>(std::move(names));
         }
@@ -2239,7 +2242,8 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::deferExpr() {
-        auto body = parseStatementOrBlock();
+        while (match({ TokenType::NEWLINE })) {}
+        auto body = assignment();
         return std::make_unique<DeferExpr>(std::move(body));
     }
 

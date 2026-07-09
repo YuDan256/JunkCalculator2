@@ -190,7 +190,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
         if (isImport) throw;
         // 注意这里不在最后加 RESET，交给底层传递回来的字符串本身控制
         std::cerr << "\n" << jc::col(jc::Ansi::BRIGHT_RED)
-            << "Error in '" << resolvedPath << "':\n"
+            << "In '" << resolvedPath << "':\n"
             << ex.what() << std::endl;
     }
 
@@ -478,7 +478,7 @@ int main(int argc, char* argv[]) {
             }
         }
         catch (const std::exception& e) {
-            std::cerr << "Error: " << e.what() << std::endl;
+            std::cerr << e.what() << std::endl;
             return 1;
         }
         return 0;
@@ -846,7 +846,7 @@ int main(int argc, char* argv[]) {
         }
         catch (const std::exception& e) {
             std::cerr << jc::col(jc::Ansi::BRIGHT_RED)
-                << "Error: " << e.what() << jc::col(jc::Ansi::RESET) << std::endl;
+                << e.what() << jc::col(jc::Ansi::RESET) << std::endl;
         }
     }
 

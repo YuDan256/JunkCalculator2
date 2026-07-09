@@ -6098,6 +6098,19 @@
         "ast = quote { print(\"Hello\") }",
         "macro run_twice(n) = quote { $n; $n }"
       ]
+    },
+    "defer": {
+      "signature": "defer expr",
+      "desc": [
+        "Schedules an expression to be executed when the current block scope exits.",
+        "Defers are executed in LIFO (Last-In, First-Out) order.",
+        "They are guaranteed to run even if the block exits early via return, break, continue, or throw.",
+        "Useful for resource cleanup (e.g., closing files, releasing locks)."
+      ],
+      "examples": [
+        "defer print(\"Cleanup\")",
+        "defer file.close()"
+      ]
     }
   }
 }

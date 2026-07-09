@@ -1,0 +1,78 @@
+test_basic_lifo() = {
+    res = []
+    {
+        defer res.push(1)
+        defer res.push(2)
+        res.push(0)
+    }
+    assert(res == [0, 2, 1], "Basic LIFO execution order failed")
+}
+test_basic_lifo()
+
+test_defer_on_return() = {
+    res = []
+    f() = {
+        defer res.push("deferred")
+        res.push("running")
+        return 42
+        defer res.push("unreached")
+    }
+    
+    val = f()
+    assert(val == 42, "Function return value is wrong")
+    assert(res == ["running", "deferred"], "Defer on return failed")
+}
+test_defer_on_return()
+
+test_defer_in_loops() = {
+    res = []
+    for (local i = 0; i < 3; i += 1) {
+        defer res.push(i)
+        
+        if (i == 1) continue
+        if (i == 2) break
+        
+        res.push(i * 10)
+    }
+    
+    // i = 0: res.push(0), defer res.push(0) -> [0, 0]
+    // i = 1: continue, defer res.push(1)    -> [0, 0, 1]
+    // i = 2: break, defer res.push(2)       -> [0, 0, 1, 2]
+    assert(res == [0, 0, 1, 2], "Defer with break/continue failed")
+}
+test_defer_in_loops()
+
+test_defer_exception_unwinding() = {
+    res = []
+    try {
+        defer res.push("outer_defer")
+        {
+            defer res.push("inner_defer")
+            throw "test_error"
+            defer res.push("unreached")
+        }
+    } catch (e) {
+        res.push("caught")
+    }
+    
+    assert(res == ["inner_defer", "outer_defer", "caught"], "Defer exception unwinding failed")
+}
+test_defer_exception_unwinding()
+
+test_defer_with_macros() = {
+    macro with_log(msg, body) = {
+        return [
+            quote res.push("start_" + $msg),
+            quote defer res.push("end_" + $msg),
+            body
+        ]
+    }
+    
+    res = []
+    {
+        @with_log("task", res.push("doing_task"))
+    }
+    
+    assert(res == ["start_task", "doing_task", "end_task"], "Defer macro splicing failed")
+}
+test_defer_with_macros()

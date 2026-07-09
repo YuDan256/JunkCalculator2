@@ -1087,6 +1087,8 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             getProp("isLocal").truthy(),
             getProp("isConst").truthy()
         );
+    } else if (type == "DeferExpr") {
+        return std::make_unique<DeferExpr>(JC2_to_AST(getProp("body")));
     }
 
     throw std::runtime_error("Macro Error: Unsupported node type '" + type + "'");

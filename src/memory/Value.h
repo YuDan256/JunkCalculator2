@@ -541,6 +541,17 @@ namespace jc {
 
         std::string toString() const {
             if (isString()) return static_cast<ObjString*>(asObj())->str;
+            if (isInstance()) {
+                try {
+                    auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
+                    if (foundStr) {
+                        if (strRes.isString()) return strRes.asString();
+                        std::ostringstream oss;
+                        oss << strRes;
+                        return oss.str();
+                    }
+                } catch (...) {}
+            }
             std::ostringstream oss;
             oss << *this;
             return oss.str();

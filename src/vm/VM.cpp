@@ -1931,13 +1931,12 @@ void VM::execCompileTimeImport(const std::string& name) {
     while (std::getline(file, line)) code += line + "\n";
     file.close();
 
-    std::unordered_set<std::string> existingGlobals;
-    for (const auto& kv : globalNames) existingGlobals.insert(kv.first);
-
     jc::Lexer lexer(code, resolved);
     auto tokens = lexer.tokenize();
     jc::Parser parser(tokens, resolved);
     auto ast = parser.parse();
+
+    auto nsDecl = std::make_unique<NamespaceDecl>(Token(TokenType::IDENTIFIER, baseName, 0), std::move(ast));
 
     auto modFn = std::make_shared<CompiledFunction>();
     modFn->name = "<comptime " + name + ">";
@@ -1948,7 +1947,7 @@ void VM::execCompileTimeImport(const std::string& name) {
 
     IRGraph fnGraph;
     IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get());
-    fnBuilder.build(ast.get());
+    fnBuilder.build(nsDecl.get());
 
     IROptimizer::optimize(&fnGraph);
     RegisterAllocator::allocate(&fnGraph);
@@ -1996,8 +1995,9 @@ void VM::execCompileTimeImport(const std::string& name) {
 
     std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
     helpers::g_scriptDirStack.push_back(scriptDir);
+    Value nsVal;
     try {
-        run(targetDepth);
+        nsVal = run(targetDepth);
         frames[frameCount].selfContext = Value::none();
         frames[frameCount].classContext = Value::none();
         frames[frameCount].closure = nullptr;
@@ -2025,16 +2025,19 @@ void VM::execCompileTimeImport(const std::string& name) {
     }
     helpers::g_scriptDirStack.pop_back();
 
-    ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
-    ns->name = baseName;
+    if (!nsVal.isObjType(ObjType::NAMESPACE)) {
+        throw std::runtime_error("VM Error: Compile-time module script must not use top-level 'return'.");
+    }
+    ObjNamespace* ns = static_cast<ObjNamespace*>(nsVal.asObj());
     
-    for (const auto& kv : globalNames) {
-        if (existingGlobals.find(kv.first) == existingGlobals.end()) {
-            ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
-            uv->closed = globals[kv.second];
-            uv->location = &uv->closed;
-            bool isConst = constGlobals.count(kv.first) > 0;
-            ns->fields[kv.first] = { uv, isConst };
+    for (const auto& [k, field] : ns->fields) {
+        auto it = globalNames.find(k);
+        if (it == globalNames.end()) {
+            globalNames[k] = static_cast<uint32_t>(globals.size());
+            globals.push_back(*(field.upval->location));
+            if (field.isConst) constGlobals.insert(k);
+        } else {
+            globals[it->second] = *(field.upval->location);
         }
     }
     

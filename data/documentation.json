@@ -37,7 +37,6 @@
       "    setWorkspace(\"path\")   Change workspace directory (function form)",
       "    getWorkspace()         Returns current workspace path",
       "    pwd()                  Print script dir and workspace dir",
-      "    libs()                 List available native libraries",
       "",
       "  Command-Line Usage",
       "  ────────────────────────────────────────────────────────────────────",
@@ -92,7 +91,7 @@
       "    class  extends  super  self  namespace  ref  state  const  delete",
       "    try  catch  throw  import  true  false  none  macro  quote",
       "",
-      "  Native Libraries (require `import` before use)",
+      "  Native Libraries (require `import` before use, use `/help <library>` for details)",
       "  ────────────────────────────────────────────────────────────────────",
       "    image       BMP image generation (import image)",
       "    prob        Probability distributions & hypothesis tests (import prob)",
@@ -104,11 +103,8 @@
       "    ffi         Zero-dependency Foreign Function Interface (import ffi)",
       "    tensor      N-Dimensional Tensor engine with Autograd (import tensor)",
       "",
-      "    Type `libs()` in the REPL to see all available native libraries.",
-      "",
       "  Standard Modules (require `import` before use, use `/help <module>` for details)",
       "  ────────────────────────────────────────────────────────────────────",
-      "    tensor      N-D Tensor computation with automatic differentiation",
       "    regex       Regular Expression standard library (import regex)",
       "    discrete    Discrete math utilities standard library (import discrete)",
       "    buffer      High-level binary buffer and cursor API (import buffer)",
@@ -2859,7 +2855,6 @@
       "    (.dll on Windows, .so on Linux) located in the `lib/` directory.",
       "    They are strictly isolated and provide high-performance functionality.",
       "",
-      "    libs()                      List all available native libraries",
       "    import libName              Load a native library into a namespace",
       "",
       "    Currently available:",
@@ -4776,11 +4771,6 @@
       "signature": "cls()",
       "desc": "Clears the console screen.",
       "examples": ["cls()"]
-    },
-    "libs": {
-      "signature": "libs()",
-      "desc": "Lists all available native libraries.",
-      "examples": ["libs()"]
     },
     "breakpoint": {
       "signature": "breakpoint()",

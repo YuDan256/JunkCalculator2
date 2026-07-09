@@ -4468,12 +4468,6 @@ void BuiltinRegistry::registerSystemShell() {
         return Value::none();
         });
 
-    reg("libs", { 0 }, [](const std::vector<Value>&) -> Value {
-        std::cout << "  Native libraries are now loaded dynamically via DLL/SO files.\n";
-        std::cout << "  Use `import \"lib_name\"` to load them.\n";
-        return Value::none();
-        });
-
     reg("run", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::string filepath = args[0].asString();
         std::string resolved = helpers::safeResolvePath(filepath);

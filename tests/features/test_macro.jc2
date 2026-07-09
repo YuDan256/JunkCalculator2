@@ -238,3 +238,51 @@ test_hygienic_macro() = {
     assert(temp == 10 && x == 100, "Hygienic macro failed")
 }
 test_hygienic_macro()
+
+test_local_macro_scope() = {
+    // 测试局部宏在块级作用域内有效
+    res = eval("{ macro local_mac() = quote { 42 }; @local_mac() }")
+    assert(res == 42, "Local macro should work inside its scope")
+    
+    // 测试局部宏不会泄漏到外部作用域
+    try {
+        eval("@local_mac()")
+        assert(false, "Local macro should not leak outside its scope")
+    } catch (e) {
+        assert("not defined" in str(e) || "Undefined" in str(e), "Expected undefined macro error")
+    }
+}
+test_local_macro_scope()
+
+test_macro_shadowing() = {
+    macro shadow_mac() = quote { 1 }
+    res1 = @shadow_mac()
+    assert(res1 == 1, "Global macro should return 1")
+    
+    res2 = 0
+    {
+        // 内部作用域定义同名宏，形成遮蔽 (Shadowing)
+        macro shadow_mac() = quote { 2 }
+        res2 = @shadow_mac()
+    }
+    assert(res2 == 2, "Local macro should shadow global macro")
+    
+    // 离开内部作用域后，外部宏恢复可见
+    res3 = @shadow_mac()
+    assert(res3 == 1, "Global macro should be restored after block")
+}
+test_macro_shadowing()
+
+test_macro_deletion() = {
+    // 定义一个宏然后立即使用 delete @macro 卸载它
+    eval("macro temp_mac() = quote { 99 }; delete @temp_mac")
+    
+    // 验证卸载后该宏不再可用
+    try {
+        eval("@temp_mac()")
+        assert(false, "Deleted macro should not be accessible")
+    } catch (e) {
+        assert("not defined" in str(e) || "Undefined" in str(e), "Expected undefined macro error after deletion")
+    }
+}
+test_macro_deletion()

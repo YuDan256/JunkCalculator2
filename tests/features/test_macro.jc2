@@ -287,14 +287,26 @@ test_macro_deletion() = {
 }
 test_macro_deletion()
 
+test_macro_splicing() = {
+    macro declare_two() = {
+        // 返回一个 List，实现多语句平铺注入（不引入作用域）
+        return [
+            quote local splice_a = 100,
+            quote local splice_b = 200
+        ]
+    }
+    
+    @declare_two()
+    assert(splice_a == 100 && splice_b == 200, "Macro list splicing failed")
+}
+test_macro_splicing()
+
 test_comptime_import() = {
     // 动态创建一个包含辅助函数和宏的库文件
     lib_code = "make_prefix(name) = \"PREFIX_\" + name\n" +
                "macro generate_var(name) = {\n" +
                "    new_name = make_prefix(name.value)\n" +
-               "    return quote {\n" +
-               "        local $new_name = 42\n" +
-               "    }\n" +
+               "    return quote local $new_name = 42\n" +
                "}\n"
     writeFile("temp_macro_lib.jc2", lib_code)
     

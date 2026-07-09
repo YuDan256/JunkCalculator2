@@ -1440,12 +1440,6 @@ namespace jc {
                 auto expandedAst = JC2_to_AST(resultVal);
                 if (!expandedAst) throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
                 
-                if (auto* block = dynamic_cast<Block*>(expandedAst.get())) {
-                    if (block->statements.size() == 1) {
-                        return std::move(block->statements[0]);
-                    }
-                }
-                
                 return expandedAst;
             }
             if (!check(TokenType::LBRACKET)) {

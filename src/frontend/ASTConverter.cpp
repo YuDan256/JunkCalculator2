@@ -681,11 +681,24 @@ static TokenType stringToTokenType(const std::string& s) {
 
 std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     if (val.isNone()) return nullptr;
-    if (!val.isInstance()) throw std::runtime_error("Macro Error: Expected ASTNode instance");
+    
+    // ★ 核心机制：如果宏返回一个 List，将其转换为 SequenceExpr 以实现平铺（不引入作用域）
+    if (val.isObjType(ObjType::LIST)) {
+        auto objList = static_cast<ObjList*>(val.asObj());
+        std::vector<std::unique_ptr<Expr>> exprs;
+        for (const auto& v : objList->vec) {
+            if (!v.isNone()) {
+                exprs.push_back(JC2_to_AST(v));
+            }
+        }
+        return std::make_unique<SequenceExpr>(std::move(exprs));
+    }
+
+    if (!val.isInstance()) throw std::runtime_error("Macro Error: Expected ASTNode instance or List of ASTNodes");
     
     auto inst = val.asInstance();
     if (!inst->classDef || inst->classDef->name != "ASTNode") {
-        throw std::runtime_error("Macro Error: Expected ASTNode instance");
+        throw std::runtime_error("Macro Error: Expected ASTNode instance or List of ASTNodes");
     }
     
     auto getProp = [&](const std::string& key) -> Value {

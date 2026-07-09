@@ -2107,7 +2107,8 @@ void VM::execCompileTimeImport(const std::string& name) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
         }
-        try { runDefersDownTo(frames[targetDepth].deferBase, &ex.val); } catch (...) {}
+        Value errVal = wrapException("Exception", ex.val);
+        try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
             int clearBase = f->registerBase;
@@ -2123,7 +2124,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         }
         pendingCallRefs.clear();
         helpers::g_scriptDirStack.pop_back();
-        throw RuntimeError("", ex.val);
+        throw RuntimeError("", errVal);
     } catch (RuntimeError& ex) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
@@ -2228,6 +2229,16 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
 
 Value VM::wrapException(const std::string& type, Value val) {
     if (val.isInstance() && val.asInstance()->classDef->name == "Exception") {
+        auto inst = val.asInstance();
+        if (inst->fields) {
+            auto it = inst->fields->keyMap.find(Value("traceback"));
+            if (it != inst->fields->keyMap.end()) {
+                Value tbVal = inst->fields->elements[it->second].second;
+                if (tbVal.isString() && tbVal.asString().empty()) {
+                    inst->fields->elements[it->second].second = Value(buildStackTrace());
+                }
+            }
+        }
         return val;
     }
     
@@ -2496,7 +2507,8 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
         }
-        try { runDefersDownTo(frames[targetDepth].deferBase, &ex.val); } catch (...) {}
+        Value errVal = wrapException("Exception", ex.val);
+        try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
             int clearBase = f->registerBase;
@@ -2511,7 +2523,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             frameCount--;
         }
         pendingCallRefs.clear();
-        throw RuntimeError("", ex.val);
+        throw RuntimeError("", errVal);
     } catch (RuntimeError& ex) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
@@ -5652,10 +5664,7 @@ Value VM::run(int targetFrameDepth) {
             throw;
         } catch (const ValueException& ex) {
             frame->ip = ip;
-            Value errVal = ex.val;
-            if (!errVal.isInstance() || errVal.asInstance()->classDef->name != "Exception") {
-                errVal = wrapException("Exception", errVal);
-            }
+            Value errVal = wrapException("Exception", ex.val);
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }

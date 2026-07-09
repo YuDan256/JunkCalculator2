@@ -25,6 +25,7 @@ private:
     // 变量名 -> 当前定义该变量的 IRNode
     std::vector<std::unordered_map<std::string, IRNode*>> envStack;
     std::vector<int> deferCounts;
+    int activeTryCount = 0;
 
     void pushScope() {
         envStack.emplace_back();
@@ -68,6 +69,7 @@ private:
         std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> breakEnvs;
         IRNode* continueMerge;
         std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> continueEnvs;
+        int tryDepthAtLoopStart;
     };
     std::vector<IRLoopInfo> loopStack;
 

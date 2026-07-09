@@ -2216,7 +2216,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
     IRNode* continueMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -2313,7 +2313,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
     IRNode* continueMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -2395,6 +2395,13 @@ void IRBuilder::visitBreakExpr(BreakExpr*) {
     auto& loop = loopStack.back();
     
     int loopDepth = static_cast<int>(loop.loopPhisStack.size());
+    int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
+    for (int i = 0; i < triesToPop; ++i) {
+        IRNode* tryEnd = graph->createNode(IROp::TryEnd);
+        tryEnd->setControl(currentControl);
+        currentControl = tryEnd;
+    }
+
     int defersToRun = 0;
     for (size_t i = loopDepth - 1; i < deferCounts.size(); ++i) {
         defersToRun += deferCounts[i];
@@ -2417,6 +2424,13 @@ void IRBuilder::visitContinueExpr(ContinueExpr*) {
     auto& loop = loopStack.back();
     
     int loopDepth = static_cast<int>(loop.loopPhisStack.size());
+    int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
+    for (int i = 0; i < triesToPop; ++i) {
+        IRNode* tryEnd = graph->createNode(IROp::TryEnd);
+        tryEnd->setControl(currentControl);
+        currentControl = tryEnd;
+    }
+
     int defersToRun = 0;
     for (size_t i = loopDepth; i < deferCounts.size(); ++i) {
         defersToRun += deferCounts[i];
@@ -3249,7 +3263,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
     IRNode* continueMerge = graph->createNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
     
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     nextNode->setControl(currentControl);
@@ -3354,8 +3368,14 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     auto baseEnv = envStack;
 
     // 1. 正常分支
-    currentControl = tryBegin;
+    IRNode* tryBodyStart = graph->createNode(IROp::Merge);
+    tryBodyStart->addData(tryBegin);
+    currentControl = tryBodyStart;
+
+    activeTryCount++;
     expr->tryBody->accept(*this);
+    activeTryCount--;
+    
     IRNode* tryEnd = graph->createNode(IROp::TryEnd);
     tryEnd->setControl(currentControl);
     IRNode* normalControl = tryEnd;

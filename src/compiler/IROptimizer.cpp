@@ -477,6 +477,7 @@ bool IROptimizer::simplifyPhis(IRGraph* graph) {
                 else if (in != firstValid) { allSame = false; break; }
             }
             if (allSame && firstValid) {
+                if (firstValid->op == IROp::TryBegin) continue;
                 std::vector<IRNode*> dependentPhis;
                 bool canSimplify = true;
                 for (auto& nPtr : graph->getNodes()) {

@@ -971,13 +971,12 @@ namespace jc {
         while (match({ TokenType::NEWLINE })) {}
 
         if (check(TokenType::LBRACE)) {
-            // ★ 我们必须在这里进行智能探测！
-            if (!isDictLiteralLookahead(current + 1)) {
-                return parseBlock(); // 确定是普通代码块，安全进入！
-            }
+            // ★ 在控制流语句（if/while/for/try/catch）后，'{' 永远被视为代码块！
+            // 不再进行字典字面量探测，避免 catch(e) { e } 被误解析为返回字典 {"e": e}
+            return parseBlock();
         }
 
-        // 走到这里说明它没有大括号，或者它是被识别为单行字典字面量的大括号
+        // 走到这里说明它没有大括号，是单行语句
         // 统统包装为安全的单句 Block 以封锁词法作用域
         std::vector<std::unique_ptr<Expr>> stmts;
         {

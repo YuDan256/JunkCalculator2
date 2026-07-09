@@ -145,7 +145,14 @@ namespace jc {
             while (!isAtEnd()) {
                 while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
                 if (isAtEnd()) break;
-                stmts.push_back(expression());
+                
+                auto expr = expression();
+                if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                    for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+                } else {
+                    stmts.push_back(std::move(expr));
+                }
+                
                 if (!isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
                     throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
                 }
@@ -834,7 +841,14 @@ namespace jc {
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
             if (check(TokenType::RBRACE)) break;
-            stmts.push_back(expression());
+            
+            auto expr = expression();
+            if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+            } else {
+                stmts.push_back(std::move(expr));
+            }
+            
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
                 throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
             }
@@ -968,7 +982,12 @@ namespace jc {
         std::vector<std::unique_ptr<Expr>> stmts;
         {
             MacroScopeGuard guard(this);
-            stmts.push_back(expression());
+            auto expr = expression();
+            if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+            } else {
+                stmts.push_back(std::move(expr));
+            }
         }
         return std::make_unique<Block>(std::move(stmts));
     }
@@ -2241,7 +2260,14 @@ namespace jc {
                 while (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd()) {
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
                     if (check(TokenType::CASE) || check(TokenType::DEFAULT) || check(TokenType::RBRACE)) break;
-                    stmts.push_back(expression());
+                    
+                    auto expr = expression();
+                    if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                        for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+                    } else {
+                        stmts.push_back(std::move(expr));
+                    }
+                    
                     if (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
                         throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
                     }
@@ -2255,7 +2281,14 @@ namespace jc {
                 while (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd()) {
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
                     if (check(TokenType::CASE) || check(TokenType::DEFAULT) || check(TokenType::RBRACE)) break;
-                    stmts.push_back(expression());
+                    
+                    auto expr = expression();
+                    if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                        for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+                    } else {
+                        stmts.push_back(std::move(expr));
+                    }
+                    
                     if (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
                         throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
                     }
@@ -2554,7 +2587,14 @@ namespace jc {
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
             if (check(TokenType::RBRACE)) break;
-            stmts.push_back(expression());
+            
+            auto expr = expression();
+            if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+            } else {
+                stmts.push_back(std::move(expr));
+            }
+            
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
                 throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
             }

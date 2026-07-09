@@ -1734,13 +1734,13 @@ Value VM::execImport(const std::string& name) {
     }
 #endif
 
-    // 2. 其次查找当前目录下的原生模块
+    // 2. 其次查找当前目录下的原生库
     if (resolved.empty()) {
         std::string localModPath = helpers::safeResolvePath(nativeName);
         if (std::filesystem::is_regular_file(localModPath)) resolved = localModPath;
     }
 
-    // 3. 最后查找 .jc2 脚本
+    // 3. 最后查找 .jc2 模块脚本
     if (resolved.empty()) {
         resolved = helpers::safeResolvePath(name);
         if (!std::filesystem::is_regular_file(resolved)) {

@@ -391,7 +391,8 @@ int main(int argc, char* argv[]) {
             (fs::current_path() / "data" / p).string(),
             (fs::path(exeDir) / p).string(),
             (fs::path(exeDir) / "data" / p).string(),
-            (fs::path(exeDir) / "modules" / p).string()
+            (fs::path(exeDir) / "modules" / p).string(),
+            (fs::path(exeDir) / "lib" / p).string()
         };
         for (const auto& cp : c) if (fs::exists(cp)) return cp;
         return fs::weakly_canonical(fs::current_path() / p).string();

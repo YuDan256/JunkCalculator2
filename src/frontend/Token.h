@@ -60,6 +60,7 @@ namespace jc {
         MATCH,               // ★ 新增
         MACRO,               // ★ 新增
         QUOTE,               // ★ 新增
+        DEFER,               // ★ 新增
         CLASS,
         NAMESPACE,           // ★ 新增
         SUPER,
@@ -173,6 +174,7 @@ namespace jc {
         case TokenType::MATCH:         return "MATCH";
         case TokenType::MACRO:         return "MACRO";
         case TokenType::QUOTE:         return "QUOTE";
+        case TokenType::DEFER:         return "DEFER";
         case TokenType::LOCAL:         return "LOCAL";
         case TokenType::IMPORT:        return "IMPORT";
         case TokenType::REF:           return "REF";

@@ -24,6 +24,24 @@ private:
     // 简单的局部变量环境 (用于初步的 SSA 构建)
     // 变量名 -> 当前定义该变量的 IRNode
     std::vector<std::unordered_map<std::string, IRNode*>> envStack;
+    std::vector<int> deferCounts;
+
+    void pushScope() {
+        envStack.emplace_back();
+        deferCounts.push_back(0);
+    }
+
+    void popScope() {
+        int dCount = deferCounts.back();
+        deferCounts.pop_back();
+        if (dCount > 0) {
+            IRNode* runNode = graph->createNode(IROp::RunDefers);
+            runNode->payload1 = dCount;
+            runNode->setControl(currentControl);
+            currentControl = runNode;
+        }
+        envStack.pop_back();
+    }
 
     IRBuilder* parent = nullptr;
     CompiledFunction* currentFunction = nullptr;
@@ -143,6 +161,7 @@ public:
     void visitQuoteExpr(QuoteExpr* expr) override;
     void visitUnquoteExpr(UnquoteExpr* expr) override;
     void visitExprAssign(ExprAssign* expr) override;
+    void visitDeferExpr(DeferExpr* expr) override;
 };
 
 } // namespace jc

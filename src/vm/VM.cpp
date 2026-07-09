@@ -97,6 +97,18 @@ ObjUpVal* VM::captureUpvalue(int regIndex) {
     return createdUpval;
 }
 
+void VM::runDefersDownTo(int targetBase) {
+    while (static_cast<int>(deferStack.size()) > targetBase) {
+        ObjClosure* closure = deferStack.back();
+        deferStack.pop_back();
+        try {
+            callVMFunction(closure->compiledFnIndex, {}, closure, closure->boundSelf, closure->boundClass);
+        } catch (...) {
+            throw;
+        }
+    }
+}
+
 void VM::closeUpvalues(int lastRegIndex) {
     while (openUpvalues != nullptr && openUpvalues->stackIndex >= lastRegIndex) {
         ObjUpVal* upval = openUpvalues;
@@ -232,6 +244,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             }
 
             if (isTailCall) {
+                runDefersDownTo(currentFrame->deferBase);
                 int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                     exceptionHandlers.pop_back();
@@ -259,6 +272,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             newFrame.ip = 0;
             newFrame.registerBase = newBase;
             newFrame.returnRegister = dstReg;
+            newFrame.deferBase = static_cast<int>(deferStack.size());
             newFrame.closure = closure;
             newFrame.selfContext = closure->boundSelf;
             newFrame.classContext = closure->boundClass;
@@ -369,6 +383,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 }
 
                 if (isTailCall) {
+                    runDefersDownTo(currentFrame->deferBase);
                     int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
@@ -396,6 +411,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 newFrame.ip = 0;
                 newFrame.registerBase = newBase;
                 newFrame.returnRegister = dstReg;
+                newFrame.deferBase = static_cast<int>(deferStack.size());
                 newFrame.closure = initMethod;
                 newFrame.selfContext = Value(instance);
                 newFrame.classContext = Value(cls);
@@ -491,6 +507,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 }
 
                 if (isTailCall) {
+                    runDefersDownTo(currentFrame->deferBase);
                     int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                         exceptionHandlers.pop_back();
@@ -518,6 +535,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 newFrame.ip = 0;
                 newFrame.registerBase = newBase;
                 newFrame.returnRegister = dstReg;
+                newFrame.deferBase = static_cast<int>(deferStack.size());
                 newFrame.closure = method;
                 newFrame.selfContext = callee;
                 newFrame.classContext = Value(owningClass);
@@ -696,6 +714,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         
         newFrame.registerBase = newBase;
         newFrame.returnRegister = 0;
+        newFrame.deferBase = static_cast<int>(deferStack.size());
         newFrame.closure = method;
         newFrame.selfContext = Value(inst);
         newFrame.classContext = Value(inst->classDef);
@@ -1155,6 +1174,7 @@ invoke_method:
         }
 
         if (isTailCall) {
+            runDefersDownTo(currentFrame->deferBase);
             int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
             while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                 exceptionHandlers.pop_back();
@@ -1182,6 +1202,7 @@ invoke_method:
         newFrame.ip = 0;
         newFrame.registerBase = newBase;
         newFrame.returnRegister = a;
+        newFrame.deferBase = static_cast<int>(deferStack.size());
         newFrame.closure = method;
         newFrame.selfContext = obj;
         newFrame.classContext = owningClass ? Value(owningClass) : Value::none();
@@ -1294,6 +1315,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         }
 
         if (isTailCall) {
+            runDefersDownTo(currentFrame->deferBase);
             int oldTotalCount = currentFrame->function->localCount + currentFrame->function->refCount;
             while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                 exceptionHandlers.pop_back();
@@ -1321,6 +1343,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         newFrame.ip = 0;
         newFrame.registerBase = newBase;
         newFrame.returnRegister = a;
+        newFrame.deferBase = static_cast<int>(deferStack.size());
         newFrame.closure = method;
         newFrame.selfContext = Value(inst);
         newFrame.classContext = Value(owningClass);
@@ -1871,6 +1894,7 @@ Value VM::execImport(const std::string& name) {
         CallFrame* currentFrame = &frames[frameCount - 1];
         newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
         newFrame.returnRegister = 0;
+        newFrame.deferBase = static_cast<int>(deferStack.size());
         newFrame.closure = nullptr;
         newFrame.selfContext = Value::none();
         newFrame.classContext = Value::none();
@@ -1978,6 +2002,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         newFrame.registerBase = 0;
     }
     newFrame.returnRegister = 0;
+    newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = nullptr;
     newFrame.selfContext = Value::none();
     newFrame.classContext = Value::none();
@@ -2006,6 +2031,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
         }
+        try { runDefersDownTo(frames[targetDepth].deferBase); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
             int clearBase = f->registerBase;
@@ -2050,6 +2076,8 @@ bool VM::handleExceptionUnwind(Value errVal) {
     if (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= currentTargetFrameDepth) {
         auto handler = exceptionHandlers.back();
         exceptionHandlers.pop_back();
+        
+        runDefersDownTo(handler.deferBase);
         
         while (frameCount > handler.frameIndex + 1) {
             CallFrame* f = &frames[frameCount - 1];
@@ -2148,6 +2176,10 @@ VM::VM() {
             GcHeap::get().markObj(pr.second);
         }
         
+        for (auto* closure : deferStack) {
+            GcHeap::get().markObj(closure);
+        }
+        
         for (auto& [k, v] : loadedModules) {
             GcHeap::get().markValue(v);
         }
@@ -2222,6 +2254,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     
     newFrame.registerBase = newBase;
     newFrame.returnRegister = 0;
+    newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = closure;
     newFrame.selfContext = boundSelf;
     newFrame.classContext = boundClass;
@@ -2291,6 +2324,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
         mainFrame.registerBase = 0;
     }
     mainFrame.returnRegister = 0;
+    mainFrame.deferBase = static_cast<int>(deferStack.size());
     
     if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
     
@@ -2308,6 +2342,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
         }
+        try { runDefersDownTo(frames[targetDepth].deferBase); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
             int clearBase = f->registerBase;
@@ -4149,6 +4184,7 @@ Value VM::run(int targetFrameDepth) {
                 handler.ip = ip + sbx;
                 handler.registerBase = frame->registerBase;
                 handler.errReg = a;
+                handler.deferBase = static_cast<int>(deferStack.size());
                 exceptionHandlers.push_back(handler);
                 break;
             }
@@ -5011,6 +5047,21 @@ Value VM::run(int targetFrameDepth) {
                 execSliceSet(a, c, static_cast<uint8_t>(c));
                 break;
             }
+            case OpCode::DEFER: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                deferStack.push_back(getReg(a).asFunction());
+                break;
+            }
+            case OpCode::RUN_DEFERS: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                int count = a;
+                while (count-- > 0) {
+                    ObjClosure* closure = deferStack.back();
+                    deferStack.pop_back();
+                    callVMFunction(closure->compiledFnIndex, {}, closure, closure->boundSelf, closure->boundClass);
+                }
+                break;
+            }
             case OpCode::IMPORT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
@@ -5359,7 +5410,9 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::RETURN: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value res = std::move(getReg(a));
-                
+            
+                runDefersDownTo(frame->deferBase);
+            
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                     exceptionHandlers.pop_back();
                 }

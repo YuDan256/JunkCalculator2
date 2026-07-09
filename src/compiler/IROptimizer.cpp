@@ -49,6 +49,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
         case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
         case IROp::Method: case IROp::Inherit: case IROp::Import:
+        case IROp::Defer: case IROp::RunDefers:
         case IROp::ListInit: case IROp::ListAppend: case IROp::ListCompEnd:
         case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
             return true;

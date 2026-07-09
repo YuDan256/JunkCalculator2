@@ -53,6 +53,7 @@ namespace jc {
         std::unique_ptr<Expr> matchExpr();     // ★
         std::unique_ptr<Expr> macroDefExpr();  // ★
         std::unique_ptr<Expr> quoteExpr();     // ★
+        std::unique_ptr<Expr> deferExpr();     // ★
         std::unique_ptr<Expr> transformQuote(Expr* expr); // ★
         std::unique_ptr<Pattern> parsePrimaryPattern(); // ★
         std::unique_ptr<Pattern> parsePattern(); // ★

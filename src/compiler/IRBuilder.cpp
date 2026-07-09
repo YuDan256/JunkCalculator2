@@ -152,7 +152,7 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
 
 IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction) 
     : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), currentControl(graph->startNode), lastValue(nullptr) {
-    envStack.emplace_back(); // 压入顶层作用域
+    pushScope(); // 压入顶层作用域
 }
 
 IRNode* IRBuilder::getLocalNode(const std::string& name) {
@@ -1837,7 +1837,7 @@ void IRBuilder::visitAssign(Assign* expr) {
 }
 
 void IRBuilder::visitBlock(Block* expr) {
-    envStack.emplace_back(); // 进入新作用域
+    pushScope(); // 进入新作用域
     if (expr->statements.empty()) {
         lastValue = graph->createConstant(Value::none());
         lastValue->setControl(currentControl);
@@ -1908,7 +1908,7 @@ void IRBuilder::visitBlock(Block* expr) {
             }
         }
     }
-    envStack.pop_back(); // 离开作用域
+    popScope(); // 离开作用域
 }
 
 void IRBuilder::visitGroupingExpr(GroupingExpr* expr) {
@@ -2023,17 +2023,17 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
 
     // 4. 编译 True 分支
     currentControl = ifTrue;
-    envStack.emplace_back(); // ★ 自动创建块级作用域
+    pushScope(); // ★ 自动创建块级作用域
     expr->thenBranch->accept(*this);
     IRNode* thenControl = currentControl;
     IRNode* thenVal = lastValue;
     auto thenEnv = envStack;
-    envStack.pop_back();
+    popScope();
 
     // 5. 编译 False 分支
     envStack = baseEnv;
     currentControl = ifFalse;
-    envStack.emplace_back(); // ★ 自动创建块级作用域
+    pushScope(); // ★ 自动创建块级作用域
     IRNode* elseVal = nullptr;
     if (expr->elseBranch) {
         expr->elseBranch->accept(*this);
@@ -2044,7 +2044,7 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     }
     IRNode* elseControl = currentControl;
     auto elseEnv = envStack;
-    envStack.pop_back();
+    popScope();
     envStack = baseEnv;
 
     // 6. 创建 Merge 节点汇合控制流
@@ -2196,7 +2196,7 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
 }
 
 void IRBuilder::visitWhileExpr(WhileExpr* expr) {
-    envStack.emplace_back(); // ★ 自动创建块级作用域
+    pushScope(); // ★ 自动创建块级作用域
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
     loopNode->addData(currentControl);
@@ -2265,14 +2265,14 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     loopStack.pop_back();
     
     envStack = exitEnvStack;
-    envStack.pop_back(); // 离开块级作用域
+    popScope(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitForExpr(ForExpr* expr) {
-    envStack.emplace_back(); // ★ 自动创建块级作用域
+    pushScope(); // ★ 自动创建块级作用域
     expr->initializer->accept(*this);
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
@@ -2343,7 +2343,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     loopStack.pop_back();
     
     envStack = exitEnvStack;
-    envStack.pop_back(); // 离开块级作用域
+    popScope(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -2352,6 +2352,19 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
 void IRBuilder::visitBreakExpr(BreakExpr*) {
     if (loopStack.empty()) error("Syntax Error: 'break' outside loop.");
     auto& loop = loopStack.back();
+    
+    int loopDepth = static_cast<int>(loop.loopPhisStack.size());
+    int defersToRun = 0;
+    for (size_t i = loopDepth - 1; i < deferCounts.size(); ++i) {
+        defersToRun += deferCounts[i];
+    }
+    if (defersToRun > 0) {
+        IRNode* runNode = graph->createNode(IROp::RunDefers);
+        runNode->payload1 = defersToRun;
+        runNode->setControl(currentControl);
+        currentControl = runNode;
+    }
+    
     loop.breakMerge->addData(currentControl);
     loop.breakEnvs.push_back(envStack);
     
@@ -2361,6 +2374,19 @@ void IRBuilder::visitBreakExpr(BreakExpr*) {
 void IRBuilder::visitContinueExpr(ContinueExpr*) {
     if (loopStack.empty()) error("Syntax Error: 'continue' outside loop.");
     auto& loop = loopStack.back();
+    
+    int loopDepth = static_cast<int>(loop.loopPhisStack.size());
+    int defersToRun = 0;
+    for (size_t i = loopDepth; i < deferCounts.size(); ++i) {
+        defersToRun += deferCounts[i];
+    }
+    if (defersToRun > 0) {
+        IRNode* runNode = graph->createNode(IROp::RunDefers);
+        runNode->payload1 = defersToRun;
+        runNode->setControl(currentControl);
+        currentControl = runNode;
+    }
+    
     loop.loopNode->addData(currentControl);
     for (size_t i = 0; i < loop.loopPhisStack.size(); ++i) {
         for (auto& pair : loop.loopPhisStack[i]) {
@@ -3145,7 +3171,7 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
 }
 
 void IRBuilder::visitForInExpr(ForInExpr* expr) {
-    envStack.emplace_back(); // ★ 自动创建块级作用域
+    pushScope(); // ★ 自动创建块级作用域
     expr->iterable->accept(*this);
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
     iterNode->setControl(currentControl);
@@ -3239,7 +3265,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     loopStack.pop_back();
     
     envStack = exitEnvStack;
-    envStack.pop_back(); // 离开块级作用域
+    popScope(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -3277,7 +3303,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     catchNode->setControl(tryBegin);
     currentControl = catchNode;
     
-    envStack.emplace_back(); // Catch scope
+    pushScope(); // Catch scope
 
     IRNode* errVal = catchNode; // Catch 节点产生异常对象
 
@@ -3295,7 +3321,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* catchControl = currentControl;
     IRNode* catchVal = lastValue;
     
-    envStack.pop_back();
+    popScope();
     auto catchEnv = envStack;
 
     // 3. 汇合
@@ -3363,7 +3389,7 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
     for (auto& caseBranch : expr->cases) {
         currentControl = currentFailControl;
         envStack = baseEnv;
-        envStack.emplace_back(); // Scope for branch
+        pushScope(); // Scope for branch
         
         IRNode* caseSuccessMerge = graph->createNode(IROp::Merge);
         IRNode* nextCaseMerge = graph->createNode(IROp::Merge);
@@ -3396,14 +3422,14 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
         endMerge->addData(currentControl);
         resultPhi->addData(lastValue);
         
-        envStack.pop_back();
+        popScope();
         branchEnvs.push_back(envStack);
         currentFailControl = nextCaseMerge;
     }
     
     currentControl = currentFailControl;
     envStack = baseEnv;
-    envStack.emplace_back();
+    pushScope();
     if (expr->defaultBody) {
         expr->defaultBody->accept(*this);
         endMerge->addData(currentControl);
@@ -3414,7 +3440,7 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
         endMerge->addData(currentControl);
         resultPhi->addData(noneNode);
     }
-    envStack.pop_back();
+    popScope();
     branchEnvs.push_back(envStack);
     
     envStack = baseEnv;
@@ -3536,7 +3562,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     
     int prevNamespaceDepth = namespaceScopeDepth;
     namespaceScopeDepth = static_cast<int>(envStack.size());
-    envStack.emplace_back();
+    pushScope();
     
     auto prevLocalVars = currentLocalVars;
     auto prevConstVars = currentConstVars;
@@ -3613,7 +3639,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         capturedNodesToExtend.push_back(v);
     }
     
-    envStack.pop_back();
+    popScope();
     namespaceScopeDepth = prevNamespaceDepth;
     currentLocalVars = prevLocalVars;
     currentConstVars = prevConstVars;
@@ -3996,7 +4022,7 @@ void IRBuilder::visitFStringExpr(FStringExpr* expr) {
 }
 
 void IRBuilder::visitListCompExpr(ListCompExpr* expr) {
-    envStack.emplace_back(); // Scope for comprehension
+    pushScope(); // Scope for comprehension
     
     IRNode* listNode = graph->createValueNode(IROp::ListInit);
     listNode->setControl(currentControl);
@@ -4014,7 +4040,7 @@ void IRBuilder::visitListCompExpr(ListCompExpr* expr) {
         lastValue = endNode;
     }
     
-    envStack.pop_back();
+    popScope();
 }
     
 void IRBuilder::visitDictLiteral(DictLiteral* expr) {
@@ -4085,6 +4111,58 @@ void IRBuilder::visitExprAssign(ExprAssign*) {
     error("Syntax Error: Invalid assignment target.");
 }
 
+void IRBuilder::visitDeferExpr(DeferExpr* expr) {
+    if (compiledFunctions) {
+        auto fnDef = std::make_shared<CompiledFunction>();
+        fnDef->name = "<defer>";
+        
+        IRGraph fnGraph;
+        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
+        
+        fnBuilder.buildFunctionParams({}, {}, false, {}, {}, {});
+        fnBuilder.build(expr->body.get());
+        
+        IROptimizer::optimize(&fnGraph);
+        RegisterAllocator::allocate(&fnGraph);
+        
+        for (auto& target : fnBuilder.upvalueTargets) {
+            if (target.isLocal && target.localNode) {
+                IRNode* localNode = target.localNode;
+                int upvalIdx = target.index;
+                CompiledFunction* childFn = fnDef.get();
+                this->graph->postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                    childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
+                });
+            }
+        }
+        
+        fnDef->localCount = Emitter::emit(&fnGraph, fnDef->chunk);
+        compiledFunctions->push_back(fnDef);
+        int fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
+
+        IRNode* closureNode = graph->createValueNode(IROp::Closure);
+        closureNode->setControl(currentControl);
+        closureNode->name = std::to_string(fnIdx);
+        
+        for (auto& target : fnBuilder.upvalueTargets) {
+            if (target.isLocal && target.localNode) {
+                closureNode->addData(target.localNode);
+            }
+        }
+        
+        IRNode* deferNode = graph->createNode(IROp::Defer);
+        deferNode->setControl(currentControl);
+        deferNode->addData(closureNode);
+        currentControl = deferNode;
+        
+        deferCounts.back()++;
+        lastValue = graph->createConstant(Value::none());
+        lastValue->setControl(currentControl);
+    } else {
+        error("Syntax Error: 'defer' cannot be used at the top level without a compiled function context.");
+    }
+}
+
 void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     expr->subject->accept(*this);
     IRNode* subjectNode = lastValue;
@@ -4100,7 +4178,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     for (auto& branch : expr->branches) {
         currentControl = currentFailControl;
         envStack = baseEnv;
-        envStack.emplace_back(); // Scope for branch
+        pushScope(); // Scope for branch
         
         IRNode* branchSuccessMerge = graph->createNode(IROp::Merge);
         IRNode* nextBranchMerge = graph->createNode(IROp::Merge);
@@ -4136,20 +4214,20 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         endMerge->addData(currentControl);
         resultPhi->addData(lastValue);
         
+        popScope();
         branchEnvs.push_back(envStack);
-        envStack.pop_back();
         currentFailControl = nextBranchMerge;
     }
     
     currentControl = currentFailControl;
     envStack = baseEnv;
-    envStack.emplace_back();
+    pushScope();
     IRNode* noneNode = graph->createConstant(Value::none());
     noneNode->setControl(currentControl);
     endMerge->addData(currentControl);
     resultPhi->addData(noneNode);
+    popScope();
     branchEnvs.push_back(envStack); // Fallback branch environment
-    envStack.pop_back();
     
     envStack = baseEnv;
     for (size_t i = 0; i < baseEnv.size(); ++i) {

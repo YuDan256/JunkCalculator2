@@ -32,6 +32,7 @@ namespace jc {
         {"match",    TokenType::MATCH},        // ★
         {"macro",    TokenType::MACRO},        // ★
         {"quote",    TokenType::QUOTE},        // ★
+        {"defer",    TokenType::DEFER},        // ★
         {"class",    TokenType::CLASS},
         {"namespace",TokenType::NAMESPACE},
         {"super",    TokenType::SUPER},

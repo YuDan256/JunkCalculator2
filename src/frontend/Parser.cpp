@@ -1185,6 +1185,7 @@ namespace jc {
         if (match({ TokenType::MATCH })) return matchExpr();
         if (match({ TokenType::MACRO })) return macroDefExpr();
         if (match({ TokenType::QUOTE })) return quoteExpr();
+        if (match({ TokenType::DEFER })) return deferExpr();
         if (match({ TokenType::DELETE })) {
             if (match({ TokenType::AT })) {
                 Token macroName = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name after '@'.");
@@ -2222,6 +2223,11 @@ namespace jc {
             props.push_back({"body", transformQuote(qe->body.get())});
             return makeASTNodeCall("QuoteExpr", 0, std::move(props));
         }
+        if (auto* def = dynamic_cast<DeferExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"body", transformQuote(def->body.get())});
+            return makeASTNodeCall("DeferExpr", 0, std::move(props));
+        }
         
         throw std::runtime_error("Parser Error: Unsupported AST node in quote block.");
     }
@@ -2230,6 +2236,11 @@ namespace jc {
         while (match({ TokenType::NEWLINE })) {}
         auto body = assignment();
         return transformQuote(body.get());
+    }
+
+    std::unique_ptr<Expr> Parser::deferExpr() {
+        auto body = parseStatementOrBlock();
+        return std::make_unique<DeferExpr>(std::move(body));
     }
 
     std::unique_ptr<Expr> Parser::switchExpr() {

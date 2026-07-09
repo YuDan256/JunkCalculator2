@@ -28,6 +28,7 @@ struct CallFrame {
     int returnRegister = 0; // ★ 记录当前帧返回时，结果应写入父帧的哪个物理寄存器
     ObjClosure* closure = nullptr;
     int refParamsBase = -1;
+    int deferBase = 0;
     Value selfContext = Value::none();
     Value classContext = Value::none();
 };
@@ -53,6 +54,8 @@ private:
 
     std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
     std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
+    std::vector<ObjClosure*> deferStack;
+    void runDefersDownTo(int targetBase);
 
     std::unordered_map<std::string, NativeCallable> nativeBuiltins;
     std::unordered_map<std::string, std::set<int>> builtinArity;
@@ -68,6 +71,7 @@ private:
         int ip = 0;
         int registerBase = 0;
         int errReg = 0;
+        int deferBase = 0;
     };
     std::vector<ExceptionHandler> exceptionHandlers;
 
@@ -115,6 +119,7 @@ public:
         loadedModules.clear();
         builtinClosures.clear();
         openUpvalues = nullptr;
+        deferStack.clear();
         comptimeGlobals.clear();
         clearAllGlobalICs();
     }

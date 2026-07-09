@@ -606,6 +606,17 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::Defer: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto w = buildInstA(OpCode::DEFER, a);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::RunDefers: {
+                        auto w = buildInstA(OpCode::RUN_DEFERS, node->payload1);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     default: break;
                 }
             }

@@ -124,6 +124,9 @@ enum class OpCode : uint8_t {
     // 模块导入
     IMPORT,         // R(A) := import(R(B))
 
+    DEFER,          // defer(closure = R(A))
+    RUN_DEFERS,     // run_defers(count = A)
+
     // 类型与断言
     ASSERT_PARAM_TYPE,  // assert_param(R(A), typeIC = B, nameKst = C) [Ext B, C]
     ASSERT_RETURN_TYPE, // assert_return(R(A), typeIC = B) [Ext]
@@ -216,6 +219,8 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::ITER_NEXT: return "ITER_NEXT";
         case OpCode::IN: return "IN";
         case OpCode::IMPORT: return "IMPORT";
+        case OpCode::DEFER: return "DEFER";
+        case OpCode::RUN_DEFERS: return "RUN_DEFERS";
         case OpCode::ASSERT_PARAM_TYPE: return "ASSERT_PARAM_TYPE";
         case OpCode::ASSERT_RETURN_TYPE: return "ASSERT_RETURN_TYPE";
         case OpCode::MATCH_TYPE: return "MATCH_TYPE";
@@ -519,7 +524,12 @@ public:
 
             case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
             case OpCode::LIST_INIT: case OpCode::LIST_COMP_END: case OpCode::TRY_END: case OpCode::THROW:
+            case OpCode::DEFER:
                 std::cout << "R(" << a << ")";
+                break;
+
+            case OpCode::RUN_DEFERS:
+                std::cout << a;
                 break;
 
             case OpCode::LOADK:

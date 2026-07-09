@@ -560,6 +560,13 @@ public:
             {"isConst", Value(expr->isConst)}
         });
     }
+
+    void visitDeferExpr(DeferExpr* expr) override {
+        expr->body->accept(*this); Value body = result;
+        result = makeASTNode("DeferExpr", 0, {
+            {"body", body}
+        });
+    }
 };
 
 Value AST_to_JC2(Expr* expr) {

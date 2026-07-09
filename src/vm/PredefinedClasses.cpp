@@ -208,15 +208,21 @@ void registerPredefinedClasses() {
     GcObjGuard excGuard(exceptionClass);
     exceptionClass->name = "Exception";
 
-    auto excInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"value"}, std::vector<bool>{false}, "init", nullptr);
+    auto excInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "message"}, std::vector<bool>{false, false}, "init", nullptr);
+    excInit->defaultValues.push_back(Value::none());
     GcObjGuard excInitGuard(excInit);
     excInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
         
-        inst->fields->set(Value("value"), args[0]);
-        inst->fields->set(Value("message"), Value(args[0].isString() ? args[0].asString() : args[0].toString()));
+        if (args.size() == 1) {
+            inst->fields->set(Value("type"), Value("Exception"));
+            inst->fields->set(Value("message"), args[0]);
+        } else {
+            inst->fields->set(Value("type"), args[0]);
+            inst->fields->set(Value("message"), args[1]);
+        }
         inst->fields->set(Value("traceback"), Value(""));
         inst->fields->set(Value("suppressed"), Value(GcHeap::get().allocate<ObjList>()));
         
@@ -229,12 +235,19 @@ void registerPredefinedClasses() {
     excRepl->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
+        std::string typeStr = "Exception";
         std::string msg = "Unknown Error";
         if (inst->fields) {
+            auto itType = inst->fields->keyMap.find(Value("type"));
+            if (itType != inst->fields->keyMap.end()) typeStr = inst->fields->elements[itType->second].second.asString();
+            
             auto itMsg = inst->fields->keyMap.find(Value("message"));
-            if (itMsg != inst->fields->keyMap.end()) msg = inst->fields->elements[itMsg->second].second.asString();
+            if (itMsg != inst->fields->keyMap.end()) {
+                Value mVal = inst->fields->elements[itMsg->second].second;
+                msg = mVal.isString() ? mVal.asString() : mVal.toString();
+            }
         }
-        return Value("<Exception: " + msg + ">");
+        return Value("<" + typeStr + ": " + msg + ">");
     });
     exceptionClass->methods["__repr__"] = excRepl;
 
@@ -243,13 +256,20 @@ void registerPredefinedClasses() {
     excStr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
+        std::string typeStr = "Exception";
         std::string msg = "Unknown Error";
         std::string tb = "";
         ObjList* supp = nullptr;
         
         if (inst->fields) {
+            auto itType = inst->fields->keyMap.find(Value("type"));
+            if (itType != inst->fields->keyMap.end()) typeStr = inst->fields->elements[itType->second].second.asString();
+            
             auto itMsg = inst->fields->keyMap.find(Value("message"));
-            if (itMsg != inst->fields->keyMap.end()) msg = inst->fields->elements[itMsg->second].second.asString();
+            if (itMsg != inst->fields->keyMap.end()) {
+                Value mVal = inst->fields->elements[itMsg->second].second;
+                msg = mVal.isString() ? mVal.asString() : mVal.toString();
+            }
             
             auto itTb = inst->fields->keyMap.find(Value("traceback"));
             if (itTb != inst->fields->keyMap.end()) tb = inst->fields->elements[itTb->second].second.asString();
@@ -265,7 +285,7 @@ void registerPredefinedClasses() {
         if (msg.find("Error:") != std::string::npos || msg.find("Exception:") != std::string::npos) {
             oss << msg;
         } else {
-            oss << "Exception: " << msg;
+            oss << typeStr << ": " << msg;
         }
         if (!tb.empty()) {
             oss << tb;

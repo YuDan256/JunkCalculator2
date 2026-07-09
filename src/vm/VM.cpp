@@ -105,7 +105,23 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             callVMFunction(closure->compiledFnIndex, {}, closure, closure->boundSelf, closure->boundClass);
         } catch (const ValueException& ex) {
             if (currentException) {
-                Value deferEx = wrapException(ex.val);
+                Value deferEx = wrapException("Exception", ex.val);
+                auto inst = currentException->asInstance();
+                if (inst && inst->fields) {
+                    auto it = inst->fields->keyMap.find(Value("suppressed"));
+                    if (it != inst->fields->keyMap.end()) {
+                        Value suppList = inst->fields->elements[it->second].second;
+                        if (suppList.isObjType(ObjType::LIST)) {
+                            static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
+                        }
+                    }
+                }
+            } else {
+                throw;
+            }
+        } catch (const RuntimeError& ex) {
+            if (currentException) {
+                Value deferEx = wrapException(ex.type, ex.message);
                 auto inst = currentException->asInstance();
                 if (inst && inst->fields) {
                     auto it = inst->fields->keyMap.find(Value("suppressed"));
@@ -121,7 +137,21 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             }
         } catch (const std::exception& ex) {
             if (currentException) {
-                Value deferEx = wrapException(Value(ex.what()));
+                std::string msg = ex.what();
+                std::string type = "Exception";
+                size_t colonPos = msg.find(": ");
+                if (colonPos != std::string::npos) {
+                    std::string prefix = msg.substr(0, colonPos);
+                    if (prefix.find(' ') == std::string::npos) {
+                        type = prefix;
+                        msg = msg.substr(colonPos + 2);
+                    } else if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
+                        type = prefix;
+                        type.erase(std::remove(type.begin(), type.end(), ' '), type.end());
+                        msg = msg.substr(colonPos + 2);
+                    }
+                }
+                Value deferEx = wrapException(type, Value(msg));
                 auto inst = currentException->asInstance();
                 if (inst && inst->fields) {
                     auto it = inst->fields->keyMap.find(Value("suppressed"));
@@ -137,7 +167,7 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             }
         } catch (...) {
             if (currentException) {
-                Value deferEx = wrapException(Value("Unknown Error in defer"));
+                Value deferEx = wrapException("Exception", Value("Unknown Error in defer"));
                 auto inst = currentException->asInstance();
                 if (inst && inst->fields) {
                     auto it = inst->fields->keyMap.find(Value("suppressed"));
@@ -2093,7 +2123,29 @@ void VM::execCompileTimeImport(const std::string& name) {
         }
         pendingCallRefs.clear();
         helpers::g_scriptDirStack.pop_back();
-        throw std::runtime_error(formatException(ex.val));
+        throw RuntimeError("Exception", formatException(ex.val));
+    } catch (RuntimeError& ex) {
+        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
+            exceptionHandlers.pop_back();
+        }
+        Value errVal = wrapException(ex.type, ex.message);
+        try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
+        while (frameCount > targetDepth) {
+            CallFrame* f = &frames[frameCount - 1];
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
+            frameCount--;
+        }
+        pendingCallRefs.clear();
+        helpers::g_scriptDirStack.pop_back();
+        throw;
     } catch (...) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
@@ -2174,7 +2226,7 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
     return false;
 }
 
-Value VM::wrapException(Value val) {
+Value VM::wrapException(const std::string& type, Value val) {
     if (val.isInstance() && val.asInstance()->classDef->name == "Exception") {
         return val;
     }
@@ -2186,9 +2238,8 @@ Value VM::wrapException(Value val) {
     inst->classDef = static_cast<ObjClass*>(classVal.asObj());
     inst->fields = GcHeap::get().allocate<ObjDict>();
     
-    std::string msgStr;
     if (val.isString()) {
-        msgStr = val.asString();
+        std::string msgStr = val.asString();
         if (msgStr.find("[Line ") == 0) {
             size_t c = msgStr.find("] ");
             if (c != std::string::npos) {
@@ -2196,15 +2247,10 @@ Value VM::wrapException(Value val) {
                 val = Value(msgStr);
             }
         }
-    } else {
-        std::ostringstream oss;
-        if (val.isUninit()) oss << "Uninitialized";
-        else oss << val;
-        msgStr = oss.str();
     }
     
-    inst->fields->set(Value("value"), val);
-    inst->fields->set(Value("message"), Value(msgStr));
+    inst->fields->set(Value("type"), Value(type));
+    inst->fields->set(Value("message"), val);
     inst->fields->set(Value("traceback"), Value(buildStackTrace()));
     inst->fields->set(Value("suppressed"), Value(GcHeap::get().allocate<ObjList>()));
     
@@ -2465,7 +2511,28 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             frameCount--;
         }
         pendingCallRefs.clear();
-        throw std::runtime_error(formatException(ex.val));
+        throw RuntimeError("Exception", formatException(ex.val));
+    } catch (RuntimeError& ex) {
+        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
+            exceptionHandlers.pop_back();
+        }
+        Value errVal = wrapException(ex.type, ex.message);
+        try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
+        while (frameCount > targetDepth) {
+            CallFrame* f = &frames[frameCount - 1];
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
+            frameCount--;
+        }
+        pendingCallRefs.clear();
+        throw;
     } catch (...) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
@@ -4325,7 +4392,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::THROW: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value errVal = getReg(a);
-                errVal = wrapException(errVal);
+                errVal = wrapException("Exception", errVal);
                 throw ValueException(errVal);
             }
             case OpCode::CLASS: {
@@ -5587,8 +5654,19 @@ Value VM::run(int targetFrameDepth) {
             frame->ip = ip;
             Value errVal = ex.val;
             if (!errVal.isInstance() || errVal.asInstance()->classDef->name != "Exception") {
-                errVal = wrapException(errVal);
+                errVal = wrapException("Exception", errVal);
             }
+            if (!handleExceptionUnwind(&errVal)) {
+                throw ValueException(errVal);
+            }
+            frame = &frames[frameCount - 1];
+            chunk = frame->chunk;
+            code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
+        } catch (const RuntimeError& ex) {
+            frame->ip = ip;
+            Value errVal = wrapException(ex.type, ex.message);
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }
@@ -5599,7 +5677,21 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (const std::exception& ex) {
             frame->ip = ip;
-            Value errVal = wrapException(Value(ex.what()));
+            std::string msg = ex.what();
+            std::string type = "Exception";
+            size_t colonPos = msg.find(": ");
+            if (colonPos != std::string::npos) {
+                std::string prefix = msg.substr(0, colonPos);
+                if (prefix.find(' ') == std::string::npos) {
+                    type = prefix;
+                    msg = msg.substr(colonPos + 2);
+                } else if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
+                    type = prefix;
+                    type.erase(std::remove(type.begin(), type.end(), ' '), type.end());
+                    msg = msg.substr(colonPos + 2);
+                }
+            }
+            Value errVal = wrapException(type, Value(msg));
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }
@@ -5610,7 +5702,7 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (...) {
             frame->ip = ip;
-            Value errVal = wrapException(Value("Unknown VM Error"));
+            Value errVal = wrapException("Exception", Value("Unknown VM Error"));
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }

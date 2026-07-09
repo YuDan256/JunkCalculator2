@@ -23,7 +23,7 @@ enum class OpType {
 };
 
 static void encodeOperand(int val, OpType type, int& enc, bool& ext) {
-    if (val > 0xFFFFFF) throw std::runtime_error("Emitter Error: Operand exceeds 24-bit limit.");
+    if (val > 0xFFFFFF) throw RuntimeError("EmitterError", "Operand exceeds 24-bit limit.");
     if (type == OpType::NORMAL) {
         if (val >= 255) { enc = 255; ext = true; }
         else { enc = val; ext = false; }
@@ -65,7 +65,7 @@ static std::vector<uint32_t> buildInstABx(OpCode op, int a, int bx) {
     
     int encBx = bx; bool extBx = false;
     if (bx >= 0xFFFF) { encBx = 0xFFFF; extBx = true; }
-    if (bx > 0xFFFFFF) throw std::runtime_error("Emitter Error: Bx exceeds 24-bit limit.");
+    if (bx > 0xFFFFFF) throw RuntimeError("EmitterError", "Bx exceeds 24-bit limit.");
 
     std::vector<uint32_t> words;
     words.push_back(CREATE_ABx(op, encA, encBx));
@@ -78,7 +78,7 @@ static std::vector<uint32_t> buildInstAsBx(OpCode op, int a, int sbx) {
     int encA; bool extA;
     encodeOperand(a, OpType::NORMAL, encA, extA);
 
-    if (sbx < -32767 || sbx > 32767) throw std::runtime_error("Emitter Error: sBx out of bounds.");
+    if (sbx < -32767 || sbx > 32767) throw RuntimeError("EmitterError", "sBx out of bounds.");
     int encBx = sbx + 0x7FFF;
 
     std::vector<uint32_t> words;
@@ -770,7 +770,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                             changed = true;
                         }
                     } else {
-                        if (relOffset < -8388607 || relOffset > 8388607) throw std::runtime_error("Emitter Error: Jump too large even for 24-bit!");
+                        if (relOffset < -8388607 || relOffset > 8388607) throw RuntimeError("EmitterError", "Jump too large even for 24-bit!");
                         auto newWords = std::vector<uint32_t>{ CREATE_sAx(OpCode::JMP, relOffset) };
                         if (inst.words != newWords) {
                             inst.words = newWords;

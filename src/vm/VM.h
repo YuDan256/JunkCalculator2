@@ -80,7 +80,7 @@ private:
     Value run(int targetFrameDepth = 0);
     bool handleExceptionUnwind(Value* errValPtr);
     std::string buildStackTrace() const;
-    Value wrapException(Value val);
+    Value wrapException(const std::string& type, Value val);
     std::string formatException(const Value& errVal);
 
     void execCall(int calleeReg, int argc, int dstReg, bool isTailCall = false);

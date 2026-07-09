@@ -93,11 +93,11 @@ private:
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
 
     [[noreturn]] void error(const std::string& message) const {
-        throw std::runtime_error("[Line " + std::to_string(graph->currentLine) + "] " + message);
+        throw RuntimeError("SyntaxError", "[Line " + std::to_string(graph->currentLine) + "] " + message);
     }
 
     [[noreturn]] void error(int line, const std::string& message) const {
-        throw std::runtime_error("[Line " + std::to_string(line) + "] " + message);
+        throw RuntimeError("SyntaxError", "[Line " + std::to_string(line) + "] " + message);
     }
 
     void recordExitNode(IRNode* node) {

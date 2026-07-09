@@ -2607,11 +2607,15 @@
       "  ──────────────────────",
       "    All thrown values are automatically wrapped in an `Exception` instance.",
       "    It contains the following fields:",
-      "      • message:    The error description.",
-      "      • value:      The original thrown value.",
+      "      • type:       The error type (e.g., \"TypeError\", \"ValueError\").",
+      "      • message:    The error description or structured data (can be any type).",
       "      • traceback:  The call stack when the error occurred.",
       "      • suppressed: A list of secondary Exceptions thrown inside `defer` blocks",
       "                    during stack unwinding.",
+      "",
+      "    You can explicitly throw custom exceptions:",
+      "      throw Exception(\"IndexError\", \"Index out of bounds\")",
+      "      throw Exception(\"HttpError\", {code: 500, detail: \"Server down\"})",
       "",
       "  Try / Catch Blocks",
       "  ──────────────────────",
@@ -6028,6 +6032,7 @@
       ],
       "examples": [
         "throw \"Invalid input\"",
+        "throw Exception(\"HttpError\", { code: 404, msg: \"Not Found\" })",
         "throw { code: 404, msg: \"Not Found\" }"
       ]
     },

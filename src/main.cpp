@@ -732,8 +732,15 @@ int main(int argc, char* argv[]) {
                 size_t e = varName.find_last_not_of(" \t");
                 if (s != std::string::npos) varName = varName.substr(s, e - s + 1);
                 else varName = "";
-                vm.removeGlobal(varName);
-                std::cout << "Variable '" << varName << "' forcefully deleted.\n";
+                
+                if (!varName.empty() && varName[0] == '@') {
+                    std::string mName = "<macro_" + varName.substr(1) + ">";
+                    vm.removeGlobal(mName);
+                    std::cout << "Macro '" << varName.substr(1) << "' forcefully deleted.\n";
+                } else {
+                    vm.removeGlobal(varName);
+                    std::cout << "Variable '" << varName << "' forcefully deleted.\n";
+                }
                 continue;
             }
             if (input == "/about") {

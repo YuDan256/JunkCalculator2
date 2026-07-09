@@ -3,13 +3,23 @@
 
 #include "Expr.h"
 #include "Token.h"
+#include "../memory/Value.h"
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <unordered_map>
 
 namespace jc {
 
     class Parser {
+    public:
+        std::vector<std::unordered_map<std::string, Value>> macroEnvStack;
+        void pushMacroScope();
+        void popMacroScope();
+        void defineMacro(const std::string& name, Value closure);
+        Value resolveMacro(const std::string& name);
+        bool deleteMacro(const std::string& name);
+
     private:
         std::vector<Token> tokens;
         int current = 0;
@@ -68,7 +78,9 @@ namespace jc {
 
     public:
         explicit Parser(std::vector<Token> tokens, std::string sourceFile = "")
-            : tokens(std::move(tokens)), sourceFile(std::move(sourceFile)) {}
+            : tokens(std::move(tokens)), sourceFile(std::move(sourceFile)) {
+            macroEnvStack.push_back({});
+        }
         std::unique_ptr<Expr> parse();
     };
 

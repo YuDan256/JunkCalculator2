@@ -11,6 +11,56 @@
 
 namespace jc {
 
+    struct MacroScopeGuard {
+        Parser* p;
+        MacroScopeGuard(Parser* p) : p(p) { p->pushMacroScope(); }
+        ~MacroScopeGuard() { p->popMacroScope(); }
+    };
+
+    void Parser::pushMacroScope() {
+        macroEnvStack.push_back({});
+    }
+
+    void Parser::popMacroScope() {
+        if (macroEnvStack.size() > 1) {
+            macroEnvStack.pop_back();
+        }
+    }
+
+    void Parser::defineMacro(const std::string& name, Value closure) {
+        if (macroEnvStack.size() == 1) {
+            VM::activeVM->setGlobal("<macro_" + name + ">", closure);
+        } else {
+            macroEnvStack.back()[name] = closure;
+        }
+    }
+
+    Value Parser::resolveMacro(const std::string& name) {
+        for (auto it = macroEnvStack.rbegin(); it != macroEnvStack.rend() - 1; ++it) {
+            if (it->count(name)) return it->at(name);
+        }
+        auto globals = VM::activeVM->getGlobals();
+        std::string internalName = "<macro_" + name + ">";
+        if (globals.count(internalName)) return globals.at(internalName);
+        return Value::none();
+    }
+
+    bool Parser::deleteMacro(const std::string& name) {
+        for (auto it = macroEnvStack.rbegin(); it != macroEnvStack.rend() - 1; ++it) {
+            if (it->count(name)) {
+                it->erase(name);
+                return true;
+            }
+        }
+        auto globals = VM::activeVM->getGlobals();
+        std::string internalName = "<macro_" + name + ">";
+        if (globals.count(internalName)) {
+            VM::activeVM->removeGlobal(internalName);
+            return true;
+        }
+        return false;
+    }
+
     std::unique_ptr<Expr> Parser::expression() {
         auto expr = assignment();
         if (match({ TokenType::COMMA })) {
@@ -766,6 +816,7 @@ namespace jc {
     std::unique_ptr<Expr> Parser::parseBlock() {
         while (match({ TokenType::NEWLINE })) {}  // ★ 跳过 { 前的换行
         consume(TokenType::LBRACE, "Parser Error: Expect '{'.");
+        MacroScopeGuard guard(this);
         std::vector<std::unique_ptr<Expr>> stmts;
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
@@ -902,7 +953,10 @@ namespace jc {
         // 走到这里说明它没有大括号，或者它是被识别为单行字典字面量的大括号
         // 统统包装为安全的单句 Block 以封锁词法作用域
         std::vector<std::unique_ptr<Expr>> stmts;
-        stmts.push_back(expression());
+        {
+            MacroScopeGuard guard(this);
+            stmts.push_back(expression());
+        }
         return std::make_unique<Block>(std::move(stmts));
     }
 
@@ -1088,6 +1142,13 @@ namespace jc {
         if (match({ TokenType::MACRO })) return macroDefExpr();
         if (match({ TokenType::QUOTE })) return quoteExpr();
         if (match({ TokenType::DELETE })) {
+            if (match({ TokenType::AT })) {
+                Token macroName = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name after '@'.");
+                if (!deleteMacro(macroName.lexeme)) {
+                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' not found.");
+                }
+                return std::make_unique<Literal>("none", false, false, true);
+            }
             std::vector<Token> names;
             auto parseDelName = [&]() {
                 if (match({ TokenType::DOLLAR })) {
@@ -1291,15 +1352,13 @@ namespace jc {
             }
             if (check(TokenType::IDENTIFIER)) {
                 Token macroName = advance();
-                
-                std::string internalName = "<macro_" + macroName.lexeme + ">";
-                auto globals = VM::activeVM->getGlobals();
-                auto it = globals.find(internalName);
-                if (it == globals.end() || !it->second.isFunctionClosure()) {
+            
+                Value macroVal = resolveMacro(macroName.lexeme);
+                if (macroVal.isNone() || !macroVal.isFunctionClosure()) {
                     throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' is not defined or not a function.");
                 }
-                
-                ObjClosure* macroFn = it->second.asFunction();
+            
+                ObjClosure* macroFn = macroVal.asFunction();
                 std::vector<std::unique_ptr<Expr>> args;
                 
                 if (match({ TokenType::LPAREN })) {
@@ -1465,7 +1524,7 @@ namespace jc {
             "<macro_body>", std::shared_ptr<Expr>(body.release())
         );
         Token internalName = name;
-        internalName.lexeme = "<macro_" + name.lexeme + ">";
+        internalName.lexeme = "<macro_temp_" + name.lexeme + ">";
         auto assign = std::make_unique<Assign>(internalName, std::move(lambda), false, false, false, false);
 
         IRGraph fnGraph;
@@ -1479,6 +1538,11 @@ namespace jc {
         int localCount = Emitter::emit(&fnGraph, chunk);
 
         VM::activeVM->execute(chunk, localCount);
+
+        Value macroVal = VM::activeVM->getGlobal(internalName.lexeme);
+        VM::activeVM->removeGlobal(internalName.lexeme);
+
+        defineMacro(name.lexeme, macroVal);
 
         return std::make_unique<Literal>("none", false, false, true);
     }
@@ -2124,6 +2188,7 @@ namespace jc {
         
         consume(TokenType::LBRACE, "Parser Error: Expect '{' to open switch body.");
 
+        MacroScopeGuard guard(this);
         std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases;
         std::unique_ptr<Expr> defaultBody = nullptr;
 
@@ -2411,6 +2476,7 @@ namespace jc {
         while (match({TokenType::NEWLINE})) {}
         consume(TokenType::LBRACE, "Parser Error: Expect '{' to open match body.");
 
+        MacroScopeGuard guard(this);
         std::vector<MatchBranch> branches;
 
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
@@ -2451,6 +2517,7 @@ namespace jc {
             name = consume(TokenType::IDENTIFIER, "Parser Error: Expect namespace name.");
         }
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after namespace name.");
+        MacroScopeGuard guard(this);
         std::vector<std::unique_ptr<Expr>> stmts;
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
@@ -2485,6 +2552,7 @@ namespace jc {
         while (match({ TokenType::NEWLINE })) {}
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after class name.");
 
+        MacroScopeGuard guard(this);
         std::vector<ClassDefExpr::MethodDef> methods;
 
         while (!check(TokenType::RBRACE) && !isAtEnd()) {

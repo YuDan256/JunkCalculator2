@@ -134,6 +134,14 @@ public:
         return res;
     }
 
+    Value getGlobal(const std::string& name) const {
+        auto it = globalNames.find(name);
+        if (it != globalNames.end()) {
+            return globals[it->second];
+        }
+        return Value::none();
+    }
+
     void setGlobal(const std::string& name, const Value& val) {
         auto it = globalNames.find(name);
         if (it != globalNames.end()) {

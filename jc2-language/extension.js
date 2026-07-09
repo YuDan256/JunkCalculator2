@@ -95,7 +95,7 @@ function activate(context) {
             const keywords = [
                 'if', 'else', 'while', 'for', 'in', 'break', 'continue', 'return',
                 'switch', 'case', 'default', 'throw', 'try', 'catch', 'match',
-                'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace',
+                'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'quote',
                 'true', 'false', 'none', 'PI', 'E', 'ANS', 'self', 'super'
             ];
             for (const kw of keywords) {
@@ -112,7 +112,9 @@ function activate(context) {
                 { label: 'class', detail: 'class definition', insertText: 'class ${1:ClassName} {\n\tinit() {\n\t\t$0\n\t}\n}' },
                 { label: 'namespace', detail: 'namespace definition', insertText: 'namespace ${1:Name} {\n\t$0\n}' },
                 { label: 'func', detail: 'function definition', insertText: '${1:functionName}(${2:args}) = {\n\t$0\n}' },
-                { label: 'match', detail: 'match expression', insertText: 'match (${1:expr}) {\n\t${2:pattern} => ${3:body},\n\t_ => ${0:fallback}\n}' }
+                { label: 'match', detail: 'match expression', insertText: 'match (${1:expr}) {\n\t${2:pattern} => ${3:body},\n\t_ => ${0:fallback}\n}' },
+                { label: 'macro', detail: 'macro definition', insertText: 'macro ${1:macroName}(${2:args}) = {\n\treturn quote {\n\t\t$0\n\t}\n}' },
+                { label: 'quote', detail: 'quote block', insertText: 'quote {\n\t$0\n}' }
             ];
             for (const snip of snippets) {
                 const item = new vscode.CompletionItem(snip.label, vscode.CompletionItemKind.Snippet);
@@ -281,6 +283,21 @@ function activate(context) {
                     continue;
                 }
                 
+                // 匹配宏定义: macro macroName(args) =
+                const macroMatch = line.match(/^\s*macro\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*(?:\{|=)/);
+                if (macroMatch) {
+                    const range = new vscode.Range(i, 0, i, line.length);
+                    const selectionRange = new vscode.Range(i, line.indexOf(macroMatch[1]), i, line.indexOf(macroMatch[1]) + macroMatch[1].length);
+                    symbols.push(new vscode.DocumentSymbol(
+                        macroMatch[1],
+                        'macro',
+                        vscode.SymbolKind.Function,
+                        range,
+                        selectionRange
+                    ));
+                    continue;
+                }
+
                 // 匹配函数定义: funcName(args) = 或 [const] [local/ref/state] funcName(args) -> type =
                 const funcMatch = line.match(/^\s*(?:const\s+)?(?:(?:local|ref|state)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)(?:\s*->\s*[a-zA-Z_][a-zA-Z0-9_]*)?\s*(?:\{|=)/);
                 if (funcMatch) {

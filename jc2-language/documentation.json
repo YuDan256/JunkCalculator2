@@ -1323,6 +1323,9 @@
     "__call__": {
       "signature": "__call__(...)"
     },
+    "gensym": {
+      "signature": "gensym([prefix])"
+    },
     "ln": {
       "signature": "ln(x) / ln(base, x)"
     },
@@ -1465,6 +1468,12 @@
     },
     "none": {
       "signature": "none"
+    },
+    "macro": {
+      "signature": "macro name(param) = { body }"
+    },
+    "quote": {
+      "signature": "quote { body }  |  quote expr"
     }
   }
 }

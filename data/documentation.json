@@ -5529,6 +5529,16 @@
       "signature": "__call__(...)",
       "desc": "Dunder method: Allows an instance to be called like a function.",
       "examples": ["__call__(x) = self.multiplier * x"]
+    },
+    "gensym": {
+      "signature": "gensym([prefix])",
+      "desc": [
+        "Generates a globally unique AST Variable node.",
+        "Used in macros to create hygienic variables that will never collide with user variables."
+      ],
+      "examples": [
+        "temp_var = gensym(\"temp\")"
+      ]
     }
   },
   "keywords": {
@@ -6054,16 +6064,6 @@
       "examples": [
         "ast = quote { print(\"Hello\") }",
         "macro run_twice(n) = quote { $n; $n }"
-      ]
-    },
-    "gensym": {
-      "signature": "gensym([prefix])",
-      "desc": [
-        "Generates a globally unique AST Variable node.",
-        "Used in macros to create hygienic variables that will never collide with user variables."
-      ],
-      "examples": [
-        "temp_var = gensym(\"temp\")"
       ]
     }
   }

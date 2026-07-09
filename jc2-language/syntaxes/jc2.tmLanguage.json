@@ -15,6 +15,7 @@
         { "include": "#constants" },
         { "include": "#operators" },
         { "include": "#punctuation" },
+        { "include": "#macros" },
         { "include": "#identifiers" }
     ],
     "repository": {
@@ -192,7 +193,7 @@
         "keywords": {
             "patterns": [
                 { "name": "keyword.control.jc2", "match": "\\b(if|else|while|for|in|break|continue|return|switch|case|default|throw|try|catch|match)\\b" },
-                { "name": "keyword.declaration.jc2", "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace)\\b" }
+                { "name": "keyword.declaration.jc2", "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|quote)\\b" }
             ]
         },
         "class-def": {
@@ -249,6 +250,12 @@
                 { "name": "punctuation.bracket.curly.jc2", "match": "@?\\{|\\}" },
                 { "name": "punctuation.separator.jc2", "match": "[,;]" },
                 { "name": "punctuation.accessor.jc2", "match": "\\." }
+            ]
+        },
+        "macros": {
+            "patterns": [
+                { "name": "entity.name.function.macro.jc2", "match": "@[a-zA-Z_][a-zA-Z0-9_]*\\b" },
+                { "name": "variable.other.unquote.jc2", "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*\\b" }
             ]
         },
         "identifiers": {

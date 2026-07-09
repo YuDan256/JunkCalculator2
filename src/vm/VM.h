@@ -55,7 +55,7 @@ private:
     std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
     std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
     std::vector<ObjClosure*> deferStack;
-    void runDefersDownTo(int targetBase);
+    void runDefersDownTo(int targetBase, Value* currentException = nullptr);
 
     std::unordered_map<std::string, NativeCallable> nativeBuiltins;
     std::unordered_map<std::string, std::set<int>> builtinArity;
@@ -78,8 +78,10 @@ private:
     int currentTargetFrameDepth = 0;
 
     Value run(int targetFrameDepth = 0);
-    bool handleExceptionUnwind(Value errVal);
+    bool handleExceptionUnwind(Value* errValPtr);
     std::string buildStackTrace() const;
+    Value wrapException(Value val);
+    std::string formatException(const Value& errVal);
 
     void execCall(int calleeReg, int argc, int dstReg, bool isTailCall = false);
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
@@ -95,11 +97,11 @@ private:
 
     bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
     std::string getTypeName(const Value& val);
-    ObjClosure* findDunder(const Value& val, const std::string& name);
-    Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
     bool evaluateTruthiness(const Value& val);
 
 public:
+    ObjClosure* findDunder(const Value& val, const std::string& name);
+    Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
     VM();
     ~VM();
 

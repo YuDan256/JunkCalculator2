@@ -200,10 +200,84 @@ void registerPredefinedClasses() {
     });
     astNodeClass->methods["__str__"] = astStr;
 
+    // --- Exception Class ---
+    ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();
+    GcObjGuard excGuard(exceptionClass);
+    exceptionClass->name = "Exception";
+
+    auto excInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"value"}, std::vector<bool>{false}, "init", nullptr);
+    GcObjGuard excInitGuard(excInit);
+    excInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
+        
+        inst->fields->set(Value("value"), args[0]);
+        inst->fields->set(Value("message"), Value(args[0].isString() ? args[0].asString() : args[0].toString()));
+        inst->fields->set(Value("traceback"), Value(""));
+        inst->fields->set(Value("suppressed"), Value(GcHeap::get().allocate<ObjList>()));
+        
+        return self;
+    });
+    exceptionClass->methods["init"] = excInit;
+
+    auto excStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
+    GcObjGuard excStrGuard(excStr);
+    excStr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        std::string msg = "Exception";
+        std::string tb = "";
+        ObjList* supp = nullptr;
+        
+        if (inst->fields) {
+            auto itMsg = inst->fields->keyMap.find(Value("message"));
+            if (itMsg != inst->fields->keyMap.end()) msg = inst->fields->elements[itMsg->second].second.asString();
+            
+            auto itTb = inst->fields->keyMap.find(Value("traceback"));
+            if (itTb != inst->fields->keyMap.end()) tb = inst->fields->elements[itTb->second].second.asString();
+            
+            auto itSupp = inst->fields->keyMap.find(Value("suppressed"));
+            if (itSupp != inst->fields->keyMap.end()) {
+                Value sVal = inst->fields->elements[itSupp->second].second;
+                if (sVal.isObjType(ObjType::LIST)) supp = static_cast<ObjList*>(sVal.asObj());
+            }
+        }
+        
+        std::ostringstream oss;
+        oss << "Exception: " << msg;
+        if (!tb.empty()) {
+            oss << tb;
+        }
+        if (supp && !supp->vec.empty()) {
+            oss << "\n\n" << jc::col(jc::Ansi::BRIGHT_RED) << "Suppressed Exceptions (from defer):" << jc::col(jc::Ansi::RESET);
+            for (const auto& s : supp->vec) {
+                oss << "\n----------------------------------------\n";
+                if (s.isInstance() && s.asInstance()->classDef->name == "Exception") {
+                    auto dunderStr = VM::activeVM->findDunder(s, "__str__");
+                    if (dunderStr) {
+                        try {
+                            oss << VM::activeVM->callDunder(s, dunderStr, {}).asString();
+                        } catch (...) {
+                            oss << s.toString();
+                        }
+                    } else {
+                        oss << s.toString();
+                    }
+                } else {
+                    oss << s.toString();
+                }
+            }
+        }
+        return Value(oss.str());
+    });
+    exceptionClass->methods["__str__"] = excStr;
+
     // 注册到全局
     VM::activeVM->registerBuiltinValue("range", Value(rangeClass));
     VM::activeVM->registerBuiltinValue("__range_iterator", Value(rangeIterClass));
     VM::activeVM->registerBuiltinValue("ASTNode", Value(astNodeClass));
+    VM::activeVM->registerBuiltinValue("Exception", Value(exceptionClass));
 }
 
 } // namespace jc

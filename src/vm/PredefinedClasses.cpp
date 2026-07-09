@@ -227,7 +227,7 @@ void registerPredefinedClasses() {
     excStr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        std::string msg = "Exception";
+        std::string msg = "Unknown Error";
         std::string tb = "";
         ObjList* supp = nullptr;
         
@@ -246,7 +246,11 @@ void registerPredefinedClasses() {
         }
         
         std::ostringstream oss;
-        oss << "Exception: " << msg;
+        if (msg.find("Error:") != std::string::npos || msg.find("Exception:") != std::string::npos) {
+            oss << msg;
+        } else {
+            oss << "Exception: " << msg;
+        }
         if (!tb.empty()) {
             oss << tb;
         }

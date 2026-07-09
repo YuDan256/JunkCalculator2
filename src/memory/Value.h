@@ -556,6 +556,31 @@ namespace jc {
             oss << *this;
             return oss.str();
         }
+
+        std::string toRepr() const {
+            if (isString()) return static_cast<ObjString*>(asObj())->str;
+            if (isInstance()) {
+                try {
+                    auto [foundRepl, replRes] = invokeDunder(asInstance(), "__repr__");
+                    if (foundRepl) {
+                        if (replRes.isString()) return replRes.asString();
+                        std::ostringstream oss;
+                        oss << replRes;
+                        return oss.str();
+                    }
+                    auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
+                    if (foundStr) {
+                        if (strRes.isString()) return strRes.asString();
+                        std::ostringstream oss;
+                        oss << strRes;
+                        return oss.str();
+                    }
+                } catch (...) {}
+            }
+            std::ostringstream oss;
+            oss << *this;
+            return oss.str();
+        }
     }; // class Value
 
     struct RuntimeError : public std::exception {
@@ -568,7 +593,7 @@ namespace jc {
 
         const char* what() const noexcept override {
             if (whatBuffer.empty()) {
-                std::string msgStr = message.isString() ? message.asString() : message.toString();
+                std::string msgStr = message.isString() ? message.asString() : message.toRepr();
                 if (type.empty()) {
                     whatBuffer = msgStr;
                 } else {

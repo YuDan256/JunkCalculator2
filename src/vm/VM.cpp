@@ -2277,7 +2277,7 @@ std::string VM::formatException(const Value& errVal) {
             } catch (...) {}
         }
     }
-    return errVal.isString() ? errVal.asString() : errVal.toString();
+    return errVal.isString() ? errVal.asString() : errVal.toRepr();
 }
 
 std::string VM::buildStackTrace() const {

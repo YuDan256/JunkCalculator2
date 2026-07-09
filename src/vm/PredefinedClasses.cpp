@@ -195,7 +195,7 @@ void registerPredefinedClasses() {
         if (inst->fields) {
             auto it = inst->fields->keyMap.find(Value("type"));
             if (it != inst->fields->keyMap.end()) {
-                typeStr = inst->fields->elements[it->second].second.toString();
+                typeStr = inst->fields->elements[it->second].second.toRepr();
             }
         }
         return Value("<ASTNode " + typeStr + ">");
@@ -241,13 +241,13 @@ void registerPredefinedClasses() {
             auto itType = inst->fields->keyMap.find(Value("type"));
             if (itType != inst->fields->keyMap.end()) {
                 Value tVal = inst->fields->elements[itType->second].second;
-                typeStr = tVal.isString() ? tVal.asString() : tVal.toString();
+                typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
             }
             
             auto itMsg = inst->fields->keyMap.find(Value("message"));
             if (itMsg != inst->fields->keyMap.end()) {
                 Value mVal = inst->fields->elements[itMsg->second].second;
-                msg = mVal.isString() ? mVal.asString() : mVal.toString();
+                msg = mVal.isString() ? mVal.asString() : mVal.toRepr();
             }
         }
         return Value("<" + typeStr + ": " + msg + ">");
@@ -268,19 +268,19 @@ void registerPredefinedClasses() {
             auto itType = inst->fields->keyMap.find(Value("type"));
             if (itType != inst->fields->keyMap.end()) {
                 Value tVal = inst->fields->elements[itType->second].second;
-                typeStr = tVal.isString() ? tVal.asString() : tVal.toString();
+                typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
             }
             
             auto itMsg = inst->fields->keyMap.find(Value("message"));
             if (itMsg != inst->fields->keyMap.end()) {
                 Value mVal = inst->fields->elements[itMsg->second].second;
-                msg = mVal.isString() ? mVal.asString() : mVal.toString();
+                msg = mVal.isString() ? mVal.asString() : mVal.toRepr();
             }
             
             auto itTb = inst->fields->keyMap.find(Value("traceback"));
             if (itTb != inst->fields->keyMap.end()) {
                 Value tbVal = inst->fields->elements[itTb->second].second;
-                tb = tbVal.isString() ? tbVal.asString() : tbVal.toString();
+                tb = tbVal.isString() ? tbVal.asString() : tbVal.toRepr();
             }
             
             auto itSupp = inst->fields->keyMap.find(Value("suppressed"));
@@ -309,13 +309,13 @@ void registerPredefinedClasses() {
                         try {
                             oss << VM::activeVM->callDunder(s, dunderStr, {}).asString();
                         } catch (...) {
-                            oss << s.toString();
+                            oss << s.toRepr();
                         }
                     } else {
-                        oss << s.toString();
+                        oss << s.toRepr();
                     }
                 } else {
-                    oss << s.toString();
+                    oss << s.toRepr();
                 }
             }
         }

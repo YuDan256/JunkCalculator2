@@ -1259,7 +1259,7 @@ namespace jc {
             case ObjType::INSTANCE: {
                 auto inst = static_cast<ObjInstance*>(obj);
                 try {
-                    auto [foundRepl, replRes] = invokeDunder(inst, "__repl__");
+                    auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
                     if (foundRepl) {
                         return replRes.toJC2Expression();
                     }
@@ -2145,9 +2145,9 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             RecursionGuard guard(visited, inst);
             std::string cname = inst->classDef ? inst->classDef->name : "unknown";
             if (guard.isCycle) { os << "<" << cname << " {...}>"; break; }
-            
+                
             try {
-                auto [foundRepl, replRes] = invokeDunder(inst, "__repl__");
+                auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
                 if (foundRepl) {
                     if (replRes.isString()) os << replRes.asString();
                     else os << replRes;

@@ -7,13 +7,13 @@ extern bool g_showIR;
 
 namespace jc {
 
-static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool>>& boundVars) {
+static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>>& boundVars) {
     if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
         collectPatternVars(dp->inner.get(), boundVars);
     } else if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
-        if (vp->name.lexeme != "_") boundVars.push_back({vp->name.lexeme, vp->modifier, vp->isConst});
+        if (vp->name.lexeme != "_") boundVars.push_back({vp->name.lexeme, vp->modifier, vp->isConst, vp});
     } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
-        if (rp->name.lexeme != "_") boundVars.push_back({rp->name.lexeme, rp->modifier, rp->isConst});
+        if (rp->name.lexeme != "_") boundVars.push_back({rp->name.lexeme, rp->modifier, rp->isConst, rp});
     } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
         for (auto& e : lp->elements) collectPatternVars(e.get(), boundVars);
         if (lp->rest) collectPatternVars(lp->rest.get(), boundVars);
@@ -1382,7 +1382,11 @@ void IRBuilder::visitBinary(Binary* expr) {
                             }
                         }
                     }
-                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    if (upvalIdx == -1) {
+                        auto varIt = exprSymbols->find(var);
+                        ResolvedSym rs = varIt != exprSymbols->end() ? varIt->second : ResolvedSym{};
+                        upvalIdx = resolveUpvalue(name, rs.scope == VarScope::CapturedState);
+                    }
                     
                     if (upvalIdx != -1) {
                         sig.refs.push_back({0, 3, name, upvalIdx, nullptr});
@@ -1636,7 +1640,11 @@ void IRBuilder::hoistBlock(Block* block) {
     for (auto& stmt : block->statements) {
         if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
             if (!assign->isRef && !assign->isState) {
-                hoistVar(assign->name.lexeme, assign->isLocal);
+                auto it = exprSymbols->find(assign);
+                ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+                if (sym.scope != VarScope::Global) {
+                    hoistVar(assign->name.lexeme, assign->isLocal);
+                }
             }
         } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
             hoistVar(locDecl->name.lexeme, true);
@@ -1644,18 +1652,33 @@ void IRBuilder::hoistBlock(Block* block) {
             hoistVar(constDecl->name.lexeme, true);
         } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
             if (!destAssign->isRef && !destAssign->isState) {
-                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+                std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> boundVars;
                 collectPatternVars(destAssign->pattern.get(), boundVars);
                 for (const auto& varTuple : boundVars) {
                     const std::string& name = std::get<0>(varTuple);
                     ScopeModifier mod = std::get<1>(varTuple);
+                    Pattern* p = std::get<3>(varTuple);
                     if (mod != ScopeModifier::Ref && mod != ScopeModifier::State) {
-                        hoistVar(name, mod == ScopeModifier::Local || destAssign->isLocal);
+                        auto it = patternSymbols->find(p);
+                        ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+                        if (sym.scope != VarScope::Global) {
+                            hoistVar(name, mod == ScopeModifier::Local || destAssign->isLocal);
+                        }
                     }
                 }
             }
         } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-            hoistVar(clsDef->name.lexeme, false);
+            auto it = exprSymbols->find(clsDef);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            if (sym.scope != VarScope::Global) {
+                hoistVar(clsDef->name.lexeme, false);
+            }
+        } else if (auto* nsDecl = dynamic_cast<NamespaceDecl*>(stmt.get())) {
+            auto it = exprSymbols->find(nsDecl);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            if (sym.scope != VarScope::Global) {
+                hoistVar(nsDecl->name.lexeme, false);
+            }
         }
     }
 }
@@ -3370,7 +3393,8 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         currentControl = inheritNode;
     }
         
-    ResolvedSym sym; sym.scope = VarScope::Local;
+    auto it = exprSymbols->find(expr);
+    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
     writeVariable(expr->name.lexeme, classNode, sym, false, false);
         
     for (auto& method : expr->methods) {
@@ -3511,7 +3535,8 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     nsNode->payload1 = static_cast<uint32_t>(exportedKeys.size());
     currentControl = nsNode;
     
-    ResolvedSym sym; sym.scope = VarScope::Local;
+    auto it = exprSymbols->find(expr);
+    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
     writeVariable(expr->name.lexeme, nsNode, sym, false, false);
     lastValue = nsNode;
 }
@@ -3696,7 +3721,7 @@ void IRBuilder::visitSelfExpr(SelfExpr*) {
 }
 
 void IRBuilder::visitDestructAssign(DestructAssign* expr) {
-    std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+    std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> boundVars;
     collectPatternVars(expr->pattern.get(), boundVars);
     
     std::vector<std::string> tempStateNames;

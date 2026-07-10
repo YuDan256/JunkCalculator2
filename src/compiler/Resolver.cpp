@@ -112,6 +112,8 @@ void Resolver::hoistBlock(Block* block) {
             resolvePattern(destAssign->pattern.get(), true, mod, destAssign->isConst);
         } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
             declareVariable(clsDef->name.lexeme, VarScope::Local, false, false);
+        } else if (auto* nsDecl = dynamic_cast<NamespaceDecl*>(stmt.get())) {
+            declareVariable(nsDecl->name.lexeme, VarScope::Local, false, false);
         }
     }
 }
@@ -280,6 +282,7 @@ void Resolver::visitSwitchExpr(SwitchExpr* expr) {
 void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     if (expr->superClassExpr) resolve(expr->superClassExpr.get());
     declareVariable(expr->name.lexeme, VarScope::Local, false, false);
+    exprSymbols[expr] = resolveName(expr->name.lexeme);
     for (auto& m : expr->methods) {
         beginScope(true, false);
         for (size_t i = 0; i < m.params.size(); ++i) {
@@ -294,6 +297,7 @@ void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
 
 void Resolver::visitNamespaceDecl(NamespaceDecl* expr) {
     declareVariable(expr->name.lexeme, VarScope::Local, false, false);
+    exprSymbols[expr] = resolveName(expr->name.lexeme);
     beginScope(false, true);
     resolve(expr->body.get());
     endScope();

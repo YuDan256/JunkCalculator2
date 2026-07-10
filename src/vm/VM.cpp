@@ -839,7 +839,24 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         frames[frameCount++] = newFrame;
         
         int targetDepth = frameCount - 1;
-        return run(targetDepth);
+        try {
+            return run(targetDepth);
+        } catch (...) {
+            while (frameCount > targetDepth) {
+                CallFrame* f = &frames[frameCount - 1];
+                int clearBase = f->registerBase;
+                int clearCount = f->function->localCount + f->function->refCount;
+                for (int i = 0; i < clearCount; ++i) {
+                    registers[clearBase + i] = Value::none();
+                }
+                f->selfContext = Value::none();
+                f->classContext = Value::none();
+                f->closure = nullptr;
+                f->refParamsBase = -1;
+                frameCount--;
+            }
+            throw;
+        }
     }
     throw std::runtime_error("VM Error: Dunder method is not callable.");
 }
@@ -1982,14 +1999,28 @@ Value VM::execImport(const std::string& name) {
         populateRefParams(newFrame, modFn.get());
         
         if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+        int targetDepth = frameCount;
         frames[frameCount++] = newFrame;
 
         std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
         helpers::g_scriptDirStack.push_back(scriptDir);
         Value nsVal;
         try {
-            nsVal = run(frameCount - 1);
+            nsVal = run(targetDepth);
         } catch (...) {
+            while (frameCount > targetDepth) {
+                CallFrame* f = &frames[frameCount - 1];
+                int clearBase = f->registerBase;
+                int clearCount = f->function->localCount + f->function->refCount;
+                for (int i = 0; i < clearCount; ++i) {
+                    registers[clearBase + i] = Value::none();
+                }
+                f->selfContext = Value::none();
+                f->classContext = Value::none();
+                f->closure = nullptr;
+                f->refParamsBase = -1;
+                frameCount--;
+            }
             helpers::g_scriptDirStack.pop_back();
             loadedModules.erase(name);
             throw;
@@ -2468,7 +2499,24 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     frames[frameCount++] = newFrame;
     
     int targetDepth = frameCount - 1;
-    return run(targetDepth);
+    try {
+        return run(targetDepth);
+    } catch (...) {
+        while (frameCount > targetDepth) {
+            CallFrame* f = &frames[frameCount - 1];
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
+            frameCount--;
+        }
+        throw;
+    }
 }
 
 Value VM::execute(const Chunk& mainChunk, int localCount) {
@@ -3052,7 +3100,24 @@ Value VM::run(int targetFrameDepth) {
                         vm->frames[vm->frameCount++] = newFrame;
                         
                         int targetDepth = vm->frameCount - 1;
-                        return vm->run(targetDepth);
+                        try {
+                            return vm->run(targetDepth);
+                        } catch (...) {
+                            while (vm->frameCount > targetDepth) {
+                                CallFrame* f = &vm->frames[vm->frameCount - 1];
+                                int clearBase = f->registerBase;
+                                int clearCount = f->function->localCount + f->function->refCount;
+                                for (int i = 0; i < clearCount; ++i) {
+                                    vm->registers[clearBase + i] = Value::none();
+                                }
+                                f->selfContext = Value::none();
+                                f->classContext = Value::none();
+                                f->closure = nullptr;
+                                f->refParamsBase = -1;
+                                vm->frameCount--;
+                            }
+                            throw;
+                        }
                     }
                 );
 

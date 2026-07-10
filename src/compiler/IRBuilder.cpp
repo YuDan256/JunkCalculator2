@@ -409,6 +409,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             
             bool isExplicitConst = vp->isConst || globalConst;
+            if (mod == ScopeModifier::Ref && currentFunction) {
+                int upvalIdx = resolveUpvalue(vp->name.lexeme, false);
+                if (upvalIdx == -1) {
+                    CompiledFunction::UpvalueInfo uv;
+                    uv.name = vp->name.lexeme;
+                    uv.isLocal = false;
+                    uv.index = 0;
+                    uv.isRef = true;
+                    uv.isGlobal = true;
+                    uv.isExplicitState = false;
+                    uv.isRefParam = false;
+                    uv.isCapturedState = false;
+                    currentFunction->upvalues.push_back(uv);
+                } else {
+                    currentFunction->upvalues[upvalIdx].isRef = true;
+                }
+            }
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(vp->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
@@ -787,6 +804,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
             bool isExplicitConst = restPat->isConst || globalConst;
             
+            if (mod == ScopeModifier::Ref && currentFunction) {
+                int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+                if (upvalIdx == -1) {
+                    CompiledFunction::UpvalueInfo uv;
+                    uv.name = restPat->name.lexeme;
+                    uv.isLocal = false;
+                    uv.index = 0;
+                    uv.isRef = true;
+                    uv.isGlobal = true;
+                    uv.isExplicitState = false;
+                    uv.isRefParam = false;
+                    uv.isCapturedState = false;
+                    currentFunction->upvalues.push_back(uv);
+                } else {
+                    currentFunction->upvalues[upvalIdx].isRef = true;
+                }
+            }
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
@@ -914,8 +948,26 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
                         auto it = patternSymbols->find(restPat);
                         ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+                        ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
                         bool isExplicitConst = restPat->isConst || globalConst;
             
+                        if (mod == ScopeModifier::Ref && currentFunction) {
+                            int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+                            if (upvalIdx == -1) {
+                                CompiledFunction::UpvalueInfo uv;
+                                uv.name = restPat->name.lexeme;
+                                uv.isLocal = false;
+                                uv.index = 0;
+                                uv.isRef = true;
+                                uv.isGlobal = true;
+                                uv.isExplicitState = false;
+                                uv.isRefParam = false;
+                                uv.isCapturedState = false;
+                                currentFunction->upvalues.push_back(uv);
+                            } else {
+                                currentFunction->upvalues[upvalIdx].isRef = true;
+                            }
+                        }
                         if (sym.scope == VarScope::State) {
                             IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                             IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
@@ -1002,8 +1054,26 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
             bool isExplicitConst = restPat->isConst || globalConst;
             
+            if (mod == ScopeModifier::Ref && currentFunction) {
+                int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+                if (upvalIdx == -1) {
+                    CompiledFunction::UpvalueInfo uv;
+                    uv.name = restPat->name.lexeme;
+                    uv.isLocal = false;
+                    uv.index = 0;
+                    uv.isRef = true;
+                    uv.isGlobal = true;
+                    uv.isExplicitState = false;
+                    uv.isRefParam = false;
+                    uv.isCapturedState = false;
+                    currentFunction->upvalues.push_back(uv);
+                } else {
+                    currentFunction->upvalues[upvalIdx].isRef = true;
+                }
+            }
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
@@ -1114,8 +1184,26 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
             bool isExplicitConst = restPat->isConst || globalConst;
             
+            if (mod == ScopeModifier::Ref && currentFunction) {
+                int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+                if (upvalIdx == -1) {
+                    CompiledFunction::UpvalueInfo uv;
+                    uv.name = restPat->name.lexeme;
+                    uv.isLocal = false;
+                    uv.index = 0;
+                    uv.isRef = true;
+                    uv.isGlobal = true;
+                    uv.isExplicitState = false;
+                    uv.isRefParam = false;
+                    uv.isCapturedState = false;
+                    currentFunction->upvalues.push_back(uv);
+                } else {
+                    currentFunction->upvalues[upvalIdx].isRef = true;
+                }
+            }
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);

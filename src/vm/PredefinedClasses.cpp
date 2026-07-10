@@ -233,7 +233,11 @@ void registerPredefinedClasses() {
                 msg = mVal.isString() ? mVal.asString() : mVal.toRepr();
             }
         }
-        return Value("<" + typeStr + ": " + msg + ">");
+        if (typeStr == "Exception") {
+            return Value("<Exception: " + msg + ">");
+        } else {
+            return Value("<Exception " + typeStr + ": " + msg + ">");
+        }
     });
     exceptionClass->methods["__repr__"] = excRepl;
 

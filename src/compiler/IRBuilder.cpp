@@ -29,6 +29,15 @@ static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string,
 }
 
 IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
+    // 优先检查是否是递归调用当前闭包
+    // 只有当它不是当前作用域的局部变量（即没有被 shadow）时，才使用 GetCurrentClosure
+    if (currentFunction && currentFunction->name == name && sym.scope != VarScope::Local && sym.scope != VarScope::State && sym.scope != VarScope::RefParam) {
+        IRNode* node = graph->createValueNode(IROp::GetCurrentClosure);
+        node->name = name;
+        node->setControl(currentControl);
+        return node;
+    }
+
     if (sym.scope == VarScope::Global) {
         IRNode* node = graph->createValueNode(IROp::GetGlobal);
         node->name = name;
@@ -72,12 +81,6 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
         node->setControl(currentControl);
         return node;
     } else {
-        if (currentFunction && currentFunction->name == name) {
-            IRNode* node = graph->createValueNode(IROp::GetCurrentClosure);
-            node->name = name;
-            node->setControl(currentControl);
-            return node;
-        }
         IRNode* localNode = getLocalNode(name);
         if (localNode) return localNode;
         IRNode* uninit = graph->createConstant(Value::uninit());
@@ -282,6 +285,12 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
     }
 
     IRNode* localNode = !isCapturedState ? parent->getLocalNode(name) : nullptr;
+    if (!localNode && !isCapturedState && parent->currentFunction && parent->currentFunction->name == name) {
+        // 如果父函数正是我们要捕获的递归函数本身，直接在父图中生成 GetCurrentClosure
+        localNode = parent->graph->createValueNode(IROp::GetCurrentClosure);
+        localNode->name = name;
+        localNode->setControl(parent->currentControl);
+    }
     if (localNode) {
         int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
         CompiledFunction::UpvalueInfo uv;
@@ -1599,8 +1608,61 @@ void IRBuilder::visitAssign(Assign* expr) {
     lastValue = valNode;
 }
 
+void IRBuilder::hoistBlock(Block* block) {
+    auto hoistVar = [&](const std::string& name, bool isExplicitLocal) {
+        if (isExplicitLocal) {
+            if (!envStack.back().count(name)) {
+                IRNode* uninit = graph->createConstant(Value::uninit());
+                uninit->setControl(currentControl);
+                envStack.back()[name] = uninit;
+            }
+        } else {
+            bool found = false;
+            for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
+                if (envStack[i].count(name)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                IRNode* uninit = graph->createConstant(Value::uninit());
+                uninit->setControl(currentControl);
+                if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][name] = uninit;
+                else envStack[0][name] = uninit;
+            }
+        }
+    };
+
+    for (auto& stmt : block->statements) {
+        if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+            if (!assign->isRef && !assign->isState) {
+                hoistVar(assign->name.lexeme, assign->isLocal);
+            }
+        } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
+            hoistVar(locDecl->name.lexeme, true);
+        } else if (auto* constDecl = dynamic_cast<ConstDecl*>(stmt.get())) {
+            hoistVar(constDecl->name.lexeme, true);
+        } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
+            if (!destAssign->isRef && !destAssign->isState) {
+                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+                collectPatternVars(destAssign->pattern.get(), boundVars);
+                for (const auto& varTuple : boundVars) {
+                    const std::string& name = std::get<0>(varTuple);
+                    ScopeModifier mod = std::get<1>(varTuple);
+                    if (mod != ScopeModifier::Ref && mod != ScopeModifier::State) {
+                        hoistVar(name, mod == ScopeModifier::Local || destAssign->isLocal);
+                    }
+                }
+            }
+        } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
+            hoistVar(clsDef->name.lexeme, false);
+        }
+    }
+}
+
 void IRBuilder::visitBlock(Block* expr) {
     pushScope(); // 进入新作用域
+    hoistBlock(expr);
     if (expr->statements.empty()) {
         lastValue = graph->createConstant(Value::none());
         lastValue->setControl(currentControl);
@@ -3394,6 +3456,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     currentConstVars.clear();
     
     if (auto* block = dynamic_cast<Block*>(expr->body.get())) {
+        hoistBlock(block);
         for (auto& stmt : block->statements) {
             stmt->accept(*this);
         }

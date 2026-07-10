@@ -167,14 +167,17 @@ void registerPredefinedClasses() {
     astNodeClass->name = "ASTNode";
 
     auto astInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "line", "props"}, std::vector<bool>{false, false, false}, "init", nullptr);
+    astInit->defaultValues.push_back(Value("Unknown"));
+    astInit->defaultValues.push_back(Value::fromInt32(0));
+    astInit->defaultValues.push_back(Value::none());
     GcObjGuard astInitGuard(astInit);
     astInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
         
-        inst->fields->set(Value("type"), args[0]);
-        inst->fields->set(Value("line"), args[1]);
+        inst->fields->set(Value("type"), args.size() > 0 ? args[0] : Value("Unknown"));
+        inst->fields->set(Value("line"), args.size() > 1 ? args[1] : Value::fromInt32(0));
         
         if (args.size() > 2 && args[2].isObjType(ObjType::DICT)) {
             auto props = static_cast<ObjDict*>(args[2].asObj());

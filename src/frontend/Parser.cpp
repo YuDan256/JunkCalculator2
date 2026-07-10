@@ -1126,9 +1126,10 @@ namespace jc {
         if (match({ TokenType::IF }))       return ifExpr();
         if (match({ TokenType::WHILE }))    return whileExpr();
         if (match({ TokenType::FOR }))      return forExpr();
-        if (match({ TokenType::BREAK }))    return std::make_unique<BreakExpr>();
-        if (match({ TokenType::CONTINUE })) return std::make_unique<ContinueExpr>();
+        if (match({ TokenType::BREAK }))    return std::make_unique<BreakExpr>(previous());
+        if (match({ TokenType::CONTINUE })) return std::make_unique<ContinueExpr>(previous());
         if (match({ TokenType::RETURN })) {
+            Token retTok = previous();
             std::unique_ptr<Expr> value = nullptr;
             if (!check(TokenType::RBRACE) &&
                 !check(TokenType::SEMICOLON) &&
@@ -1136,11 +1137,12 @@ namespace jc {
                 !check(TokenType::END_OF_FILE)) {
                 value = assignment();  // ★ 降级：防止逗号被误吞
             }
-            return std::make_unique<ReturnExpr>(std::move(value));
+            return std::make_unique<ReturnExpr>(retTok, std::move(value));
         }
         if (match({ TokenType::THROW })) {
+            Token throwTok = previous();
             auto value = assignment();  // ★ 降级：防止逗号被误吞
-            return std::make_unique<ThrowExpr>(std::move(value));
+            return std::make_unique<ThrowExpr>(throwTok, std::move(value));
         }
         if (match({ TokenType::TRY })) {
             auto tryBody = parseStatementOrBlock();
@@ -1837,7 +1839,7 @@ namespace jc {
         if (auto* retExpr = dynamic_cast<ReturnExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"value", transformQuote(retExpr->value.get())});
-            return makeASTNodeCall("ReturnExpr", 0, std::move(props));
+            return makeASTNodeCall("ReturnExpr", retExpr->keyword.line, std::move(props));
         }
         if (auto* dot = dynamic_cast<DotAccess*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
@@ -1948,8 +1950,8 @@ namespace jc {
             props.push_back({"isLocal", std::make_unique<Literal>(comp->isLocal ? "true" : "false", false, false, true)});
             return makeASTNodeCall("CompoundAssign", 0, std::move(props));
         }
-        if (dynamic_cast<BreakExpr*>(expr)) return makeASTNodeCall("BreakExpr", 0, {});
-        if (dynamic_cast<ContinueExpr*>(expr)) return makeASTNodeCall("ContinueExpr", 0, {});
+        if (auto* brk = dynamic_cast<BreakExpr*>(expr)) return makeASTNodeCall("BreakExpr", brk->keyword.line, {});
+        if (auto* cnt = dynamic_cast<ContinueExpr*>(expr)) return makeASTNodeCall("ContinueExpr", cnt->keyword.line, {});
         if (dynamic_cast<SuperExpr*>(expr)) return makeASTNodeCall("SuperExpr", 0, {});
         if (dynamic_cast<SelfExpr*>(expr)) return makeASTNodeCall("SelfExpr", 0, {});
         if (auto* decl = dynamic_cast<LocalDecl*>(expr)) {
@@ -2007,7 +2009,7 @@ namespace jc {
         if (auto* thr = dynamic_cast<ThrowExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"value", transformQuote(thr->value.get())});
-            return makeASTNodeCall("ThrowExpr", 0, std::move(props));
+            return makeASTNodeCall("ThrowExpr", thr->keyword.line, std::move(props));
         }
         if (auto* imp = dynamic_cast<ImportExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;

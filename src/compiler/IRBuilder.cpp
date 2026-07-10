@@ -2100,6 +2100,8 @@ void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
         retVal->setControl(currentControl);
     }
     
+    graph->currentLine = expr->keyword.line;
+    
     if (!currentReturnTypeHint.empty()) {
         IRNode* assertNode = graph->createNode(IROp::AssertReturnType);
         assertNode->setControl(currentControl);
@@ -2390,7 +2392,8 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     lastValue->setControl(currentControl);
 }
 
-void IRBuilder::visitBreakExpr(BreakExpr*) {
+void IRBuilder::visitBreakExpr(BreakExpr* expr) {
+    graph->currentLine = expr->keyword.line;
     if (loopStack.empty()) error("Syntax Error: 'break' outside loop.");
     auto& loop = loopStack.back();
     
@@ -2419,7 +2422,8 @@ void IRBuilder::visitBreakExpr(BreakExpr*) {
     currentControl = graph->createNode(IROp::Merge); // Dead code
 }
 
-void IRBuilder::visitContinueExpr(ContinueExpr*) {
+void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
+    graph->currentLine = expr->keyword.line;
     if (loopStack.empty()) error("Syntax Error: 'continue' outside loop.");
     auto& loop = loopStack.back();
     
@@ -3353,6 +3357,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
 
 void IRBuilder::visitThrowExpr(ThrowExpr* expr) {
     expr->value->accept(*this);
+    graph->currentLine = expr->keyword.line;
     IRNode* throwNode = graph->createNode(IROp::Throw);
     throwNode->setControl(currentControl);
     throwNode->addData(lastValue);

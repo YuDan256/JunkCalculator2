@@ -401,17 +401,22 @@ namespace jc {
     };
 
     struct BreakExpr : public Expr {
+        Token keyword;
+        explicit BreakExpr(Token keyword) : keyword(std::move(keyword)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitBreakExpr(this); }
     };
 
     struct ContinueExpr : public Expr {
+        Token keyword;
+        explicit ContinueExpr(Token keyword) : keyword(std::move(keyword)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitContinueExpr(this); }
     };
 
     struct ReturnExpr : public Expr {
+        Token keyword;
         std::unique_ptr<Expr> value; // 可为 nullptr（裸 return）
-        explicit ReturnExpr(std::unique_ptr<Expr> value)
-            : value(std::move(value)) {
+        ReturnExpr(Token keyword, std::unique_ptr<Expr> value)
+            : keyword(std::move(keyword)), value(std::move(value)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitReturnExpr(this); }
     };
@@ -541,9 +546,10 @@ namespace jc {
 
     // ★ throw expr
     struct ThrowExpr : public Expr {
+        Token keyword;
         std::unique_ptr<Expr> value;
-        explicit ThrowExpr(std::unique_ptr<Expr> value)
-            : value(std::move(value)) {
+        ThrowExpr(Token keyword, std::unique_ptr<Expr> value)
+            : keyword(std::move(keyword)), value(std::move(value)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitThrowExpr(this); }
     };

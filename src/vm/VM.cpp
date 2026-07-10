@@ -4404,6 +4404,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::THROW: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value errVal = getReg(a);
+                frame->ip = ip;
                 errVal = wrapException("Exception", errVal);
                 throw ValueException(errVal);
             }

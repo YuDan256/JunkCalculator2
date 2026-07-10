@@ -101,8 +101,11 @@ void Resolver::hoistBlock(Block* block) {
         } else if (auto* constDecl = dynamic_cast<ConstDecl*>(stmt.get())) {
             declareVariable(constDecl->name.lexeme, VarScope::Local, true, false);
         } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
-            // 简单遍历解构模式中的变量
-            resolvePattern(destAssign->pattern.get(), true);
+            ScopeModifier mod = ScopeModifier::None;
+            if (destAssign->isLocal) mod = ScopeModifier::Local;
+            else if (destAssign->isRef) mod = ScopeModifier::Ref;
+            else if (destAssign->isState) mod = ScopeModifier::State;
+            resolvePattern(destAssign->pattern.get(), true, mod, destAssign->isConst);
         } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
             declareVariable(clsDef->name.lexeme, VarScope::Local, false, false);
         }
@@ -115,6 +118,10 @@ void Resolver::visitVariable(Variable* expr) {
 
 void Resolver::visitAssign(Assign* expr) {
     resolve(expr->value.get());
+    if (expr->isState) declareVariable(expr->name.lexeme, VarScope::State, expr->isConst);
+    else if (expr->isRef) { /* ref 不声明新变量 */ }
+    else if (expr->isLocal) declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true);
+    else declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, false);
     exprSymbols[expr] = resolveName(expr->name.lexeme);
 }
 
@@ -181,10 +188,10 @@ void Resolver::visitIndexAssign(IndexAssign* expr) {
     resolve(expr->value.get());
 }
 
-void Resolver::visitLocalDecl(LocalDecl* /*expr*/) {}
-void Resolver::visitRefDecl(RefDecl* /*expr*/) {}
-void Resolver::visitStateDecl(StateDecl* /*expr*/) {}
-void Resolver::visitConstDecl(ConstDecl* /*expr*/) {}
+void Resolver::visitLocalDecl(LocalDecl* expr) { declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true); }
+void Resolver::visitRefDecl(RefDecl* /*expr*/) { /* ref 不声明新变量 */ }
+void Resolver::visitStateDecl(StateDecl* expr) { declareVariable(expr->name.lexeme, VarScope::State, expr->isConst); }
+void Resolver::visitConstDecl(ConstDecl* expr) { declareVariable(expr->name.lexeme, VarScope::Local, true, false); }
 
 void Resolver::visitDeleteExpr(DeleteExpr* /*expr*/) {}
 
@@ -212,7 +219,8 @@ void Resolver::visitInvokeExpr(InvokeExpr* expr) {
 void Resolver::visitForInExpr(ForInExpr* expr) {
     resolve(expr->iterable.get());
     beginScope();
-    resolvePattern(expr->pattern.get(), true);
+    ScopeModifier mod = expr->isLocal ? ScopeModifier::Local : ScopeModifier::None;
+    resolvePattern(expr->pattern.get(), true, mod, expr->isConst);
     resolve(expr->body.get());
     endScope();
 }
@@ -224,7 +232,7 @@ void Resolver::visitThrowExpr(ThrowExpr* expr) {
 void Resolver::visitTryCatchExpr(TryCatchExpr* expr) {
     resolve(expr->tryBody.get());
     beginScope();
-    resolvePattern(expr->catchPattern.get(), true);
+    resolvePattern(expr->catchPattern.get(), true, ScopeModifier::Local, false);
     resolve(expr->catchBody.get());
     endScope();
 }
@@ -283,7 +291,11 @@ void Resolver::visitSelfExpr(SelfExpr* /*expr*/) {}
 
 void Resolver::visitDestructAssign(DestructAssign* expr) {
     resolve(expr->value.get());
-    resolvePattern(expr->pattern.get(), true);
+    ScopeModifier mod = ScopeModifier::None;
+    if (expr->isLocal) mod = ScopeModifier::Local;
+    else if (expr->isRef) mod = ScopeModifier::Ref;
+    else if (expr->isState) mod = ScopeModifier::State;
+    resolvePattern(expr->pattern.get(), true, mod, expr->isConst);
 }
 
 void Resolver::visitFStringExpr(FStringExpr* expr) {
@@ -294,7 +306,7 @@ void Resolver::visitListCompExpr(ListCompExpr* expr) {
     beginScope();
     for (auto& c : expr->clauses) {
         resolve(c.iterable.get());
-        resolvePattern(c.pattern.get(), true);
+        resolvePattern(c.pattern.get(), true, ScopeModifier::Local, false);
         for (auto& cond : c.conditions) resolve(cond.get());
     }
     resolve(expr->valueExpr.get());
@@ -326,7 +338,7 @@ void Resolver::visitMatchExpr(MatchExpr* expr) {
     resolve(expr->subject.get());
     for (auto& b : expr->branches) {
         beginScope();
-        for (auto& p : b.patterns) resolvePattern(p.get(), false);
+        for (auto& p : b.patterns) resolvePattern(p.get(), false, ScopeModifier::Local, false);
         if (b.guard) resolve(b.guard.get());
         resolve(b.body.get());
         endScope();
@@ -365,37 +377,41 @@ void Resolver::visitDeferExpr(DeferExpr* expr) {
     resolve(expr->body.get());
 }
 
-void Resolver::resolvePattern(Pattern* pat, bool isAssignment) {
+void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod, bool globalConst) {
     if (!pat) return;
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
         if (vp->name.lexeme != "_") {
-            if (vp->modifier != ScopeModifier::Ref) {
-                VarScope scope = (vp->modifier == ScopeModifier::State) ? VarScope::State : VarScope::Local;
-                declareVariable(vp->name.lexeme, scope, vp->isConst, vp->modifier == ScopeModifier::Local);
+            ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
+            bool isConst = vp->isConst || globalConst;
+            if (mod != ScopeModifier::Ref) {
+                VarScope scope = (mod == ScopeModifier::State) ? VarScope::State : VarScope::Local;
+                declareVariable(vp->name.lexeme, scope, isConst, mod == ScopeModifier::Local);
             }
             patternSymbols[pat] = resolveName(vp->name.lexeme);
         }
     } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
         if (rp->name.lexeme != "_") {
-            if (rp->modifier != ScopeModifier::Ref) {
-                VarScope scope = (rp->modifier == ScopeModifier::State) ? VarScope::State : VarScope::Local;
-                declareVariable(rp->name.lexeme, scope, rp->isConst, rp->modifier == ScopeModifier::Local);
+            ScopeModifier mod = rp->modifier != ScopeModifier::None ? rp->modifier : globalMod;
+            bool isConst = rp->isConst || globalConst;
+            if (mod != ScopeModifier::Ref) {
+                VarScope scope = (mod == ScopeModifier::State) ? VarScope::State : VarScope::Local;
+                declareVariable(rp->name.lexeme, scope, isConst, mod == ScopeModifier::Local);
             }
             patternSymbols[pat] = resolveName(rp->name.lexeme);
         }
     } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
-        for (auto& e : lp->elements) resolvePattern(e.get(), isAssignment);
-        if (lp->rest) resolvePattern(lp->rest.get(), isAssignment);
+        for (auto& e : lp->elements) resolvePattern(e.get(), isAssignment, globalMod, globalConst);
+        if (lp->rest) resolvePattern(lp->rest.get(), isAssignment, globalMod, globalConst);
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
         for (auto& row : mp->rows) {
-            for (auto& e : row) resolvePattern(e.get(), isAssignment);
+            for (auto& e : row) resolvePattern(e.get(), isAssignment, globalMod, globalConst);
         }
-        if (mp->restRow) resolvePattern(mp->restRow.get(), isAssignment);
+        if (mp->restRow) resolvePattern(mp->restRow.get(), isAssignment, globalMod, globalConst);
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
-        for (auto& e : dp->entries) resolvePattern(e.second.get(), isAssignment);
-        if (dp->rest) resolvePattern(dp->rest.get(), isAssignment);
+        for (auto& e : dp->entries) resolvePattern(e.second.get(), isAssignment, globalMod, globalConst);
+        if (dp->rest) resolvePattern(dp->rest.get(), isAssignment, globalMod, globalConst);
     } else if (auto* defp = dynamic_cast<DefaultPattern*>(pat)) {
-        resolvePattern(defp->inner.get(), isAssignment);
+        resolvePattern(defp->inner.get(), isAssignment, globalMod, globalConst);
         resolve(defp->defaultExpr.get());
     } else if (auto* ep = dynamic_cast<ExprPattern*>(pat)) {
         resolve(ep->expr.get());

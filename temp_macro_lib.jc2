@@ -1,0 +1,5 @@
+make_prefix(name) = "PREFIX_" + name
+macro generate_var(name) = {
+    new_name = make_prefix(name.value)
+    return quote local $new_name = 42
+}

@@ -352,6 +352,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         if (vp->name.lexeme != "_") {
             auto it = patternSymbols->find(pat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(vp->name.lexeme, sym);
@@ -378,7 +379,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                writeVariable(vp->name.lexeme, valNode, sym, vp->modifier == ScopeModifier::Local);
+                writeVariable(vp->name.lexeme, valNode, sym, mod == ScopeModifier::Local);
             }
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
@@ -652,6 +653,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 if (restPat->name.lexeme != "_") {
                     auto it = patternSymbols->find(restPat);
                     ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+                    ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
                     
                     if (sym.scope == VarScope::State) {
                         IRNode* getVal = readVariable(restPat->name.lexeme, sym);
@@ -678,7 +680,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         merge->addData(stateIfFalse);
                         currentControl = merge;
                     } else {
-                        writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
+                        writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local);
                     }
                 }
                 continue;
@@ -726,6 +728,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
             
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(restPat->name.lexeme, sym);
@@ -752,7 +755,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
+                writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local);
             }
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
@@ -3626,7 +3629,12 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     
-    buildPatternMatch(expr->pattern.get(), valNode, failMerge, ScopeModifier::None, false, true);
+    ScopeModifier mod = ScopeModifier::None;
+    if (expr->isLocal) mod = ScopeModifier::Local;
+    else if (expr->isRef) mod = ScopeModifier::Ref;
+    else if (expr->isState) mod = ScopeModifier::State;
+
+    buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst, true);
     
     if (!failMerge->dataInputs.empty()) {
         IRNode* throwNode = graph->createNode(IROp::Throw);

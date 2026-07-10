@@ -101,7 +101,7 @@ private:
     ResolvedSym resolveName(const std::string& name);
     
     void hoistBlock(Block* block);
-    void resolvePattern(Pattern* pat, bool isAssignment);
+    void resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false);
 };
 
 } // namespace jc

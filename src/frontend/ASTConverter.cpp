@@ -205,12 +205,12 @@ public:
         expr->body->accept(*this); Value body = result;
         result = makeASTNode("ForExpr", 0, {{"initializer", init}, {"condition", cond}, {"update", upd}, {"body", body}});
     }
-    void visitBreakExpr(BreakExpr*) override { result = makeASTNode("BreakExpr", 0, {}); }
-    void visitContinueExpr(ContinueExpr*) override { result = makeASTNode("ContinueExpr", 0, {}); }
+    void visitBreakExpr(BreakExpr* expr) override { result = makeASTNode("BreakExpr", expr->keyword.line, {}); }
+    void visitContinueExpr(ContinueExpr* expr) override { result = makeASTNode("ContinueExpr", expr->keyword.line, {}); }
     void visitReturnExpr(ReturnExpr* expr) override {
         Value val = Value::none();
         if (expr->value) { expr->value->accept(*this); val = result; }
-        result = makeASTNode("ReturnExpr", 0, {{"value", val}});
+        result = makeASTNode("ReturnExpr", expr->keyword.line, {{"value", val}});
     }
     void visitIndexAccess(IndexAccess* expr) override {
         expr->object->accept(*this); Value obj = result;
@@ -253,7 +253,7 @@ public:
     }
     void visitThrowExpr(ThrowExpr* expr) override {
         expr->value->accept(*this); Value val = result;
-        result = makeASTNode("ThrowExpr", 0, {{"value", val}});
+        result = makeASTNode("ThrowExpr", expr->keyword.line, {{"value", val}});
     }
     void visitImportExpr(ImportExpr* expr) override {
         expr->path->accept(*this); Value path = result;
@@ -782,11 +782,11 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     } else if (type == "ForExpr") {
         return std::make_unique<ForExpr>(JC2_to_AST(getProp("initializer")), JC2_to_AST(getProp("condition")), JC2_to_AST(getProp("update")), JC2_to_AST(getProp("body")));
     } else if (type == "BreakExpr") {
-        return std::make_unique<BreakExpr>();
+        return std::make_unique<BreakExpr>(Token(TokenType::BREAK, "break", line));
     } else if (type == "ContinueExpr") {
-        return std::make_unique<ContinueExpr>();
+        return std::make_unique<ContinueExpr>(Token(TokenType::CONTINUE, "continue", line));
     } else if (type == "ReturnExpr") {
-        return std::make_unique<ReturnExpr>(JC2_to_AST(getProp("value")));
+        return std::make_unique<ReturnExpr>(Token(TokenType::RETURN, "return", line), JC2_to_AST(getProp("value")));
     } else if (type == "IndexAccess") {
         return std::make_unique<IndexAccess>(JC2_to_AST(getProp("object")), getExprList(getProp("indices")));
     } else if (type == "IndexAssign") {
@@ -820,7 +820,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     } else if (type == "InvokeExpr") {
         return std::make_unique<InvokeExpr>(JC2_to_AST(getProp("callee")), getExprList(getProp("arguments")));
     } else if (type == "ThrowExpr") {
-        return std::make_unique<ThrowExpr>(JC2_to_AST(getProp("value")));
+        return std::make_unique<ThrowExpr>(Token(TokenType::THROW, "throw", line), JC2_to_AST(getProp("value")));
     } else if (type == "ImportExpr") {
         return std::make_unique<ImportExpr>(JC2_to_AST(getProp("path")));
     } else if (type == "DotAccess") {

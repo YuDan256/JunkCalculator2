@@ -445,7 +445,9 @@ void Resolver::visitExprAssign(ExprAssign* expr) {
 }
 
 void Resolver::visitDeferExpr(DeferExpr* expr) {
+    beginScope(true, false);
     resolve(expr->body.get());
+    endScope();
 }
 
 void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod, bool globalConst) {

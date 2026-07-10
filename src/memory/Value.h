@@ -558,7 +558,7 @@ namespace jc {
         }
 
         std::string toRepr() const {
-            if (isString()) return static_cast<ObjString*>(asObj())->str;
+            if (isString()) return "\"" + static_cast<ObjString*>(asObj())->str + "\"";
             if (isInstance()) {
                 try {
                     auto [foundRepl, replRes] = invokeDunder(asInstance(), "__repr__");
@@ -2109,7 +2109,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
     auto printNested = [&os](const Value& v) {
         if (v.isNone()) os << "none";
         else if (v.isUninit()) os << "<uninit>";
-        else os << v;
+        else os << v.toRepr();
     };
 
     if (val.isNone()) { os << "none"; return os; }

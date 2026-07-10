@@ -186,23 +186,6 @@ void registerPredefinedClasses() {
     });
     astNodeClass->methods["init"] = astInit;
 
-    auto astStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
-    GcObjGuard astStrGuard(astStr);
-    astStr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        auto inst = self.asInstance();
-        std::string typeStr = "ASTNode";
-        if (inst->fields) {
-            auto it = inst->fields->keyMap.find(Value("type"));
-            if (it != inst->fields->keyMap.end()) {
-                typeStr = inst->fields->elements[it->second].second.toRepr();
-            }
-        }
-        return Value("<ASTNode " + typeStr + ">");
-    });
-    astNodeClass->methods["__str__"] = astStr;
-    astNodeClass->methods["__repr__"] = astStr;
-
     // --- Exception Class ---
     ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard excGuard(exceptionClass);

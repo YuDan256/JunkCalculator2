@@ -1843,9 +1843,33 @@ void IRBuilder::visitBlock(Block* expr) {
         lastValue->setControl(currentControl);
     } else {
         bool shouldHoist = currentFunction != nullptr || namespaceScopeDepth != -1;
+        std::unordered_set<std::string> stateOrRefVars;
         for (auto& stmt : expr->statements) {
             if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
-                if (assign->isLocal || (shouldHoist && !assign->isRef && !assign->isState)) {
+                if (assign->isState || assign->isRef) stateOrRefVars.insert(assign->name.lexeme);
+            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
+                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+                collectPatternVars(destAssign->pattern.get(), boundVars);
+                for (const auto& varTuple : boundVars) {
+                    ScopeModifier mod = std::get<1>(varTuple);
+                    if (mod == ScopeModifier::None) {
+                        if (destAssign->isRef) mod = ScopeModifier::Ref;
+                        else if (destAssign->isState) mod = ScopeModifier::State;
+                    }
+                    if (mod == ScopeModifier::State || mod == ScopeModifier::Ref) {
+                        stateOrRefVars.insert(std::get<0>(varTuple));
+                    }
+                }
+            } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
+                stateOrRefVars.insert(stateDecl->name.lexeme);
+            } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
+                stateOrRefVars.insert(refDecl->name.lexeme);
+            }
+        }
+
+        for (auto& stmt : expr->statements) {
+            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+                if (assign->isLocal || (shouldHoist && !assign->isRef && !assign->isState && !stateOrRefVars.count(assign->name.lexeme))) {
                     if (!getLocalNode(assign->name.lexeme)) {
                         IRNode* uninitNode = graph->createConstant(Value::uninit());
                         uninitNode->setControl(currentControl);
@@ -1868,7 +1892,7 @@ void IRBuilder::visitBlock(Block* expr) {
                         else if (destAssign->isRef) mod = ScopeModifier::Ref;
                         else if (destAssign->isState) mod = ScopeModifier::State;
                     }
-                    if (mod == ScopeModifier::Local || (shouldHoist && mod == ScopeModifier::None)) {
+                    if (mod == ScopeModifier::Local || (shouldHoist && mod == ScopeModifier::None && !stateOrRefVars.count(name))) {
                         if (!getLocalNode(name)) {
                             IRNode* uninitNode = graph->createConstant(Value::uninit());
                             uninitNode->setControl(currentControl);
@@ -1882,7 +1906,7 @@ void IRBuilder::visitBlock(Block* expr) {
                     }
                 }
             } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-                if (shouldHoist && !getLocalNode(clsDef->name.lexeme)) {
+                if (shouldHoist && !getLocalNode(clsDef->name.lexeme) && !stateOrRefVars.count(clsDef->name.lexeme)) {
                     IRNode* uninitNode = graph->createConstant(Value::uninit());
                     uninitNode->setControl(currentControl);
                     if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][clsDef->name.lexeme] = uninitNode;
@@ -3661,9 +3685,33 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     currentConstVars.clear();
     
     if (auto* block = dynamic_cast<Block*>(expr->body.get())) {
+        std::unordered_set<std::string> stateOrRefVars;
         for (auto& stmt : block->statements) {
             if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
-                if (assign->isLocal || (!assign->isRef && !assign->isState)) {
+                if (assign->isState || assign->isRef) stateOrRefVars.insert(assign->name.lexeme);
+            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
+                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
+                collectPatternVars(destAssign->pattern.get(), boundVars);
+                for (const auto& varTuple : boundVars) {
+                    ScopeModifier mod = std::get<1>(varTuple);
+                    if (mod == ScopeModifier::None) {
+                        if (destAssign->isRef) mod = ScopeModifier::Ref;
+                        else if (destAssign->isState) mod = ScopeModifier::State;
+                    }
+                    if (mod == ScopeModifier::State || mod == ScopeModifier::Ref) {
+                        stateOrRefVars.insert(std::get<0>(varTuple));
+                    }
+                }
+            } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
+                stateOrRefVars.insert(stateDecl->name.lexeme);
+            } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
+                stateOrRefVars.insert(refDecl->name.lexeme);
+            }
+        }
+
+        for (auto& stmt : block->statements) {
+            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+                if (assign->isLocal || (!assign->isRef && !assign->isState && !stateOrRefVars.count(assign->name.lexeme))) {
                     if (!getLocalNode(assign->name.lexeme)) {
                         IRNode* uninitNode = graph->createConstant(Value::uninit());
                         uninitNode->setControl(currentControl);
@@ -3685,7 +3733,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
                         else if (destAssign->isRef) mod = ScopeModifier::Ref;
                         else if (destAssign->isState) mod = ScopeModifier::State;
                     }
-                    if (mod == ScopeModifier::Local || mod == ScopeModifier::None) {
+                    if (mod == ScopeModifier::Local || (mod == ScopeModifier::None && !stateOrRefVars.count(name))) {
                         if (!getLocalNode(name)) {
                             IRNode* uninitNode = graph->createConstant(Value::uninit());
                             uninitNode->setControl(currentControl);
@@ -3698,7 +3746,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
                     }
                 }
             } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-                if (!getLocalNode(clsDef->name.lexeme)) {
+                if (!getLocalNode(clsDef->name.lexeme) && !stateOrRefVars.count(clsDef->name.lexeme)) {
                     IRNode* uninitNode = graph->createConstant(Value::uninit());
                     uninitNode->setControl(currentControl);
                     envStack[namespaceScopeDepth][clsDef->name.lexeme] = uninitNode;

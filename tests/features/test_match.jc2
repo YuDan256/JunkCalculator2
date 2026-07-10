@@ -56,7 +56,7 @@ test_dict() = {
         {} => "Empty",
         _ => "Fail"
     }
-    assert(f({"name": "JC2", "ver": 2}) == "JC2&{ver: 2}", "Dict shorthand failed")
+    assert(f({"name": "JC2", "ver": 2}) == "JC2&{\"ver\": 2}", "Dict shorthand failed")
 }
 test_dict()
 

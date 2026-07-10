@@ -13,6 +13,7 @@
 #include "vm/HelpRouter.h"
 #include "frontend/Highlight.h"
 #include "vm/BuiltinRegistry.h"
+#include "compiler/Resolver.h"
 #include "compiler/IRBuilder.h"
 #include "compiler/IROptimizer.h"
 #include "compiler/RegisterAllocator.h"
@@ -126,8 +127,11 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     auto& fns = vm.getCompiledFunctions();
     size_t currentFnsSize = fns.size();
     
+    jc::Resolver resolver;
+    resolver.resolve(ast.get());
+
     jc::IRGraph graph;
-    jc::IRBuilder builder(&graph, &fns);
+    jc::IRBuilder builder(&graph, &fns, nullptr, nullptr, &resolver.exprSymbols, &resolver.patternSymbols);
     builder.build(ast.get());
     
     if (g_showIR) graph.print(isFile ? "Script Unoptimized" : "REPL Unoptimized");

@@ -1,6 +1,7 @@
 #include "Lexer.h"  // ★ f-string 子解析需要
 #include "Parser.h"
 #include <filesystem>
+#include "../compiler/Resolver.h"
 #include "../compiler/IRBuilder.h"
 #include "../compiler/IROptimizer.h"
 #include "../compiler/RegisterAllocator.h"
@@ -165,7 +166,6 @@ namespace jc {
                 }
             }
             if (stmts.empty()) return std::make_unique<Literal>("0");
-            if (stmts.size() == 1) return std::move(stmts[0]);
             return std::make_unique<Block>(std::move(stmts));
         }
         catch (const std::exception& e) {
@@ -1592,8 +1592,11 @@ namespace jc {
         internalName.lexeme = "<macro_temp_" + name.lexeme + ">";
         auto assign = std::make_unique<Assign>(internalName, std::move(lambda), false, false, false, false);
 
+        Resolver resolver;
+        resolver.resolve(assign.get());
+
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions());
+        IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions(), nullptr, nullptr, &resolver.exprSymbols, &resolver.patternSymbols);
         fnBuilder.build(assign.get());
 
         IROptimizer::optimize(&fnGraph);

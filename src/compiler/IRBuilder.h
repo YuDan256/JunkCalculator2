@@ -4,6 +4,7 @@
 #include "IR.h"
 #include "../vm/Bytecode.h"
 #include "../frontend/Expr.h"
+#include "Resolver.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -47,7 +48,7 @@ private:
     IRBuilder* parent = nullptr;
     CompiledFunction* currentFunction = nullptr;
 
-    IRNode* readVariable(const std::string& name);
+    IRNode* readVariable(const std::string& name, ResolvedSym sym);
 public:
     struct UpvalueTarget {
         int index;
@@ -56,7 +57,7 @@ public:
     };
     std::vector<UpvalueTarget> upvalueTargets;
 private:
-    void writeVariable(const std::string& name, IRNode* value, bool isConst = false, bool isGlobalRef = false);
+    void writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal = false);
     void declareVariable(const std::string& name, IRNode* value);
     
     IRNode* getLocalNode(const std::string& name);
@@ -112,7 +113,10 @@ private:
     }
 
 public:
-    explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr, IRBuilder* parent = nullptr, CompiledFunction* currentFunction = nullptr);
+    const std::unordered_map<Expr*, ResolvedSym>* exprSymbols = nullptr;
+    const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr;
+
+    explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr, IRBuilder* parent = nullptr, CompiledFunction* currentFunction = nullptr, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols = nullptr, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr);
     void build(Expr* ast);
 
     void visitBinary(Binary* expr) override;

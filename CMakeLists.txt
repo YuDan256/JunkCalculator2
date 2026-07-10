@@ -48,7 +48,7 @@ set(JC2_HEADERS
     "src/lib/image/Image.h"
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/BuiltinRegistry.h" "src/vm/PredefinedClasses.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
-    "src/compiler/IR.h" "src/compiler/IRBuilder.h" "src/compiler/IROptimizer.h" "src/compiler/RegisterAllocator.h" "src/compiler/Emitter.h"
+    "src/compiler/Resolver.h" "src/compiler/IR.h" "src/compiler/IRBuilder.h" "src/compiler/IROptimizer.h" "src/compiler/RegisterAllocator.h" "src/compiler/Emitter.h"
     "src/lib/ExtensionBridge.h"
     "src/lib/jc2_extension_api.h"
     "src/lib/jc2_extension_cpp.h"
@@ -57,6 +57,7 @@ set(JC2_HEADERS
 set(JC2_SOURCES
     "src/lib/ExtensionBridge.cpp"
     "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/ASTConverter.cpp"
+    "src/compiler/Resolver.cpp"
     "src/compiler/IRBuilder.cpp"
     "src/compiler/IROptimizer.cpp"
     "src/compiler/RegisterAllocator.cpp"

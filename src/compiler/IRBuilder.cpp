@@ -28,121 +28,143 @@ static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string,
     }
 }
 
-IRNode* IRBuilder::readVariable(const std::string& name) {
-    if (refParams.count(name)) {
-        IRNode* node = graph->createValueNode(IROp::GetRefParam);
-        node->payload1 = refParams[name];
+IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
+    if (sym.scope == VarScope::Global) {
+        IRNode* node = graph->createValueNode(IROp::GetGlobal);
         node->name = name;
         node->setControl(currentControl);
+        currentControl = node;
         return node;
-    }
-
-    IRNode* localNode = getLocalNode(name);
-    if (localNode) return localNode;
-
-    if (currentFunction) {
-        if (currentFunction->name == name) {
-            IRNode* node = graph->createValueNode(IROp::GetCurrentClosure);
-            node->name = name;
-            node->setControl(currentControl);
-            return node;
-        }
-        for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
-            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isCapturedState || currentFunction->upvalues[i].isRef)) {
-                IRNode* node = graph->createValueNode(IROp::GetUpvalue);
-                node->payload1 = static_cast<uint32_t>(i);
-                node->name = name;
-                node->setControl(currentControl);
-                return node;
+    } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::State) {
+        int upvalIdx = -1;
+        if (sym.scope == VarScope::State) {
+            for (int i = 0; i < static_cast<int>(currentFunction->upvalues.size()); ++i) {
+                if (currentFunction->upvalues[i].name == name && currentFunction->upvalues[i].isExplicitState) {
+                    upvalIdx = i;
+                    break;
+                }
             }
+            if (upvalIdx == -1) {
+                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                CompiledFunction::UpvalueInfo uv;
+                uv.name = name;
+                uv.isLocal = false;
+                uv.index = 0;
+                uv.isRef = false;
+                uv.isGlobal = false;
+                uv.isExplicitState = true;
+                uv.isRefParam = false;
+                currentFunction->upvalues.push_back(uv);
+            }
+        } else {
+            upvalIdx = resolveUpvalue(name);
         }
-    }
-
-    int upvalIdx = resolveUpvalue(name);
-    if (upvalIdx != -1) {
         IRNode* node = graph->createValueNode(IROp::GetUpvalue);
         node->payload1 = static_cast<uint32_t>(upvalIdx);
         node->name = name;
         node->setControl(currentControl);
         return node;
+    } else if (sym.scope == VarScope::RefParam) {
+        IRNode* node = graph->createValueNode(IROp::GetRefParam);
+        node->payload1 = refParams[name];
+        node->name = name;
+        node->setControl(currentControl);
+        return node;
+    } else {
+        if (currentFunction && currentFunction->name == name) {
+            IRNode* node = graph->createValueNode(IROp::GetCurrentClosure);
+            node->name = name;
+            node->setControl(currentControl);
+            return node;
+        }
+        IRNode* localNode = getLocalNode(name);
+        if (localNode) return localNode;
+        IRNode* uninit = graph->createConstant(Value::uninit());
+        uninit->setControl(currentControl);
+        return uninit;
     }
-
-    // 如果没找到，生成一个 GetGlobal 节点
-    IRNode* node = graph->createValueNode(IROp::GetGlobal);
-    node->name = name;
-    node->setControl(currentControl);
-    currentControl = node;
-    return node;
 }
 
-void IRBuilder::writeVariable(const std::string& name, IRNode* value, bool isConst, bool isGlobalRef) {
-    if (refParams.count(name)) {
+void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal) {
+    if (sym.scope == VarScope::Global) {
+        IROp op = sym.isConst ? IROp::DefineConstGlobal : IROp::SetGlobal;
+        IRNode* node = graph->createNode(op);
+        node->setControl(currentControl);
+        node->addData(value);
+        node->name = name;
+        currentControl = node;
+    } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::State) {
+        int upvalIdx = -1;
+        if (sym.scope == VarScope::State) {
+            for (int i = 0; i < static_cast<int>(currentFunction->upvalues.size()); ++i) {
+                if (currentFunction->upvalues[i].name == name && currentFunction->upvalues[i].isExplicitState) {
+                    upvalIdx = i;
+                    break;
+                }
+            }
+            if (upvalIdx == -1) {
+                upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+                CompiledFunction::UpvalueInfo uv;
+                uv.name = name;
+                uv.isLocal = false;
+                uv.index = 0;
+                uv.isRef = false;
+                uv.isGlobal = false;
+                uv.isExplicitState = true;
+                uv.isRefParam = false;
+                currentFunction->upvalues.push_back(uv);
+            }
+        } else {
+            upvalIdx = resolveUpvalue(name);
+        }
+        IRNode* node = graph->createNode(IROp::SetUpvalue);
+        node->payload1 = static_cast<uint32_t>(upvalIdx);
+        node->name = name;
+        node->addData(value);
+        node->setControl(currentControl);
+        currentControl = node;
+    } else if (sym.scope == VarScope::RefParam) {
         IRNode* node = graph->createNode(IROp::SetRefParam);
         node->payload1 = refParams[name];
         node->name = name;
         node->addData(value);
         node->setControl(currentControl);
         currentControl = node;
-        return;
-    }
-
-    if (envStack.empty()) return;
-    // 查找变量在哪个作用域定义的
-    for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
-        auto it = envStack[i].find(name);
-        if (it != envStack[i].end()) {
-            if (currentConstVars.count(name)) {
-                if (!isConst) error("Runtime Error: Cannot modify const variable '" + name + "'.");
-                else error("Runtime Error: Cannot redefine const variable '" + name + "'.");
-            }
-            if (capturedLocals.count(name)) {
-                IRNode* origNode = it->second;
-                IRNode* updateNode = graph->createNode(IROp::UpdateCaptured);
-                updateNode->setControl(currentControl);
-                updateNode->addData(origNode);
-                updateNode->addData(value);
-                currentControl = updateNode;
-                return;
-            }
-            envStack[i][name] = value;
+    } else {
+        if (currentConstVars.count(name)) {
+            if (!sym.isConst) error("Runtime Error: Cannot modify const variable '" + name + "'.");
+            else error("Runtime Error: Cannot redefine const variable '" + name + "'.");
+        }
+        if (capturedLocals.count(name)) {
+            IRNode* origNode = getLocalNode(name);
+            IRNode* updateNode = graph->createNode(IROp::UpdateCaptured);
+            updateNode->setControl(currentControl);
+            updateNode->addData(origNode);
+            updateNode->addData(value);
+            currentControl = updateNode;
             return;
         }
-    }
-
-    if (currentFunction) {
-        for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
-            if (currentFunction->upvalues[i].name == name && (currentFunction->upvalues[i].isExplicitState || currentFunction->upvalues[i].isCapturedState || currentFunction->upvalues[i].isRef)) {
-                IRNode* node = graph->createNode(IROp::SetUpvalue);
-                node->payload1 = static_cast<uint32_t>(i);
-                node->name = name;
-                node->addData(value);
-                node->setControl(currentControl);
-                currentControl = node;
-                return;
-            }
-        }
-    }
-
-    // 如果都没找到，且在函数内部，则作为 Auto-local 变量在函数顶层作用域声明
-    if (currentFunction && !isGlobalRef) {
-        if (namespaceScopeDepth != -1) {
-            envStack[namespaceScopeDepth][name] = value;
+        
+        if (isExplicitLocal) {
+            declareVariable(name, value);
+            currentLocalVars.insert(name);
+            if (sym.isConst) currentConstVars.insert(name);
         } else {
-            envStack[0][name] = value;
+            bool found = false;
+            for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
+                if (envStack[i].count(name)) {
+                    envStack[i][name] = value;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][name] = value;
+                else envStack[0][name] = value;
+            }
+            if (sym.isConst) currentConstVars.insert(name);
         }
-        return;
     }
-
-    // 否则，说明是全局变量赋值
-    IROp op = IROp::SetGlobal;
-    if (isConst) op = IROp::DefineConstGlobal;
-    else if (isGlobalRef) op = IROp::SetGlobalRef;
-
-    IRNode* node = graph->createNode(op);
-    node->setControl(currentControl);
-    node->addData(value);
-    node->name = name;
-    currentControl = node;
 }
 
 void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
@@ -150,8 +172,8 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
     envStack.back()[name] = value;
 }
 
-IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction) 
-    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), currentControl(graph->startNode), lastValue(nullptr) {
+IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols) 
+    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), currentControl(graph->startNode), lastValue(nullptr) {
     pushScope(); // 压入顶层作用域
 }
 
@@ -328,31 +350,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         currentControl = ifFalse;
 
         if (vp->name.lexeme != "_") {
-            ScopeModifier mod = vp->modifier;
-            if (mod == ScopeModifier::None) mod = globalMod;
-            bool isConst = vp->isConst || globalConst;
-
-            if (mod == ScopeModifier::State) {
-                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-                bool found = false;
-                for (auto& u : currentFunction->upvalues) {
-                    if (u.name == vp->name.lexeme && u.isExplicitState) {
-                        found = true; break;
-                    }
-                }
-                if (!found) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = vp->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = false;
-                    uv.isGlobal = false;
-                    uv.isExplicitState = true;
-                    uv.isRefParam = false;
-                    currentFunction->upvalues.push_back(uv);
-                }
-
-                IRNode* getVal = readVariable(vp->name.lexeme);
+            auto it = patternSymbols->find(pat);
+            ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            
+            if (sym.scope == VarScope::State) {
+                IRNode* getVal = readVariable(vp->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
                 stateIsUninit->addData(getVal);
                 stateIsUninit->setControl(currentControl);
@@ -368,7 +370,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(vp->name.lexeme, valNode, isConst, false);
+                writeVariable(vp->name.lexeme, valNode, sym, false);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -376,34 +378,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                if (mod == ScopeModifier::Ref) {
-                    if (currentFunction) {
-                        int upvalIdx = resolveUpvalue(vp->name.lexeme);
-                        if (upvalIdx == -1) {
-                            CompiledFunction::UpvalueInfo uv;
-                            uv.name = vp->name.lexeme;
-                            uv.isLocal = false;
-                            uv.index = 0;
-                            uv.isRef = true;
-                            uv.isGlobal = true;
-                            uv.isExplicitState = false;
-                            uv.isRefParam = false;
-                            currentFunction->upvalues.push_back(uv);
-                        } else {
-                            currentFunction->upvalues[upvalIdx].isRef = true;
-                        }
-                    }
-                }
-
-                if (mod == ScopeModifier::Local) {
-                    declareVariable(vp->name.lexeme, valNode);
-                    currentLocalVars.insert(vp->name.lexeme);
-                    if (isConst) currentConstVars.insert(vp->name.lexeme);
-                } else {
-                    bool isGlobalRef = (mod == ScopeModifier::Ref) && !currentFunction;
-                    writeVariable(vp->name.lexeme, valNode, isConst, isGlobalRef);
-                    if (isConst) currentConstVars.insert(vp->name.lexeme);
-                }
+                writeVariable(vp->name.lexeme, valNode, sym, vp->modifier == ScopeModifier::Local);
             }
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
@@ -440,7 +415,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 currentControl = setProp;
                 
                 if (auto* var = dynamic_cast<Variable*>(dot->object.get())) {
-                    writeVariable(var->name.lexeme, objNode);
+                    auto it = exprSymbols->find(var);
+                    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+                    writeVariable(var->name.lexeme, objNode, sym, false);
                 }
             } else if (auto* idx = dynamic_cast<IndexAccess*>(exprPat->expr.get())) {
                 std::vector<IndexAccess*> chain;
@@ -570,7 +547,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
                 
                 if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
-                    writeVariable(var->name.lexeme, finalNode);
+                    auto it = exprSymbols->find(var);
+                    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+                    writeVariable(var->name.lexeme, finalNode, sym, false);
                 } else if (dotParentNode) {
                     IRNode* setProp = graph->createValueNode(IROp::SetProperty);
                     setProp->setControl(currentControl);
@@ -671,27 +650,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 currentControl = sliceNode;
                 
                 if (restPat->name.lexeme != "_") {
-                    if (restPat->modifier == ScopeModifier::State) {
-                        if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-                        bool found = false;
-                        for (auto& u : currentFunction->upvalues) {
-                            if (u.name == restPat->name.lexeme && u.isExplicitState) {
-                                found = true; break;
-                            }
-                        }
-                        if (!found) {
-                            CompiledFunction::UpvalueInfo uv;
-                            uv.name = restPat->name.lexeme;
-                            uv.isLocal = false;
-                            uv.index = 0;
-                            uv.isRef = false;
-                            uv.isGlobal = false;
-                            uv.isExplicitState = true;
-                            uv.isRefParam = false;
-                            currentFunction->upvalues.push_back(uv);
-                        }
-
-                        IRNode* getVal = readVariable(restPat->name.lexeme);
+                    auto it = patternSymbols->find(restPat);
+                    ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+                    
+                    if (sym.scope == VarScope::State) {
+                        IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                         IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
                         stateIsUninit->addData(getVal);
                         stateIsUninit->setControl(currentControl);
@@ -707,7 +670,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         stateIfFalse->setControl(stateIfNode);
 
                         currentControl = stateIfTrue;
-                        writeVariable(restPat->name.lexeme, sliceNode);
+                        writeVariable(restPat->name.lexeme, sliceNode, sym, false);
                         IRNode* trueCtrl = currentControl;
 
                         IRNode* merge = graph->createNode(IROp::Merge);
@@ -715,37 +678,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         merge->addData(stateIfFalse);
                         currentControl = merge;
                     } else {
-                        ScopeModifier rmod = restPat->modifier;
-                        if (rmod == ScopeModifier::None) rmod = globalMod;
-                        bool rConst = restPat->isConst || globalConst;
-
-                        if (rmod == ScopeModifier::Ref) {
-                            if (currentFunction) {
-                                int upvalIdx = resolveUpvalue(restPat->name.lexeme);
-                                if (upvalIdx == -1) {
-                                    CompiledFunction::UpvalueInfo uv;
-                                    uv.name = restPat->name.lexeme;
-                                    uv.isLocal = false;
-                                    uv.index = 0;
-                                    uv.isRef = true;
-                                    uv.isGlobal = true;
-                                    uv.isExplicitState = false;
-                                    uv.isRefParam = false;
-                                    currentFunction->upvalues.push_back(uv);
-                                } else {
-                                    currentFunction->upvalues[upvalIdx].isRef = true;
-                                }
-                            }
-                        }
-                        if (rmod == ScopeModifier::Local) {
-                            declareVariable(restPat->name.lexeme, sliceNode);
-                            currentLocalVars.insert(restPat->name.lexeme);
-                            if (rConst) currentConstVars.insert(restPat->name.lexeme);
-                        } else {
-                            bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
-                            writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
-                            if (rConst) currentConstVars.insert(restPat->name.lexeme);
-                        }
+                        writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
                     }
                 }
                 continue;
@@ -791,27 +724,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             sliceNode->payload1 = 1;
             currentControl = sliceNode;
             
-            if (restPat->modifier == ScopeModifier::State) {
-                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-                bool found = false;
-                for (auto& u : currentFunction->upvalues) {
-                    if (u.name == restPat->name.lexeme && u.isExplicitState) {
-                        found = true; break;
-                    }
-                }
-                if (!found) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = restPat->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = false;
-                    uv.isGlobal = false;
-                    uv.isExplicitState = true;
-                    uv.isRefParam = false;
-                    currentFunction->upvalues.push_back(uv);
-                }
-
-                IRNode* getVal = readVariable(restPat->name.lexeme);
+            auto it = patternSymbols->find(restPat);
+            ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            
+            if (sym.scope == VarScope::State) {
+                IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
                 stateIsUninit->addData(getVal);
                 stateIsUninit->setControl(currentControl);
@@ -827,7 +744,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, sliceNode);
+                writeVariable(restPat->name.lexeme, sliceNode, sym, false);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -835,36 +752,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                ScopeModifier rmod = restPat->modifier;
-                if (rmod == ScopeModifier::None) rmod = globalMod;
-                bool rConst = restPat->isConst || globalConst;
-
-                if (rmod == ScopeModifier::Ref) {
-                    if (currentFunction) {
-                        int upvalIdx = resolveUpvalue(restPat->name.lexeme);
-                        if (upvalIdx == -1) {
-                            CompiledFunction::UpvalueInfo uv;
-                            uv.name = restPat->name.lexeme;
-                            uv.isLocal = false;
-                            uv.index = 0;
-                            uv.isRef = true;
-                            uv.isGlobal = true;
-                            uv.isExplicitState = false;
-                            uv.isRefParam = false;
-                            currentFunction->upvalues.push_back(uv);
-                        } else {
-                            currentFunction->upvalues[upvalIdx].isRef = true;
-                        }
-                    }
-                }
-                if (rmod == ScopeModifier::Local) {
-                    declareVariable(restPat->name.lexeme, sliceNode);
-                    currentLocalVars.insert(restPat->name.lexeme);
-                } else {
-                    bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
-                    writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
-                    if (rConst) currentConstVars.insert(restPat->name.lexeme);
-                }
+                writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
             }
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
@@ -964,27 +852,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         sliceNode->payload1 = 2;
                         currentControl = sliceNode;
 
-                        if (restPat->modifier == ScopeModifier::State) {
-                            if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-                            bool found = false;
-                            for (auto& u : currentFunction->upvalues) {
-                                if (u.name == restPat->name.lexeme && u.isExplicitState) {
-                                    found = true; break;
-                                }
-                            }
-                            if (!found) {
-                                CompiledFunction::UpvalueInfo uv;
-                                uv.name = restPat->name.lexeme;
-                                uv.isLocal = false;
-                                uv.index = 0;
-                                uv.isRef = false;
-                                uv.isGlobal = false;
-                                uv.isExplicitState = true;
-                                uv.isRefParam = false;
-                                currentFunction->upvalues.push_back(uv);
-                            }
-
-                            IRNode* getVal = readVariable(restPat->name.lexeme);
+                        auto it = patternSymbols->find(restPat);
+                        ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            
+                        if (sym.scope == VarScope::State) {
+                            IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                             IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
                             stateIsUninit->addData(getVal);
                             stateIsUninit->setControl(currentControl);
@@ -1000,7 +872,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             stateIfFalse->setControl(stateIfNode);
 
                             currentControl = stateIfTrue;
-                            writeVariable(restPat->name.lexeme, sliceNode);
+                            writeVariable(restPat->name.lexeme, sliceNode, sym, false);
                             IRNode* trueCtrl = currentControl;
 
                             IRNode* merge = graph->createNode(IROp::Merge);
@@ -1008,37 +880,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             merge->addData(stateIfFalse);
                             currentControl = merge;
                         } else {
-                            ScopeModifier rmod = restPat->modifier;
-                            if (rmod == ScopeModifier::None) rmod = globalMod;
-                            bool rConst = restPat->isConst || globalConst;
-
-                            if (rmod == ScopeModifier::Ref) {
-                                if (currentFunction) {
-                                    int upvalIdx = resolveUpvalue(restPat->name.lexeme);
-                                    if (upvalIdx == -1) {
-                                        CompiledFunction::UpvalueInfo uv;
-                                        uv.name = restPat->name.lexeme;
-                                        uv.isLocal = false;
-                                        uv.index = 0;
-                                        uv.isRef = true;
-                                        uv.isGlobal = true;
-                                        uv.isExplicitState = false;
-                                        uv.isRefParam = false;
-                                        currentFunction->upvalues.push_back(uv);
-                                    } else {
-                                        currentFunction->upvalues[upvalIdx].isRef = true;
-                                    }
-                                }
-                            }
-                            if (rmod == ScopeModifier::Local) {
-                                declareVariable(restPat->name.lexeme, sliceNode);
-                                currentLocalVars.insert(restPat->name.lexeme);
-                                if (rConst) currentConstVars.insert(restPat->name.lexeme);
-                            } else {
-                                bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
-                                writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
-                                if (rConst) currentConstVars.insert(restPat->name.lexeme);
-                            }
+                            writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
                         }
                     }
                     continue;
@@ -1097,27 +939,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             sliceNode->payload1 = 2;
             currentControl = sliceNode;
 
-            if (restPat->modifier == ScopeModifier::State) {
-                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-                bool found = false;
-                for (auto& u : currentFunction->upvalues) {
-                    if (u.name == restPat->name.lexeme && u.isExplicitState) {
-                        found = true; break;
-                    }
-                }
-                if (!found) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = restPat->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = false;
-                    uv.isGlobal = false;
-                    uv.isExplicitState = true;
-                    uv.isRefParam = false;
-                    currentFunction->upvalues.push_back(uv);
-                }
-
-                IRNode* getVal = readVariable(restPat->name.lexeme);
+            auto it = patternSymbols->find(restPat);
+            ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            
+            if (sym.scope == VarScope::State) {
+                IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
                 stateIsUninit->addData(getVal);
                 stateIsUninit->setControl(currentControl);
@@ -1133,7 +959,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, sliceNode);
+                writeVariable(restPat->name.lexeme, sliceNode, sym, false);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -1141,34 +967,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                ScopeModifier rmod = restPat->modifier;
-                if (rmod == ScopeModifier::None) rmod = globalMod;
-                bool rConst = restPat->isConst || globalConst;
-
-                if (rmod == ScopeModifier::Ref) {
-                    if (currentFunction) {
-                        int upvalIdx = resolveUpvalue(restPat->name.lexeme);
-                        if (upvalIdx == -1) {
-                            CompiledFunction::UpvalueInfo uv;
-                            uv.name = restPat->name.lexeme;
-                            uv.isLocal = false;
-                            uv.index = 0;
-                            uv.isRef = true;
-                            uv.isGlobal = true;
-                            uv.isExplicitState = false;
-                            uv.isRefParam = false;
-                            currentFunction->upvalues.push_back(uv);
-                        } else {
-                            currentFunction->upvalues[upvalIdx].isRef = true;
-                        }
-                    }
-                }
-                if (rmod == ScopeModifier::Local) {
-                    declareVariable(restPat->name.lexeme, sliceNode);
-                } else {
-                    bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
-                    writeVariable(restPat->name.lexeme, sliceNode, rConst, isGlobalRef);
-                }
+                writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
             }
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
@@ -1251,27 +1050,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             restNode->addData(excludeList);
             currentControl = restNode;
             
-            if (restPat->modifier == ScopeModifier::State) {
-                if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-                bool found = false;
-                for (auto& u : currentFunction->upvalues) {
-                    if (u.name == restPat->name.lexeme && u.isExplicitState) {
-                        found = true; break;
-                    }
-                }
-                if (!found) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = restPat->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = false;
-                    uv.isGlobal = false;
-                    uv.isExplicitState = true;
-                    uv.isRefParam = false;
-                    currentFunction->upvalues.push_back(uv);
-                }
-
-                IRNode* getVal = readVariable(restPat->name.lexeme);
+            auto it = patternSymbols->find(restPat);
+            ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            
+            if (sym.scope == VarScope::State) {
+                IRNode* getVal = readVariable(restPat->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
                 stateIsUninit->addData(getVal);
                 stateIsUninit->setControl(currentControl);
@@ -1287,7 +1070,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, restNode);
+                writeVariable(restPat->name.lexeme, restNode, sym, false);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -1295,37 +1078,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                ScopeModifier rmod = restPat->modifier;
-                if (rmod == ScopeModifier::None) rmod = globalMod;
-                bool rConst = restPat->isConst || globalConst;
-
-                if (rmod == ScopeModifier::Ref) {
-                    if (currentFunction) {
-                        int upvalIdx = resolveUpvalue(restPat->name.lexeme);
-                        if (upvalIdx == -1) {
-                            CompiledFunction::UpvalueInfo uv;
-                            uv.name = restPat->name.lexeme;
-                            uv.isLocal = false;
-                            uv.index = 0;
-                            uv.isRef = true;
-                            uv.isGlobal = true;
-                            uv.isExplicitState = false;
-                            uv.isRefParam = false;
-                            currentFunction->upvalues.push_back(uv);
-                        } else {
-                            currentFunction->upvalues[upvalIdx].isRef = true;
-                        }
-                    }
-                }
-                if (rmod == ScopeModifier::Local) {
-                    declareVariable(restPat->name.lexeme, restNode);
-                    currentLocalVars.insert(restPat->name.lexeme);
-                    if (rConst) currentConstVars.insert(restPat->name.lexeme);
-                } else {
-                    bool isGlobalRef = (rmod == ScopeModifier::Ref) && !currentFunction;
-                    writeVariable(restPat->name.lexeme, restNode, rConst, isGlobalRef);
-                    if (rConst) currentConstVars.insert(restPat->name.lexeme);
-                }
+                writeVariable(restPat->name.lexeme, restNode, sym, restPat->modifier == ScopeModifier::Local);
             }
         }
     }
@@ -1426,7 +1179,8 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
     
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+            ResolvedSym rs; rs.scope = VarScope::Local;
+            pair.second->addData(readVariable(pair.first, rs));
             if (!condFailMerge->dataInputs.empty()) {
                 pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
             }
@@ -1547,7 +1301,8 @@ void IRBuilder::visitBinary(Binary* expr) {
         if (auto* var = dynamic_cast<Variable*>(expr->left.get())) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
-                sig.refs.push_back({0, 4, name, -1, readVariable(name)});
+                ResolvedSym rs; rs.scope = VarScope::RefParam;
+                sig.refs.push_back({0, 4, name, -1, readVariable(name, rs)});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
@@ -1740,24 +1495,18 @@ void IRBuilder::visitBinary(Binary* expr) {
 
 void IRBuilder::visitVariable(Variable* expr) {
     graph->currentLine = expr->name.line;
-    lastValue = readVariable(expr->name.lexeme);
+    auto it = exprSymbols->find(expr);
+    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+    lastValue = readVariable(expr->name.lexeme, sym);
 }
 
 void IRBuilder::visitAssign(Assign* expr) {
     graph->currentLine = expr->name.line;
-    if (expr->isState) {
-        if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-        CompiledFunction::UpvalueInfo uv;
-        uv.name = expr->name.lexeme;
-        uv.isLocal = false;
-        uv.index = 0;
-        uv.isRef = false;
-        uv.isGlobal = false;
-        uv.isExplicitState = true;
-        uv.isRefParam = false;
-        currentFunction->upvalues.push_back(uv);
+    auto it = exprSymbols->find(expr);
+    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
 
-        IRNode* getVal = readVariable(expr->name.lexeme);
+    if (expr->isState) {
+        IRNode* getVal = readVariable(expr->name.lexeme, sym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
         isUninit->setControl(currentControl);
@@ -1774,23 +1523,10 @@ void IRBuilder::visitAssign(Assign* expr) {
 
         currentControl = ifTrue;
         
-        std::string originalName = expr->name.lexeme;
-        for (auto& u : currentFunction->upvalues) {
-            if (u.name == originalName && u.isExplicitState) {
-                u.name = "<hidden_state>";
-            }
-        }
-        
         expr->value->accept(*this);
         IRNode* valNode = lastValue;
         
-        for (auto& u : currentFunction->upvalues) {
-            if (u.name == "<hidden_state>" && u.isExplicitState) {
-                u.name = originalName;
-            }
-        }
-        
-        writeVariable(expr->name.lexeme, valNode, expr->isConst, false);
+        writeVariable(expr->name.lexeme, valNode, sym, false);
         IRNode* trueCtrl = currentControl;
 
         IRNode* merge = graph->createNode(IROp::Merge);
@@ -1802,37 +1538,10 @@ void IRBuilder::visitAssign(Assign* expr) {
         return;
     }
 
-    if (expr->isRef) {
-        if (currentFunction) {
-            int upvalIdx = resolveUpvalue(expr->name.lexeme);
-            if (upvalIdx == -1) {
-                CompiledFunction::UpvalueInfo uv;
-                uv.name = expr->name.lexeme;
-                uv.isLocal = false;
-                uv.index = 0;
-                uv.isRef = true;
-                uv.isGlobal = true;
-                uv.isExplicitState = false;
-                uv.isRefParam = false;
-                currentFunction->upvalues.push_back(uv);
-            } else {
-                currentFunction->upvalues[upvalIdx].isRef = true;
-            }
-        }
-    }
-
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
     
-    if (expr->isLocal) {
-        declareVariable(expr->name.lexeme, valNode);
-        currentLocalVars.insert(expr->name.lexeme);
-        if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
-    } else {
-        bool isGlobalRef = expr->isRef && !currentFunction;
-        writeVariable(expr->name.lexeme, valNode, expr->isConst, isGlobalRef);
-        if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
-    }
+    writeVariable(expr->name.lexeme, valNode, sym, expr->isLocal);
     lastValue = valNode;
 }
 
@@ -1842,84 +1551,6 @@ void IRBuilder::visitBlock(Block* expr) {
         lastValue = graph->createConstant(Value::none());
         lastValue->setControl(currentControl);
     } else {
-        bool shouldHoist = currentFunction != nullptr || namespaceScopeDepth != -1;
-        std::unordered_set<std::string> stateOrRefVars;
-        for (auto& stmt : expr->statements) {
-            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
-                if (assign->isState || assign->isRef) stateOrRefVars.insert(assign->name.lexeme);
-            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
-                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
-                collectPatternVars(destAssign->pattern.get(), boundVars);
-                for (const auto& varTuple : boundVars) {
-                    ScopeModifier mod = std::get<1>(varTuple);
-                    if (mod == ScopeModifier::None) {
-                        if (destAssign->isRef) mod = ScopeModifier::Ref;
-                        else if (destAssign->isState) mod = ScopeModifier::State;
-                    }
-                    if (mod == ScopeModifier::State || mod == ScopeModifier::Ref) {
-                        stateOrRefVars.insert(std::get<0>(varTuple));
-                    }
-                }
-            } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
-                stateOrRefVars.insert(stateDecl->name.lexeme);
-            } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
-                stateOrRefVars.insert(refDecl->name.lexeme);
-            }
-        }
-
-        for (auto& stmt : expr->statements) {
-            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
-                if (assign->isLocal || (shouldHoist && !assign->isRef && !assign->isState && !stateOrRefVars.count(assign->name.lexeme))) {
-                    if (!getLocalNode(assign->name.lexeme)) {
-                        IRNode* uninitNode = graph->createConstant(Value::uninit());
-                        uninitNode->setControl(currentControl);
-                        if (assign->isLocal) {
-                            declareVariable(assign->name.lexeme, uninitNode);
-                        } else {
-                            if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][assign->name.lexeme] = uninitNode;
-                            else envStack[0][assign->name.lexeme] = uninitNode;
-                        }
-                    }
-                }
-            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
-                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
-                collectPatternVars(destAssign->pattern.get(), boundVars);
-                for (const auto& varTuple : boundVars) {
-                    const std::string& name = std::get<0>(varTuple);
-                    ScopeModifier mod = std::get<1>(varTuple);
-                    if (mod == ScopeModifier::None) {
-                        if (destAssign->isLocal) mod = ScopeModifier::Local;
-                        else if (destAssign->isRef) mod = ScopeModifier::Ref;
-                        else if (destAssign->isState) mod = ScopeModifier::State;
-                    }
-                    if (mod == ScopeModifier::Local || (shouldHoist && mod == ScopeModifier::None && !stateOrRefVars.count(name))) {
-                        if (!getLocalNode(name)) {
-                            IRNode* uninitNode = graph->createConstant(Value::uninit());
-                            uninitNode->setControl(currentControl);
-                            if (mod == ScopeModifier::Local) {
-                                declareVariable(name, uninitNode);
-                            } else {
-                                if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][name] = uninitNode;
-                                else envStack[0][name] = uninitNode;
-                            }
-                        }
-                    }
-                }
-            } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-                if (shouldHoist && !getLocalNode(clsDef->name.lexeme) && !stateOrRefVars.count(clsDef->name.lexeme)) {
-                    IRNode* uninitNode = graph->createConstant(Value::uninit());
-                    uninitNode->setControl(currentControl);
-                    if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][clsDef->name.lexeme] = uninitNode;
-                    else envStack[0][clsDef->name.lexeme] = uninitNode;
-                }
-            } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
-                if (!getLocalNode(locDecl->name.lexeme)) {
-                    IRNode* uninitNode = graph->createConstant(Value::uninit());
-                    uninitNode->setControl(currentControl);
-                    declareVariable(locDecl->name.lexeme, uninitNode);
-                }
-            }
-        }
         for (size_t i = 0; i < expr->statements.size(); ++i) {
             expr->statements[i]->accept(*this);
             
@@ -1962,7 +1593,9 @@ void IRBuilder::visitUnary(Unary* expr) {
 void IRBuilder::visitCall(Call* expr) {
     graph->currentLine = expr->callee.line;
     std::string calleeName = expr->callee.lexeme;
-    IRNode* calleeNode = readVariable(calleeName);
+    auto it = exprSymbols->find(expr);
+    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+    IRNode* calleeNode = readVariable(calleeName, sym);
     
     std::vector<IRNode*> argNodes;
     IRCallSignature sig;
@@ -1972,7 +1605,8 @@ void IRBuilder::visitCall(Call* expr) {
         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name)});
+                ResolvedSym rs; rs.scope = VarScope::RefParam;
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs)});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
@@ -2284,7 +1918,8 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+            ResolvedSym rs; rs.scope = VarScope::Local;
+            pair.second->addData(readVariable(pair.first, rs));
         }
     }
     
@@ -2383,7 +2018,8 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+            ResolvedSym rs; rs.scope = VarScope::Local;
+            pair.second->addData(readVariable(pair.first, rs));
         }
     }
     
@@ -2477,7 +2113,8 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
         loop.loopNode->addData(currentControl);
         for (size_t i = 0; i < loop.loopPhisStack.size(); ++i) {
             for (auto& pair : loop.loopPhisStack[i]) {
-                pair.second->addData(readVariable(pair.first));
+                ResolvedSym rs; rs.scope = VarScope::Local;
+                pair.second->addData(readVariable(pair.first, rs));
             }
         }
     }
@@ -2560,7 +2197,9 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
             expr->objectExpr->accept(*this);
         }
     } else {
-        lastValue = readVariable(expr->name.lexeme);
+        auto it = exprSymbols->find(expr);
+        ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+        lastValue = readVariable(expr->name.lexeme, sym);
     }
     IRNode* rootObjNode = lastValue;
 
@@ -2604,7 +2243,9 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         currentControl = node;
         
         if (!expr->hasObjectExpr()) {
-            writeVariable(expr->name.lexeme, node);
+            auto it = exprSymbols->find(expr);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            writeVariable(expr->name.lexeme, node, sym);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -2636,7 +2277,9 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         currentControl = node;
         
         if (!expr->hasObjectExpr()) {
-            writeVariable(expr->name.lexeme, node);
+            auto it = exprSymbols->find(expr);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            writeVariable(expr->name.lexeme, node, sym);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -2681,7 +2324,9 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         }
         
         if (!expr->hasObjectExpr()) {
-            writeVariable(expr->name.lexeme, finalNode);
+            auto it = exprSymbols->find(expr);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            writeVariable(expr->name.lexeme, finalNode, sym);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -2820,7 +2465,9 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                 }
             }
         }
-        targetVal = readVariable(var->name.lexeme);
+        auto it = exprSymbols->find(var);
+        ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+        targetVal = readVariable(var->name.lexeme, sym);
     } else if (auto* dot = dynamic_cast<DotAccess*>(expr->target.get())) {
         graph->currentLine = dot->field.line;
         dot->object->accept(*this);
@@ -2922,13 +2569,9 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     opNode->addData(rightVal);
 
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
-        if (expr->isLocal) {
-            declareVariable(var->name.lexeme, opNode);
-            currentLocalVars.insert(var->name.lexeme);
-        } else {
-            bool isGlobalRef = expr->isRef && !currentFunction;
-            writeVariable(var->name.lexeme, opNode, false, isGlobalRef);
-        }
+        auto it = exprSymbols->find(var);
+        ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+        writeVariable(var->name.lexeme, opNode, sym, expr->isLocal);
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
         IRNode* setProp = graph->createValueNode(IROp::SetProperty);
         setProp->setControl(currentControl);
@@ -2994,13 +2637,9 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
         
         if (auto* rootVar = dynamic_cast<Variable*>(chain[0]->object.get())) {
-            if (expr->isLocal) {
-                declareVariable(rootVar->name.lexeme, finalNode);
-                currentLocalVars.insert(rootVar->name.lexeme);
-            } else {
-                bool isGlobalRef = expr->isRef && !currentFunction;
-                writeVariable(rootVar->name.lexeme, finalNode, false, isGlobalRef);
-            }
+            auto it = exprSymbols->find(rootVar);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            writeVariable(rootVar->name.lexeme, finalNode, sym, expr->isLocal);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -3040,7 +2679,8 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
         IRNode* paramNode = nullptr;
         if (i < paramIsRef.size() && paramIsRef[i]) {
             refParams[params[i].lexeme] = refIdx++;
-            paramNode = readVariable(params[i].lexeme);
+            ResolvedSym rs; rs.scope = VarScope::RefParam;
+            paramNode = readVariable(params[i].lexeme, rs);
         } else {
             paramNode = graph->createValueNode(IROp::Parameter);
             paramNode->payload1 = static_cast<uint32_t>(i);
@@ -3118,13 +2758,17 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             phi->name = params[i].lexeme;
             
             currentControl = merge;
-            writeVariable(params[i].lexeme, phi);
+            ResolvedSym sym;
+            sym.scope = paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
+            sym.isConst = paramIsConst[i];
+            writeVariable(params[i].lexeme, phi, sym, true);
         }
         
         if (i < typeHints.size() && !typeHints[i].empty()) {
             IRNode* assertNode = graph->createNode(IROp::AssertParamType);
             assertNode->setControl(currentControl);
-            assertNode->addData(readVariable(params[i].lexeme));
+            ResolvedSym rs; rs.scope = paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
+            assertNode->addData(readVariable(params[i].lexeme, rs));
             
             uint32_t typeNameIdx = currentFunction->chunk.addConstant(Value(typeHints[i]));
             uint32_t icIdx = currentFunction->chunk.addInlineCache(typeNameIdx);
@@ -3144,7 +2788,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         fnDef->name = expr->name.empty() ? "lambda" : expr->name;
         
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
+        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
         
         fnBuilder.currentReturnTypeHint = expr->returnType;
         fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->hasRestParam, expr->paramIsRef, expr->paramIsConst, expr->paramTypes);
@@ -3206,7 +2850,8 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name)});
+                ResolvedSym rs; rs.scope = VarScope::RefParam;
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs)});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
@@ -3344,7 +2989,8 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     loopNode->addData(currentControl);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
-            pair.second->addData(readVariable(pair.first));
+            ResolvedSym rs; rs.scope = VarScope::Local;
+            pair.second->addData(readVariable(pair.first, rs));
         }
     }
     
@@ -3600,7 +3246,8 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         currentControl = inheritNode;
     }
         
-    writeVariable(expr->name.lexeme, classNode, false, false);
+    ResolvedSym sym; sym.scope = VarScope::Local;
+    writeVariable(expr->name.lexeme, classNode, sym, false);
         
     for (auto& method : expr->methods) {
         if (compiledFunctions) {
@@ -3608,7 +3255,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             fnDef->name = method.name.lexeme;
             
             IRGraph fnGraph;
-            IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
+            IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
             
             fnBuilder.currentReturnTypeHint = method.returnType;
             fnBuilder.buildFunctionParams(method.params, method.defaultExprs, method.hasRestParam, method.paramIsRef, method.paramIsConst, method.paramTypes);
@@ -3685,80 +3332,6 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     currentConstVars.clear();
     
     if (auto* block = dynamic_cast<Block*>(expr->body.get())) {
-        std::unordered_set<std::string> stateOrRefVars;
-        for (auto& stmt : block->statements) {
-            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
-                if (assign->isState || assign->isRef) stateOrRefVars.insert(assign->name.lexeme);
-            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
-                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
-                collectPatternVars(destAssign->pattern.get(), boundVars);
-                for (const auto& varTuple : boundVars) {
-                    ScopeModifier mod = std::get<1>(varTuple);
-                    if (mod == ScopeModifier::None) {
-                        if (destAssign->isRef) mod = ScopeModifier::Ref;
-                        else if (destAssign->isState) mod = ScopeModifier::State;
-                    }
-                    if (mod == ScopeModifier::State || mod == ScopeModifier::Ref) {
-                        stateOrRefVars.insert(std::get<0>(varTuple));
-                    }
-                }
-            } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
-                stateOrRefVars.insert(stateDecl->name.lexeme);
-            } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
-                stateOrRefVars.insert(refDecl->name.lexeme);
-            }
-        }
-
-        for (auto& stmt : block->statements) {
-            if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
-                if (assign->isLocal || (!assign->isRef && !assign->isState && !stateOrRefVars.count(assign->name.lexeme))) {
-                    if (!getLocalNode(assign->name.lexeme)) {
-                        IRNode* uninitNode = graph->createConstant(Value::uninit());
-                        uninitNode->setControl(currentControl);
-                        if (assign->isLocal) {
-                            declareVariable(assign->name.lexeme, uninitNode);
-                        } else {
-                            envStack[namespaceScopeDepth][assign->name.lexeme] = uninitNode;
-                        }
-                    }
-                }
-            } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
-                std::vector<std::tuple<std::string, ScopeModifier, bool>> boundVars;
-                collectPatternVars(destAssign->pattern.get(), boundVars);
-                for (const auto& varTuple : boundVars) {
-                    const std::string& name = std::get<0>(varTuple);
-                    ScopeModifier mod = std::get<1>(varTuple);
-                    if (mod == ScopeModifier::None) {
-                        if (destAssign->isLocal) mod = ScopeModifier::Local;
-                        else if (destAssign->isRef) mod = ScopeModifier::Ref;
-                        else if (destAssign->isState) mod = ScopeModifier::State;
-                    }
-                    if (mod == ScopeModifier::Local || (mod == ScopeModifier::None && !stateOrRefVars.count(name))) {
-                        if (!getLocalNode(name)) {
-                            IRNode* uninitNode = graph->createConstant(Value::uninit());
-                            uninitNode->setControl(currentControl);
-                            if (mod == ScopeModifier::Local) {
-                                declareVariable(name, uninitNode);
-                            } else {
-                                envStack[namespaceScopeDepth][name] = uninitNode;
-                            }
-                        }
-                    }
-                }
-            } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-                if (!getLocalNode(clsDef->name.lexeme) && !stateOrRefVars.count(clsDef->name.lexeme)) {
-                    IRNode* uninitNode = graph->createConstant(Value::uninit());
-                    uninitNode->setControl(currentControl);
-                    envStack[namespaceScopeDepth][clsDef->name.lexeme] = uninitNode;
-                }
-            } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
-                if (!getLocalNode(locDecl->name.lexeme)) {
-                    IRNode* uninitNode = graph->createConstant(Value::uninit());
-                    uninitNode->setControl(currentControl);
-                    declareVariable(locDecl->name.lexeme, uninitNode);
-                }
-            }
-        }
         for (auto& stmt : block->statements) {
             stmt->accept(*this);
         }
@@ -3813,7 +3386,8 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     nsNode->payload1 = static_cast<uint32_t>(exportedKeys.size());
     currentControl = nsNode;
     
-    writeVariable(expr->name.lexeme, nsNode, false, false);
+    ResolvedSym sym; sym.scope = VarScope::Local;
+    writeVariable(expr->name.lexeme, nsNode, sym, false);
     lastValue = nsNode;
 }
     
@@ -3881,7 +3455,8 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name)});
+                ResolvedSym rs; rs.scope = VarScope::RefParam;
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs)});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
@@ -3930,12 +3505,14 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         std::string name = expr->method.lexeme;
         if (refParams.count(name)) {
             hasFallback = true;
-            fallbackNode = readVariable(name);
+            ResolvedSym rs; rs.scope = VarScope::RefParam;
+            fallbackNode = readVariable(name, rs);
         } else {
             IRNode* localNode = getLocalNode(name);
             if (localNode) {
                 hasFallback = true;
-                fallbackNode = readVariable(name);
+                ResolvedSym rs; rs.scope = VarScope::Local;
+                fallbackNode = readVariable(name, rs);
             } else {
                 int upvalIdx = -1;
                 if (currentFunction) {
@@ -3950,7 +3527,8 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                 
                 if (upvalIdx != -1) {
                     hasFallback = true;
-                    fallbackNode = readVariable(name);
+                    ResolvedSym rs; rs.scope = VarScope::Upvalue;
+                    fallbackNode = readVariable(name, rs);
                 }
             }
         }
@@ -3994,54 +3572,17 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         const std::string& name = std::get<0>(varTuple);
         ScopeModifier mod = std::get<1>(varTuple);
         if (mod == ScopeModifier::None) {
-            if (expr->isLocal) mod = ScopeModifier::Local;
-            else if (expr->isRef) mod = ScopeModifier::Ref;
-            else if (expr->isState) mod = ScopeModifier::State;
+            if (expr->isState) mod = ScopeModifier::State;
         }
-        
-        if (mod == ScopeModifier::Ref) {
-            if (currentFunction) {
-                int upvalIdx = resolveUpvalue(name);
-                if (upvalIdx == -1) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = name;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = true;
-                    uv.isGlobal = true;
-                    uv.isExplicitState = false;
-                    uv.isRefParam = false;
-                    currentFunction->upvalues.push_back(uv);
-                } else {
-                    currentFunction->upvalues[upvalIdx].isRef = true;
-                }
-            }
-        } else if (mod == ScopeModifier::State) {
-            if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
+        if (mod == ScopeModifier::State) {
             tempStateNames.push_back(name);
-            bool found = false;
-            for (auto& u : currentFunction->upvalues) {
-                if (u.name == name && u.isExplicitState) {
-                    found = true; break;
-                }
-            }
-            if (!found) {
-                CompiledFunction::UpvalueInfo uv;
-                uv.name = name;
-                uv.isLocal = false;
-                uv.index = 0;
-                uv.isRef = false;
-                uv.isGlobal = false;
-                uv.isExplicitState = true;
-                uv.isRefParam = false;
-                currentFunction->upvalues.push_back(uv);
-            }
         }
     }
     
     IRNode* skipMerge = nullptr;
     if (!tempStateNames.empty() && currentFunction) {
-        IRNode* getVal = readVariable(tempStateNames[0]);
+        ResolvedSym sym; sym.scope = VarScope::State;
+        IRNode* getVal = readVariable(tempStateNames[0], sym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
         isUninit->setControl(currentControl);
@@ -4085,12 +3626,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     
-    ScopeModifier mod = ScopeModifier::None;
-    if (expr->isLocal) mod = ScopeModifier::Local;
-    else if (expr->isRef) mod = ScopeModifier::Ref;
-    else if (expr->isState) mod = ScopeModifier::State;
-
-    buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst, true);
+    buildPatternMatch(expr->pattern.get(), valNode, failMerge, ScopeModifier::None, false, true);
     
     if (!failMerge->dataInputs.empty()) {
         IRNode* throwNode = graph->createNode(IROp::Throw);
@@ -4256,7 +3792,7 @@ void IRBuilder::visitDeferExpr(DeferExpr* expr) {
         fnDef->name = "<defer>";
         
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get());
+        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
         
         fnBuilder.buildFunctionParams({}, {}, false, {}, {}, {});
         fnBuilder.build(expr->body.get());

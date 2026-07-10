@@ -1,0 +1,407 @@
+#include "Resolver.h"
+
+namespace jc {
+
+void Resolver::beginScope(bool isFunc, bool isNamespace) {
+    Scope s;
+    s.isFunctionScope = isFunc;
+    s.isNamespaceScope = isNamespace;
+    scopes.push_back(s);
+}
+
+void Resolver::endScope() {
+    scopes.pop_back();
+}
+
+void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool isConst, bool isExplicitLocal) {
+    if (scopes.empty()) return;
+    ResolvedSym sym;
+    sym.scope = scopeType;
+    sym.isConst = isConst;
+    
+    if (scopeType == VarScope::Local && !isExplicitLocal) {
+        // Auto-local: 提升到最近的函数或命名空间作用域
+        for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+            if (scopes[i].isFunctionScope || scopes[i].isNamespaceScope || i == 0) {
+                if (i == 0 && !scopes[0].isFunctionScope && !scopes[0].isNamespaceScope) {
+                    sym.scope = VarScope::Global;
+                }
+                if (scopes[i].symbols.find(name) == scopes[i].symbols.end()) {
+                    sym.depth = i;
+                    scopes[i].symbols[name] = sym;
+                }
+                return;
+            }
+        }
+    } else if (scopeType == VarScope::State) {
+        // State 绑定到最近的函数作用域
+        for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+            if (scopes[i].isFunctionScope || i == 0) {
+                if (scopes[i].symbols.find(name) == scopes[i].symbols.end()) {
+                    sym.depth = i;
+                    scopes[i].symbols[name] = sym;
+                }
+                return;
+            }
+        }
+    }
+    
+    sym.depth = static_cast<int>(scopes.size()) - 1;
+    scopes.back().symbols[name] = sym;
+}
+
+ResolvedSym Resolver::resolveName(const std::string& name) {
+    for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+        if (scopes[i].symbols.count(name)) {
+            ResolvedSym sym = scopes[i].symbols[name];
+            // 检查是否跨越了函数边界（闭包捕获）
+            bool crossedFunction = false;
+            for (int j = static_cast<int>(scopes.size()) - 1; j > i; --j) {
+                if (scopes[j].isFunctionScope) {
+                    crossedFunction = true;
+                    break;
+                }
+            }
+            if (crossedFunction && (sym.scope == VarScope::Local || sym.scope == VarScope::State || sym.scope == VarScope::RefParam)) {
+                sym.scope = VarScope::Upvalue;
+            }
+            return sym;
+        }
+    }
+    return ResolvedSym{VarScope::Global, -1, -1, false};
+}
+
+void Resolver::resolve(Expr* expr) {
+    if (expr) expr->accept(*this);
+}
+
+void Resolver::visitBlock(Block* expr) {
+    beginScope();
+    hoistBlock(expr);
+    for (auto& stmt : expr->statements) {
+        resolve(stmt.get());
+    }
+    endScope();
+}
+
+void Resolver::hoistBlock(Block* block) {
+    // 预扫描块内的变量声明，实现 Auto-Local 和显式声明的提升
+    for (auto& stmt : block->statements) {
+        if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+            if (assign->isState) declareVariable(assign->name.lexeme, VarScope::State, assign->isConst);
+            else if (assign->isRef) { /* ref 不声明新变量，它总是引用已有的变量 */ }
+            else if (assign->isLocal) declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, true);
+            else declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, false);
+        } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
+            declareVariable(locDecl->name.lexeme, VarScope::Local, locDecl->isConst, true);
+        } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
+            declareVariable(stateDecl->name.lexeme, VarScope::State, stateDecl->isConst);
+        } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
+            /* ref 不声明新变量 */
+        } else if (auto* constDecl = dynamic_cast<ConstDecl*>(stmt.get())) {
+            declareVariable(constDecl->name.lexeme, VarScope::Local, true, false);
+        } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
+            // 简单遍历解构模式中的变量
+            resolvePattern(destAssign->pattern.get(), true);
+        } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
+            declareVariable(clsDef->name.lexeme, VarScope::Local, false, false);
+        }
+    }
+}
+
+void Resolver::visitVariable(Variable* expr) {
+    exprSymbols[expr] = resolveName(expr->name.lexeme);
+}
+
+void Resolver::visitAssign(Assign* expr) {
+    resolve(expr->value.get());
+    exprSymbols[expr] = resolveName(expr->name.lexeme);
+}
+
+void Resolver::visitBinary(Binary* expr) {
+    resolve(expr->left.get());
+    resolve(expr->right.get());
+}
+
+void Resolver::visitUnary(Unary* expr) {
+    resolve(expr->right.get());
+}
+
+void Resolver::visitLiteral(Literal* /*expr*/) {}
+
+void Resolver::visitCall(Call* expr) {
+    exprSymbols[expr] = resolveName(expr->callee.lexeme);
+    for (auto& arg : expr->arguments) resolve(arg.get());
+}
+
+void Resolver::visitMatrixNode(MatrixNode* expr) {
+    for (auto& row : expr->elements) {
+        for (auto& e : row) resolve(e.get());
+    }
+}
+
+void Resolver::visitIfExpr(IfExpr* expr) {
+    resolve(expr->condition.get());
+    resolve(expr->thenBranch.get());
+    if (expr->elseBranch) resolve(expr->elseBranch.get());
+}
+
+void Resolver::visitWhileExpr(WhileExpr* expr) {
+    resolve(expr->condition.get());
+    resolve(expr->body.get());
+}
+
+void Resolver::visitForExpr(ForExpr* expr) {
+    beginScope();
+    resolve(expr->initializer.get());
+    resolve(expr->condition.get());
+    resolve(expr->update.get());
+    resolve(expr->body.get());
+    endScope();
+}
+
+void Resolver::visitBreakExpr(BreakExpr* /*expr*/) {}
+void Resolver::visitContinueExpr(ContinueExpr* /*expr*/) {}
+
+void Resolver::visitReturnExpr(ReturnExpr* expr) {
+    if (expr->value) resolve(expr->value.get());
+}
+
+void Resolver::visitIndexAccess(IndexAccess* expr) {
+    resolve(expr->object.get());
+    for (auto& idx : expr->indices) resolve(idx.get());
+}
+
+void Resolver::visitIndexAssign(IndexAssign* expr) {
+    if (expr->objectExpr) resolve(expr->objectExpr.get());
+    else exprSymbols[expr] = resolveName(expr->name.lexeme);
+    for (auto& chain : expr->indexChain) {
+        for (auto& idx : chain) resolve(idx.get());
+    }
+    resolve(expr->value.get());
+}
+
+void Resolver::visitLocalDecl(LocalDecl* /*expr*/) {}
+void Resolver::visitRefDecl(RefDecl* /*expr*/) {}
+void Resolver::visitStateDecl(StateDecl* /*expr*/) {}
+void Resolver::visitConstDecl(ConstDecl* /*expr*/) {}
+
+void Resolver::visitDeleteExpr(DeleteExpr* /*expr*/) {}
+
+void Resolver::visitCompoundAssign(CompoundAssign* expr) {
+    resolve(expr->target.get());
+    resolve(expr->value.get());
+}
+
+void Resolver::visitLambdaExpr(LambdaExpr* expr) {
+    beginScope(true, false);
+    for (size_t i = 0; i < expr->params.size(); ++i) {
+        VarScope scope = expr->paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
+        declareVariable(expr->params[i].lexeme, scope, expr->paramIsConst[i], true);
+        if (expr->defaultExprs[i]) resolve(expr->defaultExprs[i].get());
+    }
+    resolve(expr->body.get());
+    endScope();
+}
+
+void Resolver::visitInvokeExpr(InvokeExpr* expr) {
+    resolve(expr->callee.get());
+    for (auto& arg : expr->arguments) resolve(arg.get());
+}
+
+void Resolver::visitForInExpr(ForInExpr* expr) {
+    resolve(expr->iterable.get());
+    beginScope();
+    resolvePattern(expr->pattern.get(), true);
+    resolve(expr->body.get());
+    endScope();
+}
+
+void Resolver::visitThrowExpr(ThrowExpr* expr) {
+    resolve(expr->value.get());
+}
+
+void Resolver::visitTryCatchExpr(TryCatchExpr* expr) {
+    resolve(expr->tryBody.get());
+    beginScope();
+    resolvePattern(expr->catchPattern.get(), true);
+    resolve(expr->catchBody.get());
+    endScope();
+}
+
+void Resolver::visitImportExpr(ImportExpr* expr) {
+    resolve(expr->path.get());
+}
+
+void Resolver::visitSwitchExpr(SwitchExpr* expr) {
+    resolve(expr->subject.get());
+    for (auto& c : expr->cases) {
+        for (auto& v : c.first) resolve(v.get());
+        resolve(c.second.get());
+    }
+    if (expr->defaultBody) resolve(expr->defaultBody.get());
+}
+
+void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
+    if (expr->superClassExpr) resolve(expr->superClassExpr.get());
+    declareVariable(expr->name.lexeme, VarScope::Local, false, false);
+    for (auto& m : expr->methods) {
+        beginScope(true, false);
+        for (size_t i = 0; i < m.params.size(); ++i) {
+            VarScope scope = m.paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
+            declareVariable(m.params[i].lexeme, scope, m.paramIsConst[i], true);
+            if (m.defaultExprs[i]) resolve(m.defaultExprs[i].get());
+        }
+        resolve(m.body.get());
+        endScope();
+    }
+}
+
+void Resolver::visitNamespaceDecl(NamespaceDecl* expr) {
+    declareVariable(expr->name.lexeme, VarScope::Local, false, false);
+    beginScope(false, true);
+    resolve(expr->body.get());
+    endScope();
+}
+
+void Resolver::visitDotAccess(DotAccess* expr) {
+    resolve(expr->object.get());
+}
+
+void Resolver::visitDotAssign(DotAssign* expr) {
+    resolve(expr->object.get());
+    resolve(expr->value.get());
+}
+
+void Resolver::visitMethodCallExpr(MethodCallExpr* expr) {
+    resolve(expr->object.get());
+    for (auto& arg : expr->arguments) resolve(arg.get());
+}
+
+void Resolver::visitSuperExpr(SuperExpr* /*expr*/) {}
+void Resolver::visitSelfExpr(SelfExpr* /*expr*/) {}
+
+void Resolver::visitDestructAssign(DestructAssign* expr) {
+    resolve(expr->value.get());
+    resolvePattern(expr->pattern.get(), true);
+}
+
+void Resolver::visitFStringExpr(FStringExpr* expr) {
+    for (auto& e : expr->exprs) resolve(e.get());
+}
+
+void Resolver::visitListCompExpr(ListCompExpr* expr) {
+    beginScope();
+    for (auto& c : expr->clauses) {
+        resolve(c.iterable.get());
+        resolvePattern(c.pattern.get(), true);
+        for (auto& cond : c.conditions) resolve(cond.get());
+    }
+    resolve(expr->valueExpr.get());
+    endScope();
+}
+
+void Resolver::visitDictLiteral(DictLiteral* expr) {
+    for (auto& p : expr->entries) {
+        resolve(p.first.get());
+        resolve(p.second.get());
+    }
+}
+
+void Resolver::visitSetLiteral(SetLiteral* expr) {
+    for (auto& e : expr->elements) resolve(e.get());
+}
+
+void Resolver::visitSliceExpr(SliceExpr* expr) {
+    if (expr->start) resolve(expr->start.get());
+    if (expr->end) resolve(expr->end.get());
+    if (expr->step) resolve(expr->step.get());
+}
+
+void Resolver::visitSequenceExpr(SequenceExpr* expr) {
+    for (auto& e : expr->expressions) resolve(e.get());
+}
+
+void Resolver::visitMatchExpr(MatchExpr* expr) {
+    resolve(expr->subject.get());
+    for (auto& b : expr->branches) {
+        beginScope();
+        for (auto& p : b.patterns) resolvePattern(p.get(), false);
+        if (b.guard) resolve(b.guard.get());
+        resolve(b.body.get());
+        endScope();
+    }
+}
+
+void Resolver::visitGroupingExpr(GroupingExpr* expr) {
+    resolve(expr->expression.get());
+}
+
+void Resolver::visitMacroDefExpr(MacroDefExpr* expr) {
+    beginScope(true, false);
+    for (auto& p : expr->params) declareVariable(p.lexeme, VarScope::Local, false, true);
+    resolve(expr->body.get());
+    endScope();
+}
+
+void Resolver::visitMacroCallExpr(MacroCallExpr* expr) {
+    for (auto& arg : expr->arguments) resolve(arg.get());
+}
+
+void Resolver::visitQuoteExpr(QuoteExpr* expr) {
+    resolve(expr->body.get());
+}
+
+void Resolver::visitUnquoteExpr(UnquoteExpr* expr) {
+    resolve(expr->expr.get());
+}
+
+void Resolver::visitExprAssign(ExprAssign* expr) {
+    resolve(expr->target.get());
+    resolve(expr->value.get());
+}
+
+void Resolver::visitDeferExpr(DeferExpr* expr) {
+    resolve(expr->body.get());
+}
+
+void Resolver::resolvePattern(Pattern* pat, bool isAssignment) {
+    if (!pat) return;
+    if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+        if (vp->name.lexeme != "_") {
+            if (vp->modifier != ScopeModifier::Ref) {
+                VarScope scope = (vp->modifier == ScopeModifier::State) ? VarScope::State : VarScope::Local;
+                declareVariable(vp->name.lexeme, scope, vp->isConst, vp->modifier == ScopeModifier::Local);
+            }
+            patternSymbols[pat] = resolveName(vp->name.lexeme);
+        }
+    } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
+        if (rp->name.lexeme != "_") {
+            if (rp->modifier != ScopeModifier::Ref) {
+                VarScope scope = (rp->modifier == ScopeModifier::State) ? VarScope::State : VarScope::Local;
+                declareVariable(rp->name.lexeme, scope, rp->isConst, rp->modifier == ScopeModifier::Local);
+            }
+            patternSymbols[pat] = resolveName(rp->name.lexeme);
+        }
+    } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
+        for (auto& e : lp->elements) resolvePattern(e.get(), isAssignment);
+        if (lp->rest) resolvePattern(lp->rest.get(), isAssignment);
+    } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
+        for (auto& row : mp->rows) {
+            for (auto& e : row) resolvePattern(e.get(), isAssignment);
+        }
+        if (mp->restRow) resolvePattern(mp->restRow.get(), isAssignment);
+    } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
+        for (auto& e : dp->entries) resolvePattern(e.second.get(), isAssignment);
+        if (dp->rest) resolvePattern(dp->rest.get(), isAssignment);
+    } else if (auto* defp = dynamic_cast<DefaultPattern*>(pat)) {
+        resolvePattern(defp->inner.get(), isAssignment);
+        resolve(defp->defaultExpr.get());
+    } else if (auto* ep = dynamic_cast<ExprPattern*>(pat)) {
+        resolve(ep->expr.get());
+    } else if (auto* dap = dynamic_cast<DynamicAssertPattern*>(pat)) {
+        resolve(dap->expr.get());
+    }
+}
+
+} // namespace jc

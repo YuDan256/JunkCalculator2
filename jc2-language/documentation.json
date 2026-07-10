@@ -852,9 +852,6 @@
     "cls": {
       "signature": "cls()"
     },
-    "modules": {
-      "signature": "modules()"
-    },
     "breakpoint": {
       "signature": "breakpoint()"
     },
@@ -1458,7 +1455,7 @@
       "signature": "throw expr"
     },
     "import": {
-      "signature": "import module  |  import \"path\""
+      "signature": "import module  |  import \"path\"  |  import @module"
     },
     "true": {
       "signature": "true"
@@ -1474,6 +1471,9 @@
     },
     "quote": {
       "signature": "quote { body }  |  quote expr"
+    },
+    "defer": {
+      "signature": "defer expr"
     }
   }
 }

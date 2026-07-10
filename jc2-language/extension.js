@@ -94,7 +94,7 @@ function activate(context) {
             // 添加关键字补全
             const keywords = [
                 'if', 'else', 'while', 'for', 'in', 'break', 'continue', 'return',
-                'switch', 'case', 'default', 'throw', 'try', 'catch', 'match',
+                'switch', 'case', 'default', 'throw', 'try', 'catch', 'match', 'defer',
                 'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'quote',
                 'true', 'false', 'none', 'PI', 'E', 'ANS', 'self', 'super'
             ];

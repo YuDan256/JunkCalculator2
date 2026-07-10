@@ -137,15 +137,6 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
             if (!isExplicitConst) error("Runtime Error: Cannot modify const variable '" + name + "'.");
             else error("Runtime Error: Cannot redefine const variable '" + name + "'.");
         }
-        if (capturedLocals.count(name)) {
-            IRNode* origNode = getLocalNode(name);
-            IRNode* updateNode = graph->createNode(IROp::UpdateCaptured);
-            updateNode->setControl(currentControl);
-            updateNode->addData(origNode);
-            updateNode->addData(value);
-            currentControl = updateNode;
-            return;
-        }
         
         if (isExplicitLocal) {
             declareVariable(name, value);
@@ -153,14 +144,32 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
             if (isExplicitConst) currentConstVars.insert(name);
         } else {
             bool found = false;
+            IRNode* origNode = nullptr;
             for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
                 if (envStack[i].count(name)) {
-                    envStack[i][name] = value;
+                    origNode = envStack[i][name];
                     found = true;
                     break;
                 }
             }
-            if (!found) {
+            
+            if (found && capturedLocals.count(name)) {
+                IRNode* updateNode = graph->createNode(IROp::UpdateCaptured);
+                updateNode->setControl(currentControl);
+                updateNode->addData(origNode);
+                updateNode->addData(value);
+                currentControl = updateNode;
+                return;
+            }
+            
+            if (found) {
+                for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
+                    if (envStack[i].count(name)) {
+                        envStack[i][name] = value;
+                        break;
+                    }
+                }
+            } else {
                 if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][name] = value;
                 else envStack[0][name] = value;
             }

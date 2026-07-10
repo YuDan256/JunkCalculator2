@@ -1458,7 +1458,23 @@ namespace jc {
                     guards.push_back(std::make_unique<GcValueGuard>(callArgs.back()));
                 }
                 
-                Value resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, callArgs, macroFn);
+                Value resultVal;
+                try {
+                    resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, callArgs, macroFn);
+                } catch (const ValueException& ex) {
+                    std::string errStr = ex.val.isString() ? ex.val.asString() : ex.val.toRepr();
+                    if (ex.val.isInstance() && ex.val.asInstance()->classDef->name == "Exception") {
+                        auto inst = ex.val.asInstance();
+                        if (inst->fields) {
+                            auto itMsg = inst->fields->keyMap.find(Value("message"));
+                            if (itMsg != inst->fields->keyMap.end()) {
+                                Value mVal = inst->fields->elements[itMsg->second].second;
+                                errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
+                            }
+                        }
+                    }
+                    throw std::runtime_error("Macro Execution Error: " + errStr);
+                }
                 GcValueGuard resultGuard(resultVal);
                 
                 auto expandedAst = JC2_to_AST(resultVal);

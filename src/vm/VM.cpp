@@ -1952,8 +1952,11 @@ Value VM::execImport(const std::string& name) {
         modFn->maxArity = 0;
         modFn->hasRestParam = false;
 
+        Resolver resolver;
+        resolver.resolve(nsDecl.get());
+
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get());
+        IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);
         fnBuilder.build(nsDecl.get());
 
         if (g_showIR) fnGraph.print("Module '" + baseName + "' Unoptimized");
@@ -2076,8 +2079,11 @@ void VM::execCompileTimeImport(const std::string& name) {
     modFn->maxArity = 0;
     modFn->hasRestParam = false;
 
+    Resolver resolver;
+    resolver.resolve(nsDecl.get());
+
     IRGraph fnGraph;
-    IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get());
+    IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);
     fnBuilder.build(nsDecl.get());
 
     IROptimizer::optimize(&fnGraph);

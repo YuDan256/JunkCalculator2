@@ -57,7 +57,7 @@ public:
     };
     std::vector<UpvalueTarget> upvalueTargets;
 private:
-    void writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal = false);
+    void writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal = false, bool isExplicitConst = false);
     void declareVariable(const std::string& name, IRNode* value);
     
     IRNode* getLocalNode(const std::string& name);

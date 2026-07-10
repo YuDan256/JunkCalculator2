@@ -86,9 +86,9 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
     }
 }
 
-void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal) {
+void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal, bool isExplicitConst) {
     if (sym.scope == VarScope::Global) {
-        IROp op = sym.isConst ? IROp::DefineConstGlobal : IROp::SetGlobal;
+        IROp op = isExplicitConst ? IROp::DefineConstGlobal : IROp::SetGlobal;
         IRNode* node = graph->createNode(op);
         node->setControl(currentControl);
         node->addData(value);
@@ -134,7 +134,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
         currentControl = node;
     } else {
         if (currentConstVars.count(name)) {
-            if (!sym.isConst) error("Runtime Error: Cannot modify const variable '" + name + "'.");
+            if (!isExplicitConst) error("Runtime Error: Cannot modify const variable '" + name + "'.");
             else error("Runtime Error: Cannot redefine const variable '" + name + "'.");
         }
         if (capturedLocals.count(name)) {
@@ -150,7 +150,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
         if (isExplicitLocal) {
             declareVariable(name, value);
             currentLocalVars.insert(name);
-            if (sym.isConst) currentConstVars.insert(name);
+            if (isExplicitConst) currentConstVars.insert(name);
         } else {
             bool found = false;
             for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
@@ -164,7 +164,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
                 if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][name] = value;
                 else envStack[0][name] = value;
             }
-            if (sym.isConst) currentConstVars.insert(name);
+            if (isExplicitConst) currentConstVars.insert(name);
         }
     }
 }
@@ -390,6 +390,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
             ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             
+            bool isExplicitConst = vp->isConst || globalConst;
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(vp->name.lexeme, sym);
                 IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
@@ -407,7 +408,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(vp->name.lexeme, valNode, sym, false);
+                writeVariable(vp->name.lexeme, valNode, sym, false, isExplicitConst);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -415,7 +416,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                writeVariable(vp->name.lexeme, valNode, sym, mod == ScopeModifier::Local);
+                writeVariable(vp->name.lexeme, valNode, sym, mod == ScopeModifier::Local, isExplicitConst);
             }
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
@@ -454,7 +455,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 if (auto* var = dynamic_cast<Variable*>(dot->object.get())) {
                     auto it = exprSymbols->find(var);
                     ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-                    writeVariable(var->name.lexeme, objNode, sym, false);
+                    writeVariable(var->name.lexeme, objNode, sym, false, false);
                 }
             } else if (auto* idx = dynamic_cast<IndexAccess*>(exprPat->expr.get())) {
                 std::vector<IndexAccess*> chain;
@@ -586,7 +587,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
                     auto it = exprSymbols->find(var);
                     ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-                    writeVariable(var->name.lexeme, finalNode, sym, false);
+                    writeVariable(var->name.lexeme, finalNode, sym, false, false);
                 } else if (dotParentNode) {
                     IRNode* setProp = graph->createValueNode(IROp::SetProperty);
                     setProp->setControl(currentControl);
@@ -690,6 +691,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     auto it = patternSymbols->find(restPat);
                     ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
                     ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
+                    bool isExplicitConst = restPat->isConst || globalConst;
                     
                     if (sym.scope == VarScope::State) {
                         IRNode* getVal = readVariable(restPat->name.lexeme, sym);
@@ -708,7 +710,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         stateIfFalse->setControl(stateIfNode);
 
                         currentControl = stateIfTrue;
-                        writeVariable(restPat->name.lexeme, sliceNode, sym, false);
+                        writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
                         IRNode* trueCtrl = currentControl;
 
                         IRNode* merge = graph->createNode(IROp::Merge);
@@ -716,7 +718,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         merge->addData(stateIfFalse);
                         currentControl = merge;
                     } else {
-                        writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local);
+                        writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
                     }
                 }
                 continue;
@@ -765,6 +767,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
             ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
+            bool isExplicitConst = restPat->isConst || globalConst;
             
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(restPat->name.lexeme, sym);
@@ -783,7 +786,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, sliceNode, sym, false);
+                writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -791,7 +794,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local);
+                writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
             }
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
@@ -893,6 +896,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
                         auto it = patternSymbols->find(restPat);
                         ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+                        bool isExplicitConst = restPat->isConst || globalConst;
             
                         if (sym.scope == VarScope::State) {
                             IRNode* getVal = readVariable(restPat->name.lexeme, sym);
@@ -911,7 +915,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             stateIfFalse->setControl(stateIfNode);
 
                             currentControl = stateIfTrue;
-                            writeVariable(restPat->name.lexeme, sliceNode, sym, false);
+                            writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
                             IRNode* trueCtrl = currentControl;
 
                             IRNode* merge = graph->createNode(IROp::Merge);
@@ -919,7 +923,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             merge->addData(stateIfFalse);
                             currentControl = merge;
                         } else {
-                            writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
+                            writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
                         }
                     }
                     continue;
@@ -980,6 +984,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            bool isExplicitConst = restPat->isConst || globalConst;
             
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(restPat->name.lexeme, sym);
@@ -998,7 +1003,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, sliceNode, sym, false);
+                writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -1006,7 +1011,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local);
+                writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
             }
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
@@ -1091,6 +1096,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            bool isExplicitConst = restPat->isConst || globalConst;
             
             if (sym.scope == VarScope::State) {
                 IRNode* getVal = readVariable(restPat->name.lexeme, sym);
@@ -1109,7 +1115,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 stateIfFalse->setControl(stateIfNode);
 
                 currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, restNode, sym, false);
+                writeVariable(restPat->name.lexeme, restNode, sym, false, isExplicitConst);
                 IRNode* trueCtrl = currentControl;
 
                 IRNode* merge = graph->createNode(IROp::Merge);
@@ -1117,7 +1123,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 merge->addData(stateIfFalse);
                 currentControl = merge;
             } else {
-                writeVariable(restPat->name.lexeme, restNode, sym, restPat->modifier == ScopeModifier::Local);
+                writeVariable(restPat->name.lexeme, restNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
             }
         }
     }
@@ -1580,7 +1586,7 @@ void IRBuilder::visitAssign(Assign* expr) {
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
     
-    writeVariable(expr->name.lexeme, valNode, sym, expr->isLocal);
+    writeVariable(expr->name.lexeme, valNode, sym, expr->isLocal, expr->isConst);
     lastValue = valNode;
 }
 
@@ -2288,7 +2294,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         if (!expr->hasObjectExpr()) {
             auto it = exprSymbols->find(expr);
             ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(expr->name.lexeme, node, sym);
+            writeVariable(expr->name.lexeme, node, sym, false, false);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -2322,7 +2328,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         if (!expr->hasObjectExpr()) {
             auto it = exprSymbols->find(expr);
             ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(expr->name.lexeme, node, sym);
+            writeVariable(expr->name.lexeme, node, sym, false, false);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -2369,7 +2375,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         if (!expr->hasObjectExpr()) {
             auto it = exprSymbols->find(expr);
             ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(expr->name.lexeme, finalNode, sym);
+            writeVariable(expr->name.lexeme, finalNode, sym, false, false);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -2614,7 +2620,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         auto it = exprSymbols->find(var);
         ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-        writeVariable(var->name.lexeme, opNode, sym, expr->isLocal);
+        writeVariable(var->name.lexeme, opNode, sym, expr->isLocal, false);
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
         IRNode* setProp = graph->createValueNode(IROp::SetProperty);
         setProp->setControl(currentControl);
@@ -2682,7 +2688,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         if (auto* rootVar = dynamic_cast<Variable*>(chain[0]->object.get())) {
             auto it = exprSymbols->find(rootVar);
             ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(rootVar->name.lexeme, finalNode, sym, expr->isLocal);
+            writeVariable(rootVar->name.lexeme, finalNode, sym, expr->isLocal, false);
         } else if (dotParentNode) {
             IRNode* setProp = graph->createValueNode(IROp::SetProperty);
             setProp->setControl(currentControl);
@@ -2804,7 +2810,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             ResolvedSym sym;
             sym.scope = paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
             sym.isConst = paramIsConst[i];
-            writeVariable(params[i].lexeme, phi, sym, true);
+            writeVariable(params[i].lexeme, phi, sym, true, paramIsConst[i]);
         }
         
         if (i < typeHints.size() && !typeHints[i].empty()) {
@@ -3294,7 +3300,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     }
         
     ResolvedSym sym; sym.scope = VarScope::Local;
-    writeVariable(expr->name.lexeme, classNode, sym, false);
+    writeVariable(expr->name.lexeme, classNode, sym, false, false);
         
     for (auto& method : expr->methods) {
         if (compiledFunctions) {
@@ -3434,7 +3440,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     currentControl = nsNode;
     
     ResolvedSym sym; sym.scope = VarScope::Local;
-    writeVariable(expr->name.lexeme, nsNode, sym, false);
+    writeVariable(expr->name.lexeme, nsNode, sym, false, false);
     lastValue = nsNode;
 }
     

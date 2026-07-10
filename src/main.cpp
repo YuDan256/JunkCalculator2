@@ -440,7 +440,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         else if (arg == "--version" || arg == "-v") {
-            std::cout << "Junk Calculator 2.5.0.0\n";
+            std::cout << "Junk Calculator 2.5.1.0\n";
             return 0;
         }
         else if (arg == "--profile") {
@@ -493,7 +493,7 @@ int main(int argc, char* argv[]) {
     auto printBanner = []() {
         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN)
             << "=================================================\n"
-            << "   Junk Calculator 2.5.0.0\n"
+            << "   Junk Calculator 2.5.1.0\n"
             << "   Developed by Yu Liangyang, Tsinghua University\n"
             << "=================================================\n" << jc::col(jc::Ansi::RESET)
             << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;
@@ -704,7 +704,7 @@ int main(int argc, char* argv[]) {
             }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
-            if (input == "/version") { std::cout << "Junk Calculator 2.5.0.0\n"; continue; }
+            if (input == "/version") { std::cout << "Junk Calculator 2.5.1.0\n"; continue; }
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
             if (input == "/clear") { 
                 vm.clearGlobals(); 

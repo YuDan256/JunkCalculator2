@@ -14,6 +14,7 @@ enum class VarScope {
     Global,         // 全局变量
     Local,          // 局部变量 (Auto-local 或 显式 local)
     Upvalue,        // 闭包捕获的上值
+    CapturedState,  // 闭包捕获的外部 state 变量
     State,          // 闭包私有状态 (state)
     RefParam        // 引用参数 (ref)
 };

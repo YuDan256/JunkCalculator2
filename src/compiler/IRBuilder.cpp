@@ -35,7 +35,7 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
         node->setControl(currentControl);
         currentControl = node;
         return node;
-    } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::State) {
+    } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState || sym.scope == VarScope::State) {
         int upvalIdx = -1;
         if (sym.scope == VarScope::State) {
             for (int i = 0; i < static_cast<int>(currentFunction->upvalues.size()); ++i) {
@@ -57,7 +57,7 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
                 currentFunction->upvalues.push_back(uv);
             }
         } else {
-            upvalIdx = resolveUpvalue(name);
+            upvalIdx = resolveUpvalue(name, sym.scope == VarScope::CapturedState);
         }
         IRNode* node = graph->createValueNode(IROp::GetUpvalue);
         node->payload1 = static_cast<uint32_t>(upvalIdx);
@@ -93,7 +93,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
         node->addData(value);
         node->name = name;
         currentControl = node;
-    } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::State) {
+    } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState || sym.scope == VarScope::State) {
         int upvalIdx = -1;
         if (sym.scope == VarScope::State) {
             for (int i = 0; i < static_cast<int>(currentFunction->upvalues.size()); ++i) {
@@ -115,7 +115,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
                 currentFunction->upvalues.push_back(uv);
             }
         } else {
-            upvalIdx = resolveUpvalue(name);
+            upvalIdx = resolveUpvalue(name, sym.scope == VarScope::CapturedState);
         }
         IRNode* node = graph->createNode(IROp::SetUpvalue);
         node->payload1 = static_cast<uint32_t>(upvalIdx);
@@ -185,19 +185,20 @@ IRNode* IRBuilder::getLocalNode(const std::string& name) {
     return nullptr;
 }
 
-int IRBuilder::resolveUpvalue(const std::string& name) {
-    if (!parent) return -1;
+int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
+    if (!parent || !currentFunction) return -1;
 
-    if (currentFunction) {
-        // 优先查找显式状态上值 (Explicit State)，因为它会遮蔽同名的外部捕获上值
-        for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
-            if (currentFunction->upvalues[i].name == name && currentFunction->upvalues[i].isExplicitState) {
-                return i;
-            }
+    // 1. 尝试精确匹配 isExplicitState
+    for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
+        if (currentFunction->upvalues[i].name == name && currentFunction->upvalues[i].isExplicitState == isCapturedState) {
+            return i;
         }
-        // 如果没有状态上值，再查找普通的捕获上值
+    }
+
+    // 2. 如果是 CapturedState，在内部闭包中它可能只是一个普通的 upvalue
+    if (isCapturedState) {
         for (int i = static_cast<int>(currentFunction->upvalues.size()) - 1; i >= 0; --i) {
-            if (currentFunction->upvalues[i].name == name) {
+            if (currentFunction->upvalues[i].name == name && !currentFunction->upvalues[i].isExplicitState) {
                 return i;
             }
         }
@@ -205,25 +206,39 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
 
     // Check if parent already has this upvalue
     if (parent->currentFunction) {
-        for (size_t i = 0; i < parent->currentFunction->upvalues.size(); ++i) {
-            if (parent->currentFunction->upvalues[i].name == name) {
-                int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
-                CompiledFunction::UpvalueInfo uv;
-                uv.name = name;
-                uv.isLocal = false;
-                uv.index = static_cast<int>(i);
-                uv.isRef = parent->currentFunction->upvalues[i].isRef;
-                uv.isGlobal = false;
-                uv.isExplicitState = false;
-                uv.isRefParam = false;
-                currentFunction->upvalues.push_back(uv);
-                upvalueTargets.push_back({upvalIdx, false, nullptr});
-                return upvalIdx;
+        int foundIdx = -1;
+        for (int i = static_cast<int>(parent->currentFunction->upvalues.size()) - 1; i >= 0; --i) {
+            if (parent->currentFunction->upvalues[i].name == name && parent->currentFunction->upvalues[i].isExplicitState == isCapturedState) {
+                foundIdx = i;
+                break;
             }
+        }
+        if (foundIdx == -1 && isCapturedState) {
+            for (int i = static_cast<int>(parent->currentFunction->upvalues.size()) - 1; i >= 0; --i) {
+                if (parent->currentFunction->upvalues[i].name == name && !parent->currentFunction->upvalues[i].isExplicitState) {
+                    foundIdx = i;
+                    break;
+                }
+            }
+        }
+        
+        if (foundIdx != -1) {
+            int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
+            CompiledFunction::UpvalueInfo uv;
+            uv.name = name;
+            uv.isLocal = false;
+            uv.index = foundIdx;
+            uv.isRef = parent->currentFunction->upvalues[foundIdx].isRef;
+            uv.isGlobal = false;
+            uv.isExplicitState = false;
+            uv.isRefParam = false;
+            currentFunction->upvalues.push_back(uv);
+            upvalueTargets.push_back({upvalIdx, false, nullptr});
+            return upvalIdx;
         }
     }
 
-    if (parent->refParams.count(name)) {
+    if (!isCapturedState && parent->refParams.count(name)) {
         int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
         CompiledFunction::UpvalueInfo uv;
         uv.name = name;
@@ -238,7 +253,7 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
         return upvalIdx;
     }
 
-    IRNode* localNode = parent->getLocalNode(name);
+    IRNode* localNode = !isCapturedState ? parent->getLocalNode(name) : nullptr;
     if (localNode) {
         int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
         CompiledFunction::UpvalueInfo uv;
@@ -279,7 +294,7 @@ int IRBuilder::resolveUpvalue(const std::string& name) {
         return upvalIdx;
     }
 
-    int upvalue = parent->resolveUpvalue(name);
+    int upvalue = parent->resolveUpvalue(name, isCapturedState);
     if (upvalue != -1) {
         int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
         CompiledFunction::UpvalueInfo uv;
@@ -1626,7 +1641,11 @@ void IRBuilder::visitCall(Call* expr) {
                             }
                         }
                     }
-                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    if (upvalIdx == -1) {
+                        auto varIt = exprSymbols->find(var);
+                        ResolvedSym rs = varIt != exprSymbols->end() ? varIt->second : ResolvedSym{};
+                        upvalIdx = resolveUpvalue(name, rs.scope == VarScope::CapturedState);
+                    }
                     
                     if (upvalIdx != -1) {
                         sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
@@ -2355,7 +2374,7 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 void IRBuilder::visitRefDecl(RefDecl* expr) {
     graph->currentLine = expr->name.line;
     if (currentFunction) {
-        int upvalIdx = resolveUpvalue(expr->name.lexeme);
+        int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
         if (upvalIdx == -1) {
             // If not found in parent, it's a global ref
             CompiledFunction::UpvalueInfo uv;
@@ -2380,7 +2399,7 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
     graph->currentLine = expr->name.line;
     if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     
-    int upvalIdx = resolveUpvalue(expr->name.lexeme);
+    int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
     if (upvalIdx == -1) {
         CompiledFunction::UpvalueInfo uv;
         uv.name = expr->name.lexeme;
@@ -2388,12 +2407,11 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
         uv.index = 0;
         uv.isRef = false;
         uv.isGlobal = true;
-        uv.isExplicitState = false;
+        uv.isExplicitState = true;
         uv.isRefParam = false;
-        uv.isCapturedState = true;
         currentFunction->upvalues.push_back(uv);
     } else {
-        currentFunction->upvalues[upvalIdx].isCapturedState = true;
+        currentFunction->upvalues[upvalIdx].isExplicitState = true;
     }
     if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     lastValue = graph->createConstant(Value::uninit());
@@ -2435,7 +2453,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         graph->currentLine = var->name.line;
         if (expr->isState) {
             if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
-            int upvalIdx = resolveUpvalue(var->name.lexeme);
+            int upvalIdx = resolveUpvalue(var->name.lexeme, false);
             if (upvalIdx == -1) {
                 CompiledFunction::UpvalueInfo uv;
                 uv.name = var->name.lexeme;
@@ -2443,16 +2461,15 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                 uv.index = 0;
                 uv.isRef = false;
                 uv.isGlobal = true;
-                uv.isExplicitState = false;
+                uv.isExplicitState = true;
                 uv.isRefParam = false;
-                uv.isCapturedState = true;
                 currentFunction->upvalues.push_back(uv);
             } else {
-                currentFunction->upvalues[upvalIdx].isCapturedState = true;
+                currentFunction->upvalues[upvalIdx].isExplicitState = true;
             }
         } else if (expr->isRef) {
             if (currentFunction) {
-                int upvalIdx = resolveUpvalue(var->name.lexeme);
+                int upvalIdx = resolveUpvalue(var->name.lexeme, false);
                 if (upvalIdx == -1) {
                     CompiledFunction::UpvalueInfo uv;
                     uv.name = var->name.lexeme;
@@ -2871,7 +2888,11 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
                             }
                         }
                     }
-                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    if (upvalIdx == -1) {
+                        auto varIt = exprSymbols->find(var);
+                        ResolvedSym rs = varIt != exprSymbols->end() ? varIt->second : ResolvedSym{};
+                        upvalIdx = resolveUpvalue(name, rs.scope == VarScope::CapturedState);
+                    }
                     
                     if (upvalIdx != -1) {
                         sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
@@ -3476,7 +3497,11 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                             }
                         }
                     }
-                    if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                    if (upvalIdx == -1) {
+                        auto varIt = exprSymbols->find(var);
+                        ResolvedSym rs = varIt != exprSymbols->end() ? varIt->second : ResolvedSym{};
+                        upvalIdx = resolveUpvalue(name, rs.scope == VarScope::CapturedState);
+                    }
                     
                     if (upvalIdx != -1) {
                         sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
@@ -3526,7 +3551,10 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                         }
                     }
                 }
-                if (upvalIdx == -1) upvalIdx = resolveUpvalue(name);
+                if (upvalIdx == -1) {
+                    // Fallback is always a normal upvalue, not a captured state
+                    upvalIdx = resolveUpvalue(name, false);
+                }
                 
                 if (upvalIdx != -1) {
                     hasFallback = true;

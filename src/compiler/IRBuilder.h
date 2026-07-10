@@ -61,7 +61,7 @@ private:
     void declareVariable(const std::string& name, IRNode* value);
     
     IRNode* getLocalNode(const std::string& name);
-    int resolveUpvalue(const std::string& name);
+    int resolveUpvalue(const std::string& name, bool isCapturedState = false);
 
     struct IRLoopInfo {
         IRNode* loopNode;

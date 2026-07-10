@@ -62,8 +62,12 @@ ResolvedSym Resolver::resolveName(const std::string& name) {
                     break;
                 }
             }
-            if (crossedFunction && (sym.scope == VarScope::Local || sym.scope == VarScope::State || sym.scope == VarScope::RefParam)) {
-                sym.scope = VarScope::Upvalue;
+            if (crossedFunction) {
+                if (sym.scope == VarScope::State) {
+                    sym.scope = VarScope::CapturedState;
+                } else if (sym.scope == VarScope::Local || sym.scope == VarScope::RefParam) {
+                    sym.scope = VarScope::Upvalue;
+                }
             }
             return sym;
         }
@@ -117,7 +121,30 @@ void Resolver::visitVariable(Variable* expr) {
 }
 
 void Resolver::visitAssign(Assign* expr) {
+    bool isFuncDef = dynamic_cast<LambdaExpr*>(expr->value.get()) != nullptr;
+    bool hidden = false;
+    ResolvedSym hiddenSym;
+    int hiddenDepth = -1;
+    
+    if (!isFuncDef && (expr->isLocal || expr->isState || expr->isConst)) {
+        for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+            auto it = scopes[i].symbols.find(expr->name.lexeme);
+            if (it != scopes[i].symbols.end()) {
+                hiddenSym = it->second;
+                hiddenDepth = i;
+                scopes[i].symbols.erase(it);
+                hidden = true;
+                break;
+            }
+        }
+    }
+
     resolve(expr->value.get());
+
+    if (hidden) {
+        scopes[hiddenDepth].symbols[expr->name.lexeme] = hiddenSym;
+    }
+
     if (expr->isState) declareVariable(expr->name.lexeme, VarScope::State, expr->isConst);
     else if (expr->isRef) { /* ref 不声明新变量 */ }
     else if (expr->isLocal) declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true);
@@ -290,7 +317,51 @@ void Resolver::visitSuperExpr(SuperExpr* /*expr*/) {}
 void Resolver::visitSelfExpr(SelfExpr* /*expr*/) {}
 
 void Resolver::visitDestructAssign(DestructAssign* expr) {
+    std::vector<std::pair<std::string, std::pair<int, ResolvedSym>>> hiddenVars;
+
+    if (expr->isLocal || expr->isState || expr->isConst) {
+        std::vector<std::string> patVars;
+        auto collectVars = [&](Pattern* p, auto& self) -> void {
+            if (!p) return;
+            if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
+                if (vp->name.lexeme != "_") patVars.push_back(vp->name.lexeme);
+            } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
+                if (rp->name.lexeme != "_") patVars.push_back(rp->name.lexeme);
+            } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
+                for (auto& e : lp->elements) self(e.get(), self);
+                if (lp->rest) self(lp->rest.get(), self);
+            } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
+                for (auto& row : mp->rows) {
+                    for (auto& e : row) self(e.get(), self);
+                }
+                if (mp->restRow) self(mp->restRow.get(), self);
+            } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+                for (auto& e : dp->entries) self(e.second.get(), self);
+                if (dp->rest) self(dp->rest.get(), self);
+            } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
+                self(defp->inner.get(), self);
+            }
+        };
+        collectVars(expr->pattern.get(), collectVars);
+
+        for (const auto& name : patVars) {
+            for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+                auto it = scopes[i].symbols.find(name);
+                if (it != scopes[i].symbols.end()) {
+                    hiddenVars.push_back({name, {i, it->second}});
+                    scopes[i].symbols.erase(it);
+                    break;
+                }
+            }
+        }
+    }
+
     resolve(expr->value.get());
+
+    for (const auto& hv : hiddenVars) {
+        scopes[hv.second.first].symbols[hv.first] = hv.second.second;
+    }
+
     ScopeModifier mod = ScopeModifier::None;
     if (expr->isLocal) mod = ScopeModifier::Local;
     else if (expr->isRef) mod = ScopeModifier::Ref;

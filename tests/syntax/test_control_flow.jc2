@@ -17,7 +17,7 @@ test_for_in_destruct()
 test_try_catch_destruct() = {
     try {
         throw {code: 404, msg: "Not Found"}
-    } catch ({value: {code, msg}}) {
+    } catch ({message: {code, msg}}) {
         assert(code == 404, "catch destruct code")
         assert(msg == "Not Found", "catch destruct msg")
     }
@@ -30,7 +30,7 @@ test_try_catch_destruct() = {
             assert(false, "Should not match this catch block")
         }
     } catch (e) {
-        assert(e.value.error == "Fatal", "Rethrow on catch mismatch failed")
+        assert(e.message.error == "Fatal", "Rethrow on catch mismatch failed")
     }
 }
 test_try_catch_destruct()

@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.5.0.0
+# Junk Calculator 2.5.1.0
 
-![Version](https://img.shields.io/badge/Version-v2.5.0.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.1.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -31,8 +31,9 @@ Developed by Yu Liangyang, Tsinghua University.
 - **Gradual Typing**: Optional runtime type contracts for function parameters and return values (e.g., `func(a: double, b: matrix) -> bool = ...`). Supports base types, containers, and class inheritance definitions.
 - **Garbage Collection (GC)**: Mark-and-Sweep Garbage Collector (`GcHeap`) executing on top of the VM stack. Traces GC roots (Globals, Stack, Upvalues, and Contexts) to resolve cyclic references.
 - **Object-Oriented Programming**: Single inheritance (`extends`), `super` dispatching, and operator overloading via dunder methods (e.g., `__add__`). Instances support destructuring assignment.
-- **Control Flow & Pattern Matching**: `if/else`, `while`, `for`, `for-in`, `switch/case`, `match` (with deep destructuring and dependent binding), `break/continue/return`.
-- **Error Handling**: `try/catch/throw` constructs and functional `pcall` with stack tracebacks.
+- **Control Flow & Pattern Matching**: `if/else`, `while`, `for`, `for-in`, `switch/case`, `match` (with deep destructuring and dependent binding), `break/continue/return`, and `defer` for resource cleanup.
+- **Error Handling**: `try/catch/throw` constructs, structured `Exception` objects, and functional `pcall` with stack tracebacks.
+- **Metaprogramming**: AST-based compile-time macro system (`macro`) with code quoting (`quote`), unquoting (`$`), and hygienic macros (`gensym`) for code generation.
 - **Execution Control**: Robust `Ctrl+C` interrupt mechanism to safely halt infinite loops or heavy CAS computations without crashing the VM. Pressing `Ctrl+C` three times consecutively triggers an immediate hard exit.
 - **Functions**: Closures, lambdas `(x) => expr`, default parameters, variadic arguments (`...args`), and `ref` parameter binding.
 - **Generic Container API**: Array manipulation functions (`push`, `slice`, `map`, `filter`, `reduce`, `sort`, `join`, `zip`, etc.) operate across four container types: `RealMatrix`, `ComplexMatrix`, `StringMatrix`, and `List` (with `@[...]` forced literal syntax).
@@ -68,29 +69,22 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.5.0.0
+## What's New in v2.5.1.0
 
-### Core Architecture Overhaul
-- **Migration to Register VM**: Completely deprecated the Stack VM in favor of a modern Register-based Virtual Machine, unifying the execution engine and semantics.
-- **Sea of Nodes IR & SSA**: Deeply refactored the compiler frontend to introduce a Sea of Nodes Intermediate Representation (IR) and Static Single Assignment (SSA) form.
-- **Graph Coloring Register Allocation**: Implemented a graph coloring register allocator with greedy register coalescing to eliminate redundant data movement instructions.
+### Compile-Time Metaprogramming & Macros
+- **AST Macro Engine**: Introduced `macro`, `quote`, and `$` syntax for AST-level code generation and replacement at compile time.
+- **Compile-Time Imports**: Added `import @` syntax to load macros and helpers during the parsing phase, automatically unloading them afterward to ensure zero runtime scope pollution.
+- **Hygienic Macros**: Introduced the `gensym` mechanism to generate non-denotable internal identifiers, preventing variable name collisions during macro expansion.
 
-### Compiler & Optimizer Enhancements
-- **Multi-Pass Optimization Pipeline**: Added Common Subexpression Elimination (CSE), Dead Code Elimination (DCE), Constant Folding, and Peephole optimizations.
-- **Control Flow & Closures**: Hardened Phi node destruction, SSA boundary handling, destructuring, and complex environment escaping/register pinning during closure upvalue capture.
+### Structured Exceptions & Resource Management
+- **Structured Exception Objects**: Introduced a standard `Exception` class. User-thrown exceptions are now automatically boxed and populated with a complete `traceback`.
+- **Deferred Execution**: Added the `defer` keyword to automatically execute resource cleanup code when exiting the current scope (whether returning normally or throwing an exception).
+- **Precise Line Tracking**: Optimized source line mapping for control flow statements (`throw`, `return`, `break`, `continue`) during AST conversion, making error localization much more accurate.
 
-### Extreme Runtime Performance
-- **Inline Caching (IC)**: Introduced inline caching for built-ins, class methods, dictionary properties, and global variables, drastically reducing hash lookup overhead.
-- **Low-Level Fast Paths**: Added fast paths for integer arithmetic, bitwise operations, truthiness checks, and ASCII/UTF-8 string indexing/comparisons.
-- **Iterators & Strings**: Implemented zero-copy `for-in` iteration, native iterator slot caching, and extracted string interning into a standalone global memory pool.
-
-### Memory Management & GC Robustness
-- **Expanded GC Roots**: Included main script constants, inline caches, temporary locals, and native class allocations in GC Roots, fixing memory leaks during exception unwinding and higher-order functions.
-- **Reduced GC Pressure**: Released dead registers promptly via liveness analysis, eliminating the O(N) sweep scanning overhead during Garbage Collection.
-
-### Debugging & Toolchain Upgrades
-- **Enhanced Interactive Debugger**: Ported the interactive step-debugger to the register machine with enhanced expression evaluation (supporting direct register expression computation).
-- **IR & Bytecode Analysis**: Added the `/ir` command and `--ir` flag for Intermediate Representation graph output, and refined register bytecode disassembly with inline constants and name annotations.
+### VM & Frontend Optimizations
+- **Output Semantics Separation**: Clearly distinguished between `toString` (human-readable) and `toRepr` (debug output), significantly improving REPL and error log formatting.
+- **OOP Enhancements**: Indexing access (`obj[key]`) now automatically falls back to standard field access (`obj.key`) if the instance lacks `__getitem__` or `__setitem__` dunder methods.
+- **Module System Standardization**: Unified terminology (C-API extensions as `library`, JC2 scripts as `module`) and enhanced path resolution logic.
 
 ---
 

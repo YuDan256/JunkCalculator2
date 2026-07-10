@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.5.0.0
+# Junk Calculator 2.5.1.0
 
-![Version](https://img.shields.io/badge/Version-v2.5.0.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.1.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -31,8 +31,9 @@
 - **渐进式类型 (Gradual Typing)**：支持对函数参数和返回值进行运行时类型契约校验（例如 `func(a: double, b: matrix) -> bool = ...`）。涵盖基础类型、容器类型及类的继承校验。
 - **垃圾回收 (GC)**：运行于 VM 栈上的标记-清扫 (Mark-and-Sweep) 垃圾回收器 (`GcHeap`)。追踪 GC 根节点（全局变量、调用栈、闭包上值及上下文）以打破并清除循环引用。
 - **面向对象 (OOP)**：支持单继承 (`extends`)、`super` 超类分发以及通过魔术方法（如 `__add__`）实现的运算符重载。实例对象支持解构赋值。
-- **控制流与模式匹配**：包含 `if/else`、`while`、`for`、`for-in`、`switch/case`、`match`（支持深度解构与依赖绑定）、`break/continue/return`。
-- **错误处理**：提供 `try/catch/throw` 结构以及支持栈追踪的函数式 `pcall`。
+- **控制流与模式匹配**：包含 `if/else`、`while`、`for`、`for-in`、`switch/case`、`match`（支持深度解构与依赖绑定）、`break/continue/return` 以及用于资源清理的 `defer`。
+- **错误处理**：提供 `try/catch/throw` 结构、结构化 `Exception` 对象以及支持栈追踪的函数式 `pcall`。
+- **元编程 (Metaprogramming)**：支持基于 AST 的编译时宏系统 (`macro`)，提供代码引用 (`quote`)、解引用 (`$`) 以及卫生宏 (`gensym`) 能力，允许在编译阶段进行代码生成。
 - **执行控制**：具备强大的 `Ctrl+C` 中断机制，可在不崩溃虚拟机的前提下安全暂停死循环或重型 CAS 计算。连续三次 `Ctrl+C` 将触发强制退出。
 - **函数特性**：支持闭包、Lambda 表达式 `(x) => expr`、默认参数、可变长参数 (`...args`) 以及 `ref` 引用参数绑定。
 - **泛型容器 API**：提供统一的数组操作接口（如 `push`、`slice`、`map`、`filter`、`reduce`、`sort`、`join`、`zip` 等），可无缝运行于四种底层数据结构：`RealMatrix`、`ComplexMatrix`、`StringMatrix` 与 `List`（支持 `@[...]` 强制列表字面量）。
@@ -68,29 +69,22 @@
 
 ---
 
-## v2.5.0.0 版本更新说明
+## v2.5.1.0 版本更新说明
 
-### 核心架构颠覆
-- **全面迁移至寄存器虚拟机 (Register VM)**：彻底废弃旧版的栈式虚拟机，全面拥抱基于寄存器的虚拟机架构，并统一了相关的执行引擎和语义。
-- **引入 Sea of Nodes IR 与 SSA**：编译器前端深度重构，引入基于“节点海”的中间表示 (IR) 和静态单赋值 (SSA) 形式。
-- **图着色寄存器分配**：实现了基于图着色算法的寄存器分配器，支持贪婪寄存器合并 (Register Coalescing) 以消除冗余的数据移动指令。
+### 编译时元编程与宏系统
+- **AST 宏引擎**：全新引入 `macro`、`quote` 和 `$` 语法，支持在编译时进行 AST 级别的代码生成与替换。
+- **编译时导入**：新增 `import @` 语法，允许在编译阶段导入宏和辅助函数，解析完成后自动卸载，实现对运行时全局作用域的“零污染”。
+- **卫生宏 (Hygienic Macros)**：引入 `gensym` 机制，生成不可表示的内部标识符以防止宏展开时的变量名冲突。
 
-### 编译器与优化器增强
-- **多趟优化流水线**：新增公共子表达式消除 (CSE)、死代码消除 (DCE)、常量折叠以及窥孔优化 (Peephole)。
-- **控制流与闭包修复**：完善了 Phi 节点销毁、SSA 边界处理、解构赋值以及闭包上值 (Upvalue) 捕获时的复杂环境逃逸和寄存器固定机制。
+### 结构化异常与资源管理
+- **结构化异常对象**：引入标准的 `Exception` 类，用户抛出的异常会自动装箱并填充完整的 `traceback`（调用栈轨迹）。
+- **延迟执行 (Defer)**：新增 `defer` 关键字，用于在当前作用域退出时（正常返回或抛出异常）自动执行资源清理代码。
+- **精准行号追踪**：修复并优化了控制流语句（`throw`、`return`、`break`、`continue`）在 AST 转换时的源码行号映射，使报错定位更加精准。
 
-### 极致的运行时性能优化
-- **内联缓存 (Inline Caching)**：为内置函数、类方法、字典属性访问及全局变量引入内联缓存，大幅降低哈希查找开销。
-- **底层快速路径 (Fast Paths)**：针对整数运算、位运算、真值判断、ASCII/UTF-8 字符串索引与比较添加了底层快速路径。
-- **迭代器与字符串优化**：实现零拷贝的 `for-in` 迭代、原生迭代器槽位缓存，并将字符串驻留 (String Interning) 提取为独立的全局内存池。
-
-### 内存管理与 GC 健壮性
-- **GC 根节点扩充**：将主脚本常量、内联缓存、临时局部变量及原生类分配纳入 GC Root，修复大量因异常展开或高阶函数导致的内存泄漏。
-- **降低 GC 压力**：通过活跃度分析 (Liveness Analysis) 及时释放死寄存器，消除 GC 标记-清除阶段的 O(N) 扫描开销。
-
-### 调试体验与工具链升级
-- **更强大的交互式调试器**：为寄存器机补全了交互式步进调试器，并增强了表达式求值功能（支持直接计算寄存器表达式）。
-- **IR 与字节码分析**：新增 `/ir` 命令和 `--ir` 标志用于输出中间表示图，并完善了寄存器字节码的反汇编输出（附带内联常量和名称注释）。
+### 核心虚拟机与前端优化
+- **输出语义分离**：明确区分了 `toString`（人类可读）和 `toRepr`（调试输出），大幅优化了 REPL 和错误日志的格式化显示。
+- **面向对象增强**：当类实例未定义 `__getitem__` 或 `__setitem__` 魔术方法时，索引访问（`obj[key]`）现在会自动回退到普通的字段访问（`obj.key`）。
+- **模块系统规范化**：统一底层术语，将 C-API 扩展统称为 `library`，JC2 脚本统称为 `module`，并增强了路径解析逻辑。
 
 ---
 

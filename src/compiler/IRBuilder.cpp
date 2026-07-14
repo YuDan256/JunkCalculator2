@@ -426,33 +426,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            if (sym.scope == VarScope::State) {
-                IRNode* getVal = readVariable(vp->name.lexeme, sym);
-                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
-                stateIsUninit->addData(getVal);
-                stateIsUninit->setControl(currentControl);
-
-                IRNode* stateIfNode = graph->createNode(IROp::If);
-                stateIfNode->addData(stateIsUninit);
-                stateIfNode->setControl(currentControl);
-
-                IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
-                stateIfTrue->setControl(stateIfNode);
-
-                IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
-                stateIfFalse->setControl(stateIfNode);
-
-                currentControl = stateIfTrue;
-                writeVariable(vp->name.lexeme, valNode, sym, false, isExplicitConst);
-                IRNode* trueCtrl = currentControl;
-
-                IRNode* merge = graph->createNode(IROp::Merge);
-                merge->addData(trueCtrl);
-                merge->addData(stateIfFalse);
-                currentControl = merge;
-            } else {
-                writeVariable(vp->name.lexeme, valNode, sym, mod == ScopeModifier::Local, isExplicitConst);
-            }
+            writeVariable(vp->name.lexeme, valNode, sym, mod == ScopeModifier::Local, isExplicitConst);
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
         lit->literal->accept(*this);
@@ -728,33 +702,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
                     bool isExplicitConst = restPat->isConst || globalConst;
                     
-                    if (sym.scope == VarScope::State) {
-                        IRNode* getVal = readVariable(restPat->name.lexeme, sym);
-                        IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
-                        stateIsUninit->addData(getVal);
-                        stateIsUninit->setControl(currentControl);
-
-                        IRNode* stateIfNode = graph->createNode(IROp::If);
-                        stateIfNode->addData(stateIsUninit);
-                        stateIfNode->setControl(currentControl);
-
-                        IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
-                        stateIfTrue->setControl(stateIfNode);
-
-                        IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
-                        stateIfFalse->setControl(stateIfNode);
-
-                        currentControl = stateIfTrue;
-                        writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
-                        IRNode* trueCtrl = currentControl;
-
-                        IRNode* merge = graph->createNode(IROp::Merge);
-                        merge->addData(trueCtrl);
-                        merge->addData(stateIfFalse);
-                        currentControl = merge;
-                    } else {
-                        writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
-                    }
+                    writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
                 }
                 continue;
             }
@@ -821,33 +769,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            if (sym.scope == VarScope::State) {
-                IRNode* getVal = readVariable(restPat->name.lexeme, sym);
-                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
-                stateIsUninit->addData(getVal);
-                stateIsUninit->setControl(currentControl);
-
-                IRNode* stateIfNode = graph->createNode(IROp::If);
-                stateIfNode->addData(stateIsUninit);
-                stateIfNode->setControl(currentControl);
-
-                IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
-                stateIfTrue->setControl(stateIfNode);
-
-                IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
-                stateIfFalse->setControl(stateIfNode);
-
-                currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
-                IRNode* trueCtrl = currentControl;
-
-                IRNode* merge = graph->createNode(IROp::Merge);
-                merge->addData(trueCtrl);
-                merge->addData(stateIfFalse);
-                currentControl = merge;
-            } else {
-                writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
-            }
+            writeVariable(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
         uint32_t minRows = 0;
@@ -968,33 +890,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                                 currentFunction->upvalues[upvalIdx].isRef = true;
                             }
                         }
-                        if (sym.scope == VarScope::State) {
-                            IRNode* getVal = readVariable(restPat->name.lexeme, sym);
-                            IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
-                            stateIsUninit->addData(getVal);
-                            stateIsUninit->setControl(currentControl);
-
-                            IRNode* stateIfNode = graph->createNode(IROp::If);
-                            stateIfNode->addData(stateIsUninit);
-                            stateIfNode->setControl(currentControl);
-
-                            IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
-                            stateIfTrue->setControl(stateIfNode);
-
-                            IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
-                            stateIfFalse->setControl(stateIfNode);
-
-                            currentControl = stateIfTrue;
-                            writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
-                            IRNode* trueCtrl = currentControl;
-
-                            IRNode* merge = graph->createNode(IROp::Merge);
-                            merge->addData(trueCtrl);
-                            merge->addData(stateIfFalse);
-                            currentControl = merge;
-                        } else {
-                            writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
-                        }
+                        writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
                     }
                     continue;
                 }
@@ -1074,33 +970,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            if (sym.scope == VarScope::State) {
-                IRNode* getVal = readVariable(restPat->name.lexeme, sym);
-                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
-                stateIsUninit->addData(getVal);
-                stateIsUninit->setControl(currentControl);
-
-                IRNode* stateIfNode = graph->createNode(IROp::If);
-                stateIfNode->addData(stateIsUninit);
-                stateIfNode->setControl(currentControl);
-
-                IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
-                stateIfTrue->setControl(stateIfNode);
-
-                IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
-                stateIfFalse->setControl(stateIfNode);
-
-                currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, sliceNode, sym, false, isExplicitConst);
-                IRNode* trueCtrl = currentControl;
-
-                IRNode* merge = graph->createNode(IROp::Merge);
-                merge->addData(trueCtrl);
-                merge->addData(stateIfFalse);
-                currentControl = merge;
-            } else {
-                writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
-            }
+            writeVariable(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
         IRNode* isDict = graph->createValueNode(IROp::MatchType);
@@ -1204,33 +1074,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            if (sym.scope == VarScope::State) {
-                IRNode* getVal = readVariable(restPat->name.lexeme, sym);
-                IRNode* stateIsUninit = graph->createValueNode(IROp::IsUninit);
-                stateIsUninit->addData(getVal);
-                stateIsUninit->setControl(currentControl);
-
-                IRNode* stateIfNode = graph->createNode(IROp::If);
-                stateIfNode->addData(stateIsUninit);
-                stateIfNode->setControl(currentControl);
-
-                IRNode* stateIfTrue = graph->createNode(IROp::IfTrue);
-                stateIfTrue->setControl(stateIfNode);
-
-                IRNode* stateIfFalse = graph->createNode(IROp::IfFalse);
-                stateIfFalse->setControl(stateIfNode);
-
-                currentControl = stateIfTrue;
-                writeVariable(restPat->name.lexeme, restNode, sym, false, isExplicitConst);
-                IRNode* trueCtrl = currentControl;
-
-                IRNode* merge = graph->createNode(IROp::Merge);
-                merge->addData(trueCtrl);
-                merge->addData(stateIfFalse);
-                currentControl = merge;
-            } else {
-                writeVariable(restPat->name.lexeme, restNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
-            }
+            writeVariable(restPat->name.lexeme, restNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
         }
     }
 }
@@ -3831,43 +3675,25 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
         isUninit->setControl(currentControl);
-        
+            
         IRNode* ifNode = graph->createNode(IROp::If);
         ifNode->addData(isUninit);
         ifNode->setControl(currentControl);
-        
+            
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
-        
+            
         IRNode* ifFalse = graph->createNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
-        
+            
         skipMerge = graph->createNode(IROp::Merge);
         skipMerge->addData(ifFalse);
-        
+            
         currentControl = ifTrue;
-        
-        for (const auto& name : tempStateNames) {
-            for (auto& u : currentFunction->upvalues) {
-                if (u.name == name && (u.isExplicitState || u.isCapturedState)) {
-                    u.name = "<hidden_state_" + name + ">";
-                }
-            }
-        }
     }
-    
+        
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
-    
-    if (!tempStateNames.empty() && currentFunction) {
-        for (const auto& name : tempStateNames) {
-            for (auto& u : currentFunction->upvalues) {
-                if (u.name == "<hidden_state_" + name + ">" && (u.isExplicitState || u.isCapturedState)) {
-                    u.name = name;
-                }
-            }
-        }
-    }
     
     IRNode* failMerge = graph->createNode(IROp::Merge);
     

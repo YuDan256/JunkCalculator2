@@ -1,7 +1,7 @@
 test_closure_caching() = {
     cache = dict()
     make_calc(f) = {
-        state cache = cache
+        state cache
         return (x) => {
             key = freeze([f,x])
             if(key in cache) return cache[key]

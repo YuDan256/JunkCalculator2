@@ -92,6 +92,7 @@ public:
 private:
     struct Scope {
         std::unordered_map<std::string, ResolvedSym> symbols;
+        std::unordered_set<std::string> lexicalDecls;
         bool isFunctionScope = false;
         bool isNamespaceScope = false;
     };

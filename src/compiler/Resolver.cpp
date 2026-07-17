@@ -7,7 +7,7 @@ void Resolver::checkExplicitDecl(void* node, const std::string& name) {
     if (checkedDecls.count(node)) return;
     checkedDecls.insert(node);
     
-    if (scopes.back().symbols.count(name)) {
+    if (scopes.back().lexicalDecls.count(name)) {
         throw std::runtime_error("SyntaxError: Variable '" + name + "' has already been declared in this scope.");
     }
 }
@@ -25,6 +25,9 @@ void Resolver::endScope() {
 
 void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool isConst, bool isExplicitLocal) {
     if (scopes.empty()) return;
+    
+    scopes.back().lexicalDecls.insert(name);
+    
     ResolvedSym sym;
     sym.scope = scopeType;
     sym.isConst = isConst;
@@ -254,7 +257,7 @@ void Resolver::visitCompoundAssign(CompoundAssign* expr) {
 void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     beginScope(true, false);
     for (size_t i = 0; i < expr->params.size(); ++i) {
-        if (scopes.back().symbols.count(expr->params[i].lexeme)) {
+        if (scopes.back().lexicalDecls.count(expr->params[i].lexeme)) {
             throw std::runtime_error("SyntaxError: Parameter '" + expr->params[i].lexeme + "' has already been declared.");
         }
         
@@ -313,7 +316,7 @@ void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     for (auto& m : expr->methods) {
         beginScope(true, false);
         for (size_t i = 0; i < m.params.size(); ++i) {
-            if (scopes.back().symbols.count(m.params[i].lexeme)) {
+            if (scopes.back().lexicalDecls.count(m.params[i].lexeme)) {
                 throw std::runtime_error("SyntaxError: Parameter '" + m.params[i].lexeme + "' has already been declared.");
             }
             
@@ -459,7 +462,7 @@ void Resolver::visitGroupingExpr(GroupingExpr* expr) {
 void Resolver::visitMacroDefExpr(MacroDefExpr* expr) {
     beginScope(true, false);
     for (auto& p : expr->params) {
-        if (scopes.back().symbols.count(p.lexeme)) {
+        if (scopes.back().lexicalDecls.count(p.lexeme)) {
             throw std::runtime_error("SyntaxError: Parameter '" + p.lexeme + "' has already been declared.");
         }
         declareVariable(p.lexeme, VarScope::Local, false, true);

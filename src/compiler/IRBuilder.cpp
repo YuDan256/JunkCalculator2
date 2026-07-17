@@ -353,8 +353,9 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
 }
 
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment) {
-    auto assignVar = [&](const std::string& name, IRNode* vNode, ResolvedSym sym, bool isLocal, bool isConst) {
-        if (sym.scope == VarScope::State || sym.scope == VarScope::CapturedState) {
+    auto assignVar = [&](const std::string& name, IRNode* vNode, ResolvedSym sym, ScopeModifier mod, bool isConst) {
+        bool isLocal = mod == ScopeModifier::Local;
+        if (mod == ScopeModifier::State) {
             IRNode* getVal = readVariable(name, sym);
             IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
             isUninit->addData(getVal);
@@ -456,7 +457,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            assignVar(vp->name.lexeme, valNode, sym, mod == ScopeModifier::Local, isExplicitConst);
+            assignVar(vp->name.lexeme, valNode, sym, mod, isExplicitConst);
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
         lit->literal->accept(*this);
@@ -732,7 +733,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
                     bool isExplicitConst = restPat->isConst || globalConst;
                     
-                    assignVar(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
+                    assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
                 }
                 continue;
             }
@@ -799,7 +800,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            assignVar(restPat->name.lexeme, sliceNode, sym, mod == ScopeModifier::Local, isExplicitConst);
+            assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
         uint32_t minRows = 0;
@@ -920,7 +921,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                                 currentFunction->upvalues[upvalIdx].isRef = true;
                             }
                         }
-                        assignVar(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
+                        assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
                     }
                     continue;
                 }
@@ -1000,7 +1001,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            assignVar(restPat->name.lexeme, sliceNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
+            assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
         IRNode* isDict = graph->createValueNode(IROp::MatchType);
@@ -1104,7 +1105,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
-            assignVar(restPat->name.lexeme, restNode, sym, restPat->modifier == ScopeModifier::Local, isExplicitConst);
+            assignVar(restPat->name.lexeme, restNode, sym, mod, isExplicitConst);
         }
     }
 }

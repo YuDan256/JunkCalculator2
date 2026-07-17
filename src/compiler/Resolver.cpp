@@ -2,6 +2,17 @@
 
 namespace jc {
 
+void Resolver::checkExplicitDecl(void* node, const std::string& name) {
+    if (scopes.empty()) return;
+    if (checkedDecls.count(node)) return;
+    checkedDecls.insert(node);
+    
+    if (scopes.back().explicitDecls.count(name)) {
+        throw std::runtime_error("SyntaxError: Variable '" + name + "' has already been declared in this scope.");
+    }
+    scopes.back().explicitDecls.insert(name);
+}
+
 void Resolver::beginScope(bool isFunc, bool isNamespace) {
     Scope s;
     s.isFunctionScope = isFunc;
@@ -92,17 +103,24 @@ void Resolver::hoistBlock(Block* block) {
     // 预扫描块内的变量声明，实现 Auto-Local 和显式声明的提升
     for (auto& stmt : block->statements) {
         if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+            if (assign->isState || assign->isRef || assign->isLocal || assign->isConst) {
+                checkExplicitDecl(assign, assign->name.lexeme);
+            }
             if (assign->isState) declareVariable(assign->name.lexeme, VarScope::State, assign->isConst);
             else if (assign->isRef) { /* ref 不声明新变量，它总是引用已有的变量 */ }
             else if (assign->isLocal) declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, true);
             else declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, false);
         } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
+            checkExplicitDecl(locDecl, locDecl->name.lexeme);
             declareVariable(locDecl->name.lexeme, VarScope::Local, locDecl->isConst, true);
         } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
+            checkExplicitDecl(stateDecl, stateDecl->name.lexeme);
             declareVariable(stateDecl->name.lexeme, VarScope::State, stateDecl->isConst);
         } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
+            checkExplicitDecl(refDecl, refDecl->name.lexeme);
             /* ref 不声明新变量 */
         } else if (auto* constDecl = dynamic_cast<ConstDecl*>(stmt.get())) {
+            checkExplicitDecl(constDecl, constDecl->name.lexeme);
             declareVariable(constDecl->name.lexeme, VarScope::Local, true, false);
         } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
             ScopeModifier mod = ScopeModifier::None;
@@ -111,8 +129,10 @@ void Resolver::hoistBlock(Block* block) {
             else if (destAssign->isState) mod = ScopeModifier::State;
             resolvePattern(destAssign->pattern.get(), true, mod, destAssign->isConst);
         } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
+            checkExplicitDecl(clsDef, clsDef->name.lexeme);
             declareVariable(clsDef->name.lexeme, VarScope::Local, false, false);
         } else if (auto* nsDecl = dynamic_cast<NamespaceDecl*>(stmt.get())) {
+            checkExplicitDecl(nsDecl, nsDecl->name.lexeme);
             declareVariable(nsDecl->name.lexeme, VarScope::Local, false, false);
         }
     }
@@ -123,6 +143,9 @@ void Resolver::visitVariable(Variable* expr) {
 }
 
 void Resolver::visitAssign(Assign* expr) {
+    if (expr->isLocal || expr->isState || expr->isRef || expr->isConst) {
+        checkExplicitDecl(expr, expr->name.lexeme);
+    }
     bool isFuncDef = dynamic_cast<LambdaExpr*>(expr->value.get()) != nullptr;
     bool hidden = false;
     ResolvedSym hiddenSym;
@@ -217,10 +240,10 @@ void Resolver::visitIndexAssign(IndexAssign* expr) {
     resolve(expr->value.get());
 }
 
-void Resolver::visitLocalDecl(LocalDecl* expr) { declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true); }
-void Resolver::visitRefDecl(RefDecl* /*expr*/) { /* ref 不声明新变量 */ }
-void Resolver::visitStateDecl(StateDecl* expr) { declareVariable(expr->name.lexeme, VarScope::State, expr->isConst); }
-void Resolver::visitConstDecl(ConstDecl* expr) { declareVariable(expr->name.lexeme, VarScope::Local, true, false); }
+void Resolver::visitLocalDecl(LocalDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true); }
+void Resolver::visitRefDecl(RefDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); /* ref 不声明新变量 */ }
+void Resolver::visitStateDecl(StateDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::State, expr->isConst); }
+void Resolver::visitConstDecl(ConstDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, true, false); }
 
 void Resolver::visitDeleteExpr(DeleteExpr* /*expr*/) {}
 
@@ -232,6 +255,11 @@ void Resolver::visitCompoundAssign(CompoundAssign* expr) {
 void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     beginScope(true, false);
     for (size_t i = 0; i < expr->params.size(); ++i) {
+        if (scopes.back().explicitDecls.count(expr->params[i].lexeme)) {
+            throw std::runtime_error("SyntaxError: Parameter '" + expr->params[i].lexeme + "' has already been declared.");
+        }
+        scopes.back().explicitDecls.insert(expr->params[i].lexeme);
+        
         VarScope scope = expr->paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
         declareVariable(expr->params[i].lexeme, scope, expr->paramIsConst[i], true);
         if (expr->defaultExprs[i]) resolve(expr->defaultExprs[i].get());
@@ -281,11 +309,17 @@ void Resolver::visitSwitchExpr(SwitchExpr* expr) {
 
 void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     if (expr->superClassExpr) resolve(expr->superClassExpr.get());
+    checkExplicitDecl(expr, expr->name.lexeme);
     declareVariable(expr->name.lexeme, VarScope::Local, false, false);
     exprSymbols[expr] = resolveName(expr->name.lexeme);
     for (auto& m : expr->methods) {
         beginScope(true, false);
         for (size_t i = 0; i < m.params.size(); ++i) {
+            if (scopes.back().explicitDecls.count(m.params[i].lexeme)) {
+                throw std::runtime_error("SyntaxError: Parameter '" + m.params[i].lexeme + "' has already been declared.");
+            }
+            scopes.back().explicitDecls.insert(m.params[i].lexeme);
+            
             VarScope scope = m.paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
             declareVariable(m.params[i].lexeme, scope, m.paramIsConst[i], true);
             if (m.defaultExprs[i]) resolve(m.defaultExprs[i].get());
@@ -296,6 +330,7 @@ void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
 }
 
 void Resolver::visitNamespaceDecl(NamespaceDecl* expr) {
+    checkExplicitDecl(expr, expr->name.lexeme);
     declareVariable(expr->name.lexeme, VarScope::Local, false, false);
     exprSymbols[expr] = resolveName(expr->name.lexeme);
     beginScope(false, true);
@@ -426,7 +461,13 @@ void Resolver::visitGroupingExpr(GroupingExpr* expr) {
 
 void Resolver::visitMacroDefExpr(MacroDefExpr* expr) {
     beginScope(true, false);
-    for (auto& p : expr->params) declareVariable(p.lexeme, VarScope::Local, false, true);
+    for (auto& p : expr->params) {
+        if (scopes.back().explicitDecls.count(p.lexeme)) {
+            throw std::runtime_error("SyntaxError: Parameter '" + p.lexeme + "' has already been declared.");
+        }
+        scopes.back().explicitDecls.insert(p.lexeme);
+        declareVariable(p.lexeme, VarScope::Local, false, true);
+    }
     resolve(expr->body.get());
     endScope();
 }
@@ -460,6 +501,9 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
         if (vp->name.lexeme != "_") {
             ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             bool isConst = vp->isConst || globalConst;
+            if (mod != ScopeModifier::None || isConst) {
+                checkExplicitDecl(vp, vp->name.lexeme);
+            }
             if (mod != ScopeModifier::Ref) {
                 VarScope scope = (mod == ScopeModifier::State) ? VarScope::State : VarScope::Local;
                 declareVariable(vp->name.lexeme, scope, isConst, mod == ScopeModifier::Local);
@@ -470,6 +514,9 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
         if (rp->name.lexeme != "_") {
             ScopeModifier mod = rp->modifier != ScopeModifier::None ? rp->modifier : globalMod;
             bool isConst = rp->isConst || globalConst;
+            if (mod != ScopeModifier::None || isConst) {
+                checkExplicitDecl(rp, rp->name.lexeme);
+            }
             if (mod != ScopeModifier::Ref) {
                 VarScope scope = (mod == ScopeModifier::State) ? VarScope::State : VarScope::Local;
                 declareVariable(rp->name.lexeme, scope, isConst, mod == ScopeModifier::Local);

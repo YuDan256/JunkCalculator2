@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
+#include <stdexcept>
 
 namespace jc {
 
@@ -91,11 +92,14 @@ public:
 private:
     struct Scope {
         std::unordered_map<std::string, ResolvedSym> symbols;
+        std::unordered_set<std::string> explicitDecls;
         bool isFunctionScope = false;
         bool isNamespaceScope = false;
     };
     std::vector<Scope> scopes;
+    std::unordered_set<void*> checkedDecls;
 
+    void checkExplicitDecl(void* node, const std::string& name);
     void beginScope(bool isFunc = false, bool isNamespace = false);
     void endScope();
     void declareVariable(const std::string& name, VarScope scopeType, bool isConst, bool isExplicitLocal = false);

@@ -7,10 +7,9 @@ void Resolver::checkExplicitDecl(void* node, const std::string& name) {
     if (checkedDecls.count(node)) return;
     checkedDecls.insert(node);
     
-    if (scopes.back().explicitDecls.count(name)) {
+    if (scopes.back().symbols.count(name)) {
         throw std::runtime_error("SyntaxError: Variable '" + name + "' has already been declared in this scope.");
     }
-    scopes.back().explicitDecls.insert(name);
 }
 
 void Resolver::beginScope(bool isFunc, bool isNamespace) {
@@ -255,10 +254,9 @@ void Resolver::visitCompoundAssign(CompoundAssign* expr) {
 void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     beginScope(true, false);
     for (size_t i = 0; i < expr->params.size(); ++i) {
-        if (scopes.back().explicitDecls.count(expr->params[i].lexeme)) {
+        if (scopes.back().symbols.count(expr->params[i].lexeme)) {
             throw std::runtime_error("SyntaxError: Parameter '" + expr->params[i].lexeme + "' has already been declared.");
         }
-        scopes.back().explicitDecls.insert(expr->params[i].lexeme);
         
         VarScope scope = expr->paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
         declareVariable(expr->params[i].lexeme, scope, expr->paramIsConst[i], true);
@@ -315,10 +313,9 @@ void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     for (auto& m : expr->methods) {
         beginScope(true, false);
         for (size_t i = 0; i < m.params.size(); ++i) {
-            if (scopes.back().explicitDecls.count(m.params[i].lexeme)) {
+            if (scopes.back().symbols.count(m.params[i].lexeme)) {
                 throw std::runtime_error("SyntaxError: Parameter '" + m.params[i].lexeme + "' has already been declared.");
             }
-            scopes.back().explicitDecls.insert(m.params[i].lexeme);
             
             VarScope scope = m.paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
             declareVariable(m.params[i].lexeme, scope, m.paramIsConst[i], true);
@@ -462,10 +459,9 @@ void Resolver::visitGroupingExpr(GroupingExpr* expr) {
 void Resolver::visitMacroDefExpr(MacroDefExpr* expr) {
     beginScope(true, false);
     for (auto& p : expr->params) {
-        if (scopes.back().explicitDecls.count(p.lexeme)) {
+        if (scopes.back().symbols.count(p.lexeme)) {
             throw std::runtime_error("SyntaxError: Parameter '" + p.lexeme + "' has already been declared.");
         }
-        scopes.back().explicitDecls.insert(p.lexeme);
         declareVariable(p.lexeme, VarScope::Local, false, true);
     }
     resolve(expr->body.get());

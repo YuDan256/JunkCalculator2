@@ -823,25 +823,27 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
         uint32_t minCols = 0;
         uint32_t maxCols = 0;
-        int restColIndex = -1;
+        bool hasRestCol = false;
         if (!mp->rows.empty()) {
             int maxReqCols = 0;
             for (size_t i = 0; i < mp->rows.size(); ++i) {
                 int reqCols = 0;
+                bool rowHasRest = false;
                 for (size_t j = 0; j < mp->rows[i].size(); ++j) {
                     if (dynamic_cast<RestPattern*>(mp->rows[i][j].get())) {
-                        if (i == 0) restColIndex = static_cast<int>(j);
+                        rowHasRest = true;
                     } else if (!dynamic_cast<DefaultPattern*>(mp->rows[i][j].get())) {
                         reqCols = static_cast<int>(j) + 1;
                     }
                 }
-                if (restColIndex != -1) {
+                if (rowHasRest) {
+                    hasRestCol = true;
                     reqCols = static_cast<int>(mp->rows[i].size() - 1);
                 }
                 if (reqCols > maxReqCols) maxReqCols = reqCols;
             }
             minCols = static_cast<uint32_t>(maxReqCols);
-            maxCols = restColIndex != -1 ? 0xFFFFFFFF : static_cast<uint32_t>(mp->rows[0].size());
+            maxCols = hasRestCol ? 0xFFFFFFFF : static_cast<uint32_t>(mp->rows[0].size());
         }
 
         IRNode* shapeNode = graph->createValueNode(IROp::MatchShape);
@@ -867,8 +869,16 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         currentControl = ifTrue;
 
         for (size_t i = 0; i < mp->rows.size(); ++i) {
+            int rowRestColIndex = -1;
             for (size_t j = 0; j < mp->rows[i].size(); ++j) {
-                if (static_cast<int>(j) == restColIndex) {
+                if (dynamic_cast<RestPattern*>(mp->rows[i][j].get())) {
+                    rowRestColIndex = static_cast<int>(j);
+                    break;
+                }
+            }
+
+            for (size_t j = 0; j < mp->rows[i].size(); ++j) {
+                if (static_cast<int>(j) == rowRestColIndex) {
                     // Handle rest column
                     auto* restPat = static_cast<RestPattern*>(mp->rows[i][j].get());
                     if (restPat->name.lexeme != "_") {
@@ -930,7 +940,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 rIdxNode->setControl(currentControl);
 
                 IRNode* cIdxNode = nullptr;
-                if (restColIndex != -1 && static_cast<int>(j) > restColIndex) {
+                if (rowRestColIndex != -1 && static_cast<int>(j) > rowRestColIndex) {
                     int offsetFromEnd = static_cast<int>(mp->rows[i].size()) - static_cast<int>(j);
                     cIdxNode = graph->createConstant(Value(static_cast<double>(-offsetFromEnd)));
                 } else {

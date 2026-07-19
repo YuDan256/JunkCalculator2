@@ -19,3 +19,27 @@ test_closure_caching() = {
     assert(isapprox(calcC(PI), 0.0, 1e-9, 1e-9), "calcC failed")
 }
 test_closure_caching()
+
+test_self_assignment_capture() = {
+    // Test local x = x
+    x = 10
+    f_local() = {
+        local x = x
+        x += 5
+        return x
+    }
+    assert(f_local() == 15, "local x = x failed to capture outer x")
+    assert(x == 10, "local x = x polluted outer scope")
+
+    // Test state y = y
+    y = 20
+    f_state() = {
+        state y = y
+        y += 1
+        return y
+    }
+    assert(f_state() == 21, "state y = y failed on first call")
+    assert(f_state() == 22, "state y = y failed on second call")
+    assert(y == 20, "state y = y polluted outer scope")
+}
+test_self_assignment_capture()

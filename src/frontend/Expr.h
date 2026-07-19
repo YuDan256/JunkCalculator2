@@ -14,7 +14,7 @@ namespace jc {
     private:
         struct Block {
             static constexpr size_t SIZE = 256 * 1024; // 256KB per block
-            char data[SIZE];
+            char data[SIZE] = {};
             size_t offset = 0;
             Block* next = nullptr;
         };

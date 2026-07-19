@@ -1545,6 +1545,24 @@ void IRBuilder::visitAssign(Assign* expr) {
     auto it = exprSymbols->find(expr);
     ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
 
+    bool isFuncDef = dynamic_cast<LambdaExpr*>(expr->value.get()) != nullptr;
+    bool hidden = false;
+    IRNode* hiddenNode = nullptr;
+    int hiddenDepth = -1;
+
+    if (!isFuncDef && (expr->isLocal || expr->isState || expr->isConst)) {
+        for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
+            auto envIt = envStack[i].find(expr->name.lexeme);
+            if (envIt != envStack[i].end()) {
+                hiddenNode = envIt->second;
+                hiddenDepth = i;
+                envStack[i].erase(envIt);
+                hidden = true;
+                break;
+            }
+        }
+    }
+
     if (expr->isState) {
         IRNode* getVal = readVariable(expr->name.lexeme, sym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
@@ -1566,6 +1584,8 @@ void IRBuilder::visitAssign(Assign* expr) {
         expr->value->accept(*this);
         IRNode* valNode = lastValue;
         
+        if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;
+        
         writeVariable(expr->name.lexeme, valNode, sym, false);
         IRNode* trueCtrl = currentControl;
 
@@ -1580,6 +1600,8 @@ void IRBuilder::visitAssign(Assign* expr) {
 
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
+    
+    if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;
     
     writeVariable(expr->name.lexeme, valNode, sym, expr->isLocal, expr->isConst);
     lastValue = valNode;
@@ -3698,6 +3720,45 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     collectPatternVars(expr->pattern.get(), boundVars);
     
     std::vector<std::string> tempStateNames;
+    std::vector<std::pair<std::string, std::pair<int, IRNode*>>> hiddenVars;
+
+    if (expr->isLocal || expr->isState || expr->isConst) {
+        std::vector<std::string> patVars;
+        auto collectVars = [&](Pattern* p, auto& self) -> void {
+            if (!p) return;
+            if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
+                if (vp->name.lexeme != "_") patVars.push_back(vp->name.lexeme);
+            } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
+                if (rp->name.lexeme != "_") patVars.push_back(rp->name.lexeme);
+            } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
+                for (auto& e : lp->elements) self(e.get(), self);
+                if (lp->rest) self(lp->rest.get(), self);
+            } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
+                for (auto& row : mp->rows) {
+                    for (auto& e : row) self(e.get(), self);
+                }
+                if (mp->restRow) self(mp->restRow.get(), self);
+            } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+                for (auto& e : dp->entries) self(e.second.get(), self);
+                if (dp->rest) self(dp->rest.get(), self);
+            } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
+                self(defp->inner.get(), self);
+            }
+        };
+        collectVars(expr->pattern.get(), collectVars);
+
+        for (const auto& name : patVars) {
+            for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
+                auto it = envStack[i].find(name);
+                if (it != envStack[i].end()) {
+                    hiddenVars.push_back({name, {i, it->second}});
+                    envStack[i].erase(it);
+                    break;
+                }
+            }
+        }
+    }
+
     for (const auto& varTuple : boundVars) {
         const std::string& name = std::get<0>(varTuple);
         ScopeModifier mod = std::get<1>(varTuple);
@@ -3738,6 +3799,10 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
     
+    for (const auto& hv : hiddenVars) {
+        envStack[hv.second.first][hv.first] = hv.second.second;
+    }
+
     IRNode* failMerge = graph->createNode(IROp::Merge);
     
     ScopeModifier mod = ScopeModifier::None;

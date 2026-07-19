@@ -22,10 +22,10 @@ namespace jc {
     };
 
     struct Obj {
-        ObjType type;
-        bool isMarked;
+        ObjType type = ObjType::STRING;
+        bool isMarked = false;
         uint32_t refCount = 0; // ★ 新增引用计数，用于 COW
-        Obj* next;
+        Obj* next = nullptr;
         virtual ~Obj() = default;
         virtual void clear() {} // ★ 新增：在真正 delete 前清理内部引用的 Value，防止循环引用导致的 Use-After-Free
         virtual void clearTotal() { clear(); } // 供 GC 调用，无视冻结状态

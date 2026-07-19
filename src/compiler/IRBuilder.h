@@ -79,7 +79,7 @@ private:
     std::vector<IRNode*> capturedNodesToExtend;
 
     struct ExitNodeInfo {
-        IRNode* node;
+        IRNode* node = nullptr;
         std::vector<std::pair<std::string, IRNode*>> activeVars;
     };
     std::vector<ExitNodeInfo> exitNodes;

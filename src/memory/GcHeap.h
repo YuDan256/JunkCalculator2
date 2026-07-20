@@ -69,7 +69,18 @@ namespace jc {
             Obj* garbageList = nullptr;
 
             while (*object != nullptr) {
-                if (!(*object)->isMarked) {
+                bool isContainer = (*object)->type == ObjType::LIST || (*object)->type == ObjType::DICT || 
+                                   (*object)->type == ObjType::SET || (*object)->type == ObjType::CLOSURE || 
+                                   (*object)->type == ObjType::CLASS || (*object)->type == ObjType::INSTANCE || 
+                                   (*object)->type == ObjType::SUPER_PROXY || (*object)->type == ObjType::NAMESPACE || 
+                                   (*object)->type == ObjType::UPVALUE;
+                
+                // ★ 核心修复：对于非容器类型（如 BigInt, Matrix, Symbolic 等），它们绝不可能产生循环引用。
+                // 因此，只要 refCount > 0，就说明 C++ 栈上或某处有 Value 正在持有它，绝对不能回收！
+                // 这完美解决了 CAS 引擎中大量局部 Value 变量未被 GcValueGuard 保护导致的崩溃问题。
+                bool isAlive = (*object)->isMarked || (!isContainer && (*object)->refCount > 0);
+
+                if (!isAlive) {
                     Obj* unreached = *object;
                     *object = unreached->next;
                     

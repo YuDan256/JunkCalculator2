@@ -1435,8 +1435,6 @@ namespace jc {
     private:
         static BigInt pollardRho(const BigInt& n, int64_t c_val = 1, int64_t max_iter = -1) {
             if (n.data[0] % 2 == 0) return BigInt(2);
-            if (n.data[0] % 3 == 0) return BigInt(3);
-            if (n.data[0] % 5 == 0) return BigInt(5);
 
             BigInt x(2), y(2), d(1), c(c_val);
             BigInt prod(1);

@@ -66,16 +66,20 @@ namespace jc {
         void freeObj(Obj* obj) {
             if (isSweeping_) return; // GC 正在清理时，交由 GC 统一回收
             
+            // ★ 核心修复：只允许非容器且非驻留字符串的纯数据类型立即释放
+            // 容器类型、UPVALUE、STRING 等可能被裸指针持有或参与循环引用，必须交由 GC 统一回收
+            bool isContainerOrString = obj->type == ObjType::LIST || obj->type == ObjType::DICT || 
+                                       obj->type == ObjType::SET || obj->type == ObjType::CLOSURE || 
+                                       obj->type == ObjType::CLASS || obj->type == ObjType::INSTANCE || 
+                                       obj->type == ObjType::SUPER_PROXY || obj->type == ObjType::NAMESPACE || 
+                                       obj->type == ObjType::UPVALUE || obj->type == ObjType::STRING;
+            
+            if (isContainerOrString) return;
+
             if (obj->prev) obj->prev->next = obj->next;
             else objects_ = obj->next;
             if (obj->next) obj->next->prev = obj->prev;
             
-            if (obj->type == ObjType::LIST || obj->type == ObjType::DICT || 
-                obj->type == ObjType::SET || obj->type == ObjType::CLOSURE || 
-                obj->type == ObjType::INSTANCE || obj->type == ObjType::NAMESPACE || 
-                obj->type == ObjType::UPVALUE) {
-                obj->clearTotal();
-            }
             delete obj;
             if (allocsSinceGc_ > 0) allocsSinceGc_--;
         }

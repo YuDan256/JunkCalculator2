@@ -211,6 +211,7 @@ public:
     CallFrame* currentDebuggerFrame = nullptr;
     
     void printProfileInfo();
+    void clearProfileData() { profileData.clear(); }
 
     struct WatchPoint {
         int reg = -1;

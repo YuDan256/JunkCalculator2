@@ -483,14 +483,17 @@ int main(int argc, char* argv[]) {
         }
         catch (const std::exception& e) {
             std::cerr << e.what() << std::endl;
+            if (g_profile) vm.printProfileInfo();
             return 1;
         }
+        if (g_profile) vm.printProfileInfo();
         return 0;
     }
 
     // 有脚本路径则执行脚本并退出
     if (!scriptPath.empty()) {
         runScript(scriptPath);
+        if (g_profile) vm.printProfileInfo();
         return 0;
     }
 
@@ -844,13 +847,25 @@ int main(int argc, char* argv[]) {
                 jc::g_printMatrix2D = isTopLevelMatrix;
                 std::cout << typeColor << result << jc::col(jc::Ansi::RESET) << std::endl;
             }
+            if (g_profile) {
+                vm.printProfileInfo();
+                vm.clearProfileData();
+            }
         }
         catch (const jc::EngineInterruptError&) {
             std::cerr << "^C KeyboardInterrupt" << std::endl;
+            if (g_profile) {
+                vm.printProfileInfo();
+                vm.clearProfileData();
+            }
         }
         catch (const std::exception& e) {
             std::cerr << jc::col(jc::Ansi::BRIGHT_RED)
                 << e.what() << jc::col(jc::Ansi::RESET) << std::endl;
+            if (g_profile) {
+                vm.printProfileInfo();
+                vm.clearProfileData();
+            }
         }
     }
 

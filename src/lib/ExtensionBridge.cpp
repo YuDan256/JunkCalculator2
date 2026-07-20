@@ -8,7 +8,12 @@ namespace jc {
 
 thread_local std::vector<Value> nativeTempRefs;
 
-static inline Value from_handle(JC2_ValueHandle h) { Value v; v.as_bits = h; return v; }
+static inline Value from_handle(JC2_ValueHandle h) { 
+    Value v; 
+    v.as_bits = h; 
+    if (v.isObj()) v.asObj()->refCount++;
+    return v; 
+}
 
 static inline JC2_ValueHandle protect(const Value& v) {
     if (v.isObj()) nativeTempRefs.push_back(v);

@@ -26,6 +26,7 @@ namespace jc {
         bool isMarked = false;
         uint32_t refCount = 0; // ★ 新增引用计数，用于 COW
         Obj* next = nullptr;
+        Obj* prev = nullptr; // ★ 新增：双向链表，支持 O(1) 摘除
         virtual ~Obj() = default;
         virtual void clear() {} // ★ 新增：在真正 delete 前清理内部引用的 Value，防止循环引用导致的 Use-After-Free
         virtual void clearTotal() { clear(); } // 供 GC 调用，无视冻结状态
@@ -33,6 +34,8 @@ namespace jc {
 
     class GcHeap {
     public:
+        bool isSweeping_ = false; // ★ 新增：防止 freeObj 与 sweep 冲突
+
         static GcHeap& get() {
             static GcHeap instance;
             return instance;
@@ -53,9 +56,28 @@ namespace jc {
             T* object = new T(std::forward<Args>(args)...);
             object->isMarked = false;
             object->next = objects_;
+            object->prev = nullptr;
+            if (objects_) objects_->prev = object;
             objects_ = object;
             allocsSinceGc_++;
             return object;
+        }
+
+        void freeObj(Obj* obj) {
+            if (isSweeping_) return; // GC 正在清理时，交由 GC 统一回收
+            
+            if (obj->prev) obj->prev->next = obj->next;
+            else objects_ = obj->next;
+            if (obj->next) obj->next->prev = obj->prev;
+            
+            if (obj->type == ObjType::LIST || obj->type == ObjType::DICT || 
+                obj->type == ObjType::SET || obj->type == ObjType::CLOSURE || 
+                obj->type == ObjType::INSTANCE || obj->type == ObjType::NAMESPACE || 
+                obj->type == ObjType::UPVALUE) {
+                obj->clearTotal();
+            }
+            delete obj;
+            if (allocsSinceGc_ > 0) allocsSinceGc_--;
         }
 
         bool shouldCollect() const {
@@ -63,42 +85,45 @@ namespace jc {
         }
 
         int sweep() {
-            Obj** object = &objects_;
+            isSweeping_ = true;
+            Obj* curr = objects_;
             int freed = 0;
             size_t surviving = 0;
             Obj* garbageList = nullptr;
 
-            while (*object != nullptr) {
-                bool isContainer = (*object)->type == ObjType::LIST || (*object)->type == ObjType::DICT || 
-                                   (*object)->type == ObjType::SET || (*object)->type == ObjType::CLOSURE || 
-                                   (*object)->type == ObjType::CLASS || (*object)->type == ObjType::INSTANCE || 
-                                   (*object)->type == ObjType::SUPER_PROXY || (*object)->type == ObjType::NAMESPACE || 
-                                   (*object)->type == ObjType::UPVALUE;
+            while (curr != nullptr) {
+                Obj* next = curr->next;
+                bool isContainer = curr->type == ObjType::LIST || curr->type == ObjType::DICT || 
+                                   curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
+                                   curr->type == ObjType::CLASS || curr->type == ObjType::INSTANCE || 
+                                   curr->type == ObjType::SUPER_PROXY || curr->type == ObjType::NAMESPACE || 
+                                   curr->type == ObjType::UPVALUE;
                 
                 // ★ 核心修复：对于非容器类型（如 BigInt, Matrix, Symbolic 等），它们绝不可能产生循环引用。
                 // 因此，只要 refCount > 0，就说明 C++ 栈上或某处有 Value 正在持有它，绝对不能回收！
                 // 这完美解决了 CAS 引擎中大量局部 Value 变量未被 GcValueGuard 保护导致的崩溃问题。
-                bool isAlive = (*object)->isMarked || (!isContainer && (*object)->refCount > 0);
+                bool isAlive = curr->isMarked || (!isContainer && curr->refCount > 0);
 
                 if (!isAlive) {
-                    Obj* unreached = *object;
-                    *object = unreached->next;
+                    if (curr->prev) curr->prev->next = curr->next;
+                    else objects_ = curr->next;
+                    if (curr->next) curr->next->prev = curr->prev;
                     
-                    unreached->next = garbageList;
-                    garbageList = unreached;
+                    curr->next = garbageList;
+                    garbageList = curr;
                     
                     freed++;
                 } else {
-                    (*object)->isMarked = false;
-                    object = &(*object)->next;
+                    curr->isMarked = false;
                     surviving++;
                 }
+                curr = next;
             }
 
             // ★ 核心修复：先统一触发 clearTotal() 断开所有 Value 引用，防止 A->B->A 循环引用时，
             // A 被 delete 后，B 的析构函数再去减 A 的 refCount 导致 Use-After-Free 崩溃！
             // 优化：只对包含 Value 引用的复杂对象调用 clearTotal，跳过大量基础类型（如 String, Matrix）的虚函数开销
-            Obj* curr = garbageList;
+            curr = garbageList;
             while (curr != nullptr) {
                 if (curr->type == ObjType::LIST || curr->type == ObjType::DICT || 
                     curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
@@ -118,6 +143,7 @@ namespace jc {
 
             allocsSinceGc_ = 0;
             gcThreshold_ = std::max(static_cast<size_t>(65536), surviving * 2);
+            isSweeping_ = false;
             return freed;
         }
 

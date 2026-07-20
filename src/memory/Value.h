@@ -112,6 +112,9 @@ namespace jc {
                 if ((c & 0xC0) != 0x80) charLength++;
             }
         }
+        ~ObjString() override {
+            g_internedStrings.erase(str);
+        }
     };
     struct ObjBigInt : public Obj {
         BigInt num;
@@ -311,21 +314,30 @@ namespace jc {
         Value& operator=(const Value& other) {
             if (this == &other) return *this;
             if (other.isObj()) other.asObj()->refCount++;
-            if (isObj()) asObj()->refCount--;
+            if (isObj()) {
+                Obj* obj = asObj();
+                if (--obj->refCount == 0) GcHeap::get().freeObj(obj);
+            }
             as_bits = other.as_bits;
             return *this;
         }
 
         Value& operator=(Value&& other) noexcept {
             if (this == &other) return *this;
-            if (isObj()) asObj()->refCount--;
+            if (isObj()) {
+                Obj* obj = asObj();
+                if (--obj->refCount == 0) GcHeap::get().freeObj(obj);
+            }
             as_bits = other.as_bits;
             other.as_bits = QNAN | TAG_NONE;
             return *this;
         }
 
         ~Value() {
-            if (isObj()) asObj()->refCount--;
+            if (isObj()) {
+                Obj* obj = asObj();
+                if (--obj->refCount == 0) GcHeap::get().freeObj(obj);
+            }
         }
         
         Value(std::string val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(internString(val)); }

@@ -31,6 +31,9 @@ struct CallFrame {
     int deferBase = 0;
     Value selfContext = Value::none();
     Value classContext = Value::none();
+    
+    std::chrono::time_point<std::chrono::steady_clock> startTime;
+    double childTimeMs = 0.0;
 };
 
 // ============================================================================
@@ -76,6 +79,15 @@ private:
     std::vector<ExceptionHandler> exceptionHandlers;
 
     int currentTargetFrameDepth = 0;
+
+    struct ProfileRecord {
+        int callCount = 0;
+        double totalTimeMs = 0.0;
+        double selfTimeMs = 0.0;
+    };
+    std::unordered_map<std::string, ProfileRecord> profileData;
+    void profileFrameStart(CallFrame* frame);
+    void profileFrameEnd(CallFrame* frame);
 
     Value run(int targetFrameDepth = 0);
     bool handleExceptionUnwind(Value* errValPtr);
@@ -195,6 +207,8 @@ public:
 
     void triggerDebugger();
     CallFrame* currentDebuggerFrame = nullptr;
+    
+    void printProfileInfo();
 
     struct WatchPoint {
         int reg = -1;

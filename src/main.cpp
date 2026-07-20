@@ -449,7 +449,7 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--profile") {
             g_profile = true;
-            std::cout << "Warning: Profiler is not yet supported in VM.\n";
+            std::cout << "Profiler enabled.\n";
         }
         else if (arg == "--test") {
             runTests = true;
@@ -678,7 +678,7 @@ int main(int argc, char* argv[]) {
             }
             if (input == "/profile on") {
                 g_profile = true;
-                std::cout << "Warning: Profiler is not yet supported in VM.\n";
+                std::cout << "Profiler enabled.\n";
                 continue;
             }
             if (input == "/profile off") {
@@ -855,5 +855,6 @@ int main(int argc, char* argv[]) {
     }
 
     if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+    if (g_profile) vm.printProfileInfo();
     return 0;
 }

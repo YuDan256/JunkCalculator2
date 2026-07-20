@@ -21,6 +21,7 @@
 
 extern bool g_showIR;
 extern bool g_autoDebug;
+extern bool g_profile;
 
 #if defined(_WIN32)
 #define NOMINMAX
@@ -326,6 +327,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     exceptionHandlers.pop_back();
                 }
                 closeUpvalues(currentFrame->registerBase);
+                profileFrameEnd(currentFrame);
                 currentFrame->function = fnDef.get();
                 currentFrame->chunk = &fnDef->chunk;
                 currentFrame->ip = 0;
@@ -334,6 +336,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 currentFrame->classContext = closure->boundClass;
                 
                 populateRefParams(*currentFrame, fnDef.get());
+                profileFrameStart(currentFrame);
                 
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 for (int i = newTotalCount; i < oldTotalCount; ++i) {
@@ -356,6 +359,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             populateRefParams(newFrame, fnDef.get());
             
             if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+            profileFrameStart(&newFrame);
             frames[frameCount++] = newFrame;
         } else if (closure->isNative()) {
             auto ait = builtinArity.find(closure->rawBody);
@@ -465,6 +469,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                         exceptionHandlers.pop_back();
                     }
                     closeUpvalues(currentFrame->registerBase);
+                    profileFrameEnd(currentFrame);
                     currentFrame->function = fnDef.get();
                     currentFrame->chunk = &fnDef->chunk;
                     currentFrame->ip = 0;
@@ -473,6 +478,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     currentFrame->classContext = Value(cls);
                     
                     populateRefParams(*currentFrame, fnDef.get());
+                    profileFrameStart(currentFrame);
                     
                     int newTotalCount = fnDef->localCount + fnDef->refCount;
                     for (int i = newTotalCount; i < oldTotalCount; ++i) {
@@ -495,6 +501,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 populateRefParams(newFrame, fnDef.get());
                 
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+                profileFrameStart(&newFrame);
                 frames[frameCount++] = newFrame;
             } else if (initMethod->isNative()) {
                 helpers::nativeSelfStack.push_back(Value(instance));
@@ -589,6 +596,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                         exceptionHandlers.pop_back();
                     }
                     closeUpvalues(currentFrame->registerBase);
+                    profileFrameEnd(currentFrame);
                     currentFrame->function = fnDef.get();
                     currentFrame->chunk = &fnDef->chunk;
                     currentFrame->ip = 0;
@@ -597,6 +605,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     currentFrame->classContext = Value(owningClass);
                     
                     populateRefParams(*currentFrame, fnDef.get());
+                    profileFrameStart(currentFrame);
                     
                     int newTotalCount = fnDef->localCount + fnDef->refCount;
                     for (int i = newTotalCount; i < oldTotalCount; ++i) {
@@ -619,6 +628,7 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 populateRefParams(newFrame, fnDef.get());
                 
                 if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+                profileFrameStart(&newFrame);
                 frames[frameCount++] = newFrame;
             } else if (method->isNative()) {
                 helpers::nativeSelfStack.push_back(callee);
@@ -836,6 +846,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         
         populateRefParams(newFrame, fnDef.get());
         
+        profileFrameStart(&newFrame);
         frames[frameCount++] = newFrame;
         
         int targetDepth = frameCount - 1;
@@ -844,6 +855,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         } catch (...) {
             while (frameCount > targetDepth) {
                 CallFrame* f = &frames[frameCount - 1];
+                profileFrameEnd(f);
                 int clearBase = f->registerBase;
                 int clearCount = f->function->localCount + f->function->refCount;
                 for (int i = 0; i < clearCount; ++i) {
@@ -1273,6 +1285,7 @@ invoke_method:
                 exceptionHandlers.pop_back();
             }
             closeUpvalues(currentFrame->registerBase);
+            profileFrameEnd(currentFrame);
             currentFrame->function = fnDef.get();
             currentFrame->chunk = &fnDef->chunk;
             currentFrame->ip = 0;
@@ -1281,6 +1294,7 @@ invoke_method:
             currentFrame->classContext = owningClass ? Value(owningClass) : Value::none();
             
             populateRefParams(*currentFrame, fnDef.get());
+            profileFrameStart(currentFrame);
             
             int newTotalCount = fnDef->localCount + fnDef->refCount;
             for (int i = newTotalCount; i < oldTotalCount; ++i) {
@@ -1303,6 +1317,7 @@ invoke_method:
         populateRefParams(newFrame, fnDef.get());
         
         if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+        profileFrameStart(&newFrame);
         frames[frameCount++] = newFrame;
     } else if (method->isNative()) {
         if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
@@ -1414,6 +1429,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
                 exceptionHandlers.pop_back();
             }
             closeUpvalues(currentFrame->registerBase);
+            profileFrameEnd(currentFrame);
             currentFrame->function = fnDef.get();
             currentFrame->chunk = &fnDef->chunk;
             currentFrame->ip = 0;
@@ -1422,6 +1438,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             currentFrame->classContext = Value(owningClass);
             
             populateRefParams(*currentFrame, fnDef.get());
+            profileFrameStart(currentFrame);
             
             int newTotalCount = fnDef->localCount + fnDef->refCount;
             for (int i = newTotalCount; i < oldTotalCount; ++i) {
@@ -1444,6 +1461,7 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         populateRefParams(newFrame, fnDef.get());
         
         if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+        profileFrameStart(&newFrame);
         frames[frameCount++] = newFrame;
     } else if (method->isNative()) {
         if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
@@ -2003,6 +2021,7 @@ Value VM::execImport(const std::string& name) {
         
         if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
         int targetDepth = frameCount;
+        profileFrameStart(&newFrame);
         frames[frameCount++] = newFrame;
 
         std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
@@ -2013,6 +2032,7 @@ Value VM::execImport(const std::string& name) {
         } catch (...) {
             while (frameCount > targetDepth) {
                 CallFrame* f = &frames[frameCount - 1];
+                profileFrameEnd(f);
                 int clearBase = f->registerBase;
                 int clearCount = f->function->localCount + f->function->refCount;
                 for (int i = 0; i < clearCount; ++i) {
@@ -2129,6 +2149,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
     
     int targetDepth = frameCount;
+    profileFrameStart(&newFrame);
     frames[frameCount++] = newFrame;
 
     std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
@@ -2148,6 +2169,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
             int clearBase = f->registerBase;
             int clearCount = f->function->localCount + f->function->refCount;
             for (int i = 0; i < clearCount; ++i) {
@@ -2170,6 +2192,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
             int clearBase = f->registerBase;
             int clearCount = f->function->localCount + f->function->refCount;
             for (int i = 0; i < clearCount; ++i) {
@@ -2191,6 +2214,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         try { runDefersDownTo(frames[targetDepth].deferBase); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
             int clearBase = f->registerBase;
             int clearCount = f->function->localCount + f->function->refCount;
             for (int i = 0; i < clearCount; ++i) {
@@ -2238,6 +2262,7 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
         
         while (frameCount > handler.frameIndex + 1) {
             CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
             int clearBase = f->registerBase;
             int clearCount = f->function->localCount + f->function->refCount;
             for (int i = 0; i < clearCount; ++i) {
@@ -2338,6 +2363,51 @@ std::string VM::buildStackTrace() const {
     }
     oss << jc::col(jc::Ansi::RESET);
     return oss.str();
+}
+
+void VM::profileFrameStart(CallFrame* frame) {
+    if (!g_profile) return;
+    frame->startTime = std::chrono::steady_clock::now();
+    frame->childTimeMs = 0.0;
+}
+
+void VM::profileFrameEnd(CallFrame* frame) {
+    if (!g_profile) return;
+    auto endTime = std::chrono::steady_clock::now();
+    double elapsed = std::chrono::duration<double, std::milli>(endTime - frame->startTime).count();
+    std::string fnName = frame->function ? frame->function->name : "<unknown>";
+    auto& record = profileData[fnName];
+    record.callCount++;
+    record.totalTimeMs += elapsed;
+    record.selfTimeMs += (elapsed - frame->childTimeMs);
+    if (frameCount > 1) {
+        frames[frameCount - 2].childTimeMs += elapsed;
+    }
+}
+
+void VM::printProfileInfo() {
+    if (!g_profile || profileData.empty()) return;
+    std::cout << "\n" << jc::col(jc::Ansi::BRIGHT_CYAN) << "=== Profiler Results ===" << jc::col(jc::Ansi::RESET) << "\n";
+    std::cout << std::left << std::setw(30) << "Function" 
+              << std::right << std::setw(10) << "Calls" 
+              << std::setw(15) << "Total(ms)" 
+              << std::setw(15) << "Self(ms)" << "\n";
+    std::cout << std::string(70, '-') << "\n";
+    
+    std::vector<std::pair<std::string, ProfileRecord>> sortedData(profileData.begin(), profileData.end());
+    std::sort(sortedData.begin(), sortedData.end(), [](const auto& a, const auto& b) {
+        return a.second.selfTimeMs > b.second.selfTimeMs;
+    });
+    
+    for (const auto& [name, record] : sortedData) {
+        std::string dispName = name;
+        if (dispName.length() > 28) dispName = dispName.substr(0, 25) + "...";
+        std::cout << std::left << std::setw(30) << dispName 
+                  << std::right << std::setw(10) << record.callCount 
+                  << std::setw(15) << std::fixed << std::setprecision(3) << record.totalTimeMs 
+                  << std::setw(15) << std::fixed << std::setprecision(3) << record.selfTimeMs << "\n";
+    }
+    std::cout << std::string(70, '-') << "\n";
 }
 
 VM::VM() {
@@ -2502,6 +2572,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     
     populateRefParams(newFrame, fnDef.get());
     
+    profileFrameStart(&newFrame);
     frames[frameCount++] = newFrame;
     
     int targetDepth = frameCount - 1;
@@ -2510,6 +2581,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     } catch (...) {
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
             int clearBase = f->registerBase;
             int clearCount = f->function->localCount + f->function->refCount;
             for (int i = 0; i < clearCount; ++i) {
@@ -2548,6 +2620,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
     
     int targetDepth = frameCount;
+    profileFrameStart(&mainFrame);
     frames[frameCount++] = mainFrame;
 
     try {
@@ -2565,6 +2638,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
         try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
             int clearBase = f->registerBase;
             int clearCount = f->function->localCount + f->function->refCount;
             for (int i = 0; i < clearCount; ++i) {
@@ -3092,6 +3166,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         
                         vm->populateRefParams(newFrame, fnDef.get());
+                        vm->profileFrameStart(&newFrame);
                         vm->frames[vm->frameCount++] = newFrame;
                         
                         int targetDepth = vm->frameCount - 1;
@@ -3100,6 +3175,7 @@ Value VM::run(int targetFrameDepth) {
                         } catch (...) {
                             while (vm->frameCount > targetDepth) {
                                 CallFrame* f = &vm->frames[vm->frameCount - 1];
+                                vm->profileFrameEnd(f);
                                 int clearBase = f->registerBase;
                                 int clearCount = f->function->localCount + f->function->refCount;
                                 for (int i = 0; i < clearCount; ++i) {
@@ -5696,6 +5772,8 @@ Value VM::run(int targetFrameDepth) {
                 int targetReg = frame->returnRegister;
                 bool isInit = (frame->function && frame->function->name == "init");
                 Value selfCtx = frame->selfContext;
+
+                profileFrameEnd(frame);
 
                 int clearBase = frame->registerBase;
                 int clearCount = frame->function->localCount + frame->function->refCount;

@@ -81,6 +81,23 @@ private:
 
     int currentTargetFrameDepth = 0;
 
+    int pendingFrameBase = -1;
+    int pendingFrameCount = 0;
+
+    struct PendingFrameGuard {
+        VM* vm;
+        int oldBase;
+        int oldCount;
+        PendingFrameGuard(VM* v, int base, int count) : vm(v), oldBase(v->pendingFrameBase), oldCount(v->pendingFrameCount) {
+            vm->pendingFrameBase = base;
+            vm->pendingFrameCount = count;
+        }
+        ~PendingFrameGuard() {
+            vm->pendingFrameBase = oldBase;
+            vm->pendingFrameCount = oldCount;
+        }
+    };
+
     struct ProfileRecord {
         int callCount = 0;
         double totalTimeMs = 0.0;

@@ -266,6 +266,8 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
             }
 
             int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
+            int newTotalCount = fnDef->localCount + fnDef->refCount;
+            PendingFrameGuard pfg(this, newBase, newTotalCount);
 
             if (fnDef->hasRestParam) {
                 int fixedMax = fnDef->maxArity - 1;
@@ -338,7 +340,6 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 populateRefParams(*currentFrame, fnDef.get());
                 profileFrameStart(currentFrame);
                 
-                int newTotalCount = fnDef->localCount + fnDef->refCount;
                 for (int i = newTotalCount; i < oldTotalCount; ++i) {
                     registers[newBase + i] = Value::none();
                 }
@@ -424,6 +425,8 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 
                 int totalArgc = argc;
                 int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
+                int newTotalCount = fnDef->localCount + fnDef->refCount;
+                PendingFrameGuard pfg(this, newBase, newTotalCount);
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -480,7 +483,6 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     populateRefParams(*currentFrame, fnDef.get());
                     profileFrameStart(currentFrame);
                     
-                    int newTotalCount = fnDef->localCount + fnDef->refCount;
                     for (int i = newTotalCount; i < oldTotalCount; ++i) {
                         registers[newBase + i] = Value::none();
                     }
@@ -551,6 +553,8 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 
                 int totalArgc = argc;
                 int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
+                int newTotalCount = fnDef->localCount + fnDef->refCount;
+                PendingFrameGuard pfg(this, newBase, newTotalCount);
 
                 if (fnDef->hasRestParam) {
                     int fixedMax = fnDef->maxArity - 1;
@@ -607,7 +611,6 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                     populateRefParams(*currentFrame, fnDef.get());
                     profileFrameStart(currentFrame);
                     
-                    int newTotalCount = fnDef->localCount + fnDef->refCount;
                     for (int i = newTotalCount; i < oldTotalCount; ++i) {
                         registers[newBase + i] = Value::none();
                     }
@@ -798,6 +801,9 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
             newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
         }
         
+        int newTotalCount = fnDef->localCount + fnDef->refCount;
+        PendingFrameGuard pfg(this, newBase, newTotalCount);
+
         newFrame.registerBase = newBase;
         newFrame.returnRegister = 0;
         newFrame.deferBase = static_cast<int>(deferStack.size());
@@ -1240,6 +1246,8 @@ invoke_method:
         
         int totalArgc = argc;
         int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+        int newTotalCount = fnDef->localCount + fnDef->refCount;
+        PendingFrameGuard pfg(this, newBase, newTotalCount);
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -1296,7 +1304,6 @@ invoke_method:
             populateRefParams(*currentFrame, fnDef.get());
             profileFrameStart(currentFrame);
             
-            int newTotalCount = fnDef->localCount + fnDef->refCount;
             for (int i = newTotalCount; i < oldTotalCount; ++i) {
                 registers[newBase + i] = Value::none();
             }
@@ -1384,6 +1391,8 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
         
         int totalArgc = argc;
         int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+        int newTotalCount = fnDef->localCount + fnDef->refCount;
+        PendingFrameGuard pfg(this, newBase, newTotalCount);
 
         if (fnDef->hasRestParam) {
             int fixedMax = fnDef->maxArity - 1;
@@ -1440,7 +1449,6 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
             populateRefParams(*currentFrame, fnDef.get());
             profileFrameStart(currentFrame);
             
-            int newTotalCount = fnDef->localCount + fnDef->refCount;
             for (int i = newTotalCount; i < oldTotalCount; ++i) {
                 registers[newBase + i] = Value::none();
             }
@@ -2006,7 +2014,11 @@ Value VM::execImport(const std::string& name) {
         newFrame.ip = 0;
         
         CallFrame* currentFrame = &frames[frameCount - 1];
-        newFrame.registerBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+        int newTotalCount = modFn->localCount + modFn->refCount;
+        PendingFrameGuard pfg(this, newBase, newTotalCount);
+
+        newFrame.registerBase = newBase;
         newFrame.returnRegister = 0;
         newFrame.deferBase = static_cast<int>(deferStack.size());
         newFrame.closure = nullptr;
@@ -2128,12 +2140,15 @@ void VM::execCompileTimeImport(const std::string& name) {
     newFrame.chunk = &modFn->chunk;
     newFrame.ip = 0;
     
+    int newBase = 0;
     if (frameCount > 0) {
         CallFrame* prev = &frames[frameCount - 1];
-        newFrame.registerBase = prev->registerBase + prev->function->localCount + prev->function->refCount;
-    } else {
-        newFrame.registerBase = 0;
+        newBase = prev->registerBase + prev->function->localCount + prev->function->refCount;
     }
+    int newTotalCount = modFn->localCount + modFn->refCount;
+    PendingFrameGuard pfg(this, newBase, newTotalCount);
+
+    newFrame.registerBase = newBase;
     newFrame.returnRegister = 0;
     newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = nullptr;
@@ -2442,6 +2457,12 @@ VM::VM() {
             GcHeap::get().markValue(registers[i]);
         }
         
+        if (pendingFrameBase >= 0 && pendingFrameCount > 0) {
+            for (int i = 0; i < pendingFrameCount; ++i) {
+                GcHeap::get().markValue(registers[pendingFrameBase + i]);
+            }
+        }
+        
         ObjUpVal* uv = openUpvalues;
         while (uv) {
             GcHeap::get().markObj(uv);
@@ -2528,6 +2549,9 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
     }
     
+    int newTotalCount = fnDef->localCount + fnDef->refCount;
+    PendingFrameGuard pfg(this, newBase, newTotalCount);
+
     newFrame.registerBase = newBase;
     newFrame.returnRegister = 0;
     newFrame.deferBase = static_cast<int>(deferStack.size());
@@ -2612,12 +2636,15 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     mainFrame.chunk = &mainChunk;
     mainFrame.ip = 0;
     
+    int newBase = 0;
     if (frameCount > 0) {
         CallFrame* prev = &frames[frameCount - 1];
-        mainFrame.registerBase = prev->registerBase + prev->function->localCount + prev->function->refCount;
-    } else {
-        mainFrame.registerBase = 0;
+        newBase = prev->registerBase + prev->function->localCount + prev->function->refCount;
     }
+    int newTotalCount = mainFn->localCount + mainFn->refCount;
+    PendingFrameGuard pfg(this, newBase, newTotalCount);
+
+    mainFrame.registerBase = newBase;
     mainFrame.returnRegister = 0;
     mainFrame.deferBase = static_cast<int>(deferStack.size());
     
@@ -3157,7 +3184,11 @@ Value VM::run(int targetFrameDepth) {
                         newFrame.function = fnDef.get();
                         newFrame.chunk = &fnDef->chunk;
                         newFrame.ip = 0;
-                        newFrame.registerBase = vm->frames[vm->frameCount - 1].registerBase + vm->frames[vm->frameCount - 1].function->localCount + vm->frames[vm->frameCount - 1].function->refCount;
+                        int newBase = vm->frames[vm->frameCount - 1].registerBase + vm->frames[vm->frameCount - 1].function->localCount + vm->frames[vm->frameCount - 1].function->refCount;
+                        int newTotalCount = fnDef->localCount + fnDef->refCount;
+                        PendingFrameGuard pfg(vm, newBase, newTotalCount);
+
+                        newFrame.registerBase = newBase;
                         newFrame.returnRegister = 0;
                         newFrame.closure = closure;
                         newFrame.selfContext = s;

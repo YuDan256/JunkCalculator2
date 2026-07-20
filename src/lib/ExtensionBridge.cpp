@@ -6,17 +6,24 @@
 
 namespace jc {
 
+thread_local std::vector<Value> nativeTempRefs;
+
 static inline Value from_handle(JC2_ValueHandle h) { Value v; v.as_bits = h; return v; }
+
+static inline JC2_ValueHandle protect(const Value& v) {
+    if (v.isObj()) nativeTempRefs.push_back(v);
+    return v.as_bits;
+}
 
 static JC2_ValueHandle host_make_none(JC2_VMContext) { return Value::none().as_bits; }
 static JC2_ValueHandle host_make_bool(JC2_VMContext, bool b) { return Value(b).as_bits; }
 static JC2_ValueHandle host_make_int(JC2_VMContext, int32_t i) { return Value(i).as_bits; }
 static JC2_ValueHandle host_make_double(JC2_VMContext, double d) { return Value(d).as_bits; }
 static JC2_ValueHandle host_make_string(JC2_VMContext, const char* str, size_t len) {
-    return Value(std::string(str, len)).as_bits;
+    return protect(Value(std::string(str, len)));
 }
 static JC2_ValueHandle host_make_complex(JC2_VMContext, double r, double i) {
-    return Value(Complex(r, i)).as_bits;
+    return protect(Value(Complex(r, i)));
 }
 
 static bool host_is_none(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isNone(); }
@@ -61,7 +68,7 @@ static double host_complex_get_imag(JC2_VMContext, JC2_ValueHandle v) {
 static JC2_ValueHandle host_make_class(JC2_VMContext, const char* name) {
     ObjClass* cls = GcHeap::get().allocate<ObjClass>();
     cls->name = name;
-    return Value(cls).as_bits;
+    return protect(Value(cls));
 }
 
 static JC2_ValueHandle host_make_instance(JC2_VMContext, JC2_ValueHandle class_handle) {
@@ -69,7 +76,7 @@ static JC2_ValueHandle host_make_instance(JC2_VMContext, JC2_ValueHandle class_h
     if (!clsVal.isClass()) throw std::runtime_error("Type Error: make_instance expects a Class handle.");
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
     inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
-    return Value(inst).as_bits;
+    return protect(Value(inst));
 }
 
 static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data) {
@@ -78,6 +85,7 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
     ObjClass* cls = static_cast<ObjClass*>(clsVal.asObj());
     
     NativeCallable callable = [fn, user_data](const std::vector<Value>& args) -> Value {
+        size_t old_size = nativeTempRefs.size();
         std::vector<JC2_ValueHandle> c_args;
         c_args.reserve(args.size() + 1);
         if (!jc::helpers::nativeSelfStack.empty()) {
@@ -88,8 +96,11 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
         for (size_t i = 0; i < args.size(); ++i) c_args.push_back(args[i].as_bits);
         try {
             JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(c_args.size()), c_args.data(), user_data);
-            return from_handle(res);
+            Value ret = from_handle(res);
+            nativeTempRefs.resize(old_size);
+            return ret;
         } catch (...) {
+            nativeTempRefs.resize(old_size);
             throw;
         }
     };
@@ -139,13 +150,17 @@ static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const ch
     ModuleLoadContext* mctx = static_cast<ModuleLoadContext*>(mod);
     
     NativeCallable callable = [fn, user_data](const std::vector<Value>& args) -> Value {
+        size_t old_size = nativeTempRefs.size();
         std::vector<JC2_ValueHandle> c_args(args.size());
         for (size_t i = 0; i < args.size(); ++i) c_args[i] = args[i].as_bits;
         
         try {
             JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(args.size()), c_args.data(), user_data);
-            return from_handle(res);
+            Value ret = from_handle(res);
+            nativeTempRefs.resize(old_size);
+            return ret;
         } catch (...) {
+            nativeTempRefs.resize(old_size);
             throw; // 拦截 C++ 异常，交由 VM 处理
         }
     };
@@ -187,7 +202,7 @@ static void host_throw_error(JC2_VMContext, const char* msg) {
 
 static JC2_ValueHandle host_make_list(JC2_VMContext) {
     ObjList* list = GcHeap::get().allocate<ObjList>();
-    return Value(list).as_bits;
+    return protect(Value(list));
 }
 
 static void host_list_push(JC2_VMContext, JC2_ValueHandle list, JC2_ValueHandle val) {
@@ -209,7 +224,7 @@ static JC2_ValueHandle host_list_get(JC2_VMContext, JC2_ValueHandle list, size_t
     Value l = from_handle(list);
     if (l.isObjType(ObjType::LIST)) {
         auto& vec = static_cast<ObjList*>(l.asObj())->vec;
-        if (index < vec.size()) return vec[index].as_bits;
+        if (index < vec.size()) return protect(vec[index]);
     }
     return Value::none().as_bits;
 }
@@ -220,7 +235,7 @@ static bool host_is_list(JC2_VMContext, JC2_ValueHandle v) {
 
 static JC2_ValueHandle host_make_dict(JC2_VMContext) {
     ObjDict* dict = GcHeap::get().allocate<ObjDict>();
-    return Value(dict).as_bits;
+    return protect(Value(dict));
 }
 
 static void host_dict_set(JC2_VMContext, JC2_ValueHandle dict, JC2_ValueHandle key, JC2_ValueHandle val) {
@@ -236,7 +251,7 @@ static JC2_ValueHandle host_dict_get(JC2_VMContext, JC2_ValueHandle dict, JC2_Va
         ObjDict* obj = static_cast<ObjDict*>(d.asObj());
         Value k = from_handle(key);
         auto it = obj->keyMap.find(k);
-        if (it != obj->keyMap.end()) return obj->elements[it->second].second.as_bits;
+        if (it != obj->keyMap.end()) return protect(obj->elements[it->second].second);
     }
     return Value::none().as_bits;
 }
@@ -263,7 +278,7 @@ static bool host_is_dict(JC2_VMContext, JC2_ValueHandle v) {
 }
 
 static JC2_ValueHandle host_make_real_matrix(JC2_VMContext, int rows, int cols) {
-    return Value(RealMatrix(rows, cols)).as_bits;
+    return protect(Value(RealMatrix(rows, cols)));
 }
 
 static double host_real_matrix_get(JC2_VMContext, JC2_ValueHandle mat, int row, int col) {
@@ -302,7 +317,7 @@ static bool host_is_real_matrix(JC2_VMContext, JC2_ValueHandle v) {
 }
 
 static JC2_ValueHandle host_make_complex_matrix(JC2_VMContext, int rows, int cols) {
-    return Value(ComplexMatrix(rows, cols)).as_bits;
+    return protect(Value(ComplexMatrix(rows, cols)));
 }
 
 static double host_complex_matrix_get_real(JC2_VMContext, JC2_ValueHandle mat, int row, int col) {
@@ -339,7 +354,7 @@ static bool host_is_complex_matrix(JC2_VMContext, JC2_ValueHandle v) {
 }
 
 static JC2_ValueHandle host_make_string_matrix(JC2_VMContext, int rows, int cols) {
-    return Value(StringMatrix(rows, cols)).as_bits;
+    return protect(Value(StringMatrix(rows, cols)));
 }
 
 static const char* host_string_matrix_get(JC2_VMContext, JC2_ValueHandle mat, int row, int col, size_t* out_len) {
@@ -377,7 +392,7 @@ static bool host_is_string_matrix(JC2_VMContext, JC2_ValueHandle v) {
 
 static JC2_ValueHandle host_make_set(JC2_VMContext) {
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
-    return Value(set).as_bits;
+    return protect(Value(set));
 }
 
 static void host_set_add(JC2_VMContext, JC2_ValueHandle set, JC2_ValueHandle val) {
@@ -416,7 +431,7 @@ static bool host_is_set(JC2_VMContext, JC2_ValueHandle v) {
 }
 
 static JC2_ValueHandle host_make_bigint(JC2_VMContext, const char* str) {
-    try { return Value(BigInt(std::string(str))).as_bits; }
+    try { return protect(Value(BigInt(std::string(str)))); }
     catch (...) { return Value::none().as_bits; }
 }
 
@@ -436,19 +451,19 @@ static bool host_is_bigint(JC2_VMContext, JC2_ValueHandle v) {
 
 static JC2_ValueHandle host_make_fraction(JC2_VMContext, JC2_ValueHandle num, JC2_ValueHandle den) {
     try {
-        return Value(Fraction(from_handle(num).asBigInt(), from_handle(den).asBigInt())).as_bits;
+        return protect(Value(Fraction(from_handle(num).asBigInt(), from_handle(den).asBigInt())));
     } catch (...) { return Value::none().as_bits; }
 }
 
 static JC2_ValueHandle host_fraction_get_num(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
-    if (val.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(val.asObj())->frac.getNum()).as_bits;
+    if (val.isObjType(ObjType::FRACTION)) return protect(Value(static_cast<ObjFraction*>(val.asObj())->frac.getNum()));
     return Value::none().as_bits;
 }
 
 static JC2_ValueHandle host_fraction_get_den(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
-    if (val.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(val.asObj())->frac.getDen()).as_bits;
+    if (val.isObjType(ObjType::FRACTION)) return protect(Value(static_cast<ObjFraction*>(val.asObj())->frac.getDen()));
     return Value::none().as_bits;
 }
 
@@ -459,7 +474,7 @@ static bool host_is_fraction(JC2_VMContext, JC2_ValueHandle v) {
 static JC2_ValueHandle host_make_namespace(JC2_VMContext, const char* name) {
     ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
     ns->name = name;
-    return Value(ns).as_bits;
+    return protect(Value(ns));
 }
 
 static void host_namespace_set(JC2_VMContext, JC2_ValueHandle ns, const char* key, JC2_ValueHandle val) {
@@ -483,7 +498,7 @@ static JC2_ValueHandle host_namespace_get(JC2_VMContext, JC2_ValueHandle ns, con
         ObjNamespace* obj = static_cast<ObjNamespace*>(n.asObj());
         auto it = obj->fields.find(key);
         if (it != obj->fields.end() && it->second.upval && it->second.upval->location) {
-            return it->second.upval->location->as_bits;
+            return protect(*(it->second.upval->location));
         }
     }
     return Value::none().as_bits;
@@ -505,7 +520,7 @@ static JC2_ValueHandle host_get_class(JC2_VMContext, JC2_ValueHandle inst) {
     Value i = from_handle(inst);
     if (i.isInstance()) {
         ObjClass* cls = i.asInstance()->classDef;
-        if (cls) return Value(cls).as_bits;
+        if (cls) return protect(Value(cls));
     }
     return Value::none().as_bits;
 }
@@ -518,7 +533,7 @@ static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle in
             Value key = Value(std::string(name));
             auto it = obj->fields->keyMap.find(key);
             if (it != obj->fields->keyMap.end()) {
-                return obj->fields->elements[it->second].second.as_bits;
+                return protect(obj->fields->elements[it->second].second);
             }
         }
     }
@@ -541,7 +556,7 @@ static JC2_ValueHandle host_dict_keys(JC2_VMContext, JC2_ValueHandle dict) {
         for (const auto& kv : static_cast<ObjDict*>(d.asObj())->elements) {
             list->vec.push_back(kv.first);
         }
-        return Value(list).as_bits;
+        return protect(Value(list));
     }
     return Value::none().as_bits;
 }
@@ -551,11 +566,11 @@ static JC2_ValueHandle host_get_global(JC2_VMContext, const char* name) {
     auto globals = VM::activeVM->getGlobals();
     auto it = globals.find(name);
     if (it != globals.end()) {
-        return it->second.as_bits;
+        return protect(it->second);
     }
     Value builtinVal = VM::activeVM->getBuiltinClosure(name);
     if (!builtinVal.isNone()) {
-        return builtinVal.as_bits;
+        return protect(builtinVal);
     }
     return Value::none().as_bits;
 }
@@ -564,7 +579,7 @@ static JC2_ValueHandle host_to_string(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
     std::ostringstream oss;
     oss << val;
-    return Value(std::string(oss.str())).as_bits;
+    return protect(Value(std::string(oss.str())));
 }
 
 static JC2_ValueHandle host_call_function(JC2_VMContext, JC2_ValueHandle func, int argc, JC2_ValueHandle* argv) {
@@ -572,7 +587,7 @@ static JC2_ValueHandle host_call_function(JC2_VMContext, JC2_ValueHandle func, i
     if (!f.isFunctionClosure()) return Value::none().as_bits;
     std::vector<Value> args(argc);
     for (int i = 0; i < argc; ++i) args[i] = from_handle(argv[i]);
-    return jc::helpers::safeCallFunction(static_cast<ObjClosure*>(f.asObj()), args).as_bits;
+    return protect(jc::helpers::safeCallFunction(static_cast<ObjClosure*>(f.asObj()), args));
 }
 
 static bool host_is_function(JC2_VMContext, JC2_ValueHandle v) {

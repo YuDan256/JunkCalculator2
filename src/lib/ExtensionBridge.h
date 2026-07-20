@@ -10,6 +10,8 @@
 
 namespace jc {
 
+extern thread_local std::vector<Value> nativeTempRefs;
+
 struct ModuleLoadContext {
     std::unordered_map<std::string, Value>* env;
     std::unordered_map<std::string, std::function<Value(const std::vector<Value>&)>>* builtins;

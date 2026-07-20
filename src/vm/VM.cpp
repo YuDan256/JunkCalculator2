@@ -1919,7 +1919,9 @@ Value VM::execImport(const std::string& name) {
 
         ModuleLoadContext mctx = { &tempGlobals, &tempNatives, &tempArity };
 
+        size_t old_size = jc::nativeTempRefs.size();
         int res = init_fn(reinterpret_cast<JC2_VMContext>(this), &mctx, get_host_api());
+        jc::nativeTempRefs.resize(old_size);
         if (res != 0) {
             loadedModules.erase(name);
             throw std::runtime_error("VM Error: Extension initialization failed with code " + std::to_string(res));
@@ -2491,6 +2493,7 @@ VM::VM() {
 
         for (auto& v : helpers::nativeSelfStack) GcHeap::get().markValue(v);
         for (auto& v : helpers::nativeClassStack) GcHeap::get().markValue(v);
+        for (auto& v : jc::nativeTempRefs) GcHeap::get().markValue(v);
         
         for (auto& fn : compiledFunctions) {
             if (fn) {

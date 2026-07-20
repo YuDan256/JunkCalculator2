@@ -2369,6 +2369,7 @@ void VM::profileFrameStart(CallFrame* frame) {
     if (!g_profile) return;
     frame->startTime = std::chrono::steady_clock::now();
     frame->childTimeMs = 0.0;
+    frame->instructionCount = 0;
 }
 
 void VM::profileFrameEnd(CallFrame* frame) {
@@ -2380,6 +2381,7 @@ void VM::profileFrameEnd(CallFrame* frame) {
     record.callCount++;
     record.totalTimeMs += elapsed;
     record.selfTimeMs += (elapsed - frame->childTimeMs);
+    record.instructionCount += frame->instructionCount;
     if (frameCount > 1) {
         frames[frameCount - 2].childTimeMs += elapsed;
     }
@@ -2390,9 +2392,10 @@ void VM::printProfileInfo() {
     std::cout << "\n" << jc::col(jc::Ansi::BRIGHT_CYAN) << "=== Profiler Results ===" << jc::col(jc::Ansi::RESET) << "\n";
     std::cout << std::left << std::setw(30) << "Function" 
               << std::right << std::setw(10) << "Calls" 
+              << std::setw(15) << "Insts" 
               << std::setw(15) << "Total(ms)" 
               << std::setw(15) << "Self(ms)" << "\n";
-    std::cout << std::string(70, '-') << "\n";
+    std::cout << std::string(85, '-') << "\n";
     
     std::vector<std::pair<std::string, ProfileRecord>> sortedData(profileData.begin(), profileData.end());
     std::sort(sortedData.begin(), sortedData.end(), [](const auto& a, const auto& b) {
@@ -2404,10 +2407,11 @@ void VM::printProfileInfo() {
         if (dispName.length() > 28) dispName = dispName.substr(0, 25) + "...";
         std::cout << std::left << std::setw(30) << dispName 
                   << std::right << std::setw(10) << record.callCount 
+                  << std::setw(15) << record.instructionCount
                   << std::setw(15) << std::fixed << std::setprecision(3) << record.totalTimeMs 
                   << std::setw(15) << std::fixed << std::setprecision(3) << record.selfTimeMs << "\n";
     }
-    std::cout << std::string(70, '-') << "\n";
+    std::cout << std::string(85, '-') << "\n";
 }
 
 VM::VM() {
@@ -2879,6 +2883,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 }
+                if (g_profile) frame->instructionCount++;
                 Instruction instruction = code[ip++];
                 OpCode op = static_cast<OpCode>(instruction & 0xFF);
                 

@@ -34,6 +34,7 @@ struct CallFrame {
     
     std::chrono::time_point<std::chrono::steady_clock> startTime;
     double childTimeMs = 0.0;
+    uint64_t instructionCount = 0;
 };
 
 // ============================================================================
@@ -84,6 +85,7 @@ private:
         int callCount = 0;
         double totalTimeMs = 0.0;
         double selfTimeMs = 0.0;
+        uint64_t instructionCount = 0;
     };
     std::unordered_map<std::string, ProfileRecord> profileData;
     void profileFrameStart(CallFrame* frame);

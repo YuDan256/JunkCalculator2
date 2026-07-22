@@ -1528,11 +1528,13 @@
       "",
       "  Namespaces (Dynamic Modules)",
       "  ──────────────────────",
-      "    namespace Math {",
+      "    const Math = namespace {",
       "        local seed = 12345         // Private (not exported)",
       "        const PI = 3.14            // Public immutable",
       "        add(a, b) = a + b          // Public method",
       "    }",
+      "    • Anonymous & Sugar: `namespace Math {}` is sugar for `Math = namespace {}`.",
+      "    • Self-Reference: Inside the block, `namespace` evaluates to the namespace itself.",
       "    • Dynamic: Add/modify/delete members at runtime (Math.E = 2.718).",
       "    • Dict-Like: Supports keys(), values(), for-in loops.",
       "    • Freezing: `freeze(Math)` locks it, making it hashable.",
@@ -2674,8 +2676,8 @@
       "",
       "  ★ OOP & Modules",
       "  ──────────────────────",
-      "    ClassDefExpr   name (str), superClassExpr (ASTNode), methods (List of MethodDef)",
-      "    NamespaceDecl  name (str), body (ASTNode)",
+      "    ClassDefExpr   name (str, optional), superClassExpr (ASTNode), methods (List of MethodDef)",
+      "    NamespaceDecl  name (str, optional), body (ASTNode)",
       "    SuperExpr      (no extra fields)",
       "    SelfExpr       (no extra fields)",
       "    ImportExpr     path (ASTNode)",
@@ -5914,12 +5916,13 @@
       ]
     },
     "namespace": {
-      "signature": "namespace Name { ... }",
+      "signature": "namespace [Name] { ... }  |  namespace",
       "desc": [
-        "Creates a namespace to group related functions and variables.",
-        "You can access its members using the dot operator (e.g., Name.member)",
-        "or bracket indexing (e.g., Name[\"member\"]).",
-        "Variables declared with `local` are private and will not be exported.",
+        "Creates a namespace, or refers to the current namespace.",
+        "• `namespace Name { ... }` is syntactic sugar for `Name = namespace { ... }`.",
+        "• Can be used anonymously as an expression: `Math = namespace { ... }`.",
+        "• Inside the block, the `namespace` keyword evaluates to the namespace object itself.",
+        "• Variables declared with `local` are private and will not be exported.",
         "",
         "★ Dynamic & Dict-Like:",
         "Namespaces are fully dynamic. You can add, modify, or delete members",
@@ -5931,28 +5934,32 @@
         "to make it hashable."
       ],
       "examples": [
-        "namespace Math { local seed = 1; const PI = 3.14; add(a, b) = a + b }",
-        "Math.E = 2.718",
-        "for ([k, v] in Math) print(k, v)"
+        "const Math = namespace {",
+        "    const PI = 3.14",
+        "    add(a, b) = a + b",
+        "    register() = Global.add(namespace) // Self-reference",
+        "}",
+        "Math.E = 2.718"
       ]
     },
     "class": {
-      "signature": "class Name [extends Parent] { init(...) = {...}  method(...) = ... }",
+      "signature": "class [Name] [extends Parent] { ... }  |  class",
       "desc": [
-        "Defines a new class with methods and an optional constructor.",
+        "Defines a new class, or refers to the current class.",
+        "• `class Name { ... }` is syntactic sugar for `Name = class { ... }`.",
+        "• Can be used anonymously as an expression: `Point = class { ... }`.",
+        "• Inside methods, the `class` keyword evaluates to the current class object.",
         "• `init(...)` is the constructor, called on instantiation.",
         "• `self` refers to the current instance inside methods.",
         "• Supports single inheritance via `extends`.",
-        "• Operator overloading via dunder methods (__add__, __str__, etc.).",
-        "Note: The class name MUST be on the same line as `class`.",
         "See also: /help class (topic) for full details"
       ],
       "examples": [
-        "class Point {",
+        "const Point = class {",
         "    init(x, y) = { self.x = x; self.y = y }",
-        "    dist() = sqrt(self.x^2 + self.y^2)",
+        "    clone() = class(self.x, self.y)  // Self-reference",
         "}",
-        "p = Point(3, 4); p.dist()  // → 5"
+        "p = Point(3, 4); p2 = p.clone()"
       ]
     },
     "extends": {

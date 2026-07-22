@@ -28,9 +28,14 @@ private:
     std::vector<int> deferCounts;
     int activeTryCount = 0;
 
+    std::vector<std::unordered_set<std::string>> localVarsStack;
+    std::vector<std::unordered_set<std::string>> constVarsStack;
+
     void pushScope() {
         envStack.emplace_back();
         deferCounts.push_back(0);
+        localVarsStack.push_back(currentLocalVars);
+        constVarsStack.push_back(currentConstVars);
     }
 
     void popScope() {
@@ -43,6 +48,10 @@ private:
             currentControl = runNode;
         }
         envStack.pop_back();
+        currentLocalVars = localVarsStack.back();
+        localVarsStack.pop_back();
+        currentConstVars = constVarsStack.back();
+        constVarsStack.pop_back();
     }
 
     IRBuilder* parent = nullptr;

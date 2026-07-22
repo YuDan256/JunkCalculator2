@@ -1601,6 +1601,10 @@ void IRBuilder::visitAssign(Assign* expr) {
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
     
+    if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
+        if (valNode->name.empty()) valNode->name = expr->name.lexeme;
+    }
+    
     if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;
     
     writeVariable(expr->name.lexeme, valNode, sym, expr->isLocal, expr->isConst);
@@ -1661,18 +1665,6 @@ void IRBuilder::hoistBlock(Block* block) {
                         }
                     }
                 }
-            }
-        } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-            auto it = exprSymbols->find(clsDef);
-            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            if (sym.scope != VarScope::Global) {
-                hoistVar(clsDef->name.lexeme, false);
-            }
-        } else if (auto* nsDecl = dynamic_cast<NamespaceDecl*>(stmt.get())) {
-            auto it = exprSymbols->find(nsDecl);
-            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            if (sym.scope != VarScope::Global) {
-                hoistVar(nsDecl->name.lexeme, false);
             }
         }
     }
@@ -2353,6 +2345,10 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
 
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
+
+    if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
+        if (valNode->name.empty()) valNode->name = expr->name.lexeme;
+    }
 
     if (hasSlice) {
         std::vector<IRNode*> sliceArgs;
@@ -3388,9 +3384,15 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         currentControl = inheritNode;
     }
         
-    auto it = exprSymbols->find(expr);
-    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-    writeVariable(expr->name.lexeme, classNode, sym, false, false);
+    pushScope();
+    declareVariable("<class>", classNode);
+    currentLocalVars.insert("<class>");
+    currentConstVars.insert("<class>");
+    if (!expr->name.lexeme.empty()) {
+        declareVariable(expr->name.lexeme, classNode);
+        currentLocalVars.insert(expr->name.lexeme);
+        currentConstVars.insert(expr->name.lexeme);
+    }
         
     for (auto& method : expr->methods) {
         if (compiledFunctions) {
@@ -3459,6 +3461,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         }
     }
         
+    popScope();
     lastValue = classNode;
 }
 
@@ -3469,10 +3472,18 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     namespaceScopeDepth = static_cast<int>(envStack.size());
     pushScope();
     
-    auto prevLocalVars = currentLocalVars;
-    auto prevConstVars = currentConstVars;
     currentLocalVars.clear();
     currentConstVars.clear();
+    
+    IRNode* nsSelfNode = graph->createNode(IROp::Nop);
+    declareVariable("<namespace>", nsSelfNode);
+    currentLocalVars.insert("<namespace>");
+    currentConstVars.insert("<namespace>");
+    if (!expr->name.lexeme.empty()) {
+        declareVariable(expr->name.lexeme, nsSelfNode);
+        currentLocalVars.insert(expr->name.lexeme);
+        currentConstVars.insert(expr->name.lexeme);
+    }
     
     if (auto* block = dynamic_cast<Block*>(expr->body.get())) {
         hoistBlock(block);
@@ -3497,8 +3508,6 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     
     popScope();
     namespaceScopeDepth = prevNamespaceDepth;
-    currentLocalVars = prevLocalVars;
-    currentConstVars = prevConstVars;
     
     IRNode* nsNode = graph->createValueNode(IROp::BuildNamespace);
     nsNode->setControl(currentControl);
@@ -3530,9 +3539,14 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     nsNode->payload1 = static_cast<uint32_t>(exportedKeys.size());
     currentControl = nsNode;
     
-    auto it = exprSymbols->find(expr);
-    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-    writeVariable(expr->name.lexeme, nsNode, sym, false, false);
+    nsSelfNode->forwarding = nsNode;
+    for (auto& nPtr : graph->getNodes()) {
+        IRNode* n = nPtr.get();
+        for (auto& din : n->dataInputs) {
+            if (din == nsSelfNode) din = nsNode;
+        }
+    }
+    
     lastValue = nsNode;
 }
     
@@ -3569,6 +3583,10 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
         
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
+        
+    if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
+        if (valNode->name.empty()) valNode->name = expr->field.lexeme;
+    }
         
     IRNode* node = graph->createValueNode(IROp::SetProperty);
     node->setControl(currentControl);

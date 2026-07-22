@@ -37,3 +37,24 @@ test_namespace_freeze() = {
     assert(caught, "Namespace freeze failed to protect")
 }
 test_namespace_freeze()
+
+test_anonymous_namespace_and_self_ref() = {
+    const Factory = namespace {
+        val = 42
+        
+        // 返回命名空间自身
+        get_self() = namespace
+        
+        // 动态向自身挂载属性
+        register(k, v) = {
+            namespace[k] = v
+        }
+    }
+    
+    assert(Factory.val == 42, "Anonymous namespace property access failed")
+    assert(Factory.get_self() == Factory, "The 'namespace' keyword should evaluate to the namespace itself")
+    
+    Factory.register("dynamic_field", 100)
+    assert(Factory.dynamic_field == 100, "Self-reference mutation failed")
+}
+test_anonymous_namespace_and_self_ref()

@@ -130,12 +130,6 @@ void Resolver::hoistBlock(Block* block) {
             else if (destAssign->isRef) mod = ScopeModifier::Ref;
             else if (destAssign->isState) mod = ScopeModifier::State;
             resolvePattern(destAssign->pattern.get(), true, mod, destAssign->isConst);
-        } else if (auto* clsDef = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-            checkExplicitDecl(clsDef, clsDef->name.lexeme);
-            declareVariable(clsDef->name.lexeme, VarScope::Local, false, false);
-        } else if (auto* nsDecl = dynamic_cast<NamespaceDecl*>(stmt.get())) {
-            checkExplicitDecl(nsDecl, nsDecl->name.lexeme);
-            declareVariable(nsDecl->name.lexeme, VarScope::Local, false, false);
         }
     }
 }
@@ -310,9 +304,13 @@ void Resolver::visitSwitchExpr(SwitchExpr* expr) {
 
 void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     if (expr->superClassExpr) resolve(expr->superClassExpr.get());
-    checkExplicitDecl(expr, expr->name.lexeme);
-    declareVariable(expr->name.lexeme, VarScope::Local, false, false);
-    exprSymbols[expr] = resolveName(expr->name.lexeme);
+    
+    beginScope(false, false);
+    declareVariable("<class>", VarScope::Local, true, true);
+    if (!expr->name.lexeme.empty()) {
+        declareVariable(expr->name.lexeme, VarScope::Local, true, true);
+    }
+    
     for (auto& m : expr->methods) {
         beginScope(true, false);
         for (size_t i = 0; i < m.params.size(); ++i) {
@@ -327,13 +325,15 @@ void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
         resolve(m.body.get());
         endScope();
     }
+    endScope();
 }
 
 void Resolver::visitNamespaceDecl(NamespaceDecl* expr) {
-    checkExplicitDecl(expr, expr->name.lexeme);
-    declareVariable(expr->name.lexeme, VarScope::Local, false, false);
-    exprSymbols[expr] = resolveName(expr->name.lexeme);
     beginScope(false, true);
+    declareVariable("<namespace>", VarScope::Local, true, true);
+    if (!expr->name.lexeme.empty()) {
+        declareVariable(expr->name.lexeme, VarScope::Local, true, true);
+    }
     resolve(expr->body.get());
     endScope();
 }

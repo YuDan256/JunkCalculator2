@@ -976,14 +976,18 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                 methods.push_back(std::move(method));
             }
         }
+        std::string clsName = "";
+        if (getProp("name").isString()) clsName = getProp("name").asString();
         return std::make_unique<ClassDefExpr>(
-            Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
+            Token(TokenType::IDENTIFIER, clsName, line),
             JC2_to_AST(getProp("superClassExpr")),
             std::move(methods)
         );
     } else if (type == "NamespaceDecl") {
+        std::string nsName = "";
+        if (getProp("name").isString()) nsName = getProp("name").asString();
         return std::make_unique<NamespaceDecl>(
-            Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
+            Token(TokenType::IDENTIFIER, nsName, line),
             JC2_to_AST(getProp("body"))
         );
     } else if (type == "DestructAssign") {

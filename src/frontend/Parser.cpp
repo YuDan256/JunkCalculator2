@@ -1121,8 +1121,18 @@ namespace jc {
         if (match({ TokenType::NONE_KW }))  return std::make_unique<Literal>("none", false, false, true);
         if (match({ TokenType::SUPER }))    return std::make_unique<SuperExpr>();
         if (match({ TokenType::SELF }))     return std::make_unique<SelfExpr>();
-        if (match({ TokenType::CLASS }))    return classDefExpr();
-        if (match({ TokenType::NAMESPACE })) return namespaceExpr();
+        if (match({ TokenType::CLASS })) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
+                return classDefExpr();
+            }
+            return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "<class>", previous().position, previous().line));
+        }
+        if (match({ TokenType::NAMESPACE })) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
+                return namespaceExpr();
+            }
+            return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "<namespace>", previous().position, previous().line));
+        }
         if (match({ TokenType::IF }))       return ifExpr();
         if (match({ TokenType::WHILE }))    return whileExpr();
         if (match({ TokenType::FOR }))      return forExpr();
@@ -2610,14 +2620,20 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::namespaceExpr() {
-        Token name(TokenType::ERROR, "");
+        Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
+        bool isNamed = false;
+
         if (match({ TokenType::DOLLAR })) {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
             name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
-        } else {
-            name = consume(TokenType::IDENTIFIER, "Parser Error: Expect namespace name.");
+            isNamed = true;
+        } else if (check(TokenType::IDENTIFIER)) {
+            name = advance();
+            isNamed = true;
         }
-        consume(TokenType::LBRACE, "Parser Error: Expect '{' after namespace name.");
+
+        while (match({ TokenType::NEWLINE })) {}
+        consume(TokenType::LBRACE, "Parser Error: Expect '{' after namespace definition.");
         MacroScopeGuard guard(this);
         std::vector<std::unique_ptr<Expr>> stmts;
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
@@ -2637,16 +2653,24 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after namespace body.");
-        return std::make_unique<NamespaceDecl>(name, std::make_unique<Block>(std::move(stmts)));
+        auto nsExpr = std::make_unique<NamespaceDecl>(name, std::make_unique<Block>(std::move(stmts)));
+        if (isNamed) {
+            return std::make_unique<Assign>(name, std::move(nsExpr), false, false, false, false);
+        }
+        return nsExpr;
     }
 
     std::unique_ptr<Expr> Parser::classDefExpr() {
-        Token name(TokenType::ERROR, "");
+        Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
+        bool isNamed = false;
+
         if (match({ TokenType::DOLLAR })) {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
             name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
-        } else {
-            name = consume(TokenType::IDENTIFIER, "Parser Error: Expect class name after 'class'.");
+            isNamed = true;
+        } else if (check(TokenType::IDENTIFIER) && peek().lexeme != "extends") {
+            name = advance();
+            isNamed = true;
         }
 
         while (match({ TokenType::NEWLINE })) {}
@@ -2658,7 +2682,7 @@ namespace jc {
         }
 
         while (match({ TokenType::NEWLINE })) {}
-        consume(TokenType::LBRACE, "Parser Error: Expect '{' after class name.");
+        consume(TokenType::LBRACE, "Parser Error: Expect '{' after class definition.");
 
         MacroScopeGuard guard(this);
         std::vector<ClassDefExpr::MethodDef> methods;
@@ -2804,7 +2828,11 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after class body.");
-        return std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(methods));
+        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(methods));
+        if (isNamed) {
+            return std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false);
+        }
+        return classExpr;
     }
 
     std::unique_ptr<Expr> Parser::parseFString(const std::string& raw) {

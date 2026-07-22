@@ -58,3 +58,24 @@ test_super_call() = {
     assert(obj.greet() == "Hello from Base and Derived", "Super method call failed")
 }
 test_super_call()
+
+test_anonymous_class_and_self_ref() = {
+    const Point = class {
+        init(x, y) = { 
+            self.x = x
+            self.y = y 
+        }
+        // 使用 class 关键字进行自引用实例化
+        clone() = class(self.x, self.y)
+        // 返回当前类对象
+        get_class() = class
+    }
+    
+    p1 = Point(10, 20)
+    p2 = p1.clone()
+    
+    assert(p1 != p2, "Clone should be a new instance (reference inequality)")
+    assert(p2.x == 10 && p2.y == 20, "Clone should have the same field values")
+    assert(p1.get_class() == Point, "The 'class' keyword should evaluate to the class object itself")
+}
+test_anonymous_class_and_self_ref()

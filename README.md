@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.5.1.0
+# Junk Calculator 2.5.2.0
 
-![Version](https://img.shields.io/badge/Version-v2.5.1.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.2.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -69,22 +69,23 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.5.1.0
+## What's New in v2.5.2.0
 
-### Compile-Time Metaprogramming & Macros
-- **AST Macro Engine**: Introduced `macro`, `quote`, and `$` syntax for AST-level code generation and replacement at compile time.
-- **Compile-Time Imports**: Added `import @` syntax to load macros and helpers during the parsing phase, automatically unloading them afterward to ensure zero runtime scope pollution.
-- **Hygienic Macros**: Introduced the `gensym` mechanism to generate non-denotable internal identifiers, preventing variable name collisions during macro expansion.
+### Compiler & Semantic Analysis
+- **Two-Pass Resolver**: Introduced a dedicated `Resolver` phase for precise scope analysis, variable hoisting, and closure capture resolution. This completely eliminates auto-local shadowing bugs and correctly propagates scope modifiers (`local`, `state`, `ref`, `const`) in complex destructuring patterns.
+- **First-Class Definitions**: `class` and `namespace` definitions are now treated as first-class expressions. They can be defined anonymously, assigned to variables, or passed as arguments.
+- **Strict Declarations**: Added robust duplicate declaration checks with AST-based deduplication and parameter conflict detection.
+- **Built-in Shadowing**: Removed the legacy built-in function overloading mechanism. User-defined functions and variables can now cleanly shadow built-ins without ambiguity.
 
-### Structured Exceptions & Resource Management
-- **Structured Exception Objects**: Introduced a standard `Exception` class. User-thrown exceptions are now automatically boxed and populated with a complete `traceback`.
-- **Deferred Execution**: Added the `defer` keyword to automatically execute resource cleanup code when exiting the current scope (whether returning normally or throwing an exception).
-- **Precise Line Tracking**: Optimized source line mapping for control flow statements (`throw`, `return`, `break`, `continue`) during AST conversion, making error localization much more accurate.
+### VM & Profiler
+- **Performance Profiler**: Added comprehensive execution profiling (`--profile`), including function call timing (total vs. self time) and instruction count statistics. In the REPL, profiler statistics automatically reset after each command.
+- **Memory Safety & C ABI**: Enhanced C ABI memory safety with a thread-local reference stack (`nativeTempRefs`) to protect returned values. Protected pending call frame arguments from premature GC during construction.
 
-### VM & Frontend Optimizations
-- **Output Semantics Separation**: Clearly distinguished between `toString` (human-readable) and `toRepr` (debug output), significantly improving REPL and error log formatting.
-- **OOP Enhancements**: Indexing access (`obj[key]`) now automatically falls back to standard field access (`obj.key`) if the instance lacks `__getitem__` or `__setitem__` dunder methods.
-- **Module System Standardization**: Unified terminology (C-API extensions as `library`, JC2 scripts as `module`) and enhanced path resolution logic.
+### Garbage Collection & Math
+- **Immediate Reclamation**: Enabled zero-overhead immediate reclamation for zero-refCount pure data objects (e.g., `BigInt`, `Matrix`, `Complex`), significantly reducing GC pressure and memory peaks during heavy CAS computations.
+- **GC Sweep Protection**: Protected non-container objects with active C++ stack references from being incorrectly swept.
+- **Math Engine**: Fixed an incorrect trailing limb divisibility check in the `pollardRho` factorization algorithm, improving reliability for large integer factorization.
+- **Literal Parsing**: The `int()` function now natively supports parsing strings with `0x` (hex), `0b` (binary), and `0o` (octal) prefixes.
 
 ---
 

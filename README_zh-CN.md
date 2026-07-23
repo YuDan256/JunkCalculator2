@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.5.1.0
+# Junk Calculator 2.5.2.0
 
-![Version](https://img.shields.io/badge/Version-v2.5.1.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.2.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -69,22 +69,23 @@
 
 ---
 
-## v2.5.1.0 版本更新说明
+## v2.5.2.0 版本更新说明
 
-### 编译时元编程与宏系统
-- **AST 宏引擎**：全新引入 `macro`、`quote` 和 `$` 语法，支持在编译时进行 AST 级别的代码生成与替换。
-- **编译时导入**：新增 `import @` 语法，允许在编译阶段导入宏和辅助函数，解析完成后自动卸载，实现对运行时全局作用域的“零污染”。
-- **卫生宏 (Hygienic Macros)**：引入 `gensym` 机制，生成不可表示的内部标识符以防止宏展开时的变量名冲突。
+### 编译器与语义分析
+- **双趟解析器 (Resolver)**：引入了独立的语义分析阶段，将作用域解析与 IR 生成彻底剥离。大幅提升了变量提升 (Hoisting) 和闭包变量捕获的准确性，完美解决了嵌套解构赋值中的修饰符传递与 Auto-Local 遮蔽问题。
+- **第一类表达式**：将 `class` 和 `namespace` 定义正式提升为第一类表达式 (First-Class Expressions)。现在支持匿名定义、直接赋值以及作为参数传递。
+- **严格声明检查**：新增了变量重复声明检查，支持 AST 级别的去重与函数参数冲突检测。
+- **内置函数遮蔽**：移除了旧版的内置函数重载机制，用户定义的函数和变量现在可以清晰、无歧义地完全遮蔽同名内置函数。
 
-### 结构化异常与资源管理
-- **结构化异常对象**：引入标准的 `Exception` 类，用户抛出的异常会自动装箱并填充完整的 `traceback`（调用栈轨迹）。
-- **延迟执行 (Defer)**：新增 `defer` 关键字，用于在当前作用域退出时（正常返回或抛出异常）自动执行资源清理代码。
-- **精准行号追踪**：修复并优化了控制流语句（`throw`、`return`、`break`、`continue`）在 AST 转换时的源码行号映射，使报错定位更加精准。
+### 虚拟机与性能分析
+- **性能分析器 (Profiler)**：新增了全面的执行性能分析功能（通过 `--profile` 开启），包含函数调用耗时（总耗时与自耗时）统计与指令计数。在 REPL 环境下，每次执行命令后会自动重置统计数据。
+- **内存安全与 C ABI**：通过引入本地临时引用栈 (`nativeTempRefs`) 增强了 C ABI 的内存安全性，确保 C 扩展返回的对象不会被过早释放；同时保护了构造中的调用帧参数免受 GC 意外清理。
 
-### 核心虚拟机与前端优化
-- **输出语义分离**：明确区分了 `toString`（人类可读）和 `toRepr`（调试输出），大幅优化了 REPL 和错误日志的格式化显示。
-- **面向对象增强**：当类实例未定义 `__getitem__` 或 `__setitem__` 魔术方法时，索引访问（`obj[key]`）现在会自动回退到普通的字段访问（`obj.key`）。
-- **模块系统规范化**：统一底层术语，将 C-API 扩展统称为 `library`，JC2 脚本统称为 `module`，并增强了路径解析逻辑。
+### 垃圾回收与数学引擎
+- **即时回收 (Immediate Reclamation)**：针对纯数据类型（如 `BigInt`、`Matrix`、`Complex` 等）启用了引用计数为零时的即时回收机制，大幅降低了重型 CAS 计算时的内存峰值与 GC 扫描压力。
+- **GC 扫描保护**：在 GC 清扫阶段，通过引用计数保护了 C++ 栈上活跃的非容器对象，避免悬空指针崩溃。
+- **数学引擎修复**：修复了 `pollardRho` 大整数分解算法中不正确的尾部整除性检查，提升了算法的稳定性。
+- **字面量解析**：`int()` 函数现已原生支持解析带有 `0x`（十六进制）、`0b`（二进制）和 `0o`（八进制）前缀的字符串。
 
 ---
 

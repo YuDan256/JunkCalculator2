@@ -25,6 +25,7 @@ static bool isControlSpine(IROp op) {
         case IROp::Method: case IROp::Inherit: case IROp::Import:
         case IROp::Defer: case IROp::RunDefers:
         case IROp::ListInit: case IROp::ListAppend: case IROp::ListCompEnd:
+        case IROp::SetInit: case IROp::SetAppend: case IROp::DictInit: case IROp::DictAppend:
         case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
             return true;
         default:

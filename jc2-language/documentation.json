@@ -1416,10 +1416,10 @@
       "signature": "default: body"
     },
     "namespace": {
-      "signature": "namespace Name { ... }"
+      "signature": "namespace [Name] { ... }  |  namespace"
     },
     "class": {
-      "signature": "class Name [extends Parent] { init(...) = {...}  method(...) = ... }"
+      "signature": "class [Name] [extends Parent] { ... }  |  class"
     },
     "extends": {
       "signature": "class Child extends Parent { ... }"

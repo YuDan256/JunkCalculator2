@@ -106,6 +106,8 @@ namespace jc {
     struct DestructAssign;     // ★
     struct FStringExpr;
     struct ListCompExpr;       // ★
+    struct SetCompExpr;        // ★ 新增
+    struct DictCompExpr;       // ★ 新增
     struct DictLiteral;        // ★
     struct SetLiteral;         // ★ 新增
     struct SliceExpr;        // ★ 新增
@@ -241,6 +243,8 @@ namespace jc {
         virtual void visitDestructAssign(DestructAssign* expr) = 0;
         virtual void visitFStringExpr(FStringExpr* expr) = 0;
         virtual void visitListCompExpr(ListCompExpr* expr) = 0;
+        virtual void visitSetCompExpr(SetCompExpr* expr) = 0;
+        virtual void visitDictCompExpr(DictCompExpr* expr) = 0;
         virtual void visitDictLiteral(DictLiteral* expr) = 0;
         virtual void visitSetLiteral(SetLiteral* expr) = 0;
         virtual void visitSliceExpr(SliceExpr* expr) = 0;
@@ -695,18 +699,18 @@ namespace jc {
         void accept(ExprVisitor& visitor) override { visitor.visitFStringExpr(this); }
     };
 
+    struct CompClause {
+        std::unique_ptr<Pattern> pattern;
+        std::shared_ptr<Expr> iterable;
+        std::vector<std::shared_ptr<Expr>> conditions;
+        
+        CompClause(std::unique_ptr<Pattern> pat, std::shared_ptr<Expr> iter)
+            : pattern(std::move(pat)), iterable(std::move(iter)) {
+        }
+    };
+
     // ★ [expr for (var in iterable) if (condition)]
     struct ListCompExpr : public Expr {
-        struct CompClause {
-            std::unique_ptr<Pattern> pattern;
-            std::shared_ptr<Expr> iterable;
-            std::vector<std::shared_ptr<Expr>> conditions;
-            
-            CompClause(std::unique_ptr<Pattern> pat, std::shared_ptr<Expr> iter)
-                : pattern(std::move(pat)), iterable(std::move(iter)) {
-            }
-        };
-
         std::unique_ptr<Expr> valueExpr;
         std::vector<CompClause> clauses;
         bool forceList;
@@ -715,6 +719,29 @@ namespace jc {
             : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)), forceList(forceList) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitListCompExpr(this); }
+    };
+
+    // ★ @{expr for (var in iterable) if (condition)}
+    struct SetCompExpr : public Expr {
+        std::unique_ptr<Expr> valueExpr;
+        std::vector<CompClause> clauses;
+
+        SetCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses)
+            : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)) {
+        }
+        void accept(ExprVisitor& visitor) override { visitor.visitSetCompExpr(this); }
+    };
+
+    // ★ {k: v for (var in iterable) if (condition)}
+    struct DictCompExpr : public Expr {
+        std::unique_ptr<Expr> keyExpr;
+        std::unique_ptr<Expr> valueExpr;
+        std::vector<CompClause> clauses;
+
+        DictCompExpr(std::unique_ptr<Expr> keyExpr, std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses)
+            : keyExpr(std::move(keyExpr)), valueExpr(std::move(valueExpr)), clauses(std::move(clauses)) {
+        }
+        void accept(ExprVisitor& visitor) override { visitor.visitDictCompExpr(this); }
     };
 
     // ★ @{val1, val2, ...}

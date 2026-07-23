@@ -2209,6 +2209,39 @@ namespace jc {
             props.push_back({"forceList", std::make_unique<Literal>(lcomp->forceList ? "true" : "false", false, false, true)});
             return makeASTNodeCall("ListCompExpr", 0, std::move(props));
         }
+        if (auto* scomp = dynamic_cast<SetCompExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"valueExpr", transformQuote(scomp->valueExpr.get())});
+            std::vector<std::unique_ptr<Expr>> clausesArgs;
+            for (const auto& c : scomp->clauses) {
+                std::vector<std::pair<std::string, std::unique_ptr<Expr>>> cProps;
+                cProps.push_back({"pattern", transformPattern(c.pattern.get())});
+                cProps.push_back({"iterable", transformQuote(c.iterable.get())});
+                std::vector<std::unique_ptr<Expr>> condsArgs;
+                for (const auto& cond : c.conditions) condsArgs.push_back(transformQuote(cond.get()));
+                cProps.push_back({"conditions", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(condsArgs))});
+                clausesArgs.push_back(makeASTNodeCall("CompClause", 0, std::move(cProps)));
+            }
+            props.push_back({"clauses", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(clausesArgs))});
+            return makeASTNodeCall("SetCompExpr", 0, std::move(props));
+        }
+        if (auto* dcomp = dynamic_cast<DictCompExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"keyExpr", transformQuote(dcomp->keyExpr.get())});
+            props.push_back({"valueExpr", transformQuote(dcomp->valueExpr.get())});
+            std::vector<std::unique_ptr<Expr>> clausesArgs;
+            for (const auto& c : dcomp->clauses) {
+                std::vector<std::pair<std::string, std::unique_ptr<Expr>>> cProps;
+                cProps.push_back({"pattern", transformPattern(c.pattern.get())});
+                cProps.push_back({"iterable", transformQuote(c.iterable.get())});
+                std::vector<std::unique_ptr<Expr>> condsArgs;
+                for (const auto& cond : c.conditions) condsArgs.push_back(transformQuote(cond.get()));
+                cProps.push_back({"conditions", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(condsArgs))});
+                clausesArgs.push_back(makeASTNodeCall("CompClause", 0, std::move(cProps)));
+            }
+            props.push_back({"clauses", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(clausesArgs))});
+            return makeASTNodeCall("DictCompExpr", 0, std::move(props));
+        }
         if (auto* matchExpr = dynamic_cast<MatchExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"subject", transformQuote(matchExpr->subject.get())});
@@ -2923,34 +2956,33 @@ namespace jc {
             std::move(literals), std::move(exprs), std::move(specs));
     }
 
-    std::unique_ptr<Expr> Parser::parseListComp(std::unique_ptr<Expr> valueExpr) {
-        // 进入时：当前 token 指向 FOR，valueExpr 已被提取
-        std::vector<ListCompExpr::CompClause> clauses;
-
+    std::vector<CompClause> Parser::parseCompClauses() {
+        std::vector<CompClause> clauses;
         while (match({ TokenType::FOR })) {
-            consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'for' in list comprehension.");
-            match({ TokenType::LOCAL }); // ★ 允许并忽略可选的 local 关键字（推导式变量默认就是 local 的）
+            consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'for' in comprehension.");
+            match({ TokenType::LOCAL }); // ★ 允许并忽略可选的 local 关键字
 
             auto pat = parsePrimaryPattern();
-            consume(TokenType::IN, "Parser Error: Expect 'in' after pattern in list comprehension.");
+            consume(TokenType::IN, "Parser Error: Expect 'in' after pattern in comprehension.");
             auto iterable = expression();
             clauses.emplace_back(std::move(pat), std::shared_ptr<Expr>(iterable.release()));
-            consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable in list comprehension.");
+            consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable in comprehension.");
 
             // ★ 可选的 if 过滤条件 (可以有多个)
             while (match({ TokenType::IF })) {
-                consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'if' in list comprehension.");
+                consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'if' in comprehension.");
                 auto cond = expression();
-                consume(TokenType::RPAREN, "Parser Error: Expect ')' after if condition in list comprehension.");
+                consume(TokenType::RPAREN, "Parser Error: Expect ')' after if condition in comprehension.");
                 clauses.back().conditions.push_back(std::shared_ptr<Expr>(cond.release()));
             }
         }
+        return clauses;
+    }
 
-        consume(TokenType::RBRACKET,
-            "Parser Error: Expect ']' after list comprehension.");
-
-        return std::make_unique<ListCompExpr>(
-            std::move(valueExpr), std::move(clauses));
+    std::unique_ptr<Expr> Parser::parseListComp(std::unique_ptr<Expr> valueExpr) {
+        auto clauses = parseCompClauses();
+        consume(TokenType::RBRACKET, "Parser Error: Expect ']' after list comprehension.");
+        return std::make_unique<ListCompExpr>(std::move(valueExpr), std::move(clauses));
     }
 
     std::unique_ptr<Expr> Parser::parseSetLiteral() {
@@ -2962,7 +2994,16 @@ namespace jc {
             while (match({ TokenType::NEWLINE })) {}  // ★ 跳过前导换行
             if (check(TokenType::RBRACE)) break;
 
-            elements.push_back(assignment());
+            auto expr = assignment();
+
+            // ★ 检测集合推导式：@{expr for x in ...}
+            if (elements.empty() && check(TokenType::FOR)) {
+                auto clauses = parseCompClauses();
+                consume(TokenType::RBRACE, "Parser Error: Expect '}' after set comprehension.");
+                return std::make_unique<SetCompExpr>(std::move(expr), std::move(clauses));
+            }
+
+            elements.push_back(std::move(expr));
 
             if (!match({ TokenType::COMMA })) {
                 while (match({ TokenType::NEWLINE })) {}
@@ -3042,6 +3083,13 @@ namespace jc {
             }
             else {
                 throw std::runtime_error("Parser Error: Expect ':' after dict key.");
+            }
+
+            // ★ 检测字典推导式：{k: v for x in ...}
+            if (entries.empty() && !isRest && check(TokenType::FOR)) {
+                auto clauses = parseCompClauses();
+                consume(TokenType::RBRACE, "Parser Error: Expect '}' after dict comprehension.");
+                return std::make_unique<DictCompExpr>(std::move(key), std::move(value), std::move(clauses));
             }
 
             // 保存这一对 entry

@@ -483,6 +483,57 @@ public:
         });
     }
 
+    void visitSetCompExpr(SetCompExpr* expr) override {
+        expr->valueExpr->accept(*this); Value valExpr = result;
+        GcValueGuard valGuard(valExpr);
+        ObjList* clauses = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(clauses);
+        for (auto& c : expr->clauses) {
+            c.iterable->accept(*this); Value iter = result;
+            GcValueGuard iterGuard(iter);
+            Value pat = patternToJC2(c.pattern.get());
+            GcValueGuard patGuard(pat);
+            Value conds = makeExprListT(c.conditions);
+            Value clauseNode = makeASTNode("CompClause", 0, {
+                {"pattern", pat},
+                {"iterable", iter},
+                {"conditions", conds}
+            });
+            clauses->vec.push_back(clauseNode);
+        }
+        result = makeASTNode("SetCompExpr", 0, {
+            {"valueExpr", valExpr},
+            {"clauses", Value(clauses)}
+        });
+    }
+
+    void visitDictCompExpr(DictCompExpr* expr) override {
+        expr->keyExpr->accept(*this); Value keyExpr = result;
+        GcValueGuard keyGuard(keyExpr);
+        expr->valueExpr->accept(*this); Value valExpr = result;
+        GcValueGuard valGuard(valExpr);
+        ObjList* clauses = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(clauses);
+        for (auto& c : expr->clauses) {
+            c.iterable->accept(*this); Value iter = result;
+            GcValueGuard iterGuard(iter);
+            Value pat = patternToJC2(c.pattern.get());
+            GcValueGuard patGuard(pat);
+            Value conds = makeExprListT(c.conditions);
+            Value clauseNode = makeASTNode("CompClause", 0, {
+                {"pattern", pat},
+                {"iterable", iter},
+                {"conditions", conds}
+            });
+            clauses->vec.push_back(clauseNode);
+        }
+        result = makeASTNode("DictCompExpr", 0, {
+            {"keyExpr", keyExpr},
+            {"valueExpr", valExpr},
+            {"clauses", Value(clauses)}
+        });
+    }
+
     void visitMatchExpr(MatchExpr* expr) override {
         expr->subject->accept(*this); Value subj = result;
         GcValueGuard subjGuard(subj);
@@ -1000,7 +1051,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             getProp("isConst").truthy()
         );
     } else if (type == "ListCompExpr") {
-        std::vector<ListCompExpr::CompClause> clauses;
+        std::vector<CompClause> clauses;
         Value clausesVal = getProp("clauses");
         if (clausesVal.isObjType(ObjType::LIST)) {
             for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
@@ -1012,7 +1063,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                     }
                     return Value::none();
                 };
-                ListCompExpr::CompClause clause(
+                CompClause clause(
                     jc2ToPattern(getCProp("pattern")),
                     std::shared_ptr<Expr>(JC2_to_AST(getCProp("iterable")).release())
                 );
@@ -1029,6 +1080,67 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             JC2_to_AST(getProp("valueExpr")),
             std::move(clauses),
             getProp("forceList").truthy()
+        );
+    } else if (type == "SetCompExpr") {
+        std::vector<CompClause> clauses;
+        Value clausesVal = getProp("clauses");
+        if (clausesVal.isObjType(ObjType::LIST)) {
+            for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
+                auto cInst = cVal.asInstance();
+                auto getCProp = [&](const std::string& key) -> Value {
+                    Value kv(key);
+                    if (cInst->fields && cInst->fields->keyMap.count(kv)) {
+                        return cInst->fields->elements[cInst->fields->keyMap[kv]].second;
+                    }
+                    return Value::none();
+                };
+                CompClause clause(
+                    jc2ToPattern(getCProp("pattern")),
+                    std::shared_ptr<Expr>(JC2_to_AST(getCProp("iterable")).release())
+                );
+                Value condsVal = getCProp("conditions");
+                if (condsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& condVal : static_cast<ObjList*>(condsVal.asObj())->vec) {
+                        clause.conditions.push_back(std::shared_ptr<Expr>(JC2_to_AST(condVal).release()));
+                    }
+                }
+                clauses.push_back(std::move(clause));
+            }
+        }
+        return std::make_unique<SetCompExpr>(
+            JC2_to_AST(getProp("valueExpr")),
+            std::move(clauses)
+        );
+    } else if (type == "DictCompExpr") {
+        std::vector<CompClause> clauses;
+        Value clausesVal = getProp("clauses");
+        if (clausesVal.isObjType(ObjType::LIST)) {
+            for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
+                auto cInst = cVal.asInstance();
+                auto getCProp = [&](const std::string& key) -> Value {
+                    Value kv(key);
+                    if (cInst->fields && cInst->fields->keyMap.count(kv)) {
+                        return cInst->fields->elements[cInst->fields->keyMap[kv]].second;
+                    }
+                    return Value::none();
+                };
+                CompClause clause(
+                    jc2ToPattern(getCProp("pattern")),
+                    std::shared_ptr<Expr>(JC2_to_AST(getCProp("iterable")).release())
+                );
+                Value condsVal = getCProp("conditions");
+                if (condsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& condVal : static_cast<ObjList*>(condsVal.asObj())->vec) {
+                        clause.conditions.push_back(std::shared_ptr<Expr>(JC2_to_AST(condVal).release()));
+                    }
+                }
+                clauses.push_back(std::move(clause));
+            }
+        }
+        return std::make_unique<DictCompExpr>(
+            JC2_to_AST(getProp("keyExpr")),
+            JC2_to_AST(getProp("valueExpr")),
+            std::move(clauses)
         );
     } else if (type == "MatchExpr") {
         std::vector<MatchBranch> branches;

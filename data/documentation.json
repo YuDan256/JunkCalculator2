@@ -1117,6 +1117,7 @@
       "    int(-3.7)           → -3",
       "    int(frac(7,2))      → 3           (int floor division)",
       "    int(\"12345\")        → 12345       (parse from string)",
+      "    int(\"0xFF\")         → 255         (parse hex/bin/octal string)",
       "    double(42)          → 42.0        (to floating point)",
       "",
       "  Combinatorics (Exact int Results)",
@@ -3100,11 +3101,12 @@
     },
     "int": {
       "signature": "int(x)",
-      "desc": "Truncates a value to an integer (int) towards zero.",
+      "desc": "Truncates a value to an integer (int) towards zero. Supports parsing strings with 0x (hex), 0b (binary), and 0o (octal) prefixes.",
       "examples": [
         "int(3.7)",
         "int(-3.7)",
-        "int(\"123\")"
+        "int(\"123\")",
+        "int(\"0xFF\")"
       ]
     },
     "abs": {

@@ -3063,10 +3063,12 @@ namespace jc {
             // 2. 核心分发：看看接下来是不是冒号
             while (match({ TokenType::NEWLINE })) {} // 跳过中间可能的换行
 
+            bool hasColon = false;
             if (isRest) {
                 // 已经处理好了
             }
             else if (match({ TokenType::COLON })) {
+                hasColon = true;
                 // ★ 它是标准的 "key: value" 模式
                 if (isSimpleId) {
                     // 把刚才吞掉的标识符转为字符串常数作为 key
@@ -3087,6 +3089,9 @@ namespace jc {
 
             // ★ 检测字典推导式：{k: v for x in ...}
             if (entries.empty() && !isRest && check(TokenType::FOR)) {
+                if (!hasColon) {
+                    throw std::runtime_error("Parser Error: Dict comprehension requires 'key: value' format.");
+                }
                 if (isSimpleId) {
                     // 在推导式中，标识符键应作为变量表达式求值，而不是字符串字面量
                     key = std::make_unique<Variable>(maybeIdTok);

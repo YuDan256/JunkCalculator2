@@ -170,6 +170,8 @@ public:
     void visitDestructAssign(DestructAssign* expr) override;
     void visitFStringExpr(FStringExpr* expr) override;
     void visitListCompExpr(ListCompExpr* expr) override;
+    void visitSetCompExpr(SetCompExpr* expr) override;
+    void visitDictCompExpr(DictCompExpr* expr) override;
     void visitDictLiteral(DictLiteral* expr) override;
     void visitSetLiteral(SetLiteral* expr) override;
     void visitSliceExpr(SliceExpr* expr) override;

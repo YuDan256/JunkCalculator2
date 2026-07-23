@@ -423,6 +423,29 @@ void Resolver::visitListCompExpr(ListCompExpr* expr) {
     endScope();
 }
 
+void Resolver::visitSetCompExpr(SetCompExpr* expr) {
+    beginScope();
+    for (auto& c : expr->clauses) {
+        resolve(c.iterable.get());
+        resolvePattern(c.pattern.get(), true, ScopeModifier::Local, false);
+        for (auto& cond : c.conditions) resolve(cond.get());
+    }
+    resolve(expr->valueExpr.get());
+    endScope();
+}
+
+void Resolver::visitDictCompExpr(DictCompExpr* expr) {
+    beginScope();
+    for (auto& c : expr->clauses) {
+        resolve(c.iterable.get());
+        resolvePattern(c.pattern.get(), true, ScopeModifier::Local, false);
+        for (auto& cond : c.conditions) resolve(cond.get());
+    }
+    resolve(expr->keyExpr.get());
+    resolve(expr->valueExpr.get());
+    endScope();
+}
+
 void Resolver::visitDictLiteral(DictLiteral* expr) {
     for (auto& p : expr->entries) {
         resolve(p.first.get());

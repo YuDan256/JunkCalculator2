@@ -442,12 +442,35 @@ void BuiltinRegistry::registerMath() {
             return Value(BigInt(static_cast<int64_t>(std::trunc(v))));
         }
         if (val.isString()) {
-            // 字符串解析为整数
-            const auto& s = val.asString();
-            try { return Value(BigInt(s)); }
-            catch (...) {
-                throw std::runtime_error("Type Error: Cannot parse '" + s + "' as integer.");
+            std::string s = val.asString();
+            size_t start = s.find_first_not_of(" \t\r\n");
+            if (start != std::string::npos) {
+                size_t end = s.find_last_not_of(" \t\r\n");
+                std::string trimmed = s.substr(start, end - start + 1);
+                int radix = 10;
+                bool neg = false;
+                size_t p = 0;
+                if (trimmed[0] == '-' || trimmed[0] == '+') {
+                    neg = (trimmed[0] == '-');
+                    p = 1;
+                }
+                if (trimmed.size() > p + 1 && trimmed[p] == '0') {
+                    char c = static_cast<char>(std::tolower(static_cast<unsigned char>(trimmed[p + 1])));
+                    if (c == 'x') { radix = 16; p += 2; }
+                    else if (c == 'b') { radix = 2; p += 2; }
+                    else if (c == 'o') { radix = 8; p += 2; }
+                }
+                try {
+                    if (radix != 10) {
+                        std::string numPart = trimmed.substr(p);
+                        if (numPart.empty()) throw std::runtime_error("empty");
+                        BigInt res = BaseNum::fromString(numPart, radix).getValue();
+                        return Value(neg ? -res : res);
+                    }
+                    return Value(BigInt(trimmed));
+                } catch (...) {}
             }
+            throw std::runtime_error("Type Error: Cannot parse '" + val.asString() + "' as integer.");
         }
         return Value(val.asBigInt());
         });

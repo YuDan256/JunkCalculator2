@@ -3940,6 +3940,255 @@ void IRBuilder::visitListCompExpr(ListCompExpr* expr) {
     
     popScope();
 }
+
+void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* setNode) {
+    if (clauseIdx >= expr->clauses.size()) {
+        expr->valueExpr->accept(*this);
+        IRNode* valNode = lastValue;
+        IRNode* appendNode = graph->createNode(IROp::SetAppend);
+        appendNode->setControl(currentControl);
+        appendNode->addData(setNode);
+        appendNode->addData(valNode);
+        currentControl = appendNode;
+        return;
+    }
+    
+    auto& clause = expr->clauses[clauseIdx];
+    clause.iterable->accept(*this);
+    IRNode* iterNode = graph->createValueNode(IROp::IterInit);
+    iterNode->setControl(currentControl);
+    iterNode->addData(lastValue);
+    
+    auto isDestructPattern = [](Pattern* p) {
+        while (auto* dp = dynamic_cast<DefaultPattern*>(p)) p = dp->inner.get();
+        return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
+    };
+    iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
+    currentControl = iterNode;
+    
+    IRNode* loopNode = graph->createNode(IROp::Loop);
+    loopNode->addData(currentControl);
+    
+    std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
+        }
+    }
+    envStack = loopPhisStack;
+    currentControl = loopNode;
+    
+    IRNode* exitControl = graph->createNode(IROp::Merge);
+
+    IRNode* nextNode = graph->createValueNode(IROp::IterNext);
+    nextNode->setControl(currentControl);
+    nextNode->addData(iterNode);
+    currentControl = nextNode;
+    
+    IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
+    isUninitNode->setControl(currentControl);
+    isUninitNode->addData(nextNode);
+    
+    IRNode* ifNode = graph->createNode(IROp::If);
+    ifNode->setControl(currentControl);
+    ifNode->addData(isUninitNode);
+    
+    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    ifTrue->setControl(ifNode);
+    exitControl->addData(ifTrue);
+    auto exitEnvStack = envStack;
+    
+    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    ifFalse->setControl(ifNode);
+    currentControl = ifFalse;
+    
+    auto envBeforePattern = envStack;
+    IRNode* failMerge = graph->createNode(IROp::Merge);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
+    
+    auto envBeforeCond = envStack;
+    IRNode* condFailMerge = graph->createNode(IROp::Merge);
+    for (auto& cond : clause.conditions) {
+        cond->accept(*this);
+        IRNode* condIfNode = graph->createNode(IROp::If);
+        condIfNode->setControl(currentControl);
+        condIfNode->addData(lastValue);
+        
+        IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
+        condIfTrue->setControl(condIfNode);
+        
+        IRNode* condIfFalse = graph->createNode(IROp::IfFalse);
+        condIfFalse->setControl(condIfNode);
+        condFailMerge->addData(condIfFalse);
+        
+        currentControl = condIfTrue;
+    }
+    
+    buildSetCompClause(expr, clauseIdx + 1, setNode);
+    
+    loopNode->addData(currentControl);
+    if (!condFailMerge->dataInputs.empty()) loopNode->addData(condFailMerge);
+    if (!failMerge->dataInputs.empty()) loopNode->addData(failMerge);
+    
+    for (size_t i = 0; i < loopPhisStack.size(); ++i) {
+        for (auto& pair : loopPhisStack[i]) {
+            ResolvedSym rs; rs.scope = VarScope::Local;
+            pair.second->addData(readVariable(pair.first, rs));
+            if (!condFailMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
+            }
+            if (!failMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforePattern[i].count(pair.first) ? envBeforePattern[i].at(pair.first) : graph->createConstant(Value::none()));
+            }
+        }
+    }
+    
+    envStack = exitEnvStack;
+    currentControl = exitControl;
+}
+
+void IRBuilder::visitSetCompExpr(SetCompExpr* expr) {
+    pushScope();
+    
+    IRNode* setNode = graph->createValueNode(IROp::SetInit);
+    setNode->setControl(currentControl);
+    currentControl = setNode;
+    
+    buildSetCompClause(expr, 0, setNode);
+    
+    lastValue = setNode;
+    popScope();
+}
+
+void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode* dictNode) {
+    if (clauseIdx >= expr->clauses.size()) {
+        expr->keyExpr->accept(*this);
+        IRNode* keyNode = lastValue;
+        expr->valueExpr->accept(*this);
+        IRNode* valNode = lastValue;
+        IRNode* appendNode = graph->createNode(IROp::DictAppend);
+        appendNode->setControl(currentControl);
+        appendNode->addData(dictNode);
+        appendNode->addData(keyNode);
+        appendNode->addData(valNode);
+        currentControl = appendNode;
+        return;
+    }
+    
+    auto& clause = expr->clauses[clauseIdx];
+    clause.iterable->accept(*this);
+    IRNode* iterNode = graph->createValueNode(IROp::IterInit);
+    iterNode->setControl(currentControl);
+    iterNode->addData(lastValue);
+    
+    auto isDestructPattern = [](Pattern* p) {
+        while (auto* dp = dynamic_cast<DefaultPattern*>(p)) p = dp->inner.get();
+        return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
+    };
+    iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
+    currentControl = iterNode;
+    
+    IRNode* loopNode = graph->createNode(IROp::Loop);
+    loopNode->addData(currentControl);
+    
+    std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
+    for (size_t i = 0; i < envStack.size(); ++i) {
+        for (const auto& pair : envStack[i]) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(loopNode);
+            phi->addData(pair.second);
+            phi->name = pair.first;
+            loopPhisStack[i][pair.first] = phi;
+        }
+    }
+    envStack = loopPhisStack;
+    currentControl = loopNode;
+    
+    IRNode* exitControl = graph->createNode(IROp::Merge);
+
+    IRNode* nextNode = graph->createValueNode(IROp::IterNext);
+    nextNode->setControl(currentControl);
+    nextNode->addData(iterNode);
+    currentControl = nextNode;
+    
+    IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
+    isUninitNode->setControl(currentControl);
+    isUninitNode->addData(nextNode);
+    
+    IRNode* ifNode = graph->createNode(IROp::If);
+    ifNode->setControl(currentControl);
+    ifNode->addData(isUninitNode);
+    
+    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    ifTrue->setControl(ifNode);
+    exitControl->addData(ifTrue);
+    auto exitEnvStack = envStack;
+    
+    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    ifFalse->setControl(ifNode);
+    currentControl = ifFalse;
+    
+    auto envBeforePattern = envStack;
+    IRNode* failMerge = graph->createNode(IROp::Merge);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
+    
+    auto envBeforeCond = envStack;
+    IRNode* condFailMerge = graph->createNode(IROp::Merge);
+    for (auto& cond : clause.conditions) {
+        cond->accept(*this);
+        IRNode* condIfNode = graph->createNode(IROp::If);
+        condIfNode->setControl(currentControl);
+        condIfNode->addData(lastValue);
+        
+        IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
+        condIfTrue->setControl(condIfNode);
+        
+        IRNode* condIfFalse = graph->createNode(IROp::IfFalse);
+        condIfFalse->setControl(condIfNode);
+        condFailMerge->addData(condIfFalse);
+        
+        currentControl = condIfTrue;
+    }
+    
+    buildDictCompClause(expr, clauseIdx + 1, dictNode);
+    
+    loopNode->addData(currentControl);
+    if (!condFailMerge->dataInputs.empty()) loopNode->addData(condFailMerge);
+    if (!failMerge->dataInputs.empty()) loopNode->addData(failMerge);
+    
+    for (size_t i = 0; i < loopPhisStack.size(); ++i) {
+        for (auto& pair : loopPhisStack[i]) {
+            ResolvedSym rs; rs.scope = VarScope::Local;
+            pair.second->addData(readVariable(pair.first, rs));
+            if (!condFailMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforeCond[i].count(pair.first) ? envBeforeCond[i].at(pair.first) : graph->createConstant(Value::none()));
+            }
+            if (!failMerge->dataInputs.empty()) {
+                pair.second->addData(envBeforePattern[i].count(pair.first) ? envBeforePattern[i].at(pair.first) : graph->createConstant(Value::none()));
+            }
+        }
+    }
+    
+    envStack = exitEnvStack;
+    currentControl = exitControl;
+}
+
+void IRBuilder::visitDictCompExpr(DictCompExpr* expr) {
+    pushScope();
+    
+    IRNode* dictNode = graph->createValueNode(IROp::DictInit);
+    dictNode->setControl(currentControl);
+    currentControl = dictNode;
+    
+    buildDictCompClause(expr, 0, dictNode);
+    
+    lastValue = dictNode;
+    popScope();
+}
     
 void IRBuilder::visitDictLiteral(DictLiteral* expr) {
     std::vector<IRNode*> keysAndVals;

@@ -102,6 +102,8 @@ private:
     void buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::string>& typeHints);
     void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool isAssignment = false);
     void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
+    void buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* setNode);
+    void buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode* dictNode);
 
     [[noreturn]] void error(const std::string& message) const {
         throw RuntimeError("SyntaxError", "[Line " + std::to_string(graph->currentLine) + "] " + message);

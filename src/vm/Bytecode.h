@@ -101,6 +101,10 @@ enum class OpCode : uint8_t {
     LIST_INIT,      // R(A) := []
     LIST_APPEND,    // R(A).append(R(B))
     LIST_COMP_END,  // R(A) := comp_end(R(A))
+    SET_INIT,       // R(A) := @{}
+    SET_APPEND,     // R(A).add(R(B))
+    DICT_INIT,      // R(A) := {}
+    DICT_APPEND,    // R(A)[R(B)] = R(C)
     INDEX_GET,      // R(A) := R(B)[R(B+1)...R(B+C)] [Ext A, B, C]
     INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(A+C+1) [Ext A, C]
     SLICE_GET,      // R(A) := slice_get(R(B), dims = C, args = R(B+1)...) [Ext A, B, C]
@@ -205,6 +209,10 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::LIST_INIT: return "LIST_INIT";
         case OpCode::LIST_APPEND: return "LIST_APPEND";
         case OpCode::LIST_COMP_END: return "LIST_COMP_END";
+        case OpCode::SET_INIT: return "SET_INIT";
+        case OpCode::SET_APPEND: return "SET_APPEND";
+        case OpCode::DICT_INIT: return "DICT_INIT";
+        case OpCode::DICT_APPEND: return "DICT_APPEND";
         case OpCode::INDEX_GET: return "INDEX_GET";
         case OpCode::INDEX_SET: return "INDEX_SET";
         case OpCode::SLICE_GET: return "SLICE_GET";
@@ -437,6 +445,7 @@ public:
             case OpCode::INDEX_GET: case OpCode::INDEX_SET: 
             case OpCode::SLICE_GET: case OpCode::SLICE_SET: 
             case OpCode::ITER_INIT: case OpCode::IN: case OpCode::MATCH_SHAPE:
+            case OpCode::DICT_APPEND:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 break;
 
@@ -491,8 +500,8 @@ public:
             case OpCode::MOVE: case OpCode::LOAD_NIL:
             case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
             case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
-            case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::STRINGIFY:
-            case OpCode::ITER_NEXT: case OpCode::IMPORT:
+            case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::SET_APPEND:
+            case OpCode::STRINGIFY: case OpCode::ITER_NEXT: case OpCode::IMPORT:
                 std::cout << "R(" << a << ") " << b;
                 break;
 
@@ -523,8 +532,8 @@ public:
                 break;
 
             case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
-            case OpCode::LIST_INIT: case OpCode::LIST_COMP_END: case OpCode::TRY_END: case OpCode::THROW:
-            case OpCode::DEFER:
+            case OpCode::LIST_INIT: case OpCode::LIST_COMP_END: case OpCode::SET_INIT: case OpCode::DICT_INIT:
+            case OpCode::TRY_END: case OpCode::THROW: case OpCode::DEFER:
                 std::cout << "R(" << a << ")";
                 break;
 

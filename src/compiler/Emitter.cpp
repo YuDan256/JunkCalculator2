@@ -432,6 +432,31 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         }
                         break;
                     }
+                    case IROp::SetInit: {
+                        auto w = buildInstA(OpCode::SET_INIT, node->physicalReg);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::SetAppend: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        int b = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
+                        auto w = buildInstAB(OpCode::SET_APPEND, a, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::DictInit: {
+                        auto w = buildInstA(OpCode::DICT_INIT, node->physicalReg);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::DictAppend: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        int b = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
+                        int c = ensureReg(node->dataInputs[2], inst.words, chunk, 126);
+                        auto w = buildInstABC(OpCode::DICT_APPEND, a, b, c);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::IndexGet: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         int cVal = node->payload1;

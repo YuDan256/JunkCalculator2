@@ -88,6 +88,10 @@ enum class IROp {
     ListInit,
     ListAppend,
     ListCompEnd,
+    SetInit,
+    SetAppend,
+    DictInit,
+    DictAppend,
 
     // 迭代器与 for-in
     IterInit,
@@ -202,6 +206,10 @@ inline std::string irOpToString(IROp op) {
         case IROp::ListInit: return "ListInit";
         case IROp::ListAppend: return "ListAppend";
         case IROp::ListCompEnd: return "ListCompEnd";
+        case IROp::SetInit: return "SetInit";
+        case IROp::SetAppend: return "SetAppend";
+        case IROp::DictInit: return "DictInit";
+        case IROp::DictAppend: return "DictAppend";
         case IROp::IterInit: return "IterInit";
         case IROp::IterNext: return "IterNext";
         case IROp::In: return "In";

@@ -3784,6 +3784,39 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
+            case OpCode::SET_INIT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                getReg(a) = Value(GcHeap::get().allocate<ObjSet>());
+                break;
+            }
+            case OpCode::SET_APPEND: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                Value& setVal = getReg(a);
+                if (setVal.isObjType(ObjType::SET)) {
+                    static_cast<ObjSet*>(setVal.asObj())->add(getReg(b));
+                } else {
+                    throw std::runtime_error("VM Error: SET_APPEND target is not a set.");
+                }
+                break;
+            }
+            case OpCode::DICT_INIT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                getReg(a) = Value(GcHeap::get().allocate<ObjDict>());
+                break;
+            }
+            case OpCode::DICT_APPEND: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
+                Value& dictVal = getReg(a);
+                if (dictVal.isObjType(ObjType::DICT)) {
+                    static_cast<ObjDict*>(dictVal.asObj())->set(getReg(b), getReg(c));
+                } else {
+                    throw std::runtime_error("VM Error: DICT_APPEND target is not a dict.");
+                }
+                break;
+            }
             case OpCode::STRINGIFY: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();

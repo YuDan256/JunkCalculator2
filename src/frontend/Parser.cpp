@@ -3087,6 +3087,10 @@ namespace jc {
 
             // ★ 检测字典推导式：{k: v for x in ...}
             if (entries.empty() && !isRest && check(TokenType::FOR)) {
+                if (isSimpleId) {
+                    // 在推导式中，标识符键应作为变量表达式求值，而不是字符串字面量
+                    key = std::make_unique<Variable>(maybeIdTok);
+                }
                 auto clauses = parseCompClauses();
                 consume(TokenType::RBRACE, "Parser Error: Expect '}' after dict comprehension.");
                 return std::make_unique<DictCompExpr>(std::move(key), std::move(value), std::move(clauses));

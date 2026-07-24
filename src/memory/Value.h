@@ -1341,7 +1341,7 @@ namespace jc {
                     }
                 } catch (...) {}
                 std::string cname = inst->classDef ? inst->classDef->name : "unknown";
-                if (cname.empty()) cname = "anonymous";
+                if (cname.empty()) return "\"<anonymous class instance>\"";
                 return "\"<" + cname + " instance>\"";
             }
             case ObjType::SUPER_PROXY: return "\"<super>\"";
@@ -2232,8 +2232,8 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             ObjInstance* inst = static_cast<ObjInstance*>(obj);
             RecursionGuard guard(visited, inst);
             std::string cname = inst->classDef ? inst->classDef->name : "unknown";
-            if (cname.empty()) cname = "anonymous";
-            if (guard.isCycle) { os << "<" << cname << " {...}>"; break; }
+            std::string prefix = cname.empty() ? "anonymous class" : cname;
+            if (guard.isCycle) { os << "<" << prefix << " {...}>"; break; }
                 
             try {
                 auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
@@ -2263,7 +2263,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
                 }
             }
             if (!printedNative) {
-                os << "<" << cname << " {";
+                os << "<" << prefix << " {";
                 if (inst->fields) {
                     for (size_t i = 0; i < inst->fields->elements.size(); ++i) {
                         if (i > 0) os << ", ";

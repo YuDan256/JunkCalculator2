@@ -464,6 +464,7 @@ int main(int argc, char* argv[]) {
     std::string compileInput = "";
     std::string compileOutput = "";
     bool stripDebug = false;
+    bool compileAsModule = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -486,6 +487,9 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "--strip" || arg == "-s") {
             stripDebug = true;
+        }
+        else if (arg == "--module" || arg == "-m") {
+            compileAsModule = true;
         }
         else if (arg == "-e" || arg == "--eval") {
             if (i + 1 < argc) {
@@ -578,11 +582,20 @@ int main(int argc, char* argv[]) {
             auto& fns = vm.getCompiledFunctions();
             int startIndex = static_cast<int>(fns.size());
             
+            std::string baseName = std::filesystem::path(resolvedPath).stem().string();
+            std::unique_ptr<jc::NamespaceDecl> nsDecl;
+            jc::ASTNode* targetAst = ast.get();
+            
+            if (compileAsModule) {
+                nsDecl = std::make_unique<jc::NamespaceDecl>(jc::Token(jc::TokenType::IDENTIFIER, baseName, 0), std::move(ast));
+                targetAst = nsDecl.get();
+            }
+
             jc::Resolver resolver;
-            resolver.resolve(ast.get());
+            resolver.resolve(targetAst);
 
             auto modFn = std::make_shared<jc::CompiledFunction>();
-            modFn->name = "<script>";
+            modFn->name = compileAsModule ? ("<module " + baseName + ">") : "<script>";
             modFn->sourceFile = resolvedPath;
             modFn->arity = 0;
             modFn->maxArity = 0;
@@ -590,7 +603,7 @@ int main(int argc, char* argv[]) {
 
             jc::IRGraph graph;
             jc::IRBuilder builder(&graph, &fns, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);
-            builder.build(ast.get());
+            builder.build(targetAst);
             
             jc::IROptimizer::optimize(&graph);
             jc::RegisterAllocator::allocate(&graph);

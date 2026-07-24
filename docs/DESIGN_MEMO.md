@@ -69,6 +69,7 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
 ## 10. JCB 字节码序列化格式 (JCB Bytecode Serialization Format)
 为了提升大型脚本与标准库的加载速度并支持闭源分发，JC2 引入了 `.jcb` (Junk Calculator Bytecode) 格式。
 *   **文件头与版本校验 (Header & Versioning)**：文件必须以魔数 (Magic Number) 开头（如 `0x4A 0x43 0x42 0x01`），紧跟严格的 VM 指令集版本号。版本不匹配时必须拒绝加载，防止底层段错误 (Segfault)。
+*   **可选的调试信息剥离 (Optional Debug Stripping)**：为了极致的文件体积和闭源安全性，`.jcb` 格式支持在编译时剥离调试信息（`--strip`）。剥离后，`Chunk::lines` 数组为空，`sourceFile` 和闭包捕获的变量名被置为空字符串。VM 的 Traceback 系统已对此做了安全兼容（行号显示为 0）。
 *   **跨平台字节序 (Endianness)**：`.jcb` 文件内部的所有多字节原生数据（如 `int32_t`, `double`）必须统一采用 **小端序 (Little-Endian)** 序列化，以保证在 x64 和 ARM 架构之间的完美跨平台兼容。
 *   **常量池的深度反序列化 (Deep Constant Pool Deserialization)**：常量池不仅需要支持标量（Double, Int, String, Fraction, Complex），还**必须支持特定容器的序列化**。
     *   **大整数 (BigInt) 的二进制序列化**：为了极致的加载性能，`BigInt` 必须导出其内部的 `std::vector<uint32_t>` 块，而不是转换为十进制字符串。序列化格式为：1 字节符号位 (`negative`) + 4 字节数组长度 (`size`) + 连续的小端序 `uint32_t` 数组。

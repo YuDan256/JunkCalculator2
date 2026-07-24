@@ -463,6 +463,7 @@ int main(int argc, char* argv[]) {
     bool compileMode = false;
     std::string compileInput = "";
     std::string compileOutput = "";
+    bool stripDebug = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -482,6 +483,9 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Error: -o requires an output file.\n";
                 return 1;
             }
+        }
+        else if (arg == "--strip" || arg == "-s") {
+            stripDebug = true;
         }
         else if (arg == "-e" || arg == "--eval") {
             if (i + 1 < argc) {
@@ -606,8 +610,9 @@ int main(int argc, char* argv[]) {
             fns.push_back(modFn);
             
             int count = static_cast<int>(fns.size()) - startIndex;
-            jc::BytecodeSerializer::saveJCB(compileOutput, &vm, startIndex, count);
+            jc::BytecodeSerializer::saveJCB(compileOutput, &vm, startIndex, count, stripDebug);
             std::cout << "Successfully compiled '" << compileInput << "' to '" << compileOutput << "'." << std::endl;
+            if (stripDebug) std::cout << "Debug information (line numbers, source paths) was stripped." << std::endl;
         } catch (const std::exception& ex) {
             std::cerr << "Compilation Error:\n" << ex.what() << std::endl;
             return 1;

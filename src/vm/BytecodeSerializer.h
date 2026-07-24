@@ -17,7 +17,7 @@ public:
     static constexpr uint32_t VERSION = 1;
 
     // 将一组编译好的函数序列化为 .jcb 文件
-    static void saveJCB(const std::string& path, VM* vm, int startIndex, int count);
+    static void saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug = false);
     
     // 从 .jcb 文件反序列化，追加到 VM，并返回顶层模块函数
     static std::shared_ptr<CompiledFunction> loadJCB(const std::string& path, VM* vm);
@@ -47,10 +47,10 @@ private:
     static void writeValue(std::ostream& os, const Value& val, const std::unordered_set<int>& fnIdxConstants, int constIdx, int startIndex);
     static Value readValue(std::istream& is, int baseIdx);
 
-    static void writeChunk(std::ostream& os, const Chunk& chunk, int startIndex);
+    static void writeChunk(std::ostream& os, const Chunk& chunk, int startIndex, bool stripDebug);
     static void readChunk(std::istream& is, Chunk& chunk, int baseIdx);
 
-    static void writeFunction(std::ostream& os, const CompiledFunction* fn, int startIndex);
+    static void writeFunction(std::ostream& os, const CompiledFunction* fn, int startIndex, bool stripDebug);
     static void readFunction(std::istream& is, CompiledFunction* fn, int baseIdx);
 };
 

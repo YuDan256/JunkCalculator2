@@ -249,12 +249,16 @@ Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
     }
 }
 
-void BytecodeSerializer::writeChunk(std::ostream& os, const Chunk& chunk, int startIndex) {
+void BytecodeSerializer::writeChunk(std::ostream& os, const Chunk& chunk, int startIndex, bool stripDebug) {
     write32(os, static_cast<uint32_t>(chunk.code.size()));
     for (Instruction inst : chunk.code) write32(os, inst);
 
-    write32(os, static_cast<uint32_t>(chunk.lines.size()));
-    for (int line : chunk.lines) write32(os, static_cast<uint32_t>(line));
+    if (stripDebug) {
+        write32(os, 0);
+    } else {
+        write32(os, static_cast<uint32_t>(chunk.lines.size()));
+        for (int line : chunk.lines) write32(os, static_cast<uint32_t>(line));
+    }
 
     std::unordered_set<int> fnIdxConstants;
     for (size_t ip = 0; ip < chunk.code.size(); ++ip) {
@@ -357,19 +361,19 @@ void BytecodeSerializer::readChunk(std::istream& is, Chunk& chunk, int baseIdx) 
     }
 }
 
-void BytecodeSerializer::writeFunction(std::ostream& os, const CompiledFunction* fn, int startIndex) {
+void BytecodeSerializer::writeFunction(std::ostream& os, const CompiledFunction* fn, int startIndex, bool stripDebug) {
     writeString(os, fn->name);
-    writeString(os, fn->sourceFile);
+    writeString(os, stripDebug ? "" : fn->sourceFile);
     write32(os, fn->arity);
     write32(os, fn->maxArity);
     write32(os, fn->localCount);
     write8(os, fn->hasRestParam ? 1 : 0);
 
-    writeChunk(os, fn->chunk, startIndex);
+    writeChunk(os, fn->chunk, startIndex, stripDebug);
 
     write16(os, static_cast<uint16_t>(fn->upvalues.size()));
     for (const auto& uv : fn->upvalues) {
-        writeString(os, uv.name);
+        writeString(os, stripDebug ? "" : uv.name);
         uint8_t flags = 0;
         if (uv.isLocal) flags |= 1;
         if (uv.isRef) flags |= 2;
@@ -425,7 +429,7 @@ void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, in
     fn->refCount = static_cast<int>(read32(is));
 }
 
-void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex, int count) {
+void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug) {
     std::ofstream os(path, std::ios::binary);
     if (!os) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
 
@@ -435,7 +439,7 @@ void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex
 
     for (int i = 0; i < count; ++i) {
         auto fn = vm->getCompiledFunctions()[startIndex + i];
-        writeFunction(os, fn.get(), startIndex);
+        writeFunction(os, fn.get(), startIndex, stripDebug);
     }
 }
 

@@ -1324,7 +1324,10 @@ namespace jc {
                 return res + ")";
             }
             case ObjType::CLOSURE: return "\"<function>\"";
-            case ObjType::CLASS: return "\"<class " + static_cast<ObjClass*>(obj)->name + ">\"";
+            case ObjType::CLASS: {
+                std::string n = static_cast<ObjClass*>(obj)->name;
+                return n.empty() ? "\"<anonymous class>\"" : "\"<class " + n + ">\"";
+            }
             case ObjType::INSTANCE: {
                 auto inst = static_cast<ObjInstance*>(obj);
                 try {
@@ -1337,11 +1340,16 @@ namespace jc {
                         return strRes.toJC2Expression();
                     }
                 } catch (...) {}
-                return "\"<" + (inst->classDef ? inst->classDef->name : "unknown") + " instance>\"";
+                std::string cname = inst->classDef ? inst->classDef->name : "unknown";
+                if (cname.empty()) cname = "anonymous";
+                return "\"<" + cname + " instance>\"";
             }
             case ObjType::SUPER_PROXY: return "\"<super>\"";
             case ObjType::SYMBOLIC: return "sym(\" " + static_cast<ObjSym*>(obj)->sym.toString() + "\")";
-            case ObjType::NAMESPACE: return "\"<namespace " + static_cast<ObjNamespace*>(obj)->name + ">\"";
+            case ObjType::NAMESPACE: {
+                std::string n = static_cast<ObjNamespace*>(obj)->name;
+                return n.empty() ? "\"<anonymous namespace>\"" : "\"<namespace " + n + ">\"";
+            }
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
                 RecursionGuard guard(visited, list);
@@ -1839,7 +1847,8 @@ namespace jc {
             case ObjType::CLASS: return "class";
             case ObjType::INSTANCE: {
                 auto inst = static_cast<ObjInstance*>(obj);
-                return inst->classDef ? inst->classDef->name : "instance";
+                if (inst->classDef && !inst->classDef->name.empty()) return inst->classDef->name;
+                return "instance";
             }
             case ObjType::SUPER_PROXY: return "super";
             case ObjType::SYMBOLIC: return "symbolic";
@@ -2167,9 +2176,19 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         }
         case ObjType::SYMBOLIC: os << static_cast<ObjSym*>(obj)->sym.toString(); break;
         case ObjType::CLOSURE: os << static_cast<ObjClosure*>(obj)->toString(); break;
-        case ObjType::CLASS: os << "<class " << static_cast<ObjClass*>(obj)->name << ">"; break;
+        case ObjType::CLASS: {
+            std::string n = static_cast<ObjClass*>(obj)->name;
+            if (n.empty()) os << "<anonymous class>";
+            else os << "<class " << n << ">";
+            break;
+        }
         case ObjType::SUPER_PROXY: os << "<super>"; break;
-        case ObjType::NAMESPACE: os << "<namespace " << static_cast<ObjNamespace*>(obj)->name << ">"; break;
+        case ObjType::NAMESPACE: {
+            std::string n = static_cast<ObjNamespace*>(obj)->name;
+            if (n.empty()) os << "<anonymous namespace>";
+            else os << "<namespace " << n << ">";
+            break;
+        }
         case ObjType::UPVALUE: os << "<upvalue>"; break;
         case ObjType::LIST: {
             ObjList* list = static_cast<ObjList*>(obj);
@@ -2213,6 +2232,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             ObjInstance* inst = static_cast<ObjInstance*>(obj);
             RecursionGuard guard(visited, inst);
             std::string cname = inst->classDef ? inst->classDef->name : "unknown";
+            if (cname.empty()) cname = "anonymous";
             if (guard.isCycle) { os << "<" << cname << " {...}>"; break; }
                 
             try {

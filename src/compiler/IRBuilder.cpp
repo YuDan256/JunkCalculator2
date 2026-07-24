@@ -3537,7 +3537,7 @@ void IRBuilder::visitEnumDefExpr(EnumDefExpr* expr) {
     Value nsVal(ns);
     GcValueGuard nsGuard(nsVal);
     
-    ns->name = expr->name.lexeme.empty() ? "<enum>" : expr->name.lexeme;
+    ns->name = expr->name.lexeme;
     
     Value currentValue = Value::fromInt32(0);
     GcValueGuard cvGuard(currentValue);

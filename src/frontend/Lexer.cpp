@@ -302,26 +302,60 @@ namespace jc {
             if (next == 'x' || next == 'X') {
                 advance(); // consume 'x'
                 if (!std::isxdigit(peek())) throwError("Invalid hex literal.");
-                while (std::isxdigit(peek())) advance();
+                while (std::isxdigit(peek()) || peek() == '_') {
+                    if (peek() == '_') {
+                        if (source[current - 1] == 'x' || source[current - 1] == 'X') throwError("Invalid hex literal: '_' cannot follow '0x'.");
+                        if (peekNext() == '_') throwError("Invalid hex literal: consecutive '_' are not allowed.");
+                        if (!std::isxdigit(peekNext())) throwError("Invalid hex literal: '_' must be followed by a digit.");
+                    }
+                    advance();
+                }
                 isHexOctBin = true;
             } else if (next == 'b' || next == 'B') {
                 advance(); // consume 'b'
                 if (peek() != '0' && peek() != '1') throwError("Invalid binary literal.");
-                while (peek() == '0' || peek() == '1') advance();
+                while (peek() == '0' || peek() == '1' || peek() == '_') {
+                    if (peek() == '_') {
+                        if (source[current - 1] == 'b' || source[current - 1] == 'B') throwError("Invalid binary literal: '_' cannot follow '0b'.");
+                        if (peekNext() == '_') throwError("Invalid binary literal: consecutive '_' are not allowed.");
+                        if (peekNext() != '0' && peekNext() != '1') throwError("Invalid binary literal: '_' must be followed by a digit.");
+                    }
+                    advance();
+                }
                 isHexOctBin = true;
             } else if (next == 'o' || next == 'O') {
                 advance(); // consume 'o'
                 if (peek() < '0' || peek() > '7') throwError("Invalid octal literal.");
-                while (peek() >= '0' && peek() <= '7') advance();
+                while ((peek() >= '0' && peek() <= '7') || peek() == '_') {
+                    if (peek() == '_') {
+                        if (source[current - 1] == 'o' || source[current - 1] == 'O') throwError("Invalid octal literal: '_' cannot follow '0o'.");
+                        if (peekNext() == '_') throwError("Invalid octal literal: consecutive '_' are not allowed.");
+                        if (peekNext() < '0' || peekNext() > '7') throwError("Invalid octal literal: '_' must be followed by a digit.");
+                    }
+                    advance();
+                }
                 isHexOctBin = true;
             }
         }
 
         if (!isHexOctBin) {
-            while (std::isdigit(peek())) advance();
+            while (std::isdigit(peek()) || peek() == '_') {
+                if (peek() == '_') {
+                    if (peekNext() == '_') throwError("Invalid number literal: consecutive '_' are not allowed.");
+                    if (!std::isdigit(peekNext())) throwError("Invalid number literal: '_' must be followed by a digit.");
+                }
+                advance();
+            }
             if (peek() == '.' && std::isdigit(peekNext())) {
                 advance();
-                while (std::isdigit(peek())) advance();
+                while (std::isdigit(peek()) || peek() == '_') {
+                    if (peek() == '_') {
+                        if (source[current - 1] == '.') throwError("Invalid number literal: '_' cannot follow '.'.");
+                        if (peekNext() == '_') throwError("Invalid number literal: consecutive '_' are not allowed.");
+                        if (!std::isdigit(peekNext())) throwError("Invalid number literal: '_' must be followed by a digit.");
+                    }
+                    advance();
+                }
             }
             if (peek() == 'e' || peek() == 'E') {
                 char next = peekNext();
@@ -332,8 +366,22 @@ namespace jc {
                 if (isValidScientific) {
                     advance();
                     if (hasSign) advance();
-                    while (std::isdigit(peek())) advance();
+                    while (std::isdigit(peek()) || peek() == '_') {
+                        if (peek() == '_') {
+                            if (source[current - 1] == 'e' || source[current - 1] == 'E' || source[current - 1] == '+' || source[current - 1] == '-') throwError("Invalid scientific literal: '_' cannot follow exponent indicator or sign.");
+                            if (peekNext() == '_') throwError("Invalid scientific literal: consecutive '_' are not allowed.");
+                            if (!std::isdigit(peekNext())) throwError("Invalid scientific literal: '_' must be followed by a digit.");
+                        }
+                        advance();
+                    }
                 }
+            }
+        }
+
+        std::string lexeme;
+        for (int i = start; i < current; ++i) {
+            if (source[i] != '_') {
+                lexeme += source[i];
             }
         }
 
@@ -351,7 +399,8 @@ namespace jc {
                 next == '<' || next == '>' || next == '"');
             if (validEnd) {
                 advance(); // consume 'i'
-                addToken(TokenType::IMAGINARY);
+                lexeme += 'i';
+                tokens.emplace_back(TokenType::IMAGINARY, lexeme, start, line);
                 return;
             }
         }
@@ -360,7 +409,7 @@ namespace jc {
             throwError("Invalid character '" + std::string(1, peek()) + "' in number literal.");
         }
 
-        addToken(TokenType::NUMBER);
+        tokens.emplace_back(TokenType::NUMBER, lexeme, start, line);
     }
 
     bool Lexer::isAtEnd() const { return current >= (int)source.length(); }

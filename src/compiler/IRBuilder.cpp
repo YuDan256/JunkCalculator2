@@ -661,6 +661,25 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             currentControl = ifTrue;
         }
+    } else if (auto* dap = dynamic_cast<DynamicAssertPattern*>(pat)) {
+        dap->expr->accept(*this);
+        IRNode* eqNode = graph->createValueNode(IROp::Eq);
+        eqNode->setControl(currentControl);
+        eqNode->addData(valNode);
+        eqNode->addData(lastValue);
+        
+        IRNode* ifNode = graph->createNode(IROp::If);
+        ifNode->setControl(currentControl);
+        ifNode->addData(eqNode);
+        
+        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        ifTrue->setControl(ifNode);
+        
+        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        ifFalse->setControl(ifNode);
+        failMerge->addData(ifFalse);
+        
+        currentControl = ifTrue;
     } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
         int restIndex = -1;
         for (size_t i = 0; i < lp->elements.size(); ++i) {

@@ -90,6 +90,7 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
 }
 
 void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal, bool isExplicitConst) {
+    if (name == "_") return;
     if (sym.scope == VarScope::Global) {
         IROp op = isExplicitConst ? IROp::DefineConstGlobal : IROp::SetGlobal;
         IRNode* node = graph->createNode(op);
@@ -182,6 +183,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
 }
 
 void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
+    if (name == "_") return;
     if (envStack.empty()) return;
     envStack.back()[name] = value;
 }
@@ -1550,7 +1552,7 @@ void IRBuilder::visitAssign(Assign* expr) {
     IRNode* hiddenNode = nullptr;
     int hiddenDepth = -1;
 
-    if (!isFuncDef && (expr->isLocal || expr->isState || expr->isConst)) {
+    if (expr->name.lexeme != "_" && !isFuncDef && (expr->isLocal || expr->isState || expr->isConst)) {
         for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
             auto envIt = envStack[i].find(expr->name.lexeme);
             if (envIt != envStack[i].end()) {
@@ -1602,7 +1604,7 @@ void IRBuilder::visitAssign(Assign* expr) {
     IRNode* valNode = lastValue;
     
     if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
-        if (valNode->name.empty()) valNode->name = expr->name.lexeme;
+        if (valNode->name.empty() && expr->name.lexeme != "_") valNode->name = expr->name.lexeme;
     }
     
     if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;
@@ -1613,6 +1615,7 @@ void IRBuilder::visitAssign(Assign* expr) {
 
 void IRBuilder::hoistBlock(Block* block) {
     auto hoistVar = [&](const std::string& name, bool isExplicitLocal) {
+        if (name == "_") return;
         if (isExplicitLocal) {
             if (!envStack.back().count(name)) {
                 IRNode* uninit = graph->createConstant(Value::uninit());
@@ -2478,31 +2481,35 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
     declareVariable(expr->name.lexeme, uninitNode);
-    currentLocalVars.insert(expr->name.lexeme);
-    if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
+    if (expr->name.lexeme != "_") {
+        currentLocalVars.insert(expr->name.lexeme);
+        if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
+    }
     lastValue = uninitNode;
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
     graph->currentLine = expr->name.line;
-    if (currentFunction) {
-        int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
-        if (upvalIdx == -1) {
-            // If not found in parent, it's a global ref
-            CompiledFunction::UpvalueInfo uv;
-            uv.name = expr->name.lexeme;
-            uv.isLocal = false;
-            uv.index = 0;
-            uv.isRef = true;
-            uv.isGlobal = true;
-            uv.isExplicitState = false;
-            uv.isRefParam = false;
-            currentFunction->upvalues.push_back(uv);
-        } else {
-            currentFunction->upvalues[upvalIdx].isRef = true;
+    if (expr->name.lexeme != "_") {
+        if (currentFunction) {
+            int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
+            if (upvalIdx == -1) {
+                // If not found in parent, it's a global ref
+                CompiledFunction::UpvalueInfo uv;
+                uv.name = expr->name.lexeme;
+                uv.isLocal = false;
+                uv.index = 0;
+                uv.isRef = true;
+                uv.isGlobal = true;
+                uv.isExplicitState = false;
+                uv.isRefParam = false;
+                currentFunction->upvalues.push_back(uv);
+            } else {
+                currentFunction->upvalues[upvalIdx].isRef = true;
+            }
         }
+        if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
-    if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     lastValue = graph->createConstant(Value::uninit());
     lastValue->setControl(currentControl);
 }
@@ -2511,22 +2518,24 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
     graph->currentLine = expr->name.line;
     if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     
-    int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
-    if (upvalIdx == -1) {
-        CompiledFunction::UpvalueInfo uv;
-        uv.name = expr->name.lexeme;
-        uv.isLocal = false;
-        uv.index = 0;
-        uv.isRef = false;
-        uv.isGlobal = true;
-        uv.isExplicitState = false;
-        uv.isRefParam = false;
-        uv.isCapturedState = true;
-        currentFunction->upvalues.push_back(uv);
-    } else {
-        currentFunction->upvalues[upvalIdx].isCapturedState = true;
+    if (expr->name.lexeme != "_") {
+        int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
+        if (upvalIdx == -1) {
+            CompiledFunction::UpvalueInfo uv;
+            uv.name = expr->name.lexeme;
+            uv.isLocal = false;
+            uv.index = 0;
+            uv.isRef = false;
+            uv.isGlobal = true;
+            uv.isExplicitState = false;
+            uv.isRefParam = false;
+            uv.isCapturedState = true;
+            currentFunction->upvalues.push_back(uv);
+        } else {
+            currentFunction->upvalues[upvalIdx].isCapturedState = true;
+        }
+        if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
-    if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     lastValue = graph->createConstant(Value::uninit());
     lastValue->setControl(currentControl);
 }
@@ -2536,7 +2545,9 @@ void IRBuilder::visitConstDecl(ConstDecl* expr) {
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
     declareVariable(expr->name.lexeme, uninitNode);
-    currentConstVars.insert(expr->name.lexeme);
+    if (expr->name.lexeme != "_") {
+        currentConstVars.insert(expr->name.lexeme);
+    }
     lastValue = uninitNode;
 }
 
@@ -2812,15 +2823,21 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
     for (size_t i = 0; i < params.size(); ++i) {
         IRNode* paramNode = nullptr;
         if (i < paramIsRef.size() && paramIsRef[i]) {
-            refParams[params[i].lexeme] = refIdx++;
-            ResolvedSym rs; rs.scope = VarScope::RefParam;
-            paramNode = readVariable(params[i].lexeme, rs);
+            if (params[i].lexeme != "_") refParams[params[i].lexeme] = refIdx;
+            refIdx++;
+            if (params[i].lexeme != "_") {
+                ResolvedSym rs; rs.scope = VarScope::RefParam;
+                paramNode = readVariable(params[i].lexeme, rs);
+            } else {
+                paramNode = graph->createConstant(Value::none());
+                paramNode->setControl(currentControl);
+            }
         } else {
             paramNode = graph->createValueNode(IROp::Parameter);
             paramNode->payload1 = static_cast<uint32_t>(i);
             declareVariable(params[i].lexeme, paramNode);
         }
-        if (i < paramIsConst.size() && paramIsConst[i]) {
+        if (params[i].lexeme != "_" && i < paramIsConst.size() && paramIsConst[i]) {
             currentConstVars.insert(params[i].lexeme);
         }
         

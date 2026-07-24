@@ -51,3 +51,9 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
 ## 7. C++ 底层开发与扩展规范 (C++ Low-Level Development & Extension Rules)
 *   **GC 保护 (GC Guard)**：在 C++ 内部创建或操作受 GC 管理的原生对象（如 `ObjList`, `ObjDict`, `ObjInstance` 等）时，如果在将其挂载到根节点（如压入栈或存入其他已被追踪的对象）之前发生新的内存分配，**必须**使用 `GcObjGuard` 将其包裹，防止在触发 GC 时被误伤回收。
 *   **AST 节点与宏系统 (AST Nodes & Macros)**：当在编译器中加入新的 AST 节点时，必须同步处理宏系统中的双向转换逻辑。即在 `ASTNode` 类（供 JC2 脚本操作的字典结构）与 C++ 底层的真 AST 节点之间，实现完整的序列化与反序列化支持。
+
+## 8. 枚举的编译期零开销语义 (Compile-Time Zero-Overhead Enum Semantics)
+*   **语法糖与底层映射**：`enum` 在 JC2 中并非引入新的运行时数据结构，而是直接映射为**被冻结的命名空间 (Frozen Namespace)**。
+*   **编译期求值 (Compile-Time Evaluation)**：为了实现真正的零开销，`EnumDefExpr` 节点在 IR 构建阶段（`IRBuilder`）就会被完全求值。枚举成员的值必须是编译期常量（字面量或可常量折叠的表达式）。
+*   **常量池嵌入**：构建好的 `ObjNamespace` 会在编译期直接被标记为 `is_frozen = true`，并作为 `IROp::Constant` 塞入当前函数的常量池中。运行时仅需一条 `LOADK` 指令即可加载整个枚举，没有任何动态分配或函数调用开销。
+*   **匿名纯洁性**：匿名枚举（以及匿名类、匿名命名空间）的内部 `name` 字段严格保持为空字符串 `""`。为了防止与名为 `anonymous` 的变量混淆，打印时由 `Value::toJC2Expression` 拦截并格式化为 `<anonymous namespace>`。

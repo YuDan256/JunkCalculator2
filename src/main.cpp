@@ -19,6 +19,7 @@
 #include "compiler/RegisterAllocator.h"
 #include "compiler/Emitter.h"
 #include "vm/VM.h"
+#include "vm/BytecodeSerializer.h"
 #include <csignal>
 #include <atomic>
 #include <random>
@@ -159,12 +160,64 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
 
 void runScript(const std::string& filepath, bool isImport = false) {
     std::string resolvedPath = jc::helpers::safeResolvePath(filepath);
-    if (!std::filesystem::exists(resolvedPath))
-        resolvedPath = jc::helpers::safeResolvePath(filepath + ".jc2");
+    if (!std::filesystem::exists(resolvedPath)) {
+        std::string jcbPath = jc::helpers::safeResolvePath(filepath + ".jcb");
+        if (std::filesystem::exists(jcbPath)) {
+            resolvedPath = jcbPath;
+        } else {
+            resolvedPath = jc::helpers::safeResolvePath(filepath + ".jc2");
+        }
+    }
     if (!std::filesystem::exists(resolvedPath)) {
         std::cerr << "   IO Error: Cannot open script '" << filepath << "'." << std::endl;
         return;
     }
+
+    std::string ext = std::filesystem::path(resolvedPath).extension().string();
+    if (ext == ".jcb") {
+        bool fallbackToSource = false;
+        jc::helpers::g_scriptDirStack.push_back(std::filesystem::path(resolvedPath).parent_path().string());
+        try {
+            auto modFn = jc::BytecodeSerializer::loadJCB(resolvedPath, &vm);
+            int fnIdx = static_cast<int>(vm.getCompiledFunctions().size()) - 1;
+            jc::Value result = vm.callVMFunction(fnIdx, {});
+            if (!result.isNone()) {
+                vm.setGlobal("ANS", result);
+            }
+        } catch (const jc::EngineInterruptError&) {
+            if (isImport) throw;
+            std::cerr << "\n^C KeyboardInterrupt in script '" << resolvedPath << "'" << std::endl;
+        } catch (const std::runtime_error& ex) {
+            std::string msg = ex.what();
+            if (msg == "JCB_MAGIC_MISMATCH" || msg == "JCB_VERSION_MISMATCH") {
+                fallbackToSource = true;
+            } else {
+                if (isImport) throw;
+                std::cerr << "\n" << jc::col(jc::Ansi::BRIGHT_RED)
+                    << "In '" << resolvedPath << "':\n"
+                    << ex.what() << std::endl;
+            }
+        } catch (const std::exception& ex) {
+            if (isImport) throw;
+            std::cerr << "\n" << jc::col(jc::Ansi::BRIGHT_RED)
+                << "In '" << resolvedPath << "':\n"
+                << ex.what() << std::endl;
+        }
+        jc::helpers::g_scriptDirStack.pop_back();
+        
+        if (fallbackToSource) {
+            std::string jc2Path = std::filesystem::path(resolvedPath).replace_extension(".jc2").string();
+            if (std::filesystem::exists(jc2Path)) {
+                resolvedPath = jc2Path;
+            } else {
+                std::cerr << "   VM Error: Bytecode version mismatch and source file not found for '" << resolvedPath << "'." << std::endl;
+                return;
+            }
+        } else {
+            return;
+        }
+    }
+
     std::ifstream file(resolvedPath);
     if (!file.is_open()) {
         std::cerr << "   IO Error: Cannot open script '" << filepath << "'." << std::endl;
@@ -407,9 +460,30 @@ int main(int argc, char* argv[]) {
     std::string evalStr = "";
     bool runTests = false;
     std::string testPath = "";
+    bool compileMode = false;
+    std::string compileInput = "";
+    std::string compileOutput = "";
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "-e" || arg == "--eval") {
+        if (arg == "--compile" || arg == "-c") {
+            compileMode = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                compileInput = argv[++i];
+            } else {
+                std::cerr << "Error: --compile requires an input file.\n";
+                return 1;
+            }
+        }
+        else if (arg == "-o") {
+            if (i + 1 < argc) {
+                compileOutput = argv[++i];
+            } else {
+                std::cerr << "Error: -o requires an output file.\n";
+                return 1;
+            }
+        }
+        else if (arg == "-e" || arg == "--eval") {
             if (i + 1 < argc) {
                 evalStr = argv[++i];
             }
@@ -466,6 +540,79 @@ int main(int argc, char* argv[]) {
                 return 1;
             }
         }
+    }
+
+    // 如果有 --compile 参数，则执行编译并退出
+    if (compileMode) {
+        if (compileOutput.empty()) {
+            std::filesystem::path p(compileInput);
+            p.replace_extension(".jcb");
+            compileOutput = p.string();
+        }
+        std::string resolvedPath = jc::helpers::safeResolvePath(compileInput);
+        if (!std::filesystem::exists(resolvedPath))
+            resolvedPath = jc::helpers::safeResolvePath(compileInput + ".jc2");
+        if (!std::filesystem::exists(resolvedPath)) {
+            std::cerr << "IO Error: Cannot open script '" << compileInput << "'." << std::endl;
+            return 1;
+        }
+        std::ifstream file(resolvedPath);
+        if (!file.is_open()) {
+            std::cerr << "IO Error: Cannot open script '" << compileInput << "'." << std::endl;
+            return 1;
+        }
+        std::string code, line;
+        while (std::getline(file, line)) code += line + "\n";
+        file.close();
+
+        try {
+            jc::Lexer lexer(code, resolvedPath);
+            auto tokens = lexer.tokenize();
+            jc::Parser parser(tokens, resolvedPath);
+            auto ast = parser.parse();
+            
+            auto& fns = vm.getCompiledFunctions();
+            int startIndex = static_cast<int>(fns.size());
+            
+            jc::Resolver resolver;
+            resolver.resolve(ast.get());
+
+            auto modFn = std::make_shared<jc::CompiledFunction>();
+            modFn->name = "<script>";
+            modFn->sourceFile = resolvedPath;
+            modFn->arity = 0;
+            modFn->maxArity = 0;
+            modFn->hasRestParam = false;
+
+            jc::IRGraph graph;
+            jc::IRBuilder builder(&graph, &fns, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);
+            builder.build(ast.get());
+            
+            jc::IROptimizer::optimize(&graph);
+            jc::RegisterAllocator::allocate(&graph);
+            
+            for (auto& target : builder.upvalueTargets) {
+                if (target.isLocal && target.localNode) {
+                    jc::IRNode* localNode = target.localNode;
+                    int upvalIdx = target.index;
+                    jc::CompiledFunction* childFn = modFn.get();
+                    graph.postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
+                        childFn->upvalues[upvalIdx].index = localNode->physicalReg;
+                    });
+                }
+            }
+
+            modFn->localCount = jc::Emitter::emit(&graph, modFn->chunk);
+            fns.push_back(modFn);
+            
+            int count = static_cast<int>(fns.size()) - startIndex;
+            jc::BytecodeSerializer::saveJCB(compileOutput, &vm, startIndex, count);
+            std::cout << "Successfully compiled '" << compileInput << "' to '" << compileOutput << "'." << std::endl;
+        } catch (const std::exception& ex) {
+            std::cerr << "Compilation Error:\n" << ex.what() << std::endl;
+            return 1;
+        }
+        return 0;
     }
 
     // 如果有 --test 参数，则执行测试套件并退出

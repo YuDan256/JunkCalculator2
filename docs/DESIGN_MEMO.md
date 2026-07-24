@@ -41,6 +41,7 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
 ## 5. 异常与 Traceback (Exceptions & Tracebacks)
 *   所有通过 `throw` 抛出的值（无论类型），在虚拟机内部都会被自动包装为 `Exception` 类的实例。
 *   如果抛出的已经是 `Exception` 实例且没有 `traceback`，VM 会自动为其填充当前的调用栈。
+*   **C++ 底层抛出规范**：在 C++ 运行时底层（如内置函数、类型检查、VM 指令执行等），**绝对禁止**抛出裸的 `std::runtime_error`、`std::invalid_argument` 等标准库异常。必须借鉴 `VM.cpp` 的机制，统一抛出 `jc::RuntimeError("ErrorType", Value("Message"))` 或 `jc::ValueException`。这避免了 VM 在捕获时还需要低效地解析字符串前缀（如 `"Math Error: ..."`），并保证了异常类型的精确传递。
 *   在 C++ 宿主层捕获的 `RuntimeError`，其 `what()` 方法应调用内部 `Exception` 实例的 `toString()`（即 `__str__`），以确保打印出格式化好的完整 Traceback，而不是简写的 `<Exception: ...>`。
 
 ## 6. CAS 与数值计算的边界 (CAS vs Numerical Boundary)
@@ -64,3 +65,18 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
 *   **零开销绑定**：在 Resolver 阶段，`_` 永远不会被注册到任何作用域的符号表中。在 IRBuilder 阶段，目标为 `_` 的赋值（如 `_ = expr` 或 `[_, b] = [1, 2]`）会正常对右侧求值（以保证副作用），但**直接丢弃结果，不生成任何写入变量的 IR 节点**。
 *   **GC 压力释放**：由于 `_` 不产生绑定，它不会增加对象的引用计数，也不会进入环境栈，从而完美实现了真正的零开销丢弃，极大减轻了 GC 压力。
 *   **语义统一**：这使得 `_` 在解构丢弃、顶层裸赋值丢弃（`_ = func()`）以及偏函数应用（`f(_, 10)`）中达到了完美的逻辑自洽——它永远代表一个“洞”，而不是一个“值”。
+
+## 10. JCB 字节码序列化格式 (JCB Bytecode Serialization Format)
+为了提升大型脚本与标准库的加载速度并支持闭源分发，JC2 引入了 `.jcb` (Junk Calculator Bytecode) 格式。
+*   **文件头与版本校验 (Header & Versioning)**：文件必须以魔数 (Magic Number) 开头（如 `0x4A 0x43 0x42 0x01`），紧跟严格的 VM 指令集版本号。版本不匹配时必须拒绝加载，防止底层段错误 (Segfault)。
+*   **跨平台字节序 (Endianness)**：`.jcb` 文件内部的所有多字节原生数据（如 `int32_t`, `double`）必须统一采用 **小端序 (Little-Endian)** 序列化，以保证在 x64 和 ARM 架构之间的完美跨平台兼容。
+*   **常量池的深度反序列化 (Deep Constant Pool Deserialization)**：常量池不仅需要支持标量（Double, Int, String, Fraction, Complex），还**必须支持特定容器的序列化**。
+    *   **大整数 (BigInt) 的二进制序列化**：为了极致的加载性能，`BigInt` 必须导出其内部的 `std::vector<uint32_t>` 块，而不是转换为十进制字符串。序列化格式为：1 字节符号位 (`negative`) + 4 字节数组长度 (`size`) + 连续的小端序 `uint32_t` 数组。
+    *   **枚举支持**：由于 `enum` 语法在编译期被折叠为 `ObjNamespace` 并存入常量池，`.jcb` 必须支持 `TAG_NAMESPACE` 的递归序列化。反序列化时，需读取其内部的所有键值对，并在内存中重建后严格标记为 `is_frozen = true`。
+*   **常量池的序列化边界与内存管理 (Serialization Boundary & Memory Management)**：
+    *   **无需序列化**：`Class`, `Instance`, `Closure`, `List`, `Dict`, `Set`。这些对象具有引用语义或依赖运行时上下文，由 VM 在运行时通过指令（如 `CLASS`, `BUILD_LIST`）动态构建，**绝不会**进入常量池。
+    *   **按需序列化**：`RealMatrix`, `ComplexMatrix`, `StringMatrix` 具有值语义，未来优化器实现矩阵常量折叠后会进入常量池，因此需支持其序列化（写入维度与连续内存块）。
+    *   **内存保护机制 (Memory Protection)**：常量池（`Chunk::constants`）在反序列化后会持有这些复杂对象的 `Value`。
+        *   **值语义对象**（如 `String`, `BigInt`, `Matrix`）：自动接入底层的**引用计数 (RC)**，只要 `Chunk` 存活，其 `refCount > 0` 即可免于回收。
+        *   **引用语义对象**（如冻结的 `Namespace`）：由于 RC 不保护容器对象，它们依赖于 **GC 标记阶段 (Mark Phase)**。VM 会将当前所有活跃 `Chunk` 的常量池作为 GC Root 进行扫描，确保其绝不会被误杀。
+*   **加载优先级**：在执行 `import "module"` 时，VM 的 Resolver 必须优先探测是否存在版本匹配的 `module.jcb`。如果存在则直接反序列化绕过编译前端；如果不存在或魔数/版本号不匹配，则回退加载 `module.jc2` 源码。

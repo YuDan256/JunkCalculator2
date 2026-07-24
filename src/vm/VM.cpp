@@ -11,6 +11,7 @@
 #include "../compiler/RegisterAllocator.h"
 #include "../compiler/Emitter.h"
 #include "EngineInterrupt.h"
+#include "BytecodeSerializer.h"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -1882,23 +1883,42 @@ Value VM::execImport(const std::string& name) {
         if (std::filesystem::is_regular_file(localModPath)) resolved = localModPath;
     }
 
-    // 3. 最后查找 .jc2 模块脚本
+    // 3. 查找 .jcb 字节码
+    std::string jcbPath = "";
     if (resolved.empty()) {
-        resolved = helpers::safeResolvePath(name);
-        if (!std::filesystem::is_regular_file(resolved)) {
-            resolved = helpers::safeResolvePath(name + ".jc2");
+        std::string p = helpers::safeResolvePath(name);
+        if (std::filesystem::path(p).extension() == ".jcb" && std::filesystem::is_regular_file(p)) {
+            jcbPath = p;
+        } else {
+            p = helpers::safeResolvePath(name + ".jcb");
+            if (std::filesystem::is_regular_file(p)) jcbPath = p;
         }
     }
 
-    if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
+    // 4. 查找 .jc2 模块脚本
+    std::string jc2Path = "";
+    if (resolved.empty() && jcbPath.empty()) {
+        std::string p = helpers::safeResolvePath(name);
+        if (std::filesystem::path(p).extension() == ".jc2" && std::filesystem::is_regular_file(p)) {
+            jc2Path = p;
+        } else {
+            p = helpers::safeResolvePath(name + ".jc2");
+            if (std::filesystem::is_regular_file(p)) jc2Path = p;
+        }
+    }
+
+    if (resolved.empty() && jcbPath.empty() && jc2Path.empty()) {
         loadedModules.erase(name);
         throw std::runtime_error("VM Error: Cannot find library or module '" + name + "'.");
     }
 
     importedModules.insert(name);
 
-    std::string ext = std::filesystem::path(resolved).extension().string();
-    if (ext == ".dll" || ext == ".so") {
+    std::shared_ptr<CompiledFunction> modFn;
+    std::string executePath;
+
+    if (!resolved.empty()) {
+        std::string ext = std::filesystem::path(resolved).extension().string();
 #if defined(_WIN32)
         HMODULE handle = LoadLibraryA(resolved.c_str());
         if (!handle) { loadedModules.erase(name); throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "'."); }
@@ -1959,23 +1979,47 @@ Value VM::execImport(const std::string& name) {
             uv->location = &uv->closed;
             ns->fields[kv.first] = { uv, true };
         }
-    } else {
-        std::ifstream file(resolved);
+        return Value(ns);
+    }
+
+    if (!jcbPath.empty()) {
+        try {
+            modFn = BytecodeSerializer::loadJCB(jcbPath, this);
+            executePath = jcbPath;
+        } catch (const std::runtime_error& e) {
+            std::string msg = e.what();
+            if (msg == "JCB_MAGIC_MISMATCH" || msg == "JCB_VERSION_MISMATCH") {
+                if (jc2Path.empty()) {
+                    jc2Path = helpers::safeResolvePath(name + ".jc2");
+                    if (!std::filesystem::is_regular_file(jc2Path)) {
+                        loadedModules.erase(name);
+                        throw std::runtime_error("VM Error: Bytecode version mismatch and source file not found for '" + name + "'.");
+                    }
+                }
+            } else {
+                loadedModules.erase(name);
+                throw;
+            }
+        }
+    }
+
+    if (!modFn && !jc2Path.empty()) {
+        std::ifstream file(jc2Path);
         if (!file.is_open()) { loadedModules.erase(name); throw std::runtime_error("IO Error: Cannot read module script."); }
         std::string code, line;
         while (std::getline(file, line)) code += line + "\n";
         file.close();
 
-        jc::Lexer lexer(code, resolved);
+        jc::Lexer lexer(code, jc2Path);
         auto tokens = lexer.tokenize();
         jc::Parser parser(tokens);
         auto ast = parser.parse();
 
         auto nsDecl = std::make_unique<NamespaceDecl>(Token(TokenType::IDENTIFIER, baseName, 0), std::move(ast));
 
-        auto modFn = std::make_shared<CompiledFunction>();
+        modFn = std::make_shared<CompiledFunction>();
         modFn->name = "<module " + baseName + ">";
-        modFn->sourceFile = resolved;
+        modFn->sourceFile = jc2Path;
         modFn->arity = 0;
         modFn->maxArity = 0;
         modFn->hasRestParam = false;
@@ -2007,70 +2051,70 @@ Value VM::execImport(const std::string& name) {
         }
 
         modFn->localCount = Emitter::emit(&fnGraph, modFn->chunk);
-
         compiledFunctions.push_back(modFn);
+        executePath = jc2Path;
+    }
 
-        CallFrame newFrame;
-        newFrame.function = modFn.get();
-        newFrame.chunk = &modFn->chunk;
-        newFrame.ip = 0;
-        
-        CallFrame* currentFrame = &frames[frameCount - 1];
-        int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
-        int newTotalCount = modFn->localCount + modFn->refCount;
-        PendingFrameGuard pfg(this, newBase, newTotalCount);
+    CallFrame newFrame;
+    newFrame.function = modFn.get();
+    newFrame.chunk = &modFn->chunk;
+    newFrame.ip = 0;
+    
+    CallFrame* currentFrame = &frames[frameCount - 1];
+    int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+    int newTotalCount = modFn->localCount + modFn->refCount;
+    PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-        newFrame.registerBase = newBase;
-        newFrame.returnRegister = 0;
-        newFrame.deferBase = static_cast<int>(deferStack.size());
-        newFrame.closure = nullptr;
-        newFrame.selfContext = Value::none();
-        newFrame.classContext = Value::none();
-        
-        for (int i = 0; i < modFn->localCount; ++i) {
-            registers[newFrame.registerBase + i] = Value::none();
-        }
-        
-        populateRefParams(newFrame, modFn.get());
-        
-        if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
-        int targetDepth = frameCount;
-        profileFrameStart(&newFrame);
-        frames[frameCount++] = newFrame;
+    newFrame.registerBase = newBase;
+    newFrame.returnRegister = 0;
+    newFrame.deferBase = static_cast<int>(deferStack.size());
+    newFrame.closure = nullptr;
+    newFrame.selfContext = Value::none();
+    newFrame.classContext = Value::none();
+    
+    for (int i = 0; i < modFn->localCount; ++i) {
+        registers[newFrame.registerBase + i] = Value::none();
+    }
+    
+    populateRefParams(newFrame, modFn.get());
+    
+    if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+    int targetDepth = frameCount;
+    profileFrameStart(&newFrame);
+    frames[frameCount++] = newFrame;
 
-        std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
-        helpers::g_scriptDirStack.push_back(scriptDir);
-        Value nsVal;
-        try {
-            nsVal = run(targetDepth);
-        } catch (...) {
-            while (frameCount > targetDepth) {
-                CallFrame* f = &frames[frameCount - 1];
-                profileFrameEnd(f);
-                int clearBase = f->registerBase;
-                int clearCount = f->function->localCount + f->function->refCount;
-                for (int i = 0; i < clearCount; ++i) {
-                    registers[clearBase + i] = Value::none();
-                }
-                f->selfContext = Value::none();
-                f->classContext = Value::none();
-                f->closure = nullptr;
-                f->refParamsBase = -1;
-                frameCount--;
+    std::string scriptDir = std::filesystem::path(executePath).parent_path().string();
+    helpers::g_scriptDirStack.push_back(scriptDir);
+    Value nsVal;
+    try {
+        nsVal = run(targetDepth);
+    } catch (...) {
+        while (frameCount > targetDepth) {
+            CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
             }
-            helpers::g_scriptDirStack.pop_back();
-            loadedModules.erase(name);
-            throw;
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
+            frameCount--;
         }
         helpers::g_scriptDirStack.pop_back();
-
-        if (!nsVal.isObjType(ObjType::NAMESPACE)) {
-            loadedModules.erase(name);
-            throw std::runtime_error("VM Error: Module script must not use top-level 'return'.");
-        }
-        ns = static_cast<ObjNamespace*>(nsVal.asObj());
-        loadedModules[name] = Value(ns);
+        loadedModules.erase(name);
+        throw;
     }
+    helpers::g_scriptDirStack.pop_back();
+
+    if (!nsVal.isObjType(ObjType::NAMESPACE)) {
+        loadedModules.erase(name);
+        throw std::runtime_error("VM Error: Module script must not use top-level 'return'.");
+    }
+    ns = static_cast<ObjNamespace*>(nsVal.asObj());
+    loadedModules[name] = Value(ns);
 
     return Value(ns);
 }

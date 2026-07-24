@@ -796,6 +796,20 @@ namespace jc {
         }
 
         // =================================================================================
+        // 二进制序列化接口 (Binary Serialization)
+        // =================================================================================
+        const std::vector<uint32_t>& getRawData() const { return data; }
+        bool getSign() const { return negative; }
+        static BigInt fromRawData(bool neg, const std::vector<uint32_t>& raw) {
+            BigInt b;
+            b.negative = neg;
+            b.data = raw;
+            if (b.data.empty()) b.data.push_back(0);
+            b.trim();
+            return b;
+        }
+
+        // =================================================================================
         // 核心构造函数与基础操作
         // =================================================================================
         BigInt() : data(1, 0), negative(false) {}

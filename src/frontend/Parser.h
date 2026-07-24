@@ -60,6 +60,7 @@ namespace jc {
         std::unique_ptr<Expr> parseMatchBody();  // ★
         std::unique_ptr<Expr> classDefExpr();  // ★
         std::unique_ptr<Expr> namespaceExpr(); // ★ 新增
+        std::unique_ptr<Expr> enumExpr();      // ★ 新增
         std::unique_ptr<Expr> parseFString(const std::string& raw);  // ★
         std::vector<CompClause> parseCompClauses();
         std::unique_ptr<Expr> parseListComp(std::unique_ptr<Expr> valueExpr);  // ★

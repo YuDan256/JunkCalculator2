@@ -338,6 +338,14 @@ void Resolver::visitNamespaceDecl(NamespaceDecl* expr) {
     endScope();
 }
 
+void Resolver::visitEnumDefExpr(EnumDefExpr* expr) {
+    for (auto& member : expr->members) {
+        if (member.second) {
+            resolve(member.second.get());
+        }
+    }
+}
+
 void Resolver::visitDotAccess(DotAccess* expr) {
     resolve(expr->object.get());
 }

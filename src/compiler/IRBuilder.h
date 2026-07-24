@@ -162,6 +162,7 @@ public:
     void visitSwitchExpr(SwitchExpr* expr) override;
     void visitClassDefExpr(ClassDefExpr* expr) override;
     void visitNamespaceDecl(NamespaceDecl* expr) override;
+    void visitEnumDefExpr(EnumDefExpr* expr) override;
     void visitDotAccess(DotAccess* expr) override;
     void visitDotAssign(DotAssign* expr) override;
     void visitMethodCallExpr(MethodCallExpr* expr) override;

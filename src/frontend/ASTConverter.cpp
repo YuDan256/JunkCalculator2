@@ -445,6 +445,27 @@ public:
         });
     }
 
+    void visitEnumDefExpr(EnumDefExpr* expr) override {
+        ObjList* members = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(members);
+        for (auto& m : expr->members) {
+            ObjList* pair = GcHeap::get().allocate<ObjList>();
+            GcObjGuard pGuard(pair);
+            pair->vec.push_back(Value(m.first.lexeme));
+            if (m.second) {
+                m.second->accept(*this);
+                pair->vec.push_back(result);
+            } else {
+                pair->vec.push_back(Value::none());
+            }
+            members->vec.push_back(Value(pair));
+        }
+        result = makeASTNode("EnumDefExpr", expr->name.line, {
+            {"name", Value(expr->name.lexeme)},
+            {"members", Value(members)}
+        });
+    }
+
     void visitDestructAssign(DestructAssign* expr) override {
         expr->value->accept(*this); Value val = result;
         GcValueGuard valGuard(val);
@@ -1041,6 +1062,27 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             Token(TokenType::IDENTIFIER, nsName, line),
             JC2_to_AST(getProp("body"))
         );
+    } else if (type == "EnumDefExpr") {
+        std::string enumName = "";
+        if (getProp("name").isString()) enumName = getProp("name").asString();
+        std::vector<std::pair<Token, std::unique_ptr<Expr>>> members;
+        Value membersVal = getProp("members");
+        if (membersVal.isObjType(ObjType::LIST)) {
+            for (const auto& mVal : static_cast<ObjList*>(membersVal.asObj())->vec) {
+                if (mVal.isObjType(ObjType::LIST)) {
+                    auto mList = static_cast<ObjList*>(mVal.asObj());
+                    if (mList->vec.size() >= 2) {
+                        Token mName(TokenType::IDENTIFIER, mList->vec[0].asString(), line);
+                        std::unique_ptr<Expr> mValExpr = nullptr;
+                        if (!mList->vec[1].isNone()) {
+                            mValExpr = JC2_to_AST(mList->vec[1]);
+                        }
+                        members.push_back({mName, std::move(mValExpr)});
+                    }
+                }
+            }
+        }
+        return std::make_unique<EnumDefExpr>(Token(TokenType::IDENTIFIER, enumName, line), std::move(members));
     } else if (type == "DestructAssign") {
         return std::make_unique<DestructAssign>(
             jc2ToPattern(getProp("pattern")),

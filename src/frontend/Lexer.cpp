@@ -35,6 +35,7 @@ namespace jc {
         {"defer",    TokenType::DEFER},        // ★
         {"class",    TokenType::CLASS},
         {"namespace",TokenType::NAMESPACE},
+        {"enum",     TokenType::ENUM},
         {"super",    TokenType::SUPER},
         {"self",     TokenType::SELF},
         {"true",     TokenType::TRUE_KW},

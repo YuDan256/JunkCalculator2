@@ -1092,7 +1092,7 @@ namespace jc {
                 t == TokenType::MATCH || t == TokenType::MACRO || t == TokenType::QUOTE ||
                 t == TokenType::SUPER || t == TokenType::CLASS || t == TokenType::SELF ||
                 t == TokenType::TRUE_KW || t == TokenType::FALSE_KW || t == TokenType::NONE_KW ||
-                t == TokenType::NAMESPACE; // ★ 新增
+                t == TokenType::NAMESPACE || t == TokenType::ENUM; // ★ 新增
             };
         if (isKeyword(peek().type) && current + 1 < static_cast<int>(tokens.size())
             && tokens[current + 1].type == TokenType::ASSIGN) {
@@ -1132,6 +1132,12 @@ namespace jc {
                 return namespaceExpr();
             }
             return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "<namespace>", previous().position, previous().line));
+        }
+        if (match({ TokenType::ENUM })) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
+                return enumExpr();
+            }
+            return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "<enum>", previous().position, previous().line));
         }
         if (match({ TokenType::IF }))       return ifExpr();
         if (match({ TokenType::WHILE }))    return whileExpr();
@@ -2182,6 +2188,31 @@ namespace jc {
             props.push_back({"body", transformQuote(ns->body.get())});
             return makeASTNodeCall("NamespaceDecl", ns->name.line, std::move(props));
         }
+        if (auto* enm = dynamic_cast<EnumDefExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            if (!enm->name.lexeme.empty() && enm->name.lexeme[0] == '$') {
+                props.push_back({"name", makeGetNameExpr(enm->name.lexeme.substr(1), enm->name.line)});
+            } else {
+                props.push_back({"name", std::make_unique<Literal>(enm->name.lexeme, true)});
+            }
+            std::vector<std::unique_ptr<Expr>> membersArgs;
+            for (const auto& m : enm->members) {
+                std::vector<std::unique_ptr<Expr>> pairArgs;
+                if (!m.first.lexeme.empty() && m.first.lexeme[0] == '$') {
+                    pairArgs.push_back(makeGetNameExpr(m.first.lexeme.substr(1), m.first.line));
+                } else {
+                    pairArgs.push_back(std::make_unique<Literal>(m.first.lexeme, true));
+                }
+                if (m.second) {
+                    pairArgs.push_back(transformQuote(m.second.get()));
+                } else {
+                    pairArgs.push_back(std::make_unique<Literal>("none", false, false, true));
+                }
+                membersArgs.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
+            }
+            props.push_back({"members", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(membersArgs))});
+            return makeASTNodeCall("EnumDefExpr", enm->name.line, std::move(props));
+        }
         if (auto* dest = dynamic_cast<DestructAssign*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"pattern", transformPattern(dest->pattern.get())});
@@ -2691,6 +2722,59 @@ namespace jc {
             return std::make_unique<Assign>(name, std::move(nsExpr), false, false, false, false);
         }
         return nsExpr;
+    }
+
+    std::unique_ptr<Expr> Parser::enumExpr() {
+        Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
+        bool isNamed = false;
+
+        if (match({ TokenType::DOLLAR })) {
+            Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+            name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+            isNamed = true;
+        } else if (check(TokenType::IDENTIFIER)) {
+            name = advance();
+            isNamed = true;
+        }
+
+        while (match({ TokenType::NEWLINE })) {}
+        consume(TokenType::LBRACE, "Parser Error: Expect '{' after enum definition.");
+
+        std::vector<std::pair<Token, std::unique_ptr<Expr>>> members;
+
+        while (!check(TokenType::RBRACE) && !isAtEnd()) {
+            while (match({ TokenType::NEWLINE })) {}
+            if (check(TokenType::RBRACE)) break;
+
+            Token memberName(TokenType::ERROR, "");
+            if (match({ TokenType::DOLLAR })) {
+                Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                memberName = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+            } else {
+                memberName = consume(TokenType::IDENTIFIER, "Parser Error: Expect enum member name.");
+            }
+
+            std::unique_ptr<Expr> value = nullptr;
+            if (match({ TokenType::ASSIGN })) {
+                value = ternary();
+            }
+
+            members.push_back({ memberName, std::move(value) });
+
+            if (!match({ TokenType::COMMA })) {
+                while (match({ TokenType::NEWLINE })) {}
+                break;
+            }
+        }
+
+        while (match({ TokenType::NEWLINE })) {}
+        consume(TokenType::RBRACE, "Parser Error: Expect '}' after enum body.");
+
+        auto enumExpr = std::make_unique<EnumDefExpr>(name, std::move(members));
+        if (isNamed) {
+            return std::make_unique<Assign>(name, std::move(enumExpr), false, false, false, false);
+        }
+        return enumExpr;
     }
 
     std::unique_ptr<Expr> Parser::classDefExpr() {

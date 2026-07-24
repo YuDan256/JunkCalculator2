@@ -89,7 +89,7 @@ namespace jc {
         static const std::set<std::string> keywords = {
             "if", "else", "while", "for", "in", "break", "continue", "return",
             "class", "extends", "super", "const", "delete", "global", "ref",
-            "throw", "try", "catch", "import", "switch", "case", "default", "match"
+            "throw", "try", "catch", "import", "switch", "case", "default", "match", "enum"
         };
         static const std::set<std::string> constants = {
             "PI", "E", "true", "false", "i", "I", "self", "none", "ANS"

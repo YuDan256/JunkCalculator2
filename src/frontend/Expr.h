@@ -98,6 +98,7 @@ namespace jc {
     struct SwitchExpr;       // ★
     struct ClassDefExpr;       // ★
     struct NamespaceDecl;      // ★ 新增
+    struct EnumDefExpr;        // ★ 新增
     struct DotAccess;          // ★
     struct DotAssign;          // ★
     struct MethodCallExpr;     // ★
@@ -235,6 +236,7 @@ namespace jc {
         virtual void visitSwitchExpr(SwitchExpr* expr) = 0;
         virtual void visitClassDefExpr(ClassDefExpr* expr) = 0;
         virtual void visitNamespaceDecl(NamespaceDecl* expr) = 0;
+        virtual void visitEnumDefExpr(EnumDefExpr* expr) = 0;
         virtual void visitDotAccess(DotAccess* expr) = 0;
         virtual void visitDotAssign(DotAssign* expr) = 0;
         virtual void visitMethodCallExpr(MethodCallExpr* expr) = 0;
@@ -599,6 +601,15 @@ namespace jc {
             : name(std::move(name)), body(std::move(body)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitNamespaceDecl(this); }
+    };
+
+    struct EnumDefExpr : public Expr {
+        Token name;
+        std::vector<std::pair<Token, std::unique_ptr<Expr>>> members;
+        EnumDefExpr(Token name, std::vector<std::pair<Token, std::unique_ptr<Expr>>> members)
+            : name(std::move(name)), members(std::move(members)) {
+        }
+        void accept(ExprVisitor& visitor) override { visitor.visitEnumDefExpr(this); }
     };
 
     struct ClassDefExpr : public Expr {

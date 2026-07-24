@@ -3465,6 +3465,120 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     lastValue = classNode;
 }
 
+static Value evaluateConstantExpr(Expr* expr) {
+    if (!expr) return Value::none();
+    if (auto* lit = dynamic_cast<Literal*>(expr)) {
+        if (lit->isKeyword) {
+            if (lit->value == "true") return Value(true);
+            if (lit->value == "false") return Value(false);
+            return Value::none();
+        } else if (lit->isString) {
+            return Value(lit->value);
+        } else if (lit->isImaginary) {
+            const std::string& s = lit->value;
+            double imagPart = 0.0;
+            if (s.length() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X' || s[1] == 'b' || s[1] == 'B' || s[1] == 'o' || s[1] == 'O')) {
+                int base = 10;
+                if (s[1] == 'x' || s[1] == 'X') base = 16;
+                else if (s[1] == 'b' || s[1] == 'B') base = 2;
+                else if (s[1] == 'o' || s[1] == 'O') base = 8;
+                std::string numPart = s.substr(2);
+                imagPart = BaseNum::fromString(numPart, base).getValue().toDouble();
+            } else {
+                imagPart = std::stod(s);
+            }
+            return Value(Complex(0.0, imagPart));
+        } else {
+            const std::string& s = lit->value;
+            if (s.length() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X' || s[1] == 'b' || s[1] == 'B' || s[1] == 'o' || s[1] == 'O')) {
+                int base = 10;
+                if (s[1] == 'x' || s[1] == 'X') base = 16;
+                else if (s[1] == 'b' || s[1] == 'B') base = 2;
+                else if (s[1] == 'o' || s[1] == 'O') base = 8;
+                std::string numPart = s.substr(2);
+                return Value(BaseNum::fromString(numPart, base).getValue());
+            } else if (s.find('.') == std::string::npos && s.find('e') == std::string::npos && s.find('E') == std::string::npos) {
+                try { return Value(jc::BigInt(s)); }
+                catch (...) { return Value(std::stod(s)); }
+            } else {
+                return Value(std::stod(s));
+            }
+        }
+    } else if (auto* un = dynamic_cast<Unary*>(expr)) {
+        Value right = evaluateConstantExpr(un->right.get());
+        GcValueGuard rightGuard(right);
+        if (un->op.type == TokenType::MINUS) return -right;
+        if (un->op.type == TokenType::PLUS) return right;
+        if (un->op.type == TokenType::TILDE) return ~right;
+        if (un->op.type == TokenType::BANG) return Value(!right.truthy());
+    } else if (auto* bin = dynamic_cast<Binary*>(expr)) {
+        Value left = evaluateConstantExpr(bin->left.get());
+        GcValueGuard leftGuard(left);
+        Value right = evaluateConstantExpr(bin->right.get());
+        GcValueGuard rightGuard(right);
+        if (bin->op.type == TokenType::PLUS) return left + right;
+        if (bin->op.type == TokenType::MINUS) return left - right;
+        if (bin->op.type == TokenType::STAR) return left * right;
+        if (bin->op.type == TokenType::SLASH) return left / right;
+        if (bin->op.type == TokenType::PERCENT) return left % right;
+        if (bin->op.type == TokenType::SHIFT_LEFT) return left << right;
+        if (bin->op.type == TokenType::SHIFT_RIGHT) return left >> right;
+        if (bin->op.type == TokenType::BIT_AND) return left & right;
+        if (bin->op.type == TokenType::BIT_OR) return left | right;
+        if (bin->op.type == TokenType::BIT_XOR) return bitXor(left, right);
+    }
+    throw std::runtime_error("CompileError: Enum member value must be a compile-time constant.");
+}
+
+void IRBuilder::visitEnumDefExpr(EnumDefExpr* expr) {
+    graph->currentLine = expr->name.line;
+    
+    ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+    Value nsVal(ns);
+    GcValueGuard nsGuard(nsVal);
+    
+    ns->name = expr->name.lexeme.empty() ? "<enum>" : expr->name.lexeme;
+    
+    Value currentValue = Value::fromInt32(0);
+    GcValueGuard cvGuard(currentValue);
+    bool isIntEnum = true;
+    
+    for (auto& member : expr->members) {
+        if (member.second) {
+            try {
+                currentValue = evaluateConstantExpr(member.second.get());
+            } catch (const std::exception& e) {
+                error(member.first.line, e.what());
+            }
+            isIntEnum = currentValue.isInt32() || currentValue.isBigInt();
+        } else {
+            if (!isIntEnum) {
+                error(member.first.line, "CompileError: Cannot auto-increment enum value after a non-integer value.");
+            }
+        }
+        
+        ObjUpVal* upval = GcHeap::get().allocate<ObjUpVal>();
+        upval->closed = currentValue;
+        upval->location = &upval->closed;
+        
+        NamespaceField field;
+        field.upval = upval;
+        field.isConst = true;
+        
+        ns->fields[member.first.lexeme] = field;
+        
+        if (isIntEnum) {
+            currentValue = currentValue + Value::fromInt32(1);
+        }
+    }
+    
+    ns->is_frozen = true;
+    
+    IRNode* node = graph->createConstant(nsVal);
+    node->setControl(currentControl);
+    lastValue = node;
+}
+
 void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     graph->currentLine = expr->name.line;
     

@@ -1537,6 +1537,7 @@ void IRBuilder::visitBinary(Binary* expr) {
         case TokenType::LESS_EQUAL: op = IROp::Le; break;
         case TokenType::GREATER: op = IROp::Gt; break;
         case TokenType::GREATER_EQUAL: op = IROp::Ge; break;
+        case TokenType::IS: op = IROp::Is; break;
         case TokenType::IN: op = IROp::In; break;
         case TokenType::BIT_AND: op = IROp::BitAnd; break;
         case TokenType::BIT_OR: op = IROp::BitOr; break;

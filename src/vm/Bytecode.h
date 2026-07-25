@@ -58,6 +58,7 @@ enum class OpCode : uint8_t {
     LE,             // R(A) := RK(B) <= RK(C)
     GT,             // R(A) := RK(B) >  RK(C)
     GE,             // R(A) := RK(B) >= RK(C)
+    IS,             // R(A) := RK(B) is RK(C)
     
     JMP,            // PC += sAx (24-bit 超大范围跳转)
     JMP_TRUE,       // if (R(A) truthy) PC += sBx
@@ -175,6 +176,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::LE: return "LE";
         case OpCode::GT: return "GT";
         case OpCode::GE: return "GE";
+        case OpCode::IS: return "IS";
         case OpCode::JMP: return "JMP";
         case OpCode::JMP_TRUE: return "JMP_TRUE";
         case OpCode::JMP_FALSE: return "JMP_FALSE";
@@ -436,7 +438,7 @@ public:
             case OpCode::MOD: case OpCode::POW: case OpCode::LDIV: case OpCode::BAND:
             case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL: case OpCode::SHR:
             case OpCode::EQ: case OpCode::NEQ: case OpCode::LT: case OpCode::LE:
-            case OpCode::GT: case OpCode::GE:
+            case OpCode::GT: case OpCode::GE: case OpCode::IS:
                 std::cout << "R(" << a << ") " << formatRK(b) << " " << formatRK(c);
                 break;
             

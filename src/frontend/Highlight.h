@@ -87,7 +87,7 @@ namespace jc {
         if (code.empty()) return code;
 
         static const std::set<std::string> keywords = {
-            "if", "else", "while", "for", "in", "break", "continue", "return",
+            "if", "else", "while", "for", "in", "is", "break", "continue", "return",
             "class", "extends", "super", "const", "delete", "global", "ref",
             "throw", "try", "catch", "import", "switch", "case", "default", "match", "enum"
         };

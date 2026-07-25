@@ -92,7 +92,7 @@
       "",
       "  Language Keywords (type \"/help <keyword>\")",
       "  ────────────────────────────────────────────────────────────────────",
-      "    if  else  while  for  in  break  continue  return  switch  case  match  defer",
+      "    if  else  while  for  in  is  break  continue  return  switch  case  match  defer",
       "    class  extends  super  self  namespace  enum  ref  state  const  delete",
       "    try  catch  throw  import  true  false  none  macro  quote",
       "",
@@ -388,6 +388,12 @@
       "    in                Membership / containment test (returns true or false)",
       "                        3 in [1,2,3]          → true",
       "                        \"x\" in Point(1, 2)    → true (checks fields/methods/__getattr__)",
+      "",
+      "    is                Object identity test (returns true or false)",
+      "                        Checks if two variables point to the exact same memory location.",
+      "                        Extremely fast O(1) operation. Does NOT call __eq__.",
+      "                        [1, 2] is [1, 2]      → false (different allocations)",
+      "                        a = [1]; b = a; a is b → true (same allocation)",
       "",
       "  Logical Operators (short-circuit, return true or false)",
       "  ──────────────────────",
@@ -5883,6 +5889,21 @@
         "for (i = 0; i < 10; i += 1) { print(i) }",
         "for (x in [1, 2, 3]) print(x)",
         "for ([k, v] in {a: 1, b: 2}) print(k, v)"
+      ]
+    },
+    "is": {
+      "signature": "a is b",
+      "desc": [
+        "Object identity operator.",
+        "Returns true if 'a' and 'b' point to the exact same memory location (or have the exact same bitwise representation for value types).",
+        "Unlike '==', 'is' does NOT perform deep value comparison and does NOT trigger the '__eq__' dunder method.",
+        "It is an extremely fast O(1) operation.",
+        "Note: For Copy-On-Write (COW) types like matrices, 'is' exposes the underlying memory sharing state."
+      ],
+      "examples": [
+        "a = [1, 2]; b = a; a is b  // → true",
+        "[1, 2] is [1, 2]           // → false",
+        "1 is 1.0                   // → false (different types)"
       ]
     },
     "in": {

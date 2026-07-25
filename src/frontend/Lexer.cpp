@@ -22,6 +22,7 @@ namespace jc {
         {"const",    TokenType::CONST},
         {"delete",   TokenType::DELETE},
         {"in",       TokenType::IN},
+        {"is",       TokenType::IS},
         {"throw",    TokenType::THROW},        // ★
         {"try",      TokenType::TRY},          // ★
         {"catch",    TokenType::CATCH},         // ★
@@ -77,7 +78,7 @@ namespace jc {
         case TokenType::LPAREN: case TokenType::LBRACKET:
         case TokenType::LBRACE:
             // 关键字 (期待后续表达式或块)
-        case TokenType::IN:
+        case TokenType::IN: case TokenType::IS:
             // 已有 NEWLINE 不重复发射
         case TokenType::NEWLINE:
             return true;

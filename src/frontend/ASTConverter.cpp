@@ -753,6 +753,7 @@ static TokenType stringToTokenType(const std::string& s) {
     if (s == "<") return TokenType::LESS;
     if (s == "<=") return TokenType::LESS_EQUAL;
     if (s == "in") return TokenType::IN;
+    if (s == "is") return TokenType::IS;
     if (s == "...") return TokenType::ELLIPSIS;
     if (s == "$") return TokenType::DOLLAR;
     return TokenType::IDENTIFIER;

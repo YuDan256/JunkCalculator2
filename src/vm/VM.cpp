@@ -3676,6 +3676,12 @@ Value VM::run(int targetFrameDepth) {
                 getReg(a) = Value(vb >= vc);
                 break;
             }
+            case OpCode::IS: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
+                getReg(a) = Value(vb.as_bits == vc.as_bits);
+                break;
+            }
             case OpCode::JMP: {
                 ip += sax;
                 break;

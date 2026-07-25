@@ -562,14 +562,14 @@ namespace jc {
         if (match({ TokenType::EQUAL, TokenType::BANG_EQUAL,
                     TokenType::LESS, TokenType::LESS_EQUAL,
                     TokenType::GREATER, TokenType::GREATER_EQUAL,
-                    TokenType::IN })) {
+                    TokenType::IN, TokenType::IS })) {
             Token op = previous();
             auto right = bitwiseOr();
             
             if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                 check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
                 check(TokenType::GREATER) || check(TokenType::GREATER_EQUAL) ||
-                check(TokenType::IN)) {
+                check(TokenType::IN) || check(TokenType::IS)) {
                 
                 // 连续比较，为每个中间节点生成独立的临时变量
                 int chainIdx = 0;
@@ -584,14 +584,14 @@ namespace jc {
                 while (match({ TokenType::EQUAL, TokenType::BANG_EQUAL,
                                TokenType::LESS, TokenType::LESS_EQUAL,
                                TokenType::GREATER, TokenType::GREATER_EQUAL,
-                               TokenType::IN })) {
+                               TokenType::IN, TokenType::IS })) {
                     Token nextOp = previous();
                     auto nextRight = bitwiseOr();
                     
                     if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                         check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
                         check(TokenType::GREATER) || check(TokenType::GREATER_EQUAL) ||
-                        check(TokenType::IN)) {
+                        check(TokenType::IN) || check(TokenType::IS)) {
                         
                         std::string nextTmpName = "<chain>_" + std::to_string(current) + "_" + std::to_string(chainIdx++);
                         Token nextTmpTok(TokenType::IDENTIFIER, nextTmpName, nextOp.position, nextOp.line);
@@ -1083,7 +1083,7 @@ namespace jc {
                 t == TokenType::BREAK || t == TokenType::CONTINUE ||
                 t == TokenType::RETURN || t == TokenType::LOCAL ||
                 t == TokenType::CONST || t == TokenType::DELETE ||
-                t == TokenType::IN ||
+                t == TokenType::IN || t == TokenType::IS ||
                 t == TokenType::THROW || t == TokenType::TRY ||  // ★
                 t == TokenType::CATCH || t == TokenType::REF ||   // ★
                 t == TokenType::STATE ||                          // ★

@@ -74,7 +74,7 @@ public:
 
     static jc::BigInt pow10(int64_t n) {
         if (n <= 0) return jc::BigInt(1);
-        return jc::BigInt(10).pow(n);
+        return jc::BigInt::getPow10(static_cast<int>(n));
     }
 
     Decimal truncate(int prec) const {
@@ -202,14 +202,11 @@ public:
             jc2::throw_error("MathError: sqrt of negative decimal.");
             return *this;
         }
-        Decimal half = Decimal::from_string("0.5");
+        Decimal half(jc::BigInt(5), -1);
         
         int64_t total_exp = exp + mantissa.digitCount() - 1;
         int64_t guess_exp = total_exp / 2;
-        Decimal x = Decimal::from_string("1" + std::string(guess_exp >= 0 ? static_cast<size_t>(guess_exp) : 0, '0'));
-        if (guess_exp < 0) {
-            x = Decimal::from_string("0." + std::string(static_cast<size_t>(-guess_exp - 1), '0') + "1");
-        }
+        Decimal x(jc::BigInt(1), guess_exp);
 
         for (int i = 0; i < 100; ++i) {
             Decimal next_x = half.mul(x.add(this->div(x))).truncate(g_prec + 2);
@@ -222,17 +219,17 @@ public:
     Decimal exp_val() const {
         Decimal x = *this;
         int squares = 0;
-        Decimal two = Decimal::from_string("2");
-        Decimal one = Decimal::from_string("1");
+        Decimal two(jc::BigInt(2), 0);
+        Decimal one(jc::BigInt(1), 0);
         while (!x.abs().lt(one) && !x.mantissa.isZero()) {
             x = x.div(two).truncate(g_prec + 2);
             squares++;
             if (squares > 30) break;
         }
         
-        Decimal sum = Decimal::from_string("1");
-        Decimal term = Decimal::from_string("1");
-        Decimal n = Decimal::from_string("1");
+        Decimal sum(jc::BigInt(1), 0);
+        Decimal term(jc::BigInt(1), 0);
+        Decimal n(jc::BigInt(1), 0);
         
         for (int i = 1; i < 1000; ++i) {
             term = term.mul(x).div(n).truncate(g_prec + 2);
@@ -252,7 +249,7 @@ public:
     }
 
     Decimal mod_2pi() const {
-        Decimal two_pi = Decimal::pi().mul(Decimal::from_string("2"));
+        Decimal two_pi = Decimal::pi().mul(Decimal(jc::BigInt(2), 0));
         Decimal q = this->div(two_pi);
         Decimal q_int;
         if (q.exp >= 0) {
@@ -270,8 +267,9 @@ public:
         Decimal sum = x;
         Decimal term = x;
         Decimal x2 = x.mul(x).truncate(g_prec + 2);
-        Decimal n = Decimal::from_string("2");
-        Decimal one = Decimal::from_string("1");
+        Decimal n(jc::BigInt(2), 0);
+        Decimal one(jc::BigInt(1), 0);
+        Decimal two(jc::BigInt(2), 0);
         int sign = -1;
         
         for (int i = 1; i < 1000; ++i) {
@@ -283,7 +281,7 @@ public:
             if (next_sum.eq(sum)) break;
             sum = next_sum;
             
-            n = n.add(Decimal::from_string("2"));
+            n = n.add(two);
             sign = -sign;
         }
         return sum.truncate(g_prec);
@@ -291,11 +289,12 @@ public:
 
     Decimal cos_val() const {
         Decimal x = this->mod_2pi();
-        Decimal sum = Decimal::from_string("1");
-        Decimal term = Decimal::from_string("1");
+        Decimal sum(jc::BigInt(1), 0);
+        Decimal term(jc::BigInt(1), 0);
         Decimal x2 = x.mul(x).truncate(g_prec + 2);
-        Decimal n = Decimal::from_string("1");
-        Decimal one = Decimal::from_string("1");
+        Decimal n(jc::BigInt(1), 0);
+        Decimal one(jc::BigInt(1), 0);
+        Decimal two(jc::BigInt(2), 0);
         int sign = -1;
         
         for (int i = 1; i < 1000; ++i) {
@@ -307,7 +306,7 @@ public:
             if (next_sum.eq(sum)) break;
             sum = next_sum;
             
-            n = n.add(Decimal::from_string("2"));
+            n = n.add(two);
             sign = -sign;
         }
         return sum.truncate(g_prec);
@@ -317,8 +316,8 @@ public:
         Decimal sum = x;
         Decimal term = x;
         Decimal x2 = x.mul(x).truncate(g_prec + 2);
-        Decimal n = Decimal::from_string("3");
-        Decimal two = Decimal::from_string("2");
+        Decimal n(jc::BigInt(3), 0);
+        Decimal two(jc::BigInt(2), 0);
         int sign = -1;
         
         for (int i = 0; i < 10000; ++i) {
@@ -338,9 +337,9 @@ public:
     }
 
     static Decimal pi() {
-        Decimal a = arctan_series(Decimal::from_string("0.2"));
-        Decimal b = arctan_series(Decimal::from_string("1").div(Decimal::from_string("239")));
-        Decimal p = Decimal::from_string("16").mul(a).sub(Decimal::from_string("4").mul(b));
+        Decimal a = arctan_series(Decimal(jc::BigInt(2), -1));
+        Decimal b = arctan_series(Decimal(jc::BigInt(1), 0).div(Decimal(jc::BigInt(239), 0)));
+        Decimal p = Decimal(jc::BigInt(16), 0).mul(a).sub(Decimal(jc::BigInt(4), 0).mul(b));
         return p.truncate(g_prec);
     }
 
@@ -356,7 +355,7 @@ public:
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
         Decimal y = Decimal::from_string(buf);
-        Decimal two = Decimal::from_string("2");
+        Decimal two(jc::BigInt(2), 0);
         
         for (int i = 0; i < 50; ++i) {
             Decimal ey = y.exp_val();
@@ -373,7 +372,7 @@ public:
     }
 
     Decimal log10_val() const {
-        Decimal ln10 = Decimal::from_string("10").ln_val();
+        Decimal ln10 = Decimal(jc::BigInt(10), 0).ln_val();
         return this->ln_val().div(ln10).truncate(g_prec);
     }
 
@@ -403,7 +402,7 @@ public:
     }
 
     Decimal asin_val() const {
-        Decimal one = Decimal::from_string("1");
+        Decimal one(jc::BigInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
             jc2::throw_error("MathError: asin domain error.");
             return *this;
@@ -428,7 +427,7 @@ public:
     }
 
     Decimal acos_val() const {
-        Decimal one = Decimal::from_string("1");
+        Decimal one(jc::BigInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
             jc2::throw_error("MathError: acos domain error.");
             return *this;
@@ -454,19 +453,19 @@ public:
 
     Decimal sinh_val() const {
         Decimal ex = this->exp_val();
-        Decimal emx = Decimal::from_string("1").div(ex).truncate(g_prec + 2);
-        return ex.sub(emx).div(Decimal::from_string("2")).truncate(g_prec);
+        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec + 2);
+        return ex.sub(emx).div(Decimal(jc::BigInt(2), 0)).truncate(g_prec);
     }
 
     Decimal cosh_val() const {
         Decimal ex = this->exp_val();
-        Decimal emx = Decimal::from_string("1").div(ex).truncate(g_prec + 2);
-        return ex.add(emx).div(Decimal::from_string("2")).truncate(g_prec);
+        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec + 2);
+        return ex.add(emx).div(Decimal(jc::BigInt(2), 0)).truncate(g_prec);
     }
 
     Decimal tanh_val() const {
         Decimal ex = this->exp_val();
-        Decimal emx = Decimal::from_string("1").div(ex).truncate(g_prec + 2);
+        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec + 2);
         Decimal num = ex.sub(emx);
         Decimal den = ex.add(emx);
         if (den.mantissa.isZero()) return *this;

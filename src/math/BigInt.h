@@ -42,21 +42,25 @@ namespace jc {
             return 0;
         }
 
-        // 绝对值加法
-        static BigInt absAdd(const BigInt& a, const BigInt& b) {
+        // 绝对值加法 (视窗版)
+        static BigInt absAdd(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
             BigInt result;
-            size_t n = std::max(a.data.size(), b.data.size());
-            result.data.resize(n, 0);
+            size_t sz = std::max(n, m);
+            result.data.resize(sz, 0);
             uint64_t carry = 0;
-            for (size_t i = 0; i < n; ++i) {
+            for (size_t i = 0; i < sz; ++i) {
                 uint64_t sum = carry;
-                if (i < a.data.size()) sum += a.data[i];
-                if (i < b.data.size()) sum += b.data[i];
+                if (i < n) sum += a[i];
+                if (i < m) sum += b[i];
                 result.data[i] = static_cast<uint32_t>(sum);
                 carry = sum >> 32;
             }
             if (carry > 0) result.data.push_back(static_cast<uint32_t>(carry));
             return result;
+        }
+
+        static BigInt absAdd(const BigInt& a, const BigInt& b) {
+            return absAdd(a.data.data(), a.data.size(), b.data.data(), b.data.size());
         }
 
         // 绝对值减法
@@ -74,17 +78,17 @@ namespace jc {
             return result;
         }
 
-        // 基础 O(N^2) 乘法
-        static BigInt mul_basecase(const BigInt& a, const BigInt& b) {
-            size_t n = a.data.size(), m = b.data.size();
+        // 基础 O(N^2) 乘法 (视窗版)
+        static BigInt mul_basecase(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
             BigInt result;
+            if (n == 0 || m == 0) return result;
             result.data.assign(n + m, 0);
             for (size_t i = 0; i < n; ++i) {
-                if (a.data[i] == 0) continue;
+                if (a[i] == 0) continue;
                 uint64_t carry = 0;
-                uint64_t d_i = a.data[i];
+                uint64_t d_i = a[i];
                 for (size_t j = 0; j < m; ++j) {
-                    uint64_t prod = d_i * b.data[j] + result.data[i + j] + carry;
+                    uint64_t prod = d_i * b[j] + result.data[i + j] + carry;
                     result.data[i + j] = static_cast<uint32_t>(prod);
                     carry = prod >> 32;
                 }
@@ -94,34 +98,33 @@ namespace jc {
             return result;
         }
 
-        // Karatsuba O(N^1.585) 乘法
-        static BigInt karatsuba(const BigInt& a, const BigInt& b) {
-            size_t n = a.data.size();
-            size_t m = b.data.size();
-            // 当 limb 数量较小时，使用基础乘法更快（32 limbs 约 288 位十进制）
-            if (n < 32 || m < 32) return mul_basecase(a, b);
+        // Karatsuba O(N^1.585) 乘法 (视窗版)
+        static BigInt karatsuba(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+            while (n > 1 && a[n - 1] == 0) n--;
+            while (m > 1 && b[m - 1] == 0) m--;
+            if (n == 0 || m == 0 || (n == 1 && a[0] == 0) || (m == 1 && b[0] == 0)) return BigInt(0);
+
+            if (n < 32 || m < 32) return mul_basecase(a, n, b, m);
 
             size_t half = std::max(n, m) / 2;
 
-            auto split = [half](const BigInt& num, BigInt& low, BigInt& high) {
-                if (num.data.size() <= half) {
-                    low = num;
-                    high = BigInt(0);
-                } else {
-                    low.data.assign(num.data.begin(), num.data.begin() + half);
-                    high.data.assign(num.data.begin() + half, num.data.end());
-                    low.trim();
-                    high.trim();
-                }
-            };
+            size_t a0_len = std::min(n, half);
+            size_t a1_len = (n > half) ? n - half : 0;
+            const uint32_t* a0 = a;
+            const uint32_t* a1 = a + a0_len;
 
-            BigInt a0, a1, b0, b1;
-            split(a, a0, a1);
-            split(b, b0, b1);
+            size_t b0_len = std::min(m, half);
+            size_t b1_len = (m > half) ? m - half : 0;
+            const uint32_t* b0 = b;
+            const uint32_t* b1 = b + b0_len;
 
-            BigInt z0 = karatsuba(a0, b0);
-            BigInt z2 = karatsuba(a1, b1);
-            BigInt z1 = karatsuba(absAdd(a0, a1), absAdd(b0, b1));
+            BigInt z0 = karatsuba(a0, a0_len, b0, b0_len);
+            BigInt z2 = karatsuba(a1, a1_len, b1, b1_len);
+            
+            BigInt a_sum = absAdd(a0, a0_len, a1, a1_len);
+            BigInt b_sum = absAdd(b0, b0_len, b1, b1_len);
+
+            BigInt z1 = karatsuba(a_sum.data.data(), a_sum.data.size(), b_sum.data.data(), b_sum.data.size());
             z1 = absSub(absSub(z1, z2), z0);
 
             BigInt result = z0;
@@ -1031,7 +1034,7 @@ namespace jc {
         BigInt operator-(const BigInt& other) const { return *this + (-other); }
 
         BigInt operator*(const BigInt& other) const {
-            BigInt result = karatsuba(*this, other);
+            BigInt result = karatsuba(data.data(), data.size(), other.data.data(), other.data.size());
             result.negative = (negative != other.negative);
             if (result.isZero()) result.negative = false;
             return result;
@@ -1073,10 +1076,29 @@ namespace jc {
             return this->pow(exp.toInt64());
         }
 
+        static const BigInt& getPow10(int n) {
+            thread_local std::vector<BigInt> p10 = { BigInt(1), BigInt(10) };
+            while (p10.size() <= static_cast<size_t>(n)) {
+                p10.push_back(p10.back().mul_small(10));
+            }
+            return p10[n];
+        }
+
         int digitCount() const {
             if (isZero()) return 0;
-            std::string s = toString();
-            return static_cast<int>(negative ? s.size() - 1 : s.size());
+            double bits = (data.size() - 1) * 32.0;
+            uint32_t top = data.back();
+            while (top > 0) { bits += 1.0; top >>= 1; }
+            int guess = static_cast<int>(bits * 0.3010299956639812);
+            
+            BigInt abs_val = this->abs();
+            if (abs_val < getPow10(guess)) {
+                while (guess > 0 && abs_val < getPow10(guess)) guess--;
+                return guess + 1;
+            } else {
+                while (abs_val >= getPow10(guess + 1)) guess++;
+                return guess + 1;
+            }
         }
 
         // =================================================================================

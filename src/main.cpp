@@ -584,7 +584,7 @@ int main(int argc, char* argv[]) {
             
             std::string baseName = std::filesystem::path(resolvedPath).stem().string();
             std::unique_ptr<jc::NamespaceDecl> nsDecl;
-            jc::ASTNode* targetAst = ast.get();
+            jc::Expr* targetAst = ast.get();
             
             if (compileAsModule) {
                 nsDecl = std::make_unique<jc::NamespaceDecl>(jc::Token(jc::TokenType::IDENTIFIER, baseName, 0), std::move(ast));

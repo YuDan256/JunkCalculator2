@@ -23,21 +23,38 @@ public:
         int64_t frac_count = 0;
         
         size_t i = 0;
+        while (i < s.length() && std::isspace(static_cast<unsigned char>(s[i]))) i++;
+        
         if (i < s.length() && (s[i] == '+' || s[i] == '-')) {
             m_str += s[i++];
         }
         
+        bool has_digits = false;
         for (; i < s.length(); ++i) {
             if (s[i] == '.') {
+                if (in_frac) jc2::throw_error("ValueError: Invalid decimal string (multiple decimal points).");
                 in_frac = true;
             } else if (s[i] >= '0' && s[i] <= '9') {
                 m_str += s[i];
+                has_digits = true;
                 if (in_frac) frac_count++;
             } else if (s[i] == 'e' || s[i] == 'E') {
-                e = std::stoll(s.substr(i + 1));
+                try {
+                    e = std::stoll(s.substr(i + 1));
+                } catch (...) {
+                    jc2::throw_error("ValueError: Invalid exponent in decimal string.");
+                }
                 break;
+            } else if (std::isspace(static_cast<unsigned char>(s[i]))) {
+                size_t j = i;
+                while (j < s.length() && std::isspace(static_cast<unsigned char>(s[j]))) j++;
+                if (j == s.length()) break;
+                jc2::throw_error("ValueError: Invalid character in decimal string.");
+            } else {
+                jc2::throw_error("ValueError: Invalid character in decimal string.");
             }
         }
+        if (!has_digits) jc2::throw_error("ValueError: No digits found in decimal string.");
         if (m_str.empty() || m_str == "+" || m_str == "-") m_str += "0";
         return Decimal(jc::BigInt(m_str), e - frac_count);
     }
@@ -74,6 +91,7 @@ public:
 
     static jc::BigInt pow10(int64_t n) {
         if (n <= 0) return jc::BigInt(1);
+        if (n > 1000000) jc2::throw_error("MathError: Exponent too large, out of memory risk.");
         return jc::BigInt::getPow10(static_cast<int>(n));
     }
 
@@ -397,7 +415,12 @@ public:
     }
 
     Decimal atan_val() const {
-        double d = std::stod(to_string());
+        double d;
+        try {
+            d = std::stod(to_string());
+        } catch (...) {
+            d = mantissa.isNegative() ? -1e300 : 1e300;
+        }
         double guess = std::atan(d);
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
@@ -505,6 +528,12 @@ static jc2::Value wrapDecimal(const Decimal& d) {
     return inst;
 }
 
+static bool canConvertToDecimal(const jc2::Value& val) {
+    if (val.is_instance() && val.get_native_data<std::shared_ptr<Decimal>>()) return true;
+    if (val.is_string() || val.is_int() || val.is_double()) return true;
+    return false;
+}
+
 static Decimal parseDecimalArg(const jc2::Value& val) {
     if (val.is_instance() && val.get_native_data<std::shared_ptr<Decimal>>()) {
         return *(*val.get_native_data<std::shared_ptr<Decimal>>());
@@ -531,12 +560,22 @@ METHOD(__mul__) { GET_SELF; return wrapDecimal(d1->mul(parseDecimalArg(jc2::Valu
 METHOD(__rmul__) { GET_SELF; return wrapDecimal(parseDecimalArg(jc2::Value(argv[1])).mul(*d1)).get_handle(); }
 METHOD(__div__) { GET_SELF; return wrapDecimal(d1->div(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__rdiv__) { GET_SELF; return wrapDecimal(parseDecimalArg(jc2::Value(argv[1])).div(*d1)).get_handle(); }
-METHOD(__eq__) { GET_SELF; return jc2::Value(d1->eq(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
+METHOD(__eq__) { 
+    GET_SELF; 
+    jc2::Value rhs(argv[1]);
+    if (!canConvertToDecimal(rhs)) return jc2::Value(false).get_handle();
+    return jc2::Value(d1->eq(parseDecimalArg(rhs))).get_handle(); 
+}
 METHOD(__lt__) { GET_SELF; return jc2::Value(d1->lt(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__gt__) { GET_SELF; return jc2::Value(d1->gt(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__le__) { GET_SELF; return jc2::Value(d1->le(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__ge__) { GET_SELF; return jc2::Value(d1->ge(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
-METHOD(__neq__) { GET_SELF; return jc2::Value(d1->neq(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
+METHOD(__neq__) { 
+    GET_SELF; 
+    jc2::Value rhs(argv[1]);
+    if (!canConvertToDecimal(rhs)) return jc2::Value(true).get_handle();
+    return jc2::Value(d1->neq(parseDecimalArg(rhs))).get_handle(); 
+}
 METHOD(__neg__) { GET_SELF; return wrapDecimal(Decimal(jc::BigInt(0), 0).sub(*d1)).get_handle(); }
 METHOD(__bool__) { GET_SELF; return jc2::Value(!d1->eq(Decimal(jc::BigInt(0), 0))).get_handle(); }
 METHOD(__abs__) { GET_SELF; return wrapDecimal(d1->abs()).get_handle(); }

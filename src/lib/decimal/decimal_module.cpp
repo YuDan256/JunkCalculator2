@@ -594,6 +594,8 @@ METHOD(cosh) { GET_SELF; return wrapDecimal(d1->cosh_val()).get_handle(); }
 METHOD(tanh) { GET_SELF; return wrapDecimal(d1->tanh_val()).get_handle(); }
 
 METHOD(__setattr__) {
+    (void)argc;
+    (void)argv;
     jc2::throw_error("TypeError: Decimal instances are immutable.");
     return jc2::Value().get_handle();
 }

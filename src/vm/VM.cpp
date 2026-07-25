@@ -3538,6 +3538,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
+                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
                 getReg(a) = Value(Value::equals(vb, vc));
                 break;
             }
@@ -3552,6 +3553,8 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(true); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
+                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
+                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
                 getReg(a) = Value(!Value::equals(vb, vc));
                 break;
             }
@@ -3561,6 +3564,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() < vc.asInt32()); break; }
                 if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
+                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_GT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
                 getReg(a) = Value(vb < vc);
                 break;
             }
@@ -3581,6 +3585,22 @@ Value VM::run(int targetFrameDepth) {
                         }
                         if (auto methEq = findDunder(vb, DUNDER_EQ)) {
                             getReg(a) = Value(evaluateTruthiness(callDunder(vb, methEq, {vc})));
+                            break;
+                        }
+                    }
+                }
+                if (vc.isInstance()) { 
+                    if (auto meth = findDunder(vc, DUNDER_GE)) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); 
+                        break; 
+                    }
+                    if (auto methGt = findDunder(vc, DUNDER_GT)) {
+                        if (evaluateTruthiness(callDunder(vc, methGt, {vb}))) {
+                            getReg(a) = Value(true);
+                            break;
+                        }
+                        if (auto methEq = findDunder(vc, DUNDER_EQ)) {
+                            getReg(a) = Value(evaluateTruthiness(callDunder(vc, methEq, {vb})));
                             break;
                         }
                     }
@@ -3609,6 +3629,22 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 }
+                if (vc.isInstance()) { 
+                    if (auto meth = findDunder(vc, DUNDER_LT)) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); 
+                        break; 
+                    }
+                    if (auto methGt = findDunder(vc, DUNDER_GT)) {
+                        if (evaluateTruthiness(callDunder(vc, methGt, {vb}))) {
+                            getReg(a) = Value(false);
+                            break;
+                        }
+                        if (auto methEq = findDunder(vc, DUNDER_EQ)) {
+                            getReg(a) = Value(!evaluateTruthiness(callDunder(vc, methEq, {vb})));
+                            break;
+                        }
+                    }
+                }
                 getReg(a) = Value(vb > vc);
                 break;
             }
@@ -3624,6 +3660,16 @@ Value VM::run(int targetFrameDepth) {
                     }
                     if (auto methLt = findDunder(vb, DUNDER_LT)) {
                         getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methLt, {vc})));
+                        break;
+                    }
+                }
+                if (vc.isInstance()) { 
+                    if (auto meth = findDunder(vc, DUNDER_LE)) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); 
+                        break; 
+                    }
+                    if (auto methGt = findDunder(vc, DUNDER_GT)) {
+                        getReg(a) = Value(!evaluateTruthiness(callDunder(vc, methGt, {vb})));
                         break;
                     }
                 }

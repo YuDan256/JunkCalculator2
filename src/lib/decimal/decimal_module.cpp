@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <algorithm>
+#include <cmath>
 
 static int g_prec = 28;
 static jc2::Class* g_decimalClass = nullptr;
@@ -75,26 +76,75 @@ public:
         return jc::BigInt("1" + std::string(static_cast<size_t>(n), '0'));
     }
 
+    Decimal truncate(int prec) const {
+        if (mantissa.toString() == "0") return Decimal(jc::BigInt("0"), 0);
+        std::string s = mantissa.toString();
+        int sign = 0;
+        if (s[0] == '-') { sign = 1; s = s.substr(1); }
+        if ((int)s.length() <= prec) return *this;
+        int drop = (int)s.length() - prec;
+        jc::BigInt new_m(s.substr(0, prec));
+        if (sign) new_m = jc::BigInt("0") - new_m;
+        return Decimal(new_m, exp + drop);
+    }
+
+    int magnitude() const {
+        if (mantissa.toString() == "0") return 0;
+        std::string s = mantissa.toString();
+        int len = s[0] == '-' ? s.length() - 1 : s.length();
+        return exp + len;
+    }
+
+    Decimal abs() const {
+        std::string s = mantissa.toString();
+        if (s[0] == '-') return Decimal(jc::BigInt(s.substr(1)), exp);
+        return *this;
+    }
+
     Decimal add(const Decimal& other) const {
+        if (mantissa.toString() == "0") return other.truncate(g_prec);
+        if (other.mantissa.toString() == "0") return this->truncate(g_prec);
+        
+        int mag1 = magnitude();
+        int mag2 = other.magnitude();
+        if (mag1 - mag2 > g_prec + 2) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + 2) return other.truncate(g_prec);
+        
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
         if (exp > min_exp) m1 = m1 * pow10(exp - min_exp);
         jc::BigInt m2 = other.mantissa;
         if (other.exp > min_exp) m2 = m2 * pow10(other.exp - min_exp);
-        return Decimal(m1 + m2, min_exp);
+        return Decimal(m1 + m2, min_exp).truncate(g_prec);
     }
 
     Decimal sub(const Decimal& other) const {
+        if (mantissa.toString() == "0") {
+            std::string s = other.mantissa.toString();
+            jc::BigInt neg_m = s[0] == '-' ? jc::BigInt(s.substr(1)) : jc::BigInt("-" + s);
+            return Decimal(neg_m, other.exp).truncate(g_prec);
+        }
+        if (other.mantissa.toString() == "0") return this->truncate(g_prec);
+        
+        int mag1 = magnitude();
+        int mag2 = other.magnitude();
+        if (mag1 - mag2 > g_prec + 2) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + 2) {
+            std::string s = other.mantissa.toString();
+            jc::BigInt neg_m = s[0] == '-' ? jc::BigInt(s.substr(1)) : jc::BigInt("-" + s);
+            return Decimal(neg_m, other.exp).truncate(g_prec);
+        }
+        
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
         if (exp > min_exp) m1 = m1 * pow10(exp - min_exp);
         jc::BigInt m2 = other.mantissa;
         if (other.exp > min_exp) m2 = m2 * pow10(other.exp - min_exp);
-        return Decimal(m1 - m2, min_exp);
+        return Decimal(m1 - m2, min_exp).truncate(g_prec);
     }
 
     Decimal mul(const Decimal& other) const {
-        return Decimal(mantissa * other.mantissa, exp + other.exp);
+        return Decimal(mantissa * other.mantissa, exp + other.exp).truncate(g_prec);
     }
 
     Decimal div(const Decimal& other) const {
@@ -102,13 +152,29 @@ public:
             jc2::throw_error("DivisionByZero: Decimal division by zero.");
             return *this;
         }
-        int64_t extra_zeros = g_prec + 2;
+        if (mantissa.toString() == "0") return Decimal(jc::BigInt("0"), 0);
+        
+        std::string m1_s = mantissa.toString();
+        std::string m2_s = other.mantissa.toString();
+        int len1 = m1_s[0] == '-' ? m1_s.length() - 1 : m1_s.length();
+        int len2 = m2_s[0] == '-' ? m2_s.length() - 1 : m2_s.length();
+        
+        int64_t extra_zeros = g_prec + 2 - len1 + len2;
+        if (extra_zeros < 0) extra_zeros = 0;
+        
         jc::BigInt m1_shifted = mantissa * pow10(extra_zeros);
         jc::BigInt q = m1_shifted / other.mantissa;
-        return Decimal(q, exp - other.exp - extra_zeros);
+        return Decimal(q, exp - other.exp - extra_zeros).truncate(g_prec);
     }
     
     bool eq(const Decimal& other) const {
+        if (mantissa.toString() == "0" && other.mantissa.toString() == "0") return true;
+        if (mantissa.toString() == "0" || other.mantissa.toString() == "0") return false;
+        
+        int mag1 = magnitude();
+        int mag2 = other.magnitude();
+        if (std::abs(mag1 - mag2) > g_prec + 2) return false;
+        
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
         if (exp > min_exp) m1 = m1 * pow10(exp - min_exp);
@@ -118,12 +184,310 @@ public:
     }
     
     bool lt(const Decimal& other) const {
+        int mag1 = magnitude();
+        int mag2 = other.magnitude();
+        
+        bool neg1 = mantissa.toString()[0] == '-';
+        bool neg2 = other.mantissa.toString()[0] == '-';
+        if (mantissa.toString() == "0") neg1 = false;
+        if (other.mantissa.toString() == "0") neg2 = false;
+        
+        if (neg1 && !neg2) return true;
+        if (!neg1 && neg2) return false;
+        
+        if (std::abs(mag1 - mag2) > g_prec + 2) {
+            if (neg1) return mag1 > mag2;
+            return mag1 < mag2;
+        }
+        
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
         if (exp > min_exp) m1 = m1 * pow10(exp - min_exp);
         jc::BigInt m2 = other.mantissa;
         if (other.exp > min_exp) m2 = m2 * pow10(other.exp - min_exp);
         return m1 < m2;
+    }
+
+    Decimal sqrt() const {
+        if (mantissa.toString() == "0") return *this;
+        if (mantissa.toString()[0] == '-') {
+            jc2::throw_error("MathError: sqrt of negative decimal.");
+            return *this;
+        }
+        Decimal half = Decimal::from_string("0.5");
+        
+        std::string s = mantissa.toString();
+        int total_exp = exp + (int)s.length() - 1;
+        int guess_exp = total_exp / 2;
+        Decimal x = Decimal::from_string("1" + std::string(guess_exp >= 0 ? guess_exp : 0, '0'));
+        if (guess_exp < 0) {
+            x = Decimal::from_string("0." + std::string(-guess_exp - 1, '0') + "1");
+        }
+
+        for (int i = 0; i < 100; ++i) {
+            Decimal next_x = half.mul(x.add(this->div(x))).truncate(g_prec + 2);
+            if (next_x.eq(x)) break;
+            x = next_x;
+        }
+        return x.truncate(g_prec);
+    }
+
+    Decimal exp_val() const {
+        Decimal x = *this;
+        int squares = 0;
+        Decimal two = Decimal::from_string("2");
+        while (x.abs().to_string().find("0.") != 0 && x.mantissa.toString() != "0") {
+            x = x.div(two).truncate(g_prec + 2);
+            squares++;
+            if (squares > 30) break;
+        }
+        
+        Decimal sum = Decimal::from_string("1");
+        Decimal term = Decimal::from_string("1");
+        Decimal n = Decimal::from_string("1");
+        Decimal one = Decimal::from_string("1");
+        
+        for (int i = 1; i < 1000; ++i) {
+            term = term.mul(x).div(n).truncate(g_prec + 2);
+            if (term.mantissa.toString() == "0") break;
+            
+            Decimal next_sum = sum.add(term).truncate(g_prec + 2);
+            if (next_sum.eq(sum)) break;
+            sum = next_sum;
+            n = n.add(one);
+        }
+        
+        for (int i = 0; i < squares; ++i) {
+            sum = sum.mul(sum).truncate(g_prec + 2);
+        }
+        
+        return sum.truncate(g_prec);
+    }
+
+    Decimal mod_2pi() const {
+        Decimal two_pi = Decimal::pi().mul(Decimal::from_string("2"));
+        Decimal q = this->div(two_pi);
+        std::string q_str = q.to_string();
+        size_t dot = q_str.find('.');
+        if (dot != std::string::npos) q_str = q_str.substr(0, dot);
+        if (q_str.empty() || q_str == "-") q_str = "0";
+        Decimal q_int = Decimal::from_string(q_str);
+        return this->sub(q_int.mul(two_pi));
+    }
+
+    Decimal sin_val() const {
+        Decimal x = this->mod_2pi();
+        Decimal sum = x;
+        Decimal term = x;
+        Decimal x2 = x.mul(x).truncate(g_prec + 2);
+        Decimal n = Decimal::from_string("2");
+        Decimal one = Decimal::from_string("1");
+        int sign = -1;
+        
+        for (int i = 1; i < 1000; ++i) {
+            term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
+            if (term.mantissa.toString() == "0") break;
+            
+            Decimal next_sum;
+            if (sign == -1) next_sum = sum.sub(term).truncate(g_prec + 2);
+            else next_sum = sum.add(term).truncate(g_prec + 2);
+            
+            if (next_sum.eq(sum)) break;
+            sum = next_sum;
+            
+            n = n.add(Decimal::from_string("2"));
+            sign = -sign;
+        }
+        return sum.truncate(g_prec);
+    }
+
+    Decimal cos_val() const {
+        Decimal x = this->mod_2pi();
+        Decimal sum = Decimal::from_string("1");
+        Decimal term = Decimal::from_string("1");
+        Decimal x2 = x.mul(x).truncate(g_prec + 2);
+        Decimal n = Decimal::from_string("1");
+        Decimal one = Decimal::from_string("1");
+        int sign = -1;
+        
+        for (int i = 1; i < 1000; ++i) {
+            term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
+            if (term.mantissa.toString() == "0") break;
+            
+            Decimal next_sum;
+            if (sign == -1) next_sum = sum.sub(term).truncate(g_prec + 2);
+            else next_sum = sum.add(term).truncate(g_prec + 2);
+            
+            if (next_sum.eq(sum)) break;
+            sum = next_sum;
+            
+            n = n.add(Decimal::from_string("2"));
+            sign = -sign;
+        }
+        return sum.truncate(g_prec);
+    }
+
+    static Decimal arctan_series(const Decimal& x) {
+        Decimal sum = x;
+        Decimal term = x;
+        Decimal x2 = x.mul(x).truncate(g_prec + 2);
+        Decimal n = Decimal::from_string("3");
+        Decimal two = Decimal::from_string("2");
+        int sign = -1;
+        
+        for (int i = 0; i < 10000; ++i) {
+            term = term.mul(x2).truncate(g_prec + 2);
+            Decimal cur = term.div(n).truncate(g_prec + 2);
+            if (cur.mantissa.toString() == "0") break;
+            
+            Decimal next_sum;
+            if (sign == -1) next_sum = sum.sub(cur).truncate(g_prec + 2);
+            else next_sum = sum.add(cur).truncate(g_prec + 2);
+            
+            if (next_sum.eq(sum)) break;
+            sum = next_sum;
+            
+            n = n.add(two);
+            sign = -sign;
+        }
+        return sum;
+    }
+
+    static Decimal pi() {
+        Decimal a = arctan_series(Decimal::from_string("0.2"));
+        Decimal b = arctan_series(Decimal::from_string("1").div(Decimal::from_string("239")));
+        Decimal p = Decimal::from_string("16").mul(a).sub(Decimal::from_string("4").mul(b));
+        return p.truncate(g_prec);
+    }
+
+    Decimal ln_val() const {
+        if (mantissa.toString() == "0" || mantissa.toString()[0] == '-') {
+            jc2::throw_error("MathError: ln of non-positive decimal.");
+            return *this;
+        }
+        std::string m_str = mantissa.toString();
+        int64_t L = m_str.length();
+        double first_digit = m_str[0] - '0';
+        double guess = (L - 1 + exp) * 2.302585092994046 + std::log(first_digit);
+        
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        Decimal y = Decimal::from_string(buf);
+        Decimal two = Decimal::from_string("2");
+        
+        for (int i = 0; i < 50; ++i) {
+            Decimal ey = y.exp_val();
+            Decimal num = this->sub(ey);
+            Decimal den = this->add(ey);
+            if (den.mantissa.toString() == "0") break;
+            Decimal diff = two.mul(num).div(den).truncate(g_prec + 2);
+            if (diff.mantissa.toString() == "0") break;
+            Decimal next_y = y.add(diff).truncate(g_prec + 2);
+            if (next_y.eq(y)) break;
+            y = next_y;
+        }
+        return y.truncate(g_prec);
+    }
+
+    Decimal log10_val() const {
+        Decimal ln10 = Decimal::from_string("10").ln_val();
+        return this->ln_val().div(ln10).truncate(g_prec);
+    }
+
+    Decimal tan_val() const {
+        return this->sin_val().div(this->cos_val()).truncate(g_prec);
+    }
+
+    Decimal atan_val() const {
+        double d = std::stod(to_string());
+        double guess = std::atan(d);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        Decimal y = Decimal::from_string(buf);
+        
+        for (int i = 0; i < 50; ++i) {
+            Decimal sy = y.sin_val();
+            Decimal cy = y.cos_val();
+            if (cy.mantissa.toString() == "0") break;
+            Decimal ty = sy.div(cy).truncate(g_prec + 2);
+            Decimal diff = cy.mul(cy).mul(this->sub(ty)).truncate(g_prec + 2);
+            if (diff.mantissa.toString() == "0") break;
+            Decimal next_y = y.add(diff).truncate(g_prec + 2);
+            if (next_y.eq(y)) break;
+            y = next_y;
+        }
+        return y.truncate(g_prec);
+    }
+
+    Decimal asin_val() const {
+        Decimal one = Decimal::from_string("1");
+        if (this->abs().lt(one) == false && !this->abs().eq(one)) {
+            jc2::throw_error("MathError: asin domain error.");
+            return *this;
+        }
+        double d = std::stod(to_string());
+        double guess = std::asin(d);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        Decimal y = Decimal::from_string(buf);
+        
+        for (int i = 0; i < 50; ++i) {
+            Decimal sy = y.sin_val();
+            Decimal cy = y.cos_val();
+            if (cy.mantissa.toString() == "0") break;
+            Decimal diff = this->sub(sy).div(cy).truncate(g_prec + 2);
+            if (diff.mantissa.toString() == "0") break;
+            Decimal next_y = y.add(diff).truncate(g_prec + 2);
+            if (next_y.eq(y)) break;
+            y = next_y;
+        }
+        return y.truncate(g_prec);
+    }
+
+    Decimal acos_val() const {
+        Decimal one = Decimal::from_string("1");
+        if (this->abs().lt(one) == false && !this->abs().eq(one)) {
+            jc2::throw_error("MathError: acos domain error.");
+            return *this;
+        }
+        double d = std::stod(to_string());
+        double guess = std::acos(d);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        Decimal y = Decimal::from_string(buf);
+        
+        for (int i = 0; i < 50; ++i) {
+            Decimal cy = y.cos_val();
+            Decimal sy = y.sin_val();
+            if (sy.mantissa.toString() == "0") break;
+            Decimal diff = this->sub(cy).div(sy).truncate(g_prec + 2);
+            if (diff.mantissa.toString() == "0") break;
+            Decimal next_y = y.sub(diff).truncate(g_prec + 2);
+            if (next_y.eq(y)) break;
+            y = next_y;
+        }
+        return y.truncate(g_prec);
+    }
+
+    Decimal sinh_val() const {
+        Decimal ex = this->exp_val();
+        Decimal emx = Decimal::from_string("1").div(ex).truncate(g_prec + 2);
+        return ex.sub(emx).div(Decimal::from_string("2")).truncate(g_prec);
+    }
+
+    Decimal cosh_val() const {
+        Decimal ex = this->exp_val();
+        Decimal emx = Decimal::from_string("1").div(ex).truncate(g_prec + 2);
+        return ex.add(emx).div(Decimal::from_string("2")).truncate(g_prec);
+    }
+
+    Decimal tanh_val() const {
+        Decimal ex = this->exp_val();
+        Decimal emx = Decimal::from_string("1").div(ex).truncate(g_prec + 2);
+        Decimal num = ex.sub(emx);
+        Decimal den = ex.add(emx);
+        if (den.mantissa.toString() == "0") return *this;
+        return num.div(den).truncate(g_prec);
     }
 };
 
@@ -173,6 +537,20 @@ METHOD(__eq__) { GET_SELF; return jc2::Value(d1->eq(parseDecimalArg(jc2::Value(a
 METHOD(__lt__) { GET_SELF; return jc2::Value(d1->lt(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__neg__) { GET_SELF; return wrapDecimal(Decimal::from_string("0").sub(*d1)).get_handle(); }
 METHOD(__bool__) { GET_SELF; return jc2::Value(!d1->eq(Decimal::from_string("0"))).get_handle(); }
+METHOD(__abs__) { GET_SELF; return wrapDecimal(d1->abs()).get_handle(); }
+METHOD(sqrt) { GET_SELF; return wrapDecimal(d1->sqrt()).get_handle(); }
+METHOD(exp) { GET_SELF; return wrapDecimal(d1->exp_val()).get_handle(); }
+METHOD(sin) { GET_SELF; return wrapDecimal(d1->sin_val()).get_handle(); }
+METHOD(cos) { GET_SELF; return wrapDecimal(d1->cos_val()).get_handle(); }
+METHOD(tan) { GET_SELF; return wrapDecimal(d1->tan_val()).get_handle(); }
+METHOD(ln) { GET_SELF; return wrapDecimal(d1->ln_val()).get_handle(); }
+METHOD(log10) { GET_SELF; return wrapDecimal(d1->log10_val()).get_handle(); }
+METHOD(asin) { GET_SELF; return wrapDecimal(d1->asin_val()).get_handle(); }
+METHOD(acos) { GET_SELF; return wrapDecimal(d1->acos_val()).get_handle(); }
+METHOD(atan) { GET_SELF; return wrapDecimal(d1->atan_val()).get_handle(); }
+METHOD(sinh) { GET_SELF; return wrapDecimal(d1->sinh_val()).get_handle(); }
+METHOD(cosh) { GET_SELF; return wrapDecimal(d1->cosh_val()).get_handle(); }
+METHOD(tanh) { GET_SELF; return wrapDecimal(d1->tanh_val()).get_handle(); }
 
 JC2_ValueHandle global_Decimal(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     (void)argc;
@@ -192,6 +570,11 @@ JC2_ValueHandle global_setcontext(JC2_VMContext, int argc, JC2_ValueHandle* argv
     return jc2::Value().get_handle();
 }
 
+JC2_ValueHandle global_pi(JC2_VMContext, int argc, JC2_ValueHandle*, void*) {
+    (void)argc;
+    return wrapDecimal(Decimal::pi()).get_handle();
+}
+
 int jc2_init(jc2::Module& mod) {
     g_decimalClass = new jc2::Class("Decimal");
     mod.register_value("Decimal", *g_decimalClass);
@@ -209,10 +592,25 @@ int jc2_init(jc2::Module& mod) {
     g_decimalClass->bind_method("__lt__", decimal___lt__, 1, 1, false);
     g_decimalClass->bind_method("__neg__", decimal___neg__, 0, 0, false);
     g_decimalClass->bind_method("__bool__", decimal___bool__, 0, 0, false);
+    g_decimalClass->bind_method("__abs__", decimal___abs__, 0, 0, false);
+    g_decimalClass->bind_method("sqrt", decimal_sqrt, 0, 0, false);
+    g_decimalClass->bind_method("exp", decimal_exp, 0, 0, false);
+    g_decimalClass->bind_method("sin", decimal_sin, 0, 0, false);
+    g_decimalClass->bind_method("cos", decimal_cos, 0, 0, false);
+    g_decimalClass->bind_method("tan", decimal_tan, 0, 0, false);
+    g_decimalClass->bind_method("ln", decimal_ln, 0, 0, false);
+    g_decimalClass->bind_method("log10", decimal_log10, 0, 0, false);
+    g_decimalClass->bind_method("asin", decimal_asin, 0, 0, false);
+    g_decimalClass->bind_method("acos", decimal_acos, 0, 0, false);
+    g_decimalClass->bind_method("atan", decimal_atan, 0, 0, false);
+    g_decimalClass->bind_method("sinh", decimal_sinh, 0, 0, false);
+    g_decimalClass->bind_method("cosh", decimal_cosh, 0, 0, false);
+    g_decimalClass->bind_method("tanh", decimal_tanh, 0, 0, false);
 
     mod.register_function("Decimal", global_Decimal, 1, 1, false);
     mod.register_function("getcontext", global_getcontext, 0, 0, false);
     mod.register_function("setcontext", global_setcontext, 1, 1, false);
+    mod.register_function("pi", global_pi, 0, 0, false);
 
     mod.register_help("decimal",
         "═══ Arbitrary-Precision Decimal Arithmetic — Native Module ═══\n\n"
@@ -229,6 +627,16 @@ int jc2_init(jc2::Module& mod) {
         "  ──────────────────────\n"
         "    decimal.getcontext()          Returns a dict with current context settings\n"
         "    decimal.setcontext(prec)      Sets the global precision (number of digits)\n\n"
+        "  Math Functions\n"
+        "  ──────────────────────\n"
+        "    decimal.pi()                  Returns Pi to the current precision\n"
+        "    d.sqrt()                      Square root\n"
+        "    d.exp()                       Exponential (e^x)\n"
+        "    d.ln() / d.log10()            Natural and Base-10 Logarithm\n"
+        "    d.sin() / d.cos() / d.tan()   Trigonometric functions\n"
+        "    d.asin() / d.acos() / d.atan()Inverse Trigonometric functions\n"
+        "    d.sinh() / d.cosh() / d.tanh()Hyperbolic functions\n"
+        "    abs(d)                        Absolute value\n\n"
         "  Example\n"
         "  ──────────────────────\n"
         "    import decimal\n"

@@ -4176,17 +4176,22 @@ Value VM::run(int targetFrameDepth) {
                                 else throw;
                             }
                         } else {
-                            bool found = false;
-                            if (idx.isString() && inst->fields) {
-                                auto it = inst->fields->keyMap.find(idx);
-                                if (it != inst->fields->keyMap.end()) {
-                                    result = inst->fields->elements[it->second].second;
-                                    found = true;
-                                }
-                            }
-                            if (!found) {
+                            if (!idx.isString()) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Cannot index this instance (no __getitem__).");
+                                else throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __getitem__ to support custom indexing.");
+                            } else {
+                                bool found = false;
+                                if (inst->fields) {
+                                    auto it = inst->fields->keyMap.find(idx);
+                                    if (it != inst->fields->keyMap.end()) {
+                                        result = inst->fields->elements[it->second].second;
+                                        found = true;
+                                    }
+                                }
+                                if (!found) {
+                                    if (noThrow) result = Value::uninit();
+                                    else throw std::runtime_error("VM Error: Property '" + idx.asString() + "' not found.");
+                                }
                             }
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
@@ -4351,11 +4356,11 @@ Value VM::run(int targetFrameDepth) {
                         if (setitemMethod) {
                             callDunder(obj, setitemMethod, {idx, val});
                         } else {
-                            if (idx.isString()) {
+                            if (!idx.isString()) {
+                                throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __setitem__ to support custom indexing.");
+                            } else {
                                 if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                                 inst->fields->set(idx, val);
-                            } else {
-                                throw std::runtime_error("VM Error: Cannot assign index on this instance (no __setitem__).");
                             }
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {

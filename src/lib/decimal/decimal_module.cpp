@@ -158,7 +158,7 @@ static Decimal parseDecimalArg(const jc2::Value& val) {
 }
 
 #define METHOD(name) JC2_ValueHandle decimal_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
-#define GET_SELF auto d1 = getDecimal(jc2::Value(argv[0]))
+#define GET_SELF (void)argc; auto d1 = getDecimal(jc2::Value(argv[0]))
 
 METHOD(__str__) { GET_SELF; return jc2::Value(d1->to_string()).get_handle(); }
 METHOD(__add__) { GET_SELF; return wrapDecimal(d1->add(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
@@ -175,6 +175,7 @@ METHOD(__neg__) { GET_SELF; return wrapDecimal(Decimal::from_string("0").sub(*d1
 METHOD(__bool__) { GET_SELF; return jc2::Value(!d1->eq(Decimal::from_string("0"))).get_handle(); }
 
 JC2_ValueHandle global_Decimal(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    (void)argc;
     return wrapDecimal(parseDecimalArg(jc2::Value(argv[0]))).get_handle();
 }
 

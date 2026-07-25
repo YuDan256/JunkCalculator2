@@ -126,7 +126,7 @@ private:
     void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
     void execAssertReturnType(const Value& val, uint32_t icIdx);
 
-    bool checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr);
+    bool checkValueType(const Value& val, InlineCache& ic, const std::string& typeStr);
     std::string getTypeName(const Value& val);
     bool evaluateTruthiness(const Value& val);
 
@@ -140,6 +140,7 @@ public:
         for (auto& fn : compiledFunctions) {
             for (auto& ic : fn->chunk.inlineCaches) {
                 ic.cachedGlobalSlot = -1;
+                ic.cachedClass = nullptr;
             }
         }
     }

@@ -318,6 +318,7 @@ struct InlineCache {
     int cachedGlobalSlot = -1;
     uint64_t cachedClassId = 0;
     ObjClosure* cachedMethod = nullptr;
+    ObjClass* cachedClass = nullptr;
     int cachedFieldIndex = -1;
     BuiltinType cachedBuiltinType = BuiltinType::UNKNOWN;
     std::any cachedNativeFn;

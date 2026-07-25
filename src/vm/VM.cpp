@@ -880,8 +880,8 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
     throw std::runtime_error("VM Error: Dunder method is not callable.");
 }
 
-bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& typeStr) {
-    switch (btype) {
+bool VM::checkValueType(const Value& val, InlineCache& ic, const std::string& typeStr) {
+    switch (ic.cachedBuiltinType) {
         case BuiltinType::ANY: return true;
         case BuiltinType::INT: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool();
         case BuiltinType::FLOAT: return val.isDouble();
@@ -949,6 +949,14 @@ bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& 
         auto inst = val.asInstance();
         auto c = inst->classDef;
         
+        if (ic.cachedClass) {
+            while (c) {
+                if (c == ic.cachedClass) return true;
+                c = c->parent;
+            }
+            return false;
+        }
+
         Value typeVal = Value::none();
         size_t dotPos = typeStr.find('.');
         if (dotPos != std::string::npos) {
@@ -966,6 +974,29 @@ bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& 
                         auto fIt = ns->fields.find(part);
                         if (fIt != ns->fields.end()) {
                             currentVal = *(fIt->second.upval->location);
+                        } else {
+                            currentVal = Value::none();
+                            break;
+                        }
+                    } else if (currentVal.isObjType(ObjType::DICT)) {
+                        auto dict = static_cast<ObjDict*>(currentVal.asObj());
+                        auto dIt = dict->keyMap.find(Value(part));
+                        if (dIt != dict->keyMap.end()) {
+                            currentVal = dict->elements[dIt->second].second;
+                        } else {
+                            currentVal = Value::none();
+                            break;
+                        }
+                    } else if (currentVal.isInstance()) {
+                        auto innerInst = currentVal.asInstance();
+                        if (innerInst->fields) {
+                            auto iIt = innerInst->fields->keyMap.find(Value(part));
+                            if (iIt != innerInst->fields->keyMap.end()) {
+                                currentVal = innerInst->fields->elements[iIt->second].second;
+                            } else {
+                                currentVal = Value::none();
+                                break;
+                            }
                         } else {
                             currentVal = Value::none();
                             break;
@@ -988,6 +1019,7 @@ bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& 
 
         if (typeVal.isClass()) {
             ObjClass* expectedClass = static_cast<ObjClass*>(typeVal.asObj());
+            ic.cachedClass = expectedClass;
             while (c) {
                 if (c == expectedClass) return true;
                 c = c->parent;
@@ -995,14 +1027,7 @@ bool VM::checkValueType(const Value& val, BuiltinType btype, const std::string& 
             return false;
         }
 
-        std::string shortName = typeStr;
-        size_t lastDot = typeStr.find_last_of('.');
-        if (lastDot != std::string::npos) shortName = typeStr.substr(lastDot + 1);
-        
-        while (c) {
-            if (c->name == shortName) return true;
-            c = c->parent;
-        }
+        throw std::runtime_error("TypeError: Type '" + typeStr + "' is not defined or not a class.");
     }
     return false;
 }
@@ -1015,7 +1040,7 @@ void VM::execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx)
     }
     const std::string& expectedType = currentFrame->function->chunk.constants.data()[ic.nameIdx].asString();
 
-    if (!checkValueType(val, ic.cachedBuiltinType, expectedType)) {
+    if (!checkValueType(val, ic, expectedType)) {
         const std::string& paramName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
         throw std::runtime_error("TypeError: Parameter '" + paramName +
             "' expected type '" + expectedType +
@@ -1031,7 +1056,7 @@ void VM::execAssertReturnType(const Value& val, uint32_t icIdx) {
     }
     const std::string& expectedType = currentFrame->function->chunk.constants.data()[ic.nameIdx].asString();
 
-    if (!checkValueType(val, ic.cachedBuiltinType, expectedType)) {
+    if (!checkValueType(val, ic, expectedType)) {
         throw std::runtime_error("TypeError: Function '" + currentFrame->function->name +
             "' expected to return '" + expectedType +
             "', but returned '" + getTypeName(val) + "'.");
@@ -2493,6 +2518,7 @@ VM::VM() {
                 for (auto& v : f.chunk->constants) GcHeap::get().markValue(v);
                 for (auto& ic : f.chunk->inlineCaches) {
                     if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
+                    if (ic.cachedClass) GcHeap::get().markObj(ic.cachedClass);
                 }
             }
             
@@ -2544,6 +2570,7 @@ VM::VM() {
                 for (auto& v : fn->chunk.constants) GcHeap::get().markValue(v);
                 for (auto& ic : fn->chunk.inlineCaches) {
                     if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
+                    if (ic.cachedClass) GcHeap::get().markObj(ic.cachedClass);
                 }
             }
         }
@@ -5655,7 +5682,7 @@ Value VM::run(int targetFrameDepth) {
                     ic.cachedBuiltinType = parseBuiltinType(chunk->constants.data()[ic.nameIdx].asString());
                 }
                 const std::string& typeStr = chunk->constants.data()[ic.nameIdx].asString();
-                getReg(a) = Value(checkValueType(getReg(b), ic.cachedBuiltinType, typeStr));
+                getReg(a) = Value(checkValueType(getReg(b), ic, typeStr));
                 break;
             }
             case OpCode::MATCH_SHAPE: {

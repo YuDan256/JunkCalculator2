@@ -73,38 +73,31 @@ public:
     }
 
     static jc::BigInt pow10(int64_t n) {
-        if (n <= 0) return jc::BigInt("1");
-        return jc::BigInt("1" + std::string(static_cast<size_t>(n), '0'));
+        if (n <= 0) return jc::BigInt(1);
+        return jc::BigInt(10).pow(n);
     }
 
     Decimal truncate(int prec) const {
-        if (mantissa.toString() == "0") return Decimal(jc::BigInt("0"), 0);
-        std::string s = mantissa.toString();
-        int sign = 0;
-        if (s[0] == '-') { sign = 1; s = s.substr(1); }
-        if (static_cast<int>(s.length()) <= prec) return *this;
-        int drop = static_cast<int>(s.length()) - prec;
-        jc::BigInt new_m(s.substr(0, prec));
-        if (sign) new_m = jc::BigInt("0") - new_m;
+        if (mantissa.isZero()) return Decimal(jc::BigInt(0), 0);
+        int current_digits = mantissa.digitCount();
+        if (current_digits <= prec) return *this;
+        int drop = current_digits - prec;
+        jc::BigInt new_m = mantissa / pow10(drop);
         return Decimal(new_m, exp + drop);
     }
 
     int64_t magnitude() const {
-        if (mantissa.toString() == "0") return 0;
-        std::string s = mantissa.toString();
-        int64_t len = s[0] == '-' ? static_cast<int64_t>(s.length()) - 1 : static_cast<int64_t>(s.length());
-        return exp + len;
+        if (mantissa.isZero()) return 0;
+        return exp + mantissa.digitCount();
     }
 
     Decimal abs() const {
-        std::string s = mantissa.toString();
-        if (s[0] == '-') return Decimal(jc::BigInt(s.substr(1)), exp);
-        return *this;
+        return Decimal(mantissa.abs(), exp);
     }
 
     Decimal add(const Decimal& other) const {
-        if (mantissa.toString() == "0") return other.truncate(g_prec);
-        if (other.mantissa.toString() == "0") return this->truncate(g_prec);
+        if (mantissa.isZero()) return other.truncate(g_prec);
+        if (other.mantissa.isZero()) return this->truncate(g_prec);
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
@@ -120,20 +113,16 @@ public:
     }
 
     Decimal sub(const Decimal& other) const {
-        if (mantissa.toString() == "0") {
-            std::string s = other.mantissa.toString();
-            jc::BigInt neg_m = s[0] == '-' ? jc::BigInt(s.substr(1)) : jc::BigInt("-" + s);
-            return Decimal(neg_m, other.exp).truncate(g_prec);
+        if (mantissa.isZero()) {
+            return Decimal(-other.mantissa, other.exp).truncate(g_prec);
         }
-        if (other.mantissa.toString() == "0") return this->truncate(g_prec);
+        if (other.mantissa.isZero()) return this->truncate(g_prec);
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
         if (mag1 - mag2 > g_prec + 2) return this->truncate(g_prec);
         if (mag2 - mag1 > g_prec + 2) {
-            std::string s = other.mantissa.toString();
-            jc::BigInt neg_m = s[0] == '-' ? jc::BigInt(s.substr(1)) : jc::BigInt("-" + s);
-            return Decimal(neg_m, other.exp).truncate(g_prec);
+            return Decimal(-other.mantissa, other.exp).truncate(g_prec);
         }
         
         int64_t min_exp = std::min(exp, other.exp);
@@ -149,16 +138,14 @@ public:
     }
 
     Decimal div(const Decimal& other) const {
-        if (other.mantissa.toString() == "0") {
+        if (other.mantissa.isZero()) {
             jc2::throw_error("DivisionByZero: Decimal division by zero.");
             return *this;
         }
-        if (mantissa.toString() == "0") return Decimal(jc::BigInt("0"), 0);
+        if (mantissa.isZero()) return Decimal(jc::BigInt(0), 0);
         
-        std::string m1_s = mantissa.toString();
-        std::string m2_s = other.mantissa.toString();
-        int64_t len1 = m1_s[0] == '-' ? static_cast<int64_t>(m1_s.length()) - 1 : static_cast<int64_t>(m1_s.length());
-        int64_t len2 = m2_s[0] == '-' ? static_cast<int64_t>(m2_s.length()) - 1 : static_cast<int64_t>(m2_s.length());
+        int64_t len1 = mantissa.digitCount();
+        int64_t len2 = other.mantissa.digitCount();
         
         int64_t extra_zeros = g_prec + 2 - len1 + len2;
         if (extra_zeros < 0) extra_zeros = 0;
@@ -169,8 +156,8 @@ public:
     }
     
     bool eq(const Decimal& other) const {
-        if (mantissa.toString() == "0" && other.mantissa.toString() == "0") return true;
-        if (mantissa.toString() == "0" || other.mantissa.toString() == "0") return false;
+        if (mantissa.isZero() && other.mantissa.isZero()) return true;
+        if (mantissa.isZero() || other.mantissa.isZero()) return false;
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
@@ -188,10 +175,10 @@ public:
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
         
-        bool neg1 = mantissa.toString()[0] == '-';
-        bool neg2 = other.mantissa.toString()[0] == '-';
-        if (mantissa.toString() == "0") neg1 = false;
-        if (other.mantissa.toString() == "0") neg2 = false;
+        bool neg1 = mantissa.isNegative();
+        bool neg2 = other.mantissa.isNegative();
+        if (mantissa.isZero()) neg1 = false;
+        if (other.mantissa.isZero()) neg2 = false;
         
         if (neg1 && !neg2) return true;
         if (!neg1 && neg2) return false;
@@ -210,15 +197,14 @@ public:
     }
 
     Decimal sqrt() const {
-        if (mantissa.toString() == "0") return *this;
-        if (mantissa.toString()[0] == '-') {
+        if (mantissa.isZero()) return *this;
+        if (mantissa.isNegative()) {
             jc2::throw_error("MathError: sqrt of negative decimal.");
             return *this;
         }
         Decimal half = Decimal::from_string("0.5");
         
-        std::string s = mantissa.toString();
-        int64_t total_exp = exp + static_cast<int64_t>(s.length()) - 1;
+        int64_t total_exp = exp + mantissa.digitCount() - 1;
         int64_t guess_exp = total_exp / 2;
         Decimal x = Decimal::from_string("1" + std::string(guess_exp >= 0 ? static_cast<size_t>(guess_exp) : 0, '0'));
         if (guess_exp < 0) {
@@ -237,7 +223,8 @@ public:
         Decimal x = *this;
         int squares = 0;
         Decimal two = Decimal::from_string("2");
-        while (x.abs().to_string().find("0.") != 0 && x.mantissa.toString() != "0") {
+        Decimal one = Decimal::from_string("1");
+        while (!x.abs().lt(one) && !x.mantissa.isZero()) {
             x = x.div(two).truncate(g_prec + 2);
             squares++;
             if (squares > 30) break;
@@ -246,11 +233,10 @@ public:
         Decimal sum = Decimal::from_string("1");
         Decimal term = Decimal::from_string("1");
         Decimal n = Decimal::from_string("1");
-        Decimal one = Decimal::from_string("1");
         
         for (int i = 1; i < 1000; ++i) {
             term = term.mul(x).div(n).truncate(g_prec + 2);
-            if (term.mantissa.toString() == "0") break;
+            if (term.mantissa.isZero()) break;
             
             Decimal next_sum = sum.add(term).truncate(g_prec + 2);
             if (next_sum.eq(sum)) break;
@@ -268,11 +254,14 @@ public:
     Decimal mod_2pi() const {
         Decimal two_pi = Decimal::pi().mul(Decimal::from_string("2"));
         Decimal q = this->div(two_pi);
-        std::string q_str = q.to_string();
-        size_t dot = q_str.find('.');
-        if (dot != std::string::npos) q_str = q_str.substr(0, dot);
-        if (q_str.empty() || q_str == "-") q_str = "0";
-        Decimal q_int = Decimal::from_string(q_str);
+        Decimal q_int;
+        if (q.exp >= 0) {
+            q_int = q;
+        } else if (-q.exp >= q.mantissa.digitCount()) {
+            q_int = Decimal(jc::BigInt(0), 0);
+        } else {
+            q_int = Decimal(q.mantissa / pow10(-q.exp), 0);
+        }
         return this->sub(q_int.mul(two_pi));
     }
 
@@ -287,7 +276,7 @@ public:
         
         for (int i = 1; i < 1000; ++i) {
             term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
-            if (term.mantissa.toString() == "0") break;
+            if (term.mantissa.isZero()) break;
             
             Decimal next_sum = (sign == -1) ? sum.sub(term).truncate(g_prec + 2) : sum.add(term).truncate(g_prec + 2);
             
@@ -311,7 +300,7 @@ public:
         
         for (int i = 1; i < 1000; ++i) {
             term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
-            if (term.mantissa.toString() == "0") break;
+            if (term.mantissa.isZero()) break;
             
             Decimal next_sum = (sign == -1) ? sum.sub(term).truncate(g_prec + 2) : sum.add(term).truncate(g_prec + 2);
             
@@ -335,7 +324,7 @@ public:
         for (int i = 0; i < 10000; ++i) {
             term = term.mul(x2).truncate(g_prec + 2);
             Decimal cur = term.div(n).truncate(g_prec + 2);
-            if (cur.mantissa.toString() == "0") break;
+            if (cur.mantissa.isZero()) break;
             
             Decimal next_sum = (sign == -1) ? sum.sub(cur).truncate(g_prec + 2) : sum.add(cur).truncate(g_prec + 2);
             
@@ -356,13 +345,12 @@ public:
     }
 
     Decimal ln_val() const {
-        if (mantissa.toString() == "0" || mantissa.toString()[0] == '-') {
+        if (mantissa.isZero() || mantissa.isNegative()) {
             jc2::throw_error("MathError: ln of non-positive decimal.");
             return *this;
         }
-        std::string m_str = mantissa.toString();
-        int64_t L = m_str.length();
-        double first_digit = m_str[0] - '0';
+        int64_t L = mantissa.digitCount();
+        double first_digit = (mantissa.abs() / pow10(L - 1)).toDouble();
         double guess = (L - 1 + exp) * 2.302585092994046 + std::log(first_digit);
         
         char buf[64];
@@ -374,9 +362,9 @@ public:
             Decimal ey = y.exp_val();
             Decimal num = this->sub(ey);
             Decimal den = this->add(ey);
-            if (den.mantissa.toString() == "0") break;
+            if (den.mantissa.isZero()) break;
             Decimal diff = two.mul(num).div(den).truncate(g_prec + 2);
-            if (diff.mantissa.toString() == "0") break;
+            if (diff.mantissa.isZero()) break;
             Decimal next_y = y.add(diff).truncate(g_prec + 2);
             if (next_y.eq(y)) break;
             y = next_y;
@@ -403,10 +391,10 @@ public:
         for (int i = 0; i < 50; ++i) {
             Decimal sy = y.sin_val();
             Decimal cy = y.cos_val();
-            if (cy.mantissa.toString() == "0") break;
+            if (cy.mantissa.isZero()) break;
             Decimal ty = sy.div(cy).truncate(g_prec + 2);
             Decimal diff = cy.mul(cy).mul(this->sub(ty)).truncate(g_prec + 2);
-            if (diff.mantissa.toString() == "0") break;
+            if (diff.mantissa.isZero()) break;
             Decimal next_y = y.add(diff).truncate(g_prec + 2);
             if (next_y.eq(y)) break;
             y = next_y;
@@ -429,9 +417,9 @@ public:
         for (int i = 0; i < 50; ++i) {
             Decimal sy = y.sin_val();
             Decimal cy = y.cos_val();
-            if (cy.mantissa.toString() == "0") break;
+            if (cy.mantissa.isZero()) break;
             Decimal diff = this->sub(sy).div(cy).truncate(g_prec + 2);
-            if (diff.mantissa.toString() == "0") break;
+            if (diff.mantissa.isZero()) break;
             Decimal next_y = y.add(diff).truncate(g_prec + 2);
             if (next_y.eq(y)) break;
             y = next_y;
@@ -454,9 +442,9 @@ public:
         for (int i = 0; i < 50; ++i) {
             Decimal cy = y.cos_val();
             Decimal sy = y.sin_val();
-            if (sy.mantissa.toString() == "0") break;
+            if (sy.mantissa.isZero()) break;
             Decimal diff = this->sub(cy).div(sy).truncate(g_prec + 2);
-            if (diff.mantissa.toString() == "0") break;
+            if (diff.mantissa.isZero()) break;
             Decimal next_y = y.sub(diff).truncate(g_prec + 2);
             if (next_y.eq(y)) break;
             y = next_y;
@@ -481,7 +469,7 @@ public:
         Decimal emx = Decimal::from_string("1").div(ex).truncate(g_prec + 2);
         Decimal num = ex.sub(emx);
         Decimal den = ex.add(emx);
-        if (den.mantissa.toString() == "0") return *this;
+        if (den.mantissa.isZero()) return *this;
         return num.div(den).truncate(g_prec);
     }
 };
@@ -530,8 +518,8 @@ METHOD(__div__) { GET_SELF; return wrapDecimal(d1->div(parseDecimalArg(jc2::Valu
 METHOD(__rdiv__) { GET_SELF; return wrapDecimal(parseDecimalArg(jc2::Value(argv[1])).div(*d1)).get_handle(); }
 METHOD(__eq__) { GET_SELF; return jc2::Value(d1->eq(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__lt__) { GET_SELF; return jc2::Value(d1->lt(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
-METHOD(__neg__) { GET_SELF; return wrapDecimal(Decimal::from_string("0").sub(*d1)).get_handle(); }
-METHOD(__bool__) { GET_SELF; return jc2::Value(!d1->eq(Decimal::from_string("0"))).get_handle(); }
+METHOD(__neg__) { GET_SELF; return wrapDecimal(Decimal(jc::BigInt(0), 0).sub(*d1)).get_handle(); }
+METHOD(__bool__) { GET_SELF; return jc2::Value(!d1->eq(Decimal(jc::BigInt(0), 0))).get_handle(); }
 METHOD(__abs__) { GET_SELF; return wrapDecimal(d1->abs()).get_handle(); }
 METHOD(sqrt) { GET_SELF; return wrapDecimal(d1->sqrt()).get_handle(); }
 METHOD(exp) { GET_SELF; return wrapDecimal(d1->exp_val()).get_handle(); }

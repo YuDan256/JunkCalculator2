@@ -117,6 +117,11 @@ add_library(window SHARED "src/lib/window/window_module.cpp")
 target_include_directories(window PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(window PROPERTIES PREFIX "") # Output window.dll instead of libwindow.dll
 
+# ★ Build Decimal Module as a standalone DLL
+add_library(decimal SHARED "src/lib/decimal/decimal_module.cpp")
+target_include_directories(decimal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(decimal PROPERTIES PREFIX "") # Output decimal.dll instead of libdecimal.dll
+
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
@@ -126,7 +131,7 @@ if(WIN32)
 endif()
 
 # ★ Output libraries directly to the lib/ directory
-set(JC2_LIBS image tensor prob bytes ffi socket json latex window)
+set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal)
 foreach(mod ${JC2_LIBS})
     set_target_properties(${mod} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"

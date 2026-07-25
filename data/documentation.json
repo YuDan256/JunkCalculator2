@@ -107,6 +107,7 @@
       "    latex       Bi-directional LaTeX compiler & serializer (import latex)",
       "    ffi         Zero-dependency Foreign Function Interface (import ffi)",
       "    tensor      N-Dimensional Tensor engine with Autograd (import tensor)",
+      "    decimal     Arbitrary-precision decimal arithmetic (import decimal)",
       "",
       "  Standard Modules (require `import` before use, use `/help <module>` for details)",
       "  ────────────────────────────────────────────────────────────────────",

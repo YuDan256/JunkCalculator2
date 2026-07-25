@@ -3569,7 +3569,22 @@ Value VM::run(int targetFrameDepth) {
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break; }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
+                if (vb.isInstance()) { 
+                    if (auto meth = findDunder(vb, DUNDER_LE)) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); 
+                        break; 
+                    }
+                    if (auto methLt = findDunder(vb, DUNDER_LT)) {
+                        if (evaluateTruthiness(callDunder(vb, methLt, {vc}))) {
+                            getReg(a) = Value(true);
+                            break;
+                        }
+                        if (auto methEq = findDunder(vb, DUNDER_EQ)) {
+                            getReg(a) = Value(evaluateTruthiness(callDunder(vb, methEq, {vc})));
+                            break;
+                        }
+                    }
+                }
                 getReg(a) = Value(vb <= vc);
                 break;
             }
@@ -3578,7 +3593,22 @@ Value VM::run(int targetFrameDepth) {
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() > vc.asInt32()); break; }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
+                if (vb.isInstance()) { 
+                    if (auto meth = findDunder(vb, DUNDER_GT)) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); 
+                        break; 
+                    }
+                    if (auto methLt = findDunder(vb, DUNDER_LT)) {
+                        if (evaluateTruthiness(callDunder(vb, methLt, {vc}))) {
+                            getReg(a) = Value(false);
+                            break;
+                        }
+                        if (auto methEq = findDunder(vb, DUNDER_EQ)) {
+                            getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methEq, {vc})));
+                            break;
+                        }
+                    }
+                }
                 getReg(a) = Value(vb > vc);
                 break;
             }
@@ -3587,7 +3617,16 @@ Value VM::run(int targetFrameDepth) {
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break; }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_GE)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
+                if (vb.isInstance()) { 
+                    if (auto meth = findDunder(vb, DUNDER_GE)) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); 
+                        break; 
+                    }
+                    if (auto methLt = findDunder(vb, DUNDER_LT)) {
+                        getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methLt, {vc})));
+                        break;
+                    }
+                }
                 getReg(a) = Value(vb >= vc);
                 break;
             }

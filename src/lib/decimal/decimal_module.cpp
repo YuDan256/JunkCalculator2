@@ -593,6 +593,16 @@ METHOD(sinh) { GET_SELF; return wrapDecimal(d1->sinh_val()).get_handle(); }
 METHOD(cosh) { GET_SELF; return wrapDecimal(d1->cosh_val()).get_handle(); }
 METHOD(tanh) { GET_SELF; return wrapDecimal(d1->tanh_val()).get_handle(); }
 
+METHOD(__setattr__) {
+    jc2::throw_error("TypeError: Decimal instances are immutable.");
+    return jc2::Value().get_handle();
+}
+
+METHOD(__hash__) { 
+    GET_SELF; 
+    return jc2::Value(d1->to_string()).get_handle(); 
+}
+
 JC2_ValueHandle global_Decimal(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     (void)argc;
     return wrapDecimal(parseDecimalArg(jc2::Value(argv[0]))).get_handle();
@@ -635,6 +645,8 @@ int jc2_init(jc2::Module& mod) {
     g_decimalClass->bind_method("__le__", decimal___le__, 1, 1, false);
     g_decimalClass->bind_method("__ge__", decimal___ge__, 1, 1, false);
     g_decimalClass->bind_method("__neq__", decimal___neq__, 1, 1, false);
+    g_decimalClass->bind_method("__setattr__", decimal___setattr__, 2, 2, false);
+    g_decimalClass->bind_method("__hash__", decimal___hash__, 0, 0, false);
     g_decimalClass->bind_method("__neg__", decimal___neg__, 0, 0, false);
     g_decimalClass->bind_method("__bool__", decimal___bool__, 0, 0, false);
     g_decimalClass->bind_method("__abs__", decimal___abs__, 0, 0, false);

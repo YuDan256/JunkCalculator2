@@ -196,6 +196,22 @@ public:
         return m1 < m2;
     }
 
+    bool gt(const Decimal& other) const {
+        return !this->lt(other) && !this->eq(other);
+    }
+
+    bool le(const Decimal& other) const {
+        return this->lt(other) || this->eq(other);
+    }
+
+    bool ge(const Decimal& other) const {
+        return this->gt(other) || this->eq(other);
+    }
+
+    bool neq(const Decimal& other) const {
+        return !this->eq(other);
+    }
+
     Decimal sqrt() const {
         if (mantissa.isZero()) return *this;
         if (mantissa.isNegative()) {
@@ -517,6 +533,10 @@ METHOD(__div__) { GET_SELF; return wrapDecimal(d1->div(parseDecimalArg(jc2::Valu
 METHOD(__rdiv__) { GET_SELF; return wrapDecimal(parseDecimalArg(jc2::Value(argv[1])).div(*d1)).get_handle(); }
 METHOD(__eq__) { GET_SELF; return jc2::Value(d1->eq(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__lt__) { GET_SELF; return jc2::Value(d1->lt(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
+METHOD(__gt__) { GET_SELF; return jc2::Value(d1->gt(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
+METHOD(__le__) { GET_SELF; return jc2::Value(d1->le(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
+METHOD(__ge__) { GET_SELF; return jc2::Value(d1->ge(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
+METHOD(__neq__) { GET_SELF; return jc2::Value(d1->neq(parseDecimalArg(jc2::Value(argv[1])))).get_handle(); }
 METHOD(__neg__) { GET_SELF; return wrapDecimal(Decimal(jc::BigInt(0), 0).sub(*d1)).get_handle(); }
 METHOD(__bool__) { GET_SELF; return jc2::Value(!d1->eq(Decimal(jc::BigInt(0), 0))).get_handle(); }
 METHOD(__abs__) { GET_SELF; return wrapDecimal(d1->abs()).get_handle(); }
@@ -572,6 +592,10 @@ int jc2_init(jc2::Module& mod) {
     g_decimalClass->bind_method("__rdiv__", decimal___rdiv__, 1, 1, false);
     g_decimalClass->bind_method("__eq__", decimal___eq__, 1, 1, false);
     g_decimalClass->bind_method("__lt__", decimal___lt__, 1, 1, false);
+    g_decimalClass->bind_method("__gt__", decimal___gt__, 1, 1, false);
+    g_decimalClass->bind_method("__le__", decimal___le__, 1, 1, false);
+    g_decimalClass->bind_method("__ge__", decimal___ge__, 1, 1, false);
+    g_decimalClass->bind_method("__neq__", decimal___neq__, 1, 1, false);
     g_decimalClass->bind_method("__neg__", decimal___neg__, 0, 0, false);
     g_decimalClass->bind_method("__bool__", decimal___bool__, 0, 0, false);
     g_decimalClass->bind_method("__abs__", decimal___abs__, 0, 0, false);

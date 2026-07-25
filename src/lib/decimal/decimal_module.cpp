@@ -13,6 +13,7 @@ public:
     jc::BigInt mantissa;
     int64_t exp;
 
+    Decimal() : mantissa("0"), exp(0) {}
     Decimal(jc::BigInt m, int64_t e) : mantissa(std::move(m)), exp(e) {}
 
     static Decimal from_string(const std::string& s) {
@@ -81,17 +82,17 @@ public:
         std::string s = mantissa.toString();
         int sign = 0;
         if (s[0] == '-') { sign = 1; s = s.substr(1); }
-        if ((int)s.length() <= prec) return *this;
-        int drop = (int)s.length() - prec;
+        if (static_cast<int>(s.length()) <= prec) return *this;
+        int drop = static_cast<int>(s.length()) - prec;
         jc::BigInt new_m(s.substr(0, prec));
         if (sign) new_m = jc::BigInt("0") - new_m;
         return Decimal(new_m, exp + drop);
     }
 
-    int magnitude() const {
+    int64_t magnitude() const {
         if (mantissa.toString() == "0") return 0;
         std::string s = mantissa.toString();
-        int len = s[0] == '-' ? s.length() - 1 : s.length();
+        int64_t len = s[0] == '-' ? static_cast<int64_t>(s.length()) - 1 : static_cast<int64_t>(s.length());
         return exp + len;
     }
 
@@ -105,8 +106,8 @@ public:
         if (mantissa.toString() == "0") return other.truncate(g_prec);
         if (other.mantissa.toString() == "0") return this->truncate(g_prec);
         
-        int mag1 = magnitude();
-        int mag2 = other.magnitude();
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
         if (mag1 - mag2 > g_prec + 2) return this->truncate(g_prec);
         if (mag2 - mag1 > g_prec + 2) return other.truncate(g_prec);
         
@@ -126,8 +127,8 @@ public:
         }
         if (other.mantissa.toString() == "0") return this->truncate(g_prec);
         
-        int mag1 = magnitude();
-        int mag2 = other.magnitude();
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
         if (mag1 - mag2 > g_prec + 2) return this->truncate(g_prec);
         if (mag2 - mag1 > g_prec + 2) {
             std::string s = other.mantissa.toString();
@@ -156,8 +157,8 @@ public:
         
         std::string m1_s = mantissa.toString();
         std::string m2_s = other.mantissa.toString();
-        int len1 = m1_s[0] == '-' ? m1_s.length() - 1 : m1_s.length();
-        int len2 = m2_s[0] == '-' ? m2_s.length() - 1 : m2_s.length();
+        int64_t len1 = m1_s[0] == '-' ? static_cast<int64_t>(m1_s.length()) - 1 : static_cast<int64_t>(m1_s.length());
+        int64_t len2 = m2_s[0] == '-' ? static_cast<int64_t>(m2_s.length()) - 1 : static_cast<int64_t>(m2_s.length());
         
         int64_t extra_zeros = g_prec + 2 - len1 + len2;
         if (extra_zeros < 0) extra_zeros = 0;
@@ -171,8 +172,8 @@ public:
         if (mantissa.toString() == "0" && other.mantissa.toString() == "0") return true;
         if (mantissa.toString() == "0" || other.mantissa.toString() == "0") return false;
         
-        int mag1 = magnitude();
-        int mag2 = other.magnitude();
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
         if (std::abs(mag1 - mag2) > g_prec + 2) return false;
         
         int64_t min_exp = std::min(exp, other.exp);
@@ -184,8 +185,8 @@ public:
     }
     
     bool lt(const Decimal& other) const {
-        int mag1 = magnitude();
-        int mag2 = other.magnitude();
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
         
         bool neg1 = mantissa.toString()[0] == '-';
         bool neg2 = other.mantissa.toString()[0] == '-';
@@ -217,11 +218,11 @@ public:
         Decimal half = Decimal::from_string("0.5");
         
         std::string s = mantissa.toString();
-        int total_exp = exp + (int)s.length() - 1;
-        int guess_exp = total_exp / 2;
-        Decimal x = Decimal::from_string("1" + std::string(guess_exp >= 0 ? guess_exp : 0, '0'));
+        int64_t total_exp = exp + static_cast<int64_t>(s.length()) - 1;
+        int64_t guess_exp = total_exp / 2;
+        Decimal x = Decimal::from_string("1" + std::string(guess_exp >= 0 ? static_cast<size_t>(guess_exp) : 0, '0'));
         if (guess_exp < 0) {
-            x = Decimal::from_string("0." + std::string(-guess_exp - 1, '0') + "1");
+            x = Decimal::from_string("0." + std::string(static_cast<size_t>(-guess_exp - 1), '0') + "1");
         }
 
         for (int i = 0; i < 100; ++i) {
@@ -288,9 +289,7 @@ public:
             term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
             if (term.mantissa.toString() == "0") break;
             
-            Decimal next_sum;
-            if (sign == -1) next_sum = sum.sub(term).truncate(g_prec + 2);
-            else next_sum = sum.add(term).truncate(g_prec + 2);
+            Decimal next_sum = (sign == -1) ? sum.sub(term).truncate(g_prec + 2) : sum.add(term).truncate(g_prec + 2);
             
             if (next_sum.eq(sum)) break;
             sum = next_sum;
@@ -314,9 +313,7 @@ public:
             term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
             if (term.mantissa.toString() == "0") break;
             
-            Decimal next_sum;
-            if (sign == -1) next_sum = sum.sub(term).truncate(g_prec + 2);
-            else next_sum = sum.add(term).truncate(g_prec + 2);
+            Decimal next_sum = (sign == -1) ? sum.sub(term).truncate(g_prec + 2) : sum.add(term).truncate(g_prec + 2);
             
             if (next_sum.eq(sum)) break;
             sum = next_sum;
@@ -340,9 +337,7 @@ public:
             Decimal cur = term.div(n).truncate(g_prec + 2);
             if (cur.mantissa.toString() == "0") break;
             
-            Decimal next_sum;
-            if (sign == -1) next_sum = sum.sub(cur).truncate(g_prec + 2);
-            else next_sum = sum.add(cur).truncate(g_prec + 2);
+            Decimal next_sum = (sign == -1) ? sum.sub(cur).truncate(g_prec + 2) : sum.add(cur).truncate(g_prec + 2);
             
             if (next_sum.eq(sum)) break;
             sum = next_sum;

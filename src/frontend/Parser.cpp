@@ -267,7 +267,14 @@ namespace jc {
                 // 试探是否带有 -> 返回类型
                 if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::RIGHT_ARROW) {
                     peekPos++;
-                    if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::IDENTIFIER) peekPos++;
+                    while (peekPos < static_cast<int>(tokens.size()) && 
+                          (tokens[peekPos].type == TokenType::IDENTIFIER || 
+                           tokens[peekPos].type == TokenType::CLASS || 
+                           tokens[peekPos].type == TokenType::NAMESPACE || 
+                           tokens[peekPos].type == TokenType::NONE_KW || 
+                           tokens[peekPos].type == TokenType::DOT)) {
+                        peekPos++;
+                    }
                 }
                 while (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::NEWLINE) peekPos++;
 
@@ -347,10 +354,7 @@ namespace jc {
 
                             std::string pType = "";
                             if (match({ TokenType::COLON })) {
-                                pType = consume(TokenType::IDENTIFIER, "Parser Error: Expect type after ':'.").lexeme;
-                                while (match({ TokenType::DOT })) {
-                                    pType += "." + consume(TokenType::IDENTIFIER, "Parser Error: Expect property name after '.'.").lexeme;
-                                }
+                                pType = parseTypeName("Parser Error: Expect type after ':'.");
                             }
                             paramTypes.push_back(pType);
 
@@ -373,10 +377,7 @@ namespace jc {
                     std::string retType = "";
                     while (match({ TokenType::NEWLINE })) {}
                     if (match({ TokenType::RIGHT_ARROW })) {
-                        retType = consume(TokenType::IDENTIFIER, "Parser Error: Expect return type after '->'.").lexeme;
-                        while (match({ TokenType::DOT })) {
-                            retType += "." + consume(TokenType::IDENTIFIER, "Parser Error: Expect property name after '.'.").lexeme;
-                        }
+                        retType = parseTypeName("Parser Error: Expect return type after '->'.");
                     }
 
                     while (match({ TokenType::NEWLINE })) {}
@@ -1257,7 +1258,14 @@ namespace jc {
                 // ★ 嗅探返回类型 ->
                 if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::RIGHT_ARROW) {
                     peekPos++;
-                    if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::IDENTIFIER) peekPos++;
+                    while (peekPos < static_cast<int>(tokens.size()) && 
+                          (tokens[peekPos].type == TokenType::IDENTIFIER || 
+                           tokens[peekPos].type == TokenType::CLASS || 
+                           tokens[peekPos].type == TokenType::NAMESPACE || 
+                           tokens[peekPos].type == TokenType::NONE_KW || 
+                           tokens[peekPos].type == TokenType::DOT)) {
+                        peekPos++;
+                    }
                 }
                 while (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::NEWLINE) peekPos++;
 
@@ -1332,10 +1340,7 @@ namespace jc {
 
                         std::string pType = "";
                         if (match({ TokenType::COLON })) {
-                            pType = consume(TokenType::IDENTIFIER, "Expect type after ':'.").lexeme;
-                            while (match({ TokenType::DOT })) {
-                                pType += "." + consume(TokenType::IDENTIFIER, "Expect property name after '.'.").lexeme;
-                            }
+                            pType = parseTypeName("Parser Error: Expect type after ':'.");
                         }
                         paramTypes.push_back(pType);
 
@@ -1360,10 +1365,7 @@ namespace jc {
                 std::string retType = "";
                 while (match({ TokenType::NEWLINE })) {}
                 if (match({ TokenType::RIGHT_ARROW })) {
-                    retType = consume(TokenType::IDENTIFIER, "Parser Error: Expect return type.").lexeme;
-                    while (match({ TokenType::DOT })) {
-                        retType += "." + consume(TokenType::IDENTIFIER, "Parser Error: Expect property name after '.'.").lexeme;
-                    }
+                    retType = parseTypeName("Parser Error: Expect return type after '->'.");
                 }
                 while (match({ TokenType::NEWLINE })) {}
 
@@ -2870,10 +2872,7 @@ namespace jc {
 
                     std::string pType = "";
                     if (match({ TokenType::COLON })) {
-                        pType = consume(TokenType::IDENTIFIER, "Expect type.").lexeme;
-                        while (match({ TokenType::DOT })) {
-                            pType += "." + consume(TokenType::IDENTIFIER, "Expect property name after '.'.").lexeme;
-                        }
+                        pType = parseTypeName("Parser Error: Expect type after ':'.");
                     }
                     paramTypes.push_back(pType);
 
@@ -2897,10 +2896,7 @@ namespace jc {
             std::string retType = "";
             while (match({ TokenType::NEWLINE })) {}
             if (match({ TokenType::RIGHT_ARROW })) {
-                retType = consume(TokenType::IDENTIFIER, "Parser Error: Expect return type after '->'.").lexeme;
-                while (match({ TokenType::DOT })) {
-                    retType += "." + consume(TokenType::IDENTIFIER, "Parser Error: Expect property name after '.'.").lexeme;
-                }
+                retType = parseTypeName("Parser Error: Expect return type after '->'.");
             }
             while (match({ TokenType::NEWLINE })) {}
 
@@ -3203,6 +3199,21 @@ namespace jc {
     }
 
     // ---- 辅助函数 (不变) ----
+    std::string Parser::parseTypeName(const std::string& errMsg) {
+        auto consumeName = [&]() -> std::string {
+            if (check(TokenType::IDENTIFIER) || check(TokenType::CLASS) || 
+                check(TokenType::NAMESPACE) || check(TokenType::NONE_KW)) {
+                return advance().lexeme;
+            }
+            throw std::runtime_error(errMsg);
+        };
+        std::string name = consumeName();
+        while (match({ TokenType::DOT })) {
+            name += "." + consumeName();
+        }
+        return name;
+    }
+
     Token Parser::consume(TokenType type, const std::string& message) { if (check(type)) return advance(); throw std::runtime_error(message); }
 
 } // namespace jc

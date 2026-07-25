@@ -70,6 +70,10 @@ public:
     T* get_native_data() const {
         return static_cast<T*>(Env::api->get_native_data(Env::ctx, handle));
     }
+
+    void freeze() const {
+        Env::api->freeze_object(Env::ctx, handle);
+    }
 };
 
 class Class : public Value {

@@ -554,6 +554,21 @@ static void host_instance_set_field(JC2_VMContext, JC2_ValueHandle inst, const c
     }
 }
 
+static void host_freeze_object(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isObj()) {
+        Obj* obj = val.asObj();
+        switch (obj->type) {
+            case ObjType::INSTANCE: static_cast<ObjInstance*>(obj)->is_frozen = true; break;
+            case ObjType::LIST: static_cast<ObjList*>(obj)->is_frozen = true; break;
+            case ObjType::DICT: static_cast<ObjDict*>(obj)->is_frozen = true; break;
+            case ObjType::SET: static_cast<ObjSet*>(obj)->is_frozen = true; break;
+            case ObjType::NAMESPACE: static_cast<ObjNamespace*>(obj)->is_frozen = true; break;
+            default: break;
+        }
+    }
+}
+
 static JC2_ValueHandle host_dict_keys(JC2_VMContext, JC2_ValueHandle dict) {
     Value d = from_handle(dict);
     if (d.isObjType(ObjType::DICT)) {
@@ -689,7 +704,8 @@ static const JC2_HostAPI host_api = {
     host_set_class_parent,
     host_get_class,
     host_instance_get_field,
-    host_instance_set_field
+    host_instance_set_field,
+    host_freeze_object
 };
 
 const JC2_HostAPI* get_host_api() {

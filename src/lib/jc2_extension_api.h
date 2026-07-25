@@ -177,6 +177,9 @@ typedef struct JC2_HostAPI {
     JC2_ValueHandle (*instance_get_field)(JC2_VMContext ctx, JC2_ValueHandle inst, const char* name);
     void (*instance_set_field)(JC2_VMContext ctx, JC2_ValueHandle inst, const char* name, JC2_ValueHandle val);
     
+    /* --- 对象冻结 (Object Freezing) --- */
+    void (*freeze_object)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
 } JC2_HostAPI;
 
 /* =========================================================================

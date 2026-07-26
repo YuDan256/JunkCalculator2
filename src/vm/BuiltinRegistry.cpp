@@ -257,7 +257,7 @@ namespace jc {
                             if (it != fns.end()) {
                                 auto ait = arities.find(name);
                                 if (ait != arities.end() && !ait->second.empty()) {
-                                    if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                                    if (ait->second.find(static_cast<int>(fnArgs.size())) == ait->second.end()) {
                                         throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
                                     }
                                 }
@@ -5456,7 +5456,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(trigsimp(args[0].asSymbolic()));
         });
 
-    reg("subs", { 3 }, [fnsPtr](const std::vector<Value>& args) -> Value {
+    reg("subs", { 3 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr result = args[0].asSymbolic();
 
         std::vector<std::string> vars;
@@ -5577,7 +5577,7 @@ void BuiltinRegistry::registerCAS() {
             if (it != builtins.end()) {
                 auto ait = arities.find(name);
                 if (ait != arities.end() && !ait->second.empty()) {
-                    if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                    if (ait->second.find(static_cast<int>(fnArgs.size())) == ait->second.end()) {
                         throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
                     }
                 }
@@ -5627,7 +5627,7 @@ void BuiltinRegistry::registerCAS() {
                     if (it != fnsPtr->end()) {
                         auto ait = arities.find(name);
                         if (ait != arities.end() && !ait->second.empty()) {
-                            if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                            if (ait->second.find(static_cast<int>(fnArgs.size())) == ait->second.end()) {
                                 throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
                             }
                         }
@@ -5657,7 +5657,7 @@ void BuiltinRegistry::registerCAS() {
                     if (it != fnsPtr->end()) {
                         auto ait = arities.find(name);
                         if (ait != arities.end() && !ait->second.empty()) {
-                            if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                            if (ait->second.find(static_cast<int>(fnArgs.size())) == ait->second.end()) {
                                 throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
                             }
                         }

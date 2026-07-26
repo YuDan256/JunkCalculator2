@@ -18,13 +18,13 @@ test_type_reflection()
 // 测试类型代数（并集、交集与隐式提升）
 test_type_algebra() = {
     U = int | string
-    assert(str(U) == "int | string" || str(U) == "string | int", "Union string representation")
+    assert(str(U) == "<type 'int | string'>" || str(U) == "<type 'string | int'>", "Union string representation")
     
     I = (int | string) & int
     assert(I == int, "Intersection should simplify to int")
     
     E = int & string
-    assert(str(E) == "Never", "Empty intersection should be Never")
+    assert(str(E) == "<type 'Never'>", "Empty intersection should be Never")
     
     class Point {}
     C = int | Point

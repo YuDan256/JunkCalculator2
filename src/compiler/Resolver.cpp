@@ -254,6 +254,11 @@ void Resolver::visitCompoundAssign(CompoundAssign* expr) {
 }
 
 void Resolver::visitLambdaExpr(LambdaExpr* expr) {
+    for (auto& pt : expr->paramTypes) {
+        if (pt) resolve(pt.get());
+    }
+    if (expr->returnType) resolve(expr->returnType.get());
+
     beginScope(true, false);
     for (size_t i = 0; i < expr->params.size(); ++i) {
         if (expr->params[i].lexeme != "_" && scopes.back().lexicalDecls.count(expr->params[i].lexeme)) {
@@ -317,6 +322,11 @@ void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     }
     
     for (auto& m : expr->methods) {
+        for (auto& pt : m.paramTypes) {
+            if (pt) resolve(pt.get());
+        }
+        if (m.returnType) resolve(m.returnType.get());
+
         beginScope(true, false);
         for (size_t i = 0; i < m.params.size(); ++i) {
             if (m.params[i].lexeme != "_" && scopes.back().lexicalDecls.count(m.params[i].lexeme)) {

@@ -2951,18 +2951,13 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
                 pt->accept(*this);
                 paramTypeNodes.push_back(lastValue);
             } else {
-                IRNode* noneNode = graph->createConstant(Value::none());
-                noneNode->setControl(currentControl);
-                paramTypeNodes.push_back(noneNode);
+                paramTypeNodes.push_back(nullptr);
             }
         }
         IRNode* retTypeNode = nullptr;
         if (expr->returnType) {
             expr->returnType->accept(*this);
             retTypeNode = lastValue;
-        } else {
-            retTypeNode = graph->createConstant(Value::none());
-            retTypeNode->setControl(currentControl);
         }
 
         auto fnDef = std::make_shared<CompiledFunction>();
@@ -3015,14 +3010,14 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
             IRNode* pNode = paramTypeNodes[i];
             this->graph->postAllocCallbacks.push_back([childFn, i, pNode]() {
                 if (childFn->paramTypeRegs.size() <= i) childFn->paramTypeRegs.resize(i + 1, -1);
-                childFn->paramTypeRegs[i] = pNode->getResolved()->physicalReg;
+                childFn->paramTypeRegs[i] = pNode ? pNode->getResolved()->physicalReg : -1;
             });
-            closureNode->addData(pNode);
+            if (pNode) closureNode->addData(pNode);
         }
         this->graph->postAllocCallbacks.push_back([childFn, retTypeNode]() {
-            childFn->returnTypeReg = retTypeNode->getResolved()->physicalReg;
+            childFn->returnTypeReg = retTypeNode ? retTypeNode->getResolved()->physicalReg : -1;
         });
-        closureNode->addData(retTypeNode);
+        if (retTypeNode) closureNode->addData(retTypeNode);
         
         lastValue = closureNode;
     } else {
@@ -3462,18 +3457,13 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
                 pt->accept(*this);
                 paramTypeNodes.push_back(lastValue);
             } else {
-                IRNode* noneNode = graph->createConstant(Value::none());
-                noneNode->setControl(currentControl);
-                paramTypeNodes.push_back(noneNode);
+                paramTypeNodes.push_back(nullptr);
             }
         }
         IRNode* retTypeNode = nullptr;
         if (method.returnType) {
             method.returnType->accept(*this);
             retTypeNode = lastValue;
-        } else {
-            retTypeNode = graph->createConstant(Value::none());
-            retTypeNode->setControl(currentControl);
         }
 
         if (compiledFunctions) {
@@ -3527,14 +3517,14 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
                 IRNode* pNode = paramTypeNodes[i];
                 this->graph->postAllocCallbacks.push_back([childFn, i, pNode]() {
                     if (childFn->paramTypeRegs.size() <= i) childFn->paramTypeRegs.resize(i + 1, -1);
-                    childFn->paramTypeRegs[i] = pNode->getResolved()->physicalReg;
+                    childFn->paramTypeRegs[i] = pNode ? pNode->getResolved()->physicalReg : -1;
                 });
-                methodClosure->addData(pNode);
+                if (pNode) methodClosure->addData(pNode);
             }
             this->graph->postAllocCallbacks.push_back([childFn, retTypeNode]() {
-                childFn->returnTypeReg = retTypeNode->getResolved()->physicalReg;
+                childFn->returnTypeReg = retTypeNode ? retTypeNode->getResolved()->physicalReg : -1;
             });
-            methodClosure->addData(retTypeNode);
+            if (retTypeNode) methodClosure->addData(retTypeNode);
 
             IRNode* methodNode = graph->createNode(IROp::Method);
             methodNode->setControl(currentControl);

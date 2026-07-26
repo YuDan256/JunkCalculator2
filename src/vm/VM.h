@@ -126,11 +126,11 @@ private:
     void execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx);
     void execAssertReturnType(const Value& val);
 
-    bool checkValueType(const Value& val, ObjTypeDef* td);
     std::string getTypeName(const Value& val);
     bool evaluateTruthiness(const Value& val);
 
 public:
+    bool checkValueType(const Value& val, ObjTypeDef* td);
     ObjClosure* findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
     VM();

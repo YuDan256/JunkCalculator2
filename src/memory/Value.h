@@ -177,7 +177,7 @@ namespace jc {
                 if (i > 0) res += " | ";
                 if (std::holds_alternative<BuiltinType>(types[i])) {
                     switch (std::get<BuiltinType>(types[i])) {
-                        case BuiltinType::ANY: res += "any"; break;
+                        case BuiltinType::ANY: res += "any_type"; break;
                         case BuiltinType::INT: res += "int"; break;
                         case BuiltinType::FLOAT: res += "double"; break;
                         case BuiltinType::REAL: res += "real"; break;

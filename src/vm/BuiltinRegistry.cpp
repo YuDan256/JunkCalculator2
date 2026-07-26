@@ -208,8 +208,8 @@ namespace jc {
         return false;
     }
 
-    template<typename MapType>
-    static SymExpr collapseSymFuncs(const SymExpr& expr, const MapType& fns) {
+    template<typename MapType, typename ArityMapType>
+    static SymExpr collapseSymFuncs(const SymExpr& expr, const MapType& fns, const ArityMapType& arities) {
         jc::checkInterrupt();
         if (!expr.ptr) return expr;
 
@@ -222,7 +222,7 @@ namespace jc {
             auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
             SymExpr result(BigInt(0));
             for (auto& arg : add->args)
-                result = result + collapseSymFuncs(SymExpr(arg), fns);
+                result = result + collapseSymFuncs(SymExpr(arg), fns, arities);
             return result;
         }
 
@@ -230,14 +230,14 @@ namespace jc {
             auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
             SymExpr result(BigInt(1));
             for (auto& arg : mul->args)
-                result = result * collapseSymFuncs(SymExpr(arg), fns);
+                result = result * collapseSymFuncs(SymExpr(arg), fns, arities);
             return result;
         }
 
         case SymType::POW: {
             auto pow = std::static_pointer_cast<SymPow>(expr.ptr);
-            return collapseSymFuncs(SymExpr(pow->base), fns) ^
-                collapseSymFuncs(SymExpr(pow->exp), fns);
+            return collapseSymFuncs(SymExpr(pow->base), fns, arities) ^
+                collapseSymFuncs(SymExpr(pow->exp), fns, arities);
         }
 
         case SymType::FUNC: {
@@ -246,15 +246,23 @@ namespace jc {
             std::vector<Value> vals;
             bool allNumeric = true;
             for (auto& arg : func->args) {
-                SymExpr collapsed = collapseSymFuncs(SymExpr(arg), fns);
+                SymExpr collapsed = collapseSymFuncs(SymExpr(arg), fns, arities);
                 newArgs.push_back(collapsed);
                 
                 if (isConstantExpr(collapsed)) {
                     try {
                         std::map<std::string, Value> emptyEnv;
-                        SymbolicFuncResolver resolver = [&fns](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
+                        SymbolicFuncResolver resolver = [&fns, &arities](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
                             auto it = fns.find(name);
-                            if (it != fns.end()) return it->second(fnArgs);
+                            if (it != fns.end()) {
+                                auto ait = arities.find(name);
+                                if (ait != arities.end() && !ait->second.empty()) {
+                                    if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                                        throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
+                                    }
+                                }
+                                return it->second(fnArgs);
+                            }
                             throw std::runtime_error("Function not found");
                         };
                         vals.push_back(evalUniversal(collapsed.ptr, emptyEnv, resolver));
@@ -4493,7 +4501,7 @@ void BuiltinRegistry::registerSystemShell() {
                 td->types.push_back(bt);
                 return Value(td);
             };
-            VM::activeVM->setGlobal("any", makeType(BuiltinType::ANY));
+            VM::activeVM->setGlobal("any_type", makeType(BuiltinType::ANY));
             VM::activeVM->setGlobal("int", makeType(BuiltinType::INT));
             VM::activeVM->setGlobal("double", makeType(BuiltinType::FLOAT));
             VM::activeVM->setGlobal("real", makeType(BuiltinType::REAL));
@@ -5516,7 +5524,7 @@ void BuiltinRegistry::registerCAS() {
         for (size_t i = 0; i < vars.size(); ++i)
             result = subs(result, vars[i], vals[i]);
 
-        result = simplify(collapseSymFuncs(result, *fnsPtr));
+        result = simplify(collapseSymFuncs(result, *fnsPtr, this->builtinArity));
 
         if (result.ptr->getType() == SymType::NUM) {
             auto num = std::static_pointer_cast<SymNum>(result.ptr);
@@ -5525,7 +5533,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(result);
         });
 
-    reg("toFunc", { 2 }, [](const std::vector<Value>& args) -> Value {
+    reg("toFunc", { 2 }, [this](const std::vector<Value>& args) -> Value {
         jc::SymExpr ast = args[0].asSymbolic();
         std::vector<std::string> varNames;
         if (args[1].isObjType(ObjType::LIST)) {
@@ -5560,12 +5568,19 @@ void BuiltinRegistry::registerCAS() {
             varNames, pRefs, "<sym_to_func>", nullptr
         );
         cls->defaultValues.resize(argCount, jc::Value::none());
-        jc::SymbolicFuncResolver resolver = [](const std::string& name, const std::vector<jc::Value>& fnArgs) -> jc::Value {
+        auto arities = this->builtinArity;
+        jc::SymbolicFuncResolver resolver = [arities](const std::string& name, const std::vector<jc::Value>& fnArgs) -> jc::Value {
             if (!jc::VM::activeVM) throw std::runtime_error("toFunc error: VM context lost.");
 
             const auto& builtins = jc::VM::activeVM->getNativeBuiltins();
             auto it = builtins.find(name);
             if (it != builtins.end()) {
+                auto ait = arities.find(name);
+                if (ait != arities.end() && !ait->second.empty()) {
+                    if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                        throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
+                    }
+                }
                 return it->second(fnArgs);
             }
             throw std::runtime_error("toFunc error: Math function '" + name + "' not found in BuiltinRegistry.");
@@ -5598,17 +5613,26 @@ void BuiltinRegistry::registerCAS() {
         return jc::Value(cls);
         });
 
-    reg("evalf", { 1 }, [fnsPtr](const std::vector<Value>& args) -> Value {
+    reg("evalf", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         expr = evalFloat(expr);
-        expr = collapseSymFuncs(expr, *fnsPtr);
+        expr = collapseSymFuncs(expr, *fnsPtr, this->builtinArity);
 
         if (isConstantExpr(expr)) {
             try {
                 std::map<std::string, Value> emptyEnv;
-                SymbolicFuncResolver resolver = [fnsPtr](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
+                auto arities = this->builtinArity;
+                SymbolicFuncResolver resolver = [fnsPtr, arities](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
                     auto it = fnsPtr->find(name);
-                    if (it != fnsPtr->end()) return it->second(fnArgs);
+                    if (it != fnsPtr->end()) {
+                        auto ait = arities.find(name);
+                        if (ait != arities.end() && !ait->second.empty()) {
+                            if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                                throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
+                            }
+                        }
+                        return it->second(fnArgs);
+                    }
                     throw std::runtime_error("Function not found");
                 };
                 return evalUniversal(expr.ptr, emptyEnv, resolver);
@@ -5619,17 +5643,26 @@ void BuiltinRegistry::registerCAS() {
         return Value(expr);
         });
 
-    reg("evalv", { 1 }, [fnsPtr](const std::vector<Value>& args) -> Value {
+    reg("evalv", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         expr = evalValue(expr);
-        expr = simplify(collapseSymFuncs(expr, *fnsPtr));
+        expr = simplify(collapseSymFuncs(expr, *fnsPtr, this->builtinArity));
 
         if (isConstantExpr(expr)) {
             try {
                 std::map<std::string, Value> emptyEnv;
-                SymbolicFuncResolver resolver = [fnsPtr](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
+                auto arities = this->builtinArity;
+                SymbolicFuncResolver resolver = [fnsPtr, arities](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
                     auto it = fnsPtr->find(name);
-                    if (it != fnsPtr->end()) return it->second(fnArgs);
+                    if (it != fnsPtr->end()) {
+                        auto ait = arities.find(name);
+                        if (ait != arities.end() && !ait->second.empty()) {
+                            if (ait->second.find(fnArgs.size()) == ait->second.end()) {
+                                throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
+                            }
+                        }
+                        return it->second(fnArgs);
+                    }
                     throw std::runtime_error("Function not found");
                 };
                 return evalUniversal(expr.ptr, emptyEnv, resolver);

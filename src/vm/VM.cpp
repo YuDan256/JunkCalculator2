@@ -241,6 +241,18 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
         } else {
             auto nIt = nativeBuiltins.find(tag);
             if (nIt != nativeBuiltins.end()) {
+                auto ait = builtinArity.find(tag);
+                if (ait != builtinArity.end() && !ait->second.empty()) {
+                    if (ait->second.find(argc) == ait->second.end()) {
+                        std::string expected;
+                        for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
+                            if (aIt != ait->second.begin()) expected += " or ";
+                            expected += std::to_string(*aIt);
+                        }
+                        throw std::runtime_error("Runtime Error: Function '" + tag + 
+                            "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
+                    }
+                }
                 std::vector<Value> args;
                 args.reserve(argc);
                 for (int i = 0; i < argc; ++i) {
@@ -296,6 +308,18 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 std::string name = td->name();
                 auto nIt = nativeBuiltins.find(name);
                 if (nIt != nativeBuiltins.end()) {
+                    auto ait = builtinArity.find(name);
+                    if (ait != builtinArity.end() && !ait->second.empty()) {
+                        if (ait->second.find(argc) == ait->second.end()) {
+                            std::string expected;
+                            for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
+                                if (aIt != ait->second.begin()) expected += " or ";
+                                expected += std::to_string(*aIt);
+                            }
+                            throw std::runtime_error("Runtime Error: Function '" + name + 
+                                "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
+                        }
+                    }
                     std::vector<Value> args;
                     args.reserve(argc);
                     for (int i = 0; i < argc; ++i) {
@@ -2579,7 +2603,7 @@ VM::VM() {
         td->types.push_back(bt);
         return Value(td);
     };
-    builtinValues["any"] = makeType(BuiltinType::ANY);
+    builtinValues["any_type"] = makeType(BuiltinType::ANY);
     builtinValues["int"] = makeType(BuiltinType::INT);
     builtinValues["double"] = makeType(BuiltinType::FLOAT);
     builtinValues["real"] = makeType(BuiltinType::REAL);

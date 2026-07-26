@@ -1294,7 +1294,7 @@
       "    Supported Exact & Union Types: ",
       "      int, whole, double, real, number, exact, string, bool, binary, none_type,",
       "      list, dict, set, fraction, complex, basenum, symbolic,",
-      "      realmatrix, complexmatrix, stringmatrix, matrix, function, class_type, instance, namespace_type, any",
+      "      realmatrix, complexmatrix, stringmatrix, matrix, function, class_type, instance, namespace_type, any_type",
       "",
       "    Duck Types / Interfaces (Behavioral Contracts):",
       "      iterable    → Matches lists, dicts, sets, strings, matrices, or instances with __iter__/__next__",

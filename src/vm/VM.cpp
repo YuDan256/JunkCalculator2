@@ -2551,7 +2551,7 @@ VM::VM() {
     builtinValues["string"] = makeType(BuiltinType::STRING);
     builtinValues["bool"] = makeType(BuiltinType::BOOL);
     builtinValues["binary"] = makeType(BuiltinType::BINARY);
-    builtinValues["none"] = makeType(BuiltinType::NONE_TYPE);
+    builtinValues["none_type"] = makeType(BuiltinType::NONE_TYPE);
     builtinValues["list"] = makeType(BuiltinType::LIST);
     builtinValues["dict"] = makeType(BuiltinType::DICT);
     builtinValues["set"] = makeType(BuiltinType::SET);
@@ -2564,9 +2564,9 @@ VM::VM() {
     builtinValues["stringmatrix"] = makeType(BuiltinType::STRINGMAT);
     builtinValues["matrix"] = makeType(BuiltinType::MATRIX);
     builtinValues["function"] = makeType(BuiltinType::FUNC);
-    builtinValues["class"] = makeType(BuiltinType::CLASS);
+    builtinValues["class_type"] = makeType(BuiltinType::CLASS);
     builtinValues["instance"] = makeType(BuiltinType::INSTANCE);
-    builtinValues["namespace"] = makeType(BuiltinType::NAMESPACE);
+    builtinValues["namespace_type"] = makeType(BuiltinType::NAMESPACE);
     builtinValues["iterable"] = makeType(BuiltinType::ITERABLE);
     builtinValues["callable"] = makeType(BuiltinType::CALLABLE);
     builtinValues["indexable"] = makeType(BuiltinType::INDEXABLE);

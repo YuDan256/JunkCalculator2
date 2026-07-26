@@ -885,7 +885,7 @@ int main(int argc, char* argv[]) {
                 vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
                 vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
                 vm.setGlobal("ANS", jc::Value::none());
-                std::cout << "All variables cleared (system constants restored).\n"; 
+                std::cout << "All variables cleared (system constants and types restored).\n"; 
                 continue; 
             }
             if (input == "/cls") {

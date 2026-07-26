@@ -187,7 +187,7 @@ namespace jc {
                         case BuiltinType::STRING: res += "string"; break;
                         case BuiltinType::BOOL: res += "bool"; break;
                         case BuiltinType::BINARY: res += "binary"; break;
-                        case BuiltinType::NONE_TYPE: res += "none"; break;
+                        case BuiltinType::NONE_TYPE: res += "none_type"; break;
                         case BuiltinType::LIST: res += "list"; break;
                         case BuiltinType::DICT: res += "dict"; break;
                         case BuiltinType::SET: res += "set"; break;
@@ -200,9 +200,9 @@ namespace jc {
                         case BuiltinType::STRINGMAT: res += "stringmatrix"; break;
                         case BuiltinType::MATRIX: res += "matrix"; break;
                         case BuiltinType::FUNC: res += "function"; break;
-                        case BuiltinType::CLASS: res += "class"; break;
+                        case BuiltinType::CLASS: res += "class_type"; break;
                         case BuiltinType::INSTANCE: res += "instance"; break;
-                        case BuiltinType::NAMESPACE: res += "namespace"; break;
+                        case BuiltinType::NAMESPACE: res += "namespace_type"; break;
                         case BuiltinType::ITERABLE: res += "iterable"; break;
                         case BuiltinType::CALLABLE: res += "callable"; break;
                         case BuiltinType::INDEXABLE: res += "indexable"; break;
@@ -1954,7 +1954,7 @@ namespace jc {
     }
 
     inline std::string Value::typeName() const {
-        if (isNone()) return "none";
+        if (isNone()) return "none_type";
         if (isUninit()) return "uninit";
         if (isBool()) return "bool";
         if (isInt32()) return "int";
@@ -1973,7 +1973,7 @@ namespace jc {
             case ObjType::DICT: return "dict";
             case ObjType::SET: return "set";
             case ObjType::CLOSURE: return "function";
-            case ObjType::CLASS: return "class";
+            case ObjType::CLASS: return "class_type";
             case ObjType::INSTANCE: {
                 auto inst = static_cast<ObjInstance*>(obj);
                 if (inst->classDef && !inst->classDef->name.empty()) return inst->classDef->name;
@@ -1981,7 +1981,7 @@ namespace jc {
             }
             case ObjType::SUPER_PROXY: return "super";
             case ObjType::SYMBOLIC: return "symbolic";
-            case ObjType::NAMESPACE: return "namespace";
+            case ObjType::NAMESPACE: return "namespace_type";
             case ObjType::UPVALUE: return "upvalue";
             case ObjType::TYPE_DEF: return "type";
         }

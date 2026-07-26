@@ -4503,7 +4503,7 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("string", makeType(BuiltinType::STRING));
             VM::activeVM->setGlobal("bool", makeType(BuiltinType::BOOL));
             VM::activeVM->setGlobal("binary", makeType(BuiltinType::BINARY));
-            VM::activeVM->setGlobal("none", makeType(BuiltinType::NONE_TYPE));
+            VM::activeVM->setGlobal("none_type", makeType(BuiltinType::NONE_TYPE));
             VM::activeVM->setGlobal("list", makeType(BuiltinType::LIST));
             VM::activeVM->setGlobal("dict", makeType(BuiltinType::DICT));
             VM::activeVM->setGlobal("set", makeType(BuiltinType::SET));
@@ -4516,9 +4516,9 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("stringmatrix", makeType(BuiltinType::STRINGMAT));
             VM::activeVM->setGlobal("matrix", makeType(BuiltinType::MATRIX));
             VM::activeVM->setGlobal("function", makeType(BuiltinType::FUNC));
-            VM::activeVM->setGlobal("class", makeType(BuiltinType::CLASS));
+            VM::activeVM->setGlobal("class_type", makeType(BuiltinType::CLASS));
             VM::activeVM->setGlobal("instance", makeType(BuiltinType::INSTANCE));
-            VM::activeVM->setGlobal("namespace", makeType(BuiltinType::NAMESPACE));
+            VM::activeVM->setGlobal("namespace_type", makeType(BuiltinType::NAMESPACE));
             VM::activeVM->setGlobal("iterable", makeType(BuiltinType::ITERABLE));
             VM::activeVM->setGlobal("callable", makeType(BuiltinType::CALLABLE));
             VM::activeVM->setGlobal("indexable", makeType(BuiltinType::INDEXABLE));

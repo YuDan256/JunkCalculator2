@@ -10,7 +10,7 @@ test_type_reflection() = {
     
     class Point {}
     p = Point()
-    assert(type(Point) == class, "type of class definition should be class")
+    assert(type(Point) == class_type, "type of class definition should be class_type")
     assert(type(p) == Point, "type of instance should be the class")
 }
 test_type_reflection()

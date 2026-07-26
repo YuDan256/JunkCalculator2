@@ -718,42 +718,6 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
     }
 }
 
-BuiltinType parseBuiltinType(const std::string& typeStr) {
-    if (typeStr == "any" || typeStr.empty()) return BuiltinType::ANY;
-    if (typeStr == "int") return BuiltinType::INT;
-    if (typeStr == "float" || typeStr == "double") return BuiltinType::FLOAT;
-    if (typeStr == "real") return BuiltinType::REAL;
-    if (typeStr == "number") return BuiltinType::NUMBER;
-    if (typeStr == "whole") return BuiltinType::WHOLE;
-    if (typeStr == "exact") return BuiltinType::EXACT;
-    if (typeStr == "string" || typeStr == "str") return BuiltinType::STRING;
-    if (typeStr == "bool") return BuiltinType::BOOL;
-    if (typeStr == "binary" || typeStr == "bool_like") return BuiltinType::BINARY;
-    if (typeStr == "none") return BuiltinType::NONE_TYPE;
-    if (typeStr == "list") return BuiltinType::LIST;
-    if (typeStr == "dict") return BuiltinType::DICT;
-    if (typeStr == "set") return BuiltinType::SET;
-    if (typeStr == "fraction") return BuiltinType::FRACTION;
-    if (typeStr == "complex") return BuiltinType::COMPLEX;
-    if (typeStr == "basenum") return BuiltinType::BASENUM;
-    if (typeStr == "symbolic" || typeStr == "symbol" || typeStr == "expr") return BuiltinType::SYMBOLIC;
-    if (typeStr == "realmat" || typeStr == "realmatrix") return BuiltinType::REALMAT;
-    if (typeStr == "complexmat" || typeStr == "complexmatrix") return BuiltinType::COMPLEXMAT;
-    if (typeStr == "stringmat" || typeStr == "stringmatrix") return BuiltinType::STRINGMAT;
-    if (typeStr == "matrix") return BuiltinType::MATRIX;
-    if (typeStr == "func" || typeStr == "function") return BuiltinType::FUNC;
-    if (typeStr == "class") return BuiltinType::CLASS;
-    if (typeStr == "instance") return BuiltinType::INSTANCE;
-    if (typeStr == "namespace") return BuiltinType::NAMESPACE;
-    if (typeStr == "iterable") return BuiltinType::ITERABLE;
-    if (typeStr == "callable") return BuiltinType::CALLABLE;
-    if (typeStr == "indexable") return BuiltinType::INDEXABLE;
-    if (typeStr == "hashable") return BuiltinType::HASHABLE;
-    if (typeStr == "numeric") return BuiltinType::NUMERIC;
-    if (typeStr == "type") return BuiltinType::TYPE_DEF;
-    return BuiltinType::CUSTOM_CLASS;
-}
-
 std::string VM::getTypeName(const Value& val) {
     if (val.isUninit()) return "Uninitialized";
     return val.typeName();
@@ -937,186 +901,114 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
     throw std::runtime_error("VM Error: Dunder method is not callable.");
 }
 
-bool VM::checkValueType(const Value& val, InlineCache& ic, const std::string& typeStr) {
-    switch (ic.cachedBuiltinType) {
-        case BuiltinType::ANY: return true;
-        case BuiltinType::INT: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool();
-        case BuiltinType::FLOAT: return val.isDouble();
-        case BuiltinType::REAL: return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || (val.isComplex() && val.asComplex().imag == 0.0);
-        case BuiltinType::NUMBER: return val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isComplex();
-        case BuiltinType::WHOLE: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real));
-        case BuiltinType::EXACT: return val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isObjType(ObjType::SYMBOLIC);
-        case BuiltinType::STRING: return val.isString();
-        case BuiltinType::BOOL: return val.isBool();
-        case BuiltinType::BINARY: {
-            if (val.isBool()) return true;
-            try { double d = val.asDouble(); if (d == 0.0 || d == 1.0) return true; } catch (...) {}
-            return false;
-        }
-        case BuiltinType::NONE_TYPE: return val.isNone();
-        case BuiltinType::LIST: return val.isObjType(ObjType::LIST);
-        case BuiltinType::DICT: return val.isObjType(ObjType::DICT);
-        case BuiltinType::SET: return val.isObjType(ObjType::SET);
-        case BuiltinType::FRACTION: return val.isObjType(ObjType::FRACTION);
-        case BuiltinType::COMPLEX: return val.isObjType(ObjType::COMPLEX);
-        case BuiltinType::BASENUM: return val.isObjType(ObjType::BASENUM);
-        case BuiltinType::SYMBOLIC: return val.isObjType(ObjType::SYMBOLIC);
-        case BuiltinType::REALMAT: return val.isObjType(ObjType::REAL_MATRIX);
-        case BuiltinType::COMPLEXMAT: return val.isObjType(ObjType::COMPLEX_MATRIX);
-        case BuiltinType::STRINGMAT: return val.isObjType(ObjType::STRING_MATRIX);
-        case BuiltinType::MATRIX: return val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX);
-        case BuiltinType::FUNC: return val.isFunctionClosure();
-        case BuiltinType::CLASS: return val.isClass();
-        case BuiltinType::INSTANCE: return val.isInstance();
-        case BuiltinType::NAMESPACE: return val.isObjType(ObjType::NAMESPACE);
-        case BuiltinType::ITERABLE: {
-            if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
-                val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                val.isObjType(ObjType::STRING_MATRIX)) return true;
-            if (val.isInstance()) return findDunder(val, "__iter__") || findDunder(val, "__next__");
-            return false;
-        }
-        case BuiltinType::CALLABLE: {
-            if (val.isFunctionClosure() || val.isClass() || val.isString()) return true;
-            if (val.isInstance()) return findDunder(val, "__call__") != nullptr;
-            return false;
-        }
-        case BuiltinType::INDEXABLE: {
-            if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
-                val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                val.isObjType(ObjType::STRING_MATRIX)) return true;
-            if (val.isInstance()) return findDunder(val, "__getitem__") != nullptr;
-            return false;
-        }
-        case BuiltinType::HASHABLE: return val.isHashable();
-        case BuiltinType::NUMERIC: {
-            if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
-                val.isObjType(ObjType::COMPLEX) || val.isObjType(ObjType::BASENUM)) return true;
-            if (val.isInstance()) {
-                return findDunder(val, "__add__") || findDunder(val, "__mul__") || findDunder(val, "__sub__") || findDunder(val, "__div__") || findDunder(val, "__ldiv__");
-            }
-            return false;
-        }
-        case BuiltinType::TYPE_DEF: return val.isType();
-        case BuiltinType::CUSTOM_CLASS:
-        default:
-            break;
-    }
-
-    if (val.isInstance()) {
-        auto inst = val.asInstance();
-        auto c = inst->classDef;
-        
-        if (ic.cachedClass) {
-            while (c) {
-                if (c == ic.cachedClass) return true;
-                c = c->parent;
-            }
-            return false;
-        }
-
-        Value typeVal = Value::none();
-        size_t dotPos = typeStr.find('.');
-        if (dotPos != std::string::npos) {
-            std::string currentName = typeStr.substr(0, dotPos);
-            auto it = globalNames.find(currentName);
-            if (it != globalNames.end()) {
-                Value currentVal = globals[it->second];
-                size_t start = dotPos + 1;
-                while (start < typeStr.size()) {
-                    size_t nextDot = typeStr.find('.', start);
-                    std::string part = typeStr.substr(start, nextDot == std::string::npos ? std::string::npos : nextDot - start);
-                    
-                    if (currentVal.isObjType(ObjType::NAMESPACE)) {
-                        auto ns = static_cast<ObjNamespace*>(currentVal.asObj());
-                        auto fIt = ns->fields.find(part);
-                        if (fIt != ns->fields.end()) {
-                            currentVal = *(fIt->second.upval->location);
-                        } else {
-                            currentVal = Value::none();
-                            break;
-                        }
-                    } else if (currentVal.isObjType(ObjType::DICT)) {
-                        auto dict = static_cast<ObjDict*>(currentVal.asObj());
-                        auto dIt = dict->keyMap.find(Value(part));
-                        if (dIt != dict->keyMap.end()) {
-                            currentVal = dict->elements[dIt->second].second;
-                        } else {
-                            currentVal = Value::none();
-                            break;
-                        }
-                    } else if (currentVal.isInstance()) {
-                        auto innerInst = currentVal.asInstance();
-                        if (innerInst->fields) {
-                            auto iIt = innerInst->fields->keyMap.find(Value(part));
-                            if (iIt != innerInst->fields->keyMap.end()) {
-                                currentVal = innerInst->fields->elements[iIt->second].second;
-                            } else {
-                                currentVal = Value::none();
-                                break;
-                            }
-                        } else {
-                            currentVal = Value::none();
-                            break;
-                        }
-                    } else {
-                        currentVal = Value::none();
-                        break;
-                    }
-                    
-                    if (nextDot == std::string::npos) break;
-                    start = nextDot + 1;
+bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
+    for (const auto& t : td->types) {
+        if (std::holds_alternative<BuiltinType>(t)) {
+            BuiltinType bt = std::get<BuiltinType>(t);
+            switch (bt) {
+                case BuiltinType::ANY: return true;
+                case BuiltinType::INT: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool()) return true; break;
+                case BuiltinType::FLOAT: if (val.isDouble()) return true; break;
+                case BuiltinType::REAL: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || (val.isComplex() && val.asComplex().imag == 0.0)) return true; break;
+                case BuiltinType::NUMBER: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isComplex()) return true; break;
+                case BuiltinType::WHOLE: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real))) return true; break;
+                case BuiltinType::EXACT: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isObjType(ObjType::SYMBOLIC)) return true; break;
+                case BuiltinType::STRING: if (val.isString()) return true; break;
+                case BuiltinType::BOOL: if (val.isBool()) return true; break;
+                case BuiltinType::BINARY: {
+                    if (val.isBool()) return true;
+                    try { double d = val.asDouble(); if (d == 0.0 || d == 1.0) return true; } catch (...) {}
+                    break;
                 }
-                typeVal = currentVal;
+                case BuiltinType::NONE_TYPE: if (val.isNone()) return true; break;
+                case BuiltinType::LIST: if (val.isObjType(ObjType::LIST)) return true; break;
+                case BuiltinType::DICT: if (val.isObjType(ObjType::DICT)) return true; break;
+                case BuiltinType::SET: if (val.isObjType(ObjType::SET)) return true; break;
+                case BuiltinType::FRACTION: if (val.isObjType(ObjType::FRACTION)) return true; break;
+                case BuiltinType::COMPLEX: if (val.isObjType(ObjType::COMPLEX)) return true; break;
+                case BuiltinType::BASENUM: if (val.isObjType(ObjType::BASENUM)) return true; break;
+                case BuiltinType::SYMBOLIC: if (val.isObjType(ObjType::SYMBOLIC)) return true; break;
+                case BuiltinType::REALMAT: if (val.isObjType(ObjType::REAL_MATRIX)) return true; break;
+                case BuiltinType::COMPLEXMAT: if (val.isObjType(ObjType::COMPLEX_MATRIX)) return true; break;
+                case BuiltinType::STRINGMAT: if (val.isObjType(ObjType::STRING_MATRIX)) return true; break;
+                case BuiltinType::MATRIX: if (val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX)) return true; break;
+                case BuiltinType::FUNC: if (val.isFunctionClosure()) return true; break;
+                case BuiltinType::CLASS: if (val.isClass()) return true; break;
+                case BuiltinType::INSTANCE: if (val.isInstance()) return true; break;
+                case BuiltinType::NAMESPACE: if (val.isObjType(ObjType::NAMESPACE)) return true; break;
+                case BuiltinType::ITERABLE: {
+                    if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
+                        val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
+                        val.isObjType(ObjType::STRING_MATRIX)) return true;
+                    if (val.isInstance()) { if (findDunder(val, "__iter__") || findDunder(val, "__next__")) return true; }
+                    break;
+                }
+                case BuiltinType::CALLABLE: {
+                    if (val.isFunctionClosure() || val.isClass() || val.isString()) return true;
+                    if (val.isInstance()) { if (findDunder(val, "__call__") != nullptr) return true; }
+                    break;
+                }
+                case BuiltinType::INDEXABLE: {
+                    if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
+                        val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
+                        val.isObjType(ObjType::STRING_MATRIX)) return true;
+                    if (val.isInstance()) { if (findDunder(val, "__getitem__") != nullptr) return true; }
+                    break;
+                }
+                case BuiltinType::HASHABLE: if (val.isHashable()) return true; break;
+                case BuiltinType::NUMERIC: {
+                    if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
+                        val.isObjType(ObjType::COMPLEX) || val.isObjType(ObjType::BASENUM)) return true;
+                    if (val.isInstance()) {
+                        if (findDunder(val, "__add__") || findDunder(val, "__mul__") || findDunder(val, "__sub__") || findDunder(val, "__div__") || findDunder(val, "__ldiv__")) return true;
+                    }
+                    break;
+                }
+                case BuiltinType::TYPE_DEF: if (val.isType()) return true; break;
+                case BuiltinType::CUSTOM_CLASS: break;
             }
         } else {
-            auto it = globalNames.find(typeStr);
-            if (it != globalNames.end()) typeVal = globals[it->second];
-            else typeVal = getBuiltinValue(typeStr);
-        }
-
-        if (typeVal.isClass()) {
-            ObjClass* expectedClass = static_cast<ObjClass*>(typeVal.asObj());
-            ic.cachedClass = expectedClass;
-            while (c) {
-                if (c == expectedClass) return true;
-                c = c->parent;
+            ObjClass* expectedClass = std::get<ObjClass*>(t);
+            if (val.isInstance()) {
+                ObjClass* c = val.asInstance()->classDef;
+                while (c) {
+                    if (c == expectedClass) return true;
+                    c = c->parent;
+                }
             }
-            return false;
         }
-
-        throw std::runtime_error("TypeError: Type '" + typeStr + "' is not defined or not a class.");
     }
     return false;
 }
 
-void VM::execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx) {
+void VM::execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
-    if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
-        ic.cachedBuiltinType = parseBuiltinType(currentFrame->function->chunk.constants.data()[ic.nameIdx].asString());
-    }
-    const std::string& expectedType = currentFrame->function->chunk.constants.data()[ic.nameIdx].asString();
-
-    if (!checkValueType(val, ic, expectedType)) {
+    if (!currentFrame->closure || !currentFrame->closure->paramTypes) return;
+    
+    if (paramIdx >= currentFrame->closure->paramTypesCount) return;
+    Value typeObj = currentFrame->closure->paramTypes[paramIdx];
+    if (typeObj.isNone()) return;
+    
+    if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for parameter annotation.");
+    
+    if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
         const std::string& paramName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
         throw std::runtime_error("TypeError: Parameter '" + paramName +
-            "' expected type '" + expectedType +
+            "' expected type '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() +
             "', got '" + getTypeName(val) + "'.");
     }
 }
 
-void VM::execAssertReturnType(const Value& val, uint32_t icIdx) {
+void VM::execAssertReturnType(const Value& val) {
     CallFrame* currentFrame = &frames[frameCount - 1];
-    InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
-    if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
-        ic.cachedBuiltinType = parseBuiltinType(currentFrame->function->chunk.constants.data()[ic.nameIdx].asString());
-    }
-    const std::string& expectedType = currentFrame->function->chunk.constants.data()[ic.nameIdx].asString();
-
-    if (!checkValueType(val, ic, expectedType)) {
+    if (!currentFrame->closure || currentFrame->closure->returnType.isNone()) return;
+    
+    Value typeObj = currentFrame->closure->returnType;
+    if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for return annotation.");
+    
+    if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
         throw std::runtime_error("TypeError: Function '" + currentFrame->function->name +
-            "' expected to return '" + expectedType +
+            "' expected to return '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() +
             "', but returned '" + getTypeName(val) + "'.");
     }
 }
@@ -2667,9 +2559,9 @@ VM::VM() {
     builtinValues["complex"] = makeType(BuiltinType::COMPLEX);
     builtinValues["basenum"] = makeType(BuiltinType::BASENUM);
     builtinValues["symbolic"] = makeType(BuiltinType::SYMBOLIC);
-    builtinValues["realmat"] = makeType(BuiltinType::REALMAT);
-    builtinValues["complexmat"] = makeType(BuiltinType::COMPLEXMAT);
-    builtinValues["stringmat"] = makeType(BuiltinType::STRINGMAT);
+    builtinValues["realmatrix"] = makeType(BuiltinType::REALMAT);
+    builtinValues["complexmatrix"] = makeType(BuiltinType::COMPLEXMAT);
+    builtinValues["stringmatrix"] = makeType(BuiltinType::STRINGMAT);
     builtinValues["matrix"] = makeType(BuiltinType::MATRIX);
     builtinValues["function"] = makeType(BuiltinType::FUNC);
     builtinValues["class"] = makeType(BuiltinType::CLASS);
@@ -3415,6 +3307,18 @@ Value VM::run(int targetFrameDepth) {
                 closure->hasRestParam = fn->hasRestParam;
                 closure->boundSelf = frame->selfContext;
                 closure->boundClass = frame->classContext;
+                
+                if (!fn->paramTypeRegs.empty()) {
+                    closure->paramTypesCount = static_cast<int>(fn->paramTypeRegs.size());
+                    closure->paramTypes = new Value[closure->paramTypesCount];
+                    for (int i = 0; i < closure->paramTypesCount; ++i) {
+                        int reg = fn->paramTypeRegs[i];
+                        closure->paramTypes[i] = (reg != -1) ? getReg(reg) : Value::none();
+                    }
+                }
+                if (fn->returnTypeReg != -1) {
+                    closure->returnType = getReg(fn->returnTypeReg);
+                }
                 break;
             }
             case OpCode::GET_UPVAL: {
@@ -5764,8 +5668,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::ASSERT_RETURN_TYPE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
-                execAssertReturnType(getReg(a), b);
+                execAssertReturnType(getReg(a));
                 break;
             }
             case OpCode::MATCH_TYPE: {
@@ -5773,12 +5676,10 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
-                InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches.data()[c]);
-                if (ic.cachedBuiltinType == BuiltinType::UNKNOWN) {
-                    ic.cachedBuiltinType = parseBuiltinType(chunk->constants.data()[ic.nameIdx].asString());
-                }
-                const std::string& typeStr = chunk->constants.data()[ic.nameIdx].asString();
-                getReg(a) = Value(checkValueType(getReg(b), ic, typeStr));
+                Value val = getReg(b);
+                Value typeVal = getReg(c);
+                if (!typeVal.isType()) throw std::runtime_error("TypeError: Expected a type object.");
+                getReg(a) = Value(checkValueType(val, static_cast<ObjTypeDef*>(typeVal.asObj())));
                 break;
             }
             case OpCode::MATCH_SHAPE: {

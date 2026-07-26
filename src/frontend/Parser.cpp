@@ -267,12 +267,12 @@ namespace jc {
                 // 试探是否带有 -> 返回类型
                 if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::RIGHT_ARROW) {
                     peekPos++;
-                    while (peekPos < static_cast<int>(tokens.size()) && 
-                          (tokens[peekPos].type == TokenType::IDENTIFIER || 
-                           tokens[peekPos].type == TokenType::CLASS || 
-                           tokens[peekPos].type == TokenType::NAMESPACE || 
-                           tokens[peekPos].type == TokenType::NONE_KW || 
-                           tokens[peekPos].type == TokenType::DOT)) {
+                    int arrowDepth = 0;
+                    while (peekPos < static_cast<int>(tokens.size())) {
+                        TokenType pt = tokens[peekPos].type;
+                        if (pt == TokenType::LPAREN || pt == TokenType::LBRACKET || pt == TokenType::LBRACE) arrowDepth++;
+                        else if (pt == TokenType::RPAREN || pt == TokenType::RBRACKET || pt == TokenType::RBRACE) arrowDepth--;
+                        else if (arrowDepth == 0 && (pt == TokenType::ASSIGN || pt == TokenType::NEWLINE)) break;
                         peekPos++;
                     }
                 }
@@ -293,7 +293,7 @@ namespace jc {
                     std::vector<bool> paramIsRef;
                     std::vector<bool> paramIsConst;
                     std::vector<std::shared_ptr<Expr>> defaultExprs;
-                    std::vector<std::string> paramTypes;  // ★
+                    std::vector<std::shared_ptr<Expr>> paramTypes;  // ★
                     bool hasRestParam = false;
 
                     std::vector<std::unique_ptr<Expr>> destructStmts;
@@ -352,11 +352,11 @@ namespace jc {
                             paramIsRef.push_back(isParamRef);
                             paramIsConst.push_back(isParamConst);
 
-                            std::string pType = "";
+                            std::shared_ptr<Expr> pType = nullptr;
                             if (match({ TokenType::COLON })) {
-                                pType = parseTypeName("Parser Error: Expect type after ':'.");
+                                pType = std::shared_ptr<Expr>(ternary().release());
                             }
-                            paramTypes.push_back(pType);
+                            paramTypes.push_back(std::move(pType));
 
                             if (match({ TokenType::ASSIGN })) {
                                 if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
@@ -374,10 +374,10 @@ namespace jc {
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after parameters.");
 
                     // ★ 解析返回类型 -> int
-                    std::string retType = "";
+                    std::shared_ptr<Expr> retType = nullptr;
                     while (match({ TokenType::NEWLINE })) {}
                     if (match({ TokenType::RIGHT_ARROW })) {
-                        retType = parseTypeName("Parser Error: Expect return type after '->'.");
+                        retType = std::shared_ptr<Expr>(ternary().release());
                     }
 
                     while (match({ TokenType::NEWLINE })) {}
@@ -719,7 +719,7 @@ namespace jc {
                         std::vector<bool> phIsConst(phParams.size(), false);
                         expr = std::make_unique<LambdaExpr>(
                             "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
-                            std::vector<std::string>(phParams.size(), ""), "",  // ★★★ 补上: 空参数类型数组，空返回类型
+                            std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr,  // ★★★ 补上: 空参数类型数组，空返回类型
                             "<partial_method>", std::shared_ptr<Expr>(methodNode.release())
                         );
                     }
@@ -773,7 +773,7 @@ namespace jc {
                     std::vector<bool> phIsConst(phParams.size(), false);
                     expr = std::make_unique<LambdaExpr>(
                         "<partial_apply>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
-                        std::vector<std::string>(phParams.size(), ""), "", // ★★★ 补上: 空参数类型数组，空返回类型
+                        std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr, // ★★★ 补上: 空参数类型数组，空返回类型
                         "<partial_apply>", std::shared_ptr<Expr>(callNode.release())
                     );
                 }
@@ -1258,12 +1258,12 @@ namespace jc {
                 // ★ 嗅探返回类型 ->
                 if (peekPos < static_cast<int>(tokens.size()) && tokens[peekPos].type == TokenType::RIGHT_ARROW) {
                     peekPos++;
-                    while (peekPos < static_cast<int>(tokens.size()) && 
-                          (tokens[peekPos].type == TokenType::IDENTIFIER || 
-                           tokens[peekPos].type == TokenType::CLASS || 
-                           tokens[peekPos].type == TokenType::NAMESPACE || 
-                           tokens[peekPos].type == TokenType::NONE_KW || 
-                           tokens[peekPos].type == TokenType::DOT)) {
+                    int arrowDepth = 0;
+                    while (peekPos < static_cast<int>(tokens.size())) {
+                        TokenType pt = tokens[peekPos].type;
+                        if (pt == TokenType::LPAREN || pt == TokenType::LBRACKET || pt == TokenType::LBRACE) arrowDepth++;
+                        else if (pt == TokenType::RPAREN || pt == TokenType::RBRACKET || pt == TokenType::RBRACE) arrowDepth--;
+                        else if (arrowDepth == 0 && (pt == TokenType::ARROW || pt == TokenType::NEWLINE)) break;
                         peekPos++;
                     }
                 }
@@ -1280,7 +1280,7 @@ namespace jc {
                 std::vector<bool> lambdaParamIsRef;
                 std::vector<bool> lambdaParamIsConst;
                 std::vector<std::shared_ptr<Expr>> lambdaDefaults;
-                std::vector<std::string> paramTypes; // ★
+                std::vector<std::shared_ptr<Expr>> paramTypes; // ★
                 bool hasRestParam = false;
 
                 std::vector<std::unique_ptr<Expr>> destructStmts;
@@ -1338,11 +1338,11 @@ namespace jc {
                         lambdaParamIsRef.push_back(isRef);
                         lambdaParamIsConst.push_back(isConst);
 
-                        std::string pType = "";
+                        std::shared_ptr<Expr> pType = nullptr;
                         if (match({ TokenType::COLON })) {
-                            pType = parseTypeName("Parser Error: Expect type after ':'.");
+                            pType = std::shared_ptr<Expr>(ternary().release());
                         }
-                        paramTypes.push_back(pType);
+                        paramTypes.push_back(std::move(pType));
 
                         if (match({ TokenType::ASSIGN })) {
                             if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
@@ -1362,10 +1362,10 @@ namespace jc {
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after lambda parameters.");
 
                 // ★ 捕获返回值
-                std::string retType = "";
+                std::shared_ptr<Expr> retType = nullptr;
                 while (match({ TokenType::NEWLINE })) {}
                 if (match({ TokenType::RIGHT_ARROW })) {
-                    retType = parseTypeName("Parser Error: Expect return type after '->'.");
+                    retType = std::shared_ptr<Expr>(ternary().release());
                 }
                 while (match({ TokenType::NEWLINE })) {}
 
@@ -1598,12 +1598,12 @@ namespace jc {
         std::vector<bool> paramIsRef(params.size(), false);
         std::vector<bool> paramIsConst(params.size(), false);
         std::vector<std::shared_ptr<Expr>> defaultExprs(params.size(), nullptr);
-        std::vector<std::string> paramTypes(params.size(), "");
+        std::vector<std::shared_ptr<Expr>> paramTypes(params.size(), nullptr);
 
         auto lambda = std::make_unique<LambdaExpr>(
             name.lexeme, params, std::move(paramIsRef), std::move(paramIsConst),
             std::move(defaultExprs), hasRestParam,
-            std::move(paramTypes), "",
+            std::move(paramTypes), nullptr,
             "<macro_body>", std::shared_ptr<Expr>(body.release())
         );
         Token internalName = name;
@@ -1735,11 +1735,11 @@ namespace jc {
             std::vector<bool> paramIsRef = { false };
             std::vector<bool> paramIsConst = { false };
             std::vector<std::shared_ptr<Expr>> defaultExprs = { nullptr };
-            std::vector<std::string> paramTypes = { "" };
+            std::vector<std::shared_ptr<Expr>> paramTypes = { nullptr };
             
             auto lambda = std::make_unique<LambdaExpr>(
                 "<name_resolver>", params, paramIsRef, paramIsConst, defaultExprs, false,
-                paramTypes, "", "", std::move(ternary)
+                paramTypes, nullptr, "", std::move(ternary)
             );
             
             std::vector<std::unique_ptr<Expr>> callArgs;
@@ -2086,9 +2086,9 @@ namespace jc {
             props.push_back({"defaultExprs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(defArgs))});
             props.push_back({"hasRestParam", std::make_unique<Literal>(lam->hasRestParam ? "true" : "false", false, false, true)});
             std::vector<std::unique_ptr<Expr>> typeArgs;
-            for (const auto& t : lam->paramTypes) typeArgs.push_back(std::make_unique<Literal>(t, true));
+            for (const auto& t : lam->paramTypes) typeArgs.push_back(transformQuote(t.get()));
             props.push_back({"paramTypes", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(typeArgs))});
-            props.push_back({"returnType", std::make_unique<Literal>(lam->returnType, true)});
+            props.push_back({"returnType", transformQuote(lam->returnType.get())});
             props.push_back({"rawBody", std::make_unique<Literal>(lam->rawBody, true)});
             props.push_back({"body", transformQuote(lam->body.get())});
             return makeASTNodeCall("LambdaExpr", 0, std::move(props));
@@ -2170,9 +2170,9 @@ namespace jc {
                 mProps.push_back({"defaultExprs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(defArgs))});
                 mProps.push_back({"hasRestParam", std::make_unique<Literal>(m.hasRestParam ? "true" : "false", false, false, true)});
                 std::vector<std::unique_ptr<Expr>> typeArgs;
-                for (const auto& t : m.paramTypes) typeArgs.push_back(std::make_unique<Literal>(t, true));
+                for (const auto& t : m.paramTypes) typeArgs.push_back(transformQuote(t.get()));
                 mProps.push_back({"paramTypes", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(typeArgs))});
-                mProps.push_back({"returnType", std::make_unique<Literal>(m.returnType, true)});
+                mProps.push_back({"returnType", transformQuote(m.returnType.get())});
                 mProps.push_back({"rawBody", std::make_unique<Literal>(m.rawBody, true)});
                 mProps.push_back({"body", transformQuote(m.body.get())});
                 methodsArgs.push_back(makeASTNodeCall("MethodDef", m.name.line, std::move(mProps)));
@@ -2823,7 +2823,7 @@ namespace jc {
             std::vector<bool> paramIsRef;
             std::vector<bool> paramIsConst;
             std::vector<std::shared_ptr<Expr>> defaultExprs;
-            std::vector<std::string> paramTypes; // ★
+            std::vector<std::shared_ptr<Expr>> paramTypes; // ★
             bool hasRestParam = false;
 
             std::vector<std::unique_ptr<Expr>> destructStmts;
@@ -2870,11 +2870,11 @@ namespace jc {
                     paramIsRef.push_back(isRef);
                     paramIsConst.push_back(isConst);
 
-                    std::string pType = "";
+                    std::shared_ptr<Expr> pType = nullptr;
                     if (match({ TokenType::COLON })) {
-                        pType = parseTypeName("Parser Error: Expect type after ':'.");
+                        pType = std::shared_ptr<Expr>(ternary().release());
                     }
-                    paramTypes.push_back(pType);
+                    paramTypes.push_back(std::move(pType));
 
                     if (match({ TokenType::ASSIGN })) {
                         if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
@@ -2893,10 +2893,10 @@ namespace jc {
             consume(TokenType::RPAREN, "Parser Error: Expect ')' after method parameters.");
 
             // ★ 解析方法返回类型
-            std::string retType = "";
+            std::shared_ptr<Expr> retType = nullptr;
             while (match({ TokenType::NEWLINE })) {}
             if (match({ TokenType::RIGHT_ARROW })) {
-                retType = parseTypeName("Parser Error: Expect return type after '->'.");
+                retType = std::shared_ptr<Expr>(ternary().release());
             }
             while (match({ TokenType::NEWLINE })) {}
 
@@ -3199,21 +3199,6 @@ namespace jc {
     }
 
     // ---- 辅助函数 (不变) ----
-    std::string Parser::parseTypeName(const std::string& errMsg) {
-        auto consumeName = [&]() -> std::string {
-            if (check(TokenType::IDENTIFIER) || check(TokenType::CLASS) || 
-                check(TokenType::NAMESPACE) || check(TokenType::NONE_KW)) {
-                return advance().lexeme;
-            }
-            throw std::runtime_error(errMsg);
-        };
-        std::string name = consumeName();
-        while (match({ TokenType::DOT })) {
-            name += "." + consumeName();
-        }
-        return name;
-    }
-
     Token Parser::consume(TokenType type, const std::string& message) { if (check(type)) return advance(); throw std::runtime_error(message); }
 
 } // namespace jc

@@ -589,14 +589,14 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::AssertReturnType: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstAB(OpCode::ASSERT_RETURN_TYPE, a, node->payload1, OpType::NORMAL);
+                        auto w = buildInstA(OpCode::ASSERT_RETURN_TYPE, a);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
                     case IROp::MatchType: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, icIdx, OpType::NORMAL, OpType::NORMAL);
+                        int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
+                        auto w = buildInstABC(OpCode::MATCH_TYPE, node->physicalReg, b, c, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

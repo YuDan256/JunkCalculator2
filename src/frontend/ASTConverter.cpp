@@ -325,10 +325,13 @@ public:
         GcObjGuard guard3(paramIsConst);
         for (bool b : expr->paramIsConst) paramIsConst->vec.push_back(Value(b));
         
-        ObjList* paramTypes = GcHeap::get().allocate<ObjList>();
-        GcObjGuard guard4(paramTypes);
-        for (auto& t : expr->paramTypes) paramTypes->vec.push_back(Value(t));
-        
+        Value retTypeVal = Value::none();
+        if (expr->returnType) {
+            expr->returnType->accept(*this);
+            retTypeVal = result;
+        }
+        GcValueGuard retGuard(retTypeVal);
+
         expr->body->accept(*this); Value bodyVal = result;
         
         result = makeASTNode("LambdaExpr", 0, {
@@ -338,8 +341,8 @@ public:
             {"paramIsConst", Value(paramIsConst)},
             {"defaultExprs", makeExprListT(expr->defaultExprs)},
             {"hasRestParam", Value(expr->hasRestParam)},
-            {"paramTypes", Value(paramTypes)},
-            {"returnType", Value(expr->returnType)},
+            {"paramTypes", makeExprListT(expr->paramTypes)},
+            {"returnType", retTypeVal},
             {"rawBody", Value(expr->rawBody)},
             {"body", bodyVal}
         });
@@ -409,10 +412,13 @@ public:
             GcObjGuard pcGuard(paramIsConst);
             for (bool b : m.paramIsConst) paramIsConst->vec.push_back(Value(b));
             
-            ObjList* paramTypes = GcHeap::get().allocate<ObjList>();
-            GcObjGuard ptGuard(paramTypes);
-            for (auto& t : m.paramTypes) paramTypes->vec.push_back(Value(t));
-            
+            Value retTypeVal = Value::none();
+            if (m.returnType) {
+                m.returnType->accept(*this);
+                retTypeVal = result;
+            }
+            GcValueGuard retGuard(retTypeVal);
+
             m.body->accept(*this); Value bodyVal = result;
             
             Value methodNode = makeASTNode("MethodDef", m.name.line, {
@@ -422,8 +428,8 @@ public:
                 {"paramIsConst", Value(paramIsConst)},
                 {"defaultExprs", makeExprListT(m.defaultExprs)},
                 {"hasRestParam", Value(m.hasRestParam)},
-                {"paramTypes", Value(paramTypes)},
-                {"returnType", Value(m.returnType)},
+                {"paramTypes", makeExprListT(m.paramTypes)},
+                {"returnType", retTypeVal},
                 {"rawBody", Value(m.rawBody)},
                 {"body", bodyVal}
             });
@@ -948,10 +954,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         if (constVal.isObjType(ObjType::LIST)) {
             for (const auto& v : static_cast<ObjList*>(constVal.asObj())->vec) paramIsConst.push_back(v.truthy());
         }
-        std::vector<std::string> paramTypes;
-        Value typesVal = getProp("paramTypes");
-        if (typesVal.isObjType(ObjType::LIST)) {
-            for (const auto& v : static_cast<ObjList*>(typesVal.asObj())->vec) paramTypes.push_back(v.asString());
+        std::vector<std::shared_ptr<Expr>> paramTypes;
+        for (auto& e : getExprList(getProp("paramTypes"))) {
+            paramTypes.push_back(std::shared_ptr<Expr>(e.release()));
         }
         std::vector<std::shared_ptr<Expr>> defaultExprs;
         for (auto& e : getExprList(getProp("defaultExprs"))) {
@@ -960,7 +965,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         return std::make_unique<LambdaExpr>(
             getProp("name").asString(), std::move(params), std::move(paramIsRef), std::move(paramIsConst),
             std::move(defaultExprs), getProp("hasRestParam").truthy(),
-            std::move(paramTypes), getProp("returnType").asString(),
+            std::move(paramTypes), std::shared_ptr<Expr>(JC2_to_AST(getProp("returnType")).release()),
             getProp("rawBody").asString(), std::shared_ptr<Expr>(JC2_to_AST(getProp("body")).release())
         );
     } else if (type == "ForInExpr") {
@@ -1016,7 +1021,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                 };
                 ClassDefExpr::MethodDef method{
                     Token(TokenType::IDENTIFIER, getMProp("name").asString(), line),
-                    {}, {}, {}, {}, false, {}, "", "", nullptr, -1
+                    {}, {}, {}, {}, false, {}, nullptr, "", nullptr, -1
                 };
                 Value paramsVal = getMProp("params");
                 if (paramsVal.isObjType(ObjType::LIST)) {
@@ -1039,11 +1044,10 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                     }
                 }
                 method.hasRestParam = getMProp("hasRestParam").truthy();
-                Value typesVal = getMProp("paramTypes");
-                if (typesVal.isObjType(ObjType::LIST)) {
-                    for (const auto& tVal : static_cast<ObjList*>(typesVal.asObj())->vec) method.paramTypes.push_back(tVal.asString());
+                for (auto& e : getExprList(getMProp("paramTypes"))) {
+                    method.paramTypes.push_back(std::shared_ptr<Expr>(e.release()));
                 }
-                method.returnType = getMProp("returnType").asString();
+                method.returnType = std::shared_ptr<Expr>(JC2_to_AST(getMProp("returnType")).release());
                 method.rawBody = getMProp("rawBody").asString();
                 method.body = std::shared_ptr<Expr>(JC2_to_AST(getMProp("body")).release());
                 methods.push_back(std::move(method));

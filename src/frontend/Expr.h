@@ -505,8 +505,8 @@ namespace jc {
         std::vector<std::shared_ptr<Expr>> defaultExprs;
         bool hasRestParam;
 
-        std::vector<std::string> paramTypes; // ★ 新增：参数类型约束   
-        std::string returnType;              // ★ 新增：返回值约束    
+        std::vector<std::shared_ptr<Expr>> paramTypes; // ★ 新增：参数类型约束   
+        std::shared_ptr<Expr> returnType;              // ★ 新增：返回值约束    
 
         std::string rawBody;
         std::shared_ptr<Expr> body;
@@ -514,7 +514,7 @@ namespace jc {
 
         LambdaExpr(std::string name, std::vector<Token> params, std::vector<bool> paramIsRef, std::vector<bool> paramIsConst,
             std::vector<std::shared_ptr<Expr>> defaultExprs, bool hasRestParam,
-            std::vector<std::string> paramTypes, std::string returnType, // ★ 新增
+            std::vector<std::shared_ptr<Expr>> paramTypes, std::shared_ptr<Expr> returnType, // ★ 新增
             std::string rawBody, std::shared_ptr<Expr> body)
             : name(std::move(name)), params(std::move(params)), paramIsRef(std::move(paramIsRef)), paramIsConst(std::move(paramIsConst)),
             defaultExprs(std::move(defaultExprs)),
@@ -623,8 +623,8 @@ namespace jc {
             std::vector<std::shared_ptr<Expr>> defaultExprs;
             bool hasRestParam;
 
-            std::vector<std::string> paramTypes; // ★ 新增
-            std::string returnType;              // ★ 新增
+            std::vector<std::shared_ptr<Expr>> paramTypes; // ★ 新增
+            std::shared_ptr<Expr> returnType;              // ★ 新增
 
             std::string rawBody;
             std::shared_ptr<Expr> body;

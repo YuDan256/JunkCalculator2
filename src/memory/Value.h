@@ -195,9 +195,9 @@ namespace jc {
                         case BuiltinType::COMPLEX: res += "complex"; break;
                         case BuiltinType::BASENUM: res += "basenum"; break;
                         case BuiltinType::SYMBOLIC: res += "symbolic"; break;
-                        case BuiltinType::REALMAT: res += "realmat"; break;
-                        case BuiltinType::COMPLEXMAT: res += "complexmat"; break;
-                        case BuiltinType::STRINGMAT: res += "stringmat"; break;
+                        case BuiltinType::REALMAT: res += "realmatrix"; break;
+                        case BuiltinType::COMPLEXMAT: res += "complexmatrix"; break;
+                        case BuiltinType::STRINGMAT: res += "stringmatrix"; break;
                         case BuiltinType::MATRIX: res += "matrix"; break;
                         case BuiltinType::FUNC: res += "function"; break;
                         case BuiltinType::CLASS: res += "class"; break;
@@ -1520,6 +1520,10 @@ namespace jc {
         ObjUpVal** upvalues = nullptr;
         int upvalueCount = 0;
 
+        Value* paramTypes = nullptr;
+        int paramTypesCount = 0;
+        Value returnType = Value::none();
+
         std::any nativeFn;
         int compiledFnIndex = -1;
         std::vector<Value> defaultValues;
@@ -1551,6 +1555,7 @@ namespace jc {
 
         ~ObjClosure() {
             if (upvalues) delete[] upvalues;
+            if (paramTypes) delete[] paramTypes;
         }
 
         void clear() override {
@@ -2621,6 +2626,12 @@ inline void GcHeap::markObj(Obj* obj) {
             for (int i = 0; i < closure->upvalueCount; ++i) {
                 markObj(closure->upvalues[i]);
             }
+            if (closure->paramTypes) {
+                for (int i = 0; i < closure->paramTypesCount; ++i) {
+                    markValue(closure->paramTypes[i]);
+                }
+            }
+            markValue(closure->returnType);
             break;
         }
         case ObjType::CLASS: {

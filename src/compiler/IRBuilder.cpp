@@ -1035,20 +1035,22 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
-        IRNode* isDict = graph->createValueNode(IROp::MatchType);
-        isDict->setControl(currentControl);
-        isDict->addData(valNode);
-        isDict->name = "dict";
+        auto createTypeCheck = [&](const std::string& typeName) {
+            IRNode* typeNode = graph->createValueNode(IROp::GetGlobal);
+            typeNode->name = typeName;
+            typeNode->setControl(currentControl);
+            currentControl = typeNode;
+            
+            IRNode* matchNode = graph->createValueNode(IROp::MatchType);
+            matchNode->setControl(currentControl);
+            matchNode->addData(valNode);
+            matchNode->addData(typeNode);
+            return matchNode;
+        };
 
-        IRNode* isInst = graph->createValueNode(IROp::MatchType);
-        isInst->setControl(currentControl);
-        isInst->addData(valNode);
-        isInst->name = "instance";
-
-        IRNode* isNs = graph->createValueNode(IROp::MatchType);
-        isNs->setControl(currentControl);
-        isNs->addData(valNode);
-        isNs->name = "namespace";
+        IRNode* isDict = createTypeCheck("dict");
+        IRNode* isInst = createTypeCheck("instance");
+        IRNode* isNs = createTypeCheck("namespace");
 
         IRNode* or1 = graph->createValueNode(IROp::BitOr);
         or1->setControl(currentControl);
@@ -1263,15 +1265,10 @@ void IRBuilder::build(Expr* ast) {
         retVal->setControl(currentControl);
     }
     
-    if (!currentReturnTypeHint.empty()) {
+    if (currentReturnTypeHint) {
         IRNode* assertNode = graph->createNode(IROp::AssertReturnType);
         assertNode->setControl(currentControl);
         assertNode->addData(retVal);
-        
-        uint32_t typeNameIdx = currentFunction->chunk.addConstant(Value(currentReturnTypeHint));
-        uint32_t icIdx = currentFunction->chunk.addInlineCache(typeNameIdx);
-        
-        assertNode->payload1 = icIdx;
         currentControl = assertNode;
     }
 
@@ -1913,15 +1910,10 @@ void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
     
     graph->currentLine = expr->keyword.line;
     
-    if (!currentReturnTypeHint.empty()) {
+    if (currentReturnTypeHint) {
         IRNode* assertNode = graph->createNode(IROp::AssertReturnType);
         assertNode->setControl(currentControl);
         assertNode->addData(retVal);
-        
-        uint32_t typeNameIdx = currentFunction->chunk.addConstant(Value(currentReturnTypeHint));
-        uint32_t icIdx = currentFunction->chunk.addInlineCache(typeNameIdx);
-        
-        assertNode->payload1 = icIdx;
         currentControl = assertNode;
     }
 
@@ -2818,7 +2810,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     lastValue = opNode;
 }
 
-void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::string>& typeHints) {
+void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::shared_ptr<Expr>>& typeHints) {
     int requiredArgs = 0;
     bool seenDefault = false;
     for (size_t i = 0; i < params.size(); ++i) {
@@ -2935,17 +2927,15 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             writeVariable(params[i].lexeme, phi, sym, true, paramIsConst[i]);
         }
         
-        if (i < typeHints.size() && !typeHints[i].empty()) {
+        if (i < typeHints.size() && typeHints[i]) {
             IRNode* assertNode = graph->createNode(IROp::AssertParamType);
             assertNode->setControl(currentControl);
             ResolvedSym rs; rs.scope = paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
             assertNode->addData(readVariable(params[i].lexeme, rs));
             
-            uint32_t typeNameIdx = currentFunction->chunk.addConstant(Value(typeHints[i]));
-            uint32_t icIdx = currentFunction->chunk.addInlineCache(typeNameIdx);
             uint32_t paramNameIdx = currentFunction->chunk.addConstant(Value(params[i].lexeme));
             
-            assertNode->payload1 = icIdx;
+            assertNode->payload1 = static_cast<uint32_t>(i);
             assertNode->payload2 = paramNameIdx;
             
             currentControl = assertNode;
@@ -2955,6 +2945,26 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
 
 void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
     if (compiledFunctions) {
+        std::vector<IRNode*> paramTypeNodes;
+        for (auto& pt : expr->paramTypes) {
+            if (pt) {
+                pt->accept(*this);
+                paramTypeNodes.push_back(lastValue);
+            } else {
+                IRNode* noneNode = graph->createConstant(Value::none());
+                noneNode->setControl(currentControl);
+                paramTypeNodes.push_back(noneNode);
+            }
+        }
+        IRNode* retTypeNode = nullptr;
+        if (expr->returnType) {
+            expr->returnType->accept(*this);
+            retTypeNode = lastValue;
+        } else {
+            retTypeNode = graph->createConstant(Value::none());
+            retTypeNode->setControl(currentControl);
+        }
+
         auto fnDef = std::make_shared<CompiledFunction>();
         fnDef->name = expr->name.empty() ? "lambda" : expr->name;
         
@@ -2999,6 +3009,20 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
                 closureNode->addData(target.localNode);
             }
         }
+
+        CompiledFunction* childFn = fnDef.get();
+        for (size_t i = 0; i < paramTypeNodes.size(); ++i) {
+            IRNode* pNode = paramTypeNodes[i];
+            this->graph->postAllocCallbacks.push_back([childFn, i, pNode]() {
+                if (childFn->paramTypeRegs.size() <= i) childFn->paramTypeRegs.resize(i + 1, -1);
+                childFn->paramTypeRegs[i] = pNode->getResolved()->physicalReg;
+            });
+            closureNode->addData(pNode);
+        }
+        this->graph->postAllocCallbacks.push_back([childFn, retTypeNode]() {
+            childFn->returnTypeReg = retTypeNode->getResolved()->physicalReg;
+        });
+        closureNode->addData(retTypeNode);
         
         lastValue = closureNode;
     } else {
@@ -3432,6 +3456,26 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     }
         
     for (auto& method : expr->methods) {
+        std::vector<IRNode*> paramTypeNodes;
+        for (auto& pt : method.paramTypes) {
+            if (pt) {
+                pt->accept(*this);
+                paramTypeNodes.push_back(lastValue);
+            } else {
+                IRNode* noneNode = graph->createConstant(Value::none());
+                noneNode->setControl(currentControl);
+                paramTypeNodes.push_back(noneNode);
+            }
+        }
+        IRNode* retTypeNode = nullptr;
+        if (method.returnType) {
+            method.returnType->accept(*this);
+            retTypeNode = lastValue;
+        } else {
+            retTypeNode = graph->createConstant(Value::none());
+            retTypeNode->setControl(currentControl);
+        }
+
         if (compiledFunctions) {
             auto fnDef = std::make_shared<CompiledFunction>();
             fnDef->name = method.name.lexeme;
@@ -3477,6 +3521,20 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
                     methodClosure->addData(target.localNode);
                 }
             }
+
+            CompiledFunction* childFn = fnDef.get();
+            for (size_t i = 0; i < paramTypeNodes.size(); ++i) {
+                IRNode* pNode = paramTypeNodes[i];
+                this->graph->postAllocCallbacks.push_back([childFn, i, pNode]() {
+                    if (childFn->paramTypeRegs.size() <= i) childFn->paramTypeRegs.resize(i + 1, -1);
+                    childFn->paramTypeRegs[i] = pNode->getResolved()->physicalReg;
+                });
+                methodClosure->addData(pNode);
+            }
+            this->graph->postAllocCallbacks.push_back([childFn, retTypeNode]() {
+                childFn->returnTypeReg = retTypeNode->getResolved()->physicalReg;
+            });
+            methodClosure->addData(retTypeNode);
 
             IRNode* methodNode = graph->createNode(IROp::Method);
             methodNode->setControl(currentControl);

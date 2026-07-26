@@ -133,9 +133,9 @@ enum class OpCode : uint8_t {
     RUN_DEFERS,     // run_defers(count = A)
 
     // 类型与断言
-    ASSERT_PARAM_TYPE,  // assert_param(R(A), typeIC = B, nameKst = C) [Ext B, C]
-    ASSERT_RETURN_TYPE, // assert_return(R(A), typeIC = B) [Ext]
-    MATCH_TYPE,         // R(A) := match_type(R(B), typeIC = C) [Ext]
+    ASSERT_PARAM_TYPE,  // assert_param(R(A), paramIdx = B, nameKst = C) [Ext B, C]
+    ASSERT_RETURN_TYPE, // assert_return(R(A)) [Ext]
+    MATCH_TYPE,         // R(A) := match_type(R(B), typeObj = R(C)) [Ext]
     MATCH_SHAPE,        // R(A) := match_shape(R(B), shapeIdx = C) [Ext]
 };
 
@@ -464,7 +464,6 @@ public:
                 }
                 break;
 
-            case OpCode::MATCH_TYPE:
             case OpCode::GET_PROP: case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: 
             case OpCode::INVOKE: case OpCode::TAIL_INVOKE: 
             case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
@@ -475,6 +474,10 @@ public:
                         std::cout << "  ; " << constants[nameIdx].asString();
                     }
                 }
+                break;
+
+            case OpCode::MATCH_TYPE:
+                std::cout << "R(" << a << ") " << b << " " << c;
                 break;
 
             case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
@@ -509,13 +512,7 @@ public:
                 break;
 
             case OpCode::ASSERT_RETURN_TYPE:
-                std::cout << "R(" << a << ") " << b;
-                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(inlineCaches.size())) {
-                    int nameIdx = inlineCaches[b].nameIdx;
-                    if (nameIdx < static_cast<int>(constants.size())) {
-                        std::cout << "  ; " << constants[nameIdx].asString();
-                    }
-                }
+                std::cout << "R(" << a << ")";
                 break;
 
             case OpCode::GET_SUPER:
@@ -610,6 +607,9 @@ struct CompiledFunction {
     int localCount = 0;
     bool hasRestParam = false;
     Chunk chunk;
+
+    std::vector<int> paramTypeRegs;
+    int returnTypeReg = -1;
 
     struct UpvalueInfo {
         std::string name;

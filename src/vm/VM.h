@@ -123,10 +123,10 @@ private:
     void execSliceSet(int a, int c, uint8_t dims);
     Value execImport(const std::string& name);
 
-    void execAssertParamType(const Value& val, uint32_t icIdx, uint32_t nameIdx);
-    void execAssertReturnType(const Value& val, uint32_t icIdx);
+    void execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx);
+    void execAssertReturnType(const Value& val);
 
-    bool checkValueType(const Value& val, InlineCache& ic, const std::string& typeStr);
+    bool checkValueType(const Value& val, ObjTypeDef* td);
     std::string getTypeName(const Value& val);
     bool evaluateTruthiness(const Value& val);
 

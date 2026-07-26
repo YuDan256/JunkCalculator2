@@ -4511,9 +4511,9 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("complex", makeType(BuiltinType::COMPLEX));
             VM::activeVM->setGlobal("basenum", makeType(BuiltinType::BASENUM));
             VM::activeVM->setGlobal("symbolic", makeType(BuiltinType::SYMBOLIC));
-            VM::activeVM->setGlobal("realmat", makeType(BuiltinType::REALMAT));
-            VM::activeVM->setGlobal("complexmat", makeType(BuiltinType::COMPLEXMAT));
-            VM::activeVM->setGlobal("stringmat", makeType(BuiltinType::STRINGMAT));
+            VM::activeVM->setGlobal("realmatrix", makeType(BuiltinType::REALMAT));
+            VM::activeVM->setGlobal("complexmatrix", makeType(BuiltinType::COMPLEXMAT));
+            VM::activeVM->setGlobal("stringmatrix", makeType(BuiltinType::STRINGMAT));
             VM::activeVM->setGlobal("matrix", makeType(BuiltinType::MATRIX));
             VM::activeVM->setGlobal("function", makeType(BuiltinType::FUNC));
             VM::activeVM->setGlobal("class", makeType(BuiltinType::CLASS));
@@ -4802,10 +4802,9 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         });
 
-    reg("isfloat", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isdouble", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isDouble());
         });
-    reg("isdouble", builtinArity["isfloat"], builtins["isfloat"]);
 
     reg("isnumeric", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& val = args[0];
@@ -4818,7 +4817,6 @@ void BuiltinRegistry::registerTypeChecks() {
         }
         return Value(false);
         });
-    reg("isnumber", builtinArity["isnumeric"], builtins["isnumeric"]);
 
     reg("iscomplex", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(true);
@@ -4866,15 +4864,15 @@ void BuiltinRegistry::registerTypeChecks() {
             args[0].isObjType(ObjType::STRING_MATRIX));
         });
 
-    reg("isrealmat", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isrealmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::REAL_MATRIX));
         });
 
-    reg("iscomplexmat", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("iscomplexmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::COMPLEX_MATRIX));
         });
 
-    reg("isstringmat", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isstringmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::STRING_MATRIX));
         });
 
@@ -4949,7 +4947,6 @@ void BuiltinRegistry::registerTypeChecks() {
     reg("isstring", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isString());
         });
-    reg("isstr", builtinArity["isstring"], builtins["isstring"]);
 
     reg("isalpha", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5032,7 +5029,6 @@ void BuiltinRegistry::registerTypeChecks() {
     reg("isfunction", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isFunctionClosure());
         });
-    reg("isfunc", builtinArity["isfunction"], builtins["isfunction"]);
 
     reg("isclass", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isClass());
@@ -5042,12 +5038,9 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(args[0].isObjType(ObjType::NAMESPACE));
         });
 
-    reg("issym", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("issymbolic", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isSymbolic());
         });
-    reg("issymbolic", builtinArity["issym"], builtins["issym"]);
-    reg("issymbol", builtinArity["issym"], builtins["issym"]);
-    reg("isexpr", builtinArity["issym"], builtins["issym"]);
 
     reg("isnan", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isDouble())

@@ -20,6 +20,7 @@
 #include <numeric> 
 #include <map>
 #include <unordered_map>
+#include <functional>
 #include "../math/Complex.h"
 #include "../math/Matrix.h"
 #include "../math/BigInt.h"
@@ -150,6 +151,8 @@ namespace jc {
         std::string name;
         ObjClass* parent = nullptr;
         std::map<std::string, ObjClosure*> methods;
+        bool is_native = false;
+        std::function<Value(const std::vector<Value>&)> native_allocator;
         ObjClass() { 
             static uint64_t nextId = 1;
             classId = nextId++;

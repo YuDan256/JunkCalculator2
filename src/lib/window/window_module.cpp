@@ -250,15 +250,15 @@ public:
 
 static jc2::Class* g_windowClass = nullptr;
 
-JC2_ValueHandle win_init(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 4) jc2::throw_error("TypeError: Window takes exactly 3 arguments (title, width, height).");
-    jc2::Instance self(argv[0]);
-    std::string title = jc2::Value(argv[1]).as_string();
-    int w = jc2::Value(argv[2]).as_int();
-    int h = jc2::Value(argv[3]).as_int();
+JC2_ValueHandle win_allocator(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 3) jc2::throw_error("TypeError: Window() takes exactly 3 arguments (title, width, height).");
+    std::string title = jc2::Value(argv[0]).as_string();
+    int w = jc2::Value(argv[1]).as_int();
+    int h = jc2::Value(argv[2]).as_int();
     auto win = new NativeWindow(title, w, h);
-    self.set_native_data(win, [](void* ptr) { delete static_cast<NativeWindow*>(ptr); });
-    return jc2::Value().get_handle();
+    jc2::Instance inst(*g_windowClass);
+    inst.set_native_data(win, [](void* ptr) { delete static_cast<NativeWindow*>(ptr); });
+    return inst.get_handle();
 }
 
 JC2_ValueHandle win_isOpen(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
@@ -391,7 +391,7 @@ int jc2_init(jc2::Module& mod) {
     g_windowClass = new jc2::Class("Window");
     mod.register_value("Window", *g_windowClass);
 
-    g_windowClass->bind_method("init", win_init, 3, 3, false);
+    g_windowClass->set_allocator(win_allocator);
     g_windowClass->bind_method("isOpen", win_isOpen, 0, 0, false);
     g_windowClass->bind_method("pollEvent", win_pollEvent, 0, 0, false);
     g_windowClass->bind_method("isKeyDown", win_isKeyDown, 1, 1, false);

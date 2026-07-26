@@ -600,7 +600,7 @@ METHOD(__hash__) {
 }
 
 JC2_ValueHandle global_Decimal(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    (void)argc;
+    if (argc < 1) jc2::throw_error("TypeError: Decimal() takes exactly 1 argument (0 given).");
     return wrapDecimal(parseDecimalArg(jc2::Value(argv[0]))).get_handle();
 }
 
@@ -659,7 +659,8 @@ int jc2_init(jc2::Module& mod) {
     g_decimalClass->bind_method("cosh", decimal_cosh, 0, 0, false);
     g_decimalClass->bind_method("tanh", decimal_tanh, 0, 0, false);
 
-    mod.register_function("Decimal", global_Decimal, 1, 1, false);
+    g_decimalClass->set_allocator(global_Decimal);
+
     mod.register_function("getcontext", global_getcontext, 0, 0, false);
     mod.register_function("setcontext", global_setcontext, 1, 1, false);
     mod.register_function("pi", global_pi, 0, 0, false);

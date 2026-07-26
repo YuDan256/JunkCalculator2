@@ -80,10 +80,11 @@ JC2_ValueHandle img_save(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 Class* g_imageClass = nullptr;
 
 JC2_ValueHandle create_image(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 2) throw_error("TypeError: Image() takes at least 2 arguments (width, height).");
     int w = Value(argv[0]).as_int();
     int h = Value(argv[1]).as_int();
     if (w <= 0 || h <= 0) throw_error("Dimensions must be positive.");
-    jc::Color bg = (argc == 3) ? parseColor(Value(argv[2])) : jc::Color{255, 255, 255};
+    jc::Color bg = (argc >= 3) ? parseColor(Value(argv[2])) : jc::Color{255, 255, 255};
     
     Instance inst(*g_imageClass);
     inst.set_native_data(new jc::Image(w, h, bg), [](void* ptr) {
@@ -104,7 +105,8 @@ int jc2_init(Module& mod) {
         "\n"
         "  Initialization\n"
         "  ──────────────────────\n"
-        "    im = image.img(width, height [, background_color])\n"
+        "    im = image.Image(width, height [, background_color])\n"
+        "    im = image.img(...)  // Legacy alias\n"
         "        Allocates a new image surface in RAM. Returns an Image object.\n"
         "        Colors are passed as hex strings (e.g., \"#282C34\") or standard names.\n"
         "\n"
@@ -177,9 +179,12 @@ int jc2_init(Module& mod) {
     g_imageClass->bind_method("axes", img_axes, 4, 5, false);
     g_imageClass->bind_method("save", img_save, 1, 1, false);
 
+    g_imageClass->set_allocator(create_image);
+
     mod.register_function("img", create_image, 2, 3, false);
 
-    mod.register_function_help("image.img", "image.img(width, height, [bg_color])", "Allocates a new image surface in RAM. Colors can be hex strings (e.g., \"#FF0000\") or names (e.g., \"red\").", "im = image.img(800, 600, \"black\")");
+    mod.register_function_help("image.Image", "image.Image(width, height, [bg_color])", "Allocates a new image surface in RAM. Colors can be hex strings (e.g., \"#FF0000\") or names (e.g., \"red\").", "im = image.Image(800, 600, \"black\")");
+    mod.register_function_help("image.img", "image.img(width, height, [bg_color])", "Legacy alias for image.Image.", "im = image.img(800, 600, \"black\")");
     mod.register_function_help("im.width", "im.width()", "Returns the width of the image in pixels.", "w = im.width()");
     mod.register_function_help("im.height", "im.height()", "Returns the height of the image in pixels.", "h = im.height()");
     mod.register_function_help("im.setPixel", "im.setPixel(x, y, color)", "Sets the color of a single pixel at (x, y).", "im.setPixel(10, 10, \"red\")");

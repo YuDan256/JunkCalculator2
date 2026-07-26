@@ -163,7 +163,7 @@ METHOD(len) {
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
 FUNC(alloc) {
-    (void)argc;
+    if (argc < 1) jc2::throw_error("TypeError: Bytes() takes exactly 1 argument (size).");
     int size = static_cast<int>(std::round(jc2::Value(argv[0]).as_double()));
     if (size < 0) jc2::throw_error("Math Error: buffer size cannot be negative.");
     return makeBytesInstance(std::vector<uint8_t>(size, 0)).get_handle();
@@ -208,6 +208,8 @@ int jc2_init(jc2::Module& mod) {
     g_bytesClass->bind_method("get", bytes_get, 2, 3, false);
     g_bytesClass->bind_method("len", bytes_len, 0, 0, false);
 
+    g_bytesClass->set_allocator(global_alloc);
+
     mod.register_function("alloc", global_alloc, 1, 1, false);
     mod.register_function("pack", global_pack, 1, 1, false);
     mod.register_function("readFile", global_readFile, 1, 1, false);
@@ -222,7 +224,8 @@ int jc2_init(jc2::Module& mod) {
         "    library wrapper `import buffer`, which provides an OOP interface.\n\n"
         "  Buffer Allocation & I/O\n"
         "  ──────────────────────\n"
-        "    bytes.alloc(size)           Allocate a zeroed buffer of `size` bytes.\n"
+        "    bytes.Bytes(size)           Allocate a zeroed buffer of `size` bytes.\n"
+        "    bytes.alloc(size)           Legacy alias for bytes.Bytes.\n"
         "    bytes.pack(array)           Create a buffer from an array of 8-bit integers.\n"
         "    bytes.readFile(path)        Map an entire file from disk into a buffer.\n"
         "    buf.writeFile(path)         Flush a byte buffer directly to your disk.\n"
@@ -249,7 +252,8 @@ int jc2_init(jc2::Module& mod) {
         "    b.get(1, \"u16\")             → 65535"
     );
 
-    mod.register_function_help("bytes.alloc", "bytes.alloc(size)", "Allocates a zeroed byte buffer of the specified size.", "bytes.alloc(1024)");
+    mod.register_function_help("bytes.Bytes", "bytes.Bytes(size)", "Allocates a zeroed byte buffer of the specified size.", "bytes.Bytes(1024)");
+    mod.register_function_help("bytes.alloc", "bytes.alloc(size)", "Legacy alias for bytes.Bytes.", "bytes.alloc(1024)");
     mod.register_function_help("bytes.pack", "bytes.pack(array)", "Creates a byte buffer from an array of 8-bit integers.", "bytes.pack([255, 0, 128])");
     mod.register_function_help("bytes.readFile", "bytes.readFile(path)", "Reads an entire file into a byte buffer.", "bytes.readFile(\"data.bin\")");
     mod.register_function_help("bytes.writeFile", "buf.writeFile(path)", "Writes a byte buffer to a file.", "buf.writeFile(\"out.bin\")");

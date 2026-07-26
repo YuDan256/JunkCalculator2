@@ -81,3 +81,11 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
         *   **值语义对象**（如 `String`, `BigInt`, `Matrix`）：自动接入底层的**引用计数 (RC)**，只要 `Chunk` 存活，其 `refCount > 0` 即可免于回收。
         *   **引用语义对象**（如冻结的 `Namespace`）：由于 RC 不保护容器对象，它们依赖于 **GC 标记阶段 (Mark Phase)**。VM 会将当前所有活跃 `Chunk` 的常量池作为 GC Root 进行扫描，确保其绝不会被误杀。
 *   **加载优先级**：在执行 `import "module"` 时，VM 的 Resolver 必须优先探测是否存在版本匹配的 `module.jcb`。如果存在则直接反序列化绕过编译前端；如果不存在或魔数/版本号不匹配，则回退加载 `module.jc2` 源码。
+
+## 11. Native 类的实例化与防幽灵机制 (Native Class Instantiation & Ghost Prevention)
+在早期的架构中，用户可以通过 `getClass(NativeObj)()` 绕过 Native 模块的工厂函数，直接在 VM 层分配一个空的泛型 `Instance` 字典，从而制造出缺乏 C++ 底层数据支撑的“幽灵实例 (Ghost Instance)”，导致底层解包时发生 Segfault 或 TypeError。
+为了彻底解决此 FFI (Foreign Function Interface) 边界的生命周期漏洞，并实现真正的面向对象构造，JC2 引入了双层防御与分配器拦截机制：
+
+*   **`is_native` 标志 (防幽灵拦截)**：所有通过 C++ API (`host_make_class`) 注册的类，其 `is_native` 标志默认设为 `true`。当 VM 的 `CALL` 指令尝试实例化一个类时，如果该类没有自定义分配器且没有原生的 `init` 方法，VM 会直接抛出 `TypeError: Cannot instantiate native class 'xxx' directly.`。这为 `Socket`、`FFILibrary` 等严格受控的底层资源类提供了完美的保护伞，彻底封死了幽灵实例的产生路径。
+*   **`native_allocator` (分配器钩子)**：借鉴 Python 底层的 `tp_new` 机制，Native 类可以通过 `set_allocator` 注册自定义的 C++ 构造函数。当用户执行 `ClassName(...)` 时，VM 会完全跳过默认的空实例分配和 `init` 调用，直接将参数路由给该 Allocator。
+*   **架构收益**：得益于分配器钩子，`Decimal`、`Tensor`、`Image`、`Bytes` 等核心数据类彻底摆脱了“伪装成类的同名全局工厂函数”，实现了真正的 OOP 实例化（如 `tensor.Tensor(@[1,2], @[2])`），同时保证了底层 C++ 句柄内存布局的绝对安全。

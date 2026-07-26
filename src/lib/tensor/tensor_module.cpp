@@ -181,6 +181,7 @@ METHOD(setFlat) { GET_SELF; t1->setFlat(static_cast<size_t>(jc2::Value(argv[1]).
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
 FUNC(tensor) {
+    if (argc < 2) jc2::throw_error("TypeError: Tensor() takes at least 2 arguments (data_list, shape_list).");
     auto data = listToDoubles(jc2::Value(argv[0]));
     auto shape = listToShape(jc2::Value(argv[1]));
     auto [dt, rg] = parseTensorOptions(argc, argv, 2);
@@ -381,6 +382,8 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("getFlat", tensor_getFlat, 1, 1, false);
     g_tensorClass->bind_method("setFlat", tensor_setFlat, 2, 2, false);
 
+    g_tensorClass->set_allocator(global_tensor);
+
     mod.register_function("tensor", global_tensor, 2, 4, false);
     mod.register_function("scalar", global_scalar, 1, 3, false);
     mod.register_function("zeros", global_zeros, 1, 3, false);
@@ -422,7 +425,8 @@ int jc2_init(jc2::Module& mod) {
         "  Construction & Factory Functions\n"
         "  ──────────────────────\n"
         "    import tensor\n\n"
-        "    tensor.tensor(data_list, shape_list, [dtype], [requires_grad])\n"
+        "    tensor.Tensor(data_list, shape_list, [dtype], [requires_grad])\n"
+        "    tensor.tensor(...)  // Legacy alias\n"
         "        Create a tensor from a flat data list and a shape list.\n"
         "        Optional dtype strings: \"float64\", \"float32\", \"int64\", \"int32\"\n"
         "        (aliases: \"f64\", \"f32\", \"i64\", \"i32\", \"double\").\n"
@@ -617,7 +621,8 @@ int jc2_init(jc2::Module& mod) {
         "    // → W ≈ 2.0, b ≈ 1.0"
     );
 
-    mod.register_function_help("tensor.tensor", "tensor.tensor(data_list, shape_list, [dtype], [requires_grad])", "Creates a Tensor from a flat data list and a shape list. Optionally selects dtype (\"float64\", \"float32\", \"int64\", \"int32\") and enables gradient tracking.", "tensor.tensor(@[1,2,3,4], @[2,2])");
+    mod.register_function_help("tensor.Tensor", "tensor.Tensor(data_list, shape_list, [dtype], [requires_grad])", "Creates a Tensor from a flat data list and a shape list. Optionally selects dtype (\"float64\", \"float32\", \"int64\", \"int32\") and enables gradient tracking. (Alias: tensor.tensor)", "tensor.Tensor(@[1,2,3,4], @[2,2])");
+    mod.register_function_help("tensor.tensor", "tensor.tensor(data_list, shape_list, [dtype], [requires_grad])", "Legacy alias for tensor.Tensor.", "tensor.tensor(@[1,2,3,4], @[2,2])");
     mod.register_function_help("tensor.scalar", "tensor.scalar(val, [dtype], [requires_grad])", "Creates a scalar (1-element) Tensor. Optionally selects dtype and enables gradient tracking.", "tensor.scalar(3.14)");
     mod.register_function_help("tensor.zeros", "tensor.zeros(shape_list, [dtype], [requires_grad])", "Creates an all-zeros Tensor with the given shape. Optionally selects dtype and enables gradient tracking.", "tensor.zeros(@[3, 3])");
     mod.register_function_help("tensor.ones", "tensor.ones(shape_list, [dtype], [requires_grad])", "Creates an all-ones Tensor with the given shape. Optionally selects dtype and enables gradient tracking.", "tensor.ones(@[2, 2])");

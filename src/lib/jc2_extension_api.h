@@ -21,7 +21,7 @@ extern "C" {
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
 #define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
-#define JC2_EXT_VERSION 1
+#define JC2_EXT_VERSION 2
 
 /* 完美契合 JC2 的 NaN-Boxing (8 bytes)，无需堆分配即可传递值 */
 typedef uint64_t JC2_ValueHandle;
@@ -174,6 +174,7 @@ typedef struct JC2_HostAPI {
     /* --- 高级类与实例操作 (Advanced Class & Instance Operations) --- */
     void (*set_class_parent)(JC2_VMContext ctx, JC2_ValueHandle cls, JC2_ValueHandle parent);
     JC2_ValueHandle (*get_class)(JC2_VMContext ctx, JC2_ValueHandle inst);
+    void (*set_class_allocator)(JC2_VMContext ctx, JC2_ValueHandle cls, JC2_NativeFunc fn, void* user_data);
     JC2_ValueHandle (*instance_get_field)(JC2_VMContext ctx, JC2_ValueHandle inst, const char* name);
     void (*instance_set_field)(JC2_VMContext ctx, JC2_ValueHandle inst, const char* name, JC2_ValueHandle val);
     

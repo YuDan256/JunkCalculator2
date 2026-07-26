@@ -485,6 +485,18 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
         }
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
+        
+        if (cls->native_allocator) {
+            std::vector<Value> args;
+            args.reserve(argc);
+            for (int i = 0; i < argc; ++i) {
+                args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
+            }
+            pendingCallRefs.clear();
+            registers[currentFrame->registerBase + dstReg] = cls->native_allocator(args);
+            return;
+        }
+
         auto instance = GcHeap::get().allocate<ObjInstance>();
         registers[currentFrame->registerBase + dstReg] = Value(instance); // ★ 立即 Root 防止 GC 误杀
         instance->classDef = cls;
@@ -587,6 +599,13 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 profileFrameStart(&newFrame);
                 frames[frameCount++] = newFrame;
             } else if (initMethod->isNative()) {
+                if (static_cast<int>(initMethod->maxArgs()) > 0 && !initMethod->hasRestParam) {
+                    if (argc < static_cast<int>(initMethod->minArgs()) || argc > static_cast<int>(initMethod->maxArgs())) {
+                        throw std::runtime_error("Runtime Error: Method 'init' expects " + std::to_string(initMethod->minArgs()) + " to " + 
+                            std::to_string(initMethod->maxArgs()) + " arguments, got " + 
+                            std::to_string(argc) + ".");
+                    }
+                }
                 helpers::nativeSelfStack.push_back(Value(instance));
                 helpers::nativeClassStack.push_back(Value(cls));
                 std::vector<Value> args;
@@ -606,6 +625,10 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
                 registers[currentFrame->registerBase + dstReg] = Value(instance);
             }
         } else {
+            if (cls->is_native) {
+                pendingCallRefs.clear();
+                throw std::runtime_error("TypeError: Cannot instantiate native class '" + cls->name + "' directly.");
+            }
             if (argc > 0) {
                 pendingCallRefs.clear();
                 throw std::runtime_error("TypeError: Class takes no arguments directly.");

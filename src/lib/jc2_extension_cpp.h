@@ -88,6 +88,10 @@ public:
     void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 255, bool has_rest = true, void* user_data = nullptr) {
         Env::api->bind_method(Env::ctx, get_handle(), name.c_str(), fn, min_arity, max_arity, has_rest, user_data);
     }
+
+    void set_allocator(JC2_NativeFunc fn, void* user_data = nullptr) {
+        Env::api->set_class_allocator(Env::ctx, get_handle(), fn, user_data);
+    }
 };
 
 class Instance : public Value {

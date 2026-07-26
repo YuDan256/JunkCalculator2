@@ -73,6 +73,7 @@ static double host_complex_get_imag(JC2_VMContext, JC2_ValueHandle v) {
 static JC2_ValueHandle host_make_class(JC2_VMContext, const char* name) {
     ObjClass* cls = GcHeap::get().allocate<ObjClass>();
     cls->name = name;
+    cls->is_native = true;
     return protect(Value(cls));
 }
 
@@ -530,6 +531,28 @@ static JC2_ValueHandle host_get_class(JC2_VMContext, JC2_ValueHandle inst) {
     return Value::none().as_bits;
 }
 
+static void host_set_class_allocator(JC2_VMContext, JC2_ValueHandle cls, JC2_NativeFunc fn, void* user_data) {
+    Value c = from_handle(cls);
+    if (c.isClass()) {
+        ObjClass* objCls = static_cast<ObjClass*>(c.asObj());
+        objCls->native_allocator = [fn, user_data](const std::vector<Value>& args) -> Value {
+            size_t old_size = nativeTempRefs.size();
+            std::vector<JC2_ValueHandle> c_args;
+            c_args.reserve(args.size());
+            for (size_t i = 0; i < args.size(); ++i) c_args.push_back(args[i].as_bits);
+            try {
+                JC2_ValueHandle res = fn(VM::activeVM, static_cast<int>(c_args.size()), c_args.data(), user_data);
+                Value ret = from_handle(res);
+                nativeTempRefs.resize(old_size);
+                return ret;
+            } catch (...) {
+                nativeTempRefs.resize(old_size);
+                throw;
+            }
+        };
+    }
+}
+
 static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle inst, const char* name) {
     Value i = from_handle(inst);
     if (i.isInstance()) {
@@ -703,6 +726,7 @@ static const JC2_HostAPI host_api = {
     host_is_namespace,
     host_set_class_parent,
     host_get_class,
+    host_set_class_allocator,
     host_instance_get_field,
     host_instance_set_field,
     host_freeze_object

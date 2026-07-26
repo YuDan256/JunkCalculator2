@@ -110,6 +110,7 @@ void registerPredefinedClasses() {
     ObjClass* rangeIterClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard ricGuard(rangeIterClass);
     rangeIterClass->name = "RangeIterator";
+    rangeIterClass->is_native = true;
 
     // __iter__() for Range
     auto rangeIter = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__iter__", nullptr);

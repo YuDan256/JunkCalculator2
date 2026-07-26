@@ -44,7 +44,7 @@ test_type_annotations() = {
         f(3.14)
     } catch (e) {
         caught_param = true
-        assert("TypeError" in e.message, "Should throw TypeError for double")
+        assert(e.type == "TypeError", "Should throw TypeError for double")
     }
     assert(caught_param, "Should throw on invalid param type")
     
@@ -56,7 +56,7 @@ test_type_annotations() = {
         g("hi")
     } catch (e) {
         caught_return = true
-        assert("TypeError" in e.message, "Should throw TypeError on invalid return type")
+        assert(e.type == "TypeError", "Should throw TypeError on invalid return type")
     }
     assert(caught_return, "Should throw on invalid return type")
 }

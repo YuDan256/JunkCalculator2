@@ -3313,11 +3313,22 @@ Value VM::run(int targetFrameDepth) {
                     closure->paramTypes = new Value[closure->paramTypesCount];
                     for (int i = 0; i < closure->paramTypesCount; ++i) {
                         int reg = fn->paramTypeRegs[i];
-                        closure->paramTypes[i] = (reg != -1) ? getReg(reg) : Value::none();
+                        if (reg == -1) {
+                            closure->paramTypes[i] = Value::none();
+                        } else if (reg >= 256) {
+                            closure->paramTypes[i] = chunk->constants.data()[reg & ~256];
+                        } else {
+                            closure->paramTypes[i] = getReg(reg);
+                        }
                     }
                 }
                 if (fn->returnTypeReg != -1) {
-                    closure->returnType = getReg(fn->returnTypeReg);
+                    int reg = fn->returnTypeReg;
+                    if (reg >= 256) {
+                        closure->returnType = chunk->constants.data()[reg & ~256];
+                    } else {
+                        closure->returnType = getReg(reg);
+                    }
                 }
                 break;
             }
@@ -4897,6 +4908,14 @@ Value VM::run(int targetFrameDepth) {
                                 bound->upvalues[i] = rawMethod->upvalues[i];
                             }
                         }
+                        if (rawMethod->paramTypesCount > 0) {
+                            bound->paramTypesCount = rawMethod->paramTypesCount;
+                            bound->paramTypes = new Value[bound->paramTypesCount];
+                            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                bound->paramTypes[i] = rawMethod->paramTypes[i];
+                            }
+                        }
+                        bound->returnType = rawMethod->returnType;
                         bound->nativeFn = rawMethod->nativeFn;
                         bound->boundSelf = Value(inst);
                         bound->boundClass = Value(inst->classDef);
@@ -4926,6 +4945,14 @@ Value VM::run(int targetFrameDepth) {
                                         bound->upvalues[i] = rawMethod->upvalues[i];
                                     }
                                 }
+                                if (rawMethod->paramTypesCount > 0) {
+                                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                                    bound->paramTypes = new Value[bound->paramTypesCount];
+                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                    }
+                                }
+                                bound->returnType = rawMethod->returnType;
                                 bound->nativeFn = rawMethod->nativeFn;
                                 bound->boundSelf = Value(inst);
                                 bound->boundClass = Value(cls);
@@ -4979,6 +5006,14 @@ Value VM::run(int targetFrameDepth) {
                                             bound->upvalues[i] = targetFn->upvalues[i];
                                         }
                                     }
+                                    if (targetFn->paramTypesCount > 0) {
+                                        bound->paramTypesCount = targetFn->paramTypesCount;
+                                        bound->paramTypes = new Value[bound->paramTypesCount];
+                                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                            bound->paramTypes[i] = targetFn->paramTypes[i];
+                                        }
+                                    }
+                                    bound->returnType = targetFn->returnType;
                                     bound->hasRestParam = targetFn->hasRestParam;
                                     bound->paramNames = targetFn->paramNames;
                                     bound->isRef = targetFn->isRef;
@@ -5021,6 +5056,14 @@ Value VM::run(int targetFrameDepth) {
                                             bound->upvalues[i] = targetFn->upvalues[i];
                                         }
                                     }
+                                    if (targetFn->paramTypesCount > 0) {
+                                        bound->paramTypesCount = targetFn->paramTypesCount;
+                                        bound->paramTypes = new Value[bound->paramTypesCount];
+                                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                            bound->paramTypes[i] = targetFn->paramTypes[i];
+                                        }
+                                    }
+                                    bound->returnType = targetFn->returnType;
                                     bound->hasRestParam = targetFn->hasRestParam;
                                     bound->paramNames = targetFn->paramNames;
                                     bound->isRef = targetFn->isRef;
@@ -5885,6 +5928,14 @@ Value VM::run(int targetFrameDepth) {
                         bound->upvalues[i] = rawMethod->upvalues[i];
                     }
                 }
+                if (rawMethod->paramTypesCount > 0) {
+                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                    bound->paramTypes = new Value[bound->paramTypesCount];
+                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                    }
+                }
+                bound->returnType = rawMethod->returnType;
                 bound->nativeFn = rawMethod->nativeFn;
                 bound->boundSelf = Value(inst);
                 bound->boundClass = Value(ownerClass);

@@ -93,9 +93,9 @@ function activate(context) {
 
             // 添加关键字补全
             const keywords = [
-                'if', 'else', 'while', 'for', 'in', 'break', 'continue', 'return',
+                'if', 'else', 'while', 'for', 'in', 'is', 'break', 'continue', 'return',
                 'switch', 'case', 'default', 'throw', 'try', 'catch', 'match', 'defer',
-                'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'quote',
+                'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'quote', 'enum',
                 'true', 'false', 'none', 'PI', 'E', 'ANS', 'self', 'super'
             ];
             for (const kw of keywords) {
@@ -111,6 +111,7 @@ function activate(context) {
                 { label: 'ifelse', detail: 'if..else statement', insertText: 'if (${1:condition}) {\n\t$2\n} else {\n\t$0\n}' },
                 { label: 'class', detail: 'class definition', insertText: 'class ${1:ClassName} {\n\tinit() {\n\t\t$0\n\t}\n}' },
                 { label: 'namespace', detail: 'namespace definition', insertText: 'namespace ${1:Name} {\n\t$0\n}' },
+                { label: 'enum', detail: 'enum definition', insertText: 'enum ${1:Name} {\n\t$0\n}' },
                 { label: 'func', detail: 'function definition', insertText: '${1:functionName}(${2:args}) = {\n\t$0\n}' },
                 { label: 'match', detail: 'match expression', insertText: 'match (${1:expr}) {\n\t${2:pattern} => ${3:body},\n\t_ => ${0:fallback}\n}' },
                 { label: 'macro', detail: 'macro definition', insertText: 'macro ${1:macroName}(${2:args}) = {\n\treturn quote {\n\t\t$0\n\t}\n}' },
@@ -267,16 +268,23 @@ function activate(context) {
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
                 
-                // 匹配类定义: class MyClass 或 namespace MyNamespace
-                const classMatch = line.match(/^\s*(?:class|namespace)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+                // 匹配类定义: class MyClass, namespace MyNamespace, 或 enum MyEnum
+                const classMatch = line.match(/^\s*(?:class|namespace|enum)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
                 if (classMatch) {
                     const isNamespace = line.includes('namespace');
+                    const isEnum = line.includes('enum');
                     const range = new vscode.Range(i, 0, i, line.length);
                     const selectionRange = new vscode.Range(i, line.indexOf(classMatch[1]), i, line.indexOf(classMatch[1]) + classMatch[1].length);
+                    
+                    let kind = vscode.SymbolKind.Class;
+                    let detail = 'class';
+                    if (isNamespace) { kind = vscode.SymbolKind.Namespace; detail = 'namespace'; }
+                    else if (isEnum) { kind = vscode.SymbolKind.Enum; detail = 'enum'; }
+
                     symbols.push(new vscode.DocumentSymbol(
                         classMatch[1],
-                        isNamespace ? 'namespace' : 'class',
-                        isNamespace ? vscode.SymbolKind.Namespace : vscode.SymbolKind.Class,
+                        detail,
+                        kind,
                         range,
                         selectionRange
                     ));

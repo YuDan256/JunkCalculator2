@@ -11,7 +11,7 @@ class Stack {
         self.data = @[]
     }
     
-    push(item: any) = {
+    push(item: any_type) = {
         self.data.push(item)
         return self
     }
@@ -39,7 +39,7 @@ class Queue {
         self.data = @[]
     }
     
-    enqueue(item: any) = {
+    enqueue(item: any_type) = {
         self.data.push(item)
         return self
     }
@@ -67,8 +67,8 @@ class Deque {
         self.data = @[]
     }
     
-    pushRight(item: any) = { self.data.push(item); return self }
-    pushLeft(item: any)  = { self.data.prepend(item); return self }
+    pushRight(item: any_type) = { self.data.push(item); return self }
+    pushLeft(item: any_type)  = { self.data.prepend(item); return self }
     
     popRight() = {
         if (self.isEmpty()) throw "IndexError: popRight from empty Deque"
@@ -89,20 +89,20 @@ class Deque {
 // ─── DefaultDict ──────────────────────────────────────────────
 
 class DefaultDict {
-    init(defaultFactory: func) = {
+    init(defaultFactory: function) = {
         self.data = dict()
         self.factory = defaultFactory
     }
     
-    __getitem__(key: any) = {
+    __getitem__(key: any_type) = {
         if (!self.data.hasKey(key)) {
             self.data[key] = self.factory()
         }
         return self.data[key]
     }
     
-    __setitem__(key: any, val: any) = { self.data[key] = val }
-    __contains__(key: any) -> bool  = return self.data.hasKey(key)
+    __setitem__(key: any_type, val: any_type) = { self.data[key] = val }
+    __contains__(key: any_type) -> bool  = return self.data.hasKey(key)
     
     keys() -> list   = return self.data.keys()
     values() -> list = return self.data.values()
@@ -112,12 +112,12 @@ class DefaultDict {
 // ─── Counter (Frequency Hash Map) ─────────────────────────────
 
 class Counter {
-    init(iterable: any = none) = {
+    init(iterable: any_type = none) = {
         self.data = dict()
         if (iterable != none) self.update(iterable)
     }
     
-    update(iterable: any) = {
+    update(iterable: any_type) = {
         for (item in iterable) {
             if (self.data.hasKey(item)) { self.data[item] += 1 } 
             else { self.data[item] = 1 }
@@ -125,7 +125,7 @@ class Counter {
         return self
     }
     
-    get(key: any) -> int = {
+    get(key: any_type) -> int = {
         return self.data.hasKey(key) ? self.data[key] : 0
     }
     
@@ -141,12 +141,12 @@ class Counter {
 // ─── PriorityQueue (Binary Heap) ──────────────────────────────
 
 class PriorityQueue {
-    init(cmp: func = (a, b) => a < b) = {
+    init(cmp: function = (a, b) => a < b) = {
         self.data = @[]
         self.cmp = cmp   
     }
     
-    push(item: any) = {
+    push(item: any_type) = {
         self.data.push(item)
         self._siftUp(self.data.len() - 1)
         return self
@@ -210,7 +210,7 @@ class PriorityQueue {
 // ─── TreeNode & Binary Search Tree (BST) ──────────────────────
 
 class TreeNode {
-    init(val: any) = {
+    init(val: any_type) = {
         self.val = val
         self.left = none
         self.right = none
@@ -223,7 +223,7 @@ class BST {
         self._size = 0
     }
     
-    insert(val: any) = {
+    insert(val: any_type) = {
         if (self.root == none) {
             self.root = TreeNode(val)
             self._size += 1
@@ -233,7 +233,7 @@ class BST {
         return self
     }
     
-    _insertNode(node: TreeNode, val: any) = {
+    _insertNode(node: TreeNode, val: any_type) = {
         if (val < node.val) {
             if (node.left == none) { node.left = TreeNode(val); self._size += 1 } 
             else { self._insertNode(node.left, val) }
@@ -243,7 +243,7 @@ class BST {
         }
     }
     
-    contains(val: any) -> bool = {
+    contains(val: any_type) -> bool = {
         curr = self.root
         while (curr != none) {
             if (val == curr.val) return true
@@ -261,7 +261,7 @@ class BST {
         return result
     }
     
-    _inorderTraversal(node: any, res: list) = {
+    _inorderTraversal(node: any_type, res: list) = {
         if (node != none) {
             self._inorderTraversal(node.left, res)
             res.push(node.val)

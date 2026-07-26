@@ -432,14 +432,14 @@ class Regex {
 // ─── Global API (Auto-Compiles or uses cached Regex) ───
 
 compile(pat: string) -> Regex                     = Regex(pat)
-_ensure(pat: any) -> Regex                        = isinstance(pat, Regex) ? pat : Regex(str(pat))
+_ensure(pat: any_type) -> Regex                        = isinstance(pat, Regex) ? pat : Regex(str(pat))
 
-test(pat: any, text: string) -> bool              = _ensure(pat).test(text)
-matchStart(pat: any, text: string)                = _ensure(pat).matchStart(text)
-search(pat: any, text: string)                    = _ensure(pat).search(text)
-findall(pat: any, text: string) -> list           = _ensure(pat).findall(text)
-subst(pat: any, text: string, rep: string) -> string = _ensure(pat).subst(text, rep)
-splitBy(pat: any, text: string) -> list           = _ensure(pat).splitBy(text)
+test(pat: any_type, text: string) -> bool              = _ensure(pat).test(text)
+matchStart(pat: any_type, text: string)                = _ensure(pat).matchStart(text)
+search(pat: any_type, text: string)                    = _ensure(pat).search(text)
+findall(pat: any_type, text: string) -> list           = _ensure(pat).findall(text)
+subst(pat: any_type, text: string, rep: string) -> string = _ensure(pat).subst(text, rep)
+splitBy(pat: any_type, text: string) -> list           = _ensure(pat).splitBy(text)
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 

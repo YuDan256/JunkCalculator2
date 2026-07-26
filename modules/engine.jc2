@@ -19,14 +19,14 @@ class GameEngine {
 
     // ─── Virtual Methods ───
     update(dt: double) = {}
-    draw(im: any)      = {}
+    draw(im: any_type)      = {}
 
     // ─── Event Callbacks ───
     onKeyDown(key: string) = {}
     onKeyUp(key: string)   = {}
-    onMouseDown(x: any, y: any, btn: whole) = {}
-    onMouseUp(x: any, y: any, btn: whole)   = {}
-    onMouseMove(x: any, y: any)           = {}
+    onMouseDown(x: any_type, y: any_type, btn: whole) = {}
+    onMouseUp(x: any_type, y: any_type, btn: whole)   = {}
+    onMouseMove(x: any_type, y: any_type)           = {}
 
     // ─── Utilities ───
     isKeyDown(key: string) -> bool = return self.win.isKeyDown(key)

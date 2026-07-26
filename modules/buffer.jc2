@@ -8,7 +8,7 @@ import bytes
 // ─── Byte Buffer Object ───────────────────────────────────────
 
 class ByteBuffer {
-    init(native_buf: any) = {
+    init(native_buf: any_type) = {
         self.buf = native_buf
         self.size = int(native_buf.len())
         self.pos = 0
@@ -62,7 +62,7 @@ class ByteBuffer {
         return self 
     }
     
-    writePcmArray(arr: any) -> ByteBuffer = {
+    writePcmArray(arr: any_type) -> ByteBuffer = {
         self.buf.write_arr(self.pos, arr, "i16")
         self.pos = self.pos + arr.len() * 2
         return self

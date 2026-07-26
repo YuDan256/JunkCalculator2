@@ -840,6 +840,9 @@
     "resetConst": {
       "signature": "resetConst()"
     },
+    "resetType": {
+      "signature": "resetType()"
+    },
     "setWorkspace": {
       "signature": "setWorkspace(path)"
     },
@@ -909,8 +912,8 @@
     "iswhole": {
       "signature": "iswhole(x)"
     },
-    "isfloat": {
-      "signature": "isfloat(x)"
+    "isdouble": {
+      "signature": "isdouble(x)"
     },
     "isnumeric": {
       "signature": "isnumeric(x)"
@@ -936,14 +939,14 @@
     "ismatrix": {
       "signature": "ismatrix(x)"
     },
-    "isrealmat": {
-      "signature": "isrealmat(x)"
+    "isrealmatrix": {
+      "signature": "isrealmatrix(x)"
     },
-    "iscomplexmat": {
-      "signature": "iscomplexmat(x)"
+    "iscomplexmatrix": {
+      "signature": "iscomplexmatrix(x)"
     },
-    "isstringmat": {
-      "signature": "isstringmat(x)"
+    "isstringmatrix": {
+      "signature": "isstringmatrix(x)"
     },
     "isvector": {
       "signature": "isvector(x)"
@@ -1005,8 +1008,8 @@
     "isnamespace": {
       "signature": "isnamespace(x)"
     },
-    "issym": {
-      "signature": "issym(x)"
+    "issymbolic": {
+      "signature": "issymbolic(x)"
     },
     "isnan": {
       "signature": "isnan(x)"
@@ -1355,27 +1358,6 @@
     },
     "loadPrimes": {
       "signature": "loadPrimes()"
-    },
-    "isdouble": {
-      "signature": "isdouble(x)"
-    },
-    "isnumber": {
-      "signature": "isnumber(x)"
-    },
-    "isstr": {
-      "signature": "isstr(x)"
-    },
-    "isfunc": {
-      "signature": "isfunc(x)"
-    },
-    "issymbolic": {
-      "signature": "issymbolic(x)"
-    },
-    "issymbol": {
-      "signature": "issymbol(x)"
-    },
-    "isexpr": {
-      "signature": "isexpr(x)"
     }
   },
   "keywords": {
@@ -1390,6 +1372,9 @@
     },
     "for": {
       "signature": "for (init; cond; update) { body }  |  for (var in iterable) { body }"
+    },
+    "is": {
+      "signature": "a is b"
     },
     "in": {
       "signature": "for (var in iterable)  |  value in container"

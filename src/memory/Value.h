@@ -1738,6 +1738,14 @@ namespace jc {
         // 同类型快速通道
         if (lhs.isType() && rhs.isString()) return static_cast<ObjTypeDef*>(lhs.asObj())->name() == rhs.asString();
         if (rhs.isType() && lhs.isString()) return static_cast<ObjTypeDef*>(rhs.asObj())->name() == lhs.asString();
+        if (lhs.isType() && rhs.isClass()) {
+            auto td = static_cast<ObjTypeDef*>(lhs.asObj());
+            return td->types.size() == 1 && std::holds_alternative<ObjClass*>(td->types[0]) && std::get<ObjClass*>(td->types[0]) == static_cast<ObjClass*>(rhs.asObj());
+        }
+        if (rhs.isType() && lhs.isClass()) {
+            auto td = static_cast<ObjTypeDef*>(rhs.asObj());
+            return td->types.size() == 1 && std::holds_alternative<ObjClass*>(td->types[0]) && std::get<ObjClass*>(td->types[0]) == static_cast<ObjClass*>(lhs.asObj());
+        }
 
         if (lhs.isObj() && rhs.isObj() && lhs.asObj()->type == rhs.asObj()->type) {
             Obj* lobj = lhs.asObj();

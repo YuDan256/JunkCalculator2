@@ -1050,7 +1050,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
         IRNode* isDict = createTypeCheck("dict");
         IRNode* isInst = createTypeCheck("instance");
-        IRNode* isNs = createTypeCheck("namespace");
+        IRNode* isNs = createTypeCheck("namespace_type");
 
         IRNode* or1 = graph->createValueNode(IROp::BitOr);
         or1->setControl(currentControl);

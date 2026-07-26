@@ -392,6 +392,11 @@ void BytecodeSerializer::writeFunction(std::ostream& os, const CompiledFunction*
     for (bool b : fn->paramIsConst) write8(os, b ? 1 : 0);
 
     write32(os, static_cast<uint32_t>(fn->refCount));
+
+    write16(os, static_cast<uint16_t>(fn->paramTypeRegs.size()));
+    for (int reg : fn->paramTypeRegs) write32(os, static_cast<uint32_t>(reg));
+
+    write32(os, static_cast<uint32_t>(fn->returnTypeReg));
 }
 
 void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, int baseIdx) {
@@ -427,6 +432,12 @@ void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, in
     for (uint16_t i = 0; i < pcSize; ++i) fn->paramIsConst[i] = read8(is) != 0;
 
     fn->refCount = static_cast<int>(read32(is));
+
+    uint16_t ptrSize = read16(is);
+    fn->paramTypeRegs.resize(ptrSize);
+    for (uint16_t i = 0; i < ptrSize; ++i) fn->paramTypeRegs[i] = static_cast<int>(read32(is));
+
+    fn->returnTypeReg = static_cast<int>(read32(is));
 }
 
 void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug) {

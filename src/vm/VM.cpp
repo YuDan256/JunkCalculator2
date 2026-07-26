@@ -3349,22 +3349,11 @@ Value VM::run(int targetFrameDepth) {
                     closure->paramTypes = new Value[closure->paramTypesCount];
                     for (int i = 0; i < closure->paramTypesCount; ++i) {
                         int reg = fn->paramTypeRegs[i];
-                        if (reg == -1) {
-                            closure->paramTypes[i] = Value::none();
-                        } else if (reg >= 256) {
-                            closure->paramTypes[i] = chunk->constants.data()[reg & ~256];
-                        } else {
-                            closure->paramTypes[i] = getReg(reg);
-                        }
+                        closure->paramTypes[i] = (reg != -1) ? getReg(reg) : Value::none();
                     }
                 }
                 if (fn->returnTypeReg != -1) {
-                    int reg = fn->returnTypeReg;
-                    if (reg >= 256) {
-                        closure->returnType = chunk->constants.data()[reg & ~256];
-                    } else {
-                        closure->returnType = getReg(reg);
-                    }
+                    closure->returnType = getReg(fn->returnTypeReg);
                 }
                 
                 getReg(a) = Value(closure);

@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.5.2.0
+# Junk Calculator 2.5.3.0
 
-![Version](https://img.shields.io/badge/Version-v2.5.2.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.3.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -69,23 +69,27 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.5.2.0
+## What's New in v2.5.3.0
 
-### Compiler & Semantic Analysis
-- **Two-Pass Resolver**: Introduced a dedicated `Resolver` phase for precise scope analysis, variable hoisting, and closure capture resolution. This completely eliminates auto-local shadowing bugs and correctly propagates scope modifiers (`local`, `state`, `ref`, `const`) in complex destructuring patterns.
-- **First-Class Definitions**: `class` and `namespace` definitions are now treated as first-class expressions. They can be defined anonymously, assigned to variables, or passed as arguments.
-- **Strict Declarations**: Added robust duplicate declaration checks with AST-based deduplication and parameter conflict detection.
-- **Built-in Shadowing**: Removed the legacy built-in function overloading mechanism. User-defined functions and variables can now cleanly shadow built-ins without ambiguity.
+### First-Class Type System
+- **Type Algebra & Objects**: Types are now first-class objects (`ObjTypeDef`). They can be passed as values, called as constructors (e.g., `int("123")`), and combined using type algebra (`int | string`).
+- **Closure-Time Annotations**: Function type annotations are now fully parsed as expressions and evaluated at closure-definition time, eliminating runtime string parsing.
+- **O(1) Type Assertions**: Type checking now utilizes Inline Caching (IC) for blazing-fast O(1) pointer comparisons, replacing the legacy string-matching mechanism.
 
-### VM & Profiler
-- **Performance Profiler**: Added comprehensive execution profiling (`--profile`), including function call timing (total vs. self time) and instruction count statistics. In the REPL, profiler statistics automatically reset after each command.
-- **Memory Safety & C ABI**: Enhanced C ABI memory safety with a thread-local reference stack (`nativeTempRefs`) to protect returned values. Protected pending call frame arguments from premature GC during construction.
+### Language & Syntax Enhancements
+- **Enumerations (`enum`)**: Added zero-overhead, compile-time generated frozen namespaces for enums.
+- **Identity Operator (`is`)**: Introduced the `is` operator for O(1) strict memory identity and bit-pattern comparisons.
+- **Zero-Overhead Discard (`_`)**: The `_` identifier is now a strict discard token. It generates no IR instructions and consumes no memory during pattern matching or destructuring.
+- **Quality of Life**: Added support for numeric literal underscores (e.g., `1_000_000`) and complete Set/Dict comprehensions (`@{... for ...}`, `{... for ...}`).
 
-### Garbage Collection & Math
-- **Immediate Reclamation**: Enabled zero-overhead immediate reclamation for zero-refCount pure data objects (e.g., `BigInt`, `Matrix`, `Complex`), significantly reducing GC pressure and memory peaks during heavy CAS computations.
-- **GC Sweep Protection**: Protected non-container objects with active C++ stack references from being incorrectly swept.
-- **Math Engine**: Fixed an incorrect trailing limb divisibility check in the `pollardRho` factorization algorithm, improving reliability for large integer factorization.
-- **Literal Parsing**: The `int()` function now natively supports parsing strings with `0x` (hex), `0b` (binary), and `0o` (octal) prefixes.
+### VM & Architecture
+- **Precompiled Bytecode (`.jcb`)**: Introduced a binary bytecode format supporting deep constant pool serialization, `--compile`, `--module`, and `--strip` flags. Features smart fallback to source code if versions mismatch.
+- **FFI Native Safety**: Implemented `is_native` flags and `native_allocator` hooks. This completely eliminates "ghost instance" vulnerabilities across the language boundary and allows native C++ classes to be instantiated using standard OOP syntax.
+- **C ABI Expansion**: Deeply integrated the type system into the C ABI (type union, intersection, checking) and completed the CRUD API for native container manipulation (Lists, Dicts, Sets).
+
+### Math & Native Modules
+- **Arbitrary-Precision Decimal**: Added the `decimal` module for exact base-10 floating-point arithmetic, featuring high-precision transcendental functions (exp, log, sin, cos, sqrt) evaluated via Taylor series and Newton iteration.
+- **BigInt Performance Leap**: Massively optimized `BigInt` and `Decimal` by eliminating string conversion overheads, introducing O(1) digit estimation, and utilizing thread-local power-of-10 caching.
 
 ---
 

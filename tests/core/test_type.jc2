@@ -1,0 +1,71 @@
+// 测试类型反射与向后兼容性
+test_type_reflection() = {
+    assert(type(5) == int, "type(5) should be int")
+    assert(type("hello") == string, "type('hello') should be string")
+    assert(type(int) == type, "type(int) should be type")
+    
+    // 向后兼容性：类型对象与字符串的直接比较
+    assert(type(5) == "int", "type(5) == 'int' should work")
+    assert("int" == type(5), "'int' == type(5) should work")
+    
+    class Point {}
+    p = Point()
+    assert(type(Point) == class, "type of class definition should be class")
+    assert(type(p) == Point, "type of instance should be the class")
+}
+test_type_reflection()
+
+// 测试类型代数（并集、交集与隐式提升）
+test_type_algebra() = {
+    U = int | string
+    assert(str(U) == "int | string" || str(U) == "string | int", "Union string representation")
+    
+    I = (int | string) & int
+    assert(I == int, "Intersection should simplify to int")
+    
+    E = int & string
+    assert(str(E) == "Never", "Empty intersection should be Never")
+    
+    class Point {}
+    C = int | Point
+    assert(type(C) == type, "Implicit class promotion should result in a type object")
+}
+test_type_algebra()
+
+// 测试函数参数与返回值的类型注解断言
+test_type_annotations() = {
+    f(x: int | string) = x
+    
+    assert(f(5) == 5, "Annotation should accept int")
+    assert(f("hi") == "hi", "Annotation should accept string")
+    
+    caught_param = false
+    try {
+        f(3.14)
+    } catch (e) {
+        caught_param = true
+        assert("TypeError" in e.message, "Should throw TypeError for double")
+    }
+    assert(caught_param, "Should throw on invalid param type")
+    
+    g(x) -> double = x
+    assert(g(3.14) == 3.14, "Return type double accepted")
+    
+    caught_return = false
+    try {
+        g("hi")
+    } catch (e) {
+        caught_return = true
+        assert("TypeError" in e.message, "Should throw TypeError on invalid return type")
+    }
+    assert(caught_return, "Should throw on invalid return type")
+}
+test_type_annotations()
+
+// 测试类型对象的可调用性（作为构造函数）
+test_callable_types() = {
+    assert(int(3.14) == 3, "int type should be callable")
+    assert(string(42) == "42", "string type should be callable")
+    assert(list(1, 2) == @[1, 2], "list type should be callable")
+}
+test_callable_types()

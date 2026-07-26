@@ -989,6 +989,25 @@ void VM::execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx) {
     Value typeObj = currentFrame->closure->paramTypes[paramIdx];
     if (typeObj.isNone()) return;
     
+    if (typeObj.isClass()) {
+        ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
+        bool matched = false;
+        if (val.isInstance()) {
+            ObjClass* c = val.asInstance()->classDef;
+            while (c) {
+                if (c == expectedClass) { matched = true; break; }
+                c = c->parent;
+            }
+        }
+        if (!matched) {
+            const std::string& paramName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
+            throw std::runtime_error("TypeError: Parameter '" + paramName +
+                "' expected type '" + expectedClass->name +
+                "', got '" + getTypeName(val) + "'.");
+        }
+        return;
+    }
+
     if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for parameter annotation.");
     
     if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
@@ -1004,6 +1023,25 @@ void VM::execAssertReturnType(const Value& val) {
     if (!currentFrame->closure || currentFrame->closure->returnType.isNone()) return;
     
     Value typeObj = currentFrame->closure->returnType;
+    
+    if (typeObj.isClass()) {
+        ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
+        bool matched = false;
+        if (val.isInstance()) {
+            ObjClass* c = val.asInstance()->classDef;
+            while (c) {
+                if (c == expectedClass) { matched = true; break; }
+                c = c->parent;
+            }
+        }
+        if (!matched) {
+            throw std::runtime_error("TypeError: Function '" + currentFrame->function->name +
+                "' expected to return '" + expectedClass->name +
+                "', but returned '" + getTypeName(val) + "'.");
+        }
+        return;
+    }
+
     if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for return annotation.");
     
     if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
@@ -3203,8 +3241,6 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                         
-                getReg(a) = Value(closure);
-                        
                 int capturedFnIdx = fnIdx;
                 VM* vm = this;
                 Value currentSelf = frame->selfContext;
@@ -3330,6 +3366,8 @@ Value VM::run(int targetFrameDepth) {
                         closure->returnType = getReg(reg);
                     }
                 }
+                
+                getReg(a) = Value(closure);
                 break;
             }
             case OpCode::GET_UPVAL: {
@@ -5721,8 +5759,21 @@ Value VM::run(int targetFrameDepth) {
                 
                 Value val = getReg(b);
                 Value typeVal = getReg(c);
-                if (!typeVal.isType()) throw std::runtime_error("TypeError: Expected a type object.");
-                getReg(a) = Value(checkValueType(val, static_cast<ObjTypeDef*>(typeVal.asObj())));
+                if (typeVal.isClass()) {
+                    ObjClass* expectedClass = static_cast<ObjClass*>(typeVal.asObj());
+                    bool matched = false;
+                    if (val.isInstance()) {
+                        ObjClass* cls = val.asInstance()->classDef;
+                        while (cls) {
+                            if (cls == expectedClass) { matched = true; break; }
+                            cls = cls->parent;
+                        }
+                    }
+                    getReg(a) = Value(matched);
+                } else {
+                    if (!typeVal.isType()) throw std::runtime_error("TypeError: Expected a type object.");
+                    getReg(a) = Value(checkValueType(val, static_cast<ObjTypeDef*>(typeVal.asObj())));
+                }
                 break;
             }
             case OpCode::MATCH_SHAPE: {

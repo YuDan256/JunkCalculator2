@@ -38,6 +38,81 @@ static bool host_is_double(JC2_VMContext, JC2_ValueHandle v) { return from_handl
 static bool host_is_string(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isString(); }
 static bool host_is_complex(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isObjType(ObjType::COMPLEX); }
 static bool host_is_instance(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isInstance(); }
+static bool host_is_type(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isType(); }
+
+static JC2_ValueHandle host_get_type(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+    if (val.isType()) {
+        resTd->types.push_back(BuiltinType::TYPE_DEF);
+    } else if (val.isClass()) {
+        resTd->types.push_back(BuiltinType::CLASS);
+    } else if (val.isInstance()) {
+        resTd->types.push_back(val.asInstance()->classDef);
+    } else {
+        BuiltinType vbt = BuiltinType::ANY;
+        if (val.isInt32() || val.isBigInt()) vbt = BuiltinType::INT;
+        else if (val.isDouble()) vbt = BuiltinType::FLOAT;
+        else if (val.isString()) vbt = BuiltinType::STRING;
+        else if (val.isBool()) vbt = BuiltinType::BOOL;
+        else if (val.isNone()) vbt = BuiltinType::NONE_TYPE;
+        else if (val.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
+        else if (val.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
+        else if (val.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
+        else if (val.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
+        else if (val.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
+        else if (val.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
+        else if (val.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
+        else if (val.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
+        else if (val.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
+        else if (val.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
+        else if (val.isFunctionClosure()) vbt = BuiltinType::FUNC;
+        else if (val.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+        resTd->types.push_back(vbt);
+    }
+    resTd->normalize();
+    return protect(Value(resTd));
+}
+
+static const char* host_type_name(JC2_VMContext, JC2_ValueHandle v, size_t* out_len) {
+    Value val = from_handle(v);
+    if (val.isType()) {
+        ObjString* s = internString(static_cast<ObjTypeDef*>(val.asObj())->name());
+        if (out_len) *out_len = s->str.length();
+        return s->str.c_str();
+    }
+    return nullptr;
+}
+
+static JC2_ValueHandle host_type_union(JC2_VMContext, JC2_ValueHandle t1, JC2_ValueHandle t2) {
+    try { return protect(from_handle(t1) | from_handle(t2)); }
+    catch (...) { return Value::none().as_bits; }
+}
+
+static JC2_ValueHandle host_type_intersect(JC2_VMContext, JC2_ValueHandle t1, JC2_ValueHandle t2) {
+    try { return protect(from_handle(t1) & from_handle(t2)); }
+    catch (...) { return Value::none().as_bits; }
+}
+
+static bool host_check_type(JC2_VMContext, JC2_ValueHandle v, JC2_ValueHandle t) {
+    Value val = from_handle(v);
+    Value typeObj = from_handle(t);
+    if (typeObj.isClass()) {
+        ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
+        if (val.isInstance()) {
+            ObjClass* c = val.asInstance()->classDef;
+            while (c) {
+                if (c == expectedClass) return true;
+                c = c->parent;
+            }
+        }
+        return false;
+    }
+    if (typeObj.isType()) {
+        return VM::activeVM ? VM::activeVM->checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj())) : false;
+    }
+    return false;
+}
 
 static bool host_as_bool(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).truthy(); }
 static int32_t host_as_int(JC2_VMContext, JC2_ValueHandle v) {
@@ -235,6 +310,14 @@ static JC2_ValueHandle host_list_get(JC2_VMContext, JC2_ValueHandle list, size_t
     return Value::none().as_bits;
 }
 
+static void host_list_set(JC2_VMContext, JC2_ValueHandle list, size_t index, JC2_ValueHandle val) {
+    Value l = from_handle(list);
+    if (l.isObjType(ObjType::LIST)) {
+        auto& vec = static_cast<ObjList*>(l.asObj())->vec;
+        if (index < vec.size()) vec[index] = from_handle(val);
+    }
+}
+
 static bool host_is_list(JC2_VMContext, JC2_ValueHandle v) {
     return from_handle(v).isObjType(ObjType::LIST);
 }
@@ -269,6 +352,13 @@ static bool host_dict_has(JC2_VMContext, JC2_ValueHandle dict, JC2_ValueHandle k
         return obj->keyMap.find(from_handle(key)) != obj->keyMap.end();
     }
     return false;
+}
+
+static void host_dict_remove(JC2_VMContext, JC2_ValueHandle dict, JC2_ValueHandle key) {
+    Value d = from_handle(dict);
+    if (d.isObjType(ObjType::DICT)) {
+        static_cast<ObjDict*>(d.asObj())->discard(from_handle(key));
+    }
 }
 
 static size_t host_dict_size(JC2_VMContext, JC2_ValueHandle dict) {
@@ -430,6 +520,18 @@ static size_t host_set_size(JC2_VMContext, JC2_ValueHandle set) {
         return static_cast<ObjSet*>(s.asObj())->elements.size();
     }
     return 0;
+}
+
+static JC2_ValueHandle host_set_elements(JC2_VMContext, JC2_ValueHandle set) {
+    Value s = from_handle(set);
+    if (s.isObjType(ObjType::SET)) {
+        ObjList* list = GcHeap::get().allocate<ObjList>();
+        for (const auto& val : static_cast<ObjSet*>(s.asObj())->elements) {
+            list->vec.push_back(val);
+        }
+        return protect(Value(list));
+    }
+    return Value::none().as_bits;
 }
 
 static bool host_is_set(JC2_VMContext, JC2_ValueHandle v) {
@@ -653,6 +755,7 @@ static const JC2_HostAPI host_api = {
     host_is_string,
     host_is_complex,
     host_is_instance,
+    host_is_type,
     host_as_bool,
     host_as_int,
     host_as_double,
@@ -676,11 +779,13 @@ static const JC2_HostAPI host_api = {
     host_list_push,
     host_list_size,
     host_list_get,
+    host_list_set,
     host_is_list,
     host_make_dict,
     host_dict_set,
     host_dict_get,
     host_dict_has,
+    host_dict_remove,
     host_dict_size,
     host_is_dict,
     host_dict_keys,
@@ -710,6 +815,7 @@ static const JC2_HostAPI host_api = {
     host_set_remove,
     host_set_has,
     host_set_size,
+    host_set_elements,
     host_is_set,
     host_call_function,
     host_is_function,
@@ -724,6 +830,11 @@ static const JC2_HostAPI host_api = {
     host_namespace_set,
     host_namespace_get,
     host_is_namespace,
+    host_get_type,
+    host_type_name,
+    host_type_union,
+    host_type_intersect,
+    host_check_type,
     host_set_class_parent,
     host_get_class,
     host_set_class_allocator,

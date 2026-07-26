@@ -89,3 +89,9 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
 *   **`is_native` 标志 (防幽灵拦截)**：所有通过 C++ API (`host_make_class`) 注册的类，其 `is_native` 标志默认设为 `true`。当 VM 的 `CALL` 指令尝试实例化一个类时，如果该类没有自定义分配器且没有原生的 `init` 方法，VM 会直接抛出 `TypeError: Cannot instantiate native class 'xxx' directly.`。这为 `Socket`、`FFILibrary` 等严格受控的底层资源类提供了完美的保护伞，彻底封死了幽灵实例的产生路径。
 *   **`native_allocator` (分配器钩子)**：借鉴 Python 底层的 `tp_new` 机制，Native 类可以通过 `set_allocator` 注册自定义的 C++ 构造函数。当用户执行 `ClassName(...)` 时，VM 会完全跳过默认的空实例分配和 `init` 调用，直接将参数路由给该 Allocator。
 *   **架构收益**：得益于分配器钩子，`Decimal`、`Tensor`、`Image`、`Bytes` 等核心数据类彻底摆脱了“伪装成类的同名全局工厂函数”，实现了真正的 OOP 实例化（如 `tensor.Tensor(@[1,2], @[2])`），同时保证了底层 C++ 句柄内存布局的绝对安全。
+
+## 12. C ABI 扩展与类型代数支持 (C ABI Extensions & Type Algebra Support)
+为了让 Native 扩展模块能够更深度地与 JC2 引擎交互，最近对 C ABI (`JC2_HostAPI`) 进行了全面的能力扩充：
+*   **类型系统深度集成 (Type System Integration)**：新增了 `is_type`, `get_type`, `type_name`, `type_union`, `type_intersect`, `check_type` 等底层接口。Native 模块现在可以像 JC2 脚本一样，动态获取任何值的类型对象，执行类型代数运算（如构建 `int | string` 联合类型），并对传入的参数进行严格的类型契约校验。
+*   **容器操作补全 (Container API Completion)**：新增了 `list_set`, `dict_remove`, `set_elements` 接口，填补了之前 C ABI 在容器修改和遍历上的空白，使得 C++ 扩展能够对 JC2 的 List、Dict、Set 进行完整的 CRUD 操作。
+*   **C++ 包装器升级 (C++ Wrapper Upgrades)**：在 `jc2_extension_cpp.h` 中新增了 `jc2::Type` 类，并重载了 `|` 和 `&` 运算符以支持优雅的类型代数。同时为 `List`, `Dict`, `Set` 补充了 `set`, `remove`, `elements` 等便捷方法，极大提升了 Native 模块的面向对象开发体验。

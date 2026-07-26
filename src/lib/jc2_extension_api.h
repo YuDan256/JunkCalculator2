@@ -66,6 +66,7 @@ typedef struct JC2_HostAPI {
     bool (*is_string)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_complex)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_instance)(JC2_VMContext ctx, JC2_ValueHandle v);
+    bool (*is_type)(JC2_VMContext ctx, JC2_ValueHandle v);
     
     /* --- 值提取 (Value Extraction) --- */
     bool (*as_bool)(JC2_VMContext ctx, JC2_ValueHandle v);
@@ -104,6 +105,7 @@ typedef struct JC2_HostAPI {
     void (*list_push)(JC2_VMContext ctx, JC2_ValueHandle list, JC2_ValueHandle val);
     size_t (*list_size)(JC2_VMContext ctx, JC2_ValueHandle list);
     JC2_ValueHandle (*list_get)(JC2_VMContext ctx, JC2_ValueHandle list, size_t index);
+    void (*list_set)(JC2_VMContext ctx, JC2_ValueHandle list, size_t index, JC2_ValueHandle val);
     bool (*is_list)(JC2_VMContext ctx, JC2_ValueHandle v);
     
     /* --- 字典操作 (Dict Operations) --- */
@@ -111,6 +113,7 @@ typedef struct JC2_HostAPI {
     void (*dict_set)(JC2_VMContext ctx, JC2_ValueHandle dict, JC2_ValueHandle key, JC2_ValueHandle val);
     JC2_ValueHandle (*dict_get)(JC2_VMContext ctx, JC2_ValueHandle dict, JC2_ValueHandle key);
     bool (*dict_has)(JC2_VMContext ctx, JC2_ValueHandle dict, JC2_ValueHandle key);
+    void (*dict_remove)(JC2_VMContext ctx, JC2_ValueHandle dict, JC2_ValueHandle key);
     size_t (*dict_size)(JC2_VMContext ctx, JC2_ValueHandle dict);
     bool (*is_dict)(JC2_VMContext ctx, JC2_ValueHandle v);
     
@@ -148,6 +151,7 @@ typedef struct JC2_HostAPI {
     void (*set_remove)(JC2_VMContext ctx, JC2_ValueHandle set, JC2_ValueHandle val);
     bool (*set_has)(JC2_VMContext ctx, JC2_ValueHandle set, JC2_ValueHandle val);
     size_t (*set_size)(JC2_VMContext ctx, JC2_ValueHandle set);
+    JC2_ValueHandle (*set_elements)(JC2_VMContext ctx, JC2_ValueHandle set);
     bool (*is_set)(JC2_VMContext ctx, JC2_ValueHandle v);
     
     /* --- 函数调用 (Function Calling) --- */
@@ -170,6 +174,13 @@ typedef struct JC2_HostAPI {
     void (*namespace_set)(JC2_VMContext ctx, JC2_ValueHandle ns, const char* key, JC2_ValueHandle val);
     JC2_ValueHandle (*namespace_get)(JC2_VMContext ctx, JC2_ValueHandle ns, const char* key);
     bool (*is_namespace)(JC2_VMContext ctx, JC2_ValueHandle v);
+    
+    /* --- 类型操作 (Type Operations) --- */
+    JC2_ValueHandle (*get_type)(JC2_VMContext ctx, JC2_ValueHandle v);
+    const char* (*type_name)(JC2_VMContext ctx, JC2_ValueHandle type_obj, size_t* out_len);
+    JC2_ValueHandle (*type_union)(JC2_VMContext ctx, JC2_ValueHandle t1, JC2_ValueHandle t2);
+    JC2_ValueHandle (*type_intersect)(JC2_VMContext ctx, JC2_ValueHandle t1, JC2_ValueHandle t2);
+    bool (*check_type)(JC2_VMContext ctx, JC2_ValueHandle v, JC2_ValueHandle type_obj);
     
     /* --- 高级类与实例操作 (Advanced Class & Instance Operations) --- */
     void (*set_class_parent)(JC2_VMContext ctx, JC2_ValueHandle cls, JC2_ValueHandle parent);

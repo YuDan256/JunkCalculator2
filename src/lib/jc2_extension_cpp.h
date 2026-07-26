@@ -45,6 +45,20 @@ public:
     bool is_bigint() const { return Env::api->is_bigint(Env::ctx, handle); }
     bool is_fraction() const { return Env::api->is_fraction(Env::ctx, handle); }
     bool is_namespace() const { return Env::api->is_namespace(Env::ctx, handle); }
+    bool is_type() const { return Env::api->is_type(Env::ctx, handle); }
+
+    Value get_type() const { return Value(Env::api->get_type(Env::ctx, handle)); }
+    
+    std::string type_name() const {
+        if (!is_type()) return "";
+        size_t len = 0;
+        const char* s = Env::api->type_name(Env::ctx, handle, &len);
+        return s ? std::string(s, len) : "";
+    }
+
+    bool matches_type(const Value& type_obj) const {
+        return Env::api->check_type(Env::ctx, handle, type_obj.get_handle());
+    }
 
     std::string to_string() const {
         JC2_ValueHandle str_h = Env::api->to_string(Env::ctx, handle);
@@ -73,6 +87,21 @@ public:
 
     void freeze() const {
         Env::api->freeze_object(Env::ctx, handle);
+    }
+};
+
+class Type : public Value {
+public:
+    Type(JC2_ValueHandle h) : Value(h) {}
+    // 通过内置类型的名称（如 "int", "string", "list"）直接获取全局类型对象
+    Type(const std::string& builtin_name) : Value(Env::api->get_global(Env::ctx, builtin_name.c_str())) {}
+    
+    Type operator|(const Type& other) const {
+        return Type(Env::api->type_union(Env::ctx, get_handle(), other.get_handle()));
+    }
+    
+    Type operator&(const Type& other) const {
+        return Type(Env::api->type_intersect(Env::ctx, get_handle(), other.get_handle()));
     }
 };
 
@@ -128,6 +157,10 @@ public:
     Value get(size_t index) const {
         return Value(Env::api->list_get(Env::ctx, get_handle(), index));
     }
+    
+    void set(size_t index, const Value& val) {
+        Env::api->list_set(Env::ctx, get_handle(), index, val.get_handle());
+    }
 };
 
 class Dict : public Value {
@@ -145,6 +178,10 @@ public:
     
     bool has(const Value& key) const {
         return Env::api->dict_has(Env::ctx, get_handle(), key.get_handle());
+    }
+    
+    void remove(const Value& key) {
+        Env::api->dict_remove(Env::ctx, get_handle(), key.get_handle());
     }
     
     size_t size() const {
@@ -174,6 +211,10 @@ public:
     void remove(const Value& val) { Env::api->set_remove(Env::ctx, get_handle(), val.get_handle()); }
     bool has(const Value& val) const { return Env::api->set_has(Env::ctx, get_handle(), val.get_handle()); }
     size_t size() const { return Env::api->set_size(Env::ctx, get_handle()); }
+    
+    List elements() const {
+        return List(Env::api->set_elements(Env::ctx, get_handle()));
+    }
 };
 
 class RealMatrix : public Value {

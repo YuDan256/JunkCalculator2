@@ -396,6 +396,7 @@ namespace jc {
         bool isClass() const { return isObjType(ObjType::CLASS); }
         bool isComplex() const { return isObjType(ObjType::COMPLEX); }
         bool isSymbolic() const { return isObjType(ObjType::SYMBOLIC); }
+        bool isType() const { return isObjType(ObjType::TYPE_DEF); }
 
         SymExpr asSymbolic() const {
             if (isSymbolic()) return static_cast<ObjSym*>(asObj())->sym;
@@ -553,6 +554,7 @@ namespace jc {
 
         std::string toString() const {
             if (isString()) return static_cast<ObjString*>(asObj())->str;
+            if (isType()) return static_cast<ObjTypeDef*>(asObj())->name();
             if (isInstance()) {
                 try {
                     auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
@@ -571,6 +573,7 @@ namespace jc {
 
         std::string toRepr() const {
             if (isString()) return "\"" + static_cast<ObjString*>(asObj())->str + "\"";
+            if (isType()) return "<type '" + static_cast<ObjTypeDef*>(asObj())->name() + "'>";
             if (isInstance()) {
                 try {
                     auto [foundRepl, replRes] = invokeDunder(asInstance(), "__repr__");
@@ -628,6 +631,70 @@ namespace jc {
     struct NamespaceField {
         ObjUpVal* upval = nullptr;
         bool isConst = false;
+    };
+
+    struct ObjTypeDef : public Obj {
+        std::vector<std::variant<BuiltinType, ObjClass*>> types;
+        ObjTypeDef() { type = ObjType::TYPE_DEF; }
+        
+        void normalize() {
+            std::sort(types.begin(), types.end(), [](const auto& a, const auto& b) {
+                if (a.index() != b.index()) return a.index() < b.index();
+                if (std::holds_alternative<BuiltinType>(a)) return std::get<BuiltinType>(a) < std::get<BuiltinType>(b);
+                return std::get<ObjClass*>(a) < std::get<ObjClass*>(b);
+            });
+            types.erase(std::unique(types.begin(), types.end()), types.end());
+        }
+
+        std::string name() const {
+            if (types.empty()) return "Never";
+            std::string res = "";
+            for (size_t i = 0; i < types.size(); ++i) {
+                if (i > 0) res += " | ";
+                if (std::holds_alternative<BuiltinType>(types[i])) {
+                    switch (std::get<BuiltinType>(types[i])) {
+                        case BuiltinType::ANY: res += "any"; break;
+                        case BuiltinType::INT: res += "int"; break;
+                        case BuiltinType::FLOAT: res += "double"; break;
+                        case BuiltinType::REAL: res += "real"; break;
+                        case BuiltinType::NUMBER: res += "number"; break;
+                        case BuiltinType::WHOLE: res += "whole"; break;
+                        case BuiltinType::EXACT: res += "exact"; break;
+                        case BuiltinType::STRING: res += "string"; break;
+                        case BuiltinType::BOOL: res += "bool"; break;
+                        case BuiltinType::BINARY: res += "binary"; break;
+                        case BuiltinType::NONE_TYPE: res += "none"; break;
+                        case BuiltinType::LIST: res += "list"; break;
+                        case BuiltinType::DICT: res += "dict"; break;
+                        case BuiltinType::SET: res += "set"; break;
+                        case BuiltinType::FRACTION: res += "fraction"; break;
+                        case BuiltinType::COMPLEX: res += "complex"; break;
+                        case BuiltinType::BASENUM: res += "basenum"; break;
+                        case BuiltinType::SYMBOLIC: res += "symbolic"; break;
+                        case BuiltinType::REALMAT: res += "realmat"; break;
+                        case BuiltinType::COMPLEXMAT: res += "complexmat"; break;
+                        case BuiltinType::STRINGMAT: res += "stringmat"; break;
+                        case BuiltinType::MATRIX: res += "matrix"; break;
+                        case BuiltinType::FUNC: res += "function"; break;
+                        case BuiltinType::CLASS: res += "class"; break;
+                        case BuiltinType::INSTANCE: res += "instance"; break;
+                        case BuiltinType::NAMESPACE: res += "namespace"; break;
+                        case BuiltinType::ITERABLE: res += "iterable"; break;
+                        case BuiltinType::CALLABLE: res += "callable"; break;
+                        case BuiltinType::INDEXABLE: res += "indexable"; break;
+                        case BuiltinType::HASHABLE: res += "hashable"; break;
+                        case BuiltinType::NUMERIC: res += "numeric"; break;
+                        case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
+                        case BuiltinType::TYPE_DEF: res += "type"; break;
+                        default: res += "unknown"; break;
+                    }
+                } else {
+                    ObjClass* cls = std::get<ObjClass*>(types[i]);
+                    res += cls->name.empty() ? "<anonymous class>" : cls->name;
+                }
+            }
+            return res;
+        }
     };
 
     struct ObjNamespace : public Obj {
@@ -1119,6 +1186,28 @@ namespace jc {
     }
 
     inline Value operator&(const Value& lhs, const Value& rhs) {
+        auto promoteToType = [](const Value& v) -> ObjTypeDef* {
+            if (v.isType()) return static_cast<ObjTypeDef*>(v.asObj());
+            if (v.isClass()) {
+                ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+                td->types.push_back(static_cast<ObjClass*>(v.asObj()));
+                return td;
+            }
+            return nullptr;
+        };
+        ObjTypeDef* lType = promoteToType(lhs);
+        ObjTypeDef* rType = promoteToType(rhs);
+        if (lType && rType) {
+            ObjTypeDef* res = GcHeap::get().allocate<ObjTypeDef>();
+            for (const auto& t : lType->types) {
+                if (std::find(rType->types.begin(), rType->types.end(), t) != rType->types.end()) {
+                    res->types.push_back(t);
+                }
+            }
+            res->normalize();
+            return Value(res);
+        }
+
         if (lhs.isObjType(ObjType::SET) && rhs.isObjType(ObjType::SET)) {
             ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
             ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
@@ -1196,6 +1285,25 @@ namespace jc {
     }
 
     inline Value operator|(const Value& lhs, const Value& rhs) {
+        auto promoteToType = [](const Value& v) -> ObjTypeDef* {
+            if (v.isType()) return static_cast<ObjTypeDef*>(v.asObj());
+            if (v.isClass()) {
+                ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+                td->types.push_back(static_cast<ObjClass*>(v.asObj()));
+                return td;
+            }
+            return nullptr;
+        };
+        ObjTypeDef* lType = promoteToType(lhs);
+        ObjTypeDef* rType = promoteToType(rhs);
+        if (lType && rType) {
+            ObjTypeDef* res = GcHeap::get().allocate<ObjTypeDef>();
+            res->types = lType->types;
+            res->types.insert(res->types.end(), rType->types.begin(), rType->types.end());
+            res->normalize();
+            return Value(res);
+        }
+
         if (lhs.isObjType(ObjType::SET) && rhs.isObjType(ObjType::SET)) {
             ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
             ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
@@ -1350,6 +1458,7 @@ namespace jc {
                 std::string n = static_cast<ObjNamespace*>(obj)->name;
                 return n.empty() ? "\"<anonymous namespace>\"" : "\"<namespace " + n + ">\"";
             }
+            case ObjType::TYPE_DEF: return "<type '" + static_cast<ObjTypeDef*>(obj)->name() + "'>";
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
                 RecursionGuard guard(visited, list);
@@ -1493,6 +1602,7 @@ namespace jc {
             case ObjType::NAMESPACE:
             case ObjType::SUPER_PROXY:
             case ObjType::UPVALUE:
+            case ObjType::TYPE_DEF:
                 return true;
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
@@ -1619,6 +1729,9 @@ namespace jc {
         if (lhs.isUninit() || rhs.isUninit()) return false;
 
         // 同类型快速通道
+        if (lhs.isType() && rhs.isString()) return static_cast<ObjTypeDef*>(lhs.asObj())->name() == rhs.asString();
+        if (rhs.isType() && lhs.isString()) return static_cast<ObjTypeDef*>(rhs.asObj())->name() == lhs.asString();
+
         if (lhs.isObj() && rhs.isObj() && lhs.asObj()->type == rhs.asObj()->type) {
             Obj* lobj = lhs.asObj();
             Obj* robj = rhs.asObj();
@@ -1724,6 +1837,15 @@ namespace jc {
                 case ObjType::NAMESPACE:
                 case ObjType::UPVALUE:
                     return false; // Pointer equality already checked
+                case ObjType::TYPE_DEF: {
+                    auto a = static_cast<ObjTypeDef*>(lobj);
+                    auto b = static_cast<ObjTypeDef*>(robj);
+                    if (a->types.size() != b->types.size()) return false;
+                    for (size_t i = 0; i < a->types.size(); ++i) {
+                        if (a->types[i] != b->types[i]) return false;
+                    }
+                    return true;
+                }
                 case ObjType::SUPER_PROXY: {
                     auto sp1 = static_cast<ObjSuper*>(lobj);
                     auto sp2 = static_cast<ObjSuper*>(robj);
@@ -1854,6 +1976,7 @@ namespace jc {
             case ObjType::SYMBOLIC: return "symbolic";
             case ObjType::NAMESPACE: return "namespace";
             case ObjType::UPVALUE: return "upvalue";
+            case ObjType::TYPE_DEF: return "type";
         }
         return "unknown";
     }
@@ -2190,6 +2313,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             break;
         }
         case ObjType::UPVALUE: os << "<upvalue>"; break;
+        case ObjType::TYPE_DEF: os << "<type '" << static_cast<ObjTypeDef*>(obj)->name() << "'>"; break;
         case ObjType::LIST: {
             ObjList* list = static_cast<ObjList*>(obj);
             RecursionGuard guard(visited, list);
@@ -2374,6 +2498,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             return seed;
         }
         case ObjType::SYMBOLIC: return sipHash24String(static_cast<ObjSym*>(obj)->sym.toString());
+        case ObjType::TYPE_DEF: return sipHash24String(static_cast<ObjTypeDef*>(obj)->name());
         case ObjType::LIST: {
             auto l = static_cast<ObjList*>(obj);
             if (!l->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
@@ -2522,6 +2647,15 @@ inline void GcHeap::markObj(Obj* obj) {
         case ObjType::UPVALUE: {
             auto uv = static_cast<ObjUpVal*>(obj);
             markValue(uv->closed);
+            break;
+        }
+        case ObjType::TYPE_DEF: {
+            auto td = static_cast<ObjTypeDef*>(obj);
+            for (auto& t : td->types) {
+                if (std::holds_alternative<ObjClass*>(t)) {
+                    markObj(std::get<ObjClass*>(t));
+                }
+            }
             break;
         }
         default: break;

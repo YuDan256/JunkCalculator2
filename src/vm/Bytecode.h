@@ -304,15 +304,6 @@ constexpr int ESCAPE_KBIT_CONST = 0xFF;  // K-Bit 常量的转义标志 (255)
 // ============================================================================
 // 寄存器机 Chunk (存储字节码与元数据)
 // ============================================================================
-enum class BuiltinType : int8_t {
-    UNKNOWN = -1,
-    ANY, INT, FLOAT, REAL, NUMBER, WHOLE, EXACT, STRING, BOOL, BINARY, NONE_TYPE,
-    LIST, DICT, SET, FRACTION, COMPLEX, BASENUM, SYMBOLIC,
-    REALMAT, COMPLEXMAT, STRINGMAT, MATRIX, FUNC, CLASS, INSTANCE, NAMESPACE,
-    ITERABLE, CALLABLE, INDEXABLE, HASHABLE, NUMERIC,
-    CUSTOM_CLASS
-};
-
 struct InlineCache {
     uint32_t nameIdx = 0;
     int cachedGlobalSlot = -1;

@@ -18,7 +18,16 @@ namespace jc {
         REAL_MATRIX, COMPLEX_MATRIX, STRING_MATRIX,
         LIST, DICT, SET,
         CLOSURE, CLASS, INSTANCE, SUPER_PROXY, SYMBOLIC, NAMESPACE,
-        UPVALUE // ★ 新增
+        UPVALUE, TYPE_DEF
+    };
+
+    enum class BuiltinType : int8_t {
+        UNKNOWN = -1,
+        ANY, INT, FLOAT, REAL, NUMBER, WHOLE, EXACT, STRING, BOOL, BINARY, NONE_TYPE,
+        LIST, DICT, SET, FRACTION, COMPLEX, BASENUM, SYMBOLIC,
+        REALMAT, COMPLEXMAT, STRINGMAT, MATRIX, FUNC, CLASS, INSTANCE, NAMESPACE,
+        ITERABLE, CALLABLE, INDEXABLE, HASHABLE, NUMERIC,
+        CUSTOM_CLASS, TYPE_DEF
     };
 
     struct Obj {
@@ -72,7 +81,8 @@ namespace jc {
                                        obj->type == ObjType::SET || obj->type == ObjType::CLOSURE || 
                                        obj->type == ObjType::CLASS || obj->type == ObjType::INSTANCE || 
                                        obj->type == ObjType::SUPER_PROXY || obj->type == ObjType::NAMESPACE || 
-                                       obj->type == ObjType::UPVALUE || obj->type == ObjType::STRING;
+                                       obj->type == ObjType::UPVALUE || obj->type == ObjType::STRING ||
+                                       obj->type == ObjType::TYPE_DEF;
             
             if (isContainerOrString) return;
 
@@ -101,7 +111,7 @@ namespace jc {
                                    curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
                                    curr->type == ObjType::CLASS || curr->type == ObjType::INSTANCE || 
                                    curr->type == ObjType::SUPER_PROXY || curr->type == ObjType::NAMESPACE || 
-                                   curr->type == ObjType::UPVALUE;
+                                   curr->type == ObjType::UPVALUE || curr->type == ObjType::TYPE_DEF;
                 
                 // ★ 核心修复：对于非容器类型（如 BigInt, Matrix, Symbolic 等），它们绝不可能产生循环引用。
                 // 因此，只要 refCount > 0，就说明 C++ 栈上或某处有 Value 正在持有它，绝对不能回收！
@@ -132,7 +142,7 @@ namespace jc {
                 if (curr->type == ObjType::LIST || curr->type == ObjType::DICT || 
                     curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
                     curr->type == ObjType::INSTANCE || curr->type == ObjType::NAMESPACE || 
-                    curr->type == ObjType::UPVALUE) {
+                    curr->type == ObjType::UPVALUE || curr->type == ObjType::TYPE_DEF) {
                     curr->clearTotal();
                 }
                 curr = curr->next;

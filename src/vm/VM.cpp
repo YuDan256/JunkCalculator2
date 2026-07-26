@@ -254,6 +254,62 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
         }
     }
 
+    if (callee.isType()) {
+        ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
+        if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
+            BuiltinType bt = std::get<BuiltinType>(td->types[0]);
+            if (bt == BuiltinType::TYPE_DEF) {
+                if (argc != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                Value v = registers[currentFrame->registerBase + calleeReg + 1];
+                ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                if (v.isType()) {
+                    resTd->types.push_back(BuiltinType::TYPE_DEF);
+                } else if (v.isClass()) {
+                    resTd->types.push_back(BuiltinType::CLASS);
+                } else if (v.isInstance()) {
+                    resTd->types.push_back(v.asInstance()->classDef);
+                } else {
+                    BuiltinType vbt = BuiltinType::ANY;
+                    if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
+                    else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                    else if (v.isString()) vbt = BuiltinType::STRING;
+                    else if (v.isBool()) vbt = BuiltinType::BOOL;
+                    else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
+                    else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
+                    else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
+                    else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
+                    else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
+                    else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
+                    else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
+                    else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
+                    else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
+                    else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
+                    else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
+                    else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
+                    else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+                    resTd->types.push_back(vbt);
+                }
+                resTd->normalize();
+                registers[currentFrame->registerBase + dstReg] = Value(resTd);
+                return;
+            } else {
+                std::string name = td->name();
+                auto nIt = nativeBuiltins.find(name);
+                if (nIt != nativeBuiltins.end()) {
+                    std::vector<Value> args;
+                    args.reserve(argc);
+                    for (int i = 0; i < argc; ++i) {
+                        args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
+                    }
+                    pendingCallRefs.clear();
+                    registers[currentFrame->registerBase + dstReg] = nIt->second(args);
+                    return;
+                }
+            }
+        }
+        throw std::runtime_error("TypeError: This type object is not callable.");
+    }
+
     if (callee.isFunctionClosure()) {
         auto closure = callee.asFunction();
         if (closure->isBytecode()) {
@@ -694,6 +750,7 @@ BuiltinType parseBuiltinType(const std::string& typeStr) {
     if (typeStr == "indexable") return BuiltinType::INDEXABLE;
     if (typeStr == "hashable") return BuiltinType::HASHABLE;
     if (typeStr == "numeric") return BuiltinType::NUMERIC;
+    if (typeStr == "type") return BuiltinType::TYPE_DEF;
     return BuiltinType::CUSTOM_CLASS;
 }
 
@@ -940,6 +997,7 @@ bool VM::checkValueType(const Value& val, InlineCache& ic, const std::string& ty
             }
             return false;
         }
+        case BuiltinType::TYPE_DEF: return val.isType();
         case BuiltinType::CUSTOM_CLASS:
         default:
             break;
@@ -2585,6 +2643,44 @@ VM::VM() {
             }
         }
     };
+
+    auto makeType = [](BuiltinType bt) {
+        ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+        td->types.push_back(bt);
+        return Value(td);
+    };
+    builtinValues["any"] = makeType(BuiltinType::ANY);
+    builtinValues["int"] = makeType(BuiltinType::INT);
+    builtinValues["double"] = makeType(BuiltinType::FLOAT);
+    builtinValues["real"] = makeType(BuiltinType::REAL);
+    builtinValues["number"] = makeType(BuiltinType::NUMBER);
+    builtinValues["whole"] = makeType(BuiltinType::WHOLE);
+    builtinValues["exact"] = makeType(BuiltinType::EXACT);
+    builtinValues["string"] = makeType(BuiltinType::STRING);
+    builtinValues["bool"] = makeType(BuiltinType::BOOL);
+    builtinValues["binary"] = makeType(BuiltinType::BINARY);
+    builtinValues["none"] = makeType(BuiltinType::NONE_TYPE);
+    builtinValues["list"] = makeType(BuiltinType::LIST);
+    builtinValues["dict"] = makeType(BuiltinType::DICT);
+    builtinValues["set"] = makeType(BuiltinType::SET);
+    builtinValues["fraction"] = makeType(BuiltinType::FRACTION);
+    builtinValues["complex"] = makeType(BuiltinType::COMPLEX);
+    builtinValues["basenum"] = makeType(BuiltinType::BASENUM);
+    builtinValues["symbolic"] = makeType(BuiltinType::SYMBOLIC);
+    builtinValues["realmat"] = makeType(BuiltinType::REALMAT);
+    builtinValues["complexmat"] = makeType(BuiltinType::COMPLEXMAT);
+    builtinValues["stringmat"] = makeType(BuiltinType::STRINGMAT);
+    builtinValues["matrix"] = makeType(BuiltinType::MATRIX);
+    builtinValues["function"] = makeType(BuiltinType::FUNC);
+    builtinValues["class"] = makeType(BuiltinType::CLASS);
+    builtinValues["instance"] = makeType(BuiltinType::INSTANCE);
+    builtinValues["namespace"] = makeType(BuiltinType::NAMESPACE);
+    builtinValues["iterable"] = makeType(BuiltinType::ITERABLE);
+    builtinValues["callable"] = makeType(BuiltinType::CALLABLE);
+    builtinValues["indexable"] = makeType(BuiltinType::INDEXABLE);
+    builtinValues["hashable"] = makeType(BuiltinType::HASHABLE);
+    builtinValues["numeric"] = makeType(BuiltinType::NUMERIC);
+    builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
 
     nativeBuiltins["__dbg_reg"] = [this](const std::vector<Value>& args) -> Value {
         if (!currentDebuggerFrame) throw std::runtime_error("Debugger not active.");

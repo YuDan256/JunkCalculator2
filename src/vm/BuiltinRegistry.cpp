@@ -3610,7 +3610,37 @@ void BuiltinRegistry::registerFormatType() {
         });
 
     reg("type", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].typeName());
+        Value v = args[0];
+        ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+        if (v.isType()) {
+            td->types.push_back(BuiltinType::TYPE_DEF);
+        } else if (v.isClass()) {
+            td->types.push_back(BuiltinType::CLASS);
+        } else if (v.isInstance()) {
+            td->types.push_back(v.asInstance()->classDef);
+        } else {
+            BuiltinType bt = BuiltinType::ANY;
+            if (v.isInt32() || v.isBigInt()) bt = BuiltinType::INT;
+            else if (v.isDouble()) bt = BuiltinType::FLOAT;
+            else if (v.isString()) bt = BuiltinType::STRING;
+            else if (v.isBool()) bt = BuiltinType::BOOL;
+            else if (v.isNone()) bt = BuiltinType::NONE_TYPE;
+            else if (v.isObjType(ObjType::LIST)) bt = BuiltinType::LIST;
+            else if (v.isObjType(ObjType::DICT)) bt = BuiltinType::DICT;
+            else if (v.isObjType(ObjType::SET)) bt = BuiltinType::SET;
+            else if (v.isObjType(ObjType::FRACTION)) bt = BuiltinType::FRACTION;
+            else if (v.isObjType(ObjType::COMPLEX)) bt = BuiltinType::COMPLEX;
+            else if (v.isObjType(ObjType::BASENUM)) bt = BuiltinType::BASENUM;
+            else if (v.isObjType(ObjType::SYMBOLIC)) bt = BuiltinType::SYMBOLIC;
+            else if (v.isObjType(ObjType::REAL_MATRIX)) bt = BuiltinType::REALMAT;
+            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) bt = BuiltinType::COMPLEXMAT;
+            else if (v.isObjType(ObjType::STRING_MATRIX)) bt = BuiltinType::STRINGMAT;
+            else if (v.isFunctionClosure()) bt = BuiltinType::FUNC;
+            else if (v.isObjType(ObjType::NAMESPACE)) bt = BuiltinType::NAMESPACE;
+            td->types.push_back(bt);
+        }
+        td->normalize();
+        return Value(td);
         });
 }
 
@@ -4453,6 +4483,50 @@ void BuiltinRegistry::registerSystemShell() {
             helpers::setGlobalCallback("I", Value(Complex(0.0, 1.0)));
         }
         std::cout << "System constants restored: PI, E, i, I" << std::endl;
+        return Value::none();
+        });
+
+    reg("resetType", { 0 }, [](const std::vector<Value>&) -> Value {
+        if (VM::activeVM) {
+            auto makeType = [](BuiltinType bt) {
+                ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+                td->types.push_back(bt);
+                return Value(td);
+            };
+            VM::activeVM->setGlobal("any", makeType(BuiltinType::ANY));
+            VM::activeVM->setGlobal("int", makeType(BuiltinType::INT));
+            VM::activeVM->setGlobal("double", makeType(BuiltinType::FLOAT));
+            VM::activeVM->setGlobal("real", makeType(BuiltinType::REAL));
+            VM::activeVM->setGlobal("number", makeType(BuiltinType::NUMBER));
+            VM::activeVM->setGlobal("whole", makeType(BuiltinType::WHOLE));
+            VM::activeVM->setGlobal("exact", makeType(BuiltinType::EXACT));
+            VM::activeVM->setGlobal("string", makeType(BuiltinType::STRING));
+            VM::activeVM->setGlobal("bool", makeType(BuiltinType::BOOL));
+            VM::activeVM->setGlobal("binary", makeType(BuiltinType::BINARY));
+            VM::activeVM->setGlobal("none", makeType(BuiltinType::NONE_TYPE));
+            VM::activeVM->setGlobal("list", makeType(BuiltinType::LIST));
+            VM::activeVM->setGlobal("dict", makeType(BuiltinType::DICT));
+            VM::activeVM->setGlobal("set", makeType(BuiltinType::SET));
+            VM::activeVM->setGlobal("fraction", makeType(BuiltinType::FRACTION));
+            VM::activeVM->setGlobal("complex", makeType(BuiltinType::COMPLEX));
+            VM::activeVM->setGlobal("basenum", makeType(BuiltinType::BASENUM));
+            VM::activeVM->setGlobal("symbolic", makeType(BuiltinType::SYMBOLIC));
+            VM::activeVM->setGlobal("realmat", makeType(BuiltinType::REALMAT));
+            VM::activeVM->setGlobal("complexmat", makeType(BuiltinType::COMPLEXMAT));
+            VM::activeVM->setGlobal("stringmat", makeType(BuiltinType::STRINGMAT));
+            VM::activeVM->setGlobal("matrix", makeType(BuiltinType::MATRIX));
+            VM::activeVM->setGlobal("function", makeType(BuiltinType::FUNC));
+            VM::activeVM->setGlobal("class", makeType(BuiltinType::CLASS));
+            VM::activeVM->setGlobal("instance", makeType(BuiltinType::INSTANCE));
+            VM::activeVM->setGlobal("namespace", makeType(BuiltinType::NAMESPACE));
+            VM::activeVM->setGlobal("iterable", makeType(BuiltinType::ITERABLE));
+            VM::activeVM->setGlobal("callable", makeType(BuiltinType::CALLABLE));
+            VM::activeVM->setGlobal("indexable", makeType(BuiltinType::INDEXABLE));
+            VM::activeVM->setGlobal("hashable", makeType(BuiltinType::HASHABLE));
+            VM::activeVM->setGlobal("numeric", makeType(BuiltinType::NUMERIC));
+            VM::activeVM->setGlobal("type", makeType(BuiltinType::TYPE_DEF));
+        }
+        std::cout << "System types restored." << std::endl;
         return Value::none();
         });
 

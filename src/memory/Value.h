@@ -89,6 +89,7 @@ namespace jc {
     struct ObjNamespace;
     struct ObjUpVal;
     struct NamespaceField;
+    struct ObjTypeDef;
 
     inline std::unordered_map<std::string, ObjString*> g_internedStrings;
     ObjString* internString(const std::string& str);
@@ -155,6 +156,71 @@ namespace jc {
             type = ObjType::CLASS; 
         }
     };
+
+    struct ObjTypeDef : public Obj {
+        std::vector<std::variant<BuiltinType, ObjClass*>> types;
+        ObjTypeDef() { type = ObjType::TYPE_DEF; }
+        
+        void normalize() {
+            std::sort(types.begin(), types.end(), [](const auto& a, const auto& b) {
+                if (a.index() != b.index()) return a.index() < b.index();
+                if (std::holds_alternative<BuiltinType>(a)) return std::get<BuiltinType>(a) < std::get<BuiltinType>(b);
+                return std::get<ObjClass*>(a) < std::get<ObjClass*>(b);
+            });
+            types.erase(std::unique(types.begin(), types.end()), types.end());
+        }
+
+        std::string name() const {
+            if (types.empty()) return "Never";
+            std::string res = "";
+            for (size_t i = 0; i < types.size(); ++i) {
+                if (i > 0) res += " | ";
+                if (std::holds_alternative<BuiltinType>(types[i])) {
+                    switch (std::get<BuiltinType>(types[i])) {
+                        case BuiltinType::ANY: res += "any"; break;
+                        case BuiltinType::INT: res += "int"; break;
+                        case BuiltinType::FLOAT: res += "double"; break;
+                        case BuiltinType::REAL: res += "real"; break;
+                        case BuiltinType::NUMBER: res += "number"; break;
+                        case BuiltinType::WHOLE: res += "whole"; break;
+                        case BuiltinType::EXACT: res += "exact"; break;
+                        case BuiltinType::STRING: res += "string"; break;
+                        case BuiltinType::BOOL: res += "bool"; break;
+                        case BuiltinType::BINARY: res += "binary"; break;
+                        case BuiltinType::NONE_TYPE: res += "none"; break;
+                        case BuiltinType::LIST: res += "list"; break;
+                        case BuiltinType::DICT: res += "dict"; break;
+                        case BuiltinType::SET: res += "set"; break;
+                        case BuiltinType::FRACTION: res += "fraction"; break;
+                        case BuiltinType::COMPLEX: res += "complex"; break;
+                        case BuiltinType::BASENUM: res += "basenum"; break;
+                        case BuiltinType::SYMBOLIC: res += "symbolic"; break;
+                        case BuiltinType::REALMAT: res += "realmat"; break;
+                        case BuiltinType::COMPLEXMAT: res += "complexmat"; break;
+                        case BuiltinType::STRINGMAT: res += "stringmat"; break;
+                        case BuiltinType::MATRIX: res += "matrix"; break;
+                        case BuiltinType::FUNC: res += "function"; break;
+                        case BuiltinType::CLASS: res += "class"; break;
+                        case BuiltinType::INSTANCE: res += "instance"; break;
+                        case BuiltinType::NAMESPACE: res += "namespace"; break;
+                        case BuiltinType::ITERABLE: res += "iterable"; break;
+                        case BuiltinType::CALLABLE: res += "callable"; break;
+                        case BuiltinType::INDEXABLE: res += "indexable"; break;
+                        case BuiltinType::HASHABLE: res += "hashable"; break;
+                        case BuiltinType::NUMERIC: res += "numeric"; break;
+                        case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
+                        case BuiltinType::TYPE_DEF: res += "type"; break;
+                        default: res += "unknown"; break;
+                    }
+                } else {
+                    ObjClass* cls = std::get<ObjClass*>(types[i]);
+                    res += cls->name.empty() ? "<anonymous class>" : cls->name;
+                }
+            }
+            return res;
+        }
+    };
+
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
         ObjDict* fields = nullptr;
@@ -631,70 +697,6 @@ namespace jc {
     struct NamespaceField {
         ObjUpVal* upval = nullptr;
         bool isConst = false;
-    };
-
-    struct ObjTypeDef : public Obj {
-        std::vector<std::variant<BuiltinType, ObjClass*>> types;
-        ObjTypeDef() { type = ObjType::TYPE_DEF; }
-        
-        void normalize() {
-            std::sort(types.begin(), types.end(), [](const auto& a, const auto& b) {
-                if (a.index() != b.index()) return a.index() < b.index();
-                if (std::holds_alternative<BuiltinType>(a)) return std::get<BuiltinType>(a) < std::get<BuiltinType>(b);
-                return std::get<ObjClass*>(a) < std::get<ObjClass*>(b);
-            });
-            types.erase(std::unique(types.begin(), types.end()), types.end());
-        }
-
-        std::string name() const {
-            if (types.empty()) return "Never";
-            std::string res = "";
-            for (size_t i = 0; i < types.size(); ++i) {
-                if (i > 0) res += " | ";
-                if (std::holds_alternative<BuiltinType>(types[i])) {
-                    switch (std::get<BuiltinType>(types[i])) {
-                        case BuiltinType::ANY: res += "any"; break;
-                        case BuiltinType::INT: res += "int"; break;
-                        case BuiltinType::FLOAT: res += "double"; break;
-                        case BuiltinType::REAL: res += "real"; break;
-                        case BuiltinType::NUMBER: res += "number"; break;
-                        case BuiltinType::WHOLE: res += "whole"; break;
-                        case BuiltinType::EXACT: res += "exact"; break;
-                        case BuiltinType::STRING: res += "string"; break;
-                        case BuiltinType::BOOL: res += "bool"; break;
-                        case BuiltinType::BINARY: res += "binary"; break;
-                        case BuiltinType::NONE_TYPE: res += "none"; break;
-                        case BuiltinType::LIST: res += "list"; break;
-                        case BuiltinType::DICT: res += "dict"; break;
-                        case BuiltinType::SET: res += "set"; break;
-                        case BuiltinType::FRACTION: res += "fraction"; break;
-                        case BuiltinType::COMPLEX: res += "complex"; break;
-                        case BuiltinType::BASENUM: res += "basenum"; break;
-                        case BuiltinType::SYMBOLIC: res += "symbolic"; break;
-                        case BuiltinType::REALMAT: res += "realmat"; break;
-                        case BuiltinType::COMPLEXMAT: res += "complexmat"; break;
-                        case BuiltinType::STRINGMAT: res += "stringmat"; break;
-                        case BuiltinType::MATRIX: res += "matrix"; break;
-                        case BuiltinType::FUNC: res += "function"; break;
-                        case BuiltinType::CLASS: res += "class"; break;
-                        case BuiltinType::INSTANCE: res += "instance"; break;
-                        case BuiltinType::NAMESPACE: res += "namespace"; break;
-                        case BuiltinType::ITERABLE: res += "iterable"; break;
-                        case BuiltinType::CALLABLE: res += "callable"; break;
-                        case BuiltinType::INDEXABLE: res += "indexable"; break;
-                        case BuiltinType::HASHABLE: res += "hashable"; break;
-                        case BuiltinType::NUMERIC: res += "numeric"; break;
-                        case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
-                        case BuiltinType::TYPE_DEF: res += "type"; break;
-                        default: res += "unknown"; break;
-                    }
-                } else {
-                    ObjClass* cls = std::get<ObjClass*>(types[i]);
-                    res += cls->name.empty() ? "<anonymous class>" : cls->name;
-                }
-            }
-            return res;
-        }
     };
 
     struct ObjNamespace : public Obj {

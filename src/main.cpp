@@ -924,7 +924,9 @@ int main(int argc, char* argv[]) {
                           << "-----------------------------------------------------------\n"
                           << jc::col(jc::Ansi::WHITE) 
                           << "  A high-performance, zero-dependency mathematical scripting\n"
-                          << "  language and virtual machine, built entirely from scratch.\n\n"
+                          << "  language and virtual machine, built entirely from scratch.\n"
+                          << "  GitHub: " << jc::col(jc::Ansi::BRIGHT_BLUE) << "https://github.com/YuDan256/JunkCalculator2\n\n"
+                          << jc::col(jc::Ansi::WHITE) 
                           << "  Sister Project:\n"
                           << jc::col(jc::Ansi::BRIGHT_GREEN) 
                           << "  ✦ SCORIVM - A compiled language with pure Latin keywords.\n"

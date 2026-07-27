@@ -1686,7 +1686,18 @@ void BuiltinRegistry::registerSystemUtils() {
             std::string lexeme = inst->fields->elements[inst->fields->keyMap[Value("lexeme")]].second.asString();
             int line = inst->fields->elements[inst->fields->keyMap[Value("line")]].second.asInt32();
             int pos = inst->fields->elements[inst->fields->keyMap[Value("position")]].second.asInt32();
-            tokens.emplace_back(stringToTokenType(typeStr), lexeme, pos, line);
+            
+            TokenType tType = stringToTokenType(typeStr);
+            if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
+                tType != TokenType::NEWLINE && tType != TokenType::END_OF_FILE && tType != TokenType::ERROR) {
+                jc::Lexer testLexer(lexeme, "");
+                auto testTokens = testLexer.tokenize();
+                if (testTokens.size() != 2 || testTokens[0].type != tType) {
+                    throw std::runtime_error("TypeError: Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
+                }
+            }
+            
+            tokens.emplace_back(tType, lexeme, pos, line);
         }
         tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
         
@@ -1707,7 +1718,18 @@ void BuiltinRegistry::registerSystemUtils() {
             std::string lexeme = inst->fields->elements[inst->fields->keyMap[Value("lexeme")]].second.asString();
             int line = inst->fields->elements[inst->fields->keyMap[Value("line")]].second.asInt32();
             int pos = inst->fields->elements[inst->fields->keyMap[Value("position")]].second.asInt32();
-            tokens.emplace_back(stringToTokenType(typeStr), lexeme, pos, line);
+            
+            TokenType tType = stringToTokenType(typeStr);
+            if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
+                tType != TokenType::NEWLINE && tType != TokenType::END_OF_FILE && tType != TokenType::ERROR) {
+                jc::Lexer testLexer(lexeme, "");
+                auto testTokens = testLexer.tokenize();
+                if (testTokens.size() != 2 || testTokens[0].type != tType) {
+                    throw std::runtime_error("TypeError: Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
+                }
+            }
+            
+            tokens.emplace_back(tType, lexeme, pos, line);
         }
         tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
         

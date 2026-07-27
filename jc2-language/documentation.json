@@ -1326,6 +1326,12 @@
     "gensym": {
       "signature": "gensym([prefix])"
     },
+    "parseExpr": {
+      "signature": "parseExpr(tokens)"
+    },
+    "parseStmt": {
+      "signature": "parseStmt(tokens)"
+    },
     "ln": {
       "signature": "ln(x) / ln(base, x)"
     },
@@ -1453,6 +1459,9 @@
     },
     "macro": {
       "signature": "macro name(param) = { body }"
+    },
+    "syntax": {
+      "signature": "syntax name(tokens) = { body }"
     },
     "quote": {
       "signature": "quote { body }  |  quote expr"

@@ -95,7 +95,7 @@ function activate(context) {
             const keywords = [
                 'if', 'else', 'while', 'for', 'in', 'is', 'break', 'continue', 'return',
                 'switch', 'case', 'default', 'throw', 'try', 'catch', 'match', 'defer',
-                'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'quote', 'enum',
+                'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'syntax', 'quote', 'enum',
                 'true', 'false', 'none', 'PI', 'E', 'ANS', 'self', 'super'
             ];
             for (const kw of keywords) {
@@ -115,6 +115,7 @@ function activate(context) {
                 { label: 'func', detail: 'function definition', insertText: '${1:functionName}(${2:args}) = {\n\t$0\n}' },
                 { label: 'match', detail: 'match expression', insertText: 'match (${1:expr}) {\n\t${2:pattern} => ${3:body},\n\t_ => ${0:fallback}\n}' },
                 { label: 'macro', detail: 'macro definition', insertText: 'macro ${1:macroName}(${2:args}) = {\n\treturn quote {\n\t\t$0\n\t}\n}' },
+                { label: 'syntax', detail: 'syntax macro definition', insertText: 'syntax ${1:macroName}(${2:tokens}) = {\n\t$0\n\treturn parseExpr(${2:tokens})\n}' },
                 { label: 'quote', detail: 'quote block', insertText: 'quote {\n\t$0\n}' }
             ];
             for (const snip of snippets) {
@@ -291,8 +292,8 @@ function activate(context) {
                     continue;
                 }
                 
-                // 匹配宏定义: macro macroName(args) =
-                const macroMatch = line.match(/^\s*macro\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*(?:\{|=)/);
+                // 匹配宏定义: macro/syntax macroName(args) =
+                const macroMatch = line.match(/^\s*(?:macro|syntax)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\([^)]*\)\s*(?:\{|=)/);
                 if (macroMatch) {
                     const range = new vscode.Range(i, 0, i, line.length);
                     const selectionRange = new vscode.Range(i, line.indexOf(macroMatch[1]), i, line.indexOf(macroMatch[1]) + macroMatch[1].length);

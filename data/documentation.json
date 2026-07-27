@@ -2889,34 +2889,50 @@
       "",
       "  Defining a Syntax Macro",
       "  ──────────────────────",
-      "    syntax my_syntax(tokens) = {",
-      "        // tokens is a List of Token objects",
+      "    syntax my_syntax(stream) = {",
+      "        // stream is a TokenStream object",
       "        // You must return a valid ASTNode (e.g., by calling parse)",
-      "        return parse(tokens)",
+      "        return parse(stream)",
       "    }",
       "",
       "  Calling a Syntax Macro",
       "  ──────────────────────",
       "    @my_syntax { 1 + 2 }",
       "    ",
-      "    • Syntax macros MUST take exactly one parameter (the list of tokens).",
+      "    • Syntax macros MUST take exactly one parameter (the TokenStream).",
       "    • The tokens are captured from the `{ ... }` block following the macro call.",
       "",
       "  Parsing Tokens back to AST",
       "  ──────────────────────",
       "    To return executable code from a syntax macro, you must parse the modified",
-      "    tokens back into an ASTNode using the built-in `parse` function:",
+      "    TokenStream back into an ASTNode using the built-in `parse` function:",
       "    ",
-      "    • parse(tokens): Parses tokens into ASTNode(s).",
+      "    • parse(stream): Parses a TokenStream into ASTNode(s).",
       "      If the tokens form a single expression or statement, it returns a single ASTNode.",
       "      If multiple statements are parsed, it returns a List of ASTNodes (which",
       "      auto-splices into the current scope). This unified function handles both",
       "      value-returning macros and multi-line logic injection.",
+      "      Note: When passing a TokenStream, `parse` will consume tokens starting from",
+      "      the current cursor position and update the cursor automatically.",
+      "",
+      "  The TokenStream Class",
+      "  ──────────────────────",
+      "    When using `syntax` macros, you receive a `TokenStream` object.",
+      "    This built-in class provides a safe and convenient API for token manipulation:",
+      "      stream.tokens()            Returns the underlying List of Token objects",
+      "      stream.match(type)         Returns true and consumes the next token if its type matches",
+      "      stream.consume(type, msg)  Consumes the next token if it matches, else throws an error",
+      "      stream.peek()              Returns the next Token without consuming it",
+      "      stream.advance()           Consumes and returns the next Token",
+      "      stream.previous()          Returns the most recently consumed Token",
+      "      stream.isAtEnd()           Returns true if the stream has reached EOF",
+      "      stream.insert(idx, token)  Inserts a Token at the specified index",
+      "      stream.set(idx, token)     Replaces the Token at the specified index",
+      "      stream.remove(idx)         Removes the Token at the specified index",
       "",
       "  The Token Class",
       "  ──────────────────────",
-      "    When using `syntax` macros, you receive a list of `Token` objects.",
-      "    Each Token has the following fields:",
+      "    Each Token in the stream has the following fields:",
       "      type         (str)  The token type (e.g., \"IDENTIFIER\", \"NUMBER\", \"PLUS\")",
       "      lexeme       (str)  The actual text of the token (e.g., \"foo\", \"42\", \"+\")",
       "      line         (int)  The line number where the token appears",
@@ -5895,14 +5911,15 @@
       ]
     },
     "parse": {
-      "signature": "parse(tokens)",
+      "signature": "parse(stream)",
       "desc": [
-        "Parses a list of Token objects into ASTNode(s).",
+        "Parses a TokenStream object (or a list of Tokens) into ASTNode(s).",
+        "If a TokenStream is provided, it parses starting from the current cursor and updates the cursor.",
         "If the tokens form a single expression or statement, it returns a single ASTNode.",
         "If multiple statements are parsed, it returns a List of ASTNodes, which automatically splices into the surrounding scope when returned by a macro."
       ],
       "examples": [
-        "ast = parse(my_tokens)"
+        "ast = parse(my_stream)"
       ]
     }
   },
@@ -6453,15 +6470,15 @@
       ]
     },
     "syntax": {
-      "signature": "syntax name(tokens) = { body }",
+      "signature": "syntax name(stream) = { body }",
       "desc": [
         "Defines a compile-time syntax macro (Token macro).",
-        "Syntax macros take a List of Token objects as input and must return an ASTNode.",
+        "Syntax macros take a TokenStream object as input and must return an ASTNode.",
         "They operate on raw lexical tokens before parsing, allowing custom syntax.",
         "See also: /help token (topic)"
       ],
       "examples": [
-        "syntax my_syntax(t) = parse(t)"
+        "syntax my_syntax(s) = parse(s)"
       ]
     },
     "quote": {

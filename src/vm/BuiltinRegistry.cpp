@@ -1676,10 +1676,27 @@ void BuiltinRegistry::registerSystemUtils() {
     reg("sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); });
 
     reg("parse", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args.empty() || !args[0].isObjType(ObjType::LIST)) throw std::runtime_error("TypeError: parse expects a list of Tokens.");
-        ObjList* list = static_cast<ObjList*>(args[0].asObj());
+        ObjList* list = nullptr;
+        ObjInstance* streamInst = nullptr;
+        int startCursor = 0;
+
+        if (args.empty()) throw std::runtime_error("TypeError: parse expects a list of Tokens or a TokenStream.");
+
+        if (args[0].isObjType(ObjType::LIST)) {
+            list = static_cast<ObjList*>(args[0].asObj());
+        } else if (args[0].isInstance() && args[0].asInstance()->classDef->name == "TokenStream") {
+            streamInst = args[0].asInstance();
+            Value tokensVal = streamInst->fields->elements[streamInst->fields->keyMap[Value("tokens")]].second;
+            list = static_cast<ObjList*>(tokensVal.asObj());
+            Value cursorVal = streamInst->fields->elements[streamInst->fields->keyMap[Value("cursor")]].second;
+            startCursor = cursorVal.asInt32();
+        } else {
+            throw std::runtime_error("TypeError: parse expects a list of Tokens or a TokenStream.");
+        }
+
         std::vector<Token> tokens;
-        for (const auto& v : list->vec) {
+        for (size_t i = startCursor; i < list->vec.size(); ++i) {
+            const auto& v = list->vec[i];
             if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: parse expects a list of Tokens.");
             auto inst = v.asInstance();
             std::string typeStr = inst->fields->elements[inst->fields->keyMap[Value("type")]].second.asString();
@@ -1703,6 +1720,11 @@ void BuiltinRegistry::registerSystemUtils() {
         
         Parser parser(tokens);
         auto ast = parser.parse();
+
+        if (streamInst) {
+            streamInst->fields->elements[streamInst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(static_cast<int32_t>(list->vec.size()));
+        }
+
         if (auto* block = dynamic_cast<Block*>(ast.get())) {
             if (block->statements.size() == 1) {
                 return AST_to_JC2(block->statements[0].get());

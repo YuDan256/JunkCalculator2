@@ -2,6 +2,7 @@
 #include "VM.h"
 #include "../memory/GcHeap.h"
 #include "../frontend/Highlight.h"
+#include "../frontend/Lexer.h"
 #include <cmath>
 #include <sstream>
 
@@ -256,6 +257,259 @@ void registerPredefinedClasses() {
     tokenClass->methods["__repr__"] = tokenRepr;
     tokenClass->methods["__str__"] = tokenRepr;
 
+    // --- TokenStream Class ---
+    ObjClass* tokenStreamClass = GcHeap::get().allocate<ObjClass>();
+    GcObjGuard tsGuard(tokenStreamClass);
+    tokenStreamClass->name = "TokenStream";
+
+    auto tsInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"tokens"}, std::vector<bool>{false}, "init", nullptr);
+    GcObjGuard tsInitGuard(tsInit);
+    tsInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
+        
+        if (args.empty() || !args[0].isObjType(ObjType::LIST)) {
+            throw std::runtime_error("TypeError: TokenStream init expects a list of Tokens.");
+        }
+        inst->fields->set(Value("tokens"), args[0]);
+        inst->fields->set(Value("cursor"), Value::fromInt32(0));
+        return self;
+    });
+    tokenStreamClass->methods["init"] = tsInit;
+
+    auto tsTokens = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "tokens", nullptr);
+    GcObjGuard tsTokensGuard(tsTokens);
+    tsTokens->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        return inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+    });
+    tokenStreamClass->methods["tokens"] = tsTokens;
+
+    auto tsPeek = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "peek", nullptr);
+    GcObjGuard tsPeekGuard(tsPeek);
+    tsPeek->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        if (cursor >= static_cast<int>(list->vec.size())) {
+            Token eofTok(TokenType::END_OF_FILE, "", 0, 0);
+            return VM::activeVM->makeTokenInstance(eofTok);
+        }
+        return list->vec[cursor];
+    });
+    tokenStreamClass->methods["peek"] = tsPeek;
+
+    auto tsAdvance = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "advance", nullptr);
+    GcObjGuard tsAdvanceGuard(tsAdvance);
+    tsAdvance->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        if (cursor >= static_cast<int>(list->vec.size())) {
+            Token eofTok(TokenType::END_OF_FILE, "", 0, 0);
+            return VM::activeVM->makeTokenInstance(eofTok);
+        }
+        Value ret = list->vec[cursor];
+        inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+        return ret;
+    });
+    tokenStreamClass->methods["advance"] = tsAdvance;
+
+    auto tsPrevious = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "previous", nullptr);
+    GcObjGuard tsPreviousGuard(tsPrevious);
+    tsPrevious->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        if (cursor <= 0) {
+            throw std::runtime_error("TokenStream Error: No previous token.");
+        }
+        return list->vec[cursor - 1];
+    });
+    tokenStreamClass->methods["previous"] = tsPrevious;
+
+    auto tsIsAtEnd = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "isAtEnd", nullptr);
+    GcObjGuard tsIsAtEndGuard(tsIsAtEnd);
+    tsIsAtEnd->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        return Value(cursor >= static_cast<int>(list->vec.size()));
+    });
+    tokenStreamClass->methods["isAtEnd"] = tsIsAtEnd;
+
+    auto tsMatch = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type"}, std::vector<bool>{false}, "match", nullptr);
+    GcObjGuard tsMatchGuard(tsMatch);
+    tsMatch->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        if (cursor >= static_cast<int>(list->vec.size())) return Value(false);
+        
+        Value tokVal = list->vec[cursor];
+        if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") return Value(false);
+        
+        auto tokInst = tokVal.asInstance();
+        Value typeVal = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second;
+        std::string typeStr = typeVal.isString() ? typeVal.asString() : typeVal.toRepr();
+        
+        std::string expectedType = args[0].isString() ? args[0].asString() : args[0].toRepr();
+        
+        if (typeStr == expectedType) {
+            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+            return Value(true);
+        }
+        return Value(false);
+    });
+    tokenStreamClass->methods["match"] = tsMatch;
+
+    auto tsConsume = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "msg"}, std::vector<bool>{false, false}, "consume", nullptr);
+    GcObjGuard tsConsumeGuard(tsConsume);
+    tsConsume->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        std::string expectedType = args[0].isString() ? args[0].asString() : args[0].toRepr();
+        std::string errMsg = args[1].isString() ? args[1].asString() : args[1].toRepr();
+        
+        if (cursor >= static_cast<int>(list->vec.size())) {
+            throw std::runtime_error(errMsg);
+        }
+        
+        Value tokVal = list->vec[cursor];
+        if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
+            throw std::runtime_error(errMsg);
+        }
+        
+        auto tokInst = tokVal.asInstance();
+        Value typeVal = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second;
+        std::string typeStr = typeVal.isString() ? typeVal.asString() : typeVal.toRepr();
+        
+        if (typeStr == expectedType) {
+            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+            return tokVal;
+        }
+        throw std::runtime_error(errMsg);
+    });
+    tokenStreamClass->methods["consume"] = tsConsume;
+
+    auto tsInsert = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx", "token"}, std::vector<bool>{false, false}, "insert", nullptr);
+    GcObjGuard tsInsertGuard(tsInsert);
+    tsInsert->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        if (idx < 0) idx += static_cast<int>(list->vec.size());
+        if (idx < 0 || idx > static_cast<int>(list->vec.size())) throw std::runtime_error("TokenStream Error: Insert index out of bounds.");
+        
+        Value tokVal = args[1];
+        if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
+            throw std::runtime_error("TypeError: Expected a Token instance.");
+        }
+        auto tokInst = tokVal.asInstance();
+        std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
+        std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
+        
+        TokenType tType = stringToTokenType(typeStr);
+        if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
+            tType != TokenType::NEWLINE && tType != TokenType::END_OF_FILE && tType != TokenType::ERROR) {
+            jc::Lexer testLexer(lexeme, "");
+            auto testTokens = testLexer.tokenize();
+            if (testTokens.size() != 2 || testTokens[0].type != tType) {
+                throw std::runtime_error("TypeError: Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
+            }
+        }
+        
+        list->mut().insert(list->mut().begin() + idx, tokVal);
+        
+        if (idx <= cursor) {
+            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+        }
+        return self;
+    });
+    tokenStreamClass->methods["insert"] = tsInsert;
+
+    auto tsSet = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx", "token"}, std::vector<bool>{false, false}, "set", nullptr);
+    GcObjGuard tsSetGuard(tsSet);
+    tsSet->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        
+        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        if (idx < 0) idx += static_cast<int>(list->vec.size());
+        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) throw std::runtime_error("TokenStream Error: Set index out of bounds.");
+        
+        Value tokVal = args[1];
+        if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
+            throw std::runtime_error("TypeError: Expected a Token instance.");
+        }
+        auto tokInst = tokVal.asInstance();
+        std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
+        std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
+        
+        TokenType tType = stringToTokenType(typeStr);
+        if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
+            tType != TokenType::NEWLINE && tType != TokenType::END_OF_FILE && tType != TokenType::ERROR) {
+            jc::Lexer testLexer(lexeme, "");
+            auto testTokens = testLexer.tokenize();
+            if (testTokens.size() != 2 || testTokens[0].type != tType) {
+                throw std::runtime_error("TypeError: Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
+            }
+        }
+        
+        list->mut()[idx] = tokVal;
+        return self;
+    });
+    tokenStreamClass->methods["set"] = tsSet;
+
+    auto tsRemove = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx"}, std::vector<bool>{false}, "remove", nullptr);
+    GcObjGuard tsRemoveGuard(tsRemove);
+    tsRemove->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        if (idx < 0) idx += static_cast<int>(list->vec.size());
+        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) throw std::runtime_error("TokenStream Error: Remove index out of bounds.");
+        
+        list->mut().erase(list->mut().begin() + idx);
+        
+        if (idx < cursor) {
+            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor - 1);
+        }
+        return self;
+    });
+    tokenStreamClass->methods["remove"] = tsRemove;
+
     // --- Exception Class ---
     ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard excGuard(exceptionClass);
@@ -385,6 +639,7 @@ void registerPredefinedClasses() {
     VM::activeVM->registerBuiltinValue("__range_iterator", Value(rangeIterClass));
     VM::activeVM->registerBuiltinValue("ASTNode", Value(astNodeClass));
     VM::activeVM->registerBuiltinValue("Token", Value(tokenClass));
+    VM::activeVM->registerBuiltinValue("TokenStream", Value(tokenStreamClass));
     VM::activeVM->registerBuiltinValue("Exception", Value(exceptionClass));
 }
 

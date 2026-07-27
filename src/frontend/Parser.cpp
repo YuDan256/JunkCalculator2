@@ -1453,7 +1453,15 @@ namespace jc {
                     for (const auto& t : macroTokens) {
                         tokenList->vec.push_back(VM::activeVM->makeTokenInstance(t));
                     }
-                    callArgs.push_back(Value(tokenList));
+                    
+                    Value streamClassVal = VM::activeVM->getBuiltinValue("TokenStream");
+                    ObjInstance* streamInst = GcHeap::get().allocate<ObjInstance>();
+                    streamInst->classDef = static_cast<ObjClass*>(streamClassVal.asObj());
+                    streamInst->fields = GcHeap::get().allocate<ObjDict>();
+                    streamInst->fields->set(Value("tokens"), Value(tokenList));
+                    streamInst->fields->set(Value("cursor"), Value::fromInt32(0));
+
+                    callArgs.push_back(Value(streamInst));
                     
                     Value resultVal;
                     try {

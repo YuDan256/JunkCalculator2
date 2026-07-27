@@ -2891,8 +2891,8 @@
       "  ──────────────────────",
       "    syntax my_syntax(tokens) = {",
       "        // tokens is a List of Token objects",
-      "        // You must return a valid ASTNode (e.g., by calling parseExpr or parseStmt)",
-      "        return parseExpr(tokens)",
+      "        // You must return a valid ASTNode (e.g., by calling parse)",
+      "        return parse(tokens)",
       "    }",
       "",
       "  Calling a Syntax Macro",
@@ -2905,15 +2905,13 @@
       "  Parsing Tokens back to AST",
       "  ──────────────────────",
       "    To return executable code from a syntax macro, you must parse the modified",
-      "    tokens back into an ASTNode using one of these built-in functions:",
+      "    tokens back into an ASTNode using the built-in `parse` function:",
       "    ",
-      "    • parseExpr(tokens): Parses tokens into a single Expression ASTNode.",
-      "      Use this when your macro acts like a value (e.g., `x = @macro { 1 + 2 }`).",
-      "      Fails if the tokens contain multiple statements.",
-      "      ",
-      "    • parseStmt(tokens): Parses tokens into Statement(s). If multiple statements",
-      "      are parsed, it returns a List of ASTNodes (which auto-splices into the",
-      "      current scope). Use this for injecting variables or multi-line logic.",
+      "    • parse(tokens): Parses tokens into ASTNode(s).",
+      "      If the tokens form a single expression or statement, it returns a single ASTNode.",
+      "      If multiple statements are parsed, it returns a List of ASTNodes (which",
+      "      auto-splices into the current scope). This unified function handles both",
+      "      value-returning macros and multi-line logic injection.",
       "",
       "  The Token Class",
       "  ──────────────────────",
@@ -5896,26 +5894,15 @@
         "temp_var = gensym(\"temp\")"
       ]
     },
-    "parseExpr": {
-      "signature": "parseExpr(tokens)",
+    "parse": {
+      "signature": "parse(tokens)",
       "desc": [
-        "Parses a list of Token objects into a single expression ASTNode.",
-        "Used primarily inside syntax macros when the macro is expected to return a value.",
-        "Throws an error if the tokens contain multiple statements or invalid expression syntax."
+        "Parses a list of Token objects into ASTNode(s).",
+        "If the tokens form a single expression or statement, it returns a single ASTNode.",
+        "If multiple statements are parsed, it returns a List of ASTNodes, which automatically splices into the surrounding scope when returned by a macro."
       ],
       "examples": [
-        "ast = parseExpr(my_tokens)"
-      ]
-    },
-    "parseStmt": {
-      "signature": "parseStmt(tokens)",
-      "desc": [
-        "Parses a list of Token objects into statement ASTNode(s).",
-        "If multiple statements are parsed, it returns a List of ASTNodes, which automatically splices into the surrounding scope when returned by a macro.",
-        "Ideal for syntax macros that inject local variables or multi-line logic."
-      ],
-      "examples": [
-        "ast = parseStmt(my_tokens)"
+        "ast = parse(my_tokens)"
       ]
     }
   },
@@ -6474,7 +6461,7 @@
         "See also: /help token (topic)"
       ],
       "examples": [
-        "syntax my_syntax(t) = parseExpr(t)"
+        "syntax my_syntax(t) = parse(t)"
       ]
     },
     "quote": {

@@ -1675,44 +1675,12 @@ void BuiltinRegistry::registerSystemUtils() {
     reg("verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); });
     reg("sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); });
 
-    reg("parseExpr", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args.empty() || !args[0].isObjType(ObjType::LIST)) throw std::runtime_error("TypeError: parseExpr expects a list of Tokens.");
+    reg("parse", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (args.empty() || !args[0].isObjType(ObjType::LIST)) throw std::runtime_error("TypeError: parse expects a list of Tokens.");
         ObjList* list = static_cast<ObjList*>(args[0].asObj());
         std::vector<Token> tokens;
         for (const auto& v : list->vec) {
-            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: parseExpr expects a list of Tokens.");
-            auto inst = v.asInstance();
-            std::string typeStr = inst->fields->elements[inst->fields->keyMap[Value("type")]].second.asString();
-            std::string lexeme = inst->fields->elements[inst->fields->keyMap[Value("lexeme")]].second.asString();
-            int line = inst->fields->elements[inst->fields->keyMap[Value("line")]].second.asInt32();
-            int pos = inst->fields->elements[inst->fields->keyMap[Value("position")]].second.asInt32();
-            
-            TokenType tType = stringToTokenType(typeStr);
-            if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
-                tType != TokenType::NEWLINE && tType != TokenType::END_OF_FILE && tType != TokenType::ERROR) {
-                jc::Lexer testLexer(lexeme, "");
-                auto testTokens = testLexer.tokenize();
-                if (testTokens.size() != 2 || testTokens[0].type != tType) {
-                    throw std::runtime_error("TypeError: Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
-                }
-            }
-            
-            tokens.emplace_back(tType, lexeme, pos, line);
-        }
-        tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
-        
-        Parser parser(tokens);
-        auto expr = parser.expression();
-        if (!parser.isAtEnd()) throw std::runtime_error("SyntaxError: Unexpected tokens after expression.");
-        return AST_to_JC2(expr.get());
-    });
-
-    reg("parseStmt", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args.empty() || !args[0].isObjType(ObjType::LIST)) throw std::runtime_error("TypeError: parseStmt expects a list of Tokens.");
-        ObjList* list = static_cast<ObjList*>(args[0].asObj());
-        std::vector<Token> tokens;
-        for (const auto& v : list->vec) {
-            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: parseStmt expects a list of Tokens.");
+            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: parse expects a list of Tokens.");
             auto inst = v.asInstance();
             std::string typeStr = inst->fields->elements[inst->fields->keyMap[Value("type")]].second.asString();
             std::string lexeme = inst->fields->elements[inst->fields->keyMap[Value("lexeme")]].second.asString();

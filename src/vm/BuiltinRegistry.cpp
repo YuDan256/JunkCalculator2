@@ -1712,9 +1712,20 @@ void BuiltinRegistry::registerSystemUtils() {
         tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
         
         Parser parser(tokens);
-        auto stmt = parser.parseStatementOrBlock();
-        if (!parser.isAtEnd()) throw std::runtime_error("SyntaxError: Unexpected tokens after statement.");
-        return AST_to_JC2(stmt.get());
+        auto ast = parser.parse();
+        if (auto* block = dynamic_cast<Block*>(ast.get())) {
+            if (block->statements.size() == 1) {
+                return AST_to_JC2(block->statements[0].get());
+            } else {
+                ObjList* retList = GcHeap::get().allocate<ObjList>();
+                GcObjGuard guard(retList);
+                for (const auto& stmt : block->statements) {
+                    retList->vec.push_back(AST_to_JC2(stmt.get()));
+                }
+                return Value(retList);
+            }
+        }
+        return AST_to_JC2(ast.get());
     });
 
     reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {

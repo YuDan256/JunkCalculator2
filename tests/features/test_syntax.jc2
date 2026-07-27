@@ -1,0 +1,117 @@
+test_token_class() = {
+    t = Token("IDENTIFIER", "foo", 10, 5)
+    assert(t.type == "IDENTIFIER", "Token type mismatch")
+    assert(t.lexeme == "foo", "Token lexeme mismatch")
+    assert(t.line == 10, "Token line mismatch")
+    assert(t.position == 5, "Token position mismatch")
+    
+    t.lexeme = "bar"
+    assert(t.lexeme == "bar", "Token mutability failed")
+}
+test_token_class()
+
+test_basic_syntax_macro() = {
+    syntax concat_tokens(tokens) = {
+        // 提取所有 token 的 lexeme 并拼接
+        str_val = join(tokens.map((t) => t.lexeme), "")
+        return ASTNode("Literal", 0, {value: str_val, isString: true})
+    }
+    
+    res = @concat_tokens { a b c 1 2 3 }
+    assert(res == "abc123", "Basic syntax macro failed to collect and process tokens")
+}
+test_basic_syntax_macro()
+
+test_parse_expr() = {
+    syntax change_plus_to_mul(tokens) = {
+        // 遍历 Token，把加号篡改为乘号
+        for (t in tokens) {
+            if (t.lexeme == "+") {
+                t.type = "STAR"
+                t.lexeme = "*"
+            }
+        }
+        // 重新解析为表达式 AST
+        return parseExpr(tokens)
+    }
+    
+    res = @change_plus_to_mul { 3 + 4 }
+    assert(res == 12, "parseExpr or token manipulation failed")
+}
+test_parse_expr()
+
+test_parse_stmt() = {
+    syntax inject_local(tokens) = {
+        // 在用户提供的 token 列表前强行插入一个 local 关键字
+        new_tokens = [Token("LOCAL", "local", 0, 0)]
+        for (t in tokens) {
+            new_tokens.push(t)
+        }
+        // 解析为语句 AST
+        return parseStmt(new_tokens)
+    }
+    injected_var = 0
+    // 这里的 injected_var 会被宏加上 local 修饰符
+    {
+        @inject_local { injected_var = 99 }
+        assert(injected_var == 99, "parseStmt failed to set local variable")
+    }
+    assert(injected_var == 0, "parseStmt failed to generate valid statement (leaked to outer scope)")
+}
+test_parse_stmt()
+
+test_parse_stmt_multi() = {
+    syntax inject_two(tokens) = {
+        return parseStmt(tokens)
+    }
+    
+    a = 0
+    b = 0
+    {
+        @inject_two { local a = 1; local b = 2 }
+        assert(a == 1 && b == 2, "parseStmt multi failed to set locals")
+    }
+    assert(a == 0 && b == 0, "parseStmt multi leaked to outer scope")
+}
+test_parse_stmt_multi()
+
+test_lexer_error_tolerance() = {
+    syntax count_errors(tokens) = {
+        // 统计 ERROR 类型的 token 数量
+        err_count = tokens.countIf((t) => t.type == "ERROR")
+        return ASTNode("Literal", 0, {value: str(err_count), isString: false})
+    }
+    
+    // 反引号 ` 在 JC2 中是非法字符，正常情况下 Lexer 会直接抛出异常。
+    // 但在 Token 宏的 {} 内部，它应该被宽容地收集为 ERROR token。
+    res = @count_errors { ` }
+    assert(res == 1, "Lexer error tolerance failed: did not generate ERROR token")
+}
+test_lexer_error_tolerance()
+
+test_syntax_macro_errors() = {
+    try {
+        eval("syntax bad_return(t) = { return 1 }; @bad_return { 1 }")
+        assert(false, "Should throw when syntax macro doesn't return ASTNode")
+    } catch (e) {
+        msg = str(e.message)
+        assert("ASTNode" in msg, "Wrong error for invalid syntax macro return: " + msg)
+    }
+
+    try {
+        eval("syntax bad_parse(t) = { return parseExpr(t) }; @bad_parse { * 2 }")
+        assert(false, "Should throw when parseExpr receives invalid syntax")
+    } catch (e) {
+        msg = str(e.message)
+        assert("Parser Error" in msg || "Syntax Error" in msg || "Lexer Error" in msg || "Token Macro Execution Error" in msg, "Wrong error for invalid parseExpr input: " + msg)
+    }
+    
+    try {
+        eval("syntax multi_arg(a, b) = { return quote { none } }")
+        assert(false, "Should throw when syntax macro has more than one parameter")
+    } catch (e) {
+        msg = str(e.message)
+        assert("exactly one parameter" in msg, "Wrong error for multi-parameter syntax macro: " + msg)
+    }
+}
+test_syntax_macro_errors()

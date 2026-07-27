@@ -95,3 +95,10 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
 *   **类型系统深度集成 (Type System Integration)**：新增了 `is_type`, `get_type`, `type_name`, `type_union`, `type_intersect`, `check_type` 等底层接口。Native 模块现在可以像 JC2 脚本一样，动态获取任何值的类型对象，执行类型代数运算（如构建 `int | string` 联合类型），并对传入的参数进行严格的类型契约校验。
 *   **容器操作补全 (Container API Completion)**：新增了 `list_set`, `dict_remove`, `set_elements` 接口，填补了之前 C ABI 在容器修改和遍历上的空白，使得 C++ 扩展能够对 JC2 的 List、Dict、Set 进行完整的 CRUD 操作。
 *   **C++ 包装器升级 (C++ Wrapper Upgrades)**：在 `jc2_extension_cpp.h` 中新增了 `jc2::Type` 类，并重载了 `|` 和 `&` 运算符以支持优雅的类型代数。同时为 `List`, `Dict`, `Set` 补充了 `set`, `remove`, `elements` 等便捷方法，极大提升了 Native 模块的面向对象开发体验。
+
+## 13. Token 宏与终极语法自由度 (Token Macros & Syntactic Freedom)
+在 AST 宏的基础上，JC2 计划引入更底层的 Token 宏（Token Macros），将语言的语法定义权彻底开放给用户，允许在 JC2 中无缝嵌入任意 DSL（领域特定语言）。目前确定的核心架构设计如下：
+*   **`syntax` 关键字与定界符隔离**：为了与普通的 AST 宏（`macro`）区分，Token 宏使用 `syntax` 关键字定义。调用时严格限制在 `{}` 定界符内（例如 `@sql { SELECT * FROM users }`）。Lexer 在遇到 Token 宏调用时，仅进行括号匹配，不进行任何语法树解析。
+*   **词法容错与 `ERROR_TOKEN`**：在 Token 收集模式下，Lexer 即使遇到无法识别的字符（如未闭合的字符串、非法符号）也**绝不抛出异常**，而是生成 `ERROR` 类型的 Token。这赋予了宏作者定义全新词法规则的终极自由。
+*   **预定义 `Token` 类**：宏接收到的参数是一个包含 `Token` 对象的列表。`Token` 将作为 JC2 的内置预定义类，包含 `type`, `lexeme`, `line`, `col` 字段。这使得用户可以极其方便地对 Token 进行模式匹配解构、字段篡改，甚至凭空实例化新的 Token。
+*   **底层解析桥梁 (`parseExpr` / `parseStmt`)**：为了将处理后的 Token 流转换回 AST，JC2 将提供内置函数 `parseExpr(tokens)` 和 `parseStmt(tokens)`。它们在底层会实例化一个隔离的临时 Parser，将 Token 列表重新解析为合法的 ASTNode，完美复用 JC2 强大的前端解析能力。Token 宏的最终返回值必须是一个合法的 `ASTNode`。

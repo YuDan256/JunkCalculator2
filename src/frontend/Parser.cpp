@@ -1077,6 +1077,10 @@ namespace jc {
     // primary — ★ 新增 if / while / for / block / break / continue
     // =================================================================
     std::unique_ptr<Expr> Parser::primary() {
+        if (match({ TokenType::ERROR })) {
+            throw std::runtime_error("Lexer Error: " + previous().lexeme);
+        }
+
         // ★ 统一拦截：任何关键字后面紧跟 = 都是误用
         auto isKeyword = [](TokenType t) {
             return t == TokenType::IF || t == TokenType::ELSE ||
@@ -1196,7 +1200,8 @@ namespace jc {
         }
         if (match({ TokenType::SWITCH })) return switchExpr();
         if (match({ TokenType::MATCH })) return matchExpr();
-        if (match({ TokenType::MACRO })) return macroDefExpr();
+        if (match({ TokenType::MACRO })) return macroDefExpr(false);
+        if (match({ TokenType::SYNTAX })) return macroDefExpr(true);
         if (match({ TokenType::QUOTE })) return quoteExpr();
         if (match({ TokenType::DEFER })) return deferExpr();
         if (match({ TokenType::DELETE })) {
@@ -1426,6 +1431,55 @@ namespace jc {
                 }
             
                 ObjClosure* macroFn = macroVal.asFunction();
+                
+                if (macroFn->isTokenMacro) {
+                    consume(TokenType::LBRACE, "Parser Error: Expect '{' after token macro name.");
+                    std::vector<Token> macroTokens;
+                    int depth = 1;
+                    while (!isAtEnd() && depth > 0) {
+                        Token t = tokens[current++];
+                        if (t.type == TokenType::LBRACE) depth++;
+                        else if (t.type == TokenType::RBRACE) depth--;
+                        
+                        if (depth > 0) {
+                            macroTokens.push_back(t);
+                        }
+                    }
+                    if (depth != 0) throw std::runtime_error("Parser Error: Unterminated '{' in token macro.");
+                    
+                    std::vector<Value> callArgs;
+                    ObjList* tokenList = GcHeap::get().allocate<ObjList>();
+                    GcObjGuard tlGuard(tokenList);
+                    for (const auto& t : macroTokens) {
+                        tokenList->vec.push_back(VM::activeVM->makeTokenInstance(t));
+                    }
+                    callArgs.push_back(Value(tokenList));
+                    
+                    Value resultVal;
+                    try {
+                        resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, callArgs, macroFn);
+                    } catch (const ValueException& ex) {
+                        std::string errStr = ex.val.isString() ? ex.val.asString() : ex.val.toRepr();
+                        if (ex.val.isInstance() && ex.val.asInstance()->classDef->name == "Exception") {
+                            auto inst = ex.val.asInstance();
+                            if (inst->fields) {
+                                auto itMsg = inst->fields->keyMap.find(Value("message"));
+                                if (itMsg != inst->fields->keyMap.end()) {
+                                    Value mVal = inst->fields->elements[itMsg->second].second;
+                                    errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
+                                }
+                            }
+                        }
+                        throw std::runtime_error("Token Macro Execution Error: " + errStr);
+                    }
+                    GcValueGuard resultGuard(resultVal);
+                    
+                    auto expandedAst = JC2_to_AST(resultVal);
+                    if (!expandedAst) throw std::runtime_error("Parser Error: Token Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
+                    
+                    return expandedAst;
+                }
+                
                 std::vector<std::unique_ptr<Expr>> args;
                 
                 if (match({ TokenType::LPAREN })) {
@@ -1557,13 +1611,13 @@ namespace jc {
         throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");
     }
 
-    std::unique_ptr<Expr> Parser::macroDefExpr() {
+    std::unique_ptr<Expr> Parser::macroDefExpr(bool isTokenMacro) {
         Token name(TokenType::ERROR, "");
         if (match({ TokenType::DOLLAR })) {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
             name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
         } else {
-            name = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name.");
+            name = consume(TokenType::IDENTIFIER, isTokenMacro ? "Parser Error: Expect syntax macro name." : "Parser Error: Expect macro name.");
         }
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after macro name.");
         
@@ -1574,6 +1628,7 @@ namespace jc {
             do {
                 if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
                 if (match({ TokenType::ELLIPSIS })) {
+                    if (isTokenMacro) throw std::runtime_error("Parser Error: Token macro cannot have rest parameters.");
                     if (match({ TokenType::DOLLAR })) {
                         Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                         params.push_back(Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line));
@@ -1592,6 +1647,11 @@ namespace jc {
             } while (match({ TokenType::COMMA }));
         }
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro parameters.");
+        
+        if (isTokenMacro && params.size() != 1) {
+            throw std::runtime_error("Parser Error: Token macro must have exactly one parameter.");
+        }
+
         consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
         auto body = parseStatementOrBlock();
         
@@ -1627,6 +1687,10 @@ namespace jc {
 
         Value macroVal = VM::activeVM->getGlobal(internalName.lexeme);
         VM::activeVM->removeGlobal(internalName.lexeme);
+
+        if (macroVal.isFunctionClosure()) {
+            macroVal.asFunction()->isTokenMacro = isTokenMacro;
+        }
 
         defineMacro(name.lexeme, macroVal);
 

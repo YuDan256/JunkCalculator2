@@ -32,6 +32,7 @@ namespace jc {
         {"default",  TokenType::DEFAULT},      // ★
         {"match",    TokenType::MATCH},        // ★
         {"macro",    TokenType::MACRO},        // ★
+        {"syntax",   TokenType::SYNTAX},       // ★
         {"quote",    TokenType::QUOTE},        // ★
         {"defer",    TokenType::DEFER},        // ★
         {"class",    TokenType::CLASS},
@@ -91,12 +92,8 @@ namespace jc {
         : source(std::move(source)), sourceFile(std::move(sourceFile)) {
     }
 
-    void Lexer::throwError(const std::string& msg) {
-        std::string fn = "Script";
-        try { fn = std::filesystem::path(sourceFile).filename().string(); }
-        catch (...) {}
-        if (fn.empty()) fn = "Script";
-        throw std::runtime_error("[" + fn + " : " + std::to_string(line) + "] Lexer Error: " + msg);
+    void Lexer::emitError(const std::string& msg) {
+        tokens.emplace_back(TokenType::ERROR, msg, start, line);
     }
 
     std::vector<Token> Lexer::tokenize() {
@@ -274,7 +271,7 @@ namespace jc {
             }
             else if (utf8::isIdentifierStart(static_cast<unsigned char>(c))) { identifier(); }
             else {
-                throwError("Unexpected character '" + std::string(1, c) + "'.");
+                emitError("Unexpected character '" + std::string(1, c) + "'.");
             }
             break;
         }
@@ -302,36 +299,36 @@ namespace jc {
             char next = peek();
             if (next == 'x' || next == 'X') {
                 advance(); // consume 'x'
-                if (!std::isxdigit(peek())) throwError("Invalid hex literal.");
+                if (!std::isxdigit(peek())) { emitError("Invalid hex literal."); return; }
                 while (std::isxdigit(peek()) || peek() == '_') {
                     if (peek() == '_') {
-                        if (source[current - 1] == 'x' || source[current - 1] == 'X') throwError("Invalid hex literal: '_' cannot follow '0x'.");
-                        if (peekNext() == '_') throwError("Invalid hex literal: consecutive '_' are not allowed.");
-                        if (!std::isxdigit(peekNext())) throwError("Invalid hex literal: '_' must be followed by a digit.");
+                        if (source[current - 1] == 'x' || source[current - 1] == 'X') { emitError("Invalid hex literal: '_' cannot follow '0x'."); return; }
+                        if (peekNext() == '_') { emitError("Invalid hex literal: consecutive '_' are not allowed."); return; }
+                        if (!std::isxdigit(peekNext())) { emitError("Invalid hex literal: '_' must be followed by a digit."); return; }
                     }
                     advance();
                 }
                 isHexOctBin = true;
             } else if (next == 'b' || next == 'B') {
                 advance(); // consume 'b'
-                if (peek() != '0' && peek() != '1') throwError("Invalid binary literal.");
+                if (peek() != '0' && peek() != '1') { emitError("Invalid binary literal."); return; }
                 while (peek() == '0' || peek() == '1' || peek() == '_') {
                     if (peek() == '_') {
-                        if (source[current - 1] == 'b' || source[current - 1] == 'B') throwError("Invalid binary literal: '_' cannot follow '0b'.");
-                        if (peekNext() == '_') throwError("Invalid binary literal: consecutive '_' are not allowed.");
-                        if (peekNext() != '0' && peekNext() != '1') throwError("Invalid binary literal: '_' must be followed by a digit.");
+                        if (source[current - 1] == 'b' || source[current - 1] == 'B') { emitError("Invalid binary literal: '_' cannot follow '0b'."); return; }
+                        if (peekNext() == '_') { emitError("Invalid binary literal: consecutive '_' are not allowed."); return; }
+                        if (peekNext() != '0' && peekNext() != '1') { emitError("Invalid binary literal: '_' must be followed by a digit."); return; }
                     }
                     advance();
                 }
                 isHexOctBin = true;
             } else if (next == 'o' || next == 'O') {
                 advance(); // consume 'o'
-                if (peek() < '0' || peek() > '7') throwError("Invalid octal literal.");
+                if (peek() < '0' || peek() > '7') { emitError("Invalid octal literal."); return; }
                 while ((peek() >= '0' && peek() <= '7') || peek() == '_') {
                     if (peek() == '_') {
-                        if (source[current - 1] == 'o' || source[current - 1] == 'O') throwError("Invalid octal literal: '_' cannot follow '0o'.");
-                        if (peekNext() == '_') throwError("Invalid octal literal: consecutive '_' are not allowed.");
-                        if (peekNext() < '0' || peekNext() > '7') throwError("Invalid octal literal: '_' must be followed by a digit.");
+                        if (source[current - 1] == 'o' || source[current - 1] == 'O') { emitError("Invalid octal literal: '_' cannot follow '0o'."); return; }
+                        if (peekNext() == '_') { emitError("Invalid octal literal: consecutive '_' are not allowed."); return; }
+                        if (peekNext() < '0' || peekNext() > '7') { emitError("Invalid octal literal: '_' must be followed by a digit."); return; }
                     }
                     advance();
                 }
@@ -342,8 +339,8 @@ namespace jc {
         if (!isHexOctBin) {
             while (std::isdigit(peek()) || peek() == '_') {
                 if (peek() == '_') {
-                    if (peekNext() == '_') throwError("Invalid number literal: consecutive '_' are not allowed.");
-                    if (!std::isdigit(peekNext())) throwError("Invalid number literal: '_' must be followed by a digit.");
+                    if (peekNext() == '_') { emitError("Invalid number literal: consecutive '_' are not allowed."); return; }
+                    if (!std::isdigit(peekNext())) { emitError("Invalid number literal: '_' must be followed by a digit."); return; }
                 }
                 advance();
             }
@@ -351,9 +348,9 @@ namespace jc {
                 advance();
                 while (std::isdigit(peek()) || peek() == '_') {
                     if (peek() == '_') {
-                        if (source[current - 1] == '.') throwError("Invalid number literal: '_' cannot follow '.'.");
-                        if (peekNext() == '_') throwError("Invalid number literal: consecutive '_' are not allowed.");
-                        if (!std::isdigit(peekNext())) throwError("Invalid number literal: '_' must be followed by a digit.");
+                        if (source[current - 1] == '.') { emitError("Invalid number literal: '_' cannot follow '.'."); return; }
+                        if (peekNext() == '_') { emitError("Invalid number literal: consecutive '_' are not allowed."); return; }
+                        if (!std::isdigit(peekNext())) { emitError("Invalid number literal: '_' must be followed by a digit."); return; }
                     }
                     advance();
                 }
@@ -369,9 +366,9 @@ namespace jc {
                     if (hasSign) advance();
                     while (std::isdigit(peek()) || peek() == '_') {
                         if (peek() == '_') {
-                            if (source[current - 1] == 'e' || source[current - 1] == 'E' || source[current - 1] == '+' || source[current - 1] == '-') throwError("Invalid scientific literal: '_' cannot follow exponent indicator or sign.");
-                            if (peekNext() == '_') throwError("Invalid scientific literal: consecutive '_' are not allowed.");
-                            if (!std::isdigit(peekNext())) throwError("Invalid scientific literal: '_' must be followed by a digit.");
+                            if (source[current - 1] == 'e' || source[current - 1] == 'E' || source[current - 1] == '+' || source[current - 1] == '-') { emitError("Invalid scientific literal: '_' cannot follow exponent indicator or sign."); return; }
+                            if (peekNext() == '_') { emitError("Invalid scientific literal: consecutive '_' are not allowed."); return; }
+                            if (!std::isdigit(peekNext())) { emitError("Invalid scientific literal: '_' must be followed by a digit."); return; }
                         }
                         advance();
                     }
@@ -407,7 +404,8 @@ namespace jc {
         }
         
         if (utf8::isIdentifierPart(static_cast<unsigned char>(peek()))) {
-            throwError("Invalid character '" + std::string(1, peek()) + "' in number literal.");
+            emitError("Invalid character '" + std::string(1, peek()) + "' in number literal.");
+            return;
         }
 
         tokens.emplace_back(TokenType::NUMBER, lexeme, start, line);
@@ -477,7 +475,8 @@ namespace jc {
             }
         }
         if (isAtEnd()) {
-            throwError("Unterminated multiline string.");
+            emitError("Unterminated multiline string.");
+            return;
         }
         advance(); advance(); advance(); // 吃掉对应的三个引号
         tokens.emplace_back(TokenType::STRING, value, start);
@@ -536,7 +535,8 @@ namespace jc {
             }
         }
         if (isAtEnd()) {
-            throwError("Unterminated string.");
+            emitError("Unterminated string.");
+            return;
         }
         advance(); // 吃掉对应的右引号
         tokens.emplace_back(TokenType::STRING, value, start);
@@ -577,8 +577,10 @@ namespace jc {
                         else { value += advance(); }
                     }
                 }
-                if (depth != 0)
-                    throwError("Unmatched '{' in f-string.");
+                if (depth != 0) {
+                    emitError("Unmatched '{' in f-string.");
+                    return;
+                }
             }
             else if (c == '\\') {
                 advance();
@@ -627,8 +629,10 @@ namespace jc {
                 value += advance();
             }
         }
-        if (isAtEnd())
-            throwError("Unterminated multiline f-string.");
+        if (isAtEnd()) {
+            emitError("Unterminated multiline f-string.");
+            return;
+        }
         advance(); advance(); advance(); // consume closing quotes
         tokens.emplace_back(TokenType::FSTRING, value, start);
     }
@@ -668,8 +672,10 @@ namespace jc {
                         else { value += advance(); }
                     }
                 }
-                if (depth != 0)
-                    throwError("Unmatched '{' in f-string.");
+                if (depth != 0) {
+                    emitError("Unmatched '{' in f-string.");
+                    return;
+                }
             }
             else if (c == '\\') {
                 // ★ 文本段的转义序列
@@ -718,8 +724,10 @@ namespace jc {
                 value += advance();
             }
         }
-        if (isAtEnd())
-            throwError("Unterminated f-string.");
+        if (isAtEnd()) {
+            emitError("Unterminated f-string.");
+            return;
+        }
         advance(); // consume closing quote
         tokens.emplace_back(TokenType::FSTRING, value, start);
     }
@@ -733,7 +741,7 @@ namespace jc {
             if (peek() == '\n') line++;
             value += advance();
         }
-        if (isAtEnd()) throwError("Unterminated multiline raw string.");
+        if (isAtEnd()) { emitError("Unterminated multiline raw string."); return; }
         advance(); advance(); advance();
         tokens.emplace_back(TokenType::RSTRING, value, start);
     }
@@ -781,7 +789,8 @@ namespace jc {
                 }
                 value += source[current++];
             }
-            throwError("Unterminated raw string (expected " + endMarker + ").");
+            emitError("Unterminated raw string (expected " + endMarker + ").");
+            return;
         }
         else {
             std::string value;
@@ -789,7 +798,7 @@ namespace jc {
                 if (peek() == '\n') line++;
                 value += advance();
             }
-            if (isAtEnd()) throwError("Unterminated raw string.");
+            if (isAtEnd()) { emitError("Unterminated raw string."); return; }
             advance();
             tokens.emplace_back(TokenType::RSTRING, value, start);
         }
@@ -814,7 +823,8 @@ namespace jc {
             }
         }
         if (nesting > 0) {
-            throwError("Unterminated multiline comment.");
+            emitError("Unterminated multiline comment.");
+            return;
         }
     }
 } // namespace jc

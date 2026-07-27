@@ -814,9 +814,10 @@ namespace jc {
         Token name;
         std::vector<Token> params;
         bool hasRestParam;
+        bool isTokenMacro; // ★
         std::unique_ptr<Expr> body;
-        MacroDefExpr(Token name, std::vector<Token> params, bool hasRestParam, std::unique_ptr<Expr> body)
-            : name(std::move(name)), params(std::move(params)), hasRestParam(hasRestParam), body(std::move(body)) {}
+        MacroDefExpr(Token name, std::vector<Token> params, bool hasRestParam, bool isTokenMacro, std::unique_ptr<Expr> body)
+            : name(std::move(name)), params(std::move(params)), hasRestParam(hasRestParam), isTokenMacro(isTokenMacro), body(std::move(body)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitMacroDefExpr(this); }
     };
 

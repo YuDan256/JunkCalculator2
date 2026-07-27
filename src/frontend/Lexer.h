@@ -44,7 +44,7 @@ namespace jc {
 
         void multilineComment();
 
-        void throwError(const std::string& msg);
+        void emitError(const std::string& msg);
 
     public:
         explicit Lexer(std::string source, std::string sourceFile = "");

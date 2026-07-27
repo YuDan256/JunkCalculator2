@@ -4,6 +4,7 @@
 #include "Bytecode.h"
 #include "../memory/Value.h"
 #include "BuiltinRegistry.h"
+#include "../frontend/Token.h"
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -221,6 +222,8 @@ public:
 
     Value execute(const Chunk& mainChunk, int localCount);
     void execCompileTimeImport(const std::string& name);
+
+    Value makeTokenInstance(const Token& t);
 
     static inline VM* activeVM = nullptr;
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());

@@ -25,8 +25,11 @@ namespace jc {
         int current = 0;
         std::string sourceFile;
 
+    public:
         // --- 文法规则 (优先级从低到高) ---
         std::unique_ptr<Expr> expression();
+        std::unique_ptr<Expr> parseStatementOrBlock();
+    private:
         std::unique_ptr<Expr> assignment();
         std::unique_ptr<Expr> logicalOr();
         std::unique_ptr<Expr> logicalAnd();
@@ -45,13 +48,12 @@ namespace jc {
 
         // ★ 新增：控制流解析
         std::unique_ptr<Expr> parseBlock();
-        std::unique_ptr<Expr> parseStatementOrBlock();
         std::unique_ptr<Expr> ifExpr();
         std::unique_ptr<Expr> whileExpr();
         std::unique_ptr<Expr> forExpr();
         std::unique_ptr<Expr> switchExpr();
         std::unique_ptr<Expr> matchExpr();     // ★
-        std::unique_ptr<Expr> macroDefExpr();  // ★
+        std::unique_ptr<Expr> macroDefExpr(bool isTokenMacro);  // ★
         std::unique_ptr<Expr> quoteExpr();     // ★
         std::unique_ptr<Expr> deferExpr();     // ★
         std::unique_ptr<Expr> transformQuote(Expr* expr); // ★
@@ -73,13 +75,19 @@ namespace jc {
         // --- 游标工具 ---
         inline bool match(std::initializer_list<TokenType> types) { for (auto t : types) if (check(t)) { advance(); return true; } return false; }
         inline bool check(TokenType type) const { if (isAtEnd()) return false; return peek().type == type; }
-        inline bool isAtEnd() const { return peek().type == TokenType::END_OF_FILE; }
-        inline Token advance() { if (!isAtEnd()) current++; return previous(); }
+        inline Token advance() { 
+            if (!isAtEnd()) current++; 
+            Token t = previous();
+            if (t.type == TokenType::ERROR) throw std::runtime_error("Lexer Error: " + t.lexeme);
+            return t; 
+        }
         inline Token peek() const { return tokens[current]; }
         inline Token previous() const { return tokens[current - 1]; }
         Token consume(TokenType type, const std::string& message);
 
     public:
+        inline bool isAtEnd() const { return peek().type == TokenType::END_OF_FILE; }
+
         explicit Parser(std::vector<Token> tokens, std::string sourceFile = "")
             : tokens(std::move(tokens)), sourceFile(std::move(sourceFile)) {
             macroEnvStack.push_back({});

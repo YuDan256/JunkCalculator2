@@ -59,6 +59,7 @@ namespace jc {
         DEFAULT,             // ★
         MATCH,               // ★ 新增
         MACRO,               // ★ 新增
+        SYNTAX,              // ★ 新增
         QUOTE,               // ★ 新增
         DEFER,               // ★ 新增
         CLASS,
@@ -176,6 +177,7 @@ namespace jc {
         case TokenType::DEFAULT:       return "DEFAULT";
         case TokenType::MATCH:         return "MATCH";
         case TokenType::MACRO:         return "MACRO";
+        case TokenType::SYNTAX:        return "SYNTAX";
         case TokenType::QUOTE:         return "QUOTE";
         case TokenType::DEFER:         return "DEFER";
         case TokenType::LOCAL:         return "LOCAL";
@@ -192,6 +194,149 @@ namespace jc {
         case TokenType::CATCH:         return "CATCH";
         default:                       return "UNKNOWN";
         }
+    }
+
+    inline TokenType stringToTokenType(const std::string& s) {
+        if (s == "NUMBER") return TokenType::NUMBER;
+        if (s == "IMAGINARY") return TokenType::IMAGINARY;
+        if (s == "IDENTIFIER") return TokenType::IDENTIFIER;
+        if (s == "STRING") return TokenType::STRING;
+        if (s == "FSTRING") return TokenType::FSTRING;
+        if (s == "RSTRING") return TokenType::RSTRING;
+        if (s == "PLUS") return TokenType::PLUS;
+        if (s == "MINUS") return TokenType::MINUS;
+        if (s == "STAR") return TokenType::STAR;
+        if (s == "SLASH") return TokenType::SLASH;
+        if (s == "CARET") return TokenType::CARET;
+        if (s == "BACKSLASH") return TokenType::BACKSLASH;
+        if (s == "PERCENT") return TokenType::PERCENT;
+        if (s == "ASSIGN") return TokenType::ASSIGN;
+        if (s == "EQUAL") return TokenType::EQUAL;
+        if (s == "ARROW") return TokenType::ARROW;
+        if (s == "RIGHT_ARROW") return TokenType::RIGHT_ARROW;
+        if (s == "PIPE") return TokenType::PIPE;
+        if (s == "BANG_EQUAL") return TokenType::BANG_EQUAL;
+        if (s == "PLUS_ASSIGN") return TokenType::PLUS_ASSIGN;
+        if (s == "MINUS_ASSIGN") return TokenType::MINUS_ASSIGN;
+        if (s == "STAR_ASSIGN") return TokenType::STAR_ASSIGN;
+        if (s == "SLASH_ASSIGN") return TokenType::SLASH_ASSIGN;
+        if (s == "PERCENT_ASSIGN") return TokenType::PERCENT_ASSIGN;
+        if (s == "CARET_ASSIGN") return TokenType::CARET_ASSIGN;
+        if (s == "BACKSLASH_ASSIGN") return TokenType::BACKSLASH_ASSIGN;
+        if (s == "BIT_AND_ASSIGN") return TokenType::BIT_AND_ASSIGN;
+        if (s == "BIT_OR_ASSIGN") return TokenType::BIT_OR_ASSIGN;
+        if (s == "BIT_XOR_ASSIGN") return TokenType::BIT_XOR_ASSIGN;
+        if (s == "SHIFT_LEFT_ASSIGN") return TokenType::SHIFT_LEFT_ASSIGN;
+        if (s == "SHIFT_RIGHT_ASSIGN") return TokenType::SHIFT_RIGHT_ASSIGN;
+        if (s == "AND_AND") return TokenType::AND_AND;
+        if (s == "OR_OR") return TokenType::OR_OR;
+        if (s == "BANG") return TokenType::BANG;
+        if (s == "TILDE") return TokenType::TILDE;
+        if (s == "BIT_AND") return TokenType::BIT_AND;
+        if (s == "BIT_OR") return TokenType::BIT_OR;
+        if (s == "BIT_XOR") return TokenType::BIT_XOR;
+        if (s == "SHIFT_LEFT") return TokenType::SHIFT_LEFT;
+        if (s == "SHIFT_RIGHT") return TokenType::SHIFT_RIGHT;
+        if (s == "GREATER") return TokenType::GREATER;
+        if (s == "GREATER_EQUAL") return TokenType::GREATER_EQUAL;
+        if (s == "LESS") return TokenType::LESS;
+        if (s == "LESS_EQUAL") return TokenType::LESS_EQUAL;
+        if (s == "LPAREN") return TokenType::LPAREN;
+        if (s == "RPAREN") return TokenType::RPAREN;
+        if (s == "LBRACKET") return TokenType::LBRACKET;
+        if (s == "RBRACKET") return TokenType::RBRACKET;
+        if (s == "LBRACE") return TokenType::LBRACE;
+        if (s == "RBRACE") return TokenType::RBRACE;
+        if (s == "COMMA") return TokenType::COMMA;
+        if (s == "SEMICOLON") return TokenType::SEMICOLON;
+        if (s == "QUESTION") return TokenType::QUESTION;
+        if (s == "COLON") return TokenType::COLON;
+        if (s == "DOT") return TokenType::DOT;
+        if (s == "ELLIPSIS") return TokenType::ELLIPSIS;
+        if (s == "AT") return TokenType::AT;
+        if (s == "DOLLAR") return TokenType::DOLLAR;
+        if (s == "CLASS") return TokenType::CLASS;
+        if (s == "NAMESPACE") return TokenType::NAMESPACE;
+        if (s == "ENUM") return TokenType::ENUM;
+        if (s == "SUPER") return TokenType::SUPER;
+        if (s == "SELF") return TokenType::SELF;
+        if (s == "TRUE") return TokenType::TRUE_KW;
+        if (s == "FALSE") return TokenType::FALSE_KW;
+        if (s == "NONE") return TokenType::NONE_KW;
+        if (s == "IF") return TokenType::IF;
+        if (s == "ELSE") return TokenType::ELSE;
+        if (s == "WHILE") return TokenType::WHILE;
+        if (s == "FOR") return TokenType::FOR;
+        if (s == "IN") return TokenType::IN;
+        if (s == "IS") return TokenType::IS;
+        if (s == "BREAK") return TokenType::BREAK;
+        if (s == "CONTINUE") return TokenType::CONTINUE;
+        if (s == "RETURN") return TokenType::RETURN;
+        if (s == "SWITCH") return TokenType::SWITCH;
+        if (s == "CASE") return TokenType::CASE;
+        if (s == "DEFAULT") return TokenType::DEFAULT;
+        if (s == "MATCH") return TokenType::MATCH;
+        if (s == "MACRO") return TokenType::MACRO;
+        if (s == "SYNTAX") return TokenType::SYNTAX;
+        if (s == "QUOTE") return TokenType::QUOTE;
+        if (s == "DEFER") return TokenType::DEFER;
+        if (s == "LOCAL") return TokenType::LOCAL;
+        if (s == "IMPORT") return TokenType::IMPORT;
+        if (s == "REF") return TokenType::REF;
+        if (s == "STATE") return TokenType::STATE;
+        if (s == "CONST") return TokenType::CONST;
+        if (s == "DELETE") return TokenType::DELETE;
+        if (s == "NEWLINE") return TokenType::NEWLINE;
+        if (s == "EOF") return TokenType::END_OF_FILE;
+        if (s == "ERROR") return TokenType::ERROR;
+        if (s == "THROW") return TokenType::THROW;
+        if (s == "TRY") return TokenType::TRY;
+        if (s == "CATCH") return TokenType::CATCH;
+        
+        // Fallback for old ASTConverter stringToTokenType
+        if (s == "+") return TokenType::PLUS;
+        if (s == "-") return TokenType::MINUS;
+        if (s == "*") return TokenType::STAR;
+        if (s == "/") return TokenType::SLASH;
+        if (s == "^") return TokenType::CARET;
+        if (s == "\\") return TokenType::BACKSLASH;
+        if (s == "%") return TokenType::PERCENT;
+        if (s == "=") return TokenType::ASSIGN;
+        if (s == "==") return TokenType::EQUAL;
+        if (s == "=>") return TokenType::ARROW;
+        if (s == "->") return TokenType::RIGHT_ARROW;
+        if (s == "|>") return TokenType::PIPE;
+        if (s == "!=") return TokenType::BANG_EQUAL;
+        if (s == "+=") return TokenType::PLUS_ASSIGN;
+        if (s == "-=") return TokenType::MINUS_ASSIGN;
+        if (s == "*=") return TokenType::STAR_ASSIGN;
+        if (s == "/=") return TokenType::SLASH_ASSIGN;
+        if (s == "%=") return TokenType::PERCENT_ASSIGN;
+        if (s == "^=") return TokenType::CARET_ASSIGN;
+        if (s == "\\=") return TokenType::BACKSLASH_ASSIGN;
+        if (s == "&=") return TokenType::BIT_AND_ASSIGN;
+        if (s == "|=") return TokenType::BIT_OR_ASSIGN;
+        if (s == "^^=") return TokenType::BIT_XOR_ASSIGN;
+        if (s == "<<=") return TokenType::SHIFT_LEFT_ASSIGN;
+        if (s == ">>=") return TokenType::SHIFT_RIGHT_ASSIGN;
+        if (s == "&&") return TokenType::AND_AND;
+        if (s == "||") return TokenType::OR_OR;
+        if (s == "!") return TokenType::BANG;
+        if (s == "~") return TokenType::TILDE;
+        if (s == "&") return TokenType::BIT_AND;
+        if (s == "|") return TokenType::BIT_OR;
+        if (s == "^^") return TokenType::BIT_XOR;
+        if (s == "<<") return TokenType::SHIFT_LEFT;
+        if (s == ">>") return TokenType::SHIFT_RIGHT;
+        if (s == ">") return TokenType::GREATER;
+        if (s == ">=") return TokenType::GREATER_EQUAL;
+        if (s == "<") return TokenType::LESS;
+        if (s == "<=") return TokenType::LESS_EQUAL;
+        if (s == "in") return TokenType::IN;
+        if (s == "is") return TokenType::IS;
+        if (s == "...") return TokenType::ELLIPSIS;
+        if (s == "$") return TokenType::DOLLAR;
+        return TokenType::IDENTIFIER;
     }
 
 } // namespace jc

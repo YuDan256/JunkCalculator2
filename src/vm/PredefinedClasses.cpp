@@ -190,6 +190,72 @@ void registerPredefinedClasses() {
     });
     astNodeClass->methods["init"] = astInit;
 
+    // --- Token Class (For Syntax Macros) ---
+    ObjClass* tokenClass = GcHeap::get().allocate<ObjClass>();
+    GcObjGuard tokenGuard(tokenClass);
+    tokenClass->name = "Token";
+
+    auto tokenInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "lexeme", "line", "position"}, std::vector<bool>{false, false, false, false}, "init", nullptr);
+    tokenInit->defaultValues.push_back(Value::fromInt32(0)); // line
+    tokenInit->defaultValues.push_back(Value::fromInt32(0)); // position
+    GcObjGuard tokenInitGuard(tokenInit);
+    tokenInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
+        
+        inst->fields->set(Value("type"), args.size() > 0 ? args[0] : Value("Unknown"));
+        inst->fields->set(Value("lexeme"), args.size() > 1 ? args[1] : Value(""));
+        inst->fields->set(Value("line"), args.size() > 2 ? args[2] : Value::fromInt32(0));
+        inst->fields->set(Value("position"), args.size() > 3 ? args[3] : Value::fromInt32(0));
+        
+        return self;
+    });
+    tokenClass->methods["init"] = tokenInit;
+
+    auto tokenRepr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repr__", nullptr);
+    GcObjGuard tokenReprGuard(tokenRepr);
+    tokenRepr->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        std::string typeStr = "Unknown";
+        std::string lexeme = "";
+        int line = 0;
+        int position = 0;
+        
+        if (inst->fields) {
+            auto itType = inst->fields->keyMap.find(Value("type"));
+            if (itType != inst->fields->keyMap.end()) {
+                Value tVal = inst->fields->elements[itType->second].second;
+                typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
+            }
+            
+            auto itLex = inst->fields->keyMap.find(Value("lexeme"));
+            if (itLex != inst->fields->keyMap.end()) {
+                Value lVal = inst->fields->elements[itLex->second].second;
+                lexeme = lVal.isString() ? lVal.asString() : lVal.toRepr();
+            }
+            
+            auto itLine = inst->fields->keyMap.find(Value("line"));
+            if (itLine != inst->fields->keyMap.end()) {
+                Value lineVal = inst->fields->elements[itLine->second].second;
+                if (lineVal.isNumber()) line = static_cast<int>(lineVal.asDouble());
+            }
+            
+            auto itPos = inst->fields->keyMap.find(Value("position"));
+            if (itPos != inst->fields->keyMap.end()) {
+                Value posVal = inst->fields->elements[itPos->second].second;
+                if (posVal.isNumber()) position = static_cast<int>(posVal.asDouble());
+            }
+        }
+        
+        std::ostringstream oss;
+        oss << "Token(\"" << typeStr << "\", \"" << lexeme << "\", " << line << ", " << position << ")";
+        return Value(oss.str());
+    });
+    tokenClass->methods["__repr__"] = tokenRepr;
+    tokenClass->methods["__str__"] = tokenRepr;
+
     // --- Exception Class ---
     ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard excGuard(exceptionClass);
@@ -318,6 +384,7 @@ void registerPredefinedClasses() {
     VM::activeVM->registerBuiltinValue("range", Value(rangeClass));
     VM::activeVM->registerBuiltinValue("__range_iterator", Value(rangeIterClass));
     VM::activeVM->registerBuiltinValue("ASTNode", Value(astNodeClass));
+    VM::activeVM->registerBuiltinValue("Token", Value(tokenClass));
     VM::activeVM->registerBuiltinValue("Exception", Value(exceptionClass));
 }
 

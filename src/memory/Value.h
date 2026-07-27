@@ -1532,6 +1532,7 @@ namespace jc {
         std::vector<Value> defaultValues;
         bool hasRestParam = false;
         bool isUFCS = false; // ★ 新增：标记是否为 UFCS 绑定的全局函数
+        bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
 
         Value boundSelf;
         Value boundClass;

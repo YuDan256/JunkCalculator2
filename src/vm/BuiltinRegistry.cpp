@@ -14,6 +14,7 @@
 #include "../memory/GcHeap.h"
 #include "HelpRouter.h"         // ★ HelpRouter, DynamicHelp
 #include "PredefinedClasses.h"
+#include "../frontend/ASTConverter.h"
 #ifdef _MSC_VER
 #pragma warning(disable: 4702)
 #endif
@@ -1673,6 +1674,48 @@ void BuiltinRegistry::registerSystemUtils() {
     reg("convertPrimes", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString() || !args[1].isString()) throw std::runtime_error("Type Error: convertPrimes() expects two strings (txtPath, binPath)."); BigInt::convertTxtToJCP1(helpers::safeResolvePath(args[0].asString()), helpers::safeResolvePath(args[1].asString())); return Value::none(); });
     reg("verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); });
     reg("sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); });
+
+    reg("parseExpr", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (args.empty() || !args[0].isObjType(ObjType::LIST)) throw std::runtime_error("TypeError: parseExpr expects a list of Tokens.");
+        ObjList* list = static_cast<ObjList*>(args[0].asObj());
+        std::vector<Token> tokens;
+        for (const auto& v : list->vec) {
+            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: parseExpr expects a list of Tokens.");
+            auto inst = v.asInstance();
+            std::string typeStr = inst->fields->elements[inst->fields->keyMap[Value("type")]].second.asString();
+            std::string lexeme = inst->fields->elements[inst->fields->keyMap[Value("lexeme")]].second.asString();
+            int line = inst->fields->elements[inst->fields->keyMap[Value("line")]].second.asInt32();
+            int pos = inst->fields->elements[inst->fields->keyMap[Value("position")]].second.asInt32();
+            tokens.emplace_back(stringToTokenType(typeStr), lexeme, pos, line);
+        }
+        tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
+        
+        Parser parser(tokens);
+        auto expr = parser.expression();
+        if (!parser.isAtEnd()) throw std::runtime_error("SyntaxError: Unexpected tokens after expression.");
+        return AST_to_JC2(expr.get());
+    });
+
+    reg("parseStmt", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (args.empty() || !args[0].isObjType(ObjType::LIST)) throw std::runtime_error("TypeError: parseStmt expects a list of Tokens.");
+        ObjList* list = static_cast<ObjList*>(args[0].asObj());
+        std::vector<Token> tokens;
+        for (const auto& v : list->vec) {
+            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: parseStmt expects a list of Tokens.");
+            auto inst = v.asInstance();
+            std::string typeStr = inst->fields->elements[inst->fields->keyMap[Value("type")]].second.asString();
+            std::string lexeme = inst->fields->elements[inst->fields->keyMap[Value("lexeme")]].second.asString();
+            int line = inst->fields->elements[inst->fields->keyMap[Value("line")]].second.asInt32();
+            int pos = inst->fields->elements[inst->fields->keyMap[Value("position")]].second.asInt32();
+            tokens.emplace_back(stringToTokenType(typeStr), lexeme, pos, line);
+        }
+        tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
+        
+        Parser parser(tokens);
+        auto stmt = parser.parseStatementOrBlock();
+        if (!parser.isAtEnd()) throw std::runtime_error("SyntaxError: Unexpected tokens after statement.");
+        return AST_to_JC2(stmt.get());
+    });
 
     reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         static uint64_t counter = 0;

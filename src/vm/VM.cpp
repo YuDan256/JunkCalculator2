@@ -35,6 +35,28 @@ extern bool g_profile;
 
 namespace jc {
 
+Value VM::makeTokenInstance(const Token& t) {
+    Value tokenClassVal = getBuiltinValue("Token");
+    if (!tokenClassVal.isClass()) return Value::none();
+    
+    ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
+    inst->classDef = static_cast<ObjClass*>(tokenClassVal.asObj());
+    inst->fields = GcHeap::get().allocate<ObjDict>();
+    
+    std::string typeStr = tokenTypeToString(t.type);
+    size_t paren = typeStr.find('(');
+    if (paren != std::string::npos) {
+        typeStr = typeStr.substr(0, paren);
+    }
+    
+    inst->fields->set(Value("type"), Value(typeStr));
+    inst->fields->set(Value("lexeme"), Value(t.lexeme));
+    inst->fields->set(Value("line"), Value::fromInt32(t.line));
+    inst->fields->set(Value("position"), Value::fromInt32(t.position));
+    
+    return Value(inst);
+}
+
 void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity) {
     nativeBuiltins[name] = fn;
     builtinArity[name] = arity;

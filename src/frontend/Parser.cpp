@@ -1458,7 +1458,7 @@ namespace jc {
                     ObjInstance* streamInst = GcHeap::get().allocate<ObjInstance>();
                     streamInst->classDef = static_cast<ObjClass*>(streamClassVal.asObj());
                     streamInst->fields = GcHeap::get().allocate<ObjDict>();
-                    streamInst->fields->set(Value("tokens"), Value(tokenList));
+                    streamInst->fields->set(Value("_tokens"), Value(tokenList));
                     streamInst->fields->set(Value("cursor"), Value::fromInt32(0));
 
                     callArgs.push_back(Value(streamInst));

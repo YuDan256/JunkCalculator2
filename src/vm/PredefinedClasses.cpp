@@ -274,7 +274,7 @@ void registerPredefinedClasses() {
         if (args.empty() || !args[0].isObjType(ObjType::LIST)) {
             throw std::runtime_error("TypeError: TokenStream init expects a list of Tokens.");
         }
-        inst->fields->set(Value("tokens"), args[0]);
+        inst->fields->set(Value("_tokens"), args[0]);
         inst->fields->set(Value("cursor"), Value::fromInt32(0));
         return self;
     });
@@ -285,7 +285,7 @@ void registerPredefinedClasses() {
     tsTokens->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        return inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        return inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
     });
     tokenStreamClass->methods["tokens"] = tsTokens;
 
@@ -294,7 +294,7 @@ void registerPredefinedClasses() {
     tsPeek->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -311,7 +311,7 @@ void registerPredefinedClasses() {
     tsAdvance->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -330,7 +330,7 @@ void registerPredefinedClasses() {
     tsPrevious->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -346,7 +346,7 @@ void registerPredefinedClasses() {
     tsIsAtEnd->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -359,7 +359,7 @@ void registerPredefinedClasses() {
     tsMatch->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -387,7 +387,7 @@ void registerPredefinedClasses() {
     tsConsume->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -420,7 +420,7 @@ void registerPredefinedClasses() {
     tsInsert->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -460,7 +460,7 @@ void registerPredefinedClasses() {
     tsSet->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
@@ -495,7 +495,7 @@ void registerPredefinedClasses() {
     tsRemove->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -517,7 +517,7 @@ void registerPredefinedClasses() {
     tsParse->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         
@@ -562,7 +562,7 @@ void registerPredefinedClasses() {
     tsParseOne->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
         

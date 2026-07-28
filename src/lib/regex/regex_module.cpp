@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <cctype>
 
+static int g_max_steps = 10000000;
+
 static uint32_t decodeUTF8(const std::string& str, size_t& pos) {
     if (pos >= str.length()) return 0;
     unsigned char c = str[pos];
@@ -479,8 +481,8 @@ public:
 };
 
 struct ThreadState {
-    size_t pc;
-    size_t sp;
+    size_t pc = 0;
+    size_t sp = 0;
     std::vector<size_t> caps;
 };
 
@@ -533,7 +535,7 @@ public:
                 visited[vIdx] = true;
             } else {
                 stepCount++;
-                if (stepCount > 10000000) {
+                if (g_max_steps != -1 && stepCount > g_max_steps) {
                     jc2::throw_error("RegexError: Catastrophic backtracking detected (step limit exceeded).");
                 }
             }
@@ -638,9 +640,15 @@ static jc2::Class* g_regexClass = nullptr;
 static jc2::Class* g_reMatchClass = nullptr;
 
 static std::shared_ptr<RegexVM> getRegex(const jc2::Value& val) {
-    if (!val.is_instance()) jc2::throw_error("TypeError: Expected a Regex instance.");
+    if (!val.is_instance()) {
+        jc2::throw_error("TypeError: Expected a Regex instance.");
+        return nullptr;
+    }
     auto ptr = val.get_native_data<std::shared_ptr<RegexVM>>();
-    if (!ptr) jc2::throw_error("TypeError: Instance is not a Regex.");
+    if (!ptr) {
+        jc2::throw_error("TypeError: Instance is not a Regex.");
+        return nullptr;
+    }
     return *ptr;
 }
 
@@ -841,6 +849,24 @@ std::shared_ptr<RegexVM> ensureRegex(const jc2::Value& val) {
     return std::make_shared<RegexVM>(val.to_string());
 }
 
+JC2_ValueHandle global_getcontext(JC2_VMContext, int, JC2_ValueHandle*, void*) {
+    jc2::Dict ctx;
+    ctx.set(jc2::Value("max_steps"), jc2::Value(g_max_steps));
+    return ctx.get_handle();
+}
+
+JC2_ValueHandle global_setcontext(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc > 0) {
+        int steps = static_cast<int>(jc2::Value(argv[0]).as_double());
+        if (steps < -1) {
+            jc2::throw_error("ValueError: max_steps cannot be less than -1.");
+            return jc2::Value().get_handle();
+        }
+        g_max_steps = steps;
+    }
+    return jc2::Value().get_handle();
+}
+
 JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     std::string pat = jc2::Value(argv[0]).as_string();
     try {
@@ -992,6 +1018,8 @@ int jc2_init(jc2::Module& mod) {
     g_regexClass->bind_method("__call__", regex_search, 1, 1, false);
     mod.register_value("Regex", *g_regexClass);
 
+    mod.register_function("getcontext", global_getcontext, 0, 0, false);
+    mod.register_function("setcontext", global_setcontext, 1, 1, false);
     mod.register_function("compile", global_compile, 1, 1, false);
     mod.register_function("test", global_test, 2, 2, false);
     mod.register_function("matchStart", global_matchStart, 2, 2, false);
@@ -1023,6 +1051,8 @@ int jc2_init(jc2::Module& mod) {
         "    r.split(\"A 1, B 2\")            // Splits by match\n\n"
         "  Global Functional API (via namespace)\n"
         "  ──────────────────────\n"
+        "    regex.getcontext()            Returns a dict with current context settings (max_steps).\n"
+        "    regex.setcontext(steps)       Sets the global step limit for backreference backtracking (-1 for no limit).\n"
         "    regex.compile(pat)            Returns a Regex object.\n"
         "    regex.test(pat, text)         Returns true if pattern matches anywhere, else false.\n"
         "    regex.matchStart(pat, text)   Matches exactly at the start of text.\n"

@@ -67,3 +67,10 @@ test_complex_patterns() = {
     assert(email_re.test("invalid-email@.com") == false, "Email regex negative failed")
 }
 test_complex_patterns()
+
+test_catastrophic_backtracking() = {
+    // Without memoization, this would hang forever (O(2^N))
+    evil_re = regex.compile(r"RE((a+)+b)RE")
+    assert(evil_re.test("aaaaaaaaaaaaaaaaaaaaaaaaaaaaa") == false, "Catastrophic backtracking defense failed")
+}
+test_catastrophic_backtracking()

@@ -512,6 +512,10 @@ public:
         current.caps.assign((groupCount + 1) * 2, (size_t)-1);
         
         size_t textLen = text.length();
+        
+        // Memoization table to prevent catastrophic backtracking.
+        // visited[pc * (textLen + 1) + sp] == 1 means this state has already been explored and failed.
+        std::vector<uint8_t> visited(insts.size() * (textLen + 1), 0);
 
         while (true) {
             if (current.pc >= insts.size()) goto backtrack;
@@ -605,9 +609,25 @@ public:
             continue;
             
         backtrack:
-            if (stack.empty()) return false;
-            current = stack.back();
-            stack.pop_back();
+            // Mark the current failed state to prevent redundant exploration
+            if (current.pc < insts.size() && current.sp <= textLen) {
+                visited[current.pc * (textLen + 1) + current.sp] = 1;
+            }
+            
+            while (!stack.empty()) {
+                current = stack.back();
+                stack.pop_back();
+                // Prune branches that have already been visited and failed
+                if (current.pc < insts.size() && current.sp <= textLen) {
+                    if (visited[current.pc * (textLen + 1) + current.sp] == 0) {
+                        goto next_state;
+                    }
+                }
+            }
+            return false;
+            
+        next_state:
+            continue;
         }
     }
 };

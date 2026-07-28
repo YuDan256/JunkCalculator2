@@ -839,7 +839,13 @@ JC2_ValueHandle regex_subst(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 JC2_ValueHandle regex_str(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance inst(argv[0]);
     std::string pat = inst.get("pattern").as_string();
-    return jc2::Value("Regex(r\"RE(" + pat + ")RE\")").get_handle();
+    std::string escaped = "";
+    for (char c : pat) {
+        if (c == '\\') escaped += "\\\\";
+        else if (c == '"') escaped += "\\\"";
+        else escaped += c;
+    }
+    return jc2::Value("Regex(\"" + escaped + "\")").get_handle();
 }
 
 std::shared_ptr<RegexVM> ensureRegex(const jc2::Value& val) {
@@ -1038,9 +1044,7 @@ int jc2_init(jc2::Module& mod) {
         "    It is highly recommended to instantiate a Regex object when reusing patterns,\n"
         "    as it caches the compiled bytecode.\n"
         "    \n"
-        "    // Note: 'RE' is a raw string delimiter, NOT part of the regex pattern.\n"
-        "    // If your pattern contains ')RE', use a different tag like r\"TAG(...)TAG\".\n"
-        "    r = regex.Regex(r\"RE((\\w+) (\\d+))RE\") // Instantiate Regex object\n"
+        "    r = regex.Regex(\"(\\\\w+) (\\\\d+)\") // Instantiate Regex object\n"
         "    r.test(\"Alice 30\")             // → true\n"
         "    m = r.search(\"Bob 25\")         // Returns a ReMatch object\n"
         "    r(\"Bob 25\")                    // Callable syntax sugar for search()\n"

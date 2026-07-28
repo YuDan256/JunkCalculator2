@@ -127,7 +127,7 @@ namespace helpers {
         if (!val.isInstance()) return false;
         auto c = val.asInstance()->classDef;
         while (c) {
-            if (c->methods.count(name)) return true;
+            if (c->properties.count(name)) return true;
             c = c->parent;
         }
         return false;

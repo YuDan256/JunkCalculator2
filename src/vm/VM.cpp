@@ -6393,9 +6393,9 @@ Value VM::run(int targetFrameDepth) {
                 ObjClass* ownerClass = nullptr;
                 auto cls = parentClass;
                 while (cls) {
-                    auto it = cls->methods.find(field);
-                    if (it != cls->methods.end() && !it->second->is_local) {
-                        rawMethod = it->second;
+                    auto it = cls->properties.find(field);
+                    if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                        rawMethod = it->second.val.asFunction();
                         ownerClass = cls;
                         break;
                     }

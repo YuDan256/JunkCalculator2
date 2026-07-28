@@ -68,7 +68,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    rangeClass->methods["init"] = rangeInit;
+    rangeClass->properties["init"] = {Value(rangeInit), false, false};
 
     // __len__()
     auto rangeLen = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__len__", nullptr);
@@ -78,7 +78,7 @@ void registerPredefinedClasses() {
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
         return Value(BigInt(data.length));
     });
-    rangeClass->methods["__len__"] = rangeLen;
+    rangeClass->properties["__len__"] = {Value(rangeLen), false, false};
 
     // __str__()
     auto rangeStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
@@ -90,8 +90,8 @@ void registerPredefinedClasses() {
         oss << "range(" << data.start << ", " << data.end << ", " << data.step << ")";
         return Value(oss.str());
     });
-    rangeClass->methods["__str__"] = rangeStr;
-    rangeClass->methods["__repr__"] = rangeStr;
+    rangeClass->properties["__str__"] = {Value(rangeStr), false, false};
+    rangeClass->properties["__repr__"] = {Value(rangeStr), false, false};
 
     // __getitem__(idx)
     auto rangeGetItem = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx"}, std::vector<bool>{false}, "__getitem__", nullptr);
@@ -107,7 +107,7 @@ void registerPredefinedClasses() {
         if (data.isInt) return Value(BigInt(static_cast<int64_t>(val)));
         return Value(val);
     });
-    rangeClass->methods["__getitem__"] = rangeGetItem;
+    rangeClass->properties["__getitem__"] = {Value(rangeGetItem), false, false};
 
     // --- RangeIterator Class ---
     ObjClass* rangeIterClass = GcHeap::get().allocate<ObjClass>();
@@ -142,7 +142,7 @@ void registerPredefinedClasses() {
 
         return Value(iterInst);
     });
-    rangeClass->methods["__iter__"] = rangeIter;
+    rangeClass->properties["__iter__"] = {Value(rangeIter), false, false};
 
     // __next__() for RangeIterator
     auto rangeIterNext = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__next__", nullptr);
@@ -162,7 +162,7 @@ void registerPredefinedClasses() {
         if (rangeData.isInt) return Value(BigInt(static_cast<int64_t>(val)));
         return Value(val);
     });
-    rangeIterClass->methods["__next__"] = rangeIterNext;
+    rangeIterClass->properties["__next__"] = {Value(rangeIterNext), false, false};
 
     // --- ASTNode Class (For Macros) ---
     ObjClass* astNodeClass = GcHeap::get().allocate<ObjClass>();
@@ -191,7 +191,7 @@ void registerPredefinedClasses() {
         }
         return self;
     });
-    astNodeClass->methods["init"] = astInit;
+    astNodeClass->properties["init"] = {Value(astInit), false, false};
 
     // --- Token Class (For Syntax Macros) ---
     ObjClass* tokenClass = GcHeap::get().allocate<ObjClass>();
@@ -213,7 +213,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    tokenClass->methods["init"] = tokenInit;
+    tokenClass->properties["init"] = {Value(tokenInit), false, false};
 
     auto tokenRepr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repr__", nullptr);
     GcObjGuard tokenReprGuard(tokenRepr);
@@ -253,8 +253,8 @@ void registerPredefinedClasses() {
         oss << "Token(\"" << typeStr << "\", \"" << lexeme << "\", " << line << ", " << position << ")";
         return Value(oss.str());
     });
-    tokenClass->methods["__repr__"] = tokenRepr;
-    tokenClass->methods["__str__"] = tokenRepr;
+    tokenClass->properties["__repr__"] = {Value(tokenRepr), false, false};
+    tokenClass->properties["__str__"] = {Value(tokenRepr), false, false};
 
     // --- TokenStream Class ---
     ObjClass* tokenStreamClass = GcHeap::get().allocate<ObjClass>();
@@ -274,7 +274,7 @@ void registerPredefinedClasses() {
         inst->properties["cursor"] = {Value::fromInt32(0), false, false};
         return self;
     });
-    tokenStreamClass->methods["init"] = tsInit;
+    tokenStreamClass->properties["init"] = {Value(tsInit), false, false};
 
     auto tsTokens = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "tokens", nullptr);
     GcObjGuard tsTokensGuard(tsTokens);
@@ -283,7 +283,7 @@ void registerPredefinedClasses() {
         auto inst = self.asInstance();
         return inst->properties["_tokens"].val;
     });
-    tokenStreamClass->methods["tokens"] = tsTokens;
+    tokenStreamClass->properties["tokens"] = {Value(tsTokens), false, false};
 
     auto tsPeek = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "peek", nullptr);
     GcObjGuard tsPeekGuard(tsPeek);
@@ -300,7 +300,7 @@ void registerPredefinedClasses() {
         }
         return list->vec[cursor];
     });
-    tokenStreamClass->methods["peek"] = tsPeek;
+    tokenStreamClass->properties["peek"] = {Value(tsPeek), false, false};
 
     auto tsAdvance = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "advance", nullptr);
     GcObjGuard tsAdvanceGuard(tsAdvance);
@@ -319,7 +319,7 @@ void registerPredefinedClasses() {
         inst->properties["cursor"].val = Value::fromInt32(cursor + 1);
         return ret;
     });
-    tokenStreamClass->methods["advance"] = tsAdvance;
+    tokenStreamClass->properties["advance"] = {Value(tsAdvance), false, false};
 
     auto tsPrevious = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "previous", nullptr);
     GcObjGuard tsPreviousGuard(tsPrevious);
@@ -335,7 +335,7 @@ void registerPredefinedClasses() {
         }
         return list->vec[cursor - 1];
     });
-    tokenStreamClass->methods["previous"] = tsPrevious;
+    tokenStreamClass->properties["previous"] = {Value(tsPrevious), false, false};
 
     auto tsIsAtEnd = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "isAtEnd", nullptr);
     GcObjGuard tsIsAtEndGuard(tsIsAtEnd);
@@ -348,7 +348,7 @@ void registerPredefinedClasses() {
         
         return Value(cursor >= static_cast<int>(list->vec.size()));
     });
-    tokenStreamClass->methods["isAtEnd"] = tsIsAtEnd;
+    tokenStreamClass->properties["isAtEnd"] = {Value(tsIsAtEnd), false, false};
 
     auto tsMatch = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type"}, std::vector<bool>{false}, "match", nullptr);
     GcObjGuard tsMatchGuard(tsMatch);
@@ -376,7 +376,7 @@ void registerPredefinedClasses() {
         }
         return Value(false);
     });
-    tokenStreamClass->methods["match"] = tsMatch;
+    tokenStreamClass->properties["match"] = {Value(tsMatch), false, false};
 
     auto tsConsume = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "msg"}, std::vector<bool>{false, false}, "consume", nullptr);
     GcObjGuard tsConsumeGuard(tsConsume);
@@ -409,7 +409,7 @@ void registerPredefinedClasses() {
         }
         throw std::runtime_error(errMsg);
     });
-    tokenStreamClass->methods["consume"] = tsConsume;
+    tokenStreamClass->properties["consume"] = {Value(tsConsume), false, false};
 
     auto tsInsert = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx", "token"}, std::vector<bool>{false, false}, "insert", nullptr);
     GcObjGuard tsInsertGuard(tsInsert);
@@ -449,7 +449,7 @@ void registerPredefinedClasses() {
         }
         return self;
     });
-    tokenStreamClass->methods["insert"] = tsInsert;
+    tokenStreamClass->properties["insert"] = {Value(tsInsert), false, false};
 
     auto tsSet = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx", "token"}, std::vector<bool>{false, false}, "set", nullptr);
     GcObjGuard tsSetGuard(tsSet);
@@ -484,7 +484,7 @@ void registerPredefinedClasses() {
         list->mut()[idx] = tokVal;
         return self;
     });
-    tokenStreamClass->methods["set"] = tsSet;
+    tokenStreamClass->properties["set"] = {Value(tsSet), false, false};
 
     auto tsRemove = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"idx"}, std::vector<bool>{false}, "remove", nullptr);
     GcObjGuard tsRemoveGuard(tsRemove);
@@ -506,7 +506,7 @@ void registerPredefinedClasses() {
         }
         return self;
     });
-    tokenStreamClass->methods["remove"] = tsRemove;
+    tokenStreamClass->properties["remove"] = {Value(tsRemove), false, false};
 
     auto tsParse = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "parse", nullptr);
     GcObjGuard tsParseGuard(tsParse);
@@ -551,7 +551,7 @@ void registerPredefinedClasses() {
         }
         return AST_to_JC2(ast.get());
     });
-    tokenStreamClass->methods["parse"] = tsParse;
+    tokenStreamClass->properties["parse"] = {Value(tsParse), false, false};
 
     auto tsParseOne = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "parseOne", nullptr);
     GcObjGuard tsParseOneGuard(tsParseOne);
@@ -588,7 +588,7 @@ void registerPredefinedClasses() {
         
         return AST_to_JC2(ast.get());
     });
-    tokenStreamClass->methods["parseOne"] = tsParseOne;
+    tokenStreamClass->properties["parseOne"] = {Value(tsParseOne), false, false};
 
     // --- Exception Class ---
     ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();
@@ -614,7 +614,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    exceptionClass->methods["init"] = excInit;
+    exceptionClass->properties["init"] = {Value(excInit), false, false};
 
     auto excRepl = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repr__", nullptr);
     GcObjGuard excReplGuard(excRepl);
@@ -642,7 +642,7 @@ void registerPredefinedClasses() {
             return Value("<Exception " + typeStr + ": " + msg + ">");
         }
     });
-    exceptionClass->methods["__repr__"] = excRepl;
+    exceptionClass->properties["__repr__"] = {Value(excRepl), false, false};
 
     auto excStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
     GcObjGuard excStrGuard(excStr);
@@ -709,7 +709,7 @@ void registerPredefinedClasses() {
         }
         return Value(oss.str());
     });
-    exceptionClass->methods["__str__"] = excStr;
+    exceptionClass->properties["__str__"] = {Value(excStr), false, false};
 
     // 注册到全局
     VM::activeVM->registerBuiltinValue("range", Value(rangeClass));

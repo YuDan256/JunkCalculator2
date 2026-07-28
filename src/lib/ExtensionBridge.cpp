@@ -199,7 +199,7 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
         }
     }
     
-    cls->methods[name] = closure;
+    cls->properties[name] = {Value(closure), false, false};
 }
 
 static void host_set_native_data(JC2_VMContext, JC2_ValueHandle instance, void* data, JC2_NativeDestructor dtor) {
@@ -661,7 +661,7 @@ static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle in
         ObjInstance* obj = i.asInstance();
         auto it = obj->properties.find(name);
         if (it != obj->properties.end()) {
-            return protect(it->second.val.as_bits);
+            return protect(it->second.val);
         }
     }
     return Value::none().as_bits;

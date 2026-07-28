@@ -346,6 +346,7 @@ class BytecodeCompiler {
 public:
     std::vector<Instruction> insts;
     std::vector<CharClass> classes;
+    bool hasBackref = false;
 
     size_t emit(Opcode op, size_t op1 = 0, size_t op2 = 0) {
         insts.push_back({op, op1, op2});
@@ -472,6 +473,7 @@ public:
             }
         } else if (node->type == "backref") {
             emit(Opcode::BACKREF, node->idx);
+            hasBackref = true;
         }
     }
 };
@@ -487,6 +489,7 @@ public:
     std::vector<Instruction> insts;
     std::vector<CharClass> classes;
     int groupCount;
+    bool hasBackref;
 
     RegexVM(const std::string& pat) {
         Parser p(pat);
@@ -501,6 +504,7 @@ public:
         
         insts = std::move(c.insts);
         classes = std::move(c.classes);
+        hasBackref = c.hasBackref;
     }
 
     bool execute(const std::string& text, size_t startSp, std::vector<size_t>& outCaps) {
@@ -513,12 +517,26 @@ public:
         
         size_t textLen = text.length();
         
-        // Memoization table to prevent catastrophic backtracking.
-        // visited[pc * (textLen + 1) + sp] == 1 means this state has already been explored and failed.
-        std::vector<uint8_t> visited(insts.size() * (textLen + 1), 0);
+        std::vector<bool> visited;
+        if (!hasBackref) {
+            visited.assign(insts.size() * (textLen + 1), false);
+        }
+        
+        int stepCount = 0;
 
         while (true) {
             if (current.pc >= insts.size()) goto backtrack;
+            
+            if (!hasBackref) {
+                size_t vIdx = current.pc * (textLen + 1) + current.sp;
+                if (visited[vIdx]) goto backtrack;
+                visited[vIdx] = true;
+            } else {
+                stepCount++;
+                if (stepCount > 10000000) {
+                    jc2::throw_error("RegexError: Catastrophic backtracking detected (step limit exceeded).");
+                }
+            }
             
             {
                 const Instruction& inst = insts[current.pc];
@@ -609,25 +627,9 @@ public:
             continue;
             
         backtrack:
-            // Mark the current failed state to prevent redundant exploration
-            if (current.pc < insts.size() && current.sp <= textLen) {
-                visited[current.pc * (textLen + 1) + current.sp] = 1;
-            }
-            
-            while (!stack.empty()) {
-                current = stack.back();
-                stack.pop_back();
-                // Prune branches that have already been visited and failed
-                if (current.pc < insts.size() && current.sp <= textLen) {
-                    if (visited[current.pc * (textLen + 1) + current.sp] == 0) {
-                        goto next_state;
-                    }
-                }
-            }
-            return false;
-            
-        next_state:
-            continue;
+            if (stack.empty()) return false;
+            current = stack.back();
+            stack.pop_back();
         }
     }
 };

@@ -1254,7 +1254,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
             if (inst->properties.find(methodName) == inst->properties.end()) {
                 method = ic.cachedMethod;
-                owningClass = inst->classDef;
+                owningClass = ic.cachedClass;
                 goto invoke_method;
             }
         }
@@ -5883,11 +5883,10 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
-                    ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                    if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
-                    
                     std::string keyStr = keyVal.asString();
                     if (op == OpCode::SET_PRIVATE) {
+                        ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                         auto it = owner->properties.find(keyStr);
                         if (it == owner->properties.end() || !it->second.is_local) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
                         if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + keyStr + "'.");

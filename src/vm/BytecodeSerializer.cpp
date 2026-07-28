@@ -324,6 +324,7 @@ void BytecodeSerializer::readChunk(std::istream& is, Chunk& chunk, int baseIdx) 
         chunk.inlineCaches[i].cachedGlobalSlot = -1;
         chunk.inlineCaches[i].cachedClassId = 0;
         chunk.inlineCaches[i].cachedMethod = nullptr;
+        chunk.inlineCaches[i].cachedClass = nullptr;
         chunk.inlineCaches[i].cachedFieldIndex = -1;
         chunk.inlineCaches[i].cachedBuiltinType = BuiltinType::UNKNOWN;
         chunk.inlineCaches[i].cachedNativeFn.reset();

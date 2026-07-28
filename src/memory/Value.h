@@ -146,116 +146,6 @@ namespace jc {
         StringMatrix mat;
         ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
     };
-    struct PropertyDescriptor {
-        Value val;
-        bool is_const = false;
-        bool is_local = false;
-    };
-
-    struct ObjClass : public Obj {
-        uint64_t classId;
-        std::string name;
-        ObjClass* parent = nullptr;
-        std::unordered_map<std::string, PropertyDescriptor> properties;
-        bool is_native = false;
-        std::function<Value(const std::vector<Value>&)> native_allocator;
-        ObjClass() { 
-            static uint64_t nextId = 1;
-            classId = nextId++;
-            type = ObjType::CLASS; 
-        }
-    };
-
-    struct ObjTypeDef : public Obj {
-        std::vector<std::variant<BuiltinType, ObjClass*>> types;
-        ObjTypeDef() { type = ObjType::TYPE_DEF; }
-        
-        void normalize() {
-            std::sort(types.begin(), types.end(), [](const auto& a, const auto& b) {
-                if (a.index() != b.index()) return a.index() < b.index();
-                if (std::holds_alternative<BuiltinType>(a)) return std::get<BuiltinType>(a) < std::get<BuiltinType>(b);
-                return std::get<ObjClass*>(a) < std::get<ObjClass*>(b);
-            });
-            types.erase(std::unique(types.begin(), types.end()), types.end());
-        }
-
-        std::string name() const {
-            if (types.empty()) return "Never";
-            std::string res = "";
-            for (size_t i = 0; i < types.size(); ++i) {
-                if (i > 0) res += " | ";
-                if (std::holds_alternative<BuiltinType>(types[i])) {
-                    switch (std::get<BuiltinType>(types[i])) {
-                        case BuiltinType::ANY: res += "any_type"; break;
-                        case BuiltinType::INT: res += "int"; break;
-                        case BuiltinType::FLOAT: res += "double"; break;
-                        case BuiltinType::REAL: res += "real"; break;
-                        case BuiltinType::NUMBER: res += "number"; break;
-                        case BuiltinType::WHOLE: res += "whole"; break;
-                        case BuiltinType::EXACT: res += "exact"; break;
-                        case BuiltinType::STRING: res += "string"; break;
-                        case BuiltinType::BOOL: res += "bool"; break;
-                        case BuiltinType::BINARY: res += "binary"; break;
-                        case BuiltinType::NONE_TYPE: res += "none_type"; break;
-                        case BuiltinType::LIST: res += "list"; break;
-                        case BuiltinType::DICT: res += "dict"; break;
-                        case BuiltinType::SET: res += "set"; break;
-                        case BuiltinType::FRACTION: res += "fraction"; break;
-                        case BuiltinType::COMPLEX: res += "complex"; break;
-                        case BuiltinType::BASENUM: res += "basenum"; break;
-                        case BuiltinType::SYMBOLIC: res += "symbolic"; break;
-                        case BuiltinType::REALMAT: res += "realmatrix"; break;
-                        case BuiltinType::COMPLEXMAT: res += "complexmatrix"; break;
-                        case BuiltinType::STRINGMAT: res += "stringmatrix"; break;
-                        case BuiltinType::MATRIX: res += "matrix"; break;
-                        case BuiltinType::FUNC: res += "function"; break;
-                        case BuiltinType::CLASS: res += "class_type"; break;
-                        case BuiltinType::INSTANCE: res += "instance"; break;
-                        case BuiltinType::NAMESPACE: res += "namespace_type"; break;
-                        case BuiltinType::ITERABLE: res += "iterable"; break;
-                        case BuiltinType::CALLABLE: res += "callable"; break;
-                        case BuiltinType::INDEXABLE: res += "indexable"; break;
-                        case BuiltinType::HASHABLE: res += "hashable"; break;
-                        case BuiltinType::NUMERIC: res += "numeric"; break;
-                        case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
-                        case BuiltinType::TYPE_DEF: res += "type"; break;
-                        default: res += "unknown"; break;
-                    }
-                } else {
-                    ObjClass* cls = std::get<ObjClass*>(types[i]);
-                    res += cls->name.empty() ? "<anonymous class>" : cls->name;
-                }
-            }
-            return res;
-        }
-    };
-
-    struct ObjInstance : public Obj {
-        ObjClass* classDef = nullptr;
-        std::unordered_map<std::string, PropertyDescriptor> properties;
-        
-        std::any nativeData;
-        void* c_nativeData = nullptr;
-        void (*c_nativeDtor)(void*) = nullptr;
-        Value (*c_nativeNext)(ObjInstance*) = nullptr;
-        bool is_frozen = false;
-        mutable bool is_hashable_cached = false;
-        mutable bool has_cached_hash = false;
-        mutable size_t cached_hash = 0;
-        ObjInstance() { type = ObjType::INSTANCE; }
-        void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Instance."); }
-        void clear() override { checkModify(); clearTotal(); }
-        void clearTotal() override;
-    };
-    struct ObjSuper : public Obj {
-        ObjInstance* instance = nullptr;
-        ObjClass* parentClass = nullptr;
-        ObjSuper() { type = ObjType::SUPER_PROXY; }
-    };
-    struct ObjSym : public Obj {
-        SymExpr sym;
-        ObjSym(SymExpr s) : sym(std::move(s)) { type = ObjType::SYMBOLIC; }
-    };
 
     template<typename> struct always_false : std::false_type {};
 
@@ -437,29 +327,7 @@ namespace jc {
             *this = fromObj(GcHeap::get().allocate<ObjStringMatrix>(std::move(val)));
         }
         
-        Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {
-            if (val.ptr && val.ptr->getType() == SymType::NUM) {
-                auto numNode = std::static_pointer_cast<SymNum>(val.ptr);
-                std::visit([this](auto&& arg) {
-                    using T = std::decay_t<decltype(arg)>;
-                    if constexpr (std::is_same_v<T, int32_t>) {
-                        *this = Value(arg);
-                    } else if constexpr (std::is_same_v<T, Fraction>) {
-                        if (arg.getDen() == BigInt(1)) {
-                            *this = Value(arg.getNum());
-                        } else {
-                            *this = Value(arg);
-                        }
-                    } else if constexpr (std::is_same_v<T, double>) {
-                        *this = Value(arg);
-                    } else if constexpr (std::is_same_v<T, BigInt>) {
-                        *this = Value(arg);
-                    }
-                }, numNode->value);
-            } else {
-                *this = fromObj(GcHeap::get().allocate<ObjSym>(std::move(val)));
-            }
-        }
+        Value(SymExpr val);
 
         bool isInstance() const { return isObjType(ObjType::INSTANCE); }
         bool isClass() const { return isObjType(ObjType::CLASS); }
@@ -467,32 +335,13 @@ namespace jc {
         bool isSymbolic() const { return isObjType(ObjType::SYMBOLIC); }
         bool isType() const { return isObjType(ObjType::TYPE_DEF); }
 
-        SymExpr asSymbolic() const {
-            if (isSymbolic()) return static_cast<ObjSym*>(asObj())->sym;
-            if (isInt32()) return SymExpr(BigInt(asInt32()));
-            if (isDouble()) return SymExpr(asDoubleRaw());
-            if (isObjType(ObjType::BIGINT)) return SymExpr(static_cast<ObjBigInt*>(asObj())->num);
-            if (isObjType(ObjType::FRACTION)) return SymExpr(static_cast<ObjFraction*>(asObj())->frac);
-            if (isObjType(ObjType::COMPLEX)) return SymExpr(static_cast<ObjComplex*>(asObj())->comp);
-            throw std::runtime_error("TypeError: Expected a symbolic expression or exact number.");
-        }
+        SymExpr asSymbolic() const;
 
-        ObjInstance* asInstance() const {
-            if (!isInstance()) throw std::runtime_error("Type Error: Expected an instance.");
-            return static_cast<ObjInstance*>(asObj());
-        }
+        ObjInstance* asInstance() const;
 
         bool isSuperProxy() const { return isObjType(ObjType::SUPER_PROXY); }
-        ObjSuper* asSuperProxy() const {
-            if (!isSuperProxy()) throw std::runtime_error("Type Error: Expected super proxy.");
-            return static_cast<ObjSuper*>(asObj());
-        }
-        static Value makeSuperProxy(ObjInstance* inst, ObjClass* parent) {
-            ObjSuper* sp = GcHeap::get().allocate<ObjSuper>();
-            sp->instance = inst;
-            sp->parentClass = parent;
-            return Value(sp);
-        }
+        ObjSuper* asSuperProxy() const;
+        static Value makeSuperProxy(ObjInstance* inst, ObjClass* parent);
 
         static Value fromFraction(const Fraction& f) {
             if (f.getDen() == BigInt(1)) return Value(f.getNum());
@@ -621,51 +470,217 @@ namespace jc {
 
         std::string toJC2Expression() const;
 
-        std::string toString() const {
-            if (isString()) return static_cast<ObjString*>(asObj())->str;
-            if (isType()) return static_cast<ObjTypeDef*>(asObj())->name();
-            if (isInstance()) {
-                try {
-                    auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
-                    if (foundStr) {
-                        if (strRes.isString()) return strRes.asString();
-                        std::ostringstream oss;
-                        oss << strRes;
-                        return oss.str();
-                    }
-                } catch (...) {}
-            }
-            std::ostringstream oss;
-            oss << *this;
-            return oss.str();
+        std::string toString() const;
+
+        std::string toRepr() const;
+    }; // class Value
+
+    struct PropertyDescriptor {
+        Value val;
+        bool is_const = false;
+        bool is_local = false;
+    };
+
+    struct ObjClass : public Obj {
+        uint64_t classId;
+        std::string name;
+        ObjClass* parent = nullptr;
+        std::unordered_map<std::string, PropertyDescriptor> properties;
+        bool is_native = false;
+        std::function<Value(const std::vector<Value>&)> native_allocator;
+        ObjClass() { 
+            static uint64_t nextId = 1;
+            classId = nextId++;
+            type = ObjType::CLASS; 
+        }
+    };
+
+    struct ObjTypeDef : public Obj {
+        std::vector<std::variant<BuiltinType, ObjClass*>> types;
+        ObjTypeDef() { type = ObjType::TYPE_DEF; }
+        
+        void normalize() {
+            std::sort(types.begin(), types.end(), [](const auto& a, const auto& b) {
+                if (a.index() != b.index()) return a.index() < b.index();
+                if (std::holds_alternative<BuiltinType>(a)) return std::get<BuiltinType>(a) < std::get<BuiltinType>(b);
+                return std::get<ObjClass*>(a) < std::get<ObjClass*>(b);
+            });
+            types.erase(std::unique(types.begin(), types.end()), types.end());
         }
 
-        std::string toRepr() const {
-            if (isString()) return "\"" + static_cast<ObjString*>(asObj())->str + "\"";
-            if (isType()) return "<type '" + static_cast<ObjTypeDef*>(asObj())->name() + "'>";
-            if (isInstance()) {
-                try {
-                    auto [foundRepl, replRes] = invokeDunder(asInstance(), "__repr__");
-                    if (foundRepl) {
-                        if (replRes.isString()) return replRes.asString();
-                        std::ostringstream oss;
-                        oss << replRes;
-                        return oss.str();
+        std::string name() const {
+            if (types.empty()) return "Never";
+            std::string res = "";
+            for (size_t i = 0; i < types.size(); ++i) {
+                if (i > 0) res += " | ";
+                if (std::holds_alternative<BuiltinType>(types[i])) {
+                    switch (std::get<BuiltinType>(types[i])) {
+                        case BuiltinType::ANY: res += "any_type"; break;
+                        case BuiltinType::INT: res += "int"; break;
+                        case BuiltinType::FLOAT: res += "double"; break;
+                        case BuiltinType::REAL: res += "real"; break;
+                        case BuiltinType::NUMBER: res += "number"; break;
+                        case BuiltinType::WHOLE: res += "whole"; break;
+                        case BuiltinType::EXACT: res += "exact"; break;
+                        case BuiltinType::STRING: res += "string"; break;
+                        case BuiltinType::BOOL: res += "bool"; break;
+                        case BuiltinType::BINARY: res += "binary"; break;
+                        case BuiltinType::NONE_TYPE: res += "none_type"; break;
+                        case BuiltinType::LIST: res += "list"; break;
+                        case BuiltinType::DICT: res += "dict"; break;
+                        case BuiltinType::SET: res += "set"; break;
+                        case BuiltinType::FRACTION: res += "fraction"; break;
+                        case BuiltinType::COMPLEX: res += "complex"; break;
+                        case BuiltinType::BASENUM: res += "basenum"; break;
+                        case BuiltinType::SYMBOLIC: res += "symbolic"; break;
+                        case BuiltinType::REALMAT: res += "realmatrix"; break;
+                        case BuiltinType::COMPLEXMAT: res += "complexmatrix"; break;
+                        case BuiltinType::STRINGMAT: res += "stringmatrix"; break;
+                        case BuiltinType::MATRIX: res += "matrix"; break;
+                        case BuiltinType::FUNC: res += "function"; break;
+                        case BuiltinType::CLASS: res += "class_type"; break;
+                        case BuiltinType::INSTANCE: res += "instance"; break;
+                        case BuiltinType::NAMESPACE: res += "namespace_type"; break;
+                        case BuiltinType::ITERABLE: res += "iterable"; break;
+                        case BuiltinType::CALLABLE: res += "callable"; break;
+                        case BuiltinType::INDEXABLE: res += "indexable"; break;
+                        case BuiltinType::HASHABLE: res += "hashable"; break;
+                        case BuiltinType::NUMERIC: res += "numeric"; break;
+                        case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
+                        case BuiltinType::TYPE_DEF: res += "type"; break;
+                        default: res += "unknown"; break;
                     }
-                    auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
-                    if (foundStr) {
-                        if (strRes.isString()) return strRes.asString();
-                        std::ostringstream oss;
-                        oss << strRes;
-                        return oss.str();
-                    }
-                } catch (...) {}
+                } else {
+                    ObjClass* cls = std::get<ObjClass*>(types[i]);
+                    res += cls->name.empty() ? "<anonymous class>" : cls->name;
+                }
             }
-            std::ostringstream oss;
-            oss << *this;
-            return oss.str();
+            return res;
         }
-    }; // class Value
+    };
+
+    struct ObjInstance : public Obj {
+        ObjClass* classDef = nullptr;
+        std::unordered_map<std::string, PropertyDescriptor> properties;
+        
+        std::any nativeData;
+        void* c_nativeData = nullptr;
+        void (*c_nativeDtor)(void*) = nullptr;
+        Value (*c_nativeNext)(ObjInstance*) = nullptr;
+        bool is_frozen = false;
+        mutable bool is_hashable_cached = false;
+        mutable bool has_cached_hash = false;
+        mutable size_t cached_hash = 0;
+        ObjInstance() { type = ObjType::INSTANCE; }
+        void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Instance."); }
+        void clear() override { checkModify(); clearTotal(); }
+        void clearTotal() override;
+    };
+    struct ObjSuper : public Obj {
+        ObjInstance* instance = nullptr;
+        ObjClass* parentClass = nullptr;
+        ObjSuper() { type = ObjType::SUPER_PROXY; }
+    };
+    struct ObjSym : public Obj {
+        SymExpr sym;
+        ObjSym(SymExpr s) : sym(std::move(s)) { type = ObjType::SYMBOLIC; }
+    };
+
+    inline Value::Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {
+        if (val.ptr && val.ptr->getType() == SymType::NUM) {
+            auto numNode = std::static_pointer_cast<SymNum>(val.ptr);
+            std::visit([this](auto&& arg) {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr (std::is_same_v<T, int32_t>) {
+                    *this = Value(arg);
+                } else if constexpr (std::is_same_v<T, Fraction>) {
+                    if (arg.getDen() == BigInt(1)) {
+                        *this = Value(arg.getNum());
+                    } else {
+                        *this = Value(arg);
+                    }
+                } else if constexpr (std::is_same_v<T, double>) {
+                    *this = Value(arg);
+                } else if constexpr (std::is_same_v<T, BigInt>) {
+                    *this = Value(arg);
+                }
+            }, numNode->value);
+        } else {
+            *this = fromObj(GcHeap::get().allocate<ObjSym>(std::move(val)));
+        }
+    }
+
+    inline SymExpr Value::asSymbolic() const {
+        if (isSymbolic()) return static_cast<ObjSym*>(asObj())->sym;
+        if (isInt32()) return SymExpr(BigInt(asInt32()));
+        if (isDouble()) return SymExpr(asDoubleRaw());
+        if (isObjType(ObjType::BIGINT)) return SymExpr(static_cast<ObjBigInt*>(asObj())->num);
+        if (isObjType(ObjType::FRACTION)) return SymExpr(static_cast<ObjFraction*>(asObj())->frac);
+        if (isObjType(ObjType::COMPLEX)) return SymExpr(static_cast<ObjComplex*>(asObj())->comp);
+        throw std::runtime_error("TypeError: Expected a symbolic expression or exact number.");
+    }
+
+    inline ObjInstance* Value::asInstance() const {
+        if (!isInstance()) throw std::runtime_error("Type Error: Expected an instance.");
+        return static_cast<ObjInstance*>(asObj());
+    }
+
+    inline ObjSuper* Value::asSuperProxy() const {
+        if (!isSuperProxy()) throw std::runtime_error("Type Error: Expected super proxy.");
+        return static_cast<ObjSuper*>(asObj());
+    }
+
+    inline Value Value::makeSuperProxy(ObjInstance* inst, ObjClass* parent) {
+        ObjSuper* sp = GcHeap::get().allocate<ObjSuper>();
+        sp->instance = inst;
+        sp->parentClass = parent;
+        return Value(sp);
+    }
+
+    inline std::string Value::toString() const {
+        if (isString()) return static_cast<ObjString*>(asObj())->str;
+        if (isType()) return static_cast<ObjTypeDef*>(asObj())->name();
+        if (isInstance()) {
+            try {
+                auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
+                if (foundStr) {
+                    if (strRes.isString()) return strRes.asString();
+                    std::ostringstream oss;
+                    oss << strRes;
+                    return oss.str();
+                }
+            } catch (...) {}
+        }
+        std::ostringstream oss;
+        oss << *this;
+        return oss.str();
+    }
+
+    inline std::string Value::toRepr() const {
+        if (isString()) return "\"" + static_cast<ObjString*>(asObj())->str + "\"";
+        if (isType()) return "<type '" + static_cast<ObjTypeDef*>(asObj())->name() + "'>";
+        if (isInstance()) {
+            try {
+                auto [foundRepl, replRes] = invokeDunder(asInstance(), "__repr__");
+                if (foundRepl) {
+                    if (replRes.isString()) return replRes.asString();
+                    std::ostringstream oss;
+                    oss << replRes;
+                    return oss.str();
+                }
+                auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
+                if (foundStr) {
+                    if (strRes.isString()) return strRes.asString();
+                    std::ostringstream oss;
+                    oss << strRes;
+                    return oss.str();
+                }
+            } catch (...) {}
+        }
+        std::ostringstream oss;
+        oss << *this;
+        return oss.str();
+    }
 
     struct ClassProperty {
         Value val;

@@ -1457,9 +1457,8 @@ namespace jc {
                     Value streamClassVal = VM::activeVM->getBuiltinValue("TokenStream");
                     ObjInstance* streamInst = GcHeap::get().allocate<ObjInstance>();
                     streamInst->classDef = static_cast<ObjClass*>(streamClassVal.asObj());
-                    streamInst->fields = GcHeap::get().allocate<ObjDict>();
-                    streamInst->fields->set(Value("_tokens"), Value(tokenList));
-                    streamInst->fields->set(Value("cursor"), Value::fromInt32(0));
+                    streamInst->properties["_tokens"] = {Value(tokenList), false, false};
+                    streamInst->properties["cursor"] = {Value::fromInt32(0), false, false};
 
                     callArgs.push_back(Value(streamInst));
                     
@@ -1470,12 +1469,10 @@ namespace jc {
                         std::string errStr = ex.val.isString() ? ex.val.asString() : ex.val.toRepr();
                         if (ex.val.isInstance() && ex.val.asInstance()->classDef->name == "Exception") {
                             auto inst = ex.val.asInstance();
-                            if (inst->fields) {
-                                auto itMsg = inst->fields->keyMap.find(Value("message"));
-                                if (itMsg != inst->fields->keyMap.end()) {
-                                    Value mVal = inst->fields->elements[itMsg->second].second;
-                                    errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
-                                }
+                            auto itMsg = inst->properties.find("message");
+                            if (itMsg != inst->properties.end()) {
+                                Value mVal = itMsg->second.val;
+                                errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
                             }
                         }
                         throw std::runtime_error("Token Macro Execution Error: " + errStr);
@@ -1545,12 +1542,10 @@ namespace jc {
                     std::string errStr = ex.val.isString() ? ex.val.asString() : ex.val.toRepr();
                     if (ex.val.isInstance() && ex.val.asInstance()->classDef->name == "Exception") {
                         auto inst = ex.val.asInstance();
-                        if (inst->fields) {
-                            auto itMsg = inst->fields->keyMap.find(Value("message"));
-                            if (itMsg != inst->fields->keyMap.end()) {
-                                Value mVal = inst->fields->elements[itMsg->second].second;
-                                errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
-                            }
+                        auto itMsg = inst->properties.find("message");
+                        if (itMsg != inst->properties.end()) {
+                            Value mVal = itMsg->second.val;
+                            errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
                         }
                     }
                     throw std::runtime_error("Macro Execution Error: " + errStr);

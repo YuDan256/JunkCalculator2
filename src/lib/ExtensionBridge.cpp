@@ -659,12 +659,9 @@ static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle in
     Value i = from_handle(inst);
     if (i.isInstance()) {
         ObjInstance* obj = i.asInstance();
-        if (obj->fields) {
-            Value key = Value(std::string(name));
-            auto it = obj->fields->keyMap.find(key);
-            if (it != obj->fields->keyMap.end()) {
-                return protect(obj->fields->elements[it->second].second);
-            }
+        auto it = obj->properties.find(name);
+        if (it != obj->properties.end()) {
+            return protect(it->second.val.as_bits);
         }
     }
     return Value::none().as_bits;
@@ -674,8 +671,7 @@ static void host_instance_set_field(JC2_VMContext, JC2_ValueHandle inst, const c
     Value i = from_handle(inst);
     if (i.isInstance()) {
         ObjInstance* obj = i.asInstance();
-        if (!obj->fields) obj->fields = GcHeap::get().allocate<ObjDict>();
-        obj->fields->set(Value(std::string(name)), from_handle(val));
+        obj->properties[name] = {from_handle(val), false, false};
     }
 }
 

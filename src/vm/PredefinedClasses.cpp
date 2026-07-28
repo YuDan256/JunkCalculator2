@@ -137,9 +137,8 @@ void registerPredefinedClasses() {
             return Value(val);
         };
         
-        // 为了让 GC 追踪 rangeObj，我们把它也放到 fields 里
-        iterInst->fields = GcHeap::get().allocate<ObjDict>();
-        iterInst->fields->set(Value("range"), self);
+        // 为了让 GC 追踪 rangeObj，我们把它也放到 properties 里
+        iterInst->properties["range"] = {self, false, false};
 
         return Value(iterInst);
     });
@@ -178,15 +177,16 @@ void registerPredefinedClasses() {
     astInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
         
-        inst->fields->set(Value("type"), args.size() > 0 ? args[0] : Value("Unknown"));
-        inst->fields->set(Value("line"), args.size() > 1 ? args[1] : Value::fromInt32(0));
+        inst->properties["type"] = {args.size() > 0 ? args[0] : Value("Unknown"), false, false};
+        inst->properties["line"] = {args.size() > 1 ? args[1] : Value::fromInt32(0), false, false};
         
         if (args.size() > 2 && args[2].isObjType(ObjType::DICT)) {
             auto props = static_cast<ObjDict*>(args[2].asObj());
             for (const auto& [k, v] : props->elements) {
-                inst->fields->set(k, v);
+                if (k.isString()) {
+                    inst->properties[k.asString()] = {v, false, false};
+                }
             }
         }
         return self;
@@ -205,12 +205,11 @@ void registerPredefinedClasses() {
     tokenInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
         
-        inst->fields->set(Value("type"), args.size() > 0 ? args[0] : Value("Unknown"));
-        inst->fields->set(Value("lexeme"), args.size() > 1 ? args[1] : Value(""));
-        inst->fields->set(Value("line"), args.size() > 2 ? args[2] : Value::fromInt32(0));
-        inst->fields->set(Value("position"), args.size() > 3 ? args[3] : Value::fromInt32(0));
+        inst->properties["type"] = {args.size() > 0 ? args[0] : Value("Unknown"), false, false};
+        inst->properties["lexeme"] = {args.size() > 1 ? args[1] : Value(""), false, false};
+        inst->properties["line"] = {args.size() > 2 ? args[2] : Value::fromInt32(0), false, false};
+        inst->properties["position"] = {args.size() > 3 ? args[3] : Value::fromInt32(0), false, false};
         
         return self;
     });
@@ -226,30 +225,28 @@ void registerPredefinedClasses() {
         int line = 0;
         int position = 0;
         
-        if (inst->fields) {
-            auto itType = inst->fields->keyMap.find(Value("type"));
-            if (itType != inst->fields->keyMap.end()) {
-                Value tVal = inst->fields->elements[itType->second].second;
-                typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
-            }
-            
-            auto itLex = inst->fields->keyMap.find(Value("lexeme"));
-            if (itLex != inst->fields->keyMap.end()) {
-                Value lVal = inst->fields->elements[itLex->second].second;
-                lexeme = lVal.isString() ? lVal.asString() : lVal.toRepr();
-            }
-            
-            auto itLine = inst->fields->keyMap.find(Value("line"));
-            if (itLine != inst->fields->keyMap.end()) {
-                Value lineVal = inst->fields->elements[itLine->second].second;
-                if (lineVal.isNumber()) line = static_cast<int>(lineVal.asDouble());
-            }
-            
-            auto itPos = inst->fields->keyMap.find(Value("position"));
-            if (itPos != inst->fields->keyMap.end()) {
-                Value posVal = inst->fields->elements[itPos->second].second;
-                if (posVal.isNumber()) position = static_cast<int>(posVal.asDouble());
-            }
+        auto itType = inst->properties.find("type");
+        if (itType != inst->properties.end()) {
+            Value tVal = itType->second.val;
+            typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
+        }
+        
+        auto itLex = inst->properties.find("lexeme");
+        if (itLex != inst->properties.end()) {
+            Value lVal = itLex->second.val;
+            lexeme = lVal.isString() ? lVal.asString() : lVal.toRepr();
+        }
+        
+        auto itLine = inst->properties.find("line");
+        if (itLine != inst->properties.end()) {
+            Value lineVal = itLine->second.val;
+            if (lineVal.isNumber()) line = static_cast<int>(lineVal.asDouble());
+        }
+        
+        auto itPos = inst->properties.find("position");
+        if (itPos != inst->properties.end()) {
+            Value posVal = itPos->second.val;
+            if (posVal.isNumber()) position = static_cast<int>(posVal.asDouble());
         }
         
         std::ostringstream oss;
@@ -269,13 +266,12 @@ void registerPredefinedClasses() {
     tsInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
         
         if (args.empty() || !args[0].isObjType(ObjType::LIST)) {
             throw std::runtime_error("TypeError: TokenStream init expects a list of Tokens.");
         }
-        inst->fields->set(Value("_tokens"), args[0]);
-        inst->fields->set(Value("cursor"), Value::fromInt32(0));
+        inst->properties["_tokens"] = {args[0], false, false};
+        inst->properties["cursor"] = {Value::fromInt32(0), false, false};
         return self;
     });
     tokenStreamClass->methods["init"] = tsInit;
@@ -285,7 +281,7 @@ void registerPredefinedClasses() {
     tsTokens->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        return inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        return inst->properties["_tokens"].val;
     });
     tokenStreamClass->methods["tokens"] = tsTokens;
 
@@ -294,9 +290,9 @@ void registerPredefinedClasses() {
     tsPeek->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         if (cursor >= static_cast<int>(list->vec.size())) {
             Token eofTok(TokenType::END_OF_FILE, "", 0, 0);
@@ -311,16 +307,16 @@ void registerPredefinedClasses() {
     tsAdvance->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         if (cursor >= static_cast<int>(list->vec.size())) {
             Token eofTok(TokenType::END_OF_FILE, "", 0, 0);
             return VM::activeVM->makeTokenInstance(eofTok);
         }
         Value ret = list->vec[cursor];
-        inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+        inst->properties["cursor"].val = Value::fromInt32(cursor + 1);
         return ret;
     });
     tokenStreamClass->methods["advance"] = tsAdvance;
@@ -330,9 +326,9 @@ void registerPredefinedClasses() {
     tsPrevious->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         if (cursor <= 0) {
             throw std::runtime_error("TokenStream Error: No previous token.");
@@ -346,9 +342,9 @@ void registerPredefinedClasses() {
     tsIsAtEnd->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         return Value(cursor >= static_cast<int>(list->vec.size()));
     });
@@ -359,9 +355,9 @@ void registerPredefinedClasses() {
     tsMatch->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         if (cursor >= static_cast<int>(list->vec.size())) return Value(false);
         
@@ -369,13 +365,13 @@ void registerPredefinedClasses() {
         if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") return Value(false);
         
         auto tokInst = tokVal.asInstance();
-        Value typeVal = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second;
+        Value typeVal = tokInst->properties["type"].val;
         std::string typeStr = typeVal.isString() ? typeVal.asString() : typeVal.toRepr();
         
         std::string expectedType = args[0].isString() ? args[0].asString() : args[0].toRepr();
         
         if (typeStr == expectedType) {
-            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+            inst->properties["cursor"].val = Value::fromInt32(cursor + 1);
             return Value(true);
         }
         return Value(false);
@@ -387,9 +383,9 @@ void registerPredefinedClasses() {
     tsConsume->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         std::string expectedType = args[0].isString() ? args[0].asString() : args[0].toRepr();
         std::string errMsg = args[1].isString() ? args[1].asString() : args[1].toRepr();
@@ -404,11 +400,11 @@ void registerPredefinedClasses() {
         }
         
         auto tokInst = tokVal.asInstance();
-        Value typeVal = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second;
+        Value typeVal = tokInst->properties["type"].val;
         std::string typeStr = typeVal.isString() ? typeVal.asString() : typeVal.toRepr();
         
         if (typeStr == expectedType) {
-            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+            inst->properties["cursor"].val = Value::fromInt32(cursor + 1);
             return tokVal;
         }
         throw std::runtime_error(errMsg);
@@ -420,9 +416,9 @@ void registerPredefinedClasses() {
     tsInsert->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
@@ -433,8 +429,8 @@ void registerPredefinedClasses() {
             throw std::runtime_error("TypeError: Expected a Token instance.");
         }
         auto tokInst = tokVal.asInstance();
-        std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
-        std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
+        std::string typeStr = tokInst->properties["type"].val.asString();
+        std::string lexeme = tokInst->properties["lexeme"].val.asString();
         
         TokenType tType = stringToTokenType(typeStr);
         if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
@@ -449,7 +445,7 @@ void registerPredefinedClasses() {
         list->mut().insert(list->mut().begin() + idx, tokVal);
         
         if (idx <= cursor) {
-            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + 1);
+            inst->properties["cursor"].val = Value::fromInt32(cursor + 1);
         }
         return self;
     });
@@ -460,7 +456,7 @@ void registerPredefinedClasses() {
     tsSet->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
@@ -472,8 +468,8 @@ void registerPredefinedClasses() {
             throw std::runtime_error("TypeError: Expected a Token instance.");
         }
         auto tokInst = tokVal.asInstance();
-        std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
-        std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
+        std::string typeStr = tokInst->properties["type"].val.asString();
+        std::string lexeme = tokInst->properties["lexeme"].val.asString();
         
         TokenType tType = stringToTokenType(typeStr);
         if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
@@ -495,9 +491,9 @@ void registerPredefinedClasses() {
     tsRemove->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
@@ -506,7 +502,7 @@ void registerPredefinedClasses() {
         list->mut().erase(list->mut().begin() + idx);
         
         if (idx < cursor) {
-            inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor - 1);
+            inst->properties["cursor"].val = Value::fromInt32(cursor - 1);
         }
         return self;
     });
@@ -517,19 +513,19 @@ void registerPredefinedClasses() {
     tsParse->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         std::vector<Token> tokens;
         for (size_t i = cursor; i < list->vec.size(); ++i) {
             const auto& v = list->vec[i];
             if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: TokenStream contains non-Token elements.");
             auto tokInst = v.asInstance();
-            std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
-            std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
-            int line = tokInst->fields->elements[tokInst->fields->keyMap[Value("line")]].second.asInt32();
-            int pos = tokInst->fields->elements[tokInst->fields->keyMap[Value("position")]].second.asInt32();
+            std::string typeStr = tokInst->properties["type"].val.asString();
+            std::string lexeme = tokInst->properties["lexeme"].val.asString();
+            int line = tokInst->properties["line"].val.asInt32();
+            int pos = tokInst->properties["position"].val.asInt32();
             
             TokenType tType = stringToTokenType(typeStr);
             tokens.emplace_back(tType, lexeme, pos, line);
@@ -539,7 +535,7 @@ void registerPredefinedClasses() {
         Parser parser(tokens);
         auto ast = parser.parse();
         
-        inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(static_cast<int32_t>(list->vec.size()));
+        inst->properties["cursor"].val = Value::fromInt32(static_cast<int32_t>(list->vec.size()));
         
         if (auto* block = dynamic_cast<Block*>(ast.get())) {
             if (block->statements.size() == 1) {
@@ -562,9 +558,9 @@ void registerPredefinedClasses() {
     tsParseOne->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("_tokens")]].second;
+        Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
-        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        int cursor = inst->properties["cursor"].val.asInt32();
         
         if (cursor >= static_cast<int>(list->vec.size())) {
             throw std::runtime_error("TokenStream Error: Cannot parse past end of stream.");
@@ -575,10 +571,10 @@ void registerPredefinedClasses() {
             const auto& v = list->vec[i];
             if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: TokenStream contains non-Token elements.");
             auto tokInst = v.asInstance();
-            std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
-            std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
-            int line = tokInst->fields->elements[tokInst->fields->keyMap[Value("line")]].second.asInt32();
-            int pos = tokInst->fields->elements[tokInst->fields->keyMap[Value("position")]].second.asInt32();
+            std::string typeStr = tokInst->properties["type"].val.asString();
+            std::string lexeme = tokInst->properties["lexeme"].val.asString();
+            int line = tokInst->properties["line"].val.asInt32();
+            int pos = tokInst->properties["position"].val.asInt32();
             
             TokenType tType = stringToTokenType(typeStr);
             tokens.emplace_back(tType, lexeme, pos, line);
@@ -588,7 +584,7 @@ void registerPredefinedClasses() {
         Parser parser(tokens);
         auto ast = parser.parseStatementOrBlock();
         
-        inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + parser.getCurrent());
+        inst->properties["cursor"].val = Value::fromInt32(cursor + parser.getCurrent());
         
         return AST_to_JC2(ast.get());
     });
@@ -605,17 +601,16 @@ void registerPredefinedClasses() {
     excInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
-        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
         
         if (args.size() == 1) {
-            inst->fields->set(Value("type"), Value("Exception"));
-            inst->fields->set(Value("message"), args[0]);
+            inst->properties["type"] = {Value("Exception"), false, false};
+            inst->properties["message"] = {args[0], false, false};
         } else {
-            inst->fields->set(Value("type"), args[0]);
-            inst->fields->set(Value("message"), args[1]);
+            inst->properties["type"] = {args[0], false, false};
+            inst->properties["message"] = {args[1], false, false};
         }
-        inst->fields->set(Value("traceback"), Value(""));
-        inst->fields->set(Value("suppressed"), Value(GcHeap::get().allocate<ObjList>()));
+        inst->properties["traceback"] = {Value(""), false, false};
+        inst->properties["suppressed"] = {Value(GcHeap::get().allocate<ObjList>()), false, false};
         
         return self;
     });
@@ -628,19 +623,19 @@ void registerPredefinedClasses() {
         auto inst = self.asInstance();
         std::string typeStr = "Exception";
         std::string msg = "Unknown Error";
-        if (inst->fields) {
-            auto itType = inst->fields->keyMap.find(Value("type"));
-            if (itType != inst->fields->keyMap.end()) {
-                Value tVal = inst->fields->elements[itType->second].second;
-                typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
-            }
-            
-            auto itMsg = inst->fields->keyMap.find(Value("message"));
-            if (itMsg != inst->fields->keyMap.end()) {
-                Value mVal = inst->fields->elements[itMsg->second].second;
-                msg = mVal.isString() ? mVal.asString() : mVal.toRepr();
-            }
+        
+        auto itType = inst->properties.find("type");
+        if (itType != inst->properties.end()) {
+            Value tVal = itType->second.val;
+            typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
         }
+        
+        auto itMsg = inst->properties.find("message");
+        if (itMsg != inst->properties.end()) {
+            Value mVal = itMsg->second.val;
+            msg = mVal.isString() ? mVal.asString() : mVal.toRepr();
+        }
+        
         if (typeStr == "Exception") {
             return Value("<Exception: " + msg + ">");
         } else {
@@ -659,30 +654,28 @@ void registerPredefinedClasses() {
         std::string tb = "";
         ObjList* supp = nullptr;
         
-        if (inst->fields) {
-            auto itType = inst->fields->keyMap.find(Value("type"));
-            if (itType != inst->fields->keyMap.end()) {
-                Value tVal = inst->fields->elements[itType->second].second;
-                typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
-            }
-            
-            auto itMsg = inst->fields->keyMap.find(Value("message"));
-            if (itMsg != inst->fields->keyMap.end()) {
-                Value mVal = inst->fields->elements[itMsg->second].second;
-                msg = mVal.isString() ? mVal.asString() : mVal.toRepr();
-            }
-            
-            auto itTb = inst->fields->keyMap.find(Value("traceback"));
-            if (itTb != inst->fields->keyMap.end()) {
-                Value tbVal = inst->fields->elements[itTb->second].second;
-                tb = tbVal.isString() ? tbVal.asString() : tbVal.toRepr();
-            }
-            
-            auto itSupp = inst->fields->keyMap.find(Value("suppressed"));
-            if (itSupp != inst->fields->keyMap.end()) {
-                Value sVal = inst->fields->elements[itSupp->second].second;
-                if (sVal.isObjType(ObjType::LIST)) supp = static_cast<ObjList*>(sVal.asObj());
-            }
+        auto itType = inst->properties.find("type");
+        if (itType != inst->properties.end()) {
+            Value tVal = itType->second.val;
+            typeStr = tVal.isString() ? tVal.asString() : tVal.toRepr();
+        }
+        
+        auto itMsg = inst->properties.find("message");
+        if (itMsg != inst->properties.end()) {
+            Value mVal = itMsg->second.val;
+            msg = mVal.isString() ? mVal.asString() : mVal.toRepr();
+        }
+        
+        auto itTb = inst->properties.find("traceback");
+        if (itTb != inst->properties.end()) {
+            Value tbVal = itTb->second.val;
+            tb = tbVal.isString() ? tbVal.asString() : tbVal.toRepr();
+        }
+        
+        auto itSupp = inst->properties.find("suppressed");
+        if (itSupp != inst->properties.end()) {
+            Value sVal = itSupp->second.val;
+            if (sVal.isObjType(ObjType::LIST)) supp = static_cast<ObjList*>(sVal.asObj());
         }
         
         std::ostringstream oss;

@@ -839,7 +839,7 @@ JC2_ValueHandle regex_subst(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 JC2_ValueHandle regex_str(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance inst(argv[0]);
     std::string pat = inst.get("pattern").as_string();
-    return jc2::Value("Regex(r\"" + pat + "\")").get_handle();
+    return jc2::Value("Regex(r\"RE(" + pat + ")RE\")").get_handle();
 }
 
 std::shared_ptr<RegexVM> ensureRegex(const jc2::Value& val) {
@@ -1038,7 +1038,7 @@ int jc2_init(jc2::Module& mod) {
         "    It is highly recommended to instantiate a Regex object when reusing patterns,\n"
         "    as it caches the compiled bytecode.\n"
         "    \n"
-        "    r = regex.Regex(r\"(\\w+) (\\d+)\") // Instantiate Regex object\n"
+        "    r = regex.Regex(r\"RE((\\w+) (\\d+))RE\") // Instantiate Regex object\n"
         "    r.test(\"Alice 30\")             // → true\n"
         "    m = r.search(\"Bob 25\")         // Returns a ReMatch object\n"
         "    r(\"Bob 25\")                    // Callable syntax sugar for search()\n"

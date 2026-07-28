@@ -4471,7 +4471,39 @@ Value VM::run(int targetFrameDepth) {
                                 if (ctxOwner) {
                                     auto it = ctxOwner->properties.find(key);
                                     if (it != ctxOwner->properties.end() && it->second.is_local) {
-                                        result = it->second.val;
+                                        if (it->second.val.isFunctionClosure()) {
+                                            auto rawMethod = it->second.val.asFunction();
+                                            auto bound = GcHeap::get().allocate<ObjClosure>(
+                                                std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
+                                            );
+                                            bound->paramNames = rawMethod->paramNames;
+                                            bound->isRef = rawMethod->isRef;
+                                            bound->defaultValues = rawMethod->defaultValues;
+                                            bound->hasRestParam = rawMethod->hasRestParam;
+                                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                            if (rawMethod->upvalueCount > 0) {
+                                                bound->upvalueCount = rawMethod->upvalueCount;
+                                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                                for (int i = 0; i < bound->upvalueCount; ++i) {
+                                                    bound->upvalues[i] = rawMethod->upvalues[i];
+                                                }
+                                            }
+                                            if (rawMethod->paramTypesCount > 0) {
+                                                bound->paramTypesCount = rawMethod->paramTypesCount;
+                                                bound->paramTypes = new Value[bound->paramTypesCount];
+                                                for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                                    bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                                }
+                                            }
+                                            bound->returnType = rawMethod->returnType;
+                                            bound->nativeFn = rawMethod->nativeFn;
+                                            bound->boundSelf = Value::none();
+                                            bound->boundClass = Value(ctxOwner);
+                                            bound->is_local = true;
+                                            result = Value(bound);
+                                        } else {
+                                            result = it->second.val;
+                                        }
                                         foundStatic = true;
                                     }
                                 }
@@ -4480,7 +4512,38 @@ Value VM::run(int targetFrameDepth) {
                                     while (c_cls) {
                                         auto it = c_cls->properties.find(key);
                                         if (it != c_cls->properties.end() && !it->second.is_local) {
-                                            result = it->second.val;
+                                            if (it->second.val.isFunctionClosure()) {
+                                                auto rawMethod = it->second.val.asFunction();
+                                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                                    std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
+                                                );
+                                                bound->paramNames = rawMethod->paramNames;
+                                                bound->isRef = rawMethod->isRef;
+                                                bound->defaultValues = rawMethod->defaultValues;
+                                                bound->hasRestParam = rawMethod->hasRestParam;
+                                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                                if (rawMethod->upvalueCount > 0) {
+                                                    bound->upvalueCount = rawMethod->upvalueCount;
+                                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                                        bound->upvalues[i] = rawMethod->upvalues[i];
+                                                    }
+                                                }
+                                                if (rawMethod->paramTypesCount > 0) {
+                                                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                                                    bound->paramTypes = new Value[bound->paramTypesCount];
+                                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                                    }
+                                                }
+                                                bound->returnType = rawMethod->returnType;
+                                                bound->nativeFn = rawMethod->nativeFn;
+                                                bound->boundSelf = Value::none();
+                                                bound->boundClass = Value(c_cls);
+                                                result = Value(bound);
+                                            } else {
+                                                result = it->second.val;
+                                            }
                                             foundStatic = true;
                                             break;
                                         }
@@ -5287,7 +5350,39 @@ Value VM::run(int targetFrameDepth) {
                     
                     auto it = owner->properties.find(keyVal.asString());
                     if (it != owner->properties.end() && it->second.is_local) {
-                        getReg(a) = it->second.val;
+                        if (it->second.val.isFunctionClosure()) {
+                            auto rawMethod = it->second.val.asFunction();
+                            auto bound = GcHeap::get().allocate<ObjClosure>(
+                                std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
+                            );
+                            bound->paramNames = rawMethod->paramNames;
+                            bound->isRef = rawMethod->isRef;
+                            bound->defaultValues = rawMethod->defaultValues;
+                            bound->hasRestParam = rawMethod->hasRestParam;
+                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                            if (rawMethod->upvalueCount > 0) {
+                                bound->upvalueCount = rawMethod->upvalueCount;
+                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                for (int i = 0; i < bound->upvalueCount; ++i) {
+                                    bound->upvalues[i] = rawMethod->upvalues[i];
+                                }
+                            }
+                            if (rawMethod->paramTypesCount > 0) {
+                                bound->paramTypesCount = rawMethod->paramTypesCount;
+                                bound->paramTypes = new Value[bound->paramTypesCount];
+                                for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                    bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                }
+                            }
+                            bound->returnType = rawMethod->returnType;
+                            bound->nativeFn = rawMethod->nativeFn;
+                            bound->boundSelf = Value::none();
+                            bound->boundClass = Value(owner);
+                            bound->is_local = true;
+                            getReg(a) = Value(bound);
+                        } else {
+                            getReg(a) = it->second.val;
+                        }
                         break;
                     }
                     throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' not found.");
@@ -5429,7 +5524,38 @@ Value VM::run(int targetFrameDepth) {
                     while (cls) {
                         auto it = cls->properties.find(field);
                         if (it != cls->properties.end() && !it->second.is_local) {
-                            result = it->second.val;
+                            if (it->second.val.isFunctionClosure()) {
+                                auto rawMethod = it->second.val.asFunction();
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                                );
+                                bound->paramNames = rawMethod->paramNames;
+                                bound->isRef = rawMethod->isRef;
+                                bound->defaultValues = rawMethod->defaultValues;
+                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                if (rawMethod->upvalueCount > 0) {
+                                    bound->upvalueCount = rawMethod->upvalueCount;
+                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                        bound->upvalues[i] = rawMethod->upvalues[i];
+                                    }
+                                }
+                                if (rawMethod->paramTypesCount > 0) {
+                                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                                    bound->paramTypes = new Value[bound->paramTypesCount];
+                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                    }
+                                }
+                                bound->returnType = rawMethod->returnType;
+                                bound->nativeFn = rawMethod->nativeFn;
+                                bound->boundSelf = Value::none();
+                                bound->boundClass = Value(cls);
+                                result = Value(bound);
+                            } else {
+                                result = it->second.val;
+                            }
                             found = true;
                             break;
                         }

@@ -131,6 +131,10 @@ test_access_control() = {
     // Static private const
     assert(Account.get_max() == 999, "Static private const internal read failed")
     assert(isError(pcall(() => Account.MAX)), "Static private const should be invisible externally")
+    
+    // Static method tearing
+    f = Account.get_max
+    assert(f() == 999, "Static method tearing lost class context")
 }
 test_access_control()
 

@@ -69,6 +69,8 @@ enum class IROp {
     TailCall,
     Invoke,
     TailInvoke,
+    InvokePrivate,
+    TailInvokePrivate,
     InvokeFallback,
     TailInvokeFallback,
     SuperInvoke,
@@ -106,10 +108,19 @@ enum class IROp {
     // 类与面向对象
     Class,
     Method,
+    MethodPrivate,
+    MethodConst,
+    MethodPrivateConst,
     Inherit,
     GetProperty,
+    GetPrivate,
     TryGetProperty,
     SetProperty,
+    SetPrivate,
+    DefinePrivate,
+    DefinePrivateConst,
+    DefineProp,
+    DefinePropConst,
     GetSuper,
     GetSelf,
     GetCurrentClosure,
@@ -190,6 +201,8 @@ inline std::string irOpToString(IROp op) {
         case IROp::TailCall: return "TailCall";
         case IROp::Invoke: return "Invoke";
         case IROp::TailInvoke: return "TailInvoke";
+        case IROp::InvokePrivate: return "InvokePrivate";
+        case IROp::TailInvokePrivate: return "TailInvokePrivate";
         case IROp::InvokeFallback: return "InvokeFallback";
         case IROp::TailInvokeFallback: return "TailInvokeFallback";
         case IROp::SuperInvoke: return "SuperInvoke";
@@ -219,10 +232,19 @@ inline std::string irOpToString(IROp op) {
         case IROp::FormatString: return "FormatString";
         case IROp::Class: return "Class";
         case IROp::Method: return "Method";
+        case IROp::MethodPrivate: return "MethodPrivate";
+        case IROp::MethodConst: return "MethodConst";
+        case IROp::MethodPrivateConst: return "MethodPrivateConst";
         case IROp::Inherit: return "Inherit";
         case IROp::GetProperty: return "GetProperty";
+        case IROp::GetPrivate: return "GetPrivate";
         case IROp::TryGetProperty: return "TryGetProperty";
         case IROp::SetProperty: return "SetProperty";
+        case IROp::SetPrivate: return "SetPrivate";
+        case IROp::DefinePrivate: return "DefinePrivate";
+        case IROp::DefinePrivateConst: return "DefinePrivateConst";
+        case IROp::DefineProp: return "DefineProp";
+        case IROp::DefinePropConst: return "DefinePropConst";
         case IROp::GetSuper: return "GetSuper";
         case IROp::GetSelf: return "GetSelf";
         case IROp::GetCurrentClosure: return "GetCurrentClosure";

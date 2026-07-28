@@ -77,10 +77,18 @@ enum class OpCode : uint8_t {
 
     // 面向对象与属性
     GET_PROP,       // R(A) := R(B)[icIdx = C] [Ext A, B, C]
+    GET_PRIVATE,    // R(A) := R(B).private[icIdx = C] [Ext A, B, C]
     TRY_GET_PROP,   // R(A), R(A+1) := try_get(R(B), icIdx = C) [Ext A, B, C]
     SET_PROP,       // R(A)[icIdx = B] := R(C) [Ext A, B, C]
+    SET_PRIVATE,    // R(A).private[icIdx = B] := R(C) [Ext A, B, C]
+    DEFINE_PRIVATE, // R(A).private[icIdx = B] := R(C) [Ext A, B, C]
+    DEFINE_PRIVATE_CONST, // R(A).private[icIdx = B] := const R(C) [Ext A, B, C]
+    DEFINE_PROP,    // R(A)[icIdx = B] := R(C) [Ext A, B, C]
+    DEFINE_PROP_CONST, // R(A)[icIdx = B] := const R(C) [Ext A, B, C]
     INVOKE,         // R(A) := Invoke(obj = R(A), args = R(A+1)...R(A+B), icIdx = C) [Ext A, B, C]
     TAIL_INVOKE,    // [Ext A, B, C]
+    INVOKE_PRIVATE, // R(A) := InvokePrivate(obj = R(A), args = R(A+1)...R(A+B), icIdx = C) [Ext A, B, C]
+    TAIL_INVOKE_PRIVATE, // [Ext A, B, C]
     INVOKE_FALLBACK,// R(A) := InvokeFallback(obj = R(A), args = R(A+1)...R(A+B), fallback = R(A+B+1), icIdx = C) [Ext A, B, C]
     TAIL_INVOKE_FALLBACK, // [Ext A, B, C]
     GET_SUPER,      // R(A) := super(self = R(B), nameIdx = C) [Ext A, B, C]
@@ -90,6 +98,9 @@ enum class OpCode : uint8_t {
     GET_CURRENT_CLOSURE, // R(A) := current_closure
     CLASS,          // R(A) := Class(nameIdx = Bx) [Ext]
     METHOD,         // R(A).Method(nameIdx = B) := R(C) [Ext]
+    METHOD_PRIVATE, // R(A).PrivateMethod(nameIdx = B) := R(C) [Ext]
+    METHOD_CONST,   // R(A).ConstMethod(nameIdx = B) := R(C) [Ext]
+    METHOD_PRIVATE_CONST, // R(A).PrivateConstMethod(nameIdx = B) := R(C) [Ext]
     INHERIT,        // R(A) inherits R(B)
 
     // 容器构建与操作
@@ -188,10 +199,18 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::SET_REF_PARAM: return "SET_REF_PARAM";
         case OpCode::PASS_REFS: return "PASS_REFS";
         case OpCode::GET_PROP: return "GET_PROP";
+        case OpCode::GET_PRIVATE: return "GET_PRIVATE";
         case OpCode::TRY_GET_PROP: return "TRY_GET_PROP";
         case OpCode::SET_PROP: return "SET_PROP";
+        case OpCode::SET_PRIVATE: return "SET_PRIVATE";
+        case OpCode::DEFINE_PRIVATE: return "DEFINE_PRIVATE";
+        case OpCode::DEFINE_PRIVATE_CONST: return "DEFINE_PRIVATE_CONST";
+        case OpCode::DEFINE_PROP: return "DEFINE_PROP";
+        case OpCode::DEFINE_PROP_CONST: return "DEFINE_PROP_CONST";
         case OpCode::INVOKE: return "INVOKE";
         case OpCode::TAIL_INVOKE: return "TAIL_INVOKE";
+        case OpCode::INVOKE_PRIVATE: return "INVOKE_PRIVATE";
+        case OpCode::TAIL_INVOKE_PRIVATE: return "TAIL_INVOKE_PRIVATE";
         case OpCode::INVOKE_FALLBACK: return "INVOKE_FALLBACK";
         case OpCode::TAIL_INVOKE_FALLBACK: return "TAIL_INVOKE_FALLBACK";
         case OpCode::GET_SUPER: return "GET_SUPER";
@@ -201,6 +220,9 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::GET_CURRENT_CLOSURE: return "GET_CURRENT_CLOSURE";
         case OpCode::CLASS: return "CLASS";
         case OpCode::METHOD: return "METHOD";
+        case OpCode::METHOD_PRIVATE: return "METHOD_PRIVATE";
+        case OpCode::METHOD_CONST: return "METHOD_CONST";
+        case OpCode::METHOD_PRIVATE_CONST: return "METHOD_PRIVATE_CONST";
         case OpCode::INHERIT: return "INHERIT";
         case OpCode::BUILD_LIST: return "BUILD_LIST";
         case OpCode::BUILD_DICT: return "BUILD_DICT";
@@ -464,8 +486,11 @@ public:
                 }
                 break;
 
-            case OpCode::GET_PROP: case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: 
+            case OpCode::GET_PROP: case OpCode::GET_PRIVATE: case OpCode::TRY_GET_PROP: 
+            case OpCode::SET_PROP: case OpCode::SET_PRIVATE: case OpCode::DEFINE_PRIVATE:
+            case OpCode::DEFINE_PRIVATE_CONST: case OpCode::DEFINE_PROP: case OpCode::DEFINE_PROP_CONST:
             case OpCode::INVOKE: case OpCode::TAIL_INVOKE: 
+            case OpCode::INVOKE_PRIVATE: case OpCode::TAIL_INVOKE_PRIVATE:
             case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(inlineCaches.size())) {
@@ -487,7 +512,7 @@ public:
                 }
                 break;
 
-            case OpCode::METHOD:
+            case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST: case OpCode::METHOD_PRIVATE_CONST:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
                     std::cout << "  ; " << constants[b].asString();

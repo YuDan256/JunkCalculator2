@@ -332,11 +332,14 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), call.begin(), call.end());
                         break;
                     }
-                    case IROp::Invoke:
-                    case IROp::TailInvoke: {
+                    case IROp::Invoke: case IROp::TailInvoke: case IROp::InvokePrivate: case IROp::TailInvokePrivate: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto inv = buildInstABC(node->op == IROp::Invoke ? OpCode::INVOKE : OpCode::TAIL_INVOKE, spillBase, node->payload1, icIdx);
+                        OpCode op = OpCode::INVOKE;
+                        if (node->op == IROp::TailInvoke) op = OpCode::TAIL_INVOKE;
+                        else if (node->op == IROp::InvokePrivate) op = OpCode::INVOKE_PRIVATE;
+                        else if (node->op == IROp::TailInvokePrivate) op = OpCode::TAIL_INVOKE_PRIVATE;
+                        auto inv = buildInstABC(op, spillBase, node->payload1, icIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
                         if (node->physicalReg != spillBase) {
                             auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, spillBase);
@@ -521,11 +524,15 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
-                    case IROp::Method: {
+                    case IROp::Method: case IROp::MethodPrivate: case IROp::MethodConst: case IROp::MethodPrivateConst: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        auto w = buildInstABC(OpCode::METHOD, a, nameIdx, c, OpType::NORMAL, OpType::NORMAL);
+                        OpCode op = OpCode::METHOD;
+                        if (node->op == IROp::MethodPrivate) op = OpCode::METHOD_PRIVATE;
+                        else if (node->op == IROp::MethodConst) op = OpCode::METHOD_CONST;
+                        else if (node->op == IROp::MethodPrivateConst) op = OpCode::METHOD_PRIVATE_CONST;
+                        auto w = buildInstABC(op, a, nameIdx, c, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -536,10 +543,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
-                    case IROp::GetProperty: {
+                    case IROp::GetProperty: case IROp::GetPrivate: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::GET_PROP, node->physicalReg, b, icIdx, OpType::NORMAL, OpType::NORMAL);
+                        OpCode op = node->op == IROp::GetPrivate ? OpCode::GET_PRIVATE : OpCode::GET_PROP;
+                        auto w = buildInstABC(op, node->physicalReg, b, icIdx, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -550,11 +558,17 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
-                    case IROp::SetProperty: {
+                    case IROp::SetProperty: case IROp::SetPrivate: case IROp::DefinePrivate: case IROp::DefinePrivateConst: case IROp::DefineProp: case IROp::DefinePropConst: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto w = buildInstABC(OpCode::SET_PROP, a, icIdx, c, OpType::NORMAL, OpType::NORMAL);
+                        OpCode op = OpCode::SET_PROP;
+                        if (node->op == IROp::SetPrivate) op = OpCode::SET_PRIVATE;
+                        else if (node->op == IROp::DefinePrivate) op = OpCode::DEFINE_PRIVATE;
+                        else if (node->op == IROp::DefinePrivateConst) op = OpCode::DEFINE_PRIVATE_CONST;
+                        else if (node->op == IROp::DefineProp) op = OpCode::DEFINE_PROP;
+                        else if (node->op == IROp::DefinePropConst) op = OpCode::DEFINE_PROP_CONST;
+                        auto w = buildInstABC(op, a, icIdx, c, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -860,6 +874,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
     for (const auto& inst : insts) {
         if (inst.node && (inst.node->op == IROp::Call || inst.node->op == IROp::TailCall || 
                           inst.node->op == IROp::Invoke || inst.node->op == IROp::TailInvoke ||
+                          inst.node->op == IROp::InvokePrivate || inst.node->op == IROp::TailInvokePrivate ||
                           inst.node->op == IROp::InvokeFallback || inst.node->op == IROp::TailInvokeFallback ||
                           inst.node->op == IROp::SuperInvoke || inst.node->op == IROp::TailSuperInvoke ||
                           inst.node->op == IROp::BuildList || inst.node->op == IROp::BuildDict ||

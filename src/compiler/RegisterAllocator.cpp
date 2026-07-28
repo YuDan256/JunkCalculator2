@@ -16,13 +16,17 @@ static bool isControlSpine(IROp op) {
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
         case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam: case IROp::PassRefs: case IROp::UpdateCaptured:
         case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
+        case IROp::InvokePrivate: case IROp::TailInvokePrivate:
         case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
         case IROp::IndexGet: case IROp::IndexSet: case IROp::SliceGet: case IROp::SliceSet: 
-        case IROp::GetProperty: case IROp::TryGetProperty: case IROp::SetProperty:
+        case IROp::GetProperty: case IROp::GetPrivate: case IROp::TryGetProperty: 
+        case IROp::SetProperty: case IROp::SetPrivate: case IROp::DefinePrivate: case IROp::DefinePrivateConst:
+        case IROp::DefineProp: case IROp::DefinePropConst:
         case IROp::AssertParamType: case IROp::AssertReturnType:
         case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
         case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
-        case IROp::Method: case IROp::Inherit: case IROp::Import:
+        case IROp::Method: case IROp::MethodPrivate: case IROp::MethodConst: case IROp::MethodPrivateConst:
+        case IROp::Inherit: case IROp::Import:
         case IROp::Defer: case IROp::RunDefers:
         case IROp::ListInit: case IROp::ListAppend: case IROp::ListCompEnd:
         case IROp::SetInit: case IROp::SetAppend: case IROp::DictInit: case IROp::DictAppend:

@@ -31,6 +31,14 @@ private:
     std::vector<std::unordered_set<std::string>> localVarsStack;
     std::vector<std::unordered_set<std::string>> constVarsStack;
 
+    struct ClassContext {
+        std::string name;
+        std::unordered_set<std::string> privateMembers;
+    };
+    std::vector<ClassContext> classStack;
+    bool isInitMethod = false;
+    std::vector<ClassDefExpr::InstanceFieldDef>* instanceFieldsToInit = nullptr;
+
     void pushScope() {
         envStack.emplace_back();
         deferCounts.push_back(0);

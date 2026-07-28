@@ -1254,6 +1254,28 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
 }
 
 void IRBuilder::build(Expr* ast) {
+    if (isInitMethod && instanceFieldsToInit) {
+        for (auto& f : *instanceFieldsToInit) {
+            f.value->accept(*this);
+            IRNode* valNode = lastValue;
+            IRNode* selfNode = graph->createValueNode(IROp::GetSelf);
+            selfNode->setControl(currentControl);
+            
+            IROp op;
+            if (f.isLocal && f.isConst) op = IROp::DefinePrivateConst;
+            else if (f.isLocal) op = IROp::DefinePrivate;
+            else if (f.isConst) op = IROp::DefinePropConst;
+            else op = IROp::DefineProp;
+            
+            IRNode* defNode = graph->createValueNode(op);
+            defNode->setControl(currentControl);
+            defNode->addData(selfNode);
+            defNode->addData(valNode);
+            defNode->name = f.name.lexeme;
+            currentControl = defNode;
+        }
+    }
+
     ast->accept(*this);
     
     // 自动在末尾插入 Return 节点
@@ -2396,7 +2418,14 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
             ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
             writeVariable(expr->name.lexeme, node, sym, false, false);
         } else if (dotParentNode) {
-            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+            IROp setOp = IROp::SetProperty;
+            if (dynamic_cast<SelfExpr*>(static_cast<DotAccess*>(expr->objectExpr.get())->object.get()) && !classStack.empty()) {
+                if (classStack.back().privateMembers.count(dotPropName)) {
+                    setOp = IROp::SetPrivate;
+                }
+            }
+
+            IRNode* setProp = graph->createValueNode(setOp);
             setProp->setControl(currentControl);
             setProp->addData(dotParentNode);
             setProp->addData(node);
@@ -2477,7 +2506,14 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
             ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
             writeVariable(expr->name.lexeme, finalNode, sym, false, false);
         } else if (dotParentNode) {
-            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+            IROp setOp = IROp::SetProperty;
+            if (dynamic_cast<SelfExpr*>(static_cast<DotAccess*>(expr->objectExpr.get())->object.get()) && !classStack.empty()) {
+                if (classStack.back().privateMembers.count(dotPropName)) {
+                    setOp = IROp::SetPrivate;
+                }
+            }
+
+            IRNode* setProp = graph->createValueNode(setOp);
             setProp->setControl(currentControl);
             setProp->addData(dotParentNode);
             setProp->addData(finalNode);
@@ -2631,7 +2667,14 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         objNode = lastValue;
         propName = dot->field.lexeme;
         
-        targetVal = graph->createValueNode(IROp::GetProperty);
+        IROp getOp = IROp::GetProperty;
+        if (dynamic_cast<SelfExpr*>(dot->object.get()) && !classStack.empty()) {
+            if (classStack.back().privateMembers.count(propName)) {
+                getOp = IROp::GetPrivate;
+            }
+        }
+
+        targetVal = graph->createValueNode(getOp);
         targetVal->setControl(currentControl);
         targetVal->addData(objNode);
         targetVal->name = propName;
@@ -2653,7 +2696,14 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             dotParentNode = lastValue;
             dotPropName = chainDot->field.lexeme;
             
-            IRNode* getProp = graph->createValueNode(IROp::GetProperty);
+            IROp getOp = IROp::GetProperty;
+            if (dynamic_cast<SelfExpr*>(chainDot->object.get()) && !classStack.empty()) {
+                if (classStack.back().privateMembers.count(dotPropName)) {
+                    getOp = IROp::GetPrivate;
+                }
+            }
+
+            IRNode* getProp = graph->createValueNode(getOp);
             getProp->setControl(currentControl);
             getProp->addData(dotParentNode);
             getProp->name = dotPropName;
@@ -2730,7 +2780,14 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
         writeVariable(var->name.lexeme, opNode, sym, expr->isLocal, false);
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
-        IRNode* setProp = graph->createValueNode(IROp::SetProperty);
+        IROp setOp = IROp::SetProperty;
+        if (dynamic_cast<SelfExpr*>(static_cast<DotAccess*>(expr->target.get())->object.get()) && !classStack.empty()) {
+            if (classStack.back().privateMembers.count(propName)) {
+                setOp = IROp::SetPrivate;
+            }
+        }
+
+        IRNode* setProp = graph->createValueNode(setOp);
         setProp->setControl(currentControl);
         setProp->addData(objNode);
         setProp->addData(opNode);
@@ -3425,6 +3482,40 @@ void IRBuilder::visitSwitchExpr(SwitchExpr* expr) {
 
 void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     graph->currentLine = expr->name.line;
+    
+    std::unordered_set<std::string> instanceMembers;
+    std::unordered_set<std::string> staticMembers;
+    
+    auto checkRedef = [&](const std::string& name, bool isStatic) {
+        if (isStatic) {
+            if (staticMembers.count(name)) error("Syntax Error: Static member '" + name + "' is redefined.");
+            staticMembers.insert(name);
+        } else {
+            if (instanceMembers.count(name)) error("Syntax Error: Instance member '" + name + "' is redefined.");
+            instanceMembers.insert(name);
+        }
+    };
+    
+    for (auto& m : expr->methods) checkRedef(m.name.lexeme, false);
+    for (auto& f : expr->instanceFields) checkRedef(f.name.lexeme, false);
+    for (auto& m : expr->staticMethods) checkRedef(m.name.lexeme, true);
+    for (auto& f : expr->staticFields) checkRedef(f.name.lexeme, true);
+
+    ClassContext ctx;
+    ctx.name = expr->name.lexeme;
+    for (auto& m : expr->methods) if (m.isLocal) ctx.privateMembers.insert(m.name.lexeme);
+    for (auto& f : expr->instanceFields) if (f.isLocal) ctx.privateMembers.insert(f.name.lexeme);
+    classStack.push_back(ctx);
+
+    bool hasInit = false;
+    for (auto& m : expr->methods) { if (m.name.lexeme == "init") hasInit = true; }
+    if (!hasInit && !expr->instanceFields.empty()) {
+        ClassDefExpr::MethodDef initDef;
+        initDef.name = Token(TokenType::IDENTIFIER, "init", expr->name.line);
+        initDef.body = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
+        expr->methods.push_back(std::move(initDef));
+    }
+
     IRNode* classNode = graph->createValueNode(IROp::Class);
     classNode->setControl(currentControl);
     classNode->name = expr->name.lexeme;
@@ -3472,6 +3563,10 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             
             IRGraph fnGraph;
             IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
+            if (method.name.lexeme == "init") {
+                fnBuilder.isInitMethod = true;
+                fnBuilder.instanceFieldsToInit = &expr->instanceFields;
+            }
             
             fnBuilder.currentReturnTypeHint = method.returnType;
             fnBuilder.buildFunctionParams(method.params, method.defaultExprs, method.hasRestParam, method.paramIsRef, method.paramIsConst, method.paramTypes);
@@ -3526,7 +3621,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             });
             if (retTypeNode) methodClosure->addData(retTypeNode);
 
-            IRNode* methodNode = graph->createNode(IROp::Method);
+            IROp methodOp = IROp::Method;
+            if (method.isLocal && method.isConst) methodOp = IROp::MethodPrivateConst;
+            else if (method.isLocal) methodOp = IROp::MethodPrivate;
+            else if (method.isConst) methodOp = IROp::MethodConst;
+
+            IRNode* methodNode = graph->createNode(methodOp);
             methodNode->setControl(currentControl);
             methodNode->addData(classNode);
             methodNode->addData(methodClosure);
@@ -3537,7 +3637,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             methodClosure->setControl(currentControl);
             methodClosure->name = std::to_string(method.fnIdx);
 
-            IRNode* methodNode = graph->createNode(IROp::Method);
+            IROp methodOp = IROp::Method;
+            if (method.isLocal && method.isConst) methodOp = IROp::MethodPrivateConst;
+            else if (method.isLocal) methodOp = IROp::MethodPrivate;
+            else if (method.isConst) methodOp = IROp::MethodConst;
+
+            IRNode* methodNode = graph->createNode(methodOp);
             methodNode->setControl(currentControl);
             methodNode->addData(classNode);
             methodNode->addData(methodClosure);
@@ -3622,7 +3727,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             });
             if (retTypeNode) methodClosure->addData(retTypeNode);
 
-            IRNode* setPropNode = graph->createValueNode(IROp::SetProperty);
+            IROp propOp = IROp::SetProperty;
+            if (method.isLocal && method.isConst) propOp = IROp::DefinePrivateConst;
+            else if (method.isLocal) propOp = IROp::DefinePrivate;
+            else if (method.isConst) propOp = IROp::DefinePropConst;
+
+            IRNode* setPropNode = graph->createValueNode(propOp);
             setPropNode->setControl(currentControl);
             setPropNode->addData(classNode);
             setPropNode->addData(methodClosure);
@@ -3633,7 +3743,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             methodClosure->setControl(currentControl);
             methodClosure->name = std::to_string(method.fnIdx);
 
-            IRNode* setPropNode = graph->createValueNode(IROp::SetProperty);
+            IROp propOp = IROp::SetProperty;
+            if (method.isLocal && method.isConst) propOp = IROp::DefinePrivateConst;
+            else if (method.isLocal) propOp = IROp::DefinePrivate;
+            else if (method.isConst) propOp = IROp::DefinePropConst;
+
+            IRNode* setPropNode = graph->createValueNode(propOp);
             setPropNode->setControl(currentControl);
             setPropNode->addData(classNode);
             setPropNode->addData(methodClosure);
@@ -3646,7 +3761,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         field.value->accept(*this);
         IRNode* valNode = lastValue;
 
-        IRNode* setPropNode = graph->createValueNode(IROp::SetProperty);
+        IROp propOp = IROp::SetProperty;
+        if (field.isLocal && field.isConst) propOp = IROp::DefinePrivateConst;
+        else if (field.isLocal) propOp = IROp::DefinePrivate;
+        else if (field.isConst) propOp = IROp::DefinePropConst;
+
+        IRNode* setPropNode = graph->createValueNode(propOp);
         setPropNode->setControl(currentControl);
         setPropNode->addData(classNode);
         setPropNode->addData(valNode);
@@ -3655,6 +3775,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     }
         
     popScope();
+    classStack.pop_back();
     lastValue = classNode;
 }
 
@@ -3875,7 +3996,14 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
         
-    IRNode* node = graph->createValueNode(IROp::GetProperty);
+    IROp op = IROp::GetProperty;
+    if (dynamic_cast<SelfExpr*>(expr->object.get()) && !classStack.empty()) {
+        if (classStack.back().privateMembers.count(expr->field.lexeme)) {
+            op = IROp::GetPrivate;
+        }
+    }
+
+    IRNode* node = graph->createValueNode(op);
     node->setControl(currentControl);
     node->addData(objNode);
     node->name = expr->field.lexeme;
@@ -3895,7 +4023,14 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
         if (valNode->name.empty()) valNode->name = expr->field.lexeme;
     }
         
-    IRNode* node = graph->createValueNode(IROp::SetProperty);
+    IROp op = IROp::SetProperty;
+    if (dynamic_cast<SelfExpr*>(expr->object.get()) && !classStack.empty()) {
+        if (classStack.back().privateMembers.count(expr->field.lexeme)) {
+            op = IROp::SetPrivate;
+        }
+    }
+
+    IRNode* node = graph->createValueNode(op);
     node->setControl(currentControl);
     node->addData(objNode);
     node->addData(valNode);
@@ -4011,10 +4146,20 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         }
     }
 
-    IRNode* invokeNode = graph->createValueNode(
-        isSuper ? IROp::SuperInvoke : 
-        (hasFallback ? IROp::InvokeFallback : IROp::Invoke)
-    );
+    bool isPrivate = false;
+    if (!isSuper && dynamic_cast<SelfExpr*>(expr->object.get()) && !classStack.empty()) {
+        if (classStack.back().privateMembers.count(expr->method.lexeme)) {
+            isPrivate = true;
+        }
+    }
+
+    IROp op;
+    if (isSuper) op = IROp::SuperInvoke;
+    else if (isPrivate) op = IROp::InvokePrivate;
+    else if (hasFallback) op = IROp::InvokeFallback;
+    else op = IROp::Invoke;
+
+    IRNode* invokeNode = graph->createValueNode(op);
     invokeNode->setControl(currentControl);
     invokeNode->addData(objNode);
     for (auto* arg : argNodes) {

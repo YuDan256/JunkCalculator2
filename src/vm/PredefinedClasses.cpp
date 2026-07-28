@@ -3,6 +3,8 @@
 #include "../memory/GcHeap.h"
 #include "../frontend/Highlight.h"
 #include "../frontend/Lexer.h"
+#include "../frontend/Parser.h"
+#include "../frontend/ASTConverter.h"
 #include <cmath>
 #include <sstream>
 
@@ -509,6 +511,88 @@ void registerPredefinedClasses() {
         return self;
     });
     tokenStreamClass->methods["remove"] = tsRemove;
+
+    auto tsParse = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "parse", nullptr);
+    GcObjGuard tsParseGuard(tsParse);
+    tsParse->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        std::vector<Token> tokens;
+        for (size_t i = cursor; i < list->vec.size(); ++i) {
+            const auto& v = list->vec[i];
+            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: TokenStream contains non-Token elements.");
+            auto tokInst = v.asInstance();
+            std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
+            std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
+            int line = tokInst->fields->elements[tokInst->fields->keyMap[Value("line")]].second.asInt32();
+            int pos = tokInst->fields->elements[tokInst->fields->keyMap[Value("position")]].second.asInt32();
+            
+            TokenType tType = stringToTokenType(typeStr);
+            tokens.emplace_back(tType, lexeme, pos, line);
+        }
+        tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
+        
+        Parser parser(tokens);
+        auto ast = parser.parse();
+        
+        inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(static_cast<int32_t>(list->vec.size()));
+        
+        if (auto* block = dynamic_cast<Block*>(ast.get())) {
+            if (block->statements.size() == 1) {
+                return AST_to_JC2(block->statements[0].get());
+            } else {
+                ObjList* retList = GcHeap::get().allocate<ObjList>();
+                GcObjGuard guard(retList);
+                for (const auto& stmt : block->statements) {
+                    retList->vec.push_back(AST_to_JC2(stmt.get()));
+                }
+                return Value(retList);
+            }
+        }
+        return AST_to_JC2(ast.get());
+    });
+    tokenStreamClass->methods["parse"] = tsParse;
+
+    auto tsParseOne = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "parseOne", nullptr);
+    GcObjGuard tsParseOneGuard(tsParseOne);
+    tsParseOne->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto inst = self.asInstance();
+        Value tokensVal = inst->fields->elements[inst->fields->keyMap[Value("tokens")]].second;
+        ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
+        int cursor = inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second.asInt32();
+        
+        if (cursor >= static_cast<int>(list->vec.size())) {
+            throw std::runtime_error("TokenStream Error: Cannot parse past end of stream.");
+        }
+
+        std::vector<Token> tokens;
+        for (size_t i = cursor; i < list->vec.size(); ++i) {
+            const auto& v = list->vec[i];
+            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: TokenStream contains non-Token elements.");
+            auto tokInst = v.asInstance();
+            std::string typeStr = tokInst->fields->elements[tokInst->fields->keyMap[Value("type")]].second.asString();
+            std::string lexeme = tokInst->fields->elements[tokInst->fields->keyMap[Value("lexeme")]].second.asString();
+            int line = tokInst->fields->elements[tokInst->fields->keyMap[Value("line")]].second.asInt32();
+            int pos = tokInst->fields->elements[tokInst->fields->keyMap[Value("position")]].second.asInt32();
+            
+            TokenType tType = stringToTokenType(typeStr);
+            tokens.emplace_back(tType, lexeme, pos, line);
+        }
+        tokens.emplace_back(TokenType::END_OF_FILE, "", 0, 0);
+        
+        Parser parser(tokens);
+        auto ast = parser.parseStatementOrBlock();
+        
+        inst->fields->elements[inst->fields->keyMap[Value("cursor")]].second = Value::fromInt32(cursor + parser.getCurrent());
+        
+        return AST_to_JC2(ast.get());
+    });
+    tokenStreamClass->methods["parseOne"] = tsParseOne;
 
     // --- Exception Class ---
     ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();

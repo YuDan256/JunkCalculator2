@@ -2891,8 +2891,8 @@
       "  ──────────────────────",
       "    syntax my_syntax(stream) = {",
       "        // stream is a TokenStream object",
-      "        // You must return a valid ASTNode (e.g., by calling parse)",
-      "        return parse(stream)",
+      "        // You must return a valid ASTNode (e.g., by calling stream.parse())",
+      "        return stream.parse()",
       "    }",
       "",
       "  Calling a Syntax Macro",
@@ -2905,15 +2905,16 @@
       "  Parsing Tokens back to AST",
       "  ──────────────────────",
       "    To return executable code from a syntax macro, you must parse the modified",
-      "    TokenStream back into an ASTNode using the built-in `parse` function:",
+      "    TokenStream back into an ASTNode using its built-in parse methods:",
       "    ",
-      "    • parse(stream): Parses a TokenStream into ASTNode(s).",
+      "    • stream.parse(): Parses all remaining tokens into ASTNode(s).",
       "      If the tokens form a single expression or statement, it returns a single ASTNode.",
       "      If multiple statements are parsed, it returns a List of ASTNodes (which",
-      "      auto-splices into the current scope). This unified function handles both",
-      "      value-returning macros and multi-line logic injection.",
-      "      Note: When passing a TokenStream, `parse` will consume tokens starting from",
-      "      the current cursor position and update the cursor automatically.",
+      "      auto-splices into the current scope).",
+      "    ",
+      "    • stream.parseOne(): Parses exactly ONE expression or statement.",
+      "      Stops parsing and updates the cursor immediately after the first valid ASTNode.",
+      "      Perfect for extracting arguments or conditions mid-stream.",
       "",
       "  The TokenStream Class",
       "  ──────────────────────",
@@ -2929,6 +2930,8 @@
       "      stream.insert(idx, token)  Inserts a Token at the specified index",
       "      stream.set(idx, token)     Replaces the Token at the specified index",
       "      stream.remove(idx)         Removes the Token at the specified index",
+      "      stream.parse()             Parses all remaining tokens into ASTNode(s)",
+      "      stream.parseOne()          Parses exactly one expression/statement into an ASTNode",
       "",
       "  The Token Class",
       "  ──────────────────────",
@@ -5909,18 +5912,6 @@
       "examples": [
         "temp_var = gensym(\"temp\")"
       ]
-    },
-    "parse": {
-      "signature": "parse(stream)",
-      "desc": [
-        "Parses a TokenStream object (or a list of Tokens) into ASTNode(s).",
-        "If a TokenStream is provided, it parses starting from the current cursor and updates the cursor.",
-        "If the tokens form a single expression or statement, it returns a single ASTNode.",
-        "If multiple statements are parsed, it returns a List of ASTNodes, which automatically splices into the surrounding scope when returned by a macro."
-      ],
-      "examples": [
-        "ast = parse(my_stream)"
-      ]
     }
   },
   "keywords": {
@@ -6478,7 +6469,7 @@
         "See also: /help token (topic)"
       ],
       "examples": [
-        "syntax my_syntax(s) = parse(s)"
+        "syntax my_syntax(s) = s.parse()"
       ]
     },
     "quote": {

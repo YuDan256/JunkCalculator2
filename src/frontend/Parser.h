@@ -87,6 +87,7 @@ namespace jc {
 
     public:
         inline bool isAtEnd() const { return peek().type == TokenType::END_OF_FILE; }
+        inline int getCurrent() const { return current; }
 
         explicit Parser(std::vector<Token> tokens, std::string sourceFile = "")
             : tokens(std::move(tokens)), sourceFile(std::move(sourceFile)) {

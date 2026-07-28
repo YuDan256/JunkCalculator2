@@ -2254,7 +2254,7 @@ void BuiltinRegistry::registerControlFlow() {
                 }
                 auto c_cls = inst->classDef;
                 while (c_cls) {
-                    std::string mangledName = c_cls->name + "::" + keyStr;
+                    std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
                     if (inst->properties.find(mangledName) != inst->properties.end()) {
                         throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
                     }
@@ -3338,7 +3338,7 @@ void BuiltinRegistry::registerDictFunctions() {
                 }
                 auto c_cls = inst->classDef;
                 while (c_cls) {
-                    std::string mangledName = c_cls->name + "::" + keyStr;
+                    std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
                     if (inst->properties.find(mangledName) != inst->properties.end()) {
                         throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
                     }

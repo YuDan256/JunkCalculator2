@@ -1140,7 +1140,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
             
-            std::string mangledName = owner->name + "::" + methodName;
+            std::string mangledName = std::to_string(owner->classId) + "::" + methodName;
             auto it = inst->properties.find(mangledName);
             if (it != inst->properties.end()) {
                 Value fv = it->second.val;
@@ -4394,7 +4394,7 @@ Value VM::run(int targetFrameDepth) {
                                 } else {
                                     auto c_cls = inst->classDef;
                                     while (c_cls) {
-                                        std::string mangledName = c_cls->name + "::" + keyStr;
+                                        std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
                                         if (inst->properties.find(mangledName) != inst->properties.end()) {
                                             if (noThrow) { result = Value::uninit(); goto index_get_done; }
                                             else throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
@@ -4623,7 +4623,7 @@ Value VM::run(int targetFrameDepth) {
                                 } else {
                                     auto c_cls2 = inst->classDef;
                                     while (c_cls2) {
-                                        std::string mangledName = c_cls2->name + "::" + keyStr;
+                                        std::string mangledName = std::to_string(c_cls2->classId) + "::" + keyStr;
                                         if (inst->properties.find(mangledName) != inst->properties.end()) {
                                             throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
                                         }
@@ -5162,7 +5162,7 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    std::string mangledName = owner->name + "::" + keyVal.asString();
+                    std::string mangledName = std::to_string(owner->classId) + "::" + keyVal.asString();
                     auto it = inst->properties.find(mangledName);
                     if (it != inst->properties.end()) {
                         getReg(a) = it->second.val;
@@ -5516,7 +5516,7 @@ Value VM::run(int targetFrameDepth) {
                         auto inst = obj.asInstance();
                         auto c_cls = inst->classDef;
                         while (c_cls) {
-                            std::string mangledName = c_cls->name + "::" + field;
+                            std::string mangledName = std::to_string(c_cls->classId) + "::" + field;
                             if (inst->properties.find(mangledName) != inst->properties.end()) {
                                 throw std::runtime_error("VM Error: Cannot access private property '" + field + "' externally.");
                             }
@@ -5835,7 +5835,7 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    std::string mangledName = owner->name + "::" + keyVal.asString();
+                    std::string mangledName = std::to_string(owner->classId) + "::" + keyVal.asString();
                     auto it = inst->properties.find(mangledName);
                     if (op == OpCode::SET_PRIVATE) {
                         if (it == inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
@@ -5885,7 +5885,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     auto c_cls = inst->classDef;
                     while (c_cls) {
-                        std::string mangledName = c_cls->name + "::" + keyStr;
+                        std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
                         if (inst->properties.find(mangledName) != inst->properties.end()) {
                             throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
                         }
@@ -5929,7 +5929,7 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         auto c_cls = inst->classDef;
                         while (c_cls) {
-                            std::string mangledName = c_cls->name + "::" + keyStr;
+                            std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
                             if (inst->properties.find(mangledName) != inst->properties.end()) {
                                 throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
                             }

@@ -1038,6 +1038,8 @@ int jc2_init(jc2::Module& mod) {
         "    It is highly recommended to instantiate a Regex object when reusing patterns,\n"
         "    as it caches the compiled bytecode.\n"
         "    \n"
+        "    // Note: 'RE' is a raw string delimiter, NOT part of the regex pattern.\n"
+        "    // If your pattern contains ')RE', use a different tag like r\"TAG(...)TAG\".\n"
         "    r = regex.Regex(r\"RE((\\w+) (\\d+))RE\") // Instantiate Regex object\n"
         "    r.test(\"Alice 30\")             // → true\n"
         "    m = r.search(\"Bob 25\")         // Returns a ReMatch object\n"

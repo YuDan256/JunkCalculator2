@@ -615,43 +615,18 @@ namespace jc {
     struct ClassDefExpr : public Expr {
         Token name;
         std::unique_ptr<Expr> superClassExpr;
-        struct MethodDef {
-            Token name;
-            std::vector<Token> params;
-            std::vector<bool> paramIsRef;
-            std::vector<bool> paramIsConst; // ★ 新增
-            std::vector<std::shared_ptr<Expr>> defaultExprs;
-            bool hasRestParam;
-
-            std::vector<std::shared_ptr<Expr>> paramTypes; // ★ 新增
-            std::shared_ptr<Expr> returnType;              // ★ 新增
-
-            std::string rawBody;
-            std::shared_ptr<Expr> body;
-            int fnIdx = -1;
-            bool isLocal = false;
-            bool isConst = false;
-        };
-        struct StaticFieldDef {
+        struct PropertyDef {
             Token name;
             std::unique_ptr<Expr> value;
             bool isLocal = false;
             bool isConst = false;
         };
-        struct InstanceFieldDef {
-            Token name;
-            std::unique_ptr<Expr> value;
-            bool isLocal = false;
-            bool isConst = false;
-        };
-        std::vector<MethodDef> methods;
-        std::vector<MethodDef> staticMethods;
-        std::vector<StaticFieldDef> staticFields;
-        std::vector<InstanceFieldDef> instanceFields;
+        std::vector<PropertyDef> staticProperties;
+        std::vector<PropertyDef> instanceProperties;
 
-        ClassDefExpr(Token name, std::unique_ptr<Expr> superClassExpr, std::vector<MethodDef> methods, std::vector<MethodDef> staticMethods = {}, std::vector<StaticFieldDef> staticFields = {}, std::vector<InstanceFieldDef> instanceFields = {})
+        ClassDefExpr(Token name, std::unique_ptr<Expr> superClassExpr, std::vector<PropertyDef> staticProperties = {}, std::vector<PropertyDef> instanceProperties = {})
             : name(std::move(name)), superClassExpr(std::move(superClassExpr)),
-            methods(std::move(methods)), staticMethods(std::move(staticMethods)), staticFields(std::move(staticFields)), instanceFields(std::move(instanceFields)) {
+            staticProperties(std::move(staticProperties)), instanceProperties(std::move(instanceProperties)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitClassDefExpr(this); }
     };

@@ -2215,79 +2215,25 @@ namespace jc {
             }
             props.push_back({"superClassExpr", transformQuote(cls->superClassExpr.get())});
             
-            auto serializeMethods = [&](const std::vector<ClassDefExpr::MethodDef>& methods) {
-                std::vector<std::unique_ptr<Expr>> methodsArgs;
-                for (const auto& m : methods) {
-                    std::vector<std::pair<std::string, std::unique_ptr<Expr>>> mProps;
-                    if (!m.name.lexeme.empty() && m.name.lexeme[0] == '$') {
-                        mProps.push_back({"name", makeGetNameExpr(m.name.lexeme.substr(1), m.name.line)});
+            auto serializeProps = [&](const std::vector<ClassDefExpr::PropertyDef>& properties) {
+                std::vector<std::unique_ptr<Expr>> args;
+                for (const auto& p : properties) {
+                    std::vector<std::unique_ptr<Expr>> pairArgs;
+                    if (!p.name.lexeme.empty() && p.name.lexeme[0] == '$') {
+                        pairArgs.push_back(makeGetNameExpr(p.name.lexeme.substr(1), p.name.line));
                     } else {
-                        mProps.push_back({"name", std::make_unique<Literal>(m.name.lexeme, true)});
+                        pairArgs.push_back(std::make_unique<Literal>(p.name.lexeme, true));
                     }
-                    std::vector<std::unique_ptr<Expr>> paramsArgs;
-                    for (const auto& p : m.params) {
-                        if (!p.lexeme.empty() && p.lexeme[0] == '$') {
-                            paramsArgs.push_back(makeGetNameExpr(p.lexeme.substr(1), p.line));
-                        } else {
-                            paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
-                        }
-                    }
-                    mProps.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
-                    std::vector<std::unique_ptr<Expr>> refArgs;
-                    for (bool b : m.paramIsRef) refArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
-                    mProps.push_back({"paramIsRef", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(refArgs))});
-                    std::vector<std::unique_ptr<Expr>> constArgs;
-                    for (bool b : m.paramIsConst) constArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
-                    mProps.push_back({"paramIsConst", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(constArgs))});
-                    std::vector<std::unique_ptr<Expr>> defArgs;
-                    for (const auto& d : m.defaultExprs) defArgs.push_back(transformQuote(d.get()));
-                    mProps.push_back({"defaultExprs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(defArgs))});
-                    mProps.push_back({"hasRestParam", std::make_unique<Literal>(m.hasRestParam ? "true" : "false", false, false, true)});
-                    std::vector<std::unique_ptr<Expr>> typeArgs;
-                    for (const auto& t : m.paramTypes) typeArgs.push_back(transformQuote(t.get()));
-                    mProps.push_back({"paramTypes", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(typeArgs))});
-                    mProps.push_back({"returnType", transformQuote(m.returnType.get())});
-                    mProps.push_back({"rawBody", std::make_unique<Literal>(m.rawBody, true)});
-                    mProps.push_back({"body", transformQuote(m.body.get())});
-                    mProps.push_back({"isLocal", std::make_unique<Literal>(m.isLocal ? "true" : "false", false, false, true)});
-                    mProps.push_back({"isConst", std::make_unique<Literal>(m.isConst ? "true" : "false", false, false, true)});
-                    methodsArgs.push_back(makeASTNodeCall("MethodDef", m.name.line, std::move(mProps)));
+                    pairArgs.push_back(transformQuote(p.value.get()));
+                    pairArgs.push_back(std::make_unique<Literal>(p.isLocal ? "true" : "false", false, false, true));
+                    pairArgs.push_back(std::make_unique<Literal>(p.isConst ? "true" : "false", false, false, true));
+                    args.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
                 }
-                return std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(methodsArgs));
+                return std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(args));
             };
             
-            props.push_back({"methods", serializeMethods(cls->methods)});
-            props.push_back({"staticMethods", serializeMethods(cls->staticMethods)});
-            
-            std::vector<std::unique_ptr<Expr>> sfArgs;
-            for (const auto& f : cls->staticFields) {
-                std::vector<std::unique_ptr<Expr>> pairArgs;
-                if (!f.name.lexeme.empty() && f.name.lexeme[0] == '$') {
-                    pairArgs.push_back(makeGetNameExpr(f.name.lexeme.substr(1), f.name.line));
-                } else {
-                    pairArgs.push_back(std::make_unique<Literal>(f.name.lexeme, true));
-                }
-                pairArgs.push_back(transformQuote(f.value.get()));
-                pairArgs.push_back(std::make_unique<Literal>(f.isLocal ? "true" : "false", false, false, true));
-                pairArgs.push_back(std::make_unique<Literal>(f.isConst ? "true" : "false", false, false, true));
-                sfArgs.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
-            }
-            props.push_back({"staticFields", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(sfArgs))});
-
-            std::vector<std::unique_ptr<Expr>> ifArgs;
-            for (const auto& f : cls->instanceFields) {
-                std::vector<std::unique_ptr<Expr>> pairArgs;
-                if (!f.name.lexeme.empty() && f.name.lexeme[0] == '$') {
-                    pairArgs.push_back(makeGetNameExpr(f.name.lexeme.substr(1), f.name.line));
-                } else {
-                    pairArgs.push_back(std::make_unique<Literal>(f.name.lexeme, true));
-                }
-                pairArgs.push_back(transformQuote(f.value.get()));
-                pairArgs.push_back(std::make_unique<Literal>(f.isLocal ? "true" : "false", false, false, true));
-                pairArgs.push_back(std::make_unique<Literal>(f.isConst ? "true" : "false", false, false, true));
-                ifArgs.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
-            }
-            props.push_back({"instanceFields", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(ifArgs))});
+            props.push_back({"staticProperties", serializeProps(cls->staticProperties)});
+            props.push_back({"instanceProperties", serializeProps(cls->instanceProperties)});
             
             return makeASTNodeCall("ClassDefExpr", cls->name.line, std::move(props));
         }
@@ -2915,10 +2861,8 @@ namespace jc {
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after class definition.");
 
         MacroScopeGuard guard(this);
-        std::vector<ClassDefExpr::MethodDef> methods;
-        std::vector<ClassDefExpr::MethodDef> staticMethods;
-        std::vector<ClassDefExpr::StaticFieldDef> staticFields;
-        std::vector<ClassDefExpr::InstanceFieldDef> instanceFields;
+        std::vector<ClassDefExpr::PropertyDef> staticProperties;
+        std::vector<ClassDefExpr::PropertyDef> instanceProperties;
 
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
@@ -2948,13 +2892,9 @@ namespace jc {
                 memberName = consume(TokenType::IDENTIFIER, "Parser Error: Expect method or field name.");
             }
 
+            std::unique_ptr<Expr> value;
             if (match({ TokenType::ASSIGN })) {
-                auto value = ternary();
-                if (isStatic) {
-                    staticFields.push_back({ memberName, std::move(value), isLocal, isConst });
-                } else {
-                    instanceFields.push_back({ memberName, std::move(value), isLocal, isConst });
-                }
+                value = ternary();
             } else {
                 consume(TokenType::LPAREN, "Parser Error: Expect '(' after method name.");
 
@@ -2962,7 +2902,7 @@ namespace jc {
                 std::vector<bool> paramIsRef;
                 std::vector<bool> paramIsConst;
                 std::vector<std::shared_ptr<Expr>> defaultExprs;
-                std::vector<std::shared_ptr<Expr>> paramTypes; // ★
+                std::vector<std::shared_ptr<Expr>> paramTypes;
                 bool hasRestParam = false;
 
                 std::vector<std::unique_ptr<Expr>> destructStmts;
@@ -3031,7 +2971,6 @@ namespace jc {
                 }
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after method parameters.");
 
-                // ★ 解析方法返回类型
                 std::shared_ptr<Expr> retType = nullptr;
                 while (match({ TokenType::NEWLINE })) {}
                 if (match({ TokenType::RIGHT_ARROW })) {
@@ -3062,26 +3001,24 @@ namespace jc {
                     finalBody = std::shared_ptr<Expr>(body.release());
                 }
 
-                ClassDefExpr::MethodDef methodDef = {
-                    memberName,
+                value = std::make_unique<LambdaExpr>(
+                    memberName.lexeme,
                     std::move(params),
                     std::move(paramIsRef),
                     std::move(paramIsConst),
                     std::move(defaultExprs),
                     hasRestParam,
-                    paramTypes, retType, // ★ 加载进入结构体
+                    std::move(paramTypes),
+                    std::move(retType),
                     std::move(rawBody),
-                    std::move(finalBody),
-                    -1,
-                    isLocal,
-                    isConst
-                };
+                    std::move(finalBody)
+                );
+            }
 
-                if (isStatic) {
-                    staticMethods.push_back(std::move(methodDef));
-                } else {
-                    methods.push_back(std::move(methodDef));
-                }
+            if (isStatic) {
+                staticProperties.push_back({ memberName, std::move(value), isLocal, isConst });
+            } else {
+                instanceProperties.push_back({ memberName, std::move(value), isLocal, isConst });
             }
 
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
@@ -3090,7 +3027,7 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after class body.");
-        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(methods), std::move(staticMethods), std::move(staticFields), std::move(instanceFields));
+        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(staticProperties), std::move(instanceProperties));
         if (isNamed) {
             return std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false);
         }

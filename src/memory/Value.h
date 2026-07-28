@@ -151,6 +151,7 @@ namespace jc {
         std::string name;
         ObjClass* parent = nullptr;
         std::map<std::string, ObjClosure*> methods;
+        std::unordered_map<std::string, Value> staticFields;
         bool is_native = false;
         std::function<Value(const std::vector<Value>&)> native_allocator;
         ObjClass() { 
@@ -2650,6 +2651,7 @@ inline void GcHeap::markObj(Obj* obj) {
             auto cls = static_cast<ObjClass*>(obj);
             markObj(cls->parent);
             for (auto& [k, v] : cls->methods) markObj(v);
+            for (auto& [k, v] : cls->staticFields) markValue(v);
             break;
         }
         case ObjType::INSTANCE: {

@@ -630,11 +630,17 @@ namespace jc {
             std::shared_ptr<Expr> body;
             int fnIdx = -1;
         };
+        struct StaticFieldDef {
+            Token name;
+            std::unique_ptr<Expr> value;
+        };
         std::vector<MethodDef> methods;
+        std::vector<MethodDef> staticMethods;
+        std::vector<StaticFieldDef> staticFields;
 
-        ClassDefExpr(Token name, std::unique_ptr<Expr> superClassExpr, std::vector<MethodDef> methods)
+        ClassDefExpr(Token name, std::unique_ptr<Expr> superClassExpr, std::vector<MethodDef> methods, std::vector<MethodDef> staticMethods = {}, std::vector<StaticFieldDef> staticFields = {})
             : name(std::move(name)), superClassExpr(std::move(superClassExpr)),
-            methods(std::move(methods)) {
+            methods(std::move(methods)), staticMethods(std::move(staticMethods)), staticFields(std::move(staticFields)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitClassDefExpr(this); }
     };

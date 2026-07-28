@@ -397,49 +397,69 @@ public:
         if (expr->superClassExpr) { expr->superClassExpr->accept(*this); sup = result; }
         GcValueGuard supGuard(sup);
         
-        ObjList* methods = GcHeap::get().allocate<ObjList>();
-        GcObjGuard guard(methods);
-        for (auto& m : expr->methods) {
-            ObjList* params = GcHeap::get().allocate<ObjList>();
-            GcObjGuard pGuard(params);
-            for (auto& p : m.params) params->vec.push_back(Value(p.lexeme));
-            
-            ObjList* paramIsRef = GcHeap::get().allocate<ObjList>();
-            GcObjGuard prGuard(paramIsRef);
-            for (bool b : m.paramIsRef) paramIsRef->vec.push_back(Value(b));
-            
-            ObjList* paramIsConst = GcHeap::get().allocate<ObjList>();
-            GcObjGuard pcGuard(paramIsConst);
-            for (bool b : m.paramIsConst) paramIsConst->vec.push_back(Value(b));
-            
-            Value retTypeVal = Value::none();
-            if (m.returnType) {
-                m.returnType->accept(*this);
-                retTypeVal = result;
-            }
-            GcValueGuard retGuard(retTypeVal);
+        auto serializeMethods = [&](const std::vector<ClassDefExpr::MethodDef>& methodsList) {
+            ObjList* methods = GcHeap::get().allocate<ObjList>();
+            for (auto& m : methodsList) {
+                ObjList* params = GcHeap::get().allocate<ObjList>();
+                GcObjGuard pGuard(params);
+                for (auto& p : m.params) params->vec.push_back(Value(p.lexeme));
+                
+                ObjList* paramIsRef = GcHeap::get().allocate<ObjList>();
+                GcObjGuard prGuard(paramIsRef);
+                for (bool b : m.paramIsRef) paramIsRef->vec.push_back(Value(b));
+                
+                ObjList* paramIsConst = GcHeap::get().allocate<ObjList>();
+                GcObjGuard pcGuard(paramIsConst);
+                for (bool b : m.paramIsConst) paramIsConst->vec.push_back(Value(b));
+                
+                Value retTypeVal = Value::none();
+                if (m.returnType) {
+                    m.returnType->accept(*this);
+                    retTypeVal = result;
+                }
+                GcValueGuard retGuard(retTypeVal);
 
-            m.body->accept(*this); Value bodyVal = result;
-            
-            Value methodNode = makeASTNode("MethodDef", m.name.line, {
-                {"name", Value(m.name.lexeme)},
-                {"params", Value(params)},
-                {"paramIsRef", Value(paramIsRef)},
-                {"paramIsConst", Value(paramIsConst)},
-                {"defaultExprs", makeExprListT(m.defaultExprs)},
-                {"hasRestParam", Value(m.hasRestParam)},
-                {"paramTypes", makeExprListT(m.paramTypes)},
-                {"returnType", retTypeVal},
-                {"rawBody", Value(m.rawBody)},
-                {"body", bodyVal}
-            });
-            methods->vec.push_back(methodNode);
+                m.body->accept(*this); Value bodyVal = result;
+                
+                Value methodNode = makeASTNode("MethodDef", m.name.line, {
+                    {"name", Value(m.name.lexeme)},
+                    {"params", Value(params)},
+                    {"paramIsRef", Value(paramIsRef)},
+                    {"paramIsConst", Value(paramIsConst)},
+                    {"defaultExprs", makeExprListT(m.defaultExprs)},
+                    {"hasRestParam", Value(m.hasRestParam)},
+                    {"paramTypes", makeExprListT(m.paramTypes)},
+                    {"returnType", retTypeVal},
+                    {"rawBody", Value(m.rawBody)},
+                    {"body", bodyVal}
+                });
+                methods->vec.push_back(methodNode);
+            }
+            return methods;
+        };
+
+        ObjList* methods = serializeMethods(expr->methods);
+        GcObjGuard guard(methods);
+        ObjList* staticMethods = serializeMethods(expr->staticMethods);
+        GcObjGuard smGuard(staticMethods);
+
+        ObjList* staticFields = GcHeap::get().allocate<ObjList>();
+        GcObjGuard sfGuard(staticFields);
+        for (auto& f : expr->staticFields) {
+            ObjList* pair = GcHeap::get().allocate<ObjList>();
+            GcObjGuard pGuard(pair);
+            pair->vec.push_back(Value(f.name.lexeme));
+            f.value->accept(*this);
+            pair->vec.push_back(result);
+            staticFields->vec.push_back(Value(pair));
         }
         
         result = makeASTNode("ClassDefExpr", expr->name.line, {
             {"name", Value(expr->name.lexeme)},
             {"superClassExpr", sup},
-            {"methods", Value(methods)}
+            {"methods", Value(methods)},
+            {"staticMethods", Value(staticMethods)},
+            {"staticFields", Value(staticFields)}
         });
     }
 
@@ -962,58 +982,80 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             JC2_to_AST(getProp("defaultBody"))
         );
     } else if (type == "ClassDefExpr") {
-        std::vector<ClassDefExpr::MethodDef> methods;
-        Value methodsVal = getProp("methods");
-        if (methodsVal.isObjType(ObjType::LIST)) {
-            for (const auto& mVal : static_cast<ObjList*>(methodsVal.asObj())->vec) {
-                auto mInst = mVal.asInstance();
-                auto getMProp = [&](const std::string& key) -> Value {
-                    Value kv(key);
-                    if (mInst->fields && mInst->fields->keyMap.count(kv)) {
-                        return mInst->fields->elements[mInst->fields->keyMap[kv]].second;
+        auto parseMethods = [&](const Value& methodsVal) {
+            std::vector<ClassDefExpr::MethodDef> methods;
+            if (methodsVal.isObjType(ObjType::LIST)) {
+                for (const auto& mVal : static_cast<ObjList*>(methodsVal.asObj())->vec) {
+                    auto mInst = mVal.asInstance();
+                    auto getMProp = [&](const std::string& key) -> Value {
+                        Value kv(key);
+                        if (mInst->fields && mInst->fields->keyMap.count(kv)) {
+                            return mInst->fields->elements[mInst->fields->keyMap[kv]].second;
+                        }
+                        return Value::none();
+                    };
+                    ClassDefExpr::MethodDef method{
+                        Token(TokenType::IDENTIFIER, getMProp("name").asString(), line),
+                        {}, {}, {}, {}, false, {}, nullptr, "", nullptr, -1
+                    };
+                    Value paramsVal = getMProp("params");
+                    if (paramsVal.isObjType(ObjType::LIST)) {
+                        for (const auto& pVal : static_cast<ObjList*>(paramsVal.asObj())->vec) {
+                            method.params.push_back(Token(TokenType::IDENTIFIER, pVal.asString(), line));
+                        }
                     }
-                    return Value::none();
-                };
-                ClassDefExpr::MethodDef method{
-                    Token(TokenType::IDENTIFIER, getMProp("name").asString(), line),
-                    {}, {}, {}, {}, false, {}, nullptr, "", nullptr, -1
-                };
-                Value paramsVal = getMProp("params");
-                if (paramsVal.isObjType(ObjType::LIST)) {
-                    for (const auto& pVal : static_cast<ObjList*>(paramsVal.asObj())->vec) {
-                        method.params.push_back(Token(TokenType::IDENTIFIER, pVal.asString(), line));
+                    Value refVal = getMProp("paramIsRef");
+                    if (refVal.isObjType(ObjType::LIST)) {
+                        for (const auto& rVal : static_cast<ObjList*>(refVal.asObj())->vec) method.paramIsRef.push_back(rVal.truthy());
+                    }
+                    Value constVal = getMProp("paramIsConst");
+                    if (constVal.isObjType(ObjType::LIST)) {
+                        for (const auto& cVal : static_cast<ObjList*>(constVal.asObj())->vec) method.paramIsConst.push_back(cVal.truthy());
+                    }
+                    Value defsVal = getMProp("defaultExprs");
+                    if (defsVal.isObjType(ObjType::LIST)) {
+                        for (const auto& dVal : static_cast<ObjList*>(defsVal.asObj())->vec) {
+                            method.defaultExprs.push_back(std::shared_ptr<Expr>(JC2_to_AST(dVal).release()));
+                        }
+                    }
+                    method.hasRestParam = getMProp("hasRestParam").truthy();
+                    for (auto& e : getExprList(getMProp("paramTypes"))) {
+                        method.paramTypes.push_back(std::shared_ptr<Expr>(e.release()));
+                    }
+                    method.returnType = std::shared_ptr<Expr>(JC2_to_AST(getMProp("returnType")).release());
+                    method.rawBody = getMProp("rawBody").asString();
+                    method.body = std::shared_ptr<Expr>(JC2_to_AST(getMProp("body")).release());
+                    methods.push_back(std::move(method));
+                }
+            }
+            return methods;
+        };
+
+        std::vector<ClassDefExpr::MethodDef> methods = parseMethods(getProp("methods"));
+        std::vector<ClassDefExpr::MethodDef> staticMethods = parseMethods(getProp("staticMethods"));
+        
+        std::vector<ClassDefExpr::StaticFieldDef> staticFields;
+        Value sfVal = getProp("staticFields");
+        if (sfVal.isObjType(ObjType::LIST)) {
+            for (const auto& fVal : static_cast<ObjList*>(sfVal.asObj())->vec) {
+                if (fVal.isObjType(ObjType::LIST)) {
+                    auto fList = static_cast<ObjList*>(fVal.asObj());
+                    if (fList->vec.size() >= 2) {
+                        Token fName(TokenType::IDENTIFIER, fList->vec[0].asString(), line);
+                        staticFields.push_back({fName, JC2_to_AST(fList->vec[1])});
                     }
                 }
-                Value refVal = getMProp("paramIsRef");
-                if (refVal.isObjType(ObjType::LIST)) {
-                    for (const auto& rVal : static_cast<ObjList*>(refVal.asObj())->vec) method.paramIsRef.push_back(rVal.truthy());
-                }
-                Value constVal = getMProp("paramIsConst");
-                if (constVal.isObjType(ObjType::LIST)) {
-                    for (const auto& cVal : static_cast<ObjList*>(constVal.asObj())->vec) method.paramIsConst.push_back(cVal.truthy());
-                }
-                Value defsVal = getMProp("defaultExprs");
-                if (defsVal.isObjType(ObjType::LIST)) {
-                    for (const auto& dVal : static_cast<ObjList*>(defsVal.asObj())->vec) {
-                        method.defaultExprs.push_back(std::shared_ptr<Expr>(JC2_to_AST(dVal).release()));
-                    }
-                }
-                method.hasRestParam = getMProp("hasRestParam").truthy();
-                for (auto& e : getExprList(getMProp("paramTypes"))) {
-                    method.paramTypes.push_back(std::shared_ptr<Expr>(e.release()));
-                }
-                method.returnType = std::shared_ptr<Expr>(JC2_to_AST(getMProp("returnType")).release());
-                method.rawBody = getMProp("rawBody").asString();
-                method.body = std::shared_ptr<Expr>(JC2_to_AST(getMProp("body")).release());
-                methods.push_back(std::move(method));
             }
         }
+
         std::string clsName = "";
         if (getProp("name").isString()) clsName = getProp("name").asString();
         return std::make_unique<ClassDefExpr>(
             Token(TokenType::IDENTIFIER, clsName, line),
             JC2_to_AST(getProp("superClassExpr")),
-            std::move(methods)
+            std::move(methods),
+            std::move(staticMethods),
+            std::move(staticFields)
         );
     } else if (type == "NamespaceDecl") {
         std::string nsName = "";

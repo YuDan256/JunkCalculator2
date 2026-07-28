@@ -88,7 +88,7 @@ namespace jc {
 
         static const std::set<std::string> keywords = {
             "if", "else", "while", "for", "in", "is", "break", "continue", "return",
-            "class", "extends", "super", "const", "delete", "global", "ref",
+            "class", "extends", "super", "const", "static", "delete", "global", "ref",
             "throw", "try", "catch", "import", "switch", "case", "default", "match", "enum"
         };
         static const std::set<std::string> constants = {
@@ -165,7 +165,7 @@ namespace jc {
             case TokenType::IF: case TokenType::ELSE: case TokenType::WHILE:
             case TokenType::FOR: case TokenType::IN: case TokenType::BREAK:
             case TokenType::CONTINUE: case TokenType::RETURN: case TokenType::CLASS:
-            case TokenType::CONST: case TokenType::DELETE: case TokenType::STATE:
+            case TokenType::CONST: case TokenType::STATIC: case TokenType::DELETE: case TokenType::STATE:
             case TokenType::REF: case TokenType::THROW: case TokenType::TRY:
             case TokenType::CATCH: case TokenType::IMPORT: case TokenType::SWITCH:
             case TokenType::CASE: case TokenType::DEFAULT: case TokenType::SUPER:

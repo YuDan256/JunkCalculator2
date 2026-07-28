@@ -1171,6 +1171,20 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType) {
                 return;
             }
         }
+    } else if (obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        auto it = cls->staticFields.find(keyVal.asString());
+        if (it != cls->staticFields.end()) {
+            Value fv = it->second;
+            if (fv.isFunctionClosure()) {
+                method = fv.asFunction();
+                owningClass = cls;
+            } else {
+                registers[currentFrame->registerBase + a] = fv;
+                execCall(a, b, a, isTailCall);
+                return;
+            }
+        }
     } else if (obj.isInstance()) {
         auto inst = obj.asInstance();
         bool foundInField = false;
@@ -4342,6 +4356,20 @@ Value VM::run(int targetFrameDepth) {
                                 result = *(it->second.upval->location);
                             }
                         }
+                    } else if (obj.isClass()) {
+                        auto cls = static_cast<ObjClass*>(obj.asObj());
+                        if (!idx.isString()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("VM Error: Class static field keys must be strings.");
+                        } else {
+                            auto it = cls->staticFields.find(idx.asString());
+                            if (it == cls->staticFields.end()) {
+                                if (noThrow) result = Value::uninit();
+                                else throw std::runtime_error("VM Error: Static field not found in class.");
+                            } else {
+                                result = it->second;
+                            }
+                        }
                     } else {
                         if (noThrow) result = Value::uninit();
                         else throw std::runtime_error("VM Error: Unsupported 1D index get.");
@@ -4512,6 +4540,10 @@ Value VM::run(int targetFrameDepth) {
                             uv->location = &uv->closed;
                             ns->fields[key] = { uv, false };
                         }
+                    } else if (obj.isClass()) {
+                        auto cls = static_cast<ObjClass*>(obj.asObj());
+                        if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
+                        cls->staticFields[idx.asString()] = val;
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 1D index set.");
                     }
@@ -4620,6 +4652,21 @@ Value VM::run(int targetFrameDepth) {
                         }
                     } else {
                         for (const auto& [key, field] : ns->fields) {
+                            elements->vec.push_back(Value(key));
+                        }
+                    }
+                } else if (iterable.isClass()) {
+                    const auto* cls = static_cast<ObjClass*>(iterable.asObj());
+                    if (destructFlag) {
+                        for (const auto& [key, val] : cls->staticFields) {
+                            ObjList* pair = GcHeap::get().allocate<ObjList>();
+                            pair->vec.push_back(Value(key));
+                            pair->vec.push_back(val);
+                            pair->is_frozen = true;
+                            elements->vec.push_back(Value(pair));
+                        }
+                    } else {
+                        for (const auto& [key, val] : cls->staticFields) {
                             elements->vec.push_back(Value(key));
                         }
                     }
@@ -4793,6 +4840,11 @@ Value VM::run(int targetFrameDepth) {
                     if (needle.isString()) {
                         found = ns->fields.find(needle.asString()) != ns->fields.end();
                     }
+                } else if (haystack.isClass()) {
+                    auto cls = static_cast<ObjClass*>(haystack.asObj());
+                    if (needle.isString()) {
+                        found = cls->staticFields.find(needle.asString()) != cls->staticFields.end();
+                    }
                 } else if (haystack.isObjType(ObjType::SET)) {
                     auto s = static_cast<ObjSet*>(haystack.asObj());
                     found = s->keys.find(needle) != s->keys.end();
@@ -4936,6 +4988,11 @@ Value VM::run(int targetFrameDepth) {
                         sub->methods[name] = method;
                     }
                 }
+                for (auto& [name, val] : sup->staticFields) {
+                    if (sub->staticFields.find(name) == sub->staticFields.end()) {
+                        sub->staticFields[name] = val;
+                    }
+                }
                 break;
             }
             case OpCode::GET_PROP: {
@@ -5071,6 +5128,13 @@ Value VM::run(int targetFrameDepth) {
                     auto it = ns->fields.find(field);
                     if (it != ns->fields.end()) {
                         result = *(it->second.upval->location);
+                        found = true;
+                    }
+                } else if (obj.isClass()) {
+                    auto cls = static_cast<ObjClass*>(obj.asObj());
+                    auto it = cls->staticFields.find(field);
+                    if (it != cls->staticFields.end()) {
+                        result = it->second;
                         found = true;
                     }
                 }
@@ -5355,6 +5419,13 @@ Value VM::run(int targetFrameDepth) {
                         result = *(it->second.upval->location);
                         found = true;
                     }
+                } else if (obj.isClass()) {
+                    auto cls = static_cast<ObjClass*>(obj.asObj());
+                    auto it = cls->staticFields.find(field);
+                    if (it != cls->staticFields.end()) {
+                        result = it->second;
+                        found = true;
+                    }
                 }
                 
                 if (!found) {
@@ -5576,6 +5647,9 @@ Value VM::run(int targetFrameDepth) {
                         uv->location = &uv->closed;
                         ns->fields[field] = { uv, false };
                     }
+                } else if (obj.isClass()) {
+                    auto cls = static_cast<ObjClass*>(obj.asObj());
+                    cls->staticFields[keyVal.asString()] = val;
                 } else {
                     throw std::runtime_error("VM Error: Cannot set property on this type.");
                 }
@@ -5616,6 +5690,12 @@ Value VM::run(int targetFrameDepth) {
                     for (const auto& [k, field] : ns->fields) {
                         if (excludeKeys.count(k)) continue;
                         restDict->set(Value(k), *(field.upval->location));
+                    }
+                } else if (obj.isClass()) {
+                    auto cls = static_cast<ObjClass*>(obj.asObj());
+                    for (const auto& [k, v] : cls->staticFields) {
+                        if (excludeKeys.count(k)) continue;
+                        restDict->set(Value(k), v);
                     }
                 }
                 break;

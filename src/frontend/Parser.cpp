@@ -1091,7 +1091,7 @@ namespace jc {
                 t == TokenType::IN || t == TokenType::IS ||
                 t == TokenType::THROW || t == TokenType::TRY ||  // ★
                 t == TokenType::CATCH || t == TokenType::REF ||   // ★
-                t == TokenType::STATE ||                          // ★
+                t == TokenType::STATE || t == TokenType::STATIC || // ★
                 t == TokenType::IMPORT || t == TokenType::SWITCH ||  // ★
                 t == TokenType::CASE || t == TokenType::DEFAULT ||
                 t == TokenType::MATCH || t == TokenType::MACRO || t == TokenType::QUOTE ||
@@ -2214,42 +2214,62 @@ namespace jc {
                 props.push_back({"name", std::make_unique<Literal>(cls->name.lexeme, true)});
             }
             props.push_back({"superClassExpr", transformQuote(cls->superClassExpr.get())});
-            std::vector<std::unique_ptr<Expr>> methodsArgs;
-            for (const auto& m : cls->methods) {
-                std::vector<std::pair<std::string, std::unique_ptr<Expr>>> mProps;
-                if (!m.name.lexeme.empty() && m.name.lexeme[0] == '$') {
-                    mProps.push_back({"name", makeGetNameExpr(m.name.lexeme.substr(1), m.name.line)});
-                } else {
-                    mProps.push_back({"name", std::make_unique<Literal>(m.name.lexeme, true)});
-                }
-                std::vector<std::unique_ptr<Expr>> paramsArgs;
-                for (const auto& p : m.params) {
-                    if (!p.lexeme.empty() && p.lexeme[0] == '$') {
-                        paramsArgs.push_back(makeGetNameExpr(p.lexeme.substr(1), p.line));
+            
+            auto serializeMethods = [&](const std::vector<ClassDefExpr::MethodDef>& methods) {
+                std::vector<std::unique_ptr<Expr>> methodsArgs;
+                for (const auto& m : methods) {
+                    std::vector<std::pair<std::string, std::unique_ptr<Expr>>> mProps;
+                    if (!m.name.lexeme.empty() && m.name.lexeme[0] == '$') {
+                        mProps.push_back({"name", makeGetNameExpr(m.name.lexeme.substr(1), m.name.line)});
                     } else {
-                        paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+                        mProps.push_back({"name", std::make_unique<Literal>(m.name.lexeme, true)});
                     }
+                    std::vector<std::unique_ptr<Expr>> paramsArgs;
+                    for (const auto& p : m.params) {
+                        if (!p.lexeme.empty() && p.lexeme[0] == '$') {
+                            paramsArgs.push_back(makeGetNameExpr(p.lexeme.substr(1), p.line));
+                        } else {
+                            paramsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+                        }
+                    }
+                    mProps.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
+                    std::vector<std::unique_ptr<Expr>> refArgs;
+                    for (bool b : m.paramIsRef) refArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
+                    mProps.push_back({"paramIsRef", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(refArgs))});
+                    std::vector<std::unique_ptr<Expr>> constArgs;
+                    for (bool b : m.paramIsConst) constArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
+                    mProps.push_back({"paramIsConst", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(constArgs))});
+                    std::vector<std::unique_ptr<Expr>> defArgs;
+                    for (const auto& d : m.defaultExprs) defArgs.push_back(transformQuote(d.get()));
+                    mProps.push_back({"defaultExprs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(defArgs))});
+                    mProps.push_back({"hasRestParam", std::make_unique<Literal>(m.hasRestParam ? "true" : "false", false, false, true)});
+                    std::vector<std::unique_ptr<Expr>> typeArgs;
+                    for (const auto& t : m.paramTypes) typeArgs.push_back(transformQuote(t.get()));
+                    mProps.push_back({"paramTypes", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(typeArgs))});
+                    mProps.push_back({"returnType", transformQuote(m.returnType.get())});
+                    mProps.push_back({"rawBody", std::make_unique<Literal>(m.rawBody, true)});
+                    mProps.push_back({"body", transformQuote(m.body.get())});
+                    methodsArgs.push_back(makeASTNodeCall("MethodDef", m.name.line, std::move(mProps)));
                 }
-                mProps.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
-                std::vector<std::unique_ptr<Expr>> refArgs;
-                for (bool b : m.paramIsRef) refArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
-                mProps.push_back({"paramIsRef", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(refArgs))});
-                std::vector<std::unique_ptr<Expr>> constArgs;
-                for (bool b : m.paramIsConst) constArgs.push_back(std::make_unique<Literal>(b ? "true" : "false", false, false, true));
-                mProps.push_back({"paramIsConst", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(constArgs))});
-                std::vector<std::unique_ptr<Expr>> defArgs;
-                for (const auto& d : m.defaultExprs) defArgs.push_back(transformQuote(d.get()));
-                mProps.push_back({"defaultExprs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(defArgs))});
-                mProps.push_back({"hasRestParam", std::make_unique<Literal>(m.hasRestParam ? "true" : "false", false, false, true)});
-                std::vector<std::unique_ptr<Expr>> typeArgs;
-                for (const auto& t : m.paramTypes) typeArgs.push_back(transformQuote(t.get()));
-                mProps.push_back({"paramTypes", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(typeArgs))});
-                mProps.push_back({"returnType", transformQuote(m.returnType.get())});
-                mProps.push_back({"rawBody", std::make_unique<Literal>(m.rawBody, true)});
-                mProps.push_back({"body", transformQuote(m.body.get())});
-                methodsArgs.push_back(makeASTNodeCall("MethodDef", m.name.line, std::move(mProps)));
+                return std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(methodsArgs));
+            };
+            
+            props.push_back({"methods", serializeMethods(cls->methods)});
+            props.push_back({"staticMethods", serializeMethods(cls->staticMethods)});
+            
+            std::vector<std::unique_ptr<Expr>> sfArgs;
+            for (const auto& f : cls->staticFields) {
+                std::vector<std::unique_ptr<Expr>> pairArgs;
+                if (!f.name.lexeme.empty() && f.name.lexeme[0] == '$') {
+                    pairArgs.push_back(makeGetNameExpr(f.name.lexeme.substr(1), f.name.line));
+                } else {
+                    pairArgs.push_back(std::make_unique<Literal>(f.name.lexeme, true));
+                }
+                pairArgs.push_back(transformQuote(f.value.get()));
+                sfArgs.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
             }
-            props.push_back({"methods", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(methodsArgs))});
+            props.push_back({"staticFields", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(sfArgs))});
+            
             return makeASTNodeCall("ClassDefExpr", cls->name.line, std::move(props));
         }
         if (auto* ns = dynamic_cast<NamespaceDecl*>(expr)) {
@@ -2877,143 +2897,159 @@ namespace jc {
 
         MacroScopeGuard guard(this);
         std::vector<ClassDefExpr::MethodDef> methods;
+        std::vector<ClassDefExpr::MethodDef> staticMethods;
+        std::vector<ClassDefExpr::StaticFieldDef> staticFields;
 
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
             if (check(TokenType::RBRACE)) break;
 
-            Token methodName(TokenType::ERROR, "");
+            bool isStatic = match({ TokenType::STATIC });
+
+            Token memberName(TokenType::ERROR, "");
             if (match({ TokenType::DOLLAR })) {
                 Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
-                methodName = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                memberName = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
             } else {
-                methodName = consume(TokenType::IDENTIFIER, "Parser Error: Expect method name.");
+                memberName = consume(TokenType::IDENTIFIER, "Parser Error: Expect method or field name.");
             }
-            consume(TokenType::LPAREN, "Parser Error: Expect '(' after method name.");
 
-            std::vector<Token> params;
-            std::vector<bool> paramIsRef;
-            std::vector<bool> paramIsConst;
-            std::vector<std::shared_ptr<Expr>> defaultExprs;
-            std::vector<std::shared_ptr<Expr>> paramTypes; // ★
-            bool hasRestParam = false;
+            if (isStatic && match({ TokenType::ASSIGN })) {
+                auto value = ternary();
+                staticFields.push_back({ memberName, std::move(value) });
+            } else {
+                consume(TokenType::LPAREN, "Parser Error: Expect '(' after method name.");
 
-            std::vector<std::unique_ptr<Expr>> destructStmts;
-            int destructCounter = 0;
+                std::vector<Token> params;
+                std::vector<bool> paramIsRef;
+                std::vector<bool> paramIsConst;
+                std::vector<std::shared_ptr<Expr>> defaultExprs;
+                std::vector<std::shared_ptr<Expr>> paramTypes; // ★
+                bool hasRestParam = false;
 
-            if (!check(TokenType::RPAREN)) {
-                do {
-                    if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
-                    bool isRef = false;
-                    bool isConst = false;
-                    while (true) {
-                        if (match({ TokenType::REF })) {
-                            if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
-                            isRef = true;
-                        } else if (match({ TokenType::CONST })) {
-                            if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
-                            isConst = true;
-                        } else {
-                            break;
+                std::vector<std::unique_ptr<Expr>> destructStmts;
+                int destructCounter = 0;
+
+                if (!check(TokenType::RPAREN)) {
+                    do {
+                        if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                        bool isRef = false;
+                        bool isConst = false;
+                        while (true) {
+                            if (match({ TokenType::REF })) {
+                                if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                                isRef = true;
+                            } else if (match({ TokenType::CONST })) {
+                                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                                isConst = true;
+                            } else {
+                                break;
+                            }
                         }
-                    }
 
-                    Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
-                    bool isRest = false;
-                    bool isDestruct = false;
-                    std::unique_ptr<Pattern> patNode = nullptr;
+                        Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
+                        bool isRest = false;
+                        bool isDestruct = false;
+                        std::unique_ptr<Pattern> patNode = nullptr;
 
-                    if (match({ TokenType::ELLIPSIS })) {
-                        if (isRef) throw std::runtime_error("Parser Error: Rest parameter cannot be passed by ref.");
-                        paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
-                        isRest = true;
-                        hasRestParam = true;
-                    } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
-                        if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
-                        patNode = parsePrimaryPattern();
-                        std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
-                        paramTok = Token(TokenType::IDENTIFIER, phName, methodName.line);
-                        isDestruct = true;
-                    } else {
-                        paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
-                    }
+                        if (match({ TokenType::ELLIPSIS })) {
+                            if (isRef) throw std::runtime_error("Parser Error: Rest parameter cannot be passed by ref.");
+                            paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
+                            isRest = true;
+                            hasRestParam = true;
+                        } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                            if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                            patNode = parsePrimaryPattern();
+                            std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
+                            paramTok = Token(TokenType::IDENTIFIER, phName, memberName.line);
+                            isDestruct = true;
+                        } else {
+                            paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
+                        }
 
-                    params.push_back(paramTok);
-                    paramIsRef.push_back(isRef);
-                    paramIsConst.push_back(isConst);
+                        params.push_back(paramTok);
+                        paramIsRef.push_back(isRef);
+                        paramIsConst.push_back(isConst);
 
-                    std::shared_ptr<Expr> pType = nullptr;
-                    if (match({ TokenType::COLON })) {
-                        pType = std::shared_ptr<Expr>(ternary().release());
-                    }
-                    paramTypes.push_back(std::move(pType));
+                        std::shared_ptr<Expr> pType = nullptr;
+                        if (match({ TokenType::COLON })) {
+                            pType = std::shared_ptr<Expr>(ternary().release());
+                        }
+                        paramTypes.push_back(std::move(pType));
 
-                    if (match({ TokenType::ASSIGN })) {
-                        if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
-                        auto defExpr = ternary();
-                        defaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
-                    } else {
-                        defaultExprs.push_back(nullptr);
-                    }
+                        if (match({ TokenType::ASSIGN })) {
+                            if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
+                            auto defExpr = ternary();
+                            defaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
+                        } else {
+                            defaultExprs.push_back(nullptr);
+                        }
 
-                    if (isDestruct) {
-                        auto rhs = std::make_unique<Variable>(paramTok);
-                        destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst));
-                    }
-                } while (match({ TokenType::COMMA }));
+                        if (isDestruct) {
+                            auto rhs = std::make_unique<Variable>(paramTok);
+                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst));
+                        }
+                    } while (match({ TokenType::COMMA }));
+                }
+                consume(TokenType::RPAREN, "Parser Error: Expect ')' after method parameters.");
+
+                // ★ 解析方法返回类型
+                std::shared_ptr<Expr> retType = nullptr;
+                while (match({ TokenType::NEWLINE })) {}
+                if (match({ TokenType::RIGHT_ARROW })) {
+                    retType = std::shared_ptr<Expr>(ternary().release());
+                }
+                while (match({ TokenType::NEWLINE })) {}
+
+                consume(TokenType::ASSIGN, "Parser Error: Expect '=' after method signature.");
+
+                int bodyStart = current;
+                auto body = check(TokenType::LBRACE) ? parseBlock() : assignment();
+                int bodyEnd = current;
+
+                std::string rawBody;
+                for (int i = bodyStart; i < bodyEnd; ++i) {
+                    if (tokens[i].type == TokenType::NEWLINE) continue;
+                    if (tokens[i].type == TokenType::STRING) rawBody += "\"" + tokens[i].lexeme + "\"";
+                    else rawBody += tokens[i].lexeme;
+                    if (i < bodyEnd - 1 && tokens[i + 1].type != TokenType::NEWLINE) rawBody += " ";
+                }
+
+                std::shared_ptr<Expr> finalBody;
+                if (!destructStmts.empty()) {
+                    destructStmts.push_back(std::move(body));
+                    finalBody = std::make_shared<Block>(std::move(destructStmts));
+                }
+                else {
+                    finalBody = std::shared_ptr<Expr>(body.release());
+                }
+
+                ClassDefExpr::MethodDef methodDef = {
+                    memberName,
+                    std::move(params),
+                    std::move(paramIsRef),
+                    std::move(paramIsConst),
+                    std::move(defaultExprs),
+                    hasRestParam,
+                    paramTypes, retType, // ★ 加载进入结构体
+                    std::move(rawBody),
+                    std::move(finalBody)
+                };
+
+                if (isStatic) {
+                    staticMethods.push_back(std::move(methodDef));
+                } else {
+                    methods.push_back(std::move(methodDef));
+                }
             }
-            consume(TokenType::RPAREN, "Parser Error: Expect ')' after method parameters.");
-
-            // ★ 解析方法返回类型
-            std::shared_ptr<Expr> retType = nullptr;
-            while (match({ TokenType::NEWLINE })) {}
-            if (match({ TokenType::RIGHT_ARROW })) {
-                retType = std::shared_ptr<Expr>(ternary().release());
-            }
-            while (match({ TokenType::NEWLINE })) {}
-
-            consume(TokenType::ASSIGN, "Parser Error: Expect '=' after method signature.");
-
-            int bodyStart = current;
-            auto body = check(TokenType::LBRACE) ? parseBlock() : assignment();
-            int bodyEnd = current;
-
-            std::string rawBody;
-            for (int i = bodyStart; i < bodyEnd; ++i) {
-                if (tokens[i].type == TokenType::NEWLINE) continue;
-                if (tokens[i].type == TokenType::STRING) rawBody += "\"" + tokens[i].lexeme + "\"";
-                else rawBody += tokens[i].lexeme;
-                if (i < bodyEnd - 1 && tokens[i + 1].type != TokenType::NEWLINE) rawBody += " ";
-            }
-
-            std::shared_ptr<Expr> finalBody;
-            if (!destructStmts.empty()) {
-                destructStmts.push_back(std::move(body));
-                finalBody = std::make_shared<Block>(std::move(destructStmts));
-            }
-            else {
-                finalBody = std::shared_ptr<Expr>(body.release());
-            }
-
-            methods.push_back(ClassDefExpr::MethodDef{
-                methodName,
-                std::move(params),
-                std::move(paramIsRef),
-                std::move(paramIsConst),
-                std::move(defaultExprs),
-                hasRestParam,
-                paramTypes, retType, // ★ 加载进入结构体
-                std::move(rawBody),
-                std::move(finalBody)
-                });
 
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                throw std::runtime_error("Parser Error: Expect newline or ';' after method definition.");
+                throw std::runtime_error("Parser Error: Expect newline or ';' after class member definition.");
             }
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after class body.");
-        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(methods));
+        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(methods), std::move(staticMethods), std::move(staticFields));
         if (isNamed) {
             return std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false);
         }

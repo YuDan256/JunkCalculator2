@@ -49,6 +49,7 @@ namespace jc {
         RETURN,
         LOCAL, REF, STATE,
         CONST,
+        STATIC,              // ★ 新增
         DELETE,
         THROW,               // ★ 新增
         TRY,                 // ★ 新增
@@ -185,6 +186,7 @@ namespace jc {
         case TokenType::REF:           return "REF";
         case TokenType::STATE:         return "STATE";
         case TokenType::CONST:         return "CONST";
+        case TokenType::STATIC:        return "STATIC";
         case TokenType::DELETE:        return "DELETE";
         case TokenType::NEWLINE:       return "NEWLINE";
         case TokenType::END_OF_FILE:   return "EOF";
@@ -285,6 +287,7 @@ namespace jc {
         if (s == "REF") return TokenType::REF;
         if (s == "STATE") return TokenType::STATE;
         if (s == "CONST") return TokenType::CONST;
+        if (s == "STATIC") return TokenType::STATIC;
         if (s == "DELETE") return TokenType::DELETE;
         if (s == "NEWLINE") return TokenType::NEWLINE;
         if (s == "EOF") return TokenType::END_OF_FILE;

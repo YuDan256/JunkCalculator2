@@ -94,7 +94,7 @@
       "  Language Keywords (type \"/help <keyword>\")",
       "  ────────────────────────────────────────────────────────────────────",
       "    if  else  while  for  in  is  break  continue  return  switch  case  match  defer",
-      "    class  extends  super  self  namespace  enum  ref  state  const  delete",
+      "    class  extends  super  self  namespace  enum  ref  state  const  static  delete",
       "    try  catch  throw  import  true  false  none  macro  quote",
       "",
       "  Native Libraries (require `import` before use, use `/help <library>` for details)",
@@ -2516,6 +2516,17 @@
       "    • Inside methods, `self` refers to the active instance.",
       "    • Methods support default parameters: `method(x, y = 0) = ...`",
       "",
+      "  Static Members",
+      "  ──────────────────────",
+      "    Classes support static fields and methods using the `static` keyword.",
+      "    Static members belong to the class object itself, not to instances.",
+      "      class MathUtils {",
+      "          static PI = 3.14159",
+      "          static add(a, b) = a + b",
+      "      }",
+      "      MathUtils.PI                 → 3.14159",
+      "      MathUtils.add(1, 2)          → 3",
+      "",
       "  Self-Reference (The `class` keyword)",
       "  ──────────────────────",
       "    Inside any method, the `class` keyword acts as an expression that evaluates",
@@ -3025,7 +3036,8 @@
       "",
       "  ★ OOP & Modules",
       "  ──────────────────────",
-      "    ClassDefExpr   name (str, optional), superClassExpr (ASTNode), methods (List of MethodDef)",
+      "    ClassDefExpr   name (str, optional), superClassExpr (ASTNode), methods (List of MethodDef),",
+      "                   staticMethods (List of MethodDef), staticFields (List of [str, ASTNode])",
       "    NamespaceDecl  name (str, optional), body (ASTNode)",
       "    SuperExpr      (no extra fields)",
       "    SelfExpr       (no extra fields)",
@@ -6333,6 +6345,20 @@
         "const G = 9.81",
         "G = 10             // ✗ Error: Cannot modify const",
         "delete G           // ✗ Error: Cannot delete const"
+      ]
+    },
+    "static": {
+      "signature": "static name = expr  |  static method(...) = ...",
+      "desc": [
+        "Declares a static field or method inside a class.",
+        "Static members belong to the class object itself, not to its instances.",
+        "They can be accessed directly on the class without creating an instance.",
+        "See also: /help class"
+      ],
+      "examples": [
+        "class Math { static PI = 3.14; static add(a, b) = a + b }",
+        "print(Math.PI)",
+        "Math.add(1, 2)"
       ]
     },
     "delete": {

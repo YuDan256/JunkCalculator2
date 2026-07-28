@@ -20,6 +20,7 @@ namespace jc {
         {"ref",      TokenType::REF},
         {"state",    TokenType::STATE},
         {"const",    TokenType::CONST},
+        {"static",   TokenType::STATIC},
         {"delete",   TokenType::DELETE},
         {"in",       TokenType::IN},
         {"is",       TokenType::IS},

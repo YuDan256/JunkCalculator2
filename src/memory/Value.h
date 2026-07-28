@@ -146,11 +146,8 @@ namespace jc {
         StringMatrix mat;
         ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
     };
-    struct ClassProperty {
-        Value val;
-        bool is_const = false;
-        bool is_local = false;
-    };
+    struct ClassProperty;
+    struct PrivateProperty;
 
     struct ObjClass : public Obj {
         uint64_t classId;
@@ -231,11 +228,6 @@ namespace jc {
         }
     };
 
-    struct PrivateProperty {
-        Value val;
-        bool is_const = false;
-    };
-
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
         ObjDict* fields = nullptr;
@@ -253,16 +245,7 @@ namespace jc {
         ObjInstance() { type = ObjType::INSTANCE; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Instance."); }
         void clear() override { checkModify(); clearTotal(); }
-        void clearTotal() override { 
-            nativeData.reset(); 
-            if (c_nativeDtor && c_nativeData) {
-                c_nativeDtor(c_nativeData);
-            }
-            c_nativeData = nullptr;
-            c_nativeDtor = nullptr;
-            const_fields.clear();
-            private_fields.clear();
-        }
+        void clearTotal() override;
     };
     struct ObjSuper : public Obj {
         ObjInstance* instance = nullptr;
@@ -683,6 +666,28 @@ namespace jc {
             return oss.str();
         }
     }; // class Value
+
+    struct ClassProperty {
+        Value val;
+        bool is_const = false;
+        bool is_local = false;
+    };
+
+    struct PrivateProperty {
+        Value val;
+        bool is_const = false;
+    };
+
+    inline void ObjInstance::clearTotal() { 
+        nativeData.reset(); 
+        if (c_nativeDtor && c_nativeData) {
+            c_nativeDtor(c_nativeData);
+        }
+        c_nativeData = nullptr;
+        c_nativeDtor = nullptr;
+        const_fields.clear();
+        private_fields.clear();
+    }
 
     struct RuntimeError : public std::exception {
         std::string type;
@@ -1689,6 +1694,11 @@ namespace jc {
                             try { if (!v.isHashable()) return false; } catch (...) { return false; }
                         }
                     }
+                    for (const auto& [cls, props] : inst->private_fields) {
+                        for (const auto& [k, prop] : props) {
+                            try { if (!prop.val.isHashable()) return false; } catch (...) { return false; }
+                        }
+                    }
                     inst->is_hashable_cached = true;
                     return true;
                 }
@@ -1853,18 +1863,40 @@ namespace jc {
                     if (found) return res.truthy();
                     auto inst2 = static_cast<ObjInstance*>(robj);
                     if (inst1->is_frozen && inst2->is_frozen && inst1->classDef == inst2->classDef) {
-                        if (!inst1->fields && !inst2->fields) return true;
-                        if (!inst1->fields || !inst2->fields) return false;
-                        if (inst1->fields->elements.size() != inst2->fields->elements.size()) return false;
+                        if (inst1->fields && !inst2->fields) return false;
+                        if (!inst1->fields && inst2->fields) return false;
+                        if (inst1->fields && inst2->fields) {
+                            if (inst1->fields->elements.size() != inst2->fields->elements.size()) return false;
+                        }
+                        if (inst1->private_fields.size() != inst2->private_fields.size()) return false;
+                        
                         auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                         if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
                         CompGuard guard(comparingPairs, pair);
                         bool eq = true;
-                        for (const auto& [k, v] : inst1->fields->elements) {
-                            auto it = inst2->fields->keyMap.find(k);
-                            if (it == inst2->fields->keyMap.end()) { eq = false; break; }
-                            try { if (!equals(v, inst2->fields->elements[it->second].second)) { eq = false; break; } }
-                            catch (...) { eq = false; break; }
+                        
+                        if (inst1->fields) {
+                            for (const auto& [k, v] : inst1->fields->elements) {
+                                auto it = inst2->fields->keyMap.find(k);
+                                if (it == inst2->fields->keyMap.end()) { eq = false; break; }
+                                try { if (!equals(v, inst2->fields->elements[it->second].second)) { eq = false; break; } }
+                                catch (...) { eq = false; break; }
+                            }
+                        }
+                        if (!eq) return false;
+                        
+                        for (const auto& [cls, props1] : inst1->private_fields) {
+                            auto itCls = inst2->private_fields.find(cls);
+                            if (itCls == inst2->private_fields.end()) { eq = false; break; }
+                            const auto& props2 = itCls->second;
+                            if (props1.size() != props2.size()) { eq = false; break; }
+                            for (const auto& [k, prop1] : props1) {
+                                auto itProp = props2.find(k);
+                                if (itProp == props2.end()) { eq = false; break; }
+                                try { if (!equals(prop1.val, itProp->second.val)) { eq = false; break; } }
+                                catch (...) { eq = false; break; }
+                            }
+                            if (!eq) break;
                         }
                         return eq;
                     }
@@ -2426,13 +2458,27 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             }
             if (!printedNative) {
                 os << "<" << prefix << " {";
+                bool first = true;
                 if (inst->fields) {
                     for (size_t i = 0; i < inst->fields->elements.size(); ++i) {
-                        if (i > 0) os << ", ";
+                        if (!first) os << ", ";
                         try { printNested(inst->fields->elements[i].first); } catch (...) { os << "?"; }
                         os << ": ";
                         try { printNested(inst->fields->elements[i].second); } catch (...) { os << "?"; }
+                        first = false;
                     }
+                }
+                std::map<std::string, Value> sorted_privates;
+                for (const auto& [cls, props] : inst->private_fields) {
+                    for (const auto& [k, prop] : props) {
+                        sorted_privates[k] = prop.val;
+                    }
+                }
+                for (const auto& [k, propVal] : sorted_privates) {
+                    if (!first) os << ", ";
+                    os << "local " << k << ": ";
+                    try { printNested(propVal); } catch (...) { os << "?"; }
+                    first = false;
                 }
                 os << "}>";
             }
@@ -2616,6 +2662,24 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                     }
                     seed ^= fields_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                 }
+                size_t total_private_hash = 0;
+                for (const auto& [cls, props] : inst->private_fields) {
+                    size_t cls_hash = sipHash24String(cls->name);
+                    size_t sz = props.size();
+                    size_t fields_hash = sipHash24(&sz, sizeof(size_t)) ^ 0xD6A193C7E0B45028ULL;
+                    for (const auto& [k, prop] : props) {
+                        size_t k_hash = sipHash24String(k);
+                        size_t v_hash = ValueHasher{}(prop.val);
+                        size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
+                        kv_hash *= 0xBF58476D1CE4E5B9ULL;
+                        kv_hash ^= kv_hash >> 31;
+                        kv_hash *= 0x94D049BB133111EBULL;
+                        fields_hash += kv_hash;
+                    }
+                    size_t cls_props_hash = cls_hash ^ (fields_hash + 0x9e3779b9 + (cls_hash << 6) + (cls_hash >> 2));
+                    total_private_hash += cls_props_hash; // ★ 修复：unordered_map 遍历顺序不确定，必须使用满足交换律的累加方式
+                }
+                seed ^= total_private_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                 inst->cached_hash = seed;
                 inst->has_cached_hash = true;
                 return seed;
@@ -2678,6 +2742,7 @@ inline void GcHeap::markObj(Obj* obj) {
             markObj(inst->classDef);
             markObj(inst->fields);
             for (auto& [cls, props] : inst->private_fields) {
+                markObj(cls); // ★ 修复：必须标记作为键的类对象，防止其被 GC 误杀导致野指针
                 for (auto& [k, prop] : props) {
                     markValue(prop.val);
                 }

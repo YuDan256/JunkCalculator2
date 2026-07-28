@@ -118,7 +118,7 @@ private:
     void execCall(int calleeReg, int argc, int dstReg, bool isTailCall = false);
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
-    void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType);
+    void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false);
     void execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall);
     void execSliceGet(int a, int b, uint8_t dims);
     void execSliceSet(int a, int c, uint8_t dims);

@@ -2971,15 +2971,15 @@ namespace jc {
                 if (!check(TokenType::RPAREN)) {
                     do {
                         if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
-                        bool isRef = false;
-                        bool isConst = false;
+                        bool isParamRef = false;
+                        bool isParamConst = false;
                         while (true) {
                             if (match({ TokenType::REF })) {
-                                if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
-                                isRef = true;
+                                if (isParamRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                                isParamRef = true;
                             } else if (match({ TokenType::CONST })) {
-                                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
-                                isConst = true;
+                                if (isParamConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                                isParamConst = true;
                             } else {
                                 break;
                             }
@@ -2991,12 +2991,12 @@ namespace jc {
                         std::unique_ptr<Pattern> patNode = nullptr;
 
                         if (match({ TokenType::ELLIPSIS })) {
-                            if (isRef) throw std::runtime_error("Parser Error: Rest parameter cannot be passed by ref.");
+                            if (isParamRef) throw std::runtime_error("Parser Error: Rest parameter cannot be passed by ref.");
                             paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
                             isRest = true;
                             hasRestParam = true;
                         } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
-                            if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                            if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
                             std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
                             paramTok = Token(TokenType::IDENTIFIER, phName, memberName.line);
@@ -3006,8 +3006,8 @@ namespace jc {
                         }
 
                         params.push_back(paramTok);
-                        paramIsRef.push_back(isRef);
-                        paramIsConst.push_back(isConst);
+                        paramIsRef.push_back(isParamRef);
+                        paramIsConst.push_back(isParamConst);
 
                         std::shared_ptr<Expr> pType = nullptr;
                         if (match({ TokenType::COLON })) {
@@ -3025,7 +3025,7 @@ namespace jc {
 
                         if (isDestruct) {
                             auto rhs = std::make_unique<Variable>(paramTok);
-                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst));
+                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst));
                         }
                     } while (match({ TokenType::COMMA }));
                 }

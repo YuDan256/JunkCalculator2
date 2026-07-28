@@ -3510,9 +3510,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     bool hasInit = false;
     for (auto& m : expr->methods) { if (m.name.lexeme == "init") hasInit = true; }
     if (!hasInit && !expr->instanceFields.empty()) {
-        ClassDefExpr::MethodDef initDef;
-        initDef.name = Token(TokenType::IDENTIFIER, "init", expr->name.line);
-        initDef.body = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
+        ClassDefExpr::MethodDef initDef = {
+            Token(TokenType::IDENTIFIER, "init", expr->name.line),
+            {}, {}, {}, {}, false, {}, nullptr, "",
+            std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>()),
+            -1, false, false
+        };
         expr->methods.push_back(std::move(initDef));
     }
 

@@ -4414,6 +4414,11 @@ void BuiltinRegistry::registerErrorHandling() {
             L->vec.push_back(Value(true)); L->vec.push_back(result);
             L->is_frozen = true; return Value(L);
         }
+        catch (const jc::ValueException& ex) {
+            ObjList* L = GcHeap::get().allocate<ObjList>();
+            L->vec.push_back(Value(false)); L->vec.push_back(ex.val);
+            L->is_frozen = true; L->is_hashable_cached = true; return Value(L);
+        }
         catch (const StackTracedException& ex) {
             // ★ 完美拿到纯净的出错理由字符串！无视底下挂着的多行追踪栈
             ObjList* L = GcHeap::get().allocate<ObjList>();

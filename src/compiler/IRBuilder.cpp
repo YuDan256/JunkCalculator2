@@ -2426,8 +2426,8 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
                 auto* dotTarget = static_cast<DotAccess*>(expr->objectExpr.get());
                 bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
                 bool isClassVar = false;
-                if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
-                    if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                if (auto* objVar = dynamic_cast<Variable*>(dotTarget->object.get())) {
+                    if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
                         isClassVar = true;
                     }
                 }
@@ -2690,8 +2690,8 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         if (!classStack.empty()) {
             bool isSelf = dynamic_cast<SelfExpr*>(dot->object.get()) != nullptr;
             bool isClassVar = false;
-            if (auto* var = dynamic_cast<Variable*>(dot->object.get())) {
-                if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+            if (auto* objVar = dynamic_cast<Variable*>(dot->object.get())) {
+                if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
                     isClassVar = true;
                 }
             }
@@ -2726,8 +2726,8 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             if (!classStack.empty()) {
                 bool isSelf = dynamic_cast<SelfExpr*>(chainDot->object.get()) != nullptr;
                 bool isClassVar = false;
-                if (auto* var = dynamic_cast<Variable*>(chainDot->object.get())) {
-                    if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                if (auto* objVar = dynamic_cast<Variable*>(chainDot->object.get())) {
+                    if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
                         isClassVar = true;
                     }
                 }
@@ -2818,8 +2818,8 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             auto* dotTarget = static_cast<DotAccess*>(expr->target.get());
             bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
             bool isClassVar = false;
-            if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
-                if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+            if (auto* objVar = dynamic_cast<Variable*>(dotTarget->object.get())) {
+                if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
                     isClassVar = true;
                 }
             }

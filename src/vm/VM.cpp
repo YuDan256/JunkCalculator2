@@ -4604,8 +4604,18 @@ Value VM::run(int targetFrameDepth) {
                             if (!idx.isString()) {
                                 throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __setitem__ to support custom indexing.");
                             } else {
-                                if (inst->const_fields.count(idx.asString())) {
-                                    throw std::runtime_error("VM Error: Cannot modify const property '" + idx.asString() + "'.");
+                                std::string keyStr = idx.asString();
+                                if (inst->const_fields.count(keyStr)) {
+                                    throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
+                                }
+                                for (const auto& [c_cls, props] : inst->private_fields) {
+                                    if (props.count(keyStr)) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                                }
+                                auto c_cls2 = inst->classDef;
+                                while (c_cls2) {
+                                    auto it = c_cls2->methods.find(keyStr);
+                                    if (it != c_cls2->methods.end() && it->second->is_local) throw std::runtime_error("VM Error: Cannot access private method '" + keyStr + "' externally.");
+                                    c_cls2 = c_cls2->parent;
                                 }
                                 if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                                 inst->fields->set(idx, val);
@@ -5763,9 +5773,11 @@ Value VM::run(int targetFrameDepth) {
                 }
 
                 if (found) {
-                    getReg(a) = result;
+                    getReg(a) = Value(true);
+                    getReg(a + 1) = result;
                 } else {
-                    getReg(a) = Value::none();
+                    getReg(a) = Value(false);
+                    getReg(a + 1) = Value::none();
                 }
                 break;
             }
@@ -5832,6 +5844,16 @@ Value VM::run(int targetFrameDepth) {
                     inst->checkModify();
                     std::string keyStr = keyVal.asString();
                     
+                    for (const auto& [cls, props] : inst->private_fields) {
+                        if (props.count(keyStr)) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                    }
+                    auto c_cls = inst->classDef;
+                    while (c_cls) {
+                        auto it = c_cls->methods.find(keyStr);
+                        if (it != c_cls->methods.end() && it->second->is_local) throw std::runtime_error("VM Error: Cannot access private method '" + keyStr + "' externally.");
+                        c_cls = c_cls->parent;
+                    }
+                    
                     if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                     auto it = inst->fields->keyMap.find(keyVal);
                     if (it != inst->fields->keyMap.end()) {
@@ -5867,9 +5889,20 @@ Value VM::run(int targetFrameDepth) {
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
                     inst->checkModify();
-                    if (inst->const_fields.count(keyVal.asString())) {
-                        throw std::runtime_error("VM Error: Cannot modify const property '" + keyVal.asString() + "'.");
+                    std::string keyStr = keyVal.asString();
+                    if (inst->const_fields.count(keyStr)) {
+                        throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
                     }
+                    for (const auto& [cls, props] : inst->private_fields) {
+                        if (props.count(keyStr)) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                    }
+                    auto c_cls = inst->classDef;
+                    while (c_cls) {
+                        auto it = c_cls->methods.find(keyStr);
+                        if (it != c_cls->methods.end() && it->second->is_local) throw std::runtime_error("VM Error: Cannot access private method '" + keyStr + "' externally.");
+                        c_cls = c_cls->parent;
+                    }
+                    
                     auto setattrMethod = findDunder(obj, DUNDER_SETATTR);
                     if (setattrMethod) {
                         callDunder(obj, setattrMethod, {keyVal, val});

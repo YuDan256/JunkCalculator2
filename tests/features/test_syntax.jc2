@@ -11,9 +11,9 @@ test_token_class() = {
 test_token_class()
 
 test_basic_syntax_macro() = {
-    syntax concat_tokens(tokens) = {
+    syntax concat_tokens(stream) = {
         // 提取所有 token 的 lexeme 并拼接
-        str_val = join(tokens.map((t) => t.lexeme), "")
+        str_val = join(stream.tokens().map((t) => t.lexeme), "")
         return ASTNode("Literal", 0, {value: str_val, isString: true})
     }
     
@@ -23,16 +23,16 @@ test_basic_syntax_macro() = {
 test_basic_syntax_macro()
 
 test_parse_single() = {
-    syntax change_plus_to_mul(tokens) = {
+    syntax change_plus_to_mul(stream) = {
         // 遍历 Token，把加号篡改为乘号
-        for (t in tokens) {
+        for (t in stream.tokens()) {
             if (t.lexeme == "+") {
                 t.type = "STAR"
                 t.lexeme = "*"
             }
         }
         // 重新解析为 AST
-        return parse(tokens)
+        return stream.parse()
     }
     
     res = @change_plus_to_mul { 3 + 4 }
@@ -41,14 +41,12 @@ test_parse_single() = {
 test_parse_single()
 
 test_parse_block() = {
-    syntax inject_local(tokens) = {
+    syntax inject_local(stream) = {
         // 在用户提供的 token 列表前强行插入一个 local 关键字
-        new_tokens = [Token("LOCAL", "local", 0, 0)]
-        for (t in tokens) {
-            new_tokens.push(t)
-        }
+        stream.insert(0, Token("LOCAL", "local", 0, 0))
+        stream.cursor = 0 // 重置游标，确保新插入的 token 被解析
         // 解析为 AST
-        return parse(new_tokens)
+        return stream.parse()
     }
     injected_var = 0
     // 这里的 injected_var 会被宏加上 local 修饰符
@@ -61,8 +59,8 @@ test_parse_block() = {
 test_parse_block()
 
 test_parse_multi() = {
-    syntax inject_two(tokens) = {
-        return parse(tokens)
+    syntax inject_two(stream) = {
+        return stream.parse()
     }
     
     a = 0
@@ -76,9 +74,9 @@ test_parse_multi() = {
 test_parse_multi()
 
 test_lexer_error_tolerance() = {
-    syntax count_errors(tokens) = {
+    syntax count_errors(stream) = {
         // 统计 ERROR 类型的 token 数量
-        err_count = tokens.countIf((t) => t.type == "ERROR")
+        err_count = stream.tokens().countIf((t) => t.type == "ERROR")
         return ASTNode("Literal", 0, {value: str(err_count), isString: false})
     }
     
@@ -91,7 +89,7 @@ test_lexer_error_tolerance()
 
 test_syntax_macro_errors() = {
     try {
-        eval("syntax bad_return(t) = { return 1 }; @bad_return { 1 }")
+        eval("syntax bad_return(s) = { return 1 }; @bad_return { 1 }")
         assert(false, "Should throw when syntax macro doesn't return ASTNode")
     } catch (e) {
         msg = str(e.message)
@@ -99,7 +97,7 @@ test_syntax_macro_errors() = {
     }
 
     try {
-        eval("syntax bad_parse(t) = { return parse(t) }; @bad_parse { * 2 }")
+        eval("syntax bad_parse(s) = { return s.parse() }; @bad_parse { * 2 }")
         assert(false, "Should throw when parse receives invalid syntax")
     } catch (e) {
         msg = str(e.message)

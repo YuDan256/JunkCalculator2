@@ -1171,7 +1171,6 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
             
             throw std::runtime_error("VM Error: Private method '" + methodName + "' not found.");
         } else if (obj.isClass()) {
-            auto cls = static_cast<ObjClass*>(obj.asObj());
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
             
@@ -5240,7 +5239,6 @@ Value VM::run(int targetFrameDepth) {
                     
                     throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
                 } else if (obj.isClass()) {
-                    auto cls = static_cast<ObjClass*>(obj.asObj());
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     

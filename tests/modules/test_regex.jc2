@@ -40,13 +40,13 @@ test_subst() = {
 }
 test_subst()
 
-test_splitby() = {
+test_split() = {
     r4 = regex.compile(r"RE(\s*,\s*)RE")
-    split_res = r4.splitBy("apple, banana , cherry")
-    assert(split_res.len() == 3, "splitBy() length failed")
-    assert(split_res[0] == "apple" && split_res[1] == "banana" && split_res[2] == "cherry", "splitBy() content failed")
+    split_res = r4.split("apple, banana , cherry")
+    assert(split_res.len() == 3, "split() length failed")
+    assert(split_res[0] == "apple" && split_res[1] == "banana" && split_res[2] == "cherry", "split() content failed")
 }
-test_splitby()
+test_split()
 
 test_global_api() = {
     assert(regex.test(r"RE(^\d+$)RE", "12345") == true, "Global test() failed")
@@ -57,7 +57,7 @@ test_global_api() = {
 
     assert(regex.findall(r"RE([A-Z])RE", "aBcDeF").len() == 3, "Global findall() failed")
     assert(regex.subst("a", "banana", "o") == "bonono", "Global subst() failed")
-    assert(regex.splitBy("-", "x-y-z").len() == 3, "Global splitBy() failed")
+    assert(regex.split("-", "x-y-z").len() == 3, "Global split() failed")
 }
 test_global_api()
 

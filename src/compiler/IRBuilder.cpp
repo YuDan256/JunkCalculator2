@@ -190,6 +190,9 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
 
 IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols) 
     : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), currentControl(graph->startNode), lastValue(nullptr) {
+    if (parent) {
+        classStack = parent->classStack;
+    }
     pushScope(); // 压入顶层作用域
 }
 
@@ -2419,8 +2422,16 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
             writeVariable(expr->name.lexeme, node, sym, false, false);
         } else if (dotParentNode) {
             IROp setOp = IROp::SetProperty;
-            if (dynamic_cast<SelfExpr*>(static_cast<DotAccess*>(expr->objectExpr.get())->object.get()) && !classStack.empty()) {
-                if (classStack.back().privateMembers.count(dotPropName)) {
+            if (!classStack.empty()) {
+                auto* dotTarget = static_cast<DotAccess*>(expr->objectExpr.get());
+                bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
+                bool isClassVar = false;
+                if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
+                    if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                        isClassVar = true;
+                    }
+                }
+                if ((isSelf || isClassVar) && classStack.back().privateMembers.count(dotPropName)) {
                     setOp = IROp::SetPrivate;
                 }
             }
@@ -2507,8 +2518,16 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
             writeVariable(expr->name.lexeme, finalNode, sym, false, false);
         } else if (dotParentNode) {
             IROp setOp = IROp::SetProperty;
-            if (dynamic_cast<SelfExpr*>(static_cast<DotAccess*>(expr->objectExpr.get())->object.get()) && !classStack.empty()) {
-                if (classStack.back().privateMembers.count(dotPropName)) {
+            if (!classStack.empty()) {
+                auto* dotTarget = static_cast<DotAccess*>(expr->objectExpr.get());
+                bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
+                bool isClassVar = false;
+                if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
+                    if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                        isClassVar = true;
+                    }
+                }
+                if ((isSelf || isClassVar) && classStack.back().privateMembers.count(dotPropName)) {
                     setOp = IROp::SetPrivate;
                 }
             }
@@ -2668,8 +2687,15 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         propName = dot->field.lexeme;
         
         IROp getOp = IROp::GetProperty;
-        if (dynamic_cast<SelfExpr*>(dot->object.get()) && !classStack.empty()) {
-            if (classStack.back().privateMembers.count(propName)) {
+        if (!classStack.empty()) {
+            bool isSelf = dynamic_cast<SelfExpr*>(dot->object.get()) != nullptr;
+            bool isClassVar = false;
+            if (auto* var = dynamic_cast<Variable*>(dot->object.get())) {
+                if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                    isClassVar = true;
+                }
+            }
+            if ((isSelf || isClassVar) && classStack.back().privateMembers.count(propName)) {
                 getOp = IROp::GetPrivate;
             }
         }
@@ -2697,8 +2723,15 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             dotPropName = chainDot->field.lexeme;
             
             IROp getOp = IROp::GetProperty;
-            if (dynamic_cast<SelfExpr*>(chainDot->object.get()) && !classStack.empty()) {
-                if (classStack.back().privateMembers.count(dotPropName)) {
+            if (!classStack.empty()) {
+                bool isSelf = dynamic_cast<SelfExpr*>(chainDot->object.get()) != nullptr;
+                bool isClassVar = false;
+                if (auto* var = dynamic_cast<Variable*>(chainDot->object.get())) {
+                    if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                        isClassVar = true;
+                    }
+                }
+                if ((isSelf || isClassVar) && classStack.back().privateMembers.count(dotPropName)) {
                     getOp = IROp::GetPrivate;
                 }
             }
@@ -2781,8 +2814,16 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         writeVariable(var->name.lexeme, opNode, sym, expr->isLocal, false);
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
         IROp setOp = IROp::SetProperty;
-        if (dynamic_cast<SelfExpr*>(static_cast<DotAccess*>(expr->target.get())->object.get()) && !classStack.empty()) {
-            if (classStack.back().privateMembers.count(propName)) {
+        if (!classStack.empty()) {
+            auto* dotTarget = static_cast<DotAccess*>(expr->target.get());
+            bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
+            bool isClassVar = false;
+            if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
+                if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                    isClassVar = true;
+                }
+            }
+            if ((isSelf || isClassVar) && classStack.back().privateMembers.count(propName)) {
                 setOp = IROp::SetPrivate;
             }
         }
@@ -3505,6 +3546,8 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     ctx.name = expr->name.lexeme;
     for (auto& m : expr->methods) if (m.isLocal) ctx.privateMembers.insert(m.name.lexeme);
     for (auto& f : expr->instanceFields) if (f.isLocal) ctx.privateMembers.insert(f.name.lexeme);
+    for (auto& m : expr->staticMethods) if (m.isLocal) ctx.privateMembers.insert(m.name.lexeme);
+    for (auto& f : expr->staticFields) if (f.isLocal) ctx.privateMembers.insert(f.name.lexeme);
     classStack.push_back(ctx);
 
     bool hasInit = false;
@@ -4000,8 +4043,15 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
     IRNode* objNode = lastValue;
         
     IROp op = IROp::GetProperty;
-    if (dynamic_cast<SelfExpr*>(expr->object.get()) && !classStack.empty()) {
-        if (classStack.back().privateMembers.count(expr->field.lexeme)) {
+    if (!classStack.empty()) {
+        bool isSelf = dynamic_cast<SelfExpr*>(expr->object.get()) != nullptr;
+        bool isClassVar = false;
+        if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
+            if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                isClassVar = true;
+            }
+        }
+        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(expr->field.lexeme)) {
             op = IROp::GetPrivate;
         }
     }
@@ -4027,8 +4077,15 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
     }
         
     IROp op = IROp::SetProperty;
-    if (dynamic_cast<SelfExpr*>(expr->object.get()) && !classStack.empty()) {
-        if (classStack.back().privateMembers.count(expr->field.lexeme)) {
+    if (!classStack.empty()) {
+        bool isSelf = dynamic_cast<SelfExpr*>(expr->object.get()) != nullptr;
+        bool isClassVar = false;
+        if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
+            if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                isClassVar = true;
+            }
+        }
+        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(expr->field.lexeme)) {
             op = IROp::SetPrivate;
         }
     }
@@ -4150,8 +4207,15 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     }
 
     bool isPrivate = false;
-    if (!isSuper && dynamic_cast<SelfExpr*>(expr->object.get()) && !classStack.empty()) {
-        if (classStack.back().privateMembers.count(expr->method.lexeme)) {
+    if (!isSuper && !classStack.empty()) {
+        bool isSelf = dynamic_cast<SelfExpr*>(expr->object.get()) != nullptr;
+        bool isClassVar = false;
+        if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
+            if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                isClassVar = true;
+            }
+        }
+        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(expr->method.lexeme)) {
             isPrivate = true;
         }
     }

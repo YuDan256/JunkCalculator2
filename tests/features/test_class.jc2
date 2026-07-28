@@ -79,3 +79,65 @@ test_anonymous_class_and_self_ref() = {
     assert(p1.get_class() == Point, "The 'class' keyword should evaluate to the class object itself")
 }
 test_anonymous_class_and_self_ref()
+
+test_access_control() = {
+    class Account {
+        const id = 12345
+        local balance = 0
+        static local const MAX = 999
+        static const MIN = 0
+        
+        init(b) = {
+            self.balance = b
+        }
+        
+        local helper() = self.balance * 2
+        
+        get_balance() = self.balance
+        get_helper() = self.helper()
+        static get_max() = Account.MAX
+    }
+    
+    acc = Account(100)
+    
+    // Public const
+    assert(acc.id == 12345, "Public const read failed")
+    assert(isError(pcall(() => acc.id = 54321)), "Public const should be read-only")
+    
+    // Private instance field
+    assert(acc.get_balance() == 100, "Private field internal read failed")
+    assert(isError(pcall(() => acc.balance)), "Private field should be invisible externally")
+    assert(isError(pcall(() => acc.balance = 200)), "Private field should be invisible externally (write)")
+    
+    // Private instance method
+    assert(acc.get_helper() == 200, "Private method internal call failed")
+    assert(isError(pcall(() => acc.helper())), "Private method should be invisible externally")
+    
+    // Static const
+    assert(Account.MIN == 0, "Static const read failed")
+    assert(isError(pcall(() => Account.MIN = 1)), "Static const should be read-only")
+    
+    // Static private const
+    assert(Account.get_max() == 999, "Static private const internal read failed")
+    assert(isError(pcall(() => Account.MAX)), "Static private const should be invisible externally")
+}
+test_access_control()
+
+test_private_inheritance() = {
+    class Parent {
+        local secret = 42
+        local hidden() = 100
+        get_secret() = self.secret
+    }
+    class Child extends Parent {
+        init() = { super.init() }
+        try_access() = self.secret
+        try_call() = self.hidden()
+    }
+    
+    c = Child()
+    assert(c.get_secret() == 42, "Parent method should access its own private field")
+    assert(isError(pcall(() => c.try_access())), "Child should not access parent's private field")
+    assert(isError(pcall(() => c.try_call())), "Child should not access parent's private method")
+}
+test_private_inheritance()

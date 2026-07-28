@@ -5122,14 +5122,10 @@ Value VM::run(int targetFrameDepth) {
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
                 
                 sub->parent = sup;
-                for (auto& [name, method] : sup->methods) {
-                    if (sub->methods.find(name) == sub->methods.end()) {
-                        sub->methods[name] = method;
-                    }
-                }
-                for (auto& [name, val] : sup->staticFields) {
+                for (auto& [name, prop] : sup->staticFields) {
+                    if (prop.is_local) continue; // ★ 严格隔离：不拷贝父类的私有静态字段
                     if (sub->staticFields.find(name) == sub->staticFields.end()) {
-                        sub->staticFields[name] = val;
+                        sub->staticFields[name] = prop;
                     }
                 }
                 break;

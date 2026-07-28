@@ -1140,20 +1140,23 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
             
-            auto itCls = inst->private_fields.find(owner);
-            if (itCls != inst->private_fields.end()) {
-                auto itProp = itCls->second.find(methodName);
-                if (itProp != itCls->second.end()) {
-                    Value fv = itProp->second.val;
-                    if (fv.isFunctionClosure()) {
-                        method = fv.asFunction();
-                        owningClass = owner;
-                        goto invoke_method;
-                    } else {
-                        registers[currentFrame->registerBase + a] = fv;
-                        execCall(a, b, a, isTailCall);
-                        return;
+            for (auto& clsPair : inst->private_fields) {
+                if (clsPair.first == owner) {
+                    for (auto& propPair : clsPair.second) {
+                        if (propPair.first.asString() == methodName) {
+                            Value fv = propPair.second.val;
+                            if (fv.isFunctionClosure()) {
+                                method = fv.asFunction();
+                                owningClass = owner;
+                                goto invoke_method;
+                            } else {
+                                registers[currentFrame->registerBase + a] = fv;
+                                execCall(a, b, a, isTailCall);
+                                return;
+                            }
+                        }
                     }
+                    break;
                 }
             }
             
@@ -4607,8 +4610,10 @@ Value VM::run(int targetFrameDepth) {
                                 if (inst->const_fields.count(keyStr)) {
                                     throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
                                 }
-                                for (const auto& [c_cls, props] : inst->private_fields) {
-                                    if (props.count(keyStr)) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                                for (const auto& clsPair : inst->private_fields) {
+                                    for (const auto& propPair : clsPair.second) {
+                                        if (propPair.first.asString() == keyStr) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                                    }
                                 }
                                 auto c_cls2 = inst->classDef;
                                 while (c_cls2) {
@@ -5144,14 +5149,34 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    auto itCls = inst->private_fields.find(owner);
-                    if (itCls != inst->private_fields.end()) {
-                        auto itProp = itCls->second.find(keyVal.asString());
-                        if (itProp != itCls->second.end()) {
-                            getReg(a) = itProp->second.val;
+                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedClass == owner && ic.cachedGlobalSlot != -1 && ic.cachedFieldIndex != -1) {
+                        if (ic.cachedGlobalSlot < static_cast<int>(inst->private_fields.size()) && inst->private_fields[ic.cachedGlobalSlot].first == owner) {
+                            auto& props = inst->private_fields[ic.cachedGlobalSlot].second;
+                            if (ic.cachedFieldIndex < static_cast<int>(props.size()) && props[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                                getReg(a) = props[ic.cachedFieldIndex].second.val;
+                                break;
+                            }
+                        }
+                    }
+                    bool found = false;
+                    for (size_t i = 0; i < inst->private_fields.size(); ++i) {
+                        if (inst->private_fields[i].first == owner) {
+                            auto& props = inst->private_fields[i].second;
+                            for (size_t j = 0; j < props.size(); ++j) {
+                                if (props[j].first.as_bits == keyVal.as_bits) {
+                                    getReg(a) = props[j].second.val;
+                                    ic.cachedClassId = inst->classDef->classId;
+                                    ic.cachedClass = owner;
+                                    ic.cachedGlobalSlot = static_cast<int>(i);
+                                    ic.cachedFieldIndex = static_cast<int>(j);
+                                    found = true;
+                                    break;
+                                }
+                            }
                             break;
                         }
                     }
+                    if (found) break;
                     
                     auto it = owner->methods.find(keyVal.asString());
                     if (it != owner->methods.end() && it->second->is_local) {
@@ -5798,18 +5823,55 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    std::string keyStr = keyVal.asString();
-                    auto& clsProps = inst->private_fields[owner];
-                    auto it = clsProps.find(keyStr);
-                    
                     if (op == OpCode::SET_PRIVATE) {
-                        if (it == clsProps.end()) throw std::runtime_error("VM Error: Private property '" + keyStr + "' not found.");
-                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
-                        it->second.val = val;
-                    } else {
-                        if (it != clsProps.end()) throw std::runtime_error("VM Error: Private property '" + keyStr + "' already defined.");
-                        clsProps[keyStr] = PrivateProperty{ val, op == OpCode::DEFINE_PRIVATE_CONST };
+                        if (ic.cachedClassId == inst->classDef->classId && ic.cachedClass == owner && ic.cachedGlobalSlot != -1 && ic.cachedFieldIndex != -1) {
+                            if (ic.cachedGlobalSlot < static_cast<int>(inst->private_fields.size()) && inst->private_fields[ic.cachedGlobalSlot].first == owner) {
+                                auto& props = inst->private_fields[ic.cachedGlobalSlot].second;
+                                if (ic.cachedFieldIndex < static_cast<int>(props.size()) && props[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                                    if (props[ic.cachedFieldIndex].second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
+                                    props[ic.cachedFieldIndex].second.val = val;
+                                    goto set_private_done;
+                                }
+                            }
+                        }
                     }
+                    
+                    {
+                        bool foundCls = false;
+                        for (size_t i = 0; i < inst->private_fields.size(); ++i) {
+                            if (inst->private_fields[i].first == owner) {
+                                foundCls = true;
+                                auto& props = inst->private_fields[i].second;
+                                bool foundProp = false;
+                                for (size_t j = 0; j < props.size(); ++j) {
+                                    if (props[j].first.as_bits == keyVal.as_bits) {
+                                        foundProp = true;
+                                        if (op == OpCode::SET_PRIVATE) {
+                                            if (props[j].second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
+                                            props[j].second.val = val;
+                                            ic.cachedClassId = inst->classDef->classId;
+                                            ic.cachedClass = owner;
+                                            ic.cachedGlobalSlot = static_cast<int>(i);
+                                            ic.cachedFieldIndex = static_cast<int>(j);
+                                        } else {
+                                            throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
+                                        }
+                                        break;
+                                    }
+                                }
+                                if (!foundProp) {
+                                    if (op == OpCode::SET_PRIVATE) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
+                                    props.push_back({keyVal, PrivateProperty{ val, op == OpCode::DEFINE_PRIVATE_CONST }});
+                                }
+                                break;
+                            }
+                        }
+                        if (!foundCls) {
+                            if (op == OpCode::SET_PRIVATE) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
+                            inst->private_fields.push_back({owner, {{keyVal, PrivateProperty{ val, op == OpCode::DEFINE_PRIVATE_CONST }}}});
+                        }
+                    }
+                set_private_done:;
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     std::string keyStr = keyVal.asString();
@@ -5843,8 +5905,10 @@ Value VM::run(int targetFrameDepth) {
                     inst->checkModify();
                     std::string keyStr = keyVal.asString();
                     
-                    for (const auto& [cls, props] : inst->private_fields) {
-                        if (props.count(keyStr)) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                    for (const auto& clsPair : inst->private_fields) {
+                        for (const auto& propPair : clsPair.second) {
+                            if (propPair.first.asString() == keyStr) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                        }
                     }
                     auto c_cls = inst->classDef;
                     while (c_cls) {
@@ -5892,8 +5956,10 @@ Value VM::run(int targetFrameDepth) {
                     if (inst->const_fields.count(keyStr)) {
                         throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
                     }
-                    for (const auto& [cls, props] : inst->private_fields) {
-                        if (props.count(keyStr)) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                    for (const auto& clsPair : inst->private_fields) {
+                        for (const auto& propPair : clsPair.second) {
+                            if (propPair.first.asString() == keyStr) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                        }
                     }
                     auto c_cls = inst->classDef;
                     while (c_cls) {

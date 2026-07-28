@@ -4398,23 +4398,8 @@ Value VM::run(int targetFrameDepth) {
                                 if (it != inst->properties.end() && !it->second.is_local) {
                                     result = it->second.val;
                                 } else {
-                                    auto c_cls = inst->classDef;
-                                    while (c_cls) {
-                                        std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
-                                        if (inst->properties.find(mangledName) != inst->properties.end()) {
-                                            if (noThrow) { result = Value::uninit(); goto index_get_done; }
-                                            else throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                                        }
-                                        auto cit = c_cls->properties.find(keyStr);
-                                        if (cit != c_cls->properties.end() && cit->second.is_local) {
-                                            if (noThrow) { result = Value::uninit(); goto index_get_done; }
-                                            else throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                                        }
-                                        c_cls = c_cls->parent;
-                                    }
                                     if (noThrow) result = Value::uninit();
                                     else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
-                                index_get_done:;
                                 }
                             }
                         }
@@ -4635,16 +4620,6 @@ Value VM::run(int targetFrameDepth) {
                                     if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
                                     it->second.val = val;
                                 } else {
-                                    auto c_cls2 = inst->classDef;
-                                    while (c_cls2) {
-                                        std::string mangledName = std::to_string(c_cls2->classId) + "::" + keyStr;
-                                        if (inst->properties.find(mangledName) != inst->properties.end()) {
-                                            throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                                        }
-                                        auto cit = c_cls2->properties.find(keyStr);
-                                        if (cit != c_cls2->properties.end() && cit->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                                        c_cls2 = c_cls2->parent;
-                                    }
                                     inst->properties[keyStr] = {val, false, false};
                                 }
                             }
@@ -5548,21 +5523,6 @@ Value VM::run(int targetFrameDepth) {
                 }
 
                 if (!found) {
-                    if (obj.isInstance()) {
-                        auto inst = obj.asInstance();
-                        auto c_cls = inst->classDef;
-                        while (c_cls) {
-                            std::string mangledName = std::to_string(c_cls->classId) + "::" + field;
-                            if (inst->properties.find(mangledName) != inst->properties.end()) {
-                                throw std::runtime_error("VM Error: Cannot access private property '" + field + "' externally.");
-                            }
-                            auto cit = c_cls->properties.find(field);
-                            if (cit != c_cls->properties.end() && cit->second.is_local) {
-                                throw std::runtime_error("VM Error: Cannot access private property '" + field + "' externally.");
-                            }
-                            c_cls = c_cls->parent;
-                        }
-                    }
                     throw std::runtime_error("VM Error: Property '" + field + "' not found.");
                 }
                 getReg(a) = result;
@@ -5922,16 +5882,6 @@ Value VM::run(int targetFrameDepth) {
                         if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
                         throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
                     }
-                    auto c_cls = inst->classDef;
-                    while (c_cls) {
-                        std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
-                        if (inst->properties.find(mangledName) != inst->properties.end()) {
-                            throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                        }
-                        auto cit = c_cls->properties.find(keyStr);
-                        if (cit != c_cls->properties.end() && cit->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                        c_cls = c_cls->parent;
-                    }
                     
                     inst->properties[keyStr] = {val, op == OpCode::DEFINE_PROP_CONST, false};
                 } else if (obj.isClass()) {
@@ -5965,17 +5915,6 @@ Value VM::run(int targetFrameDepth) {
                     if (it != inst->properties.end()) {
                         if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
                         if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
-                    } else {
-                        auto c_cls = inst->classDef;
-                        while (c_cls) {
-                            std::string mangledName = std::to_string(c_cls->classId) + "::" + keyStr;
-                            if (inst->properties.find(mangledName) != inst->properties.end()) {
-                                throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                            }
-                            auto cit = c_cls->properties.find(keyStr);
-                            if (cit != c_cls->properties.end() && cit->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                            c_cls = c_cls->parent;
-                        }
                     }
                     
                     auto [setattrMethod, owner] = findDunder(obj, DUNDER_SETATTR);

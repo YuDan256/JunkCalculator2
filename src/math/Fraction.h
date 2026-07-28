@@ -77,6 +77,8 @@ namespace jc {
         // --- 属性访问 ---
         BigInt getNum() const { return num; }
         BigInt getDen() const { return den; }
+        const BigInt& getNumRef() const { return num; }
+        const BigInt& getDenRef() const { return den; }
 
         double toDouble() const {
             return BigInt::toDoubleRatio(num, den);

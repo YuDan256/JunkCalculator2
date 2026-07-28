@@ -120,10 +120,14 @@ namespace jc {
     };
     struct ObjBigInt : public Obj {
         BigInt num;
+        mutable bool has_cached_hash = false;
+        mutable size_t cached_hash = 0;
         ObjBigInt(BigInt n) : num(std::move(n)) { type = ObjType::BIGINT; }
     };
     struct ObjFraction : public Obj {
         Fraction frac;
+        mutable bool has_cached_hash = false;
+        mutable size_t cached_hash = 0;
         ObjFraction(Fraction f) : frac(std::move(f)) { type = ObjType::FRACTION; }
     };
     struct ObjComplex : public Obj {
@@ -2482,35 +2486,62 @@ inline size_t ValueHasher::operator()(const Value& v) const {
     switch (obj->type) {
         case ObjType::STRING: return static_cast<ObjString*>(obj)->hash; // ★ O(1) 哈希
         case ObjType::BIGINT: {
-            const BigInt& bi = static_cast<ObjBigInt*>(obj)->num;
+            auto objBigInt = static_cast<ObjBigInt*>(obj);
+            if (objBigInt->has_cached_hash) return objBigInt->cached_hash;
+            const BigInt& bi = objBigInt->num;
+            size_t h = 0;
             try {
                 int64_t i64 = bi.toInt64();
                 if (i64 >= -9007199254740992LL && i64 <= 9007199254740992LL) {
                     double d = static_cast<double>(i64);
                     if (d == 0.0) d = 0.0;
-                    return sipHash24Double(d);
+                    h = sipHash24Double(d);
+                    objBigInt->cached_hash = h;
+                    objBigInt->has_cached_hash = true;
+                    return h;
                 }
             } catch (...) {}
-            size_t h = sipHash24String(bi.toString());
-            return h ^ 0xCF1A5E7B3D9204F6ULL;
+            const auto& raw = bi.getRawData();
+            h = sipHash24(raw.data(), raw.size() * sizeof(uint32_t));
+            if (bi.getSign()) h ^= 0xAAAAAAAAAAAAAAAAULL;
+            h ^= 0xCF1A5E7B3D9204F6ULL;
+            objBigInt->cached_hash = h;
+            objBigInt->has_cached_hash = true;
+            return h;
         }
         case ObjType::FRACTION: {
-            const Fraction& fr = static_cast<ObjFraction*>(obj)->frac;
-            if (fr.getDen() == BigInt(1)) {
-                return ValueHasher{}(Value(fr.getNum()));
+            auto objFrac = static_cast<ObjFraction*>(obj);
+            if (objFrac->has_cached_hash) return objFrac->cached_hash;
+            const Fraction& fr = objFrac->frac;
+            size_t h = 0;
+            if (fr.getDenRef() == BigInt(1)) {
+                h = ValueHasher{}(Value(fr.getNumRef()));
+                objFrac->cached_hash = h;
+                objFrac->has_cached_hash = true;
+                return h;
             }
             try {
                 double d = fr.toDouble();
                 if (std::isfinite(d)) {
                     if (Fraction::fromDouble(d == 0.0 ? 0.0 : d) == fr) {
                         if (d == 0.0) d = 0.0;
-                        return sipHash24Double(d);
+                        h = sipHash24Double(d);
+                        objFrac->cached_hash = h;
+                        objFrac->has_cached_hash = true;
+                        return h;
                     }
                 }
             } catch (...) {}
-            size_t h1 = sipHash24String(fr.getNum().toString());
-            size_t h2 = sipHash24String(fr.getDen().toString());
-            return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2)) ^ 0xA38F6D2E1B7C54E0ULL;
+            const auto& numRaw = fr.getNumRef().getRawData();
+            const auto& denRaw = fr.getDenRef().getRawData();
+            size_t h1 = sipHash24(numRaw.data(), numRaw.size() * sizeof(uint32_t));
+            if (fr.getNumRef().getSign()) h1 ^= 0xAAAAAAAAAAAAAAAAULL;
+            size_t h2 = sipHash24(denRaw.data(), denRaw.size() * sizeof(uint32_t));
+            if (fr.getDenRef().getSign()) h2 ^= 0xAAAAAAAAAAAAAAAAULL;
+            h = h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2)) ^ 0xA38F6D2E1B7C54E0ULL;
+            objFrac->cached_hash = h;
+            objFrac->has_cached_hash = true;
+            return h;
         }
         case ObjType::COMPLEX: {
             auto c = static_cast<ObjComplex*>(obj)->comp;

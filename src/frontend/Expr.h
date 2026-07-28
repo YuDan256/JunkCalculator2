@@ -629,18 +629,29 @@ namespace jc {
             std::string rawBody;
             std::shared_ptr<Expr> body;
             int fnIdx = -1;
+            bool isLocal = false;
+            bool isConst = false;
         };
         struct StaticFieldDef {
             Token name;
             std::unique_ptr<Expr> value;
+            bool isLocal = false;
+            bool isConst = false;
+        };
+        struct InstanceFieldDef {
+            Token name;
+            std::unique_ptr<Expr> value;
+            bool isLocal = false;
+            bool isConst = false;
         };
         std::vector<MethodDef> methods;
         std::vector<MethodDef> staticMethods;
         std::vector<StaticFieldDef> staticFields;
+        std::vector<InstanceFieldDef> instanceFields;
 
-        ClassDefExpr(Token name, std::unique_ptr<Expr> superClassExpr, std::vector<MethodDef> methods, std::vector<MethodDef> staticMethods = {}, std::vector<StaticFieldDef> staticFields = {})
+        ClassDefExpr(Token name, std::unique_ptr<Expr> superClassExpr, std::vector<MethodDef> methods, std::vector<MethodDef> staticMethods = {}, std::vector<StaticFieldDef> staticFields = {}, std::vector<InstanceFieldDef> instanceFields = {})
             : name(std::move(name)), superClassExpr(std::move(superClassExpr)),
-            methods(std::move(methods)), staticMethods(std::move(staticMethods)), staticFields(std::move(staticFields)) {
+            methods(std::move(methods)), staticMethods(std::move(staticMethods)), staticFields(std::move(staticFields)), instanceFields(std::move(instanceFields)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitClassDefExpr(this); }
     };

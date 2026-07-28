@@ -431,7 +431,9 @@ public:
                     {"paramTypes", makeExprListT(m.paramTypes)},
                     {"returnType", retTypeVal},
                     {"rawBody", Value(m.rawBody)},
-                    {"body", bodyVal}
+                    {"body", bodyVal},
+                    {"isLocal", Value(m.isLocal)},
+                    {"isConst", Value(m.isConst)}
                 });
                 methods->vec.push_back(methodNode);
             }
@@ -451,7 +453,22 @@ public:
             pair->vec.push_back(Value(f.name.lexeme));
             f.value->accept(*this);
             pair->vec.push_back(result);
+            pair->vec.push_back(Value(f.isLocal));
+            pair->vec.push_back(Value(f.isConst));
             staticFields->vec.push_back(Value(pair));
+        }
+
+        ObjList* instanceFields = GcHeap::get().allocate<ObjList>();
+        GcObjGuard ifGuard(instanceFields);
+        for (auto& f : expr->instanceFields) {
+            ObjList* pair = GcHeap::get().allocate<ObjList>();
+            GcObjGuard pGuard(pair);
+            pair->vec.push_back(Value(f.name.lexeme));
+            f.value->accept(*this);
+            pair->vec.push_back(result);
+            pair->vec.push_back(Value(f.isLocal));
+            pair->vec.push_back(Value(f.isConst));
+            instanceFields->vec.push_back(Value(pair));
         }
         
         result = makeASTNode("ClassDefExpr", expr->name.line, {
@@ -459,7 +476,8 @@ public:
             {"superClassExpr", sup},
             {"methods", Value(methods)},
             {"staticMethods", Value(staticMethods)},
-            {"staticFields", Value(staticFields)}
+            {"staticFields", Value(staticFields)},
+            {"instanceFields", Value(instanceFields)}
         });
     }
 
@@ -1025,6 +1043,8 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                     method.returnType = std::shared_ptr<Expr>(JC2_to_AST(getMProp("returnType")).release());
                     method.rawBody = getMProp("rawBody").asString();
                     method.body = std::shared_ptr<Expr>(JC2_to_AST(getMProp("body")).release());
+                    method.isLocal = getMProp("isLocal").truthy();
+                    method.isConst = getMProp("isConst").truthy();
                     methods.push_back(std::move(method));
                 }
             }
@@ -1042,7 +1062,25 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                     auto fList = static_cast<ObjList*>(fVal.asObj());
                     if (fList->vec.size() >= 2) {
                         Token fName(TokenType::IDENTIFIER, fList->vec[0].asString(), line);
-                        staticFields.push_back({fName, JC2_to_AST(fList->vec[1])});
+                        bool isLoc = fList->vec.size() > 2 ? fList->vec[2].truthy() : false;
+                        bool isCon = fList->vec.size() > 3 ? fList->vec[3].truthy() : false;
+                        staticFields.push_back({fName, JC2_to_AST(fList->vec[1]), isLoc, isCon});
+                    }
+                }
+            }
+        }
+
+        std::vector<ClassDefExpr::InstanceFieldDef> instanceFields;
+        Value ifVal = getProp("instanceFields");
+        if (ifVal.isObjType(ObjType::LIST)) {
+            for (const auto& fVal : static_cast<ObjList*>(ifVal.asObj())->vec) {
+                if (fVal.isObjType(ObjType::LIST)) {
+                    auto fList = static_cast<ObjList*>(fVal.asObj());
+                    if (fList->vec.size() >= 2) {
+                        Token fName(TokenType::IDENTIFIER, fList->vec[0].asString(), line);
+                        bool isLoc = fList->vec.size() > 2 ? fList->vec[2].truthy() : false;
+                        bool isCon = fList->vec.size() > 3 ? fList->vec[3].truthy() : false;
+                        instanceFields.push_back({fName, JC2_to_AST(fList->vec[1]), isLoc, isCon});
                     }
                 }
             }
@@ -1055,7 +1093,8 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             JC2_to_AST(getProp("superClassExpr")),
             std::move(methods),
             std::move(staticMethods),
-            std::move(staticFields)
+            std::move(staticFields),
+            std::move(instanceFields)
         );
     } else if (type == "NamespaceDecl") {
         std::string nsName = "";

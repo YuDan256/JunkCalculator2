@@ -146,12 +146,18 @@ namespace jc {
         StringMatrix mat;
         ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
     };
+    struct ClassProperty {
+        Value val;
+        bool is_const = false;
+        bool is_local = false;
+    };
+
     struct ObjClass : public Obj {
         uint64_t classId;
         std::string name;
         ObjClass* parent = nullptr;
         std::map<std::string, ObjClosure*> methods;
-        std::unordered_map<std::string, Value> staticFields;
+        std::unordered_map<std::string, ClassProperty> staticFields;
         bool is_native = false;
         std::function<Value(const std::vector<Value>&)> native_allocator;
         ObjClass() { 
@@ -225,9 +231,17 @@ namespace jc {
         }
     };
 
+    struct PrivateProperty {
+        Value val;
+        bool is_const = false;
+    };
+
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
         ObjDict* fields = nullptr;
+        std::unordered_set<std::string> const_fields;
+        std::unordered_map<ObjClass*, std::unordered_map<std::string, PrivateProperty>> private_fields;
+        
         std::any nativeData;
         void* c_nativeData = nullptr;
         void (*c_nativeDtor)(void*) = nullptr;
@@ -246,6 +260,8 @@ namespace jc {
             }
             c_nativeData = nullptr;
             c_nativeDtor = nullptr;
+            const_fields.clear();
+            private_fields.clear();
         }
     };
     struct ObjSuper : public Obj {
@@ -1534,9 +1550,11 @@ namespace jc {
         bool hasRestParam = false;
         bool isUFCS = false; // ★ 新增：标记是否为 UFCS 绑定的全局函数
         bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
+        bool is_local = false; // ★ 新增：标记是否为私有方法
 
         Value boundSelf;
         Value boundClass;
+        ObjClass* owner_class = nullptr; // ★ 新增：闭包定义时所在的类（用于私有属性访问控制）
 
         int minArgs() const {
             int count = static_cast<int>(paramNames.size());
@@ -2635,6 +2653,7 @@ inline void GcHeap::markObj(Obj* obj) {
             auto closure = static_cast<ObjClosure*>(obj);
             markValue(closure->boundSelf);
             markValue(closure->boundClass);
+            markObj(closure->owner_class);
             for (auto& v : closure->defaultValues) markValue(v);
             for (int i = 0; i < closure->upvalueCount; ++i) {
                 markObj(closure->upvalues[i]);
@@ -2651,13 +2670,18 @@ inline void GcHeap::markObj(Obj* obj) {
             auto cls = static_cast<ObjClass*>(obj);
             markObj(cls->parent);
             for (auto& [k, v] : cls->methods) markObj(v);
-            for (auto& [k, v] : cls->staticFields) markValue(v);
+            for (auto& [k, prop] : cls->staticFields) markValue(prop.val);
             break;
         }
         case ObjType::INSTANCE: {
             auto inst = static_cast<ObjInstance*>(obj);
             markObj(inst->classDef);
             markObj(inst->fields);
+            for (auto& [cls, props] : inst->private_fields) {
+                for (auto& [k, prop] : props) {
+                    markValue(prop.val);
+                }
+            }
             break;
         }
         case ObjType::SUPER_PROXY: {

@@ -2249,6 +2249,8 @@ namespace jc {
                     mProps.push_back({"returnType", transformQuote(m.returnType.get())});
                     mProps.push_back({"rawBody", std::make_unique<Literal>(m.rawBody, true)});
                     mProps.push_back({"body", transformQuote(m.body.get())});
+                    mProps.push_back({"isLocal", std::make_unique<Literal>(m.isLocal ? "true" : "false", false, false, true)});
+                    mProps.push_back({"isConst", std::make_unique<Literal>(m.isConst ? "true" : "false", false, false, true)});
                     methodsArgs.push_back(makeASTNodeCall("MethodDef", m.name.line, std::move(mProps)));
                 }
                 return std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(methodsArgs));
@@ -2266,9 +2268,26 @@ namespace jc {
                     pairArgs.push_back(std::make_unique<Literal>(f.name.lexeme, true));
                 }
                 pairArgs.push_back(transformQuote(f.value.get()));
+                pairArgs.push_back(std::make_unique<Literal>(f.isLocal ? "true" : "false", false, false, true));
+                pairArgs.push_back(std::make_unique<Literal>(f.isConst ? "true" : "false", false, false, true));
                 sfArgs.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
             }
             props.push_back({"staticFields", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(sfArgs))});
+
+            std::vector<std::unique_ptr<Expr>> ifArgs;
+            for (const auto& f : cls->instanceFields) {
+                std::vector<std::unique_ptr<Expr>> pairArgs;
+                if (!f.name.lexeme.empty() && f.name.lexeme[0] == '$') {
+                    pairArgs.push_back(makeGetNameExpr(f.name.lexeme.substr(1), f.name.line));
+                } else {
+                    pairArgs.push_back(std::make_unique<Literal>(f.name.lexeme, true));
+                }
+                pairArgs.push_back(transformQuote(f.value.get()));
+                pairArgs.push_back(std::make_unique<Literal>(f.isLocal ? "true" : "false", false, false, true));
+                pairArgs.push_back(std::make_unique<Literal>(f.isConst ? "true" : "false", false, false, true));
+                ifArgs.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
+            }
+            props.push_back({"instanceFields", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(ifArgs))});
             
             return makeASTNodeCall("ClassDefExpr", cls->name.line, std::move(props));
         }
@@ -2899,12 +2918,27 @@ namespace jc {
         std::vector<ClassDefExpr::MethodDef> methods;
         std::vector<ClassDefExpr::MethodDef> staticMethods;
         std::vector<ClassDefExpr::StaticFieldDef> staticFields;
+        std::vector<ClassDefExpr::InstanceFieldDef> instanceFields;
 
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
             if (check(TokenType::RBRACE)) break;
 
-            bool isStatic = match({ TokenType::STATIC });
+            bool isStatic = false, isLocal = false, isConst = false;
+            while (true) {
+                if (match({ TokenType::STATIC })) {
+                    if (isStatic) throw std::runtime_error("Parser Error: Duplicate 'static' modifier.");
+                    isStatic = true;
+                } else if (match({ TokenType::LOCAL })) {
+                    if (isLocal) throw std::runtime_error("Parser Error: Duplicate 'local' modifier.");
+                    isLocal = true;
+                } else if (match({ TokenType::CONST })) {
+                    if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                    isConst = true;
+                } else {
+                    break;
+                }
+            }
 
             Token memberName(TokenType::ERROR, "");
             if (match({ TokenType::DOLLAR })) {
@@ -2914,9 +2948,13 @@ namespace jc {
                 memberName = consume(TokenType::IDENTIFIER, "Parser Error: Expect method or field name.");
             }
 
-            if (isStatic && match({ TokenType::ASSIGN })) {
+            if (match({ TokenType::ASSIGN })) {
                 auto value = ternary();
-                staticFields.push_back({ memberName, std::move(value) });
+                if (isStatic) {
+                    staticFields.push_back({ memberName, std::move(value), isLocal, isConst });
+                } else {
+                    instanceFields.push_back({ memberName, std::move(value), isLocal, isConst });
+                }
             } else {
                 consume(TokenType::LPAREN, "Parser Error: Expect '(' after method name.");
 
@@ -3033,7 +3071,10 @@ namespace jc {
                     hasRestParam,
                     paramTypes, retType, // ★ 加载进入结构体
                     std::move(rawBody),
-                    std::move(finalBody)
+                    std::move(finalBody),
+                    -1,
+                    isLocal,
+                    isConst
                 };
 
                 if (isStatic) {
@@ -3049,7 +3090,7 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after class body.");
-        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(methods), std::move(staticMethods), std::move(staticFields));
+        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(methods), std::move(staticMethods), std::move(staticFields), std::move(instanceFields));
         if (isNamed) {
             return std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false);
         }

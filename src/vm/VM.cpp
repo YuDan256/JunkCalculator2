@@ -1228,7 +1228,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         auto it = cls->staticFields.find(keyVal.asString());
-        if (it != cls->staticFields.end()) {
+        if (it != cls->staticFields.end() && !it->second.is_local) {
             Value fv = it->second.val;
             if (fv.isFunctionClosure()) {
                 method = fv.asFunction();

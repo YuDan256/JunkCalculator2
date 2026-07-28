@@ -146,15 +146,17 @@ namespace jc {
         StringMatrix mat;
         ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
     };
-    struct ClassProperty;
-    struct PrivateProperty;
+    struct PropertyDescriptor {
+        Value val;
+        bool is_const = false;
+        bool is_local = false;
+    };
 
     struct ObjClass : public Obj {
         uint64_t classId;
         std::string name;
         ObjClass* parent = nullptr;
-        std::map<std::string, ObjClosure*> methods;
-        std::unordered_map<std::string, ClassProperty> staticFields;
+        std::unordered_map<std::string, PropertyDescriptor> properties;
         bool is_native = false;
         std::function<Value(const std::vector<Value>&)> native_allocator;
         ObjClass() { 
@@ -230,9 +232,7 @@ namespace jc {
 
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
-        ObjDict* fields = nullptr;
-        std::unordered_set<std::string> const_fields;
-        std::vector<std::pair<ObjClass*, std::vector<std::pair<Value, PrivateProperty>>>> private_fields;
+        std::unordered_map<std::string, PropertyDescriptor> properties;
         
         std::any nativeData;
         void* c_nativeData = nullptr;
@@ -685,8 +685,7 @@ namespace jc {
         }
         c_nativeData = nullptr;
         c_nativeDtor = nullptr;
-        const_fields.clear();
-        private_fields.clear();
+        properties.clear();
     }
 
     struct RuntimeError : public std::exception {
@@ -1689,15 +1688,8 @@ namespace jc {
                     c = c->parent;
                 }
                 if (inst->is_frozen) {
-                    if (inst->fields) {
-                        for (const auto& [k, v] : inst->fields->elements) {
-                            try { if (!v.isHashable()) return false; } catch (...) { return false; }
-                        }
-                    }
-                    for (const auto& clsPair : inst->private_fields) {
-                        for (const auto& propPair : clsPair.second) {
-                            try { if (!propPair.second.val.isHashable()) return false; } catch (...) { return false; }
-                        }
+                    for (const auto& [k, prop] : inst->properties) {
+                        try { if (!prop.val.isHashable()) return false; } catch (...) { return false; }
                     }
                     inst->is_hashable_cached = true;
                     return true;
@@ -1863,56 +1855,19 @@ namespace jc {
                     if (found) return res.truthy();
                     auto inst2 = static_cast<ObjInstance*>(robj);
                     if (inst1->is_frozen && inst2->is_frozen && inst1->classDef == inst2->classDef) {
-                        if (inst1->fields && !inst2->fields) return false;
-                        if (!inst1->fields && inst2->fields) return false;
-                        if (inst1->fields && inst2->fields) {
-                            if (inst1->fields->elements.size() != inst2->fields->elements.size()) return false;
-                        }
-                        if (inst1->private_fields.size() != inst2->private_fields.size()) return false;
+                        if (inst1->properties.size() != inst2->properties.size()) return false;
                         
                         auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                         if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
                         CompGuard guard(comparingPairs, pair);
-                        bool eq = true;
                         
-                        if (inst1->fields) {
-                            for (const auto& [k, v] : inst1->fields->elements) {
-                                auto it = inst2->fields->keyMap.find(k);
-                                if (it == inst2->fields->keyMap.end()) { eq = false; break; }
-                                try { if (!equals(v, inst2->fields->elements[it->second].second)) { eq = false; break; } }
-                                catch (...) { eq = false; break; }
-                            }
+                        for (const auto& [k, prop1] : inst1->properties) {
+                            auto it = inst2->properties.find(k);
+                            if (it == inst2->properties.end()) return false;
+                            try { if (!equals(prop1.val, it->second.val)) return false; }
+                            catch (...) { return false; }
                         }
-                        if (!eq) return false;
-                        
-                        for (const auto& clsPair1 : inst1->private_fields) {
-                            bool foundCls = false;
-                            for (const auto& clsPair2 : inst2->private_fields) {
-                                if (clsPair1.first == clsPair2.first) {
-                                    foundCls = true;
-                                    const auto& props1 = clsPair1.second;
-                                    const auto& props2 = clsPair2.second;
-                                    if (props1.size() != props2.size()) { eq = false; break; }
-                                    for (const auto& propPair1 : props1) {
-                                        bool foundProp = false;
-                                        for (const auto& propPair2 : props2) {
-                                            if (propPair1.first.as_bits == propPair2.first.as_bits) {
-                                                foundProp = true;
-                                                try { if (!equals(propPair1.second.val, propPair2.second.val)) { eq = false; break; } }
-                                                catch (...) { eq = false; break; }
-                                                break;
-                                            }
-                                        }
-                                        if (!foundProp) { eq = false; break; }
-                                        if (!eq) break;
-                                    }
-                                    break;
-                                }
-                            }
-                            if (!foundCls) { eq = false; break; }
-                            if (!eq) break;
-                        }
-                        return eq;
+                        return true;
                     }
                     return false;
                 }
@@ -2473,25 +2428,19 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             if (!printedNative) {
                 os << "<" << prefix << " {";
                 bool first = true;
-                if (inst->fields) {
-                    for (size_t i = 0; i < inst->fields->elements.size(); ++i) {
-                        if (!first) os << ", ";
-                        try { printNested(inst->fields->elements[i].first); } catch (...) { os << "?"; }
-                        os << ": ";
-                        try { printNested(inst->fields->elements[i].second); } catch (...) { os << "?"; }
-                        first = false;
-                    }
-                }
-                std::map<std::string, Value> sorted_privates;
-                for (const auto& clsPair : inst->private_fields) {
-                    for (const auto& propPair : clsPair.second) {
-                        sorted_privates[propPair.first.asString()] = propPair.second.val;
-                    }
-                }
-                for (const auto& [k, propVal] : sorted_privates) {
+                std::map<std::string, PropertyDescriptor> sorted_props(inst->properties.begin(), inst->properties.end());
+                for (const auto& [k, prop] : sorted_props) {
                     if (!first) os << ", ";
-                    os << "local " << k << ": ";
-                    try { printNested(propVal); } catch (...) { os << "?"; }
+                    if (prop.is_local) os << "local ";
+                    if (prop.is_const) os << "const ";
+                    
+                    // Demangle private names for display
+                    std::string dispName = k;
+                    size_t pos = dispName.find("::");
+                    if (pos != std::string::npos) dispName = dispName.substr(pos + 2);
+                    
+                    os << dispName << ": ";
+                    try { printNested(prop.val); } catch (...) { os << "?"; }
                     first = false;
                 }
                 os << "}>";
@@ -2662,38 +2611,18 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 if (inst->has_cached_hash) return inst->cached_hash;
                 std::string cname = inst->classDef ? inst->classDef->name : "";
                 size_t seed = sipHash24String(cname);
-                if (inst->fields) {
-                    size_t sz = inst->fields->elements.size();
-                    size_t fields_hash = sipHash24(&sz, sizeof(size_t)) ^ 0xE7B2A4D8F1C56039ULL;
-                    for (const auto& [k, val] : inst->fields->elements) {
-                        size_t k_hash = ValueHasher{}(k);
-                        size_t v_hash = ValueHasher{}(val);
-                        size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
-                        kv_hash *= 0xBF58476D1CE4E5B9ULL;
-                        kv_hash ^= kv_hash >> 31;
-                        kv_hash *= 0x94D049BB133111EBULL;
-                        fields_hash += kv_hash;
-                    }
-                    seed ^= fields_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                size_t sz = inst->properties.size();
+                size_t fields_hash = sipHash24(&sz, sizeof(size_t)) ^ 0xE7B2A4D8F1C56039ULL;
+                for (const auto& [k, prop] : inst->properties) {
+                    size_t k_hash = sipHash24String(k);
+                    size_t v_hash = ValueHasher{}(prop.val);
+                    size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
+                    kv_hash *= 0xBF58476D1CE4E5B9ULL;
+                    kv_hash ^= kv_hash >> 31;
+                    kv_hash *= 0x94D049BB133111EBULL;
+                    fields_hash += kv_hash;
                 }
-                size_t total_private_hash = 0;
-                for (const auto& clsPair : inst->private_fields) {
-                    size_t cls_hash = sipHash24String(clsPair.first->name);
-                    size_t sz = clsPair.second.size();
-                    size_t fields_hash = sipHash24(&sz, sizeof(size_t)) ^ 0xD6A193C7E0B45028ULL;
-                    for (const auto& propPair : clsPair.second) {
-                        size_t k_hash = ValueHasher{}(propPair.first);
-                        size_t v_hash = ValueHasher{}(propPair.second.val);
-                        size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
-                        kv_hash *= 0xBF58476D1CE4E5B9ULL;
-                        kv_hash ^= kv_hash >> 31;
-                        kv_hash *= 0x94D049BB133111EBULL;
-                        fields_hash += kv_hash;
-                    }
-                    size_t cls_props_hash = cls_hash ^ (fields_hash + 0x9e3779b9 + (cls_hash << 6) + (cls_hash >> 2));
-                    total_private_hash += cls_props_hash; // ★ 修复：unordered_map 遍历顺序不确定，必须使用满足交换律的累加方式
-                }
-                seed ^= total_private_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                seed ^= fields_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                 inst->cached_hash = seed;
                 inst->has_cached_hash = true;
                 return seed;
@@ -2747,21 +2676,13 @@ inline void GcHeap::markObj(Obj* obj) {
         case ObjType::CLASS: {
             auto cls = static_cast<ObjClass*>(obj);
             markObj(cls->parent);
-            for (auto& [k, v] : cls->methods) markObj(v);
-            for (auto& [k, prop] : cls->staticFields) markValue(prop.val);
+            for (auto& [k, prop] : cls->properties) markValue(prop.val);
             break;
         }
         case ObjType::INSTANCE: {
             auto inst = static_cast<ObjInstance*>(obj);
             markObj(inst->classDef);
-            markObj(inst->fields);
-            for (auto& clsPair : inst->private_fields) {
-                markObj(clsPair.first); // ★ 修复：必须标记作为键的类对象，防止其被 GC 误杀导致野指针
-                for (auto& propPair : clsPair.second) {
-                    markValue(propPair.first);
-                    markValue(propPair.second.val);
-                }
-            }
+            for (auto& [k, prop] : inst->properties) markValue(prop.val);
             break;
         }
         case ObjType::SUPER_PROXY: {

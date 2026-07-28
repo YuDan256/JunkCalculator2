@@ -1257,24 +1257,24 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
 }
 
 void IRBuilder::build(Expr* ast) {
-    if (isInitMethod && instanceFieldsToInit) {
-        for (auto& f : *instanceFieldsToInit) {
-            f.value->accept(*this);
+    if (isInitMethod && instancePropertiesToInit) {
+        for (auto* f : *instancePropertiesToInit) {
+            f->value->accept(*this);
             IRNode* valNode = lastValue;
             IRNode* selfNode = graph->createValueNode(IROp::GetSelf);
             selfNode->setControl(currentControl);
             
             IROp op;
-            if (f.isLocal && f.isConst) op = IROp::DefinePrivateConst;
-            else if (f.isLocal) op = IROp::DefinePrivate;
-            else if (f.isConst) op = IROp::DefinePropConst;
+            if (f->isLocal && f->isConst) op = IROp::DefinePrivateConst;
+            else if (f->isLocal) op = IROp::DefinePrivate;
+            else if (f->isConst) op = IROp::DefinePropConst;
             else op = IROp::DefineProp;
             
             IRNode* defNode = graph->createValueNode(op);
             defNode->setControl(currentControl);
             defNode->addData(selfNode);
             defNode->addData(valNode);
-            defNode->name = f.name.lexeme;
+            defNode->name = f->name.lexeme;
             currentControl = defNode;
         }
     }
@@ -3537,29 +3537,30 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         }
     };
     
-    for (auto& m : expr->methods) checkRedef(m.name.lexeme, false);
-    for (auto& f : expr->instanceFields) checkRedef(f.name.lexeme, false);
-    for (auto& m : expr->staticMethods) checkRedef(m.name.lexeme, true);
-    for (auto& f : expr->staticFields) checkRedef(f.name.lexeme, true);
+    for (auto& p : expr->staticProperties) checkRedef(p.name.lexeme, true);
+    for (auto& p : expr->instanceProperties) checkRedef(p.name.lexeme, false);
 
     ClassContext ctx;
     ctx.name = expr->name.lexeme;
-    for (auto& m : expr->methods) if (m.isLocal) ctx.privateMembers.insert(m.name.lexeme);
-    for (auto& f : expr->instanceFields) if (f.isLocal) ctx.privateMembers.insert(f.name.lexeme);
-    for (auto& m : expr->staticMethods) if (m.isLocal) ctx.privateMembers.insert(m.name.lexeme);
-    for (auto& f : expr->staticFields) if (f.isLocal) ctx.privateMembers.insert(f.name.lexeme);
+    for (auto& p : expr->staticProperties) if (p.isLocal) ctx.privateMembers.insert(p.name.lexeme);
+    for (auto& p : expr->instanceProperties) if (p.isLocal) ctx.privateMembers.insert(p.name.lexeme);
     classStack.push_back(ctx);
 
+    std::vector<ClassDefExpr::PropertyDef*> fieldsToInit;
     bool hasInit = false;
-    for (auto& m : expr->methods) { if (m.name.lexeme == "init") hasInit = true; }
-    if (!hasInit && !expr->instanceFields.empty()) {
-        ClassDefExpr::MethodDef initDef = {
-            Token(TokenType::IDENTIFIER, "init", expr->name.line),
-            {}, {}, {}, {}, false, {}, nullptr, "",
-            std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>()),
-            -1, false, false
-        };
-        expr->methods.push_back(std::move(initDef));
+    for (auto& p : expr->instanceProperties) {
+        if (p.name.lexeme == "init") hasInit = true;
+        if (!dynamic_cast<LambdaExpr*>(p.value.get())) {
+            fieldsToInit.push_back(&p);
+        }
+    }
+    
+    if (!hasInit && !fieldsToInit.empty()) {
+        auto initBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
+        auto initLambda = std::make_unique<LambdaExpr>(
+            "init", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, false, std::vector<std::shared_ptr<Expr>>{}, nullptr, "", initBody
+        );
+        expr->instanceProperties.push_back({Token(TokenType::IDENTIFIER, "init", expr->name.line), std::move(initLambda), false, false});
     }
 
     IRNode* classNode = graph->createValueNode(IROp::Class);
@@ -3587,236 +3588,51 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         currentConstVars.insert(expr->name.lexeme);
     }
         
-    for (auto& method : expr->methods) {
-        std::vector<IRNode*> paramTypeNodes;
-        for (auto& pt : method.paramTypes) {
-            if (pt) {
-                pt->accept(*this);
-                paramTypeNodes.push_back(lastValue);
-            } else {
-                paramTypeNodes.push_back(nullptr);
-            }
-        }
-        IRNode* retTypeNode = nullptr;
-        if (method.returnType) {
-            method.returnType->accept(*this);
-            retTypeNode = lastValue;
-        }
-
-        if (compiledFunctions) {
-            auto fnDef = std::make_shared<CompiledFunction>();
-            fnDef->name = method.name.lexeme;
+    for (auto& p : expr->instanceProperties) {
+        if (auto* lambda = dynamic_cast<LambdaExpr*>(p.value.get())) {
+            bool isInit = (p.name.lexeme == "init");
             
-            IRGraph fnGraph;
-            IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
-            if (method.name.lexeme == "init") {
-                fnBuilder.isInitMethod = true;
-                fnBuilder.instanceFieldsToInit = &expr->instanceFields;
+            if (isInit) {
+                this->isInitMethod = true;
+                this->instancePropertiesToInit = &fieldsToInit;
             }
             
-            fnBuilder.currentReturnTypeHint = method.returnType;
-            fnBuilder.buildFunctionParams(method.params, method.defaultExprs, method.hasRestParam, method.paramIsRef, method.paramIsConst, method.paramTypes);
+            lambda->accept(*this);
+            IRNode* closureNode = lastValue;
             
-            fnBuilder.build(method.body.get());
-            
-            if (g_showIR) fnGraph.print("Method '" + method.name.lexeme + "' Unoptimized");
-            
-            IROptimizer::optimize(&fnGraph);
-            if (g_showIR) fnGraph.print("Method '" + method.name.lexeme + "' Optimized");
-            
-            RegisterAllocator::allocate(&fnGraph);
-            if (g_showIR) fnGraph.print("Method '" + method.name.lexeme + "' Allocated");
-            
-            for (auto& target : fnBuilder.upvalueTargets) {
-                if (target.isLocal && target.localNode) {
-                    IRNode* localNode = target.localNode;
-                    int upvalIdx = target.index;
-                    CompiledFunction* childFn = fnDef.get();
-                    this->graph->postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
-                        childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
-                    });
-                }
+            if (isInit) {
+                this->isInitMethod = false;
+                this->instancePropertiesToInit = nullptr;
             }
             
-            fnDef->localCount = Emitter::emit(&fnGraph, fnDef->chunk);
-            
-            compiledFunctions->push_back(fnDef);
-            method.fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
-            
-            IRNode* methodClosure = graph->createValueNode(IROp::Closure);
-            methodClosure->setControl(currentControl);
-            methodClosure->name = std::to_string(method.fnIdx);
-            
-            for (auto& target : fnBuilder.upvalueTargets) {
-                if (target.isLocal && target.localNode) {
-                    methodClosure->addData(target.localNode);
-                }
-            }
-
-            CompiledFunction* childFn = fnDef.get();
-            for (size_t i = 0; i < paramTypeNodes.size(); ++i) {
-                IRNode* pNode = paramTypeNodes[i];
-                this->graph->postAllocCallbacks.push_back([childFn, i, pNode]() {
-                    if (childFn->paramTypeRegs.size() <= i) childFn->paramTypeRegs.resize(i + 1, -1);
-                    childFn->paramTypeRegs[i] = pNode ? pNode->getResolved()->physicalReg : -1;
-                });
-                if (pNode) methodClosure->addData(pNode);
-            }
-            this->graph->postAllocCallbacks.push_back([childFn, retTypeNode]() {
-                childFn->returnTypeReg = retTypeNode ? retTypeNode->getResolved()->physicalReg : -1;
-            });
-            if (retTypeNode) methodClosure->addData(retTypeNode);
-
             IROp methodOp = IROp::Method;
-            if (method.isLocal && method.isConst) methodOp = IROp::MethodPrivateConst;
-            else if (method.isLocal) methodOp = IROp::MethodPrivate;
-            else if (method.isConst) methodOp = IROp::MethodConst;
+            if (p.isLocal && p.isConst) methodOp = IROp::MethodPrivateConst;
+            else if (p.isLocal) methodOp = IROp::MethodPrivate;
+            else if (p.isConst) methodOp = IROp::MethodConst;
 
             IRNode* methodNode = graph->createNode(methodOp);
             methodNode->setControl(currentControl);
             methodNode->addData(classNode);
-            methodNode->addData(methodClosure);
-            methodNode->name = method.name.lexeme;
-            currentControl = methodNode;
-        } else {
-            IRNode* methodClosure = graph->createValueNode(IROp::Closure);
-            methodClosure->setControl(currentControl);
-            methodClosure->name = std::to_string(method.fnIdx);
-
-            IROp methodOp = IROp::Method;
-            if (method.isLocal && method.isConst) methodOp = IROp::MethodPrivateConst;
-            else if (method.isLocal) methodOp = IROp::MethodPrivate;
-            else if (method.isConst) methodOp = IROp::MethodConst;
-
-            IRNode* methodNode = graph->createNode(methodOp);
-            methodNode->setControl(currentControl);
-            methodNode->addData(classNode);
-            methodNode->addData(methodClosure);
-            methodNode->name = method.name.lexeme;
+            methodNode->addData(closureNode);
+            methodNode->name = p.name.lexeme;
             currentControl = methodNode;
         }
     }
 
-    for (auto& method : expr->staticMethods) {
-        std::vector<IRNode*> paramTypeNodes;
-        for (auto& pt : method.paramTypes) {
-            if (pt) {
-                pt->accept(*this);
-                paramTypeNodes.push_back(lastValue);
-            } else {
-                paramTypeNodes.push_back(nullptr);
-            }
-        }
-        IRNode* retTypeNode = nullptr;
-        if (method.returnType) {
-            method.returnType->accept(*this);
-            retTypeNode = lastValue;
-        }
-
-        if (compiledFunctions) {
-            auto fnDef = std::make_shared<CompiledFunction>();
-            fnDef->name = method.name.lexeme;
-            
-            IRGraph fnGraph;
-            IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
-            
-            fnBuilder.currentReturnTypeHint = method.returnType;
-            fnBuilder.buildFunctionParams(method.params, method.defaultExprs, method.hasRestParam, method.paramIsRef, method.paramIsConst, method.paramTypes);
-            
-            fnBuilder.build(method.body.get());
-            
-            if (g_showIR) fnGraph.print("Static Method '" + method.name.lexeme + "' Unoptimized");
-            
-            IROptimizer::optimize(&fnGraph);
-            if (g_showIR) fnGraph.print("Static Method '" + method.name.lexeme + "' Optimized");
-            
-            RegisterAllocator::allocate(&fnGraph);
-            if (g_showIR) fnGraph.print("Static Method '" + method.name.lexeme + "' Allocated");
-            
-            for (auto& target : fnBuilder.upvalueTargets) {
-                if (target.isLocal && target.localNode) {
-                    IRNode* localNode = target.localNode;
-                    int upvalIdx = target.index;
-                    CompiledFunction* childFn = fnDef.get();
-                    this->graph->postAllocCallbacks.push_back([childFn, upvalIdx, localNode]() {
-                        childFn->upvalues[upvalIdx].index = localNode->getResolved()->physicalReg;
-                    });
-                }
-            }
-            
-            fnDef->localCount = Emitter::emit(&fnGraph, fnDef->chunk);
-            
-            compiledFunctions->push_back(fnDef);
-            method.fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
-            
-            IRNode* methodClosure = graph->createValueNode(IROp::Closure);
-            methodClosure->setControl(currentControl);
-            methodClosure->name = std::to_string(method.fnIdx);
-            
-            for (auto& target : fnBuilder.upvalueTargets) {
-                if (target.isLocal && target.localNode) {
-                    methodClosure->addData(target.localNode);
-                }
-            }
-
-            CompiledFunction* childFn = fnDef.get();
-            for (size_t i = 0; i < paramTypeNodes.size(); ++i) {
-                IRNode* pNode = paramTypeNodes[i];
-                this->graph->postAllocCallbacks.push_back([childFn, i, pNode]() {
-                    if (childFn->paramTypeRegs.size() <= i) childFn->paramTypeRegs.resize(i + 1, -1);
-                    childFn->paramTypeRegs[i] = pNode ? pNode->getResolved()->physicalReg : -1;
-                });
-                if (pNode) methodClosure->addData(pNode);
-            }
-            this->graph->postAllocCallbacks.push_back([childFn, retTypeNode]() {
-                childFn->returnTypeReg = retTypeNode ? retTypeNode->getResolved()->physicalReg : -1;
-            });
-            if (retTypeNode) methodClosure->addData(retTypeNode);
-
-            IROp propOp = IROp::SetProperty;
-            if (method.isLocal && method.isConst) propOp = IROp::DefinePrivateConst;
-            else if (method.isLocal) propOp = IROp::DefinePrivate;
-            else if (method.isConst) propOp = IROp::DefinePropConst;
-
-            IRNode* setPropNode = graph->createValueNode(propOp);
-            setPropNode->setControl(currentControl);
-            setPropNode->addData(classNode);
-            setPropNode->addData(methodClosure);
-            setPropNode->name = method.name.lexeme;
-            currentControl = setPropNode;
-        } else {
-            IRNode* methodClosure = graph->createValueNode(IROp::Closure);
-            methodClosure->setControl(currentControl);
-            methodClosure->name = std::to_string(method.fnIdx);
-
-            IROp propOp = IROp::SetProperty;
-            if (method.isLocal && method.isConst) propOp = IROp::DefinePrivateConst;
-            else if (method.isLocal) propOp = IROp::DefinePrivate;
-            else if (method.isConst) propOp = IROp::DefinePropConst;
-
-            IRNode* setPropNode = graph->createValueNode(propOp);
-            setPropNode->setControl(currentControl);
-            setPropNode->addData(classNode);
-            setPropNode->addData(methodClosure);
-            setPropNode->name = method.name.lexeme;
-            currentControl = setPropNode;
-        }
-    }
-
-    for (auto& field : expr->staticFields) {
-        field.value->accept(*this);
+    for (auto& p : expr->staticProperties) {
+        p.value->accept(*this);
         IRNode* valNode = lastValue;
 
         IROp propOp = IROp::SetProperty;
-        if (field.isLocal && field.isConst) propOp = IROp::DefinePrivateConst;
-        else if (field.isLocal) propOp = IROp::DefinePrivate;
-        else if (field.isConst) propOp = IROp::DefinePropConst;
+        if (p.isLocal && p.isConst) propOp = IROp::DefinePrivateConst;
+        else if (p.isLocal) propOp = IROp::DefinePrivate;
+        else if (p.isConst) propOp = IROp::DefinePropConst;
 
         IRNode* setPropNode = graph->createValueNode(propOp);
         setPropNode->setControl(currentControl);
         setPropNode->addData(classNode);
         setPropNode->addData(valNode);
-        setPropNode->name = field.name.lexeme;
+        setPropNode->name = p.name.lexeme;
         currentControl = setPropNode;
     }
         

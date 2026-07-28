@@ -37,7 +37,7 @@ private:
     };
     std::vector<ClassContext> classStack;
     bool isInitMethod = false;
-    std::vector<ClassDefExpr::InstanceFieldDef>* instanceFieldsToInit = nullptr;
+    std::vector<ClassDefExpr::PropertyDef*>* instancePropertiesToInit = nullptr;
 
     void pushScope() {
         envStack.emplace_back();

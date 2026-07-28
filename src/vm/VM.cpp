@@ -41,18 +41,16 @@ Value VM::makeTokenInstance(const Token& t) {
     
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
     inst->classDef = static_cast<ObjClass*>(tokenClassVal.asObj());
-    inst->fields = GcHeap::get().allocate<ObjDict>();
-    
     std::string typeStr = tokenTypeToString(t.type);
     size_t paren = typeStr.find('(');
     if (paren != std::string::npos) {
         typeStr = typeStr.substr(0, paren);
     }
     
-    inst->fields->set(Value("type"), Value(typeStr));
-    inst->fields->set(Value("lexeme"), Value(t.lexeme));
-    inst->fields->set(Value("line"), Value::fromInt32(t.line));
-    inst->fields->set(Value("position"), Value::fromInt32(t.position));
+    inst->properties["type"] = {Value(typeStr), false, false};
+    inst->properties["lexeme"] = {Value(t.lexeme), false, false};
+    inst->properties["line"] = {Value::fromInt32(t.line), false, false};
+    inst->properties["position"] = {Value::fromInt32(t.position), false, false};
     
     return Value(inst);
 }
@@ -131,10 +129,10 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             if (currentException) {
                 Value deferEx = wrapException("Exception", ex.val);
                 auto inst = currentException->asInstance();
-                if (inst && inst->fields) {
-                    auto it = inst->fields->keyMap.find(Value("suppressed"));
-                    if (it != inst->fields->keyMap.end()) {
-                        Value suppList = inst->fields->elements[it->second].second;
+                if (inst) {
+                    auto it = inst->properties.find("suppressed");
+                    if (it != inst->properties.end()) {
+                        Value suppList = it->second.val;
                         if (suppList.isObjType(ObjType::LIST)) {
                             static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
                         }
@@ -147,10 +145,10 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             if (currentException) {
                 Value deferEx = wrapException(ex.type, ex.message);
                 auto inst = currentException->asInstance();
-                if (inst && inst->fields) {
-                    auto it = inst->fields->keyMap.find(Value("suppressed"));
-                    if (it != inst->fields->keyMap.end()) {
-                        Value suppList = inst->fields->elements[it->second].second;
+                if (inst) {
+                    auto it = inst->properties.find("suppressed");
+                    if (it != inst->properties.end()) {
+                        Value suppList = it->second.val;
                         if (suppList.isObjType(ObjType::LIST)) {
                             static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
                         }
@@ -177,10 +175,10 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
                 }
                 Value deferEx = wrapException(type, Value(msg));
                 auto inst = currentException->asInstance();
-                if (inst && inst->fields) {
-                    auto it = inst->fields->keyMap.find(Value("suppressed"));
-                    if (it != inst->fields->keyMap.end()) {
-                        Value suppList = inst->fields->elements[it->second].second;
+                if (inst) {
+                    auto it = inst->properties.find("suppressed");
+                    if (it != inst->properties.end()) {
+                        Value suppList = it->second.val;
                         if (suppList.isObjType(ObjType::LIST)) {
                             static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
                         }
@@ -193,10 +191,10 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             if (currentException) {
                 Value deferEx = wrapException("Exception", Value("Unknown Error in defer"));
                 auto inst = currentException->asInstance();
-                if (inst && inst->fields) {
-                    auto it = inst->fields->keyMap.find(Value("suppressed"));
-                    if (it != inst->fields->keyMap.end()) {
-                        Value suppList = inst->fields->elements[it->second].second;
+                if (inst) {
+                    auto it = inst->properties.find("suppressed");
+                    if (it != inst->properties.end()) {
+                        Value suppList = it->second.val;
                         if (suppList.isObjType(ObjType::LIST)) {
                             static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
                         }
@@ -526,9 +524,9 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
         ObjClosure* initMethod = nullptr;
         auto c = cls;
         while (c) {
-            auto it = c->methods.find("init");
-            if (it != c->methods.end()) {
-                initMethod = it->second;
+            auto it = c->properties.find("init");
+            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                initMethod = it->second.val.asFunction();
                 break;
             }
             c = c->parent;
@@ -664,9 +662,9 @@ void VM::execCall(int calleeReg, int argc, int dstReg, bool isTailCall) {
         ObjClass* owningClass = nullptr;
         auto c = inst->classDef;
         while (c) {
-            auto it = c->methods.find("__call__");
-            if (it != c->methods.end()) {
-                method = it->second;
+            auto it = c->properties.find("__call__");
+            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                method = it->second.val.asFunction();
                 owningClass = c;
                 break;
             }
@@ -840,8 +838,10 @@ std::pair<ObjClosure*, ObjClass*> VM::findDunder(const Value& val, const std::st
     auto inst = val.asInstance();
     auto c = inst->classDef;
     while (c) {
-        auto it = c->methods.find(name);
-        if (it != c->methods.end()) return {it->second, c};
+        auto it = c->properties.find(name);
+        if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+            return {it->second.val.asFunction(), c};
+        }
         c = c->parent;
     }
     return {nullptr, nullptr};
@@ -1140,38 +1140,40 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
             
-            for (auto& clsPair : inst->private_fields) {
-                if (clsPair.first == owner) {
-                    for (auto& propPair : clsPair.second) {
-                        if (propPair.first.asString() == methodName) {
-                            Value fv = propPair.second.val;
-                            if (fv.isFunctionClosure()) {
-                                method = fv.asFunction();
-                                owningClass = owner;
-                                goto invoke_method;
-                            } else {
-                                registers[currentFrame->registerBase + a] = fv;
-                                execCall(a, b, a, isTailCall);
-                                return;
-                            }
-                        }
-                    }
-                    break;
+            std::string mangledName = owner->name + "::" + methodName;
+            auto it = inst->properties.find(mangledName);
+            if (it != inst->properties.end()) {
+                Value fv = it->second.val;
+                if (fv.isFunctionClosure()) {
+                    method = fv.asFunction();
+                    owningClass = owner;
+                    goto invoke_method;
+                } else {
+                    registers[currentFrame->registerBase + a] = fv;
+                    execCall(a, b, a, isTailCall);
+                    return;
                 }
             }
             
-            auto it = owner->methods.find(methodName);
-            if (it != owner->methods.end() && it->second->is_local) {
-                method = it->second;
-                owningClass = owner;
-                goto invoke_method;
+            auto cit = owner->properties.find(methodName);
+            if (cit != owner->properties.end() && cit->second.is_local) {
+                Value fv = cit->second.val;
+                if (fv.isFunctionClosure()) {
+                    method = fv.asFunction();
+                    owningClass = owner;
+                    goto invoke_method;
+                } else {
+                    registers[currentFrame->registerBase + a] = fv;
+                    execCall(a, b, a, isTailCall);
+                    return;
+                }
             }
             
             throw std::runtime_error("VM Error: Private method '" + methodName + "' not found.");
         } else if (obj.isClass()) {
             auto cls = static_cast<ObjClass*>(obj.asObj());
-            auto it = cls->staticFields.find(methodName);
-            if (it != cls->staticFields.end() && it->second.is_local) {
+            auto it = cls->properties.find(methodName);
+            if (it != cls->properties.end() && it->second.is_local) {
                 Value fv = it->second.val;
                 if (fv.isFunctionClosure()) {
                     method = fv.asFunction();
@@ -1191,7 +1193,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
-            if (!inst->fields || inst->fields->keyMap.find(keyVal) == inst->fields->keyMap.end()) {
+            if (inst->properties.find(methodName) == inst->properties.end()) {
                 method = ic.cachedMethod;
                 owningClass = ic.cachedClass;
                 goto invoke_method;
@@ -1227,8 +1229,8 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
         }
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
-        auto it = cls->staticFields.find(keyVal.asString());
-        if (it != cls->staticFields.end() && !it->second.is_local) {
+        auto it = cls->properties.find(methodName);
+        if (it != cls->properties.end() && !it->second.is_local) {
             Value fv = it->second.val;
             if (fv.isFunctionClosure()) {
                 method = fv.asFunction();
@@ -1244,35 +1246,33 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
         bool foundInField = false;
 
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
-            if (!inst->fields || inst->fields->keyMap.find(keyVal) == inst->fields->keyMap.end()) {
+            if (inst->properties.find(methodName) == inst->properties.end()) {
                 method = ic.cachedMethod;
                 owningClass = inst->classDef;
                 goto invoke_method;
             }
         }
 
-        if (inst->fields) {
-            auto it = inst->fields->keyMap.find(keyVal);
-            if (it != inst->fields->keyMap.end()) {
-                Value fv = inst->fields->elements[it->second].second;
-                if (fv.isFunctionClosure()) {
-                    method = fv.asFunction();
-                    owningClass = inst->classDef;
-                    foundInField = true;
-                } else {
-                    registers[currentFrame->registerBase + a] = fv;
-                    execCall(a, b, a, isTailCall);
-                    return;
-                }
+        auto it = inst->properties.find(methodName);
+        if (it != inst->properties.end() && !it->second.is_local) {
+            Value fv = it->second.val;
+            if (fv.isFunctionClosure()) {
+                method = fv.asFunction();
+                owningClass = inst->classDef;
+                foundInField = true;
+            } else {
+                registers[currentFrame->registerBase + a] = fv;
+                execCall(a, b, a, isTailCall);
+                return;
             }
         }
 
         if (!foundInField) {
             auto c = inst->classDef;
             while (c) {
-                auto it = c->methods.find(methodName);
-                if (it != c->methods.end() && !it->second->is_local) {
-                    method = it->second;
+                auto cit = c->properties.find(methodName);
+                if (cit != c->properties.end() && !cit->second.is_local && cit->second.val.isFunctionClosure()) {
+                    method = cit->second.val.asFunction();
                     owningClass = c;
                     break;
                 }
@@ -1528,9 +1528,9 @@ void VM::execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall) {
     ObjClass* owningClass = nullptr;
     auto c = parentClass;
     while (c) {
-        auto it = c->methods.find(methodName);
-        if (it != c->methods.end() && !it->second->is_local) {
-            method = it->second;
+        auto it = c->properties.find(methodName);
+        if (it != c->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+            method = it->second.val.asFunction();
             owningClass = c;
             break;
         }
@@ -2504,13 +2504,11 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
 Value VM::wrapException(const std::string& type, Value val) {
     if (val.isInstance() && val.asInstance()->classDef->name == "Exception") {
         auto inst = val.asInstance();
-        if (inst->fields) {
-            auto it = inst->fields->keyMap.find(Value("traceback"));
-            if (it != inst->fields->keyMap.end()) {
-                Value tbVal = inst->fields->elements[it->second].second;
-                if (tbVal.isString() && tbVal.asString().empty()) {
-                    inst->fields->elements[it->second].second = Value(buildStackTrace());
-                }
+        auto it = inst->properties.find("traceback");
+        if (it != inst->properties.end()) {
+            Value tbVal = it->second.val;
+            if (tbVal.isString() && tbVal.asString().empty()) {
+                it->second.val = Value(buildStackTrace());
             }
         }
         return val;
@@ -2521,7 +2519,6 @@ Value VM::wrapException(const std::string& type, Value val) {
     
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
     inst->classDef = static_cast<ObjClass*>(classVal.asObj());
-    inst->fields = GcHeap::get().allocate<ObjDict>();
     
     if (val.isString()) {
         std::string msgStr = val.asString();
@@ -2534,10 +2531,10 @@ Value VM::wrapException(const std::string& type, Value val) {
         }
     }
     
-    inst->fields->set(Value("type"), Value(type));
-    inst->fields->set(Value("message"), val);
-    inst->fields->set(Value("traceback"), Value(buildStackTrace()));
-    inst->fields->set(Value("suppressed"), Value(GcHeap::get().allocate<ObjList>()));
+    inst->properties["type"] = {Value(type), false, false};
+    inst->properties["message"] = {val, false, false};
+    inst->properties["traceback"] = {Value(buildStackTrace()), false, false};
+    inst->properties["suppressed"] = {Value(GcHeap::get().allocate<ObjList>()), false, false};
     
     return Value(inst);
 }
@@ -4390,17 +4387,13 @@ Value VM::run(int targetFrameDepth) {
                                 if (noThrow) result = Value::uninit();
                                 else throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __getitem__ to support custom indexing.");
                             } else {
-                                bool found = false;
-                                if (inst->fields) {
-                                    auto it = inst->fields->keyMap.find(idx);
-                                    if (it != inst->fields->keyMap.end()) {
-                                        result = inst->fields->elements[it->second].second;
-                                        found = true;
-                                    }
-                                }
-                                if (!found) {
+                                std::string keyStr = idx.asString();
+                                auto it = inst->properties.find(keyStr);
+                                if (it != inst->properties.end() && !it->second.is_local) {
+                                    result = it->second.val;
+                                } else {
                                     if (noThrow) result = Value::uninit();
-                                    else throw std::runtime_error("VM Error: Property '" + idx.asString() + "' not found.");
+                                    else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
                                 }
                             }
                         }
@@ -4455,8 +4448,8 @@ Value VM::run(int targetFrameDepth) {
                                 if (noThrow) result = Value::uninit();
                                 else throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
                             } else {
-                                auto it = cls->staticFields.find(key);
-                                if (it == cls->staticFields.end() || it->second.is_local) {
+                                auto it = cls->properties.find(key);
+                                if (it == cls->properties.end() || it->second.is_local) {
                                     if (noThrow) result = Value::uninit();
                                     else throw std::runtime_error("VM Error: Static field not found in class.");
                                 } else {
@@ -4607,22 +4600,20 @@ Value VM::run(int targetFrameDepth) {
                                 throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __setitem__ to support custom indexing.");
                             } else {
                                 std::string keyStr = idx.asString();
-                                if (inst->const_fields.count(keyStr)) {
-                                    throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
-                                }
-                                for (const auto& clsPair : inst->private_fields) {
-                                    for (const auto& propPair : clsPair.second) {
-                                        if (propPair.first.asString() == keyStr) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                                auto it = inst->properties.find(keyStr);
+                                if (it != inst->properties.end()) {
+                                    if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
+                                    it->second.val = val;
+                                } else {
+                                    auto c_cls2 = inst->classDef;
+                                    while (c_cls2) {
+                                        auto cit = c_cls2->properties.find(keyStr);
+                                        if (cit != c_cls2->properties.end() && cit->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                                        c_cls2 = c_cls2->parent;
                                     }
+                                    inst->properties[keyStr] = {val, false, false};
                                 }
-                                auto c_cls2 = inst->classDef;
-                                while (c_cls2) {
-                                    auto it = c_cls2->methods.find(keyStr);
-                                    if (it != c_cls2->methods.end() && it->second->is_local) throw std::runtime_error("VM Error: Cannot access private method '" + keyStr + "' externally.");
-                                    c_cls2 = c_cls2->parent;
-                                }
-                                if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
-                                inst->fields->set(idx, val);
                             }
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
@@ -4666,13 +4657,13 @@ Value VM::run(int targetFrameDepth) {
                             return true;
                         };
                         if (!isValidId(key)) throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
-                        auto it = cls->staticFields.find(key);
-                        if (it != cls->staticFields.end()) {
+                        auto it = cls->properties.find(key);
+                        if (it != cls->properties.end()) {
                             if (it->second.is_local) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
                             if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
                             it->second.val = val;
                         } else {
-                            cls->staticFields[key] = ClassProperty{ val, false, false };
+                            cls->properties[key] = { val, false, false };
                         }
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 1D index set.");
@@ -4789,7 +4780,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (iterable.isClass()) {
                     const auto* cls = static_cast<ObjClass*>(iterable.asObj());
                     if (destructFlag) {
-                        for (const auto& [key, prop] : cls->staticFields) {
+                        for (const auto& [key, prop] : cls->properties) {
                             if (prop.is_local) continue;
                             ObjList* pair = GcHeap::get().allocate<ObjList>();
                             pair->vec.push_back(Value(key));
@@ -4798,7 +4789,7 @@ Value VM::run(int targetFrameDepth) {
                             elements->vec.push_back(Value(pair));
                         }
                     } else {
-                        for (const auto& [key, prop] : cls->staticFields) {
+                        for (const auto& [key, prop] : cls->properties) {
                             if (prop.is_local) continue;
                             elements->vec.push_back(Value(key));
                         }
@@ -4810,19 +4801,19 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (iterable.isInstance()) {
                     auto inst = iterable.asInstance();
-                    if (inst->fields) {
-                        if (destructFlag) {
-                            for (const auto& [key, val] : inst->fields->elements) {
-                                ObjList* pair = GcHeap::get().allocate<ObjList>();
-                                pair->vec.push_back(key);
-                                pair->vec.push_back(val);
-                                pair->is_frozen = true;
-                                elements->vec.push_back(Value(pair));
-                            }
-                        } else {
-                            for (const auto& [key, val] : inst->fields->elements) {
-                                elements->vec.push_back(key);
-                            }
+                    if (destructFlag) {
+                        for (const auto& [key, prop] : inst->properties) {
+                            if (prop.is_local) continue;
+                            ObjList* pair = GcHeap::get().allocate<ObjList>();
+                            pair->vec.push_back(Value(key));
+                            pair->vec.push_back(prop.val);
+                            pair->is_frozen = true;
+                            elements->vec.push_back(Value(pair));
+                        }
+                    } else {
+                        for (const auto& [key, prop] : inst->properties) {
+                            if (prop.is_local) continue;
+                            elements->vec.push_back(Value(key));
                         }
                     }
                 } else {
@@ -4977,8 +4968,8 @@ Value VM::run(int targetFrameDepth) {
                 } else if (haystack.isClass()) {
                     auto cls = static_cast<ObjClass*>(haystack.asObj());
                     if (needle.isString()) {
-                        auto it = cls->staticFields.find(needle.asString());
-                        found = (it != cls->staticFields.end() && !it->second.is_local);
+                        auto it = cls->properties.find(needle.asString());
+                        found = (it != cls->properties.end() && !it->second.is_local);
                     }
                 } else if (haystack.isObjType(ObjType::SET)) {
                     auto s = static_cast<ObjSet*>(haystack.asObj());
@@ -5022,27 +5013,30 @@ Value VM::run(int targetFrameDepth) {
                         found = evaluateTruthiness(callDunder(haystack, method, owner, {needle}));
                     } else {
                         auto inst = haystack.asInstance();
-                        if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
-                            found = true;
-                        } else if (needle.isString()) {
-                            auto cls = inst->classDef;
+                        if (needle.isString()) {
                             std::string key = needle.asString();
-                            while (cls) {
-                                auto it = cls->methods.find(key);
-                                if (it != cls->methods.end() && !it->second->is_local) {
-                                    found = true;
-                                    break;
-                                }
-                                cls = cls->parent;
-                            }
-                            if (!found) {
-                                auto [getattrMethod, getattrOwner] = findDunder(haystack, DUNDER_GETATTR);
-                                if (getattrMethod) {
-                                    try {
-                                        callDunder(haystack, getattrMethod, getattrOwner, {needle});
+                            auto it = inst->properties.find(key);
+                            if (it != inst->properties.end() && !it->second.is_local) {
+                                found = true;
+                            } else {
+                                auto cls = inst->classDef;
+                                while (cls) {
+                                    auto cit = cls->properties.find(key);
+                                    if (cit != cls->properties.end() && !cit->second.is_local && cit->second.val.isFunctionClosure()) {
                                         found = true;
-                                    } catch (...) {
-                                        // Fall through to false
+                                        break;
+                                    }
+                                    cls = cls->parent;
+                                }
+                                if (!found) {
+                                    auto [getattrMethod, getattrOwner] = findDunder(haystack, DUNDER_GETATTR);
+                                    if (getattrMethod) {
+                                        try {
+                                            callDunder(haystack, getattrMethod, getattrOwner, {needle});
+                                            found = true;
+                                        } catch (...) {
+                                            // Fall through to false
+                                        }
                                     }
                                 }
                             }
@@ -5109,7 +5103,7 @@ Value VM::run(int targetFrameDepth) {
                         fn->is_local = true;
                         fn->owner_class = cls;
                     }
-                    cls->methods[methodName] = fn;
+                    cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST || op == OpCode::METHOD_PRIVATE_CONST, op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST};
                 } else {
                     throw std::runtime_error("VM Error: Invalid closure type for method.");
                 }
@@ -5127,10 +5121,10 @@ Value VM::run(int targetFrameDepth) {
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
                 
                 sub->parent = sup;
-                for (auto& [name, prop] : sup->staticFields) {
-                    if (prop.is_local) continue; // ★ 严格隔离：不拷贝父类的私有静态字段
-                    if (sub->staticFields.find(name) == sub->staticFields.end()) {
-                        sub->staticFields[name] = prop;
+                for (auto& [name, prop] : sup->properties) {
+                    if (prop.is_local) continue; // ★ 严格隔离：不拷贝父类的私有属性
+                    if (sub->properties.find(name) == sub->properties.end()) {
+                        sub->properties[name] = prop;
                     }
                 }
                 break;
@@ -5149,74 +5143,56 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedClass == owner && ic.cachedGlobalSlot != -1 && ic.cachedFieldIndex != -1) {
-                        if (ic.cachedGlobalSlot < static_cast<int>(inst->private_fields.size()) && inst->private_fields[ic.cachedGlobalSlot].first == owner) {
-                            auto& props = inst->private_fields[ic.cachedGlobalSlot].second;
-                            if (ic.cachedFieldIndex < static_cast<int>(props.size()) && props[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
-                                getReg(a) = props[ic.cachedFieldIndex].second.val;
-                                break;
-                            }
-                        }
+                    std::string mangledName = owner->name + "::" + keyVal.asString();
+                    auto it = inst->properties.find(mangledName);
+                    if (it != inst->properties.end()) {
+                        getReg(a) = it->second.val;
+                        break;
                     }
-                    bool found = false;
-                    for (size_t i = 0; i < inst->private_fields.size(); ++i) {
-                        if (inst->private_fields[i].first == owner) {
-                            auto& props = inst->private_fields[i].second;
-                            for (size_t j = 0; j < props.size(); ++j) {
-                                if (props[j].first.as_bits == keyVal.as_bits) {
-                                    getReg(a) = props[j].second.val;
-                                    ic.cachedClassId = inst->classDef->classId;
-                                    ic.cachedClass = owner;
-                                    ic.cachedGlobalSlot = static_cast<int>(i);
-                                    ic.cachedFieldIndex = static_cast<int>(j);
-                                    found = true;
-                                    break;
+                    
+                    auto cit = owner->properties.find(keyVal.asString());
+                    if (cit != owner->properties.end() && cit->second.is_local) {
+                        if (cit->second.val.isFunctionClosure()) {
+                            auto rawMethod = cit->second.val.asFunction();
+                            auto bound = GcHeap::get().allocate<ObjClosure>(
+                                std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
+                            );
+                            bound->paramNames = rawMethod->paramNames;
+                            bound->isRef = rawMethod->isRef;
+                            bound->defaultValues = rawMethod->defaultValues;
+                            bound->hasRestParam = rawMethod->hasRestParam;
+                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                            if (rawMethod->upvalueCount > 0) {
+                                bound->upvalueCount = rawMethod->upvalueCount;
+                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                for (int i = 0; i < bound->upvalueCount; ++i) {
+                                    bound->upvalues[i] = rawMethod->upvalues[i];
                                 }
                             }
-                            break;
-                        }
-                    }
-                    if (found) break;
-                    
-                    auto it = owner->methods.find(keyVal.asString());
-                    if (it != owner->methods.end() && it->second->is_local) {
-                        auto rawMethod = it->second;
-                        auto bound = GcHeap::get().allocate<ObjClosure>(
-                            std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
-                        );
-                        bound->paramNames = rawMethod->paramNames;
-                        bound->isRef = rawMethod->isRef;
-                        bound->defaultValues = rawMethod->defaultValues;
-                        bound->hasRestParam = rawMethod->hasRestParam;
-                        bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                        if (rawMethod->upvalueCount > 0) {
-                            bound->upvalueCount = rawMethod->upvalueCount;
-                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                            for (int i = 0; i < bound->upvalueCount; ++i) {
-                                bound->upvalues[i] = rawMethod->upvalues[i];
+                            if (rawMethod->paramTypesCount > 0) {
+                                bound->paramTypesCount = rawMethod->paramTypesCount;
+                                bound->paramTypes = new Value[bound->paramTypesCount];
+                                for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                    bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                }
                             }
+                            bound->returnType = rawMethod->returnType;
+                            bound->nativeFn = rawMethod->nativeFn;
+                            bound->boundSelf = Value(inst);
+                            bound->boundClass = Value(owner);
+                            bound->is_local = true;
+                            getReg(a) = Value(bound);
+                        } else {
+                            getReg(a) = cit->second.val;
                         }
-                        if (rawMethod->paramTypesCount > 0) {
-                            bound->paramTypesCount = rawMethod->paramTypesCount;
-                            bound->paramTypes = new Value[bound->paramTypesCount];
-                            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                bound->paramTypes[i] = rawMethod->paramTypes[i];
-                            }
-                        }
-                        bound->returnType = rawMethod->returnType;
-                        bound->nativeFn = rawMethod->nativeFn;
-                        bound->boundSelf = Value(inst);
-                        bound->boundClass = Value(owner);
-                        bound->is_local = true; // ★ 修复：绑定闭包必须继承私有标记
-                        getReg(a) = Value(bound);
                         break;
                     }
                     
                     throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
-                    auto it = cls->staticFields.find(keyVal.asString());
-                    if (it != cls->staticFields.end() && it->second.is_local) {
+                    auto it = cls->properties.find(keyVal.asString());
+                    if (it != cls->properties.end() && it->second.is_local) {
                         getReg(a) = it->second.val;
                         break;
                     }
@@ -5235,20 +5211,10 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                        if (inst->fields->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
-                            getReg(a) = inst->fields->elements[ic.cachedFieldIndex].second;
-                            break;
-                        }
-                    }
-                    if (inst->fields) {
-                        auto it = inst->fields->keyMap.find(keyVal);
-                        if (it != inst->fields->keyMap.end()) {
-                            getReg(a) = inst->fields->elements[it->second].second;
-                            ic.cachedClassId = inst->classDef->classId;
-                            ic.cachedFieldIndex = static_cast<int>(it->second);
-                            break;
-                        }
+                    auto it = inst->properties.find(keyVal.asString());
+                    if (it != inst->properties.end() && !it->second.is_local) {
+                        getReg(a) = it->second.val;
+                        break;
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
@@ -5307,9 +5273,9 @@ Value VM::run(int targetFrameDepth) {
                     if (!found) {
                         auto cls = inst->classDef;
                         while (cls) {
-                            auto it = cls->methods.find(field);
-                            if (it != cls->methods.end() && !it->second->is_local) {
-                                auto rawMethod = it->second;
+                            auto it = cls->properties.find(field);
+                            if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                                auto rawMethod = it->second.val.asFunction();
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
                                 ic.cachedClass = cls;
@@ -5348,8 +5314,12 @@ Value VM::run(int targetFrameDepth) {
                         if (!found) {
                             auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
                             if (getattrMethod) {
-                                result = callDunder(obj, getattrMethod, owner, {Value(field)});
-                                found = true;
+                                try {
+                                    result = callDunder(obj, getattrMethod, owner, {Value(field)});
+                                    found = true;
+                                } catch (...) {
+                                    found = false;
+                                }
                             }
                         }
                     }
@@ -5362,8 +5332,8 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
-                    auto it = cls->staticFields.find(field);
-                    if (it != cls->staticFields.end() && !it->second.is_local) {
+                    auto it = cls->properties.find(field);
+                    if (it != cls->properties.end() && !it->second.is_local) {
                         result = it->second.val;
                         found = true;
                     }
@@ -5537,20 +5507,10 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && inst->fields && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                        if (inst->fields->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
-                            getReg(a) = inst->fields->elements[ic.cachedFieldIndex].second;
-                            break;
-                        }
-                    }
-                    if (inst->fields) {
-                        auto it = inst->fields->keyMap.find(keyVal);
-                        if (it != inst->fields->keyMap.end()) {
-                            getReg(a) = inst->fields->elements[it->second].second;
-                            ic.cachedClassId = inst->classDef->classId;
-                            ic.cachedFieldIndex = static_cast<int>(it->second);
-                            break;
-                        }
+                    auto it = inst->properties.find(keyVal.asString());
+                    if (it != inst->properties.end() && !it->second.is_local) {
+                        getReg(a) = it->second.val;
+                        break;
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
@@ -5592,6 +5552,14 @@ Value VM::run(int targetFrameDepth) {
                                 bound->upvalues[i] = rawMethod->upvalues[i];
                             }
                         }
+                        if (rawMethod->paramTypesCount > 0) {
+                            bound->paramTypesCount = rawMethod->paramTypesCount;
+                            bound->paramTypes = new Value[bound->paramTypesCount];
+                            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                bound->paramTypes[i] = rawMethod->paramTypes[i];
+                            }
+                        }
+                        bound->returnType = rawMethod->returnType;
                         bound->nativeFn = rawMethod->nativeFn;
                         bound->boundSelf = Value(inst);
                         bound->boundClass = Value(ic.cachedClass);
@@ -5601,9 +5569,9 @@ Value VM::run(int targetFrameDepth) {
                     if (!found) {
                         auto cls = inst->classDef;
                         while (cls) {
-                            auto it = cls->methods.find(field);
-                            if (it != cls->methods.end() && !it->second->is_local) {
-                                auto rawMethod = it->second;
+                            auto it = cls->properties.find(field);
+                            if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                                auto rawMethod = it->second.val.asFunction();
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
                                 ic.cachedClass = cls;
@@ -5622,6 +5590,14 @@ Value VM::run(int targetFrameDepth) {
                                         bound->upvalues[i] = rawMethod->upvalues[i];
                                     }
                                 }
+                                if (rawMethod->paramTypesCount > 0) {
+                                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                                    bound->paramTypes = new Value[bound->paramTypesCount];
+                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                    }
+                                }
+                                bound->returnType = rawMethod->returnType;
                                 bound->nativeFn = rawMethod->nativeFn;
                                 bound->boundSelf = Value(inst);
                                 bound->boundClass = Value(cls);
@@ -5652,8 +5628,8 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
-                    auto it = cls->staticFields.find(field);
-                    if (it != cls->staticFields.end() && !it->second.is_local) {
+                    auto it = cls->properties.find(field);
+                    if (it != cls->properties.end() && !it->second.is_local) {
                         result = it->second.val;
                         found = true;
                     }
@@ -5823,66 +5799,27 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
+                    std::string mangledName = owner->name + "::" + keyVal.asString();
+                    auto it = inst->properties.find(mangledName);
                     if (op == OpCode::SET_PRIVATE) {
-                        if (ic.cachedClassId == inst->classDef->classId && ic.cachedClass == owner && ic.cachedGlobalSlot != -1 && ic.cachedFieldIndex != -1) {
-                            if (ic.cachedGlobalSlot < static_cast<int>(inst->private_fields.size()) && inst->private_fields[ic.cachedGlobalSlot].first == owner) {
-                                auto& props = inst->private_fields[ic.cachedGlobalSlot].second;
-                                if (ic.cachedFieldIndex < static_cast<int>(props.size()) && props[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
-                                    if (props[ic.cachedFieldIndex].second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
-                                    props[ic.cachedFieldIndex].second.val = val;
-                                    goto set_private_done;
-                                }
-                            }
-                        }
+                        if (it == inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
+                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
+                        it->second.val = val;
+                    } else {
+                        if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
+                        inst->properties[mangledName] = {val, op == OpCode::DEFINE_PRIVATE_CONST, true};
                     }
-                    
-                    {
-                        bool foundCls = false;
-                        for (size_t i = 0; i < inst->private_fields.size(); ++i) {
-                            if (inst->private_fields[i].first == owner) {
-                                foundCls = true;
-                                auto& props = inst->private_fields[i].second;
-                                bool foundProp = false;
-                                for (size_t j = 0; j < props.size(); ++j) {
-                                    if (props[j].first.as_bits == keyVal.as_bits) {
-                                        foundProp = true;
-                                        if (op == OpCode::SET_PRIVATE) {
-                                            if (props[j].second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
-                                            props[j].second.val = val;
-                                            ic.cachedClassId = inst->classDef->classId;
-                                            ic.cachedClass = owner;
-                                            ic.cachedGlobalSlot = static_cast<int>(i);
-                                            ic.cachedFieldIndex = static_cast<int>(j);
-                                        } else {
-                                            throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
-                                        }
-                                        break;
-                                    }
-                                }
-                                if (!foundProp) {
-                                    if (op == OpCode::SET_PRIVATE) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
-                                    props.push_back({keyVal, PrivateProperty{ val, op == OpCode::DEFINE_PRIVATE_CONST }});
-                                }
-                                break;
-                            }
-                        }
-                        if (!foundCls) {
-                            if (op == OpCode::SET_PRIVATE) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
-                            inst->private_fields.push_back({owner, {{keyVal, PrivateProperty{ val, op == OpCode::DEFINE_PRIVATE_CONST }}}});
-                        }
-                    }
-                set_private_done:;
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     std::string keyStr = keyVal.asString();
-                    auto it = cls->staticFields.find(keyStr);
+                    auto it = cls->properties.find(keyStr);
                     if (op == OpCode::SET_PRIVATE) {
-                        if (it == cls->staticFields.end() || !it->second.is_local) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
+                        if (it == cls->properties.end() || !it->second.is_local) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
                         if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + keyStr + "'.");
                         it->second.val = val;
                     } else {
-                        if (it != cls->staticFields.end()) throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
-                        cls->staticFields[keyStr] = ClassProperty{ val, op == OpCode::DEFINE_PRIVATE_CONST, true };
+                        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
+                        cls->properties[keyStr] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
                     }
                 } else {
                     throw std::runtime_error("VM Error: Cannot set private property on this type.");
@@ -5905,35 +5842,27 @@ Value VM::run(int targetFrameDepth) {
                     inst->checkModify();
                     std::string keyStr = keyVal.asString();
                     
-                    for (const auto& clsPair : inst->private_fields) {
-                        for (const auto& propPair : clsPair.second) {
-                            if (propPair.first.asString() == keyStr) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                        }
+                    auto it = inst->properties.find(keyStr);
+                    if (it != inst->properties.end()) {
+                        if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                        throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
                     }
                     auto c_cls = inst->classDef;
                     while (c_cls) {
-                        auto it = c_cls->methods.find(keyStr);
-                        if (it != c_cls->methods.end() && it->second->is_local) throw std::runtime_error("VM Error: Cannot access private method '" + keyStr + "' externally.");
+                        auto cit = c_cls->properties.find(keyStr);
+                        if (cit != c_cls->properties.end() && cit->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
                         c_cls = c_cls->parent;
                     }
                     
-                    if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
-                    auto it = inst->fields->keyMap.find(keyVal);
-                    if (it != inst->fields->keyMap.end()) {
-                        throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
-                    }
-                    inst->fields->set(keyVal, val);
-                    if (op == OpCode::DEFINE_PROP_CONST) {
-                        inst->const_fields.insert(keyStr);
-                    }
+                    inst->properties[keyStr] = {val, op == OpCode::DEFINE_PROP_CONST, false};
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     std::string keyStr = keyVal.asString();
-                    auto it = cls->staticFields.find(keyStr);
-                    if (it != cls->staticFields.end()) {
+                    auto it = cls->properties.find(keyStr);
+                    if (it != cls->properties.end()) {
                         throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
                     }
-                    cls->staticFields[keyStr] = ClassProperty{ val, op == OpCode::DEFINE_PROP_CONST, false };
+                    cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
                 } else {
                     throw std::runtime_error("VM Error: Cannot define property on this type.");
                 }
@@ -5953,46 +5882,24 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     inst->checkModify();
                     std::string keyStr = keyVal.asString();
-                    if (inst->const_fields.count(keyStr)) {
-                        throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
-                    }
-                    for (const auto& clsPair : inst->private_fields) {
-                        for (const auto& propPair : clsPair.second) {
-                            if (propPair.first.asString() == keyStr) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                    auto it = inst->properties.find(keyStr);
+                    if (it != inst->properties.end()) {
+                        if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
+                    } else {
+                        auto c_cls = inst->classDef;
+                        while (c_cls) {
+                            auto cit = c_cls->properties.find(keyStr);
+                            if (cit != c_cls->properties.end() && cit->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                            c_cls = c_cls->parent;
                         }
-                    }
-                    auto c_cls = inst->classDef;
-                    while (c_cls) {
-                        auto it = c_cls->methods.find(keyStr);
-                        if (it != c_cls->methods.end() && it->second->is_local) throw std::runtime_error("VM Error: Cannot access private method '" + keyStr + "' externally.");
-                        c_cls = c_cls->parent;
                     }
                     
                     auto [setattrMethod, owner] = findDunder(obj, DUNDER_SETATTR);
                     if (setattrMethod) {
                         callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
-                        if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
-                        if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {
-                            if (inst->fields->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
-                                inst->fields->elements[ic.cachedFieldIndex].second = val;
-                                goto set_prop_done;
-                            }
-                        }
-                        {
-                            auto it = inst->fields->keyMap.find(keyVal);
-                            if (it != inst->fields->keyMap.end()) {
-                                inst->fields->elements[it->second].second = val;
-                                ic.cachedClassId = inst->classDef->classId;
-                                ic.cachedFieldIndex = static_cast<int>(it->second);
-                            } else {
-                                ic.cachedClassId = inst->classDef->classId;
-                                ic.cachedFieldIndex = static_cast<int>(inst->fields->elements.size());
-                                inst->fields->keyMap[keyVal] = inst->fields->elements.size();
-                                inst->fields->elements.push_back({keyVal, val});
-                            }
-                        }
-                    set_prop_done:;
+                        inst->properties[keyStr] = {val, false, false};
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
@@ -6033,13 +5940,13 @@ Value VM::run(int targetFrameDepth) {
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     std::string keyStr = keyVal.asString();
-                    auto it = cls->staticFields.find(keyStr);
-                    if (it != cls->staticFields.end()) {
+                    auto it = cls->properties.find(keyStr);
+                    if (it != cls->properties.end()) {
                         if (it->second.is_local) throw std::runtime_error("VM Error: Cannot modify private static property '" + keyStr + "'.");
                         if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + keyStr + "'.");
                         it->second.val = val;
                     } else {
-                        cls->staticFields[keyStr] = ClassProperty{ val, false, false };
+                        cls->properties[keyStr] = { val, false, false };
                     }
                 } else {
                     throw std::runtime_error("VM Error: Cannot set property on this type.");
@@ -6070,11 +5977,10 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    if (inst->fields) {
-                        for (const auto& [k, v] : inst->fields->elements) {
-                            if (k.isString() && excludeKeys.count(k.asString())) continue;
-                            restDict->set(k, v);
-                        }
+                    for (const auto& [k, prop] : inst->properties) {
+                        if (prop.is_local) continue;
+                        if (excludeKeys.count(k)) continue;
+                        restDict->set(Value(k), prop.val);
                     }
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
@@ -6084,7 +5990,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
-                    for (const auto& [k, prop] : cls->staticFields) {
+                    for (const auto& [k, prop] : cls->properties) {
                         if (prop.is_local) continue;
                         if (excludeKeys.count(k)) continue;
                         restDict->set(Value(k), prop.val);

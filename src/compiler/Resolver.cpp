@@ -321,48 +321,11 @@ void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
         declareVariable(expr->name.lexeme, VarScope::Local, true, true);
     }
     
-    for (auto& m : expr->methods) {
-        for (auto& pt : m.paramTypes) {
-            if (pt) resolve(pt.get());
-        }
-        if (m.returnType) resolve(m.returnType.get());
-
-        beginScope(true, false);
-        for (size_t i = 0; i < m.params.size(); ++i) {
-            if (m.params[i].lexeme != "_" && scopes.back().lexicalDecls.count(m.params[i].lexeme)) {
-                throw std::runtime_error("SyntaxError: Parameter '" + m.params[i].lexeme + "' has already been declared.");
-            }
-            
-            VarScope scope = m.paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
-            declareVariable(m.params[i].lexeme, scope, m.paramIsConst[i], true);
-            if (m.defaultExprs[i]) resolve(m.defaultExprs[i].get());
-        }
-        resolve(m.body.get());
-        endScope();
+    for (auto& p : expr->staticProperties) {
+        resolve(p.value.get());
     }
-    
-    for (auto& m : expr->staticMethods) {
-        for (auto& pt : m.paramTypes) {
-            if (pt) resolve(pt.get());
-        }
-        if (m.returnType) resolve(m.returnType.get());
-
-        beginScope(true, false);
-        for (size_t i = 0; i < m.params.size(); ++i) {
-            if (m.params[i].lexeme != "_" && scopes.back().lexicalDecls.count(m.params[i].lexeme)) {
-                throw std::runtime_error("SyntaxError: Parameter '" + m.params[i].lexeme + "' has already been declared.");
-            }
-            
-            VarScope scope = m.paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
-            declareVariable(m.params[i].lexeme, scope, m.paramIsConst[i], true);
-            if (m.defaultExprs[i]) resolve(m.defaultExprs[i].get());
-        }
-        resolve(m.body.get());
-        endScope();
-    }
-
-    for (auto& f : expr->staticFields) {
-        resolve(f.value.get());
+    for (auto& p : expr->instanceProperties) {
+        resolve(p.value.get());
     }
     
     endScope();

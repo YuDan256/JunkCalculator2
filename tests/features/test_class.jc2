@@ -107,7 +107,9 @@ test_access_control() = {
     // Private instance field
     assert(acc.get_balance() == 100, "Private field internal read failed")
     assert(isError(pcall(() => acc.balance)), "Private field should be invisible externally")
-    assert(isError(pcall(() => acc.balance = 200)), "Private field should be invisible externally (write)")
+    acc.balance = 200
+    assert(acc.balance == 200, "Public property can shadow private name externally")
+    assert(acc.get_balance() == 100, "Private field remains unaffected by public shadowing")
     
     // Private instance method
     assert(acc.get_helper() == 200, "Private method internal call failed")

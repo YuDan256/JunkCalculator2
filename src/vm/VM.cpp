@@ -4671,7 +4671,10 @@ Value VM::run(int targetFrameDepth) {
                         while (c_cls) {
                             auto it = c_cls->properties.find(key);
                             if (it != c_cls->properties.end()) {
-                                if (it->second.is_local) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
+                                if (it->second.is_local) {
+                                    if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
+                                    break;
+                                }
                                 if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
                                 it->second.val = val;
                                 found = true;
@@ -5968,7 +5971,10 @@ Value VM::run(int targetFrameDepth) {
                     while (c_cls) {
                         auto it = c_cls->properties.find(keyStr);
                         if (it != c_cls->properties.end()) {
-                            if (it->second.is_local) throw std::runtime_error("VM Error: Cannot modify private static property '" + keyStr + "'.");
+                            if (it->second.is_local) {
+                                if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + keyStr + "'.");
+                                break;
+                            }
                             if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + keyStr + "'.");
                             it->second.val = val;
                             found = true;

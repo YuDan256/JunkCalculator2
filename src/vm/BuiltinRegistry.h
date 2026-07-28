@@ -20,8 +20,7 @@ namespace helpers {
 
     inline ObjDict* getDictMap(const Value& v, const std::string& fnName) {
         if (v.isObjType(ObjType::DICT)) return static_cast<ObjDict*>(v.asObj());
-        if (v.isInstance()) return v.asInstance()->fields;
-        throw std::runtime_error("Type Error: " + fnName + "() expects a Dict or Instance.");
+        throw std::runtime_error("Type Error: " + fnName + "() expects a Dict.");
     }
 
     inline bool isTruthy(const Value& v) {
@@ -147,14 +146,14 @@ namespace helpers {
         auto c = inst->classDef;
         std::string sname(methodName);
         while (c) {
-            auto it = c->methods.find(sname);
-            if (it != c->methods.end()) {
+            auto it = c->properties.find(sname);
+            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
                 // ★ 启用原生无污染栈压入环境 (避开污染 globals! )
                 nativeSelfStack.push_back(Value(inst));
                 nativeClassStack.push_back(Value(c));
                 Value result;
                 try {
-                    result = safeCallFunction(it->second, args);
+                    result = safeCallFunction(it->second.val.asFunction(), args);
                 }
                 catch (...) {
                     nativeSelfStack.pop_back(); nativeClassStack.pop_back();

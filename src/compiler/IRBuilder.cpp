@@ -192,6 +192,8 @@ IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunctio
     : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), currentControl(graph->startNode), lastValue(nullptr) {
     if (parent) {
         classStack = parent->classStack;
+        isInitMethod = parent->isInitMethod;
+        instancePropertiesToInit = parent->instancePropertiesToInit;
     }
     pushScope(); // 压入顶层作用域
 }
@@ -3546,21 +3548,33 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     for (auto& p : expr->instanceProperties) if (p.isLocal) ctx.privateMembers.insert(p.name.lexeme);
     classStack.push_back(ctx);
 
-    std::vector<ClassDefExpr::PropertyDef*> fieldsToInit;
     bool hasInit = false;
     for (auto& p : expr->instanceProperties) {
         if (p.name.lexeme == "init") hasInit = true;
+    }
+    
+    if (!hasInit) {
+        bool needsInit = false;
+        for (auto& p : expr->instanceProperties) {
+            if (!dynamic_cast<LambdaExpr*>(p.value.get())) {
+                needsInit = true;
+                break;
+            }
+        }
+        if (needsInit) {
+            auto initBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
+            auto initLambda = std::make_unique<LambdaExpr>(
+                "init", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, false, std::vector<std::shared_ptr<Expr>>{}, nullptr, "", initBody
+            );
+            expr->instanceProperties.push_back({Token(TokenType::IDENTIFIER, "init", expr->name.line), std::move(initLambda), false, false});
+        }
+    }
+
+    std::vector<ClassDefExpr::PropertyDef*> fieldsToInit;
+    for (auto& p : expr->instanceProperties) {
         if (!dynamic_cast<LambdaExpr*>(p.value.get())) {
             fieldsToInit.push_back(&p);
         }
-    }
-    
-    if (!hasInit && !fieldsToInit.empty()) {
-        auto initBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
-        auto initLambda = std::make_unique<LambdaExpr>(
-            "init", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, false, std::vector<std::shared_ptr<Expr>>{}, nullptr, "", initBody
-        );
-        expr->instanceProperties.push_back({Token(TokenType::IDENTIFIER, "init", expr->name.line), std::move(initLambda), false, false});
     }
 
     IRNode* classNode = graph->createValueNode(IROp::Class);

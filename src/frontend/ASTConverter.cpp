@@ -15,13 +15,12 @@ public:
         ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
         GcObjGuard instGuard(inst);
         inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
-        inst->fields = GcHeap::get().allocate<ObjDict>();
         
-        inst->fields->set(Value("type"), Value(type));
-        inst->fields->set(Value("line"), Value(line));
+        inst->properties["type"] = {Value(type), false, false};
+        inst->properties["line"] = {Value(line), false, false};
         
         for (const auto& p : props) {
-            inst->fields->set(Value(p.first), p.second);
+            inst->properties[p.first] = {p.second, false, false};
         }
         return Value(inst);
     }
@@ -641,9 +640,9 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
     if (val.isNone()) return nullptr;
     auto inst = val.asInstance();
     auto getProp = [&](const std::string& key) -> Value {
-        Value kv(key);
-        if (inst->fields && inst->fields->keyMap.count(kv)) {
-            return inst->fields->elements[inst->fields->keyMap[kv]].second;
+        auto it = inst->properties.find(key);
+        if (it != inst->properties.end()) {
+            return it->second.val;
         }
         return Value::none();
     };
@@ -725,9 +724,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     }
     
     auto getProp = [&](const std::string& key) -> Value {
-        Value kv(key);
-        if (inst->fields && inst->fields->keyMap.count(kv)) {
-            return inst->fields->elements[inst->fields->keyMap[kv]].second;
+        auto it = inst->properties.find(key);
+        if (it != inst->properties.end()) {
+            return it->second.val;
         }
         return Value::none();
     };
@@ -1017,9 +1016,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
                 auto cInst = cVal.asInstance();
                 auto getCProp = [&](const std::string& key) -> Value {
-                    Value kv(key);
-                    if (cInst->fields && cInst->fields->keyMap.count(kv)) {
-                        return cInst->fields->elements[cInst->fields->keyMap[kv]].second;
+                    auto it = cInst->properties.find(key);
+                    if (it != cInst->properties.end()) {
+                        return it->second.val;
                     }
                     return Value::none();
                 };
@@ -1048,9 +1047,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
                 auto cInst = cVal.asInstance();
                 auto getCProp = [&](const std::string& key) -> Value {
-                    Value kv(key);
-                    if (cInst->fields && cInst->fields->keyMap.count(kv)) {
-                        return cInst->fields->elements[cInst->fields->keyMap[kv]].second;
+                    auto it = cInst->properties.find(key);
+                    if (it != cInst->properties.end()) {
+                        return it->second.val;
                     }
                     return Value::none();
                 };
@@ -1078,9 +1077,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
                 auto cInst = cVal.asInstance();
                 auto getCProp = [&](const std::string& key) -> Value {
-                    Value kv(key);
-                    if (cInst->fields && cInst->fields->keyMap.count(kv)) {
-                        return cInst->fields->elements[cInst->fields->keyMap[kv]].second;
+                    auto it = cInst->properties.find(key);
+                    if (it != cInst->properties.end()) {
+                        return it->second.val;
                     }
                     return Value::none();
                 };
@@ -1109,9 +1108,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             for (const auto& bVal : static_cast<ObjList*>(branchesVal.asObj())->vec) {
                 auto bInst = bVal.asInstance();
                 auto getBProp = [&](const std::string& key) -> Value {
-                    Value kv(key);
-                    if (bInst->fields && bInst->fields->keyMap.count(kv)) {
-                        return bInst->fields->elements[bInst->fields->keyMap[kv]].second;
+                    auto it = bInst->properties.find(key);
+                    if (it != bInst->properties.end()) {
+                        return it->second.val;
                     }
                     return Value::none();
                 };

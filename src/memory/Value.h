@@ -1681,7 +1681,7 @@ namespace jc {
                 if (guard.isCycle) return true;
                 auto c = inst->classDef;
                 while (c) {
-                    if (c->methods.count("__hash__")) {
+                    if (c->properties.count("__hash__")) {
                         inst->is_hashable_cached = true;
                         return true;
                     }

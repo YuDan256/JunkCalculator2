@@ -1155,8 +1155,8 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
                 }
             }
             
-            auto cit = owner->properties.find(methodName);
-            if (cit != owner->properties.end() && cit->second.is_local) {
+            auto cit = owner->properties.find(mangledName);
+            if (cit != owner->properties.end()) {
                 Value fv = cit->second.val;
                 if (fv.isFunctionClosure()) {
                     method = fv.asFunction();
@@ -1174,8 +1174,9 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
             
-            auto it = owner->properties.find(methodName);
-            if (it != owner->properties.end() && it->second.is_local) {
+            std::string mangledName = std::to_string(owner->classId) + "::" + methodName;
+            auto it = owner->properties.find(mangledName);
+            if (it != owner->properties.end()) {
                 Value fv = it->second.val;
                 if (fv.isFunctionClosure()) {
                     method = fv.asFunction();
@@ -4469,8 +4470,9 @@ Value VM::run(int targetFrameDepth) {
                                 bool foundStatic = false;
                                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                                 if (ctxOwner) {
-                                    auto it = ctxOwner->properties.find(key);
-                                    if (it != ctxOwner->properties.end() && it->second.is_local) {
+                                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                                    auto it = ctxOwner->properties.find(mangledName);
+                                    if (it != ctxOwner->properties.end()) {
                                         if (it->second.val.isFunctionClosure()) {
                                             auto rawMethod = it->second.val.asFunction();
                                             auto bound = GcHeap::get().allocate<ObjClosure>(
@@ -4767,8 +4769,9 @@ Value VM::run(int targetFrameDepth) {
                         bool found = false;
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         if (ctxOwner) {
-                            auto it = ctxOwner->properties.find(key);
-                            if (it != ctxOwner->properties.end() && it->second.is_local) {
+                            std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                            auto it = ctxOwner->properties.find(mangledName);
+                            if (it != ctxOwner->properties.end()) {
                                 if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
                                 it->second.val = val;
                                 found = true;
@@ -5263,8 +5266,11 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST) {
                         fn->is_local = true;
                         fn->owner_class = cls;
+                        std::string mangledName = std::to_string(cls->classId) + "::" + methodName;
+                        cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true};
+                    } else {
+                        cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false};
                     }
-                    cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST || op == OpCode::METHOD_PRIVATE_CONST, op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST};
                 } else {
                     throw std::runtime_error("VM Error: Invalid closure type for method.");
                 }
@@ -5305,8 +5311,8 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                     
-                    auto cit = owner->properties.find(keyVal.asString());
-                    if (cit != owner->properties.end() && cit->second.is_local) {
+                    auto cit = owner->properties.find(mangledName);
+                    if (cit != owner->properties.end()) {
                         if (cit->second.val.isFunctionClosure()) {
                             auto rawMethod = cit->second.val.asFunction();
                             auto bound = GcHeap::get().allocate<ObjClosure>(
@@ -5348,8 +5354,9 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    auto it = owner->properties.find(keyVal.asString());
-                    if (it != owner->properties.end() && it->second.is_local) {
+                    std::string mangledName = std::to_string(owner->classId) + "::" + keyVal.asString();
+                    auto it = owner->properties.find(mangledName);
+                    if (it != owner->properties.end()) {
                         if (it->second.val.isFunctionClosure()) {
                             auto rawMethod = it->second.val.asFunction();
                             auto bound = GcHeap::get().allocate<ObjClosure>(
@@ -6041,14 +6048,16 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::SET_PRIVATE) {
                         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
-                        auto it = owner->properties.find(keyStr);
-                        if (it == owner->properties.end() || !it->second.is_local) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
+                        std::string mangledName = std::to_string(owner->classId) + "::" + keyStr;
+                        auto it = owner->properties.find(mangledName);
+                        if (it == owner->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
                         if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + keyStr + "'.");
                         it->second.val = val;
                     } else {
-                        auto it = cls->properties.find(keyStr);
-                        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
-                        cls->properties[keyStr] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
+                        std::string mangledName = std::to_string(cls->classId) + "::" + keyStr;
+                        auto it = cls->properties.find(mangledName);
+                        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' already defined.");
+                        cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
                     }
                 } else {
                     throw std::runtime_error("VM Error: Cannot set private property on this type.");

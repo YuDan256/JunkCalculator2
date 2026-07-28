@@ -132,8 +132,8 @@ private:
 
 public:
     bool checkValueType(const Value& val, ObjTypeDef* td);
-    ObjClosure* findDunder(const Value& val, const std::string& name);
-    Value callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args);
+    std::pair<ObjClosure*, ObjClass*> findDunder(const Value& val, const std::string& name);
+    Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
     VM();
     ~VM();
 

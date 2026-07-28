@@ -835,29 +835,29 @@ static const std::string DUNDER_STR = "__str__";
 static const std::string DUNDER_BOOL = "__bool__";
 static const std::string DUNDER_CONTAINS = "__contains__";
 
-ObjClosure* VM::findDunder(const Value& val, const std::string& name) {
-    if (!val.isInstance()) return nullptr;
+std::pair<ObjClosure*, ObjClass*> VM::findDunder(const Value& val, const std::string& name) {
+    if (!val.isInstance()) return {nullptr, nullptr};
     auto inst = val.asInstance();
     auto c = inst->classDef;
     while (c) {
         auto it = c->methods.find(name);
-        if (it != c->methods.end()) return it->second;
+        if (it != c->methods.end()) return {it->second, c};
         c = c->parent;
     }
-    return nullptr;
+    return {nullptr, nullptr};
 }
 
 bool VM::evaluateTruthiness(const Value& val) {
     if (val.isInstance()) {
-        auto method = findDunder(val, DUNDER_BOOL);
+        auto [method, owner] = findDunder(val, DUNDER_BOOL);
         if (method) {
-            return callDunder(val, method, {}).truthy();
+            return callDunder(val, method, owner, {}).truthy();
         }
     }
     return val.truthy();
 }
 
-Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Value>& args) {
+Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args) {
     std::vector<Value> rootedArgs = args;
     std::vector<std::unique_ptr<GcValueGuard>> guards;
     for (auto& arg : rootedArgs) guards.push_back(std::make_unique<GcValueGuard>(arg));
@@ -865,7 +865,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
     auto inst = obj.asInstance();
     if (method->isNative() && !method->isBytecode()) {
         helpers::nativeSelfStack.push_back(Value(inst));
-        helpers::nativeClassStack.push_back(Value(inst->classDef));
+        helpers::nativeClassStack.push_back(Value(ownerClass));
         pendingCallRefs.clear();
         Value result;
         try {
@@ -900,7 +900,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, const std::vector<Val
         newFrame.deferBase = static_cast<int>(deferStack.size());
         newFrame.closure = method;
         newFrame.selfContext = Value(inst);
-        newFrame.classContext = Value(inst->classDef);
+        newFrame.classContext = Value(ownerClass);
         
         int totalArgc = static_cast<int>(args.size());
 
@@ -1190,7 +1190,7 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
             if (!inst->fields || inst->fields->keyMap.find(keyVal) == inst->fields->keyMap.end()) {
                 method = ic.cachedMethod;
-                owningClass = inst->classDef;
+                owningClass = ic.cachedClass;
                 goto invoke_method;
             }
         }
@@ -1279,13 +1279,14 @@ void VM::execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, b
             if (method) {
                 ic.cachedClassId = inst->classDef->classId;
                 ic.cachedMethod = method;
+                ic.cachedClass = owningClass;
             }
 
             if (!method) {
-                auto getattrMethod = findDunder(obj, "__getattr__");
+                auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
                 if (getattrMethod) {
                     std::vector<Value> args = { keyVal };
-                    Value fv = callDunder(obj, getattrMethod, args);
+                    Value fv = callDunder(obj, getattrMethod, owner, args);
                     if (fv.isFunctionClosure()) {
                         method = fv.asFunction();
                         owningClass = inst->classDef;
@@ -2540,10 +2541,10 @@ Value VM::wrapException(const std::string& type, Value val) {
 
 std::string VM::formatException(const Value& errVal) {
     if (errVal.isInstance() && errVal.asInstance()->classDef->name == "Exception") {
-        auto dunderStr = findDunder(errVal, "__str__");
+        auto [dunderStr, owner] = findDunder(errVal, "__str__");
         if (dunderStr) {
             try {
-                return callDunder(errVal, dunderStr, {}).asString();
+                return callDunder(errVal, dunderStr, owner, {}).asString();
             } catch (...) {}
         }
     }
@@ -3578,8 +3579,8 @@ Value VM::run(int targetFrameDepth) {
                 } else if (vb.isDouble() && vc.isDouble()) { 
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() + vc.asDoubleRaw()); break; 
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_ADD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RADD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_ADD); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RADD); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb + vc;
                 break;
             }
@@ -3592,8 +3593,8 @@ Value VM::run(int targetFrameDepth) {
                 } else if (vb.isDouble() && vc.isDouble()) { 
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() - vc.asDoubleRaw()); break; 
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_SUB)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RSUB)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_SUB); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RSUB); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb - vc;
                 break;
             }
@@ -3606,8 +3607,8 @@ Value VM::run(int targetFrameDepth) {
                 } else if (vb.isDouble() && vc.isDouble()) { 
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() * vc.asDoubleRaw()); break; 
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MUL)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMUL)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_MUL); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RMUL); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb * vc;
                 break;
             }
@@ -3618,72 +3619,72 @@ Value VM::run(int targetFrameDepth) {
                     if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
                 }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_DIV)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RDIV)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_DIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb / vc;
                 break;
             }
             case OpCode::MOD: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_MOD)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RMOD)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_MOD); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RMOD); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb % vc;
                 break;
             }
             case OpCode::POW: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_POW)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RPOW)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_POW); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RPOW); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb ^ vc;
                 break;
             }
             case OpCode::LDIV: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LDIV)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RLDIV)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LDIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RLDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = ldivide(vb, vc);
                 break;
             }
             case OpCode::BAND: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITAND)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITAND)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITAND); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITAND); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb & vc;
                 break;
             }
             case OpCode::BOR: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITOR)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITOR)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITOR); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITOR); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb | vc;
                 break;
             }
             case OpCode::BXOR: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITXOR)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RBITXOR)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITXOR); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITXOR); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = bitXor(vb, vc);
                 break;
             }
             case OpCode::SHL: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LSHIFT)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RLSHIFT)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LSHIFT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RLSHIFT); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb << vc;
                 break;
             }
             case OpCode::SHR: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_RSHIFT)) { getReg(a) = callDunder(vb, meth, {vc}); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_RRSHIFT)) { getReg(a) = callDunder(vc, meth, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_RSHIFT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RRSHIFT); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb >> vc;
                 break;
             }
@@ -3691,7 +3692,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value vb = getReg(b);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEG)) { getReg(a) = callDunder(vb, meth, {}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEG); if (meth) { getReg(a) = callDunder(vb, meth, owner, {}); break; } }
                 getReg(a) = -vb;
                 break;
             }
@@ -3711,7 +3712,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value vb = getReg(b);
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_BITNOT)) { getReg(a) = callDunder(vb, meth, {}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITNOT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {}); break; } }
                 getReg(a) = ~vb;
                 break;
             }
@@ -3736,8 +3737,8 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_EQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
                 getReg(a) = Value(Value::equals(vb, vc));
                 break;
             }
@@ -3750,10 +3751,10 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() != vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(true); break; }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_NEQ)) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_EQ)) { getReg(a) = Value(!evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_NEQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_EQ); if (meth) { getReg(a) = Value(!evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
                 getReg(a) = Value(!Value::equals(vb, vc));
                 break;
             }
@@ -3762,8 +3763,8 @@ Value VM::run(int targetFrameDepth) {
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() < vc.asInt32()); break; }
-                if (vb.isInstance()) { if (auto meth = findDunder(vb, DUNDER_LT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); break; } }
-                if (vc.isInstance()) { if (auto meth = findDunder(vc, DUNDER_GT)) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_GT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
                 getReg(a) = Value(vb < vc);
                 break;
             }
@@ -3773,33 +3774,39 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break; }
                 if (vb.isInstance()) { 
-                    if (auto meth = findDunder(vb, DUNDER_LE)) { 
-                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); 
+                    auto [meth, owner] = findDunder(vb, DUNDER_LE);
+                    if (meth) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); 
                         break; 
                     }
-                    if (auto methLt = findDunder(vb, DUNDER_LT)) {
-                        if (evaluateTruthiness(callDunder(vb, methLt, {vc}))) {
+                    auto [methLt, ownerLt] = findDunder(vb, DUNDER_LT);
+                    if (methLt) {
+                        if (evaluateTruthiness(callDunder(vb, methLt, ownerLt, {vc}))) {
                             getReg(a) = Value(true);
                             break;
                         }
-                        if (auto methEq = findDunder(vb, DUNDER_EQ)) {
-                            getReg(a) = Value(evaluateTruthiness(callDunder(vb, methEq, {vc})));
+                        auto [methEq, ownerEq] = findDunder(vb, DUNDER_EQ);
+                        if (methEq) {
+                            getReg(a) = Value(evaluateTruthiness(callDunder(vb, methEq, ownerEq, {vc})));
                             break;
                         }
                     }
                 }
                 if (vc.isInstance()) { 
-                    if (auto meth = findDunder(vc, DUNDER_GE)) { 
-                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); 
+                    auto [meth, owner] = findDunder(vc, DUNDER_GE);
+                    if (meth) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); 
                         break; 
                     }
-                    if (auto methGt = findDunder(vc, DUNDER_GT)) {
-                        if (evaluateTruthiness(callDunder(vc, methGt, {vb}))) {
+                    auto [methGt, ownerGt] = findDunder(vc, DUNDER_GT);
+                    if (methGt) {
+                        if (evaluateTruthiness(callDunder(vc, methGt, ownerGt, {vb}))) {
                             getReg(a) = Value(true);
                             break;
                         }
-                        if (auto methEq = findDunder(vc, DUNDER_EQ)) {
-                            getReg(a) = Value(evaluateTruthiness(callDunder(vc, methEq, {vb})));
+                        auto [methEq, ownerEq] = findDunder(vc, DUNDER_EQ);
+                        if (methEq) {
+                            getReg(a) = Value(evaluateTruthiness(callDunder(vc, methEq, ownerEq, {vb})));
                             break;
                         }
                     }
@@ -3813,33 +3820,39 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() > vc.asInt32()); break; }
                 if (vb.isInstance()) { 
-                    if (auto meth = findDunder(vb, DUNDER_GT)) { 
-                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); 
+                    auto [meth, owner] = findDunder(vb, DUNDER_GT);
+                    if (meth) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); 
                         break; 
                     }
-                    if (auto methLt = findDunder(vb, DUNDER_LT)) {
-                        if (evaluateTruthiness(callDunder(vb, methLt, {vc}))) {
+                    auto [methLt, ownerLt] = findDunder(vb, DUNDER_LT);
+                    if (methLt) {
+                        if (evaluateTruthiness(callDunder(vb, methLt, ownerLt, {vc}))) {
                             getReg(a) = Value(false);
                             break;
                         }
-                        if (auto methEq = findDunder(vb, DUNDER_EQ)) {
-                            getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methEq, {vc})));
+                        auto [methEq, ownerEq] = findDunder(vb, DUNDER_EQ);
+                        if (methEq) {
+                            getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methEq, ownerEq, {vc})));
                             break;
                         }
                     }
                 }
                 if (vc.isInstance()) { 
-                    if (auto meth = findDunder(vc, DUNDER_LT)) { 
-                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); 
+                    auto [meth, owner] = findDunder(vc, DUNDER_LT);
+                    if (meth) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); 
                         break; 
                     }
-                    if (auto methGt = findDunder(vc, DUNDER_GT)) {
-                        if (evaluateTruthiness(callDunder(vc, methGt, {vb}))) {
+                    auto [methGt, ownerGt] = findDunder(vc, DUNDER_GT);
+                    if (methGt) {
+                        if (evaluateTruthiness(callDunder(vc, methGt, ownerGt, {vb}))) {
                             getReg(a) = Value(false);
                             break;
                         }
-                        if (auto methEq = findDunder(vc, DUNDER_EQ)) {
-                            getReg(a) = Value(!evaluateTruthiness(callDunder(vc, methEq, {vb})));
+                        auto [methEq, ownerEq] = findDunder(vc, DUNDER_EQ);
+                        if (methEq) {
+                            getReg(a) = Value(!evaluateTruthiness(callDunder(vc, methEq, ownerEq, {vb})));
                             break;
                         }
                     }
@@ -3853,22 +3866,26 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break; }
                 if (vb.isInstance()) { 
-                    if (auto meth = findDunder(vb, DUNDER_GE)) { 
-                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, {vc}))); 
+                    auto [meth, owner] = findDunder(vb, DUNDER_GE);
+                    if (meth) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); 
                         break; 
                     }
-                    if (auto methLt = findDunder(vb, DUNDER_LT)) {
-                        getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methLt, {vc})));
+                    auto [methLt, ownerLt] = findDunder(vb, DUNDER_LT);
+                    if (methLt) {
+                        getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methLt, ownerLt, {vc})));
                         break;
                     }
                 }
                 if (vc.isInstance()) { 
-                    if (auto meth = findDunder(vc, DUNDER_LE)) { 
-                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, {vb}))); 
+                    auto [meth, owner] = findDunder(vc, DUNDER_LE);
+                    if (meth) { 
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); 
                         break; 
                     }
-                    if (auto methGt = findDunder(vc, DUNDER_GT)) {
-                        getReg(a) = Value(!evaluateTruthiness(callDunder(vc, methGt, {vb})));
+                    auto [methGt, ownerGt] = findDunder(vc, DUNDER_GT);
+                    if (methGt) {
+                        getReg(a) = Value(!evaluateTruthiness(callDunder(vc, methGt, ownerGt, {vb})));
                         break;
                     }
                 }
@@ -4357,19 +4374,10 @@ Value VM::run(int targetFrameDepth) {
                         }
                     } else if (obj.isInstance()) {
                         auto inst = obj.asInstance();
-                        auto cls = inst->classDef;
-                        ObjClosure* getitemMethod = nullptr;
-                        while (cls) {
-                            auto it = cls->methods.find(DUNDER_GETITEM);
-                            if (it != cls->methods.end()) {
-                                getitemMethod = it->second;
-                                break;
-                            }
-                            cls = cls->parent;
-                        }
+                        auto [getitemMethod, owner] = findDunder(obj, DUNDER_GETITEM);
                         if (getitemMethod) {
                             try {
-                                result = callDunder(obj, getitemMethod, {idx});
+                                result = callDunder(obj, getitemMethod, owner, {idx});
                             } catch (...) {
                                 if (noThrow) result = Value::uninit();
                                 else throw;
@@ -4588,18 +4596,9 @@ Value VM::run(int targetFrameDepth) {
                     } else if (obj.isInstance()) {
                         auto inst = obj.asInstance();
                         inst->checkModify();
-                        auto cls = inst->classDef;
-                        ObjClosure* setitemMethod = nullptr;
-                        while (cls) {
-                            auto it = cls->methods.find(DUNDER_SETITEM);
-                            if (it != cls->methods.end()) {
-                                setitemMethod = it->second;
-                                break;
-                            }
-                            cls = cls->parent;
-                        }
+                        auto [setitemMethod, owner] = findDunder(obj, DUNDER_SETITEM);
                         if (setitemMethod) {
-                            callDunder(obj, setitemMethod, {idx, val});
+                            callDunder(obj, setitemMethod, owner, {idx, val});
                         } else {
                             if (!idx.isString()) {
                                 throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __setitem__ to support custom indexing.");
@@ -4720,18 +4719,19 @@ Value VM::run(int targetFrameDepth) {
                 Value iterable = getReg(b);
                 
                 if (iterable.isInstance()) {
-                    auto method = findDunder(iterable, DUNDER_ITER);
+                    auto [method, owner] = findDunder(iterable, DUNDER_ITER);
                     if (method) {
-                        Value iterObj = callDunder(iterable, method, {});
+                        Value iterObj = callDunder(iterable, method, owner, {});
                         GcValueGuard iterGuard(iterObj);
                         ObjList* state = GcHeap::get().allocate<ObjList>();
                         state->vec.push_back(iterObj);
                         if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {
                             state->vec.push_back(Value::none());
                         } else {
-                            auto nextMethod = findDunder(iterObj, DUNDER_NEXT);
+                            auto [nextMethod, nextOwner] = findDunder(iterObj, DUNDER_NEXT);
                             if (!nextMethod) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
                             state->vec.push_back(Value(nextMethod));
+                            state->vec.push_back(Value(nextOwner));
                         }
                         getReg(a) = Value(state);
                         break;
@@ -4929,7 +4929,8 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = iterObj.asInstance()->c_nativeNext(iterObj.asInstance());
                 } else {
                     ObjClosure* method = state->vec[1].asFunction();
-                    Value nextVal = callDunder(iterObj, method, {});
+                    ObjClass* owner = state->vec.size() > 2 ? static_cast<ObjClass*>(state->vec[2].asObj()) : nullptr;
+                    Value nextVal = callDunder(iterObj, method, owner, {});
                     if (nextVal.isNone()) {
                         getReg(a) = Value::uninit();
                     } else {
@@ -5011,9 +5012,9 @@ Value VM::run(int targetFrameDepth) {
                         if (found) break;
                     }
                 } else if (haystack.isInstance()) {
-                    auto method = findDunder(haystack, DUNDER_CONTAINS);
+                    auto [method, owner] = findDunder(haystack, DUNDER_CONTAINS);
                     if (method) {
-                        found = evaluateTruthiness(callDunder(haystack, method, {needle}));
+                        found = evaluateTruthiness(callDunder(haystack, method, owner, {needle}));
                     } else {
                         auto inst = haystack.asInstance();
                         if (inst->fields && inst->fields->keyMap.find(needle) != inst->fields->keyMap.end()) {
@@ -5030,10 +5031,10 @@ Value VM::run(int targetFrameDepth) {
                                 cls = cls->parent;
                             }
                             if (!found) {
-                                auto getattrMethod = findDunder(haystack, DUNDER_GETATTR);
+                                auto [getattrMethod, getattrOwner] = findDunder(haystack, DUNDER_GETATTR);
                                 if (getattrMethod) {
                                     try {
-                                        callDunder(haystack, getattrMethod, {needle});
+                                        callDunder(haystack, getattrMethod, getattrOwner, {needle});
                                         found = true;
                                     } catch (...) {
                                         // Fall through to false
@@ -5278,7 +5279,7 @@ Value VM::run(int targetFrameDepth) {
                         bound->returnType = rawMethod->returnType;
                         bound->nativeFn = rawMethod->nativeFn;
                         bound->boundSelf = Value(inst);
-                        bound->boundClass = Value(inst->classDef);
+                        bound->boundClass = Value(ic.cachedClass);
                         result = Value(bound);
                         found = true;
                     }
@@ -5290,6 +5291,7 @@ Value VM::run(int targetFrameDepth) {
                                 auto rawMethod = it->second;
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
+                                ic.cachedClass = cls;
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
                                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );
@@ -5323,9 +5325,9 @@ Value VM::run(int targetFrameDepth) {
                             cls = cls->parent;
                         }
                         if (!found) {
-                            auto getattrMethod = findDunder(obj, "__getattr__");
+                            auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
                             if (getattrMethod) {
-                                result = callDunder(obj, getattrMethod, {Value(field)});
+                                result = callDunder(obj, getattrMethod, owner, {Value(field)});
                                 found = true;
                             }
                         }
@@ -5571,7 +5573,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         bound->nativeFn = rawMethod->nativeFn;
                         bound->boundSelf = Value(inst);
-                        bound->boundClass = Value(inst->classDef);
+                        bound->boundClass = Value(ic.cachedClass);
                         result = Value(bound);
                         found = true;
                     }
@@ -5583,6 +5585,7 @@ Value VM::run(int targetFrameDepth) {
                                 auto rawMethod = it->second;
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
+                                ic.cachedClass = cls;
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
                                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );
@@ -5608,10 +5611,10 @@ Value VM::run(int targetFrameDepth) {
                             cls = cls->parent;
                         }
                         if (!found) {
-                            auto getattrMethod = findDunder(obj, "__getattr__");
+                            auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
                             if (getattrMethod) {
                                 try {
-                                    result = callDunder(obj, getattrMethod, {Value(field)});
+                                    result = callDunder(obj, getattrMethod, owner, {Value(field)});
                                     found = true;
                                 } catch (...) {
                                     found = false;
@@ -5903,9 +5906,9 @@ Value VM::run(int targetFrameDepth) {
                         c_cls = c_cls->parent;
                     }
                     
-                    auto setattrMethod = findDunder(obj, DUNDER_SETATTR);
+                    auto [setattrMethod, owner] = findDunder(obj, DUNDER_SETATTR);
                     if (setattrMethod) {
-                        callDunder(obj, setattrMethod, {keyVal, val});
+                        callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
                         if (!inst->fields) inst->fields = GcHeap::get().allocate<ObjDict>();
                         if (ic.cachedClassId == inst->classDef->classId && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(inst->fields->elements.size())) {

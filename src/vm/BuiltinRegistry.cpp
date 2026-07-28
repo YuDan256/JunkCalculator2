@@ -62,12 +62,14 @@ namespace jc {
 
     std::pair<bool, Value> invokeDunder(ObjInstance* inst, const char* methodName, const std::vector<Value>& args) {
         ObjClosure* method = nullptr;
+        ObjClass* ownerClass = nullptr;
         ObjClass* c = inst->classDef;
         std::string sname(methodName);
         while (c) {
             auto it = c->methods.find(sname);
             if (it != c->methods.end()) {
                 method = it->second;
+                ownerClass = c;
                 break;
             }
             c = c->parent;
@@ -76,7 +78,7 @@ namespace jc {
 
         if (method->isNative() && !method->isBytecode()) {
             helpers::nativeSelfStack.push_back(Value(inst));
-            helpers::nativeClassStack.push_back(Value(inst->classDef));
+            helpers::nativeClassStack.push_back(Value(ownerClass));
             Value result;
             try {
                 auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
@@ -90,7 +92,7 @@ namespace jc {
             return {true, result};
         }
         else if (method->isBytecode()) {
-            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(inst->classDef))};
+            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(ownerClass))};
         }
         return {false, Value::none()};
     }

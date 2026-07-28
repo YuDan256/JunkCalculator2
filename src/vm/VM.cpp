@@ -4394,12 +4394,24 @@ Value VM::run(int targetFrameDepth) {
                                 else throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __getitem__ to support custom indexing.");
                             } else {
                                 std::string keyStr = idx.asString();
-                                auto it = inst->properties.find(keyStr);
-                                if (it != inst->properties.end() && !it->second.is_local) {
-                                    result = it->second.val;
-                                } else {
-                                    if (noThrow) result = Value::uninit();
-                                    else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
+                                ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                                bool foundPrivate = false;
+                                if (ctxOwner) {
+                                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                                    auto it = inst->properties.find(mangledName);
+                                    if (it != inst->properties.end()) {
+                                        result = it->second.val;
+                                        foundPrivate = true;
+                                    }
+                                }
+                                if (!foundPrivate) {
+                                    auto it = inst->properties.find(keyStr);
+                                    if (it != inst->properties.end() && !it->second.is_local) {
+                                        result = it->second.val;
+                                    } else {
+                                        if (noThrow) result = Value::uninit();
+                                        else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
+                                    }
                                 }
                             }
                         }
@@ -4455,15 +4467,25 @@ Value VM::run(int targetFrameDepth) {
                                 else throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
                             } else {
                                 bool foundStatic = false;
-                                auto c_cls = cls;
-                                while (c_cls) {
-                                    auto it = c_cls->properties.find(key);
-                                    if (it != c_cls->properties.end() && !it->second.is_local) {
+                                ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                                if (ctxOwner) {
+                                    auto it = ctxOwner->properties.find(key);
+                                    if (it != ctxOwner->properties.end() && it->second.is_local) {
                                         result = it->second.val;
                                         foundStatic = true;
-                                        break;
                                     }
-                                    c_cls = c_cls->parent;
+                                }
+                                if (!foundStatic) {
+                                    auto c_cls = cls;
+                                    while (c_cls) {
+                                        auto it = c_cls->properties.find(key);
+                                        if (it != c_cls->properties.end() && !it->second.is_local) {
+                                            result = it->second.val;
+                                            foundStatic = true;
+                                            break;
+                                        }
+                                        c_cls = c_cls->parent;
+                                    }
                                 }
                                 if (!foundStatic) {
                                     if (noThrow) result = Value::uninit();
@@ -4614,13 +4636,26 @@ Value VM::run(int targetFrameDepth) {
                                 throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __setitem__ to support custom indexing.");
                             } else {
                                 std::string keyStr = idx.asString();
-                                auto it = inst->properties.find(keyStr);
-                                if (it != inst->properties.end()) {
-                                    if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
-                                    it->second.val = val;
-                                } else {
-                                    inst->properties[keyStr] = {val, false, false};
+                                ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                                bool foundPrivate = false;
+                                if (ctxOwner) {
+                                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                                    auto it = inst->properties.find(mangledName);
+                                    if (it != inst->properties.end()) {
+                                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
+                                        it->second.val = val;
+                                        foundPrivate = true;
+                                    }
+                                }
+                                if (!foundPrivate) {
+                                    auto it = inst->properties.find(keyStr);
+                                    if (it != inst->properties.end()) {
+                                        if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+                                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
+                                        it->second.val = val;
+                                    } else {
+                                        inst->properties[keyStr] = {val, false, false};
+                                    }
                                 }
                             }
                         }
@@ -4667,20 +4702,31 @@ Value VM::run(int targetFrameDepth) {
                         if (!isValidId(key)) throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
                         
                         bool found = false;
-                        auto c_cls = cls;
-                        while (c_cls) {
-                            auto it = c_cls->properties.find(key);
-                            if (it != c_cls->properties.end()) {
-                                if (it->second.is_local) {
-                                    if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
-                                    break;
-                                }
-                                if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
+                        ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                        if (ctxOwner) {
+                            auto it = ctxOwner->properties.find(key);
+                            if (it != ctxOwner->properties.end() && it->second.is_local) {
+                                if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
                                 it->second.val = val;
                                 found = true;
-                                break;
                             }
-                            c_cls = c_cls->parent;
+                        }
+                        if (!found) {
+                            auto c_cls = cls;
+                            while (c_cls) {
+                                auto it = c_cls->properties.find(key);
+                                if (it != c_cls->properties.end()) {
+                                    if (it->second.is_local) {
+                                        if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
+                                        break;
+                                    }
+                                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
+                                    it->second.val = val;
+                                    found = true;
+                                    break;
+                                }
+                                c_cls = c_cls->parent;
+                            }
                         }
                         if (!found) {
                             cls->properties[key] = { val, false, false };
@@ -4995,13 +5041,22 @@ Value VM::run(int targetFrameDepth) {
                     auto cls = static_cast<ObjClass*>(haystack.asObj());
                     if (needle.isString()) {
                         std::string key = needle.asString();
-                        while (cls) {
-                            auto it = cls->properties.find(key);
-                            if (it != cls->properties.end() && !it->second.is_local) {
+                        ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                        if (ctxOwner) {
+                            auto it = ctxOwner->properties.find(key);
+                            if (it != ctxOwner->properties.end() && it->second.is_local) {
                                 found = true;
-                                break;
                             }
-                            cls = cls->parent;
+                        }
+                        if (!found) {
+                            while (cls) {
+                                auto it = cls->properties.find(key);
+                                if (it != cls->properties.end() && !it->second.is_local) {
+                                    found = true;
+                                    break;
+                                }
+                                cls = cls->parent;
+                            }
                         }
                     }
                 } else if (haystack.isObjType(ObjType::SET)) {
@@ -5048,10 +5103,20 @@ Value VM::run(int targetFrameDepth) {
                         auto inst = haystack.asInstance();
                         if (needle.isString()) {
                             std::string key = needle.asString();
-                            auto it = inst->properties.find(key);
-                            if (it != inst->properties.end() && !it->second.is_local) {
-                                found = true;
-                            } else {
+                            ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                            if (ctxOwner) {
+                                std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                                if (inst->properties.find(mangledName) != inst->properties.end()) {
+                                    found = true;
+                                }
+                            }
+                            if (!found) {
+                                auto it = inst->properties.find(key);
+                                if (it != inst->properties.end() && !it->second.is_local) {
+                                    found = true;
+                                }
+                            }
+                            if (!found) {
                                 auto cls = inst->classDef;
                                 while (cls) {
                                     auto cit = cls->properties.find(key);

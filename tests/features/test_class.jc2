@@ -96,6 +96,14 @@ test_access_control() = {
         get_balance() = self.balance
         get_helper() = self.helper()
         static get_max() = Account.MAX
+        
+        test_reflection() = {
+            assert(self["balance"] == 100, "Reflection read failed inside class")
+            self["balance"] = 300
+            assert(self.balance == 300, "Reflection write failed inside class")
+            assert("balance" in self, "Reflection 'in' failed inside class")
+            self.balance = 100 // restore
+        }
     }
     
     acc = Account(100)
@@ -106,6 +114,7 @@ test_access_control() = {
     
     // Private instance field
     assert(acc.get_balance() == 100, "Private field internal read failed")
+    acc.test_reflection()
     assert(isError(pcall(() => acc.balance)), "Private field should be invisible externally")
     acc.balance = 200
     assert(acc.balance == 200, "Public property can shadow private name externally")

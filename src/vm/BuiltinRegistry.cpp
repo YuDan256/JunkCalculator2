@@ -2247,7 +2247,20 @@ void BuiltinRegistry::registerControlFlow() {
                 auto inst = args[0].asInstance();
                 inst->checkModify();
                 if (!args[1].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
-                inst->properties[args[1].asString()] = {args[2], false, false};
+                std::string keyStr = args[1].asString();
+                auto it = inst->properties.find(keyStr);
+                if (it != inst->properties.end() && it->second.is_local) {
+                    throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                }
+                auto c_cls = inst->classDef;
+                while (c_cls) {
+                    std::string mangledName = c_cls->name + "::" + keyStr;
+                    if (inst->properties.find(mangledName) != inst->properties.end()) {
+                        throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                    }
+                    c_cls = c_cls->parent;
+                }
+                inst->properties[keyStr] = {args[2], false, false};
                 return args[0];
             }
             auto d = static_cast<ObjDict*>(args[0].asObj());
@@ -2325,7 +2338,13 @@ void BuiltinRegistry::registerControlFlow() {
             if (args[0].isInstance()) {
                 auto inst = args[0].asInstance();
                 inst->checkModify();
-                if (args[1].isString()) inst->properties.erase(args[1].asString());
+                if (args[1].isString()) {
+                    std::string keyStr = args[1].asString();
+                    auto it = inst->properties.find(keyStr);
+                    if (it != inst->properties.end() && !it->second.is_local) {
+                        inst->properties.erase(it);
+                    }
+                }
                 return args[0];
             }
             auto d = static_cast<ObjDict*>(args[0].asObj());
@@ -2356,7 +2375,13 @@ void BuiltinRegistry::registerControlFlow() {
             if (args[0].isInstance()) {
                 auto inst = args[0].asInstance();
                 inst->checkModify();
-                inst->properties.clear();
+                for (auto it = inst->properties.begin(); it != inst->properties.end(); ) {
+                    if (!it->second.is_local) {
+                        it = inst->properties.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
                 return args[0];
             }
             auto d = static_cast<ObjDict*>(args[0].asObj());
@@ -3162,7 +3187,9 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = args[0].asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, v] : inst->properties) L->vec.push_back(Value(k));
+            for (const auto& [k, v] : inst->properties) {
+                if (!v.is_local) L->vec.push_back(Value(k));
+            }
             return Value(L);
         }
         ObjDict* d = helpers::getDictMap(args[0], "keys");
@@ -3186,7 +3213,9 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = args[0].asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, v] : inst->properties) L->vec.push_back(v.val);
+            for (const auto& [k, v] : inst->properties) {
+                if (!v.is_local) L->vec.push_back(v.val);
+            }
             return Value(L);
         }
         ObjDict* d = helpers::getDictMap(args[0], "values");
@@ -3205,7 +3234,8 @@ void BuiltinRegistry::registerDictFunctions() {
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
             if (!args[1].isString()) return Value(false);
-            return Value(inst->properties.find(args[1].asString()) != inst->properties.end());
+            auto it = inst->properties.find(args[1].asString());
+            return Value(it != inst->properties.end() && !it->second.is_local);
         }
         ObjDict* d = helpers::getDictMap(args[0], "hasKey");
         return Value(d->keyMap.find(args[1]) != d->keyMap.end());
@@ -3229,7 +3259,7 @@ void BuiltinRegistry::registerDictFunctions() {
             inst->checkModify();
             if (!args[1].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
             auto it = inst->properties.find(args[1].asString());
-            if (it == inst->properties.end()) throw std::runtime_error("Runtime Error: Key not found.");
+            if (it == inst->properties.end() || it->second.is_local) throw std::runtime_error("Runtime Error: Key not found.");
             inst->properties.erase(it);
             return args[0];
         }
@@ -3245,7 +3275,11 @@ void BuiltinRegistry::registerDictFunctions() {
         }
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            return Value::fromInt32(static_cast<int32_t>(inst->properties.size()));
+            int32_t count = 0;
+            for (const auto& [k, v] : inst->properties) {
+                if (!v.is_local) count++;
+            }
+            return Value::fromInt32(count);
         }
         ObjDict* d = helpers::getDictMap(args[0], "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
         });
@@ -3262,7 +3296,7 @@ void BuiltinRegistry::registerDictFunctions() {
             if (v.isInstance()) {
                 std::vector<std::pair<Value, Value>> res;
                 for (const auto& [k, prop] : v.asInstance()->properties) {
-                    res.push_back({Value(k), prop.val});
+                    if (!prop.is_local) res.push_back({Value(k), prop.val});
                 }
                 return res;
             }
@@ -3297,7 +3331,20 @@ void BuiltinRegistry::registerDictFunctions() {
             auto pairs2 = getPairs(args[1]);
             for (const auto& [k, v] : pairs2) {
                 if (!k.isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
-                inst->properties[k.asString()] = {v, false, false};
+                std::string keyStr = k.asString();
+                auto it = inst->properties.find(keyStr);
+                if (it != inst->properties.end() && it->second.is_local) {
+                    throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                }
+                auto c_cls = inst->classDef;
+                while (c_cls) {
+                    std::string mangledName = c_cls->name + "::" + keyStr;
+                    if (inst->properties.find(mangledName) != inst->properties.end()) {
+                        throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                    }
+                    c_cls = c_cls->parent;
+                }
+                inst->properties[keyStr] = {v, false, false};
             }
             return args[0];
         }
@@ -3329,6 +3376,7 @@ void BuiltinRegistry::registerDictFunctions() {
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
             for (const auto& [k, prop] : inst->properties) {
+                if (prop.is_local) continue;
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value(k));
                 pair->vec.push_back(prop.val);

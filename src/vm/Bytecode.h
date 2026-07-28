@@ -638,8 +638,8 @@ struct CompiledFunction {
 
     struct UpvalueInfo {
         std::string name;
-        bool isLocal;
-        int index;
+        bool isLocal = false;
+        int index = 0;
         bool isRef = false;
         bool isGlobal = false;
         bool isExplicitState = false;

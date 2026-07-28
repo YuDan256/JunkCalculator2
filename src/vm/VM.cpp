@@ -1009,19 +1009,19 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                     if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
                         val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
                         val.isObjType(ObjType::STRING_MATRIX)) return true;
-                    if (val.isInstance()) { if (findDunder(val, "__iter__") || findDunder(val, "__next__")) return true; }
+                    if (val.isInstance()) { if (findDunder(val, "__iter__").first || findDunder(val, "__next__").first) return true; }
                     break;
                 }
                 case BuiltinType::CALLABLE: {
                     if (val.isFunctionClosure() || val.isClass() || val.isString()) return true;
-                    if (val.isInstance()) { if (findDunder(val, "__call__") != nullptr) return true; }
+                    if (val.isInstance()) { if (findDunder(val, "__call__").first != nullptr) return true; }
                     break;
                 }
                 case BuiltinType::INDEXABLE: {
                     if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
                         val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
                         val.isObjType(ObjType::STRING_MATRIX)) return true;
-                    if (val.isInstance()) { if (findDunder(val, "__getitem__") != nullptr) return true; }
+                    if (val.isInstance()) { if (findDunder(val, "__getitem__").first != nullptr) return true; }
                     break;
                 }
                 case BuiltinType::HASHABLE: if (val.isHashable()) return true; break;
@@ -1029,7 +1029,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                     if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
                         val.isObjType(ObjType::COMPLEX) || val.isObjType(ObjType::BASENUM)) return true;
                     if (val.isInstance()) {
-                        if (findDunder(val, "__add__") || findDunder(val, "__mul__") || findDunder(val, "__sub__") || findDunder(val, "__div__") || findDunder(val, "__ldiv__")) return true;
+                        if (findDunder(val, "__add__").first || findDunder(val, "__mul__").first || findDunder(val, "__sub__").first || findDunder(val, "__div__").first || findDunder(val, "__ldiv__").first) return true;
                     }
                     break;
                 }
@@ -4175,9 +4175,9 @@ Value VM::run(int targetFrameDepth) {
                 if (v.isString()) {
                     getReg(a) = v;
                 } else {
-                    auto d = findDunder(v, DUNDER_STR);
+                    auto [d, owner] = findDunder(v, DUNDER_STR);
                     if (d) {
-                        getReg(a) = callDunder(v, d, {});
+                        getReg(a) = callDunder(v, d, owner, {});
                     } else {
                         std::ostringstream oss;
                         if (v.isUninit()) oss << "Uninitialized";

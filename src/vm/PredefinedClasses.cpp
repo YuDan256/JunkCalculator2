@@ -699,10 +699,10 @@ void registerPredefinedClasses() {
             for (const auto& s : supp->vec) {
                 oss << "\n----------------------------------------\n";
                 if (s.isInstance() && s.asInstance()->classDef->name == "Exception") {
-                    auto dunderStr = VM::activeVM->findDunder(s, "__str__");
+                    auto [dunderStr, owner] = VM::activeVM->findDunder(s, "__str__");
                     if (dunderStr) {
                         try {
-                            oss << VM::activeVM->callDunder(s, dunderStr, {}).asString();
+                            oss << VM::activeVM->callDunder(s, dunderStr, owner, {}).asString();
                         } catch (...) {
                             oss << s.toRepr();
                         }

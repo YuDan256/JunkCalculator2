@@ -344,7 +344,7 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
         uv.name = name;
         uv.isLocal = false;
         uv.index = upvalue;
-        uv.isRef = parent->currentFunction->upvalues[upvalue].isRef;
+        uv.isRef = parent->currentFunction ? parent->currentFunction->upvalues[upvalue].isRef : false;
         uv.isGlobal = false;
         uv.isExplicitState = false;
         uv.isRefParam = false;

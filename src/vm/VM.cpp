@@ -4348,12 +4348,28 @@ Value VM::run(int targetFrameDepth) {
                             if (noThrow) result = Value::uninit();
                             else throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         } else {
-                            auto it = ns->fields.find(idx.asString());
-                            if (it == ns->fields.end()) {
+                            std::string key = idx.asString();
+                            auto isValidId = [](const std::string& s) {
+                                if (s.empty()) return false;
+                                unsigned char c = s[0];
+                                if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
+                                for (size_t i = 1; i < s.length(); ++i) {
+                                    c = s[i];
+                                    if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
+                                }
+                                return true;
+                            };
+                            if (!isValidId(key)) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Key not found in namespace.");
+                                else throw std::runtime_error("VM Error: Namespace keys must be valid identifiers.");
                             } else {
-                                result = *(it->second.upval->location);
+                                auto it = ns->fields.find(key);
+                                if (it == ns->fields.end()) {
+                                    if (noThrow) result = Value::uninit();
+                                    else throw std::runtime_error("VM Error: Key not found in namespace.");
+                                } else {
+                                    result = *(it->second.upval->location);
+                                }
                             }
                         }
                     } else if (obj.isClass()) {
@@ -4362,12 +4378,28 @@ Value VM::run(int targetFrameDepth) {
                             if (noThrow) result = Value::uninit();
                             else throw std::runtime_error("VM Error: Class static field keys must be strings.");
                         } else {
-                            auto it = cls->staticFields.find(idx.asString());
-                            if (it == cls->staticFields.end()) {
+                            std::string key = idx.asString();
+                            auto isValidId = [](const std::string& s) {
+                                if (s.empty()) return false;
+                                unsigned char c = s[0];
+                                if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
+                                for (size_t i = 1; i < s.length(); ++i) {
+                                    c = s[i];
+                                    if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
+                                }
+                                return true;
+                            };
+                            if (!isValidId(key)) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Static field not found in class.");
+                                else throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
                             } else {
-                                result = it->second;
+                                auto it = cls->staticFields.find(key);
+                                if (it == cls->staticFields.end()) {
+                                    if (noThrow) result = Value::uninit();
+                                    else throw std::runtime_error("VM Error: Static field not found in class.");
+                                } else {
+                                    result = it->second;
+                                }
                             }
                         }
                     } else {
@@ -4530,6 +4562,17 @@ Value VM::run(int targetFrameDepth) {
                         if (ns->is_frozen) throw std::runtime_error("VM Error: Cannot modify frozen namespace.");
                         if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         std::string key = idx.asString();
+                        auto isValidId = [](const std::string& s) {
+                            if (s.empty()) return false;
+                            unsigned char c = s[0];
+                            if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
+                            for (size_t i = 1; i < s.length(); ++i) {
+                                c = s[i];
+                                if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
+                            }
+                            return true;
+                        };
+                        if (!isValidId(key)) throw std::runtime_error("VM Error: Namespace keys must be valid identifiers.");
                         auto it = ns->fields.find(key);
                         if (it != ns->fields.end()) {
                             if (it->second.isConst) throw std::runtime_error("VM Error: Cannot modify const field '" + key + "'.");
@@ -4543,7 +4586,19 @@ Value VM::run(int targetFrameDepth) {
                     } else if (obj.isClass()) {
                         auto cls = static_cast<ObjClass*>(obj.asObj());
                         if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
-                        cls->staticFields[idx.asString()] = val;
+                        std::string key = idx.asString();
+                        auto isValidId = [](const std::string& s) {
+                            if (s.empty()) return false;
+                            unsigned char c = s[0];
+                            if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
+                            for (size_t i = 1; i < s.length(); ++i) {
+                                c = s[i];
+                                if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
+                            }
+                            return true;
+                        };
+                        if (!isValidId(key)) throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
+                        cls->staticFields[key] = val;
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 1D index set.");
                     }

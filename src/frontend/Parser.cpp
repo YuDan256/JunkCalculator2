@@ -2750,7 +2750,9 @@ namespace jc {
             isNamed = true;
         }
 
-        while (match({ TokenType::NEWLINE })) {}
+        if (isNamed) {
+            while (match({ TokenType::NEWLINE })) {}
+        }
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after namespace definition.");
         MacroScopeGuard guard(this);
         std::vector<std::unique_ptr<Expr>> stmts;
@@ -2791,7 +2793,9 @@ namespace jc {
             isNamed = true;
         }
 
-        while (match({ TokenType::NEWLINE })) {}
+        if (isNamed) {
+            while (match({ TokenType::NEWLINE })) {}
+        }
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after enum definition.");
 
         std::vector<std::pair<Token, std::unique_ptr<Expr>>> members;
@@ -2844,7 +2848,9 @@ namespace jc {
             isNamed = true;
         }
 
-        while (match({ TokenType::NEWLINE })) {}
+        if (isNamed) {
+            while (match({ TokenType::NEWLINE })) {}
+        }
 
         std::unique_ptr<Expr> superClassExpr = nullptr;
         if (check(TokenType::IDENTIFIER) && peek().lexeme == "extends") {
@@ -2852,7 +2858,9 @@ namespace jc {
             superClassExpr = expression();
         }
 
-        while (match({ TokenType::NEWLINE })) {}
+        if (isNamed || superClassExpr) {
+            while (match({ TokenType::NEWLINE })) {}
+        }
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after class definition.");
 
         MacroScopeGuard guard(this);

@@ -259,6 +259,7 @@ void Resolver::visitRefDecl(RefDecl* expr) {
     checkExplicitDecl(expr, expr->name.lexeme);
     ResolvedSym existing = resolveName(expr->name.lexeme);
     declareVariable(expr->name.lexeme, existing.scope, expr->isConst, true);
+    exprSymbols[expr] = resolveName(expr->name.lexeme);
 }
 void Resolver::visitStateDecl(StateDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::State, expr->isConst); }
 void Resolver::visitConstDecl(ConstDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, true, false); }

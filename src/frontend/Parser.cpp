@@ -2816,7 +2816,13 @@ namespace jc {
                 Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                 memberName = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
             } else {
-                memberName = consume(TokenType::IDENTIFIER, "Parser Error: Expect enum member name.");
+                Token t = peek();
+                if (t.type == TokenType::IDENTIFIER || (t.type >= TokenType::IF && t.type <= TokenType::NONE_KW)) {
+                    memberName = advance();
+                    memberName.type = TokenType::IDENTIFIER;
+                } else {
+                    throw std::runtime_error("Parser Error: Expect enum member name.");
+                }
             }
 
             std::unique_ptr<Expr> value = nullptr;
@@ -2899,7 +2905,13 @@ namespace jc {
                 Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                 memberName = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
             } else {
-                memberName = consume(TokenType::IDENTIFIER, "Parser Error: Expect method or field name.");
+                Token t = peek();
+                if (t.type == TokenType::IDENTIFIER || (t.type >= TokenType::IF && t.type <= TokenType::NONE_KW)) {
+                    memberName = advance();
+                    memberName.type = TokenType::IDENTIFIER;
+                } else {
+                    throw std::runtime_error("Parser Error: Expect method or field name.");
+                }
             }
 
             std::unique_ptr<Expr> value;

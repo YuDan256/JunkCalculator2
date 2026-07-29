@@ -2560,8 +2560,9 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 void IRBuilder::visitRefDecl(RefDecl* expr) {
     graph->currentLine = expr->name.line;
     if (expr->name.lexeme != "_") {
+        int upvalIdx = -1;
         if (currentFunction) {
-            int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
+            upvalIdx = resolveUpvalue(expr->name.lexeme, false);
             if (upvalIdx == -1) {
                 // If not found in parent, it's a global ref
                 CompiledFunction::UpvalueInfo uv;
@@ -2573,10 +2574,20 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
                 uv.isExplicitState = false;
                 uv.isRefParam = false;
                 currentFunction->upvalues.push_back(uv);
+                upvalIdx = static_cast<int>(currentFunction->upvalues.size()) - 1;
             } else {
                 currentFunction->upvalues[upvalIdx].isRef = true;
             }
         }
+        
+        if (upvalIdx != -1) {
+            IRNode* node = graph->createValueNode(IROp::GetUpvalue);
+            node->payload1 = static_cast<uint32_t>(upvalIdx);
+            node->name = expr->name.lexeme;
+            node->setControl(currentControl);
+            declareVariable(expr->name.lexeme, node);
+        }
+        
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
     lastValue = graph->createConstant(Value::uninit());

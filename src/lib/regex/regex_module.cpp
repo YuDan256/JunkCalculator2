@@ -719,7 +719,7 @@ JC2_ValueHandle regex_search(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return jc2::Value(0).get_handle();
 }
 
-JC2_ValueHandle regex_matchStart(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
+JC2_ValueHandle regex_match(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     auto vm = getRegex(jc2::Value(argv[0]));
     std::string text = jc2::Value(argv[1]).as_string();
     std::vector<size_t> caps;
@@ -894,7 +894,7 @@ JC2_ValueHandle global_test(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return jc2::Value(false).get_handle();
 }
 
-JC2_ValueHandle global_matchStart(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
+JC2_ValueHandle global_match(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     auto vm = ensureRegex(jc2::Value(argv[0]));
     std::string text = jc2::Value(argv[1]).as_string();
     std::vector<size_t> caps;
@@ -1015,7 +1015,7 @@ int jc2_init(jc2::Module& mod) {
     g_regexClass = new jc2::Class("Regex");
     g_regexClass->set_allocator(regex_init);
     g_regexClass->bind_method("search", regex_search, 1, 1, false);
-    g_regexClass->bind_method("matchStart", regex_matchStart, 1, 1, false);
+    g_regexClass->bind_method("match", regex_match, 1, 1, false);
     g_regexClass->bind_method("test", regex_test, 1, 1, false);
     g_regexClass->bind_method("findall", regex_findall, 1, 1, false);
     g_regexClass->bind_method("split", regex_split, 1, 1, false);
@@ -1028,7 +1028,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function("setcontext", global_setcontext, 1, 1, false);
     mod.register_function("compile", global_compile, 1, 1, false);
     mod.register_function("test", global_test, 2, 2, false);
-    mod.register_function("matchStart", global_matchStart, 2, 2, false);
+    mod.register_function("match", global_match, 2, 2, false);
     mod.register_function("search", global_search, 2, 2, false);
     mod.register_function("findall", global_findall, 2, 2, false);
     mod.register_function("split", global_split, 2, 2, false);
@@ -1061,7 +1061,7 @@ int jc2_init(jc2::Module& mod) {
         "    regex.setcontext(steps)       Sets the global step limit for backreference backtracking (-1 for no limit).\n"
         "    regex.compile(pat)            Returns a Regex object.\n"
         "    regex.test(pat, text)         Returns true if pattern matches anywhere, else false.\n"
-        "    regex.matchStart(pat, text)   Matches exactly at the start of text.\n"
+        "    regex.match(pat, text)        Matches exactly at the start of text.\n"
         "    regex.search(pat, text)       Searches for first match anywhere. Returns ReMatch or 0.\n"
         "    regex.findall(pat, text)      Returns a List of all matched substrings.\n"
         "    regex.split(pat, text)        Splits text by pattern, returns a List.\n"

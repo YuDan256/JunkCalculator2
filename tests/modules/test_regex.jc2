@@ -14,16 +14,16 @@ test_basic_api() = {
 }
 test_basic_api()
 
-test_match_start() = {
+test_match() = {
     r1 = regex.compile(r"RE((\w+) (\d+))RE")
-    m2 = r1.matchStart("Alice 30")
-    assert(m2 != 0, "matchStart() failed")
-    assert(m2.matched == "Alice 30", "matchStart() matched string failed")
+    m2 = r1.match("Alice 30")
+    assert(m2 != 0, "match() failed")
+    assert(m2.matched == "Alice 30", "match() matched string failed")
 
-    m3 = r1.matchStart("Name: Alice 30")
-    assert(m3 == 0, "matchStart() should fail if not at start")
+    m3 = r1.match("Name: Alice 30")
+    assert(m3 == 0, "match() should fail if not at start")
 }
-test_match_start()
+test_match()
 
 test_findall() = {
     r2 = regex.compile(r"RE(\d+)RE")

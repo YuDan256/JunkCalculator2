@@ -449,18 +449,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             bool isExplicitConst = vp->isConst || globalConst;
             if (mod == ScopeModifier::Ref && currentFunction) {
                 int upvalIdx = resolveUpvalue(vp->name.lexeme, false);
-                if (upvalIdx == -1) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = vp->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = true;
-                    uv.isGlobal = true;
-                    uv.isExplicitState = false;
-                    uv.isRefParam = false;
-                    uv.isCapturedState = false;
-                    currentFunction->upvalues.push_back(uv);
-                } else {
+                if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
@@ -811,18 +800,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             if (mod == ScopeModifier::Ref && currentFunction) {
                 int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
-                if (upvalIdx == -1) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = restPat->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = true;
-                    uv.isGlobal = true;
-                    uv.isExplicitState = false;
-                    uv.isRefParam = false;
-                    uv.isCapturedState = false;
-                    currentFunction->upvalues.push_back(uv);
-                } else {
+                if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
@@ -942,18 +920,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
                         if (mod == ScopeModifier::Ref && currentFunction) {
                             int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
-                            if (upvalIdx == -1) {
-                                CompiledFunction::UpvalueInfo uv;
-                                uv.name = restPat->name.lexeme;
-                                uv.isLocal = false;
-                                uv.index = 0;
-                                uv.isRef = true;
-                                uv.isGlobal = true;
-                                uv.isExplicitState = false;
-                                uv.isRefParam = false;
-                                uv.isCapturedState = false;
-                                currentFunction->upvalues.push_back(uv);
-                            } else {
+                            if (upvalIdx != -1) {
                                 currentFunction->upvalues[upvalIdx].isRef = true;
                             }
                         }
@@ -1022,18 +989,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             if (mod == ScopeModifier::Ref && currentFunction) {
                 int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
-                if (upvalIdx == -1) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = restPat->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = true;
-                    uv.isGlobal = true;
-                    uv.isExplicitState = false;
-                    uv.isRefParam = false;
-                    uv.isCapturedState = false;
-                    currentFunction->upvalues.push_back(uv);
-                } else {
+                if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
@@ -1128,18 +1084,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             if (mod == ScopeModifier::Ref && currentFunction) {
                 int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
-                if (upvalIdx == -1) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = restPat->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = true;
-                    uv.isGlobal = true;
-                    uv.isExplicitState = false;
-                    uv.isRefParam = false;
-                    uv.isCapturedState = false;
-                    currentFunction->upvalues.push_back(uv);
-                } else {
+                if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
@@ -2563,29 +2508,14 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
         int upvalIdx = -1;
         if (currentFunction) {
             upvalIdx = resolveUpvalue(expr->name.lexeme, false);
-            if (upvalIdx == -1) {
-                // If not found in parent, it's a global ref
-                CompiledFunction::UpvalueInfo uv;
-                uv.name = expr->name.lexeme;
-                uv.isLocal = false;
-                uv.index = 0;
-                uv.isRef = true;
-                uv.isGlobal = true;
-                uv.isExplicitState = false;
-                uv.isRefParam = false;
-                currentFunction->upvalues.push_back(uv);
-                upvalIdx = static_cast<int>(currentFunction->upvalues.size()) - 1;
-            } else {
+            if (upvalIdx != -1) {
                 currentFunction->upvalues[upvalIdx].isRef = true;
+                IRNode* node = graph->createValueNode(IROp::GetUpvalue);
+                node->payload1 = static_cast<uint32_t>(upvalIdx);
+                node->name = expr->name.lexeme;
+                node->setControl(currentControl);
+                declareVariable(expr->name.lexeme, node);
             }
-        }
-        
-        if (upvalIdx != -1) {
-            IRNode* node = graph->createValueNode(IROp::GetUpvalue);
-            node->payload1 = static_cast<uint32_t>(upvalIdx);
-            node->name = expr->name.lexeme;
-            node->setControl(currentControl);
-            declareVariable(expr->name.lexeme, node);
         }
         
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
@@ -2675,17 +2605,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         } else if (expr->isRef) {
             if (currentFunction) {
                 int upvalIdx = resolveUpvalue(var->name.lexeme, false);
-                if (upvalIdx == -1) {
-                    CompiledFunction::UpvalueInfo uv;
-                    uv.name = var->name.lexeme;
-                    uv.isLocal = false;
-                    uv.index = 0;
-                    uv.isRef = true;
-                    uv.isGlobal = true;
-                    uv.isExplicitState = false;
-                    uv.isRefParam = false;
-                    currentFunction->upvalues.push_back(uv);
-                } else {
+                if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }

@@ -3328,22 +3328,8 @@ Value VM::run(int targetFrameDepth) {
                                     closure->upvalues[i] = frame->closure->upvalues[uv.index];
                                 else {
                                     auto dummy = GcHeap::get().allocate<ObjUpVal>();
-                                    if (uv.isGlobal) {
-                                        auto it = globalNames.find(uv.name);
-                                        if (it != globalNames.end()) {
-                                            dummy->location = &globals[it->second];
-                                        } else {
-                                            Value builtinVal = getBuiltinValue(uv.name);
-                                            if (builtinVal.isNone()) builtinVal = getBuiltinClosure(uv.name);
-                                            globalNames[uv.name] = static_cast<uint32_t>(globals.size());
-                                            globals.push_back(builtinVal.isNone() ? Value::uninit() : builtinVal);
-                                            clearAllGlobalICs();
-                                            dummy->location = &globals.back();
-                                        }
-                                    } else {
-                                        dummy->closed = Value::none();
-                                        dummy->location = &dummy->closed;
-                                    }
+                                    dummy->closed = Value::none();
+                                    dummy->location = &dummy->closed;
                                     closure->upvalues[i] = dummy;
                                 }
                             }
@@ -3351,19 +3337,6 @@ Value VM::run(int targetFrameDepth) {
                             auto dummy = GcHeap::get().allocate<ObjUpVal>();
                             if (uv.isExplicitState) {
                                 dummy->closed = Value::uninit();
-                            } else if (uv.isGlobal) {
-                                auto it = globalNames.find(uv.name);
-                                if (it != globalNames.end()) {
-                                    dummy->closed = globals[it->second];
-                                } else {
-                                    Value builtinVal = getBuiltinValue(uv.name);
-                                    if (builtinVal.isNone()) builtinVal = getBuiltinClosure(uv.name);
-                                    if (!builtinVal.isNone()) {
-                                        dummy->closed = builtinVal;
-                                    } else {
-                                        throw std::runtime_error("VM Error: Undefined variable '" + uv.name + "'.");
-                                    }
-                                }
                             } else if (uv.isLocal) {
                                 if (uv.isRefParam) {
                                     dummy->closed = *(static_cast<ObjUpVal*>(getReg(frame->refParamsBase + uv.index).asObj())->location);

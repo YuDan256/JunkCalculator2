@@ -1326,12 +1326,6 @@
     "gensym": {
       "signature": "gensym([prefix])"
     },
-    "parseExpr": {
-      "signature": "parseExpr(tokens)"
-    },
-    "parseStmt": {
-      "signature": "parseStmt(tokens)"
-    },
     "ln": {
       "signature": "ln(x) / ln(base, x)"
     },
@@ -1433,6 +1427,9 @@
     "const": {
       "signature": "const name = expr"
     },
+    "static": {
+      "signature": "static name = expr  |  static method(...) = ..."
+    },
     "delete": {
       "signature": "delete variable"
     },
@@ -1461,7 +1458,7 @@
       "signature": "macro name(param) = { body }"
     },
     "syntax": {
-      "signature": "syntax name(tokens) = { body }"
+      "signature": "syntax name(stream) = { body }"
     },
     "quote": {
       "signature": "quote { body }  |  quote expr"

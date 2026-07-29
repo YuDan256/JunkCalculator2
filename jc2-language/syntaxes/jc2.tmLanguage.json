@@ -8,6 +8,7 @@
         { "include": "#rstrings" },
         { "include": "#strings" },
         { "include": "#numbers" },
+        { "include": "#property-access" },
         { "include": "#keywords" },
         { "include": "#class-def" },
         { "include": "#function-def" },
@@ -267,6 +268,24 @@
         },
         "identifiers": {
             "patterns": [ { "name": "variable.other.jc2", "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b" } ]
+        },
+        "property-access": {
+            "patterns": [
+                {
+                    "match": "(\\.)\\s*(\\$?[a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+                    "captures": {
+                        "1": { "name": "punctuation.accessor.jc2" },
+                        "2": { "name": "entity.name.function.call.jc2" }
+                    }
+                },
+                {
+                    "match": "(\\.)\\s*(\\$?[a-zA-Z_][a-zA-Z0-9_]*)",
+                    "captures": {
+                        "1": { "name": "punctuation.accessor.jc2" },
+                        "2": { "name": "variable.other.property.jc2" }
+                    }
+                }
+            ]
         }
     }
 }

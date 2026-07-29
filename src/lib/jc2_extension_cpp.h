@@ -76,6 +76,10 @@ public:
         return s ? std::string(s, len) : "";
     }
 
+    const char* as_c_str() const {
+        return Env::api->as_string(Env::ctx, handle, nullptr);
+    }
+
     void set_native_data(void* data, JC2_NativeDestructor dtor) {
         Env::api->set_native_data(Env::ctx, handle, data, dtor);
     }

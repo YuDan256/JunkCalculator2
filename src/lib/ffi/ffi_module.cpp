@@ -170,7 +170,7 @@ public:
                 break;
             }
             case FFIType::STRING:
-                val64 = reinterpret_cast<uint64_t>(args[i].as_string().c_str());
+                val64 = reinterpret_cast<uint64_t>(args[i].as_c_str());
                 break;
             default:
                 throw std::runtime_error("FFI Error: Unsupported argument type.");

@@ -447,8 +447,8 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             
             bool isExplicitConst = vp->isConst || globalConst;
-            if (mod == ScopeModifier::Ref && currentFunction) {
-                int upvalIdx = resolveUpvalue(vp->name.lexeme, false);
+            if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                int upvalIdx = resolveUpvalue(vp->name.lexeme, sym.scope == VarScope::CapturedState);
                 if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
@@ -748,6 +748,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
                     bool isExplicitConst = restPat->isConst || globalConst;
                     
+                    if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                        int upvalIdx = resolveUpvalue(restPat->name.lexeme, sym.scope == VarScope::CapturedState);
+                        if (upvalIdx != -1) {
+                            currentFunction->upvalues[upvalIdx].isRef = true;
+                        }
+                    }
                     assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
                 }
                 continue;
@@ -798,8 +804,8 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
             bool isExplicitConst = restPat->isConst || globalConst;
             
-            if (mod == ScopeModifier::Ref && currentFunction) {
-                int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+            if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                int upvalIdx = resolveUpvalue(restPat->name.lexeme, sym.scope == VarScope::CapturedState);
                 if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
@@ -918,8 +924,8 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
                         bool isExplicitConst = restPat->isConst || globalConst;
             
-                        if (mod == ScopeModifier::Ref && currentFunction) {
-                            int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+                        if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                            int upvalIdx = resolveUpvalue(restPat->name.lexeme, sym.scope == VarScope::CapturedState);
                             if (upvalIdx != -1) {
                                 currentFunction->upvalues[upvalIdx].isRef = true;
                             }
@@ -987,8 +993,8 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
             bool isExplicitConst = restPat->isConst || globalConst;
             
-            if (mod == ScopeModifier::Ref && currentFunction) {
-                int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+            if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                int upvalIdx = resolveUpvalue(restPat->name.lexeme, sym.scope == VarScope::CapturedState);
                 if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
@@ -1082,8 +1088,8 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
             bool isExplicitConst = restPat->isConst || globalConst;
             
-            if (mod == ScopeModifier::Ref && currentFunction) {
-                int upvalIdx = resolveUpvalue(restPat->name.lexeme, false);
+            if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                int upvalIdx = resolveUpvalue(restPat->name.lexeme, sym.scope == VarScope::CapturedState);
                 if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
@@ -2505,16 +2511,14 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 void IRBuilder::visitRefDecl(RefDecl* expr) {
     graph->currentLine = expr->name.line;
     if (expr->name.lexeme != "_") {
-        int upvalIdx = -1;
         if (currentFunction) {
-            upvalIdx = resolveUpvalue(expr->name.lexeme, false);
-            if (upvalIdx != -1) {
-                currentFunction->upvalues[upvalIdx].isRef = true;
-                IRNode* node = graph->createValueNode(IROp::GetUpvalue);
-                node->payload1 = static_cast<uint32_t>(upvalIdx);
-                node->name = expr->name.lexeme;
-                node->setControl(currentControl);
-                declareVariable(expr->name.lexeme, node);
+            auto it = exprSymbols->find(expr);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState) {
+                int upvalIdx = resolveUpvalue(expr->name.lexeme, sym.scope == VarScope::CapturedState);
+                if (upvalIdx != -1) {
+                    currentFunction->upvalues[upvalIdx].isRef = true;
+                }
             }
         }
         
@@ -2603,8 +2607,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                 currentFunction->upvalues[upvalIdx].isCapturedState = true;
             }
         } else if (expr->isRef) {
-            if (currentFunction) {
-                int upvalIdx = resolveUpvalue(var->name.lexeme, false);
+            auto it = exprSymbols->find(var);
+            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+            if (currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                int upvalIdx = resolveUpvalue(var->name.lexeme, sym.scope == VarScope::CapturedState);
                 if (upvalIdx != -1) {
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }

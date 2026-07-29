@@ -118,12 +118,8 @@ void Resolver::hoistBlock(Block* block) {
             }
             if (assign->isState) declareVariable(assign->name.lexeme, VarScope::State, assign->isConst);
             else if (assign->isRef) {
-                bool inFunc = false;
-                for (const auto& s : scopes) { if (s.isFunctionScope) { inFunc = true; break; } }
                 ResolvedSym existing = resolveName(assign->name.lexeme);
-                VarScope scopeToDeclare = inFunc ? VarScope::Upvalue : VarScope::Global;
-                if (existing.scope == VarScope::Global) scopeToDeclare = VarScope::Global;
-                declareVariable(assign->name.lexeme, scopeToDeclare, assign->isConst, true);
+                declareVariable(assign->name.lexeme, existing.scope, assign->isConst, true);
             }
             else if (assign->isLocal) declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, true);
             else declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, false);
@@ -135,12 +131,8 @@ void Resolver::hoistBlock(Block* block) {
             declareVariable(stateDecl->name.lexeme, VarScope::State, stateDecl->isConst);
         } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
             checkExplicitDecl(refDecl, refDecl->name.lexeme);
-            bool inFunc = false;
-            for (const auto& s : scopes) { if (s.isFunctionScope) { inFunc = true; break; } }
             ResolvedSym existing = resolveName(refDecl->name.lexeme);
-            VarScope scopeToDeclare = inFunc ? VarScope::Upvalue : VarScope::Global;
-            if (existing.scope == VarScope::Global) scopeToDeclare = VarScope::Global;
-            declareVariable(refDecl->name.lexeme, scopeToDeclare, refDecl->isConst, true);
+            declareVariable(refDecl->name.lexeme, existing.scope, refDecl->isConst, true);
         } else if (auto* constDecl = dynamic_cast<ConstDecl*>(stmt.get())) {
             checkExplicitDecl(constDecl, constDecl->name.lexeme);
             declareVariable(constDecl->name.lexeme, VarScope::Local, true, false);
@@ -191,12 +183,8 @@ void Resolver::visitAssign(Assign* expr) {
 
     if (expr->isState) declareVariable(expr->name.lexeme, VarScope::State, expr->isConst);
     else if (expr->isRef) {
-        bool inFunc = false;
-        for (const auto& s : scopes) { if (s.isFunctionScope) { inFunc = true; break; } }
         ResolvedSym existing = resolveName(expr->name.lexeme);
-        VarScope scopeToDeclare = inFunc ? VarScope::Upvalue : VarScope::Global;
-        if (existing.scope == VarScope::Global) scopeToDeclare = VarScope::Global;
-        declareVariable(expr->name.lexeme, scopeToDeclare, expr->isConst, true);
+        declareVariable(expr->name.lexeme, existing.scope, expr->isConst, true);
     }
     else if (expr->isLocal) declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true);
     else declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, false);
@@ -269,12 +257,8 @@ void Resolver::visitIndexAssign(IndexAssign* expr) {
 void Resolver::visitLocalDecl(LocalDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true); }
 void Resolver::visitRefDecl(RefDecl* expr) {
     checkExplicitDecl(expr, expr->name.lexeme);
-    bool inFunc = false;
-    for (const auto& s : scopes) { if (s.isFunctionScope) { inFunc = true; break; } }
     ResolvedSym existing = resolveName(expr->name.lexeme);
-    VarScope scopeToDeclare = inFunc ? VarScope::Upvalue : VarScope::Global;
-    if (existing.scope == VarScope::Global) scopeToDeclare = VarScope::Global;
-    declareVariable(expr->name.lexeme, scopeToDeclare, expr->isConst, true);
+    declareVariable(expr->name.lexeme, existing.scope, expr->isConst, true);
 }
 void Resolver::visitStateDecl(StateDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::State, expr->isConst); }
 void Resolver::visitConstDecl(ConstDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, true, false); }
@@ -573,11 +557,8 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
             VarScope scope = VarScope::Local;
             if (mod == ScopeModifier::State) scope = VarScope::State;
             else if (mod == ScopeModifier::Ref) {
-                bool inFunc = false;
-                for (const auto& s : scopes) { if (s.isFunctionScope) { inFunc = true; break; } }
                 ResolvedSym existing = resolveName(vp->name.lexeme);
-                scope = inFunc ? VarScope::Upvalue : VarScope::Global;
-                if (existing.scope == VarScope::Global) scope = VarScope::Global;
+                scope = existing.scope;
             }
             declareVariable(vp->name.lexeme, scope, isConst, mod == ScopeModifier::Local || mod == ScopeModifier::Ref);
             patternSymbols[pat] = resolveName(vp->name.lexeme);
@@ -592,11 +573,8 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
             VarScope scope = VarScope::Local;
             if (mod == ScopeModifier::State) scope = VarScope::State;
             else if (mod == ScopeModifier::Ref) {
-                bool inFunc = false;
-                for (const auto& s : scopes) { if (s.isFunctionScope) { inFunc = true; break; } }
                 ResolvedSym existing = resolveName(rp->name.lexeme);
-                scope = inFunc ? VarScope::Upvalue : VarScope::Global;
-                if (existing.scope == VarScope::Global) scope = VarScope::Global;
+                scope = existing.scope;
             }
             declareVariable(rp->name.lexeme, scope, isConst, mod == ScopeModifier::Local || mod == ScopeModifier::Ref);
             patternSymbols[pat] = resolveName(rp->name.lexeme);

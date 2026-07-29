@@ -46,6 +46,13 @@ test_ffi_real_call() = {
         assert(buf.readU8() == 255, "FFI memset failed to modify buffer start")
         buf.seek(9)
         assert(buf.readU8() == 255, "FFI memset failed to modify buffer end")
+
+        // Test 4: Variadic function
+        // int printf(const char *format, ...)
+        c_printf = lib.bind("printf", "i32", "string", "...")
+        // We can't easily assert stdout, but we can assert it doesn't crash and returns > 0
+        printed_chars = c_printf("FFI Variadic Test: %d, %f, %s\n", 42, 3.14, "success")
+        assert(printed_chars > 0, "FFI printf failed")
     }
 }
 test_ffi_real_call()

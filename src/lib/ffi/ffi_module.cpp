@@ -54,7 +54,8 @@ enum class FFIType : uint8_t {
     I8, U8, I16, U16, I32, U32, I64, U64,
     F32, F64,
     POINTER,
-    STRING
+    STRING,
+    VARIADIC
 };
 
 struct FFITypeDesc {
@@ -77,6 +78,7 @@ FFITypeDesc parseType(const std::string& t) {
     if (t == "f64") return { FFIType::F64, 8 };
     if (t == "pointer") return { FFIType::POINTER, 8 };
     if (t == "string") return { FFIType::STRING, 8 };
+    if (t == "...") return { FFIType::VARIADIC, 0 };
     throw std::runtime_error("FFI Error: Unsupported type '" + t + "'.");
 }
 
@@ -133,7 +135,19 @@ public:
 
         for (size_t i = 0; i < argc; ++i) {
             uint64_t val64 = 0;
-            switch (types[i].type) {
+            FFIType current_type;
+            
+            if (i < types.size()) {
+                current_type = types[i].type;
+            } else {
+                // 动态推断可变参数的类型
+                if (args[i].is_bigint() || args[i].is_int()) current_type = FFIType::I64;
+                else if (args[i].is_double()) current_type = FFIType::F64;
+                else if (args[i].is_string()) current_type = FFIType::STRING;
+                else throw std::runtime_error("FFI Error: Unsupported variadic argument type.");
+            }
+
+            switch (current_type) {
             case FFIType::I8:
             case FFIType::U8:
             case FFIType::I16:
@@ -210,6 +224,7 @@ struct FunctionData {
     void* func_ptr;
     FFITypeDesc ret_type;
     std::vector<FFITypeDesc> arg_types;
+    bool is_variadic;
 };
 
 std::unique_ptr<ABIHandler> g_abiHandler;
@@ -271,9 +286,19 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
     }
     
     std::vector<FFITypeDesc> arg_types;
+    bool is_variadic = false;
     for (int i = 3; i < argc; ++i) {
         try {
-            arg_types.push_back(parseType(Value(argv[i]).as_string()));
+            FFITypeDesc t = parseType(Value(argv[i]).as_string());
+            if (t.type == FFIType::VARIADIC) {
+                if (i != argc - 1) {
+                    throw_error("FFI Error: '...' must be the last argument type.");
+                    return Value().get_handle();
+                }
+                is_variadic = true;
+            } else {
+                arg_types.push_back(t);
+            }
         } catch (const std::exception& e) {
             throw_error(e.what());
             return Value().get_handle();
@@ -281,7 +306,7 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
     }
     
     Instance func_inst(*g_funcClass);
-    FunctionData* fdata = new FunctionData{func_ptr, ret_type, arg_types};
+    FunctionData* fdata = new FunctionData{func_ptr, ret_type, arg_types, is_variadic};
     func_inst.set_native_data(fdata, [](void* ptr) {
         delete static_cast<FunctionData*>(ptr);
     });
@@ -299,9 +324,17 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
         return Value().get_handle();
     }
     
-    if (argc - 1 != data->arg_types.size()) {
-        throw_error("FFI Error: Argument count mismatch. Expected " + std::to_string(data->arg_types.size()) + ", got " + std::to_string(argc - 1) + ".");
-        return Value().get_handle();
+    size_t provided_args = argc - 1;
+    if (data->is_variadic) {
+        if (provided_args < data->arg_types.size()) {
+            throw_error("FFI Error: Not enough arguments for variadic function. Expected at least " + std::to_string(data->arg_types.size()) + ".");
+            return Value().get_handle();
+        }
+    } else {
+        if (provided_args != data->arg_types.size()) {
+            throw_error("FFI Error: Argument count mismatch. Expected " + std::to_string(data->arg_types.size()) + ", got " + std::to_string(provided_args) + ".");
+            return Value().get_handle();
+        }
     }
     
     std::vector<Value> call_args;
@@ -353,7 +386,9 @@ int jc2_init(jc2::Module& mod) {
         "    Integers:  \"i8\", \"u8\", \"i16\", \"u16\", \"i32\", \"u32\", \"i64\", \"u64\"\n"
         "    Floats:    \"f32\" (float), \"f64\" (double)\n"
         "    Memory:    \"pointer\" (raw address), \"string\" (const char*)\n"
-        "    Return:    \"void\" (only valid as return_type)\n\n"
+        "    Return:    \"void\" (only valid as return_type)\n"
+        "    Variadic:  \"...\" (must be the last argument type)\n"
+        "               * Auto-infers: int/BigInt -> i64, double -> f64, string -> string\n\n"
         "  4. Pointers & Memory Management (buffer linkage)\n"
         "  ──────────────────────\n"
         "    The \"pointer\" type represents a 64-bit memory address (void*, int*, etc.).\n"
@@ -375,9 +410,9 @@ int jc2_init(jc2::Module& mod) {
         "    c_pow = libc.bind(\"pow\", \"f64\", \"f64\", \"f64\")\n"
         "    print(c_pow(2.0, 10.0))  // -> 1024.0\n"
         "    \n"
-        "    // int puts(const char* str);\n"
-        "    c_puts = libc.bind(\"puts\", \"i32\", \"string\")\n"
-        "    c_puts(\"Hello from Native C!\")\n"
+        "    // int printf(const char* format, ...);\n"
+        "    c_printf = libc.bind(\"printf\", \"i32\", \"string\", \"...\")\n"
+        "    c_printf(\"Math: %d + %f = %f\\n\", 1, 2.5, 3.5)\n"
         "    \n"
         "    // Pointers & Buffer: void* memset(void* dest, int ch, size_t count);\n"
         "    c_memset = libc.bind(\"memset\", \"pointer\", \"pointer\", \"i32\", \"u64\")\n"

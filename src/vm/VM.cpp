@@ -3193,13 +3193,13 @@ Value VM::run(int targetFrameDepth) {
                 if (ic.cachedGlobalSlot >= 0) {
                     getReg(a) = globals.data()[ic.cachedGlobalSlot];
                 } else if (ic.cachedGlobalSlot == -2) {
-                    if (frame->classContext.isNone()) throw std::runtime_error("VM Error: '<class>' accessed outside of context.");
+                    if (frame->classContext.isNone()) throw std::runtime_error("VM Error: 'class' accessed outside of context.");
                     getReg(a) = frame->classContext;
                 } else {
                     const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                     if (name == "<class>") {
                         ic.cachedGlobalSlot = -2;
-                        if (frame->classContext.isNone()) throw std::runtime_error("VM Error: '<class>' accessed outside of context.");
+                        if (frame->classContext.isNone()) throw std::runtime_error("VM Error: 'class' accessed outside of context.");
                         getReg(a) = frame->classContext;
                         break;
                     }
@@ -3238,7 +3238,7 @@ Value VM::run(int targetFrameDepth) {
                 }
 
                 const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
-                if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword '" + name + "'.");
+                if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
                 
                 if (constGlobals.count(name) && op != OpCode::DEFINE_CONST_GLOBAL) {
                     throw std::runtime_error("Runtime Error: Cannot modify const variable '" + name + "'.");

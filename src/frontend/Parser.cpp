@@ -680,7 +680,14 @@ namespace jc {
                     Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                     field = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
                 } else {
-                    field = consume(TokenType::IDENTIFIER, "Parser Error: Expect field/method name after '.'.");
+                    Token t = peek();
+                    // 允许真正的标识符，或者任何关键字 (IF 到 NONE_KW) 作为属性/方法名
+                    if (t.type == TokenType::IDENTIFIER || (t.type >= TokenType::IF && t.type <= TokenType::NONE_KW)) {
+                        field = advance();
+                        field.type = TokenType::IDENTIFIER; // 统一降级视为标识符
+                    } else {
+                        throw std::runtime_error("Parser Error: Expect field/method name after '.'.");
+                    }
                 }
 
                 if (match({ TokenType::LPAREN })) {

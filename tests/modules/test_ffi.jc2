@@ -47,6 +47,10 @@ test_ffi_real_call() = {
         buf.seek(9)
         assert(buf.readU8() == 255, "FFI memset failed to modify buffer end")
 
+        // Test readMemory / writeMemory
+        ffi.writeMemory(buf.address(), "i32", 123456789)
+        assert(ffi.readMemory(buf.address(), "i32") == 123456789, "ffi.readMemory/writeMemory failed")
+
         // Test 4: Variadic function
         // int printf(const char *format, ...)
         c_printf = lib.bind("printf", "i32", "string", "...")
@@ -96,6 +100,37 @@ test_ffi_real_call() = {
         assert(PtInRect(r.address(), p2) == 0, "PtInRect should return false for p2")
     } catch (e) {
         print("Warning: user32.dll not found or failed, skipping PtInRect test.")
+    }
+
+    // Test 8: Callbacks (qsort)
+    if (lib != none) {
+        c_qsort = lib.bind("qsort", "void", "pointer", "u64", "u64", "pointer")
+        
+        arr_buf = buffer.alloc(16) // 4 ints
+        arr_buf.writeI32(40)
+        arr_buf.writeI32(10)
+        arr_buf.writeI32(30)
+        arr_buf.writeI32(20)
+        
+        cmp_func(p1, p2) = {
+            v1 = ffi.readMemory(p1, "i32")
+            v2 = ffi.readMemory(p2, "i32")
+            if (v1 > v2) return 1
+            if (v1 < v2) return -1
+            return 0
+        }
+        
+        cb = ffi.Callback(cmp_func, "i32", "pointer", "pointer")
+        
+        // Reset buffer cursor to 0 before passing its address to C
+        arr_buf.seek(0)
+        c_qsort(arr_buf.address(), 4, 4, cb.address())
+        
+        arr_buf.seek(0)
+        assert(arr_buf.readI32() == 10, "qsort callback failed")
+        assert(arr_buf.readI32() == 20, "qsort callback failed")
+        assert(arr_buf.readI32() == 30, "qsort callback failed")
+        assert(arr_buf.readI32() == 40, "qsort callback failed")
     }
 }
 test_ffi_real_call()

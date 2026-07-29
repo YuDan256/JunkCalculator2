@@ -16,7 +16,7 @@
 using namespace jc2;
 
 // ============================================================================
-// 1. 内存管理层 (ExecutableMemory)
+// 1. 内存管理层 (ExecutableMemory & ExecutableMemoryPool)
 // ============================================================================
 class ExecutableMemory {
     void* memory;
@@ -45,6 +45,48 @@ public:
     // 禁用拷贝语义，确保 RAII 安全
     ExecutableMemory(const ExecutableMemory&) = delete;
     ExecutableMemory& operator=(const ExecutableMemory&) = delete;
+};
+
+class ExecutableMemoryPool {
+    static constexpr size_t PAGE_SIZE = 4096;
+    static constexpr size_t SLOT_SIZE = 128;
+    static constexpr size_t SLOTS_PER_PAGE = PAGE_SIZE / SLOT_SIZE;
+
+    struct Page {
+        void* memory;
+        Page() {
+#ifdef _WIN32
+            memory = VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+            if (!memory) throw std::runtime_error("FFI Error: Failed to allocate executable memory page.");
+#endif
+        }
+        ~Page() {
+#ifdef _WIN32
+            if (memory) VirtualFree(memory, 0, MEM_RELEASE);
+#endif
+        }
+    };
+
+    std::vector<std::unique_ptr<Page>> pages;
+    std::vector<void*> free_slots;
+
+public:
+    void* allocate() {
+        if (free_slots.empty()) {
+            pages.push_back(std::make_unique<Page>());
+            uint8_t* base = static_cast<uint8_t*>(pages.back()->memory);
+            for (size_t i = 0; i < SLOTS_PER_PAGE; ++i) {
+                free_slots.push_back(base + i * SLOT_SIZE);
+            }
+        }
+        void* slot = free_slots.back();
+        free_slots.pop_back();
+        return slot;
+    }
+
+    void deallocate(void* slot) {
+        free_slots.push_back(slot);
+    }
 };
 
 // ============================================================================
@@ -175,8 +217,14 @@ void write_memory(uint8_t* ptr, const FFITypeDesc& t, const Value& v) {
 // Windows x64 通用调用蹦床 (JIT 机器码)
 const uint8_t win64_trampoline_code[] = {
     0x55, 0x48, 0x89, 0xE5, 0x56, 0x57, 0x41, 0x54, 0x41, 0x55,
-    0x49, 0x89, 0xCC, 0x4D, 0x89, 0xCD, 0x48, 0x89, 0xD0, 0x48,
-    0x29, 0xC4, 0x48, 0x89, 0xD1, 0x48, 0xC1, 0xE9, 0x03, 0x4C,
+    0x49, 0x89, 0xCC, 0x4D, 0x89, 0xCD, 
+    // Stack probe loop to safely allocate > 4KB
+    0x48, 0x89, 0xD0, 0x49, 0x89, 0xC3, 0x49, 0x81, 0xFB, 0x00, 
+    0x10, 0x00, 0x00, 0x7C, 0x14, 0x48, 0x81, 0xEC, 0x00, 0x10, 
+    0x00, 0x00, 0xC6, 0x04, 0x24, 0x00, 0x49, 0x81, 0xEB, 0x00, 
+    0x10, 0x00, 0x00, 0xEB, 0xE3, 0x4C, 0x29, 0xDC, 
+    // End stack probe
+    0x48, 0x89, 0xD1, 0x48, 0xC1, 0xE9, 0x03, 0x4C,
     0x89, 0xC6, 0x48, 0x89, 0xE7, 0xF3, 0x48, 0xA5, 0x48, 0x8B,
     0x0C, 0x24, 0x66, 0x48, 0x0F, 0x6E, 0xC1, 0x48, 0x8B, 0x54,
     0x24, 0x08, 0x66, 0x48, 0x0F, 0x6E, 0xCA, 0x4C, 0x8B, 0x44,
@@ -202,7 +250,8 @@ class Win64ABIHandler : public ABIHandler {
 
     uint64_t extract_u64(const Value& v) {
         if (v.is_bigint()) return std::stoull(v.to_string());
-        return static_cast<uint64_t>(v.as_double());
+        if (v.is_int()) return static_cast<uint64_t>(static_cast<int64_t>(v.as_int()));
+        return static_cast<uint64_t>(static_cast<int64_t>(v.as_double()));
     }
 
 public:
@@ -347,7 +396,157 @@ public:
 };
 
 // ============================================================================
-// 4. JC2 绑定层 (FFILibrary & FFIFunction)
+// 4. 回调系统 (CallbackData & Thunk)
+// ============================================================================
+struct CallbackData {
+    Value func;
+    FFITypeDesc ret_type;
+    std::vector<FFITypeDesc> arg_types;
+    void* thunk_memory;
+};
+
+extern "C" void generic_callback_handler(CallbackData* data, uint64_t* regs_space, uint64_t* stack_space, uint64_t* out_int, double* out_double) {
+    *out_int = 0;
+    *out_double = 0.0;
+    try {
+        std::vector<Value> args;
+        size_t arg_count = data->arg_types.size();
+        args.reserve(arg_count);
+
+        for (size_t i = 0; i < arg_count; ++i) {
+            uint64_t raw_val = 0;
+            const auto& t = data->arg_types[i];
+            
+            if (i < 4) {
+                if (t.type == FFIType::F32 || t.type == FFIType::F64) {
+                    raw_val = regs_space[i + 4]; // Read from XMM area
+                } else {
+                    raw_val = regs_space[i]; // Read from GPR area
+                }
+            } else {
+                raw_val = stack_space[i - 4];
+            }
+
+            switch (t.type) {
+                case FFIType::I8: args.push_back(Value(static_cast<int32_t>(static_cast<int8_t>(raw_val)))); break;
+                case FFIType::U8: args.push_back(Value(static_cast<int32_t>(static_cast<uint8_t>(raw_val)))); break;
+                case FFIType::I16: args.push_back(Value(static_cast<int32_t>(static_cast<int16_t>(raw_val)))); break;
+                case FFIType::U16: args.push_back(Value(static_cast<int32_t>(static_cast<uint16_t>(raw_val)))); break;
+                case FFIType::I32: args.push_back(Value(static_cast<int32_t>(raw_val))); break;
+                case FFIType::U32: args.push_back(BigInt(std::to_string(static_cast<uint32_t>(raw_val)))); break;
+                case FFIType::I64: args.push_back(BigInt(std::to_string(static_cast<int64_t>(raw_val)))); break;
+                case FFIType::U64:
+                case FFIType::POINTER: args.push_back(BigInt(std::to_string(raw_val))); break;
+                case FFIType::F32: {
+                    float f;
+                    std::memcpy(&f, &raw_val, sizeof(float));
+                    args.push_back(Value(static_cast<double>(f)));
+                    break;
+                }
+                case FFIType::F64: {
+                    double d;
+                    std::memcpy(&d, &raw_val, sizeof(double));
+                    args.push_back(Value(d));
+                    break;
+                }
+                case FFIType::STRING: {
+                    if (raw_val == 0) args.push_back(Value());
+                    else args.push_back(Value(reinterpret_cast<const char*>(raw_val)));
+                    break;
+                }
+                case FFIType::STRUCT: {
+                    if (t.size <= 8) {
+                        Instance inst(*g_structInstClass);
+                        StructInstanceData* sdata = new StructInstanceData{t.layout, std::vector<uint8_t>(t.size, 0)};
+                        std::memcpy(sdata->memory.data(), &raw_val, t.size);
+                        inst.set_native_data(sdata, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+                        args.push_back(inst.get_handle());
+                    } else {
+                        Instance inst(*g_structInstClass);
+                        StructInstanceData* sdata = new StructInstanceData{t.layout, std::vector<uint8_t>(t.size, 0)};
+                        std::memcpy(sdata->memory.data(), reinterpret_cast<void*>(raw_val), t.size);
+                        inst.set_native_data(sdata, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+                        args.push_back(inst.get_handle());
+                    }
+                    break;
+                }
+                default: args.push_back(Value()); break;
+            }
+        }
+
+        Value result;
+        if (data->func.is_function()) {
+            Function f(data->func.get_handle());
+            result = f.call(args);
+        }
+
+        if (data->ret_type.type != FFIType::VOID_TYPE) {
+            uint64_t val64 = 0;
+            switch (data->ret_type.type) {
+                case FFIType::I8:
+                case FFIType::U8:
+                case FFIType::I16:
+                case FFIType::U16:
+                case FFIType::I32:
+                case FFIType::U32:
+                case FFIType::I64:
+                case FFIType::U64:
+                case FFIType::POINTER:
+                    if (result.is_bigint()) val64 = std::stoull(result.to_string());
+                    else if (result.is_int()) val64 = static_cast<uint64_t>(static_cast<int64_t>(result.as_int()));
+                    else val64 = static_cast<uint64_t>(static_cast<int64_t>(result.as_double()));
+                    *out_int = val64;
+                    break;
+                case FFIType::F32: {
+                    float f = static_cast<float>(result.as_double());
+                    std::memcpy(&val64, &f, sizeof(float));
+                    *out_int = val64;
+                    *out_double = result.as_double();
+                    break;
+                }
+                case FFIType::F64: {
+                    double d = result.as_double();
+                    std::memcpy(&val64, &d, sizeof(double));
+                    *out_int = val64;
+                    *out_double = d;
+                    break;
+                }
+                case FFIType::STRING:
+                    *out_int = reinterpret_cast<uint64_t>(result.as_c_str());
+                    break;
+                case FFIType::STRUCT: {
+                    StructInstanceData* sdata = result.get_native_data<StructInstanceData>();
+                    if (sdata && sdata->layout == data->ret_type.layout && data->ret_type.size <= 8) {
+                        std::memcpy(&val64, sdata->memory.data(), data->ret_type.size);
+                        *out_int = val64;
+                    }
+                    break;
+                }
+                default: break;
+            }
+        }
+    } catch (...) {
+        // Swallow exceptions in C callback to prevent crashing the host
+    }
+}
+
+const uint8_t callback_thunk_template[] = {
+    0x55, 0x48, 0x89, 0xE5, 0x48, 0x81, 0xEC, 0xA0, 0x00, 0x00, 
+    0x00, 0x48, 0x89, 0x4D, 0xB0, 0x48, 0x89, 0x55, 0xB8, 0x4C, 
+    0x89, 0x45, 0xC0, 0x4C, 0x89, 0x4D, 0xC8, 0xF2, 0x0F, 0x11, 
+    0x45, 0xD0, 0xF2, 0x0F, 0x11, 0x4D, 0xD8, 0xF2, 0x0F, 0x11, 
+    0x55, 0xE0, 0xF2, 0x0F, 0x11, 0x5D, 0xE8, 0x48, 0xB9, 
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // CallbackData* at offset 49
+    0x48, 0x8D, 0x55, 0xB0, 0x4C, 0x8D, 0x45, 0x30, 0x4C, 0x8D, 
+    0x4D, 0xF0, 0x48, 0x8D, 0x45, 0xF8, 0x48, 0x89, 0x44, 0x24, 
+    0x20, 0x48, 0xB8, 
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // generic_callback_handler at offset 80
+    0xFF, 0xD0, 0x48, 0x8B, 0x45, 0xF0, 0xF2, 0x0F, 0x10, 0x45, 
+    0xF8, 0x48, 0x89, 0xEC, 0x5D, 0xC3
+};
+
+// ============================================================================
+// 5. JC2 绑定层 (FFILibrary & FFIFunction)
 // ============================================================================
 struct LibraryData {
     HMODULE handle;
@@ -361,10 +560,114 @@ struct FunctionData {
 };
 
 std::unique_ptr<ABIHandler> g_abiHandler;
+std::unique_ptr<ExecutableMemoryPool> g_execPool;
 std::unique_ptr<Class> g_libClass;
 std::unique_ptr<Class> g_funcClass;
 std::unique_ptr<Class> g_structLayoutClass;
 std::unique_ptr<Class> g_structInstClass;
+std::unique_ptr<Class> g_callbackClass;
+
+JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)user_data;
+    if (argc < 2) {
+        throw_error("ffi.readMemory requires address and type.");
+        return Value().get_handle();
+    }
+    uint64_t addr = std::stoull(Value(argv[0]).to_string());
+    FFITypeDesc t;
+    try {
+        t = parseType(Value(argv[1]));
+    } catch (const std::exception& e) {
+        throw_error(e.what());
+        return Value().get_handle();
+    }
+    return read_memory(reinterpret_cast<const uint8_t*>(addr), t).get_handle();
+}
+
+JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)user_data;
+    if (argc < 3) {
+        throw_error("ffi.writeMemory requires address, type, and value.");
+        return Value().get_handle();
+    }
+    uint64_t addr = std::stoull(Value(argv[0]).to_string());
+    FFITypeDesc t;
+    try {
+        t = parseType(Value(argv[1]));
+    } catch (const std::exception& e) {
+        throw_error(e.what());
+        return Value().get_handle();
+    }
+    write_memory(reinterpret_cast<uint8_t*>(addr), t, Value(argv[2]));
+    return Value().get_handle();
+}
+
+JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)user_data;
+    if (argc < 2) {
+        throw_error("ffi.Callback requires func, ret_type, and [arg_types...].");
+        return Value().get_handle();
+    }
+    
+    Value func(argv[0]);
+    if (!func.is_function()) {
+        throw_error("FFI Error: First argument must be a function.");
+        return Value().get_handle();
+    }
+    
+    FFITypeDesc ret_type;
+    try {
+        ret_type = parseType(Value(argv[1]));
+    } catch (const std::exception& e) {
+        throw_error(e.what());
+        return Value().get_handle();
+    }
+    
+    std::vector<FFITypeDesc> arg_types;
+    for (int i = 2; i < argc; ++i) {
+        try {
+            FFITypeDesc t = parseType(Value(argv[i]));
+            if (t.type == FFIType::VARIADIC) {
+                throw_error("FFI Error: Variadic arguments not supported in callbacks.");
+                return Value().get_handle();
+            }
+            arg_types.push_back(t);
+        } catch (const std::exception& e) {
+            throw_error(e.what());
+            return Value().get_handle();
+        }
+    }
+    
+    void* thunk = g_execPool->allocate();
+    std::memcpy(thunk, callback_thunk_template, sizeof(callback_thunk_template));
+    
+    CallbackData* data = new CallbackData{func, ret_type, arg_types, thunk};
+    
+    uint64_t data_ptr = reinterpret_cast<uint64_t>(data);
+    uint64_t handler_ptr = reinterpret_cast<uint64_t>(&generic_callback_handler);
+    
+    std::memcpy(static_cast<uint8_t*>(thunk) + 49, &data_ptr, 8);
+    std::memcpy(static_cast<uint8_t*>(thunk) + 80, &handler_ptr, 8);
+    
+    Instance inst(*g_callbackClass);
+    inst.set("func", func); // Prevent GC of the closure
+    
+    inst.set_native_data(data, [](void* ptr) {
+        CallbackData* d = static_cast<CallbackData*>(ptr);
+        g_execPool->deallocate(d->thunk_memory);
+        delete d;
+    });
+    
+    return inst.get_handle();
+}
+
+JC2_ValueHandle callback_address(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)argc; (void)user_data;
+    Instance self(argv[0]);
+    CallbackData* data = self.get_native_data<CallbackData>();
+    uint64_t addr = reinterpret_cast<uint64_t>(data->thunk_memory);
+    return BigInt(std::to_string(addr)).get_handle();
+}
 
 JC2_ValueHandle struct_layout_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx; (void)user_data;
@@ -593,16 +896,18 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
 // ============================================================================
 int jc2_init(jc2::Module& mod) {
     g_abiHandler = std::make_unique<Win64ABIHandler>();
+    g_execPool = std::make_unique<ExecutableMemoryPool>();
     
     g_libClass = std::make_unique<Class>("FFILibrary");
     g_funcClass = std::make_unique<Class>("FFIFunction");
     g_structLayoutClass = std::make_unique<Class>("StructLayout");
     g_structInstClass = std::make_unique<Class>("StructInstance");
+    g_callbackClass = std::make_unique<Class>("Callback");
     
     g_libClass->set_allocator(lib_alloc);
-    g_libClass->bind_method("bind", lib_bind, 2, 255, true);
+    g_libClass->bind_method("bind", lib_bind, 2, 16777215, true);
     
-    g_funcClass->bind_method("__call__", func_call, 0, 255, true);
+    g_funcClass->bind_method("__call__", func_call, 0, 16777215, true);
 
     g_structLayoutClass->set_allocator(struct_layout_alloc);
     g_structLayoutClass->bind_method("__call__", struct_layout_call, 0, 0, false);
@@ -612,9 +917,16 @@ int jc2_init(jc2::Module& mod) {
     g_structInstClass->bind_method("address", struct_inst_address, 0, 0, false);
     g_structInstClass->bind_method("__str__", struct_inst_str, 0, 0, false);
     
+    g_callbackClass->set_allocator(callback_alloc);
+    g_callbackClass->bind_method("address", callback_address, 0, 0, false);
+    
     mod.register_value("FFILibrary", *g_libClass);
     mod.register_value("FFIFunction", *g_funcClass);
     mod.register_value("Struct", *g_structLayoutClass);
+    mod.register_value("Callback", *g_callbackClass);
+    
+    mod.register_function("readMemory", ffi_read_memory, 2, 2, false);
+    mod.register_function("writeMemory", ffi_write_memory, 3, 3, false);
     
     mod.register_help("ffi", 
         "═══ Zero-Dependency Foreign Function Interface (FFI) ═══\n\n"
@@ -657,6 +969,12 @@ int jc2_init(jc2::Module& mod) {
         "      p.x = 100\n"
         "      c_func(p)              // Pass struct by value\n"
         "      c_func_ptr(p.address()) // Pass struct by pointer\n\n"
+        "  6. Callbacks (C calling JC2)\n"
+        "  ──────────────────────\n"
+        "    You can pass JC2 functions to C as function pointers using `ffi.Callback`.\n"
+        "      my_cmp(a, b) = a > b ? 1 : (a < b ? -1 : 0)\n"
+        "      cb = ffi.Callback(my_cmp, \"i32\", \"i32\", \"i32\")\n"
+        "      c_qsort(arr, len, 4, cb.address())\n\n"
         "  Example\n"
         "  ──────────────────────\n"
         "    import ffi\n"
@@ -680,6 +998,12 @@ int jc2_init(jc2::Module& mod) {
     
     mod.register_function_help("ffi.FFILibrary", "ffi.FFILibrary(path)", "Loads a native dynamic library (.dll) into memory.", "lib = ffi.FFILibrary(\"msvcrt.dll\")");
     mod.register_function_help("FFILibrary.bind", "lib.bind(func_name, ret_type, [arg_types...])", "Binds a C function from the loaded library with the specified return type and argument types.", "puts = lib.bind(\"puts\", \"i32\", \"string\")");
+    mod.register_function_help("ffi.Struct", "ffi.Struct(layout_dict)", "Defines a C-compatible struct layout with automatic memory alignment and padding.", "Point = ffi.Struct({x: \"i32\", y: \"i32\"})\np = Point()");
+    mod.register_function_help("StructInstance.address", "inst.address()", "Returns the raw 64-bit memory address (pointer) of the struct instance, useful for passing to C functions.", "ptr = p.address()");
+    mod.register_function_help("ffi.Callback", "ffi.Callback(func, ret_type, [arg_types...])", "Wraps a JC2 function into a C-compatible function pointer.", "cb = ffi.Callback(my_func, \"i32\", \"i32\", \"i32\")");
+    mod.register_function_help("Callback.address", "cb.address()", "Returns the raw 64-bit memory address (pointer) of the callback thunk.", "ptr = cb.address()");
+    mod.register_function_help("ffi.readMemory", "ffi.readMemory(address, type)", "Reads a value of the specified FFI type from a raw memory address.", "val = ffi.readMemory(ptr, \"i32\")");
+    mod.register_function_help("ffi.writeMemory", "ffi.writeMemory(address, type, value)", "Writes a value of the specified FFI type to a raw memory address.", "ffi.writeMemory(ptr, \"i32\", 42)");
     
     return 0;
 }

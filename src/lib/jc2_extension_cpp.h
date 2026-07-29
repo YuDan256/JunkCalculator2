@@ -118,7 +118,7 @@ public:
         Env::api->set_class_parent(Env::ctx, get_handle(), parent.get_handle());
     }
 
-    void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 255, bool has_rest = true, void* user_data = nullptr) {
+    void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 16777215, bool has_rest = true, void* user_data = nullptr) {
         Env::api->bind_method(Env::ctx, get_handle(), name.c_str(), fn, min_arity, max_arity, has_rest, user_data);
     }
 
@@ -333,7 +333,7 @@ public:
         Env::api->register_function_help(Env::ctx, name.c_str(), signature.c_str(), desc.c_str(), example.c_str());
     }
 
-    void register_function(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 255, bool has_rest = true, void* user_data = nullptr) {
+    void register_function(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 16777215, bool has_rest = true, void* user_data = nullptr) {
         Env::api->register_function(Env::ctx, mod, name.c_str(), fn, min_arity, max_arity, has_rest, user_data);
     }
 

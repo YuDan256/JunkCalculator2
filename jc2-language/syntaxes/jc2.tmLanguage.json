@@ -9,9 +9,11 @@
         { "include": "#strings" },
         { "include": "#numbers" },
         { "include": "#property-access" },
+        { "include": "#function-def" },
+        { "include": "#modifiers" },
+        { "include": "#enum-block" },
         { "include": "#keywords" },
         { "include": "#class-def" },
-        { "include": "#function-def" },
         { "include": "#function-call" },
         { "include": "#constants" },
         { "include": "#operators" },
@@ -194,7 +196,65 @@
         "keywords": {
             "patterns": [
                 { "name": "keyword.control.jc2", "match": "\\b(if|else|while|for|in|is|break|continue|return|switch|case|default|throw|try|catch|match|defer)\\b" },
-                { "name": "keyword.declaration.jc2", "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum)\\b" }
+                { "name": "keyword.declaration.jc2", "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum|static)\\b" }
+            ]
+        },
+        "modifiers": {
+            "patterns": [
+                {
+                    "match": "\\b(static|local|const|ref|state)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": { "name": "keyword.declaration.modifier.jc2" },
+                        "2": { "name": "variable.other.declaration.jc2" }
+                    }
+                }
+            ]
+        },
+        "enum-block": {
+            "patterns": [
+                {
+                    "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+                    "beginCaptures": {
+                        "1": { "name": "keyword.declaration.enum.jc2" },
+                        "2": { "name": "entity.name.type.enum.jc2" }
+                    },
+                    "end": "\\}",
+                    "endCaptures": {
+                        "0": { "name": "punctuation.bracket.curly.jc2" }
+                    },
+                    "patterns": [
+                        { "include": "#comments" },
+                        {
+                            "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b",
+                            "name": "variable.other.enummember.jc2"
+                        },
+                        { "include": "#numbers" },
+                        { "include": "#strings" },
+                        { "include": "#operators" },
+                        { "include": "#punctuation" }
+                    ]
+                },
+                {
+                    "begin": "\\b(enum)\\s*(?=\\{)",
+                    "beginCaptures": {
+                        "1": { "name": "keyword.declaration.enum.jc2" }
+                    },
+                    "end": "\\}",
+                    "endCaptures": {
+                        "0": { "name": "punctuation.bracket.curly.jc2" }
+                    },
+                    "patterns": [
+                        { "include": "#comments" },
+                        {
+                            "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b",
+                            "name": "variable.other.enummember.jc2"
+                        },
+                        { "include": "#numbers" },
+                        { "include": "#strings" },
+                        { "include": "#operators" },
+                        { "include": "#punctuation" }
+                    ]
+                }
             ]
         },
         "class-def": {
@@ -213,13 +273,6 @@
                     "captures": {
                         "1": { "name": "keyword.declaration.namespace.jc2" },
                         "2": { "name": "entity.name.namespace.jc2" }
-                    }
-                },
-                {
-                    "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
-                    "captures": {
-                        "1": { "name": "keyword.declaration.enum.jc2" },
-                        "2": { "name": "entity.name.type.enum.jc2" }
                     }
                 }
             ]

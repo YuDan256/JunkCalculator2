@@ -2511,7 +2511,8 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
         currentLocalVars.insert(expr->name.lexeme);
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
-    lastValue = uninitNode;
+    lastValue = graph->createConstant(Value::none());
+    lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
@@ -2533,7 +2534,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
         
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
-    lastValue = graph->createConstant(Value::uninit());
+    lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
 }
 
@@ -2559,7 +2560,7 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
         }
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
-    lastValue = graph->createConstant(Value::uninit());
+    lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
 }
     
@@ -2571,7 +2572,8 @@ void IRBuilder::visitConstDecl(ConstDecl* expr) {
     if (expr->name.lexeme != "_") {
         currentConstVars.insert(expr->name.lexeme);
     }
-    lastValue = uninitNode;
+    lastValue = graph->createConstant(Value::none());
+    lastValue->setControl(currentControl);
 }
 
 void IRBuilder::visitDeleteExpr(DeleteExpr* expr) {

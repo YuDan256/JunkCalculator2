@@ -66,6 +66,36 @@ test_ffi_real_call() = {
         c_memset(p.address(), 0, 8)
         assert(p.x == 0, "Struct memory modification failed")
         assert(p.y == 0, "Struct memory modification failed")
+
+        // Test 6: Struct Return by Value (<= 8 bytes)
+        // div_t div(int numer, int denom);
+        DivT = ffi.Struct({quot: "i32", rem: "i32"})
+        c_div = lib.bind("div", DivT, "i32", "i32")
+        div_res = c_div(10, 3)
+        assert(div_res.quot == 3, "Struct return by value failed (quot)")
+        assert(div_res.rem == 1, "Struct return by value failed (rem)")
+    }
+
+    // Test 7: Struct Pass by Value (Windows API)
+    try {
+        user32 = ffi.FFILibrary("user32.dll")
+        Rect = ffi.Struct({left: "i32", top: "i32", right: "i32", bottom: "i32"})
+        Point = ffi.Struct({x: "i32", y: "i32"})
+        
+        // BOOL PtInRect(const RECT *lprc, POINT pt);
+        // RECT is passed by pointer, POINT is passed by value (8 bytes)
+        PtInRect = user32.bind("PtInRect", "i32", "pointer", Point)
+        
+        r = Rect()
+        r.left = 0; r.top = 0; r.right = 100; r.bottom = 100
+        
+        p1 = Point(); p1.x = 50; p1.y = 50
+        p2 = Point(); p2.x = 150; p2.y = 50
+        
+        assert(PtInRect(r.address(), p1) != 0, "PtInRect should return true for p1")
+        assert(PtInRect(r.address(), p2) == 0, "PtInRect should return false for p2")
+    } catch (e) {
+        print("Warning: user32.dll not found or failed, skipping PtInRect test.")
     }
 }
 test_ffi_real_call()

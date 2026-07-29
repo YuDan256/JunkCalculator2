@@ -160,6 +160,13 @@ METHOD(len) {
     return jc2::Value(static_cast<double>(buf->size())).get_handle();
 }
 
+METHOD(address) {
+    (void)argc;
+    GET_SELF;
+    uint64_t addr = reinterpret_cast<uint64_t>(buf->data());
+    return jc2::BigInt(std::to_string(addr)).get_handle();
+}
+
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
 FUNC(alloc) {
@@ -207,6 +214,7 @@ int jc2_init(jc2::Module& mod) {
     g_bytesClass->bind_method("write_arr", bytes_write_arr, 3, 3, false);
     g_bytesClass->bind_method("get", bytes_get, 2, 3, false);
     g_bytesClass->bind_method("len", bytes_len, 0, 0, false);
+    g_bytesClass->bind_method("address", bytes_address, 0, 0, false);
 
     g_bytesClass->set_allocator(global_alloc);
 
@@ -229,7 +237,8 @@ int jc2_init(jc2::Module& mod) {
         "    bytes.pack(array)           Create a buffer from an array of 8-bit integers.\n"
         "    bytes.readFile(path)        Map an entire file from disk into a buffer.\n"
         "    buf.writeFile(path)         Flush a byte buffer directly to your disk.\n"
-        "    buf.len()                   Get the total size of the buffer in bytes.\n\n"
+        "    buf.len()                   Get the total size of the buffer in bytes.\n"
+        "    buf.address()               Get the raw memory address (for FFI).\n\n"
         "  Low-Level Reading & Writing (Absolute Offsets)\n"
         "  ──────────────────────\n"
         "    buf.set(offset, val, type)  Write a value into memory at `offset`.\n"
@@ -261,6 +270,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("bytes.write_arr", "buf.write_arr(offset, arr, type)", "Directly copies an array into the buffer at C++ speeds.", "buf.write_arr(0, data, \"f64\")");
     mod.register_function_help("bytes.get", "buf.get(offset, type, [len])", "Reads a value from the buffer at the specified offset.", "buf.get(0, \"u16\")");
     mod.register_function_help("bytes.len", "buf.len()", "Returns the total size of the buffer in bytes.", "buf.len()");
+    mod.register_function_help("bytes.address", "buf.address()", "Returns the raw memory address of the buffer as a 64-bit integer.", "buf.address()");
 
     return 0;
 }

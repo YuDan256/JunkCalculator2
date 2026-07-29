@@ -102,3 +102,29 @@ JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
 *   **词法容错与 `ERROR_TOKEN`**：在 Token 收集模式下，Lexer 即使遇到无法识别的字符（如未闭合的字符串、非法符号）也**绝不抛出异常**，而是生成 `ERROR` 类型的 Token。这赋予了宏作者定义全新词法规则的终极自由。
 *   **预定义 `Token` 类**：宏接收到的参数是一个包含 `Token` 对象的列表。`Token` 将作为 JC2 的内置预定义类，包含 `type`, `lexeme`, `line`, `col` 字段。这使得用户可以极其方便地对 Token 进行模式匹配解构、字段篡改，甚至凭空实例化新的 Token。
 *   **底层解析桥梁 (`parseExpr` / `parseStmt`)**：为了将处理后的 Token 流转换回 AST，JC2 将提供内置函数 `parseExpr(tokens)` 和 `parseStmt(tokens)`。它们在底层会实例化一个隔离的临时 Parser，将 Token 列表重新解析为合法的 ASTNode，完美复用 JC2 强大的前端解析能力。Token 宏的最终返回值必须是一个合法的 `ASTNode`。
+
+## 14. 真正的零依赖 FFI 架构设计 (True Zero-Dependency FFI Architecture)
+为了彻底摆脱基于 C++ 模板元编程的“伪 FFI”（参数数量受限、极易触发 UB），且在不引入 `libffi` 等第三方库的前提下实现真正的动态函数调用，JC2 设计了一套基于**运行时机器码生成 (JIT Trampoline)** 的纯粹零依赖 FFI 架构。
+为了保证十万行级别项目的高内聚与低耦合，并为未来的跨平台（SysV ABI, ARM64）及高级特性（结构体传值、回调函数）留出扩展空间，底层被严格划分为以下五个抽象层：
+
+*   **内存管理层 (`ExecutableMemory`)**：
+    *   **职责**：RAII 风格的可执行内存管理器。负责向操作系统申请 `RWX` 或 `RX` 内存（Windows `VirtualAlloc` / POSIX `mmap`），并在析构时安全释放。
+    *   **扩展性**：未来可演进为可执行内存池，为 C 回调 JC2 闭包动态分配微型 Thunk 机器码。
+*   **类型描述系统 (`FFITypeDesc`)**：
+    *   **职责**：精确描述参数的底层物理特征（基础类型、字节大小 `size`、对齐要求 `alignment`）。
+    *   **扩展性**：为未来支持复杂的“结构体按值传递 (Structs by Value)”提供必要的内存排布元数据。
+*   **核心调用引擎 (`ABIHandler` 接口)**：
+    *   **职责**：隔离不同操作系统和 CPU 架构的调用约定（Calling Convention）。
+    *   **设计**：定义统一的 `invoke` 接口。V1 版本实现 `Win64ABIHandler`（处理 RCX/XMM0 寄存器排布与 32 字节 Shadow Space）。未来可无缝扩展 `SysV64ABIHandler` 和 `ARM64ABIHandler`。
+*   **机器码生成器 (`TrampolineBuilder`)**：
+    *   **职责**：在运行时动态组装机器码。将 Prologue（保存现场）、参数装载（寄存器与栈分配）、Call 指令、Epilogue（恢复现场）拼接并写入 `ExecutableMemory`。
+    *   **优势**：突破硬编码限制，支持任意数量的参数传递。
+*   **宿主安全层 (`SafeInvoke`)**：
+    *   **职责**：包裹最终的机器码执行过程。
+    *   **扩展性**：未来可在此层接入 Windows SEH (`__try / __except`) 或 POSIX 信号处理，拦截 C/C++ DLL 内部的段错误（Access Violation），防止宿主虚拟机进程崩溃。
+
+**V1 版本 API 边界与限制：**
+1.  **基础类型**：支持定长整数 (`i8`~`i64`, `u8`~`u64`)、浮点数 (`f32`, `f64`)、字符串 (`string`) 和裸指针 (`pointer`)。
+2.  **内存联动**：完美联动 `buffer` 模块，允许 JC2 分配内存并交由 C/C++ 读写。
+3.  **暂不支持**：结构体按值传递（仅支持传结构体指针）、C 回调 JC2 函数。
+4.  **平台限制**：V1 仅支持 Windows x64 架构。

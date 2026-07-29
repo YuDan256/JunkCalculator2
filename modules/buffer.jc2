@@ -23,6 +23,7 @@ class ByteBuffer {
     isEnd() -> bool      = return self.pos >= self.size
     tell() -> int        = return self.pos
     length() -> int      = return self.size
+    address() -> int     = return self.buf.address()
 
     // ─── Chainable Writers (Auto-advancing cursor) ───
 
@@ -140,6 +141,7 @@ if (isfunction(__register_help)) {
     buf.skip(n)          Moves cursor forward by `n` bytes.
     buf.isEnd()          Returns true if cursor reached the end.
     buf.length()         Returns total buffer size.
+    buf.address()        Returns the raw memory address (for FFI).
 
   Chainable Writers (Cursor Auto-Advances)
   ──────────────────────

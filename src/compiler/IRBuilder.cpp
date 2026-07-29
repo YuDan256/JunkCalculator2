@@ -388,6 +388,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             currentControl = merge;
         } else {
             writeVariable(name, vNode, sym, isLocal, isConst);
+            if (mod == ScopeModifier::Ref && sym.scope == VarScope::Global && currentControl->op == IROp::SetGlobal) {
+                currentControl->op = IROp::SetGlobalRef;
+            }
         }
     };
 
@@ -1605,6 +1608,9 @@ void IRBuilder::visitAssign(Assign* expr) {
     if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;
     
     writeVariable(expr->name.lexeme, valNode, sym, expr->isLocal, expr->isConst);
+    if (expr->isRef && sym.scope == VarScope::Global && currentControl->op == IROp::SetGlobal) {
+        currentControl->op = IROp::SetGlobalRef;
+    }
     lastValue = valNode;
 }
 
@@ -2511,15 +2517,18 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 void IRBuilder::visitRefDecl(RefDecl* expr) {
     graph->currentLine = expr->name.line;
     if (expr->name.lexeme != "_") {
-        if (currentFunction) {
-            auto it = exprSymbols->find(expr);
-            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState) {
-                int upvalIdx = resolveUpvalue(expr->name.lexeme, sym.scope == VarScope::CapturedState);
-                if (upvalIdx != -1) {
-                    currentFunction->upvalues[upvalIdx].isRef = true;
-                }
+        auto it = exprSymbols->find(expr);
+        ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+        if (currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+            int upvalIdx = resolveUpvalue(expr->name.lexeme, sym.scope == VarScope::CapturedState);
+            if (upvalIdx != -1) {
+                currentFunction->upvalues[upvalIdx].isRef = true;
             }
+        } else if (sym.scope == VarScope::Global) {
+            IRNode* checkNode = graph->createValueNode(IROp::GetGlobal);
+            checkNode->name = expr->name.lexeme;
+            checkNode->setControl(currentControl);
+            currentControl = checkNode;
         }
         
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
@@ -2751,6 +2760,9 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         auto it = exprSymbols->find(var);
         ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
         writeVariable(var->name.lexeme, opNode, sym, expr->isLocal, false);
+        if (expr->isRef && sym.scope == VarScope::Global && currentControl->op == IROp::SetGlobal) {
+            currentControl->op = IROp::SetGlobalRef;
+        }
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
         IROp setOp = IROp::SetProperty;
         if (!classStack.empty()) {

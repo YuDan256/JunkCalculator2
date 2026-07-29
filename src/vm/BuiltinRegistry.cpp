@@ -2249,8 +2249,9 @@ void BuiltinRegistry::registerControlFlow() {
                 if (!args[1].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
                 std::string keyStr = args[1].asString();
                 auto it = inst->properties.find(keyStr);
-                if (it != inst->properties.end() && it->second.is_local) {
-                    throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                if (it != inst->properties.end()) {
+                    if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                    if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
                 }
                 inst->properties[keyStr] = {args[2], false, false};
                 return args[0];
@@ -2297,11 +2298,8 @@ void BuiltinRegistry::registerControlFlow() {
         else if (args[0].isObjType(ObjType::DICT) || args[0].isInstance()) {
             if (args[0].isInstance()) {
                 auto inst = args[0].asInstance();
-                inst->checkModify();
                 if (!args[1].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
-                auto it = inst->properties.find(args[1].asString());
-                if (it == inst->properties.end()) throw std::runtime_error("Runtime Error: Key not found.");
-                inst->properties.erase(it);
+                inst->removeProperty(args[1].asString());
                 return args[0];
             }
             auto d = static_cast<ObjDict*>(args[0].asObj());
@@ -2310,11 +2308,8 @@ void BuiltinRegistry::registerControlFlow() {
         }
         else if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            ns->checkModify();
             if (!args[1].isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
-            auto it = ns->fields.find(args[1].asString());
-            if (it == ns->fields.end()) throw std::runtime_error("Runtime Error: Key not found.");
-            ns->fields.erase(it);
+            ns->removeField(args[1].asString());
             return args[0];
         }
         throw std::runtime_error("Type Error: remove() expects a Set, List, Dict, Instance, or Namespace.");
@@ -2329,13 +2324,8 @@ void BuiltinRegistry::registerControlFlow() {
         else if (args[0].isObjType(ObjType::DICT) || args[0].isInstance()) {
             if (args[0].isInstance()) {
                 auto inst = args[0].asInstance();
-                inst->checkModify();
                 if (args[1].isString()) {
-                    std::string keyStr = args[1].asString();
-                    auto it = inst->properties.find(keyStr);
-                    if (it != inst->properties.end() && !it->second.is_local) {
-                        inst->properties.erase(it);
-                    }
+                    inst->discardProperty(args[1].asString());
                 }
                 return args[0];
             }
@@ -2345,8 +2335,7 @@ void BuiltinRegistry::registerControlFlow() {
         }
         else if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            ns->checkModify();
-            if (args[1].isString()) ns->fields.erase(args[1].asString());
+            if (args[1].isString()) ns->discardField(args[1].asString());
             return args[0];
         }
         throw std::runtime_error("Type Error: discard() expects a Set, Dict, Instance, or Namespace.");
@@ -2366,14 +2355,7 @@ void BuiltinRegistry::registerControlFlow() {
         else if (args[0].isObjType(ObjType::DICT) || args[0].isInstance()) {
             if (args[0].isInstance()) {
                 auto inst = args[0].asInstance();
-                inst->checkModify();
-                for (auto it = inst->properties.begin(); it != inst->properties.end(); ) {
-                    if (!it->second.is_local) {
-                        it = inst->properties.erase(it);
-                    } else {
-                        ++it;
-                    }
-                }
+                inst->clearProperties();
                 return args[0];
             }
             auto d = static_cast<ObjDict*>(args[0].asObj());
@@ -2382,7 +2364,7 @@ void BuiltinRegistry::registerControlFlow() {
         }
         else if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            ns->clear();
+            ns->clearFields();
             return args[0];
         }
         throw std::runtime_error("Type Error: clear() expects a Set, List, Dict, Instance, or Namespace.");
@@ -3239,20 +3221,14 @@ void BuiltinRegistry::registerDictFunctions() {
     reg("removeKey", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            ns->checkModify();
             if (!args[1].isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
-            auto it = ns->fields.find(args[1].asString());
-            if (it == ns->fields.end()) throw std::runtime_error("Runtime Error: Key not found.");
-            ns->fields.erase(it);
+            ns->removeField(args[1].asString());
             return args[0];
         }
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            inst->checkModify();
             if (!args[1].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
-            auto it = inst->properties.find(args[1].asString());
-            if (it == inst->properties.end() || it->second.is_local) throw std::runtime_error("Runtime Error: Key not found.");
-            inst->properties.erase(it);
+            inst->removeProperty(args[1].asString());
             return args[0];
         }
         ObjDict* d = helpers::getDictMap(args[0], "removeKey");
@@ -3325,8 +3301,9 @@ void BuiltinRegistry::registerDictFunctions() {
                 if (!k.isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
                 std::string keyStr = k.asString();
                 auto it = inst->properties.find(keyStr);
-                if (it != inst->properties.end() && it->second.is_local) {
-                    throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                if (it != inst->properties.end()) {
+                    if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                    if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
                 }
                 inst->properties[keyStr] = {v, false, false};
             }

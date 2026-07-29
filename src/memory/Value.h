@@ -577,8 +577,39 @@ namespace jc {
         mutable size_t cached_hash = 0;
         ObjInstance() { type = ObjType::INSTANCE; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Instance."); }
-        void clear() override { checkModify(); clearTotal(); }
+        void clear() override { clearProperties(); }
         void clearTotal() override;
+
+        void removeProperty(const std::string& key) {
+            checkModify();
+            auto it = properties.find(key);
+            if (it == properties.end() || it->second.is_local) throw std::runtime_error("Runtime Error: Key not found.");
+            if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+            properties.erase(it);
+        }
+
+        void discardProperty(const std::string& key) {
+            checkModify();
+            auto it = properties.find(key);
+            if (it != properties.end() && !it->second.is_local) {
+                if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+                properties.erase(it);
+            }
+        }
+
+        void clearProperties() {
+            checkModify();
+            for (const auto& [k, prop] : properties) {
+                if (!prop.is_local && prop.is_const) throw std::runtime_error("Runtime Error: Cannot delete const property '" + k + "'.");
+            }
+            for (auto it = properties.begin(); it != properties.end(); ) {
+                if (!it->second.is_local) {
+                    it = properties.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
     };
     struct ObjSuper : public Obj {
         ObjInstance* instance = nullptr;
@@ -748,8 +779,33 @@ namespace jc {
         bool is_frozen = false;
         ObjNamespace() { type = ObjType::NAMESPACE; }
         void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Namespace."); }
-        void clear() override { checkModify(); clearTotal(); }
+        void clear() override { clearFields(); }
         void clearTotal() override { fields.clear(); }
+
+        void removeField(const std::string& key) {
+            checkModify();
+            auto it = fields.find(key);
+            if (it == fields.end()) throw std::runtime_error("Runtime Error: Key not found.");
+            if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+            fields.erase(it);
+        }
+
+        void discardField(const std::string& key) {
+            checkModify();
+            auto it = fields.find(key);
+            if (it != fields.end()) {
+                if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+                fields.erase(it);
+            }
+        }
+
+        void clearFields() {
+            checkModify();
+            for (const auto& [k, field] : fields) {
+                if (field.isConst) throw std::runtime_error("Runtime Error: Cannot delete const property '" + k + "'.");
+            }
+            fields.clear();
+        }
     };
 
     struct ObjList : public Obj {

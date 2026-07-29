@@ -53,6 +53,19 @@ test_ffi_real_call() = {
         // We can't easily assert stdout, but we can assert it doesn't crash and returns > 0
         printed_chars = c_printf("FFI Variadic Test: %d, %f, %s\n", 42, 3.14, "success")
         assert(printed_chars > 0, "FFI printf failed")
+
+        // Test 5: Struct by Value and Pointer
+        Point = ffi.Struct({x: "i32", y: "i32"})
+        p = Point()
+        p.x = 10
+        p.y = 20
+        assert(p.x == 10, "Struct getattr failed")
+        assert(p.y == 20, "Struct getattr failed")
+        
+        // Test passing struct pointer to memset
+        c_memset(p.address(), 0, 8)
+        assert(p.x == 0, "Struct memory modification failed")
+        assert(p.y == 0, "Struct memory modification failed")
     }
 }
 test_ffi_real_call()

@@ -658,6 +658,7 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
         delete d;
     });
     
+    inst.freeze();
     return inst.get_handle();
 }
 
@@ -701,6 +702,7 @@ JC2_ValueHandle struct_layout_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle
     
     Instance inst(*g_structLayoutClass);
     inst.set_native_data(layout, [](void* ptr) { delete static_cast<StructLayoutData*>(ptr); });
+    inst.freeze();
     return inst.get_handle();
 }
 
@@ -793,6 +795,7 @@ JC2_ValueHandle lib_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
         delete d;
     });
     
+    inst.freeze();
     return inst.get_handle();
 }
 
@@ -851,6 +854,7 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
         delete static_cast<FunctionData*>(ptr);
     });
     
+    func_inst.freeze();
     return func_inst.get_handle();
 }
 

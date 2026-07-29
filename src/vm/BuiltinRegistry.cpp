@@ -2245,15 +2245,8 @@ void BuiltinRegistry::registerControlFlow() {
             if (args.size() != 3) throw std::runtime_error("Runtime Error: add() on Dict/Instance takes 3 args (obj, key, val).");
             if (args[0].isInstance()) {
                 auto inst = args[0].asInstance();
-                inst->checkModify();
                 if (!args[1].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
-                std::string keyStr = args[1].asString();
-                auto it = inst->properties.find(keyStr);
-                if (it != inst->properties.end()) {
-                    if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
-                    if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
-                }
-                inst->properties[keyStr] = {args[2], false, false};
+                inst->setProperty(args[1].asString(), args[2]);
                 return args[0];
             }
             auto d = static_cast<ObjDict*>(args[0].asObj());
@@ -2263,19 +2256,8 @@ void BuiltinRegistry::registerControlFlow() {
         else if (args[0].isObjType(ObjType::NAMESPACE)) {
             if (args.size() != 3) throw std::runtime_error("Runtime Error: add() on Namespace takes 3 args (obj, key, val).");
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            ns->checkModify();
             if (!args[1].isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
-            std::string key = args[1].asString();
-            auto it = ns->fields.find(key);
-            if (it != ns->fields.end()) {
-                if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
-                *(it->second.upval->location) = args[2];
-            } else {
-                auto uv = GcHeap::get().allocate<ObjUpVal>();
-                uv->closed = args[2];
-                uv->location = &uv->closed;
-                ns->fields[key] = { uv, false };
-            }
+            ns->setField(args[1].asString(), args[2]);
             return args[0];
         }
         throw std::runtime_error("Type Error: add() expects a Set, List, Dict, Instance, or Namespace.");
@@ -3274,38 +3256,20 @@ void BuiltinRegistry::registerDictFunctions() {
         
         if (args[0].isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            ns->checkModify();
             auto pairs2 = getPairs(args[1]);
             for (const auto& [k, v] : pairs2) {
                 if (!k.isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
-                std::string key = k.asString();
-                auto it = ns->fields.find(key);
-                if (it != ns->fields.end()) {
-                    if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
-                    *(it->second.upval->location) = v;
-                } else {
-                    auto uv = GcHeap::get().allocate<ObjUpVal>();
-                    uv->closed = v;
-                    uv->location = &uv->closed;
-                    ns->fields[key] = { uv, false };
-                }
+                ns->setField(k.asString(), v);
             }
             return args[0];
         }
         
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
-            inst->checkModify();
             auto pairs2 = getPairs(args[1]);
             for (const auto& [k, v] : pairs2) {
                 if (!k.isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
-                std::string keyStr = k.asString();
-                auto it = inst->properties.find(keyStr);
-                if (it != inst->properties.end()) {
-                    if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
-                    if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
-                }
-                inst->properties[keyStr] = {v, false, false};
+                inst->setProperty(k.asString(), v);
             }
             return args[0];
         }

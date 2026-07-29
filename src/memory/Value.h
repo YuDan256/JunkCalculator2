@@ -610,6 +610,18 @@ namespace jc {
                 }
             }
         }
+
+        void setProperty(const std::string& key, const Value& val) {
+            checkModify();
+            auto it = properties.find(key);
+            if (it != properties.end()) {
+                if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + key + "'.");
+                if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
+                it->second.val = val;
+            } else {
+                properties[key] = {val, false, false};
+            }
+        }
     };
     struct ObjSuper : public Obj {
         ObjInstance* instance = nullptr;
@@ -805,6 +817,20 @@ namespace jc {
                 if (field.isConst) throw std::runtime_error("Runtime Error: Cannot delete const property '" + k + "'.");
             }
             fields.clear();
+        }
+
+        void setField(const std::string& key, const Value& val) {
+            checkModify();
+            auto it = fields.find(key);
+            if (it != fields.end()) {
+                if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
+                *(it->second.upval->location) = val;
+            } else {
+                auto uv = GcHeap::get().allocate<ObjUpVal>();
+                uv->closed = val;
+                uv->location = &uv->closed;
+                fields[key] = { uv, false };
+            }
         }
     };
 

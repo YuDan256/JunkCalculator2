@@ -4693,20 +4693,12 @@ Value VM::run(int targetFrameDepth) {
                                     }
                                 }
                                 if (!foundPrivate) {
-                                    auto it = inst->properties.find(keyStr);
-                                    if (it != inst->properties.end()) {
-                                        if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
-                                        it->second.val = val;
-                                    } else {
-                                        inst->properties[keyStr] = {val, false, false};
-                                    }
+                                    inst->setProperty(keyStr, val);
                                 }
                             }
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
-                        if (ns->is_frozen) throw std::runtime_error("VM Error: Cannot modify frozen namespace.");
                         if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         std::string key = idx.asString();
                         auto isValidId = [](const std::string& s) {
@@ -4720,16 +4712,7 @@ Value VM::run(int targetFrameDepth) {
                             return true;
                         };
                         if (!isValidId(key)) throw std::runtime_error("VM Error: Namespace keys must be valid identifiers.");
-                        auto it = ns->fields.find(key);
-                        if (it != ns->fields.end()) {
-                            if (it->second.isConst) throw std::runtime_error("VM Error: Cannot modify const field '" + key + "'.");
-                            *(it->second.upval->location) = val;
-                        } else {
-                            ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
-                            uv->closed = val;
-                            uv->location = &uv->closed;
-                            ns->fields[key] = { uv, false };
-                        }
+                        ns->setField(key, val);
                     } else if (obj.isClass()) {
                         auto cls = static_cast<ObjClass*>(obj.asObj());
                         if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
@@ -6092,19 +6075,19 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    inst->checkModify();
                     std::string keyStr = keyVal.asString();
-                    auto it = inst->properties.find(keyStr);
-                    if (it != inst->properties.end()) {
-                        if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const property '" + keyStr + "'.");
-                    }
                     
                     auto [setattrMethod, owner] = findDunder(obj, DUNDER_SETATTR);
                     if (setattrMethod) {
+                        inst->checkModify();
+                        auto it = inst->properties.find(keyStr);
+                        if (it != inst->properties.end()) {
+                            if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                            if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
+                        }
                         callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
-                        inst->properties[keyStr] = {val, false, false};
+                        inst->setProperty(keyStr, val);
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
@@ -6130,18 +6113,7 @@ Value VM::run(int targetFrameDepth) {
                 set_prop_dict_done:;
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
-                    if (ns->is_frozen) throw std::runtime_error("VM Error: Cannot modify frozen namespace.");
-                    const std::string& field = keyVal.asString();
-                    auto it = ns->fields.find(field);
-                    if (it != ns->fields.end()) {
-                        if (it->second.isConst) throw std::runtime_error("VM Error: Cannot modify const field '" + field + "'.");
-                        *(it->second.upval->location) = val;
-                    } else {
-                        ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
-                        uv->closed = val;
-                        uv->location = &uv->closed;
-                        ns->fields[field] = { uv, false };
-                    }
+                    ns->setField(keyVal.asString(), val);
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     std::string keyStr = keyVal.asString();

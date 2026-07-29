@@ -1,11 +1,12 @@
 import ffi
+import buffer
 
 test_ffi_load_error() = {
     try {
-        ffi.load("non_existent_library_12345.dll")
+        ffi.FFILibrary("non_existent_library_12345.dll")
         assert(false, "Should throw error for non-existent library")
     } catch (e) {
-        assert("Failed to load library" in e.message, "Wrong error message thrown for ffi.load")
+        assert("Failed to load library" in e.message, "Wrong error message thrown for FFILibrary")
     }
 }
 test_ffi_load_error()
@@ -13,31 +14,38 @@ test_ffi_load_error()
 test_ffi_real_call() = {
     lib = none
     
-    // 尝试按平台加载 C 标准数学库
     try {
-        lib = ffi.load("msvcrt.dll") // Windows
-    } catch (e1) {
-        try {
-            lib = ffi.load("libm.so.6") // Linux
-        } catch (e2) {
-            try {
-                lib = ffi.load("libSystem.dylib") // macOS
-            } catch (e3) {
-                // 如果都加载失败（例如特殊环境），则保留 lib = none
-            }
-        }
+        lib = ffi.FFILibrary("msvcrt.dll") // Windows x64
+    } catch (e) {
+        print("Warning: msvcrt.dll not found, skipping real FFI tests.")
+        return
     }
     
     if (lib != none) {
-        // 绑定 C 标准库的 pow 函数: double pow(double x, double y)
-        c_pow = lib.bind("pow", "f64", ["f64", "f64"])
-        assert(type(c_pow) == "FFICallable", "bind should return FFICallable")
+        // Test 1: Math function (f64)
+        // double pow(double x, double y)
+        c_pow = lib.bind("pow", "f64", "f64", "f64")
+        assert(type(c_pow) == "FFIFunction", "bind should return FFIFunction")
         
         res = c_pow(2.0, 10.0)
         assert(res == 1024.0, "FFI pow(2.0, 10.0) failed")
-    } else {
-        // 如果找不到标准库，至少验证 ffi.load 是一个函数
-        assert(type(ffi.load) == "function", "ffi.load should be a function")
+
+        // Test 2: String function (string -> u64)
+        // size_t strlen(const char *str)
+        c_strlen = lib.bind("strlen", "u64", "string")
+        len_res = c_strlen("hello ffi")
+        assert(len_res == 9, "FFI strlen failed")
+
+        // Test 3: Pointer and Buffer interaction
+        // void *memset(void *dest, int c, size_t count)
+        c_memset = lib.bind("memset", "pointer", "pointer", "i32", "u64")
+        
+        buf = buffer.alloc(10)
+        c_memset(buf.address(), 255, buf.length())
+        
+        assert(buf.readU8() == 255, "FFI memset failed to modify buffer start")
+        buf.seek(9)
+        assert(buf.readU8() == 255, "FFI memset failed to modify buffer end")
     }
 }
 test_ffi_real_call()

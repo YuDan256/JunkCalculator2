@@ -178,17 +178,12 @@ public:
         case FFIType::I16: return Value(static_cast<int32_t>(static_cast<int16_t>(out_i)));
         case FFIType::U16: return Value(static_cast<int32_t>(static_cast<uint16_t>(out_i)));
         case FFIType::I32: return Value(static_cast<int32_t>(out_i));
-        case FFIType::U32: return Value(static_cast<double>(static_cast<uint32_t>(out_i)));
+        case FFIType::U32: return BigInt(std::to_string(static_cast<uint32_t>(out_i)));
         case FFIType::I64:
+            return BigInt(std::to_string(static_cast<int64_t>(out_i)));
         case FFIType::U64:
-        case FFIType::POINTER: {
-            if (out_i <= 9007199254740991ULL) {
-                return Value(static_cast<double>(out_i));
-            }
-            else {
-                return BigInt(std::to_string(out_i));
-            }
-        }
+        case FFIType::POINTER:
+            return BigInt(std::to_string(out_i));
         case FFIType::F32: {
             float f;
             std::memcpy(&f, &out_d, sizeof(float));

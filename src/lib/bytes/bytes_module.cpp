@@ -140,12 +140,12 @@ METHOD(get) {
     }
 
     if (argc != 3) jc2::throw_error("Buffer Error: Incorrect argument count.");
-    if (type == "u8") { uint8_t  v; readMem(&v, 1); return jc2::Value(static_cast<double>(v)).get_handle(); }
-    else if (type == "i8") { int8_t   v; readMem(&v, 1); return jc2::Value(static_cast<double>(v)).get_handle(); }
-    else if (type == "u16") { uint16_t v; readMem(&v, 2); return jc2::Value(static_cast<double>(v)).get_handle(); }
-    else if (type == "i16") { int16_t  v; readMem(&v, 2); return jc2::Value(static_cast<double>(v)).get_handle(); }
-    else if (type == "u32") { uint32_t v; readMem(&v, 4); return jc2::Value(static_cast<double>(v)).get_handle(); }
-    else if (type == "i32") { int32_t  v; readMem(&v, 4); return jc2::Value(static_cast<double>(v)).get_handle(); }
+    if (type == "u8") { uint8_t  v; readMem(&v, 1); return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+    else if (type == "i8") { int8_t   v; readMem(&v, 1); return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+    else if (type == "u16") { uint16_t v; readMem(&v, 2); return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+    else if (type == "i16") { int16_t  v; readMem(&v, 2); return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+    else if (type == "u32") { uint32_t v; readMem(&v, 4); return jc2::BigInt(std::to_string(v)).get_handle(); }
+    else if (type == "i32") { int32_t  v; readMem(&v, 4); return jc2::Value(v).get_handle(); }
     else if (type == "i64") { int64_t  v; readMem(&v, 8); return jc2::BigInt(std::to_string(v)).get_handle(); }
     else if (type == "u64") { uint64_t v; readMem(&v, 8); return jc2::BigInt(std::to_string(v)).get_handle(); }
     else if (type == "f32") { float    v; readMem(&v, 4); return jc2::Value(static_cast<double>(v)).get_handle(); }

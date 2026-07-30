@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.5.3.0
+# Junk Calculator 2.5.4.0
 
-![Version](https://img.shields.io/badge/Version-v2.5.3.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.4.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -56,7 +56,7 @@
 - `bytes`：内存缓冲区控制及裸二进制文件 I/O 引擎。
 - `window`：原生 GUI 窗口渲染引擎。支持第一人称鼠标指针捕获 (Mouse-Look) 和独立的输入法 (IME) 状态接管 (Win32)。
 - `latex`：双向 LaTeX 引擎。可将 JC2 数学对象序列化为 LaTeX 代码，或将原始 LaTeX 公式解析并即时编译为可执行的 JC2 闭包函数。
-- `ffi` (experimental)：零依赖的外部函数接口 (Foreign Function Interface)。支持动态加载共享库 (DLL/SO)，直接调用 C ABI 函数，以及裸指针与内存的直接读写。
+- `ffi`：零依赖的外部函数接口 (Foreign Function Interface，仅支持 Windows x64)。支持动态加载共享库 (DLL)，直接调用 C ABI 函数，以及裸指针与内存的直接读写。
 
 通过 `import` 加载的 JC2 标准库：
 - `collections`：常用数据结构，包含栈、队列、双端队列、优先队列（堆）以及多种搜索树。
@@ -69,27 +69,28 @@
 
 ---
 
-## v2.5.3.0 版本更新说明
+## v2.5.4.0 版本更新说明
 
-### 一等公民类型系统 (First-Class Types)
-- **类型对象与代数**：类型正式提升为一等公民（`ObjTypeDef`）。支持作为值传递、直接调用构造（如 `int("123")`），并支持类型代数运算（如 `int | string`）。
-- **闭包期注解固化**：函数参数与返回值的类型注解全面升级为表达式，在闭包定义时即时求值并固化，彻底消除运行时的字符串解析开销。
-- **O(1) 极速断言**：类型检查引入内联缓存 (Inline Caching) 机制，将原本的字符串匹配升级为 O(1) 的底层指针比对。
+### 核心语法与面向对象 (OOP) 增强
+- **类静态成员支持**：新增 `static` 关键字，允许在类中定义静态字段和静态方法，静态成员由所有实例共享，并可通过类名直接访问。
+- **字段访问控制与常量**：类实例字段现支持 `local`（私有）和 `const`（常量）修饰符。底层对私有字段的存储进行了扁平化优化，并引入了内联缓存 (Inline Cache)，使私有字段的访问速度接近公开字段。
+- **关键字作为属性名**：大幅放宽了语法限制，现在允许在点号之后（如 `obj.match`、`regex.class`）以及类/枚举定义内部直接使用语言关键字作为属性名或方法名。
+- **私有属性隔离重构**：将类和实例的属性存储统一为 `PropertyDescriptor` 表。私有属性的名称修饰从 `类名::属性名` 升级为全局唯一的 `<classId>::属性名`，彻底解决了继承链和同名类中的私有属性冲突问题。
 
-### 核心语法与特性增强
-- **枚举 (`enum`)**：新增编译期零开销的枚举语法，底层直接编译为冻结的命名空间，可安全用于字典键或集合元素。
-- **对象一致性 (`is`)**：新增 `is` 运算符，用于 O(1) 极速比较两个对象的内存地址或底层位模式身份。
-- **零开销丢弃符 (`_`)**：将 `_` 正式实现为零开销占位符，在模式匹配和解构赋值中不产生任何 IR 指令与内存分配。
-- **体验优化**：支持数字字面量下划线分隔（如 `1_000_000`），并完整实现了集合推导式 (`@{... for ...}`) 与字典推导式 (`{... for ...}`)。
+### 编译期元编程 (Metaprogramming)
+- **Token 宏 (`syntax`)**：引入了全新的 `syntax` 关键字，支持在词法级别（Token 级别）编写宏。
+- **流式解析 API**：新增了内置的 `TokenStream` 类，提供 `stream.parse()` 和 `stream.parseOne()` 等方法，支持对 Token 流进行增量式、迭代式的解析。
+- **严格的词法校验**：在 Token 宏重新编译为 AST 时，增加了严格的类型与内容 (lexeme) 一致性校验，防止构造非法的语法树。
 
-### 虚拟机与底层架构
-- **JCB 预编译字节码**：引入 `.jcb` 二进制字节码格式，支持常量池深度序列化。提供 `--compile`、`--module` 导出及 `--strip` 剥离调试信息功能，具备智能版本校验与源码回退机制。
-- **原生类安全 (FFI 防幽灵)**：引入 `is_native` 标志与 `native_allocator` 分配器钩子，彻底封堵跨语言边界的“幽灵实例”漏洞，并使原生 C++ 模块完美支持标准 OOP 实例化语法。
-- **C ABI 接口扩充**：在 C 扩展接口中深度集成类型系统（支持动态获取、类型代数、契约校验），并补全了列表、字典、集合的完整增删改查 API。
+### 虚拟机与编译器修复
+- **`ref` 引用语义修复**：重构了 `ref` 变量的作用域解析逻辑。`ref` 现在会正确继承目标变量的作用域，彻底修复了捕获全局变量时可能导致的悬空指针和 VM 崩溃问题。
+- **常量与私有保护收紧**：将 `const` 和 `local` 的覆盖检查集中下沉到对象底层的属性设置方法中，修复了此前通过内置函数可能绕过常量保护或暴露私有属性的漏洞。
+- **解析器歧义消除**：限制了匿名 `class`、`namespace` 和 `enum` 定义时的换行跳过规则，消除了语法解析歧义。
 
-### 数学引擎与原生模块
-- **高精度十进制 (`decimal`)**：新增 `decimal` 模块，提供任意精度的十进制浮点运算。内置基于泰勒级数与牛顿迭代的高精度初等数学函数（exp, log, sin, cos, sqrt 等）。
-- **大数性能暴增**：通过引入视窗化操作、O(1) 位数估算及全局 10 的幂缓存等算法，彻底消除了 `BigInt` 与 `Decimal` 底层计算中的字符串转换开销，性能提升数个数量级。
+### 原生模块 (Native Modules) 升级
+- **FFI 模块 (外部函数接口)**：实现了一套零依赖的 JIT 机器码生成引擎（Windows x64），支持真正的动态 C 函数调用；新增对 C ABI 聚合类型（Struct）的完整支持；新增基于可执行内存池的 C-to-JC2 回调（Callback）支持；支持调用 C 标准库中的可变参数函数。
+- **Regex 模块 (正则表达式)**：将原有的脚本正则引擎替换为 C++ 原生实现的字节码虚拟机，大幅提升匹配性能并完整支持 UTF-8；引入了全状态记忆化 (Memoization) 机制，彻底消除灾难性回溯问题；新增执行步数限制 API。
+- **Math 与 Bytes 模块**：为 `BigInt` 和 `Fraction` 引入了基于底层内存的 SipHash 算法与哈希缓存机制，大幅提升了大数作为字典键或集合元素时的性能。统一了 `ffi` 和 `bytes` 模块的整数返回类型规范。
 
 ---
 
@@ -121,6 +122,7 @@
 
     +-- src/
     |   +-- main.cpp                引擎入口，CLI 解析及工作区环境控制
+    |   +-- resource.rc             Windows 资源文件 (图标与版本信息)
     |   +-- frontend/               前端语法组件 (Lexer, Parser, AST, Highlight)
     |   +-- compiler/               中后端编译组件 (IRBuilder, Optimizer, Emitter, RegAlloc)
     |   +-- vm/                     虚拟机核心 (VM, Bytecode, BuiltinRegistry, 中断控制)
@@ -130,6 +132,7 @@
     |   +-- modules/                原生 C++ 扩展模块 (Image, Probability, JSON, Socket 等)
     +-- lib/                        标准 JC2 业务层逻辑库开发区
     +-- examples/                   内置展示用项目示例
+    +-- tests/                      自动化测试脚本套件
     +-- jc2-language/               配套 Visual Studio Code 插件支持
 
 ---

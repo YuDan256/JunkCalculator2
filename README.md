@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.5.3.0
+# Junk Calculator 2.5.4.0
 
-![Version](https://img.shields.io/badge/Version-v2.5.3.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.5.4.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -56,7 +56,7 @@ Native C++ extensions exposed to the execution context:
 - `bytes`: Memory buffering and low-level binary I/O operations.
 - `window`: Native GUI window rendering engine. Supports Mouse-Look pointer capturing and independent IME toggling (Win32).
 - `latex`: Bi-directional LaTeX engine. Serializes JC2 objects to LaTeX, and parses raw LaTeX formulas into executable closures.
-- `ffi` (experimental): Zero-dependency Foreign Function Interface. Supports dynamic loading of shared libraries (DLL/SO), direct C ABI function invocation, and raw memory/pointer manipulation.
+- `ffi`: Zero-dependency Foreign Function Interface (Windows x64 only). Supports dynamic loading of shared libraries (DLL), direct C ABI function invocation, and raw memory/pointer manipulation.
 
 JC2 standard libraries loaded via `import`:
 - `collections`: Data structures including `Stack`, `Queue`, `Deque`, `PriorityQueue` (Heap), and Search Trees.
@@ -69,27 +69,28 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.5.3.0
+## What's New in v2.5.4.0
 
-### First-Class Type System
-- **Type Algebra & Objects**: Types are now first-class objects (`ObjTypeDef`). They can be passed as values, called as constructors (e.g., `int("123")`), and combined using type algebra (`int | string`).
-- **Closure-Time Annotations**: Function type annotations are now fully parsed as expressions and evaluated at closure-definition time, eliminating runtime string parsing.
-- **O(1) Type Assertions**: Type checking now utilizes Inline Caching (IC) for blazing-fast O(1) pointer comparisons, replacing the legacy string-matching mechanism.
+### Core Syntax & OOP Enhancements
+- **Static Class Members**: Added the `static` keyword, allowing static fields and methods in classes. Static members are shared across all instances and can be accessed directly via the class name.
+- **Field Access Control & Constants**: Class instance fields now support `local` (private) and `const` (constant) modifiers. Private field storage has been flattened and optimized with Inline Caching, making private access nearly as fast as public access.
+- **Keywords as Property Names**: Relaxed syntax restrictions to allow language keywords to be used directly as property or method names after a dot (e.g., `obj.match`, `regex.class`) and inside class/enum definitions.
+- **Private Property Isolation**: Unified class and instance property storage into a `PropertyDescriptor` table. Private property name mangling was upgraded to use a globally unique `<classId>::propertyName`, completely resolving conflicts in inheritance chains and identically named classes.
 
-### Language & Syntax Enhancements
-- **Enumerations (`enum`)**: Added zero-overhead, compile-time generated frozen namespaces for enums.
-- **Identity Operator (`is`)**: Introduced the `is` operator for O(1) strict memory identity and bit-pattern comparisons.
-- **Zero-Overhead Discard (`_`)**: The `_` identifier is now a strict discard token. It generates no IR instructions and consumes no memory during pattern matching or destructuring.
-- **Quality of Life**: Added support for numeric literal underscores (e.g., `1_000_000`) and complete Set/Dict comprehensions (`@{... for ...}`, `{... for ...}`).
+### Compile-Time Metaprogramming
+- **Token Macros (`syntax`)**: Introduced the new `syntax` keyword, enabling macros to be written at the lexical (Token) level.
+- **Streaming Parser API**: Added the built-in `TokenStream` class, providing methods like `stream.parse()` and `stream.parseOne()` for incremental and iterative parsing of Token streams.
+- **Strict Lexical Validation**: Added strict type and lexeme consistency validation when recompiling Token macros into ASTs, preventing the construction of invalid syntax trees.
 
-### VM & Architecture
-- **Precompiled Bytecode (`.jcb`)**: Introduced a binary bytecode format supporting deep constant pool serialization, `--compile`, `--module`, and `--strip` flags. Features smart fallback to source code if versions mismatch.
-- **FFI Native Safety**: Implemented `is_native` flags and `native_allocator` hooks. This completely eliminates "ghost instance" vulnerabilities across the language boundary and allows native C++ classes to be instantiated using standard OOP syntax.
-- **C ABI Expansion**: Deeply integrated the type system into the C ABI (type union, intersection, checking) and completed the CRUD API for native container manipulation (Lists, Dicts, Sets).
+### VM & Compiler Fixes
+- **`ref` Semantics Fix**: Refactored scope resolution for `ref` variables. `ref` now correctly inherits the target variable's scope, completely fixing dangling pointer and VM crash issues when capturing global variables.
+- **Tightened Const & Private Protection**: Centralized `const` and `local` overwrite checks into the underlying property setter methods, fixing vulnerabilities where built-in functions could bypass constant protection or expose private properties.
+- **Parser Ambiguity Resolution**: Restricted newline skipping rules for anonymous `class`, `namespace`, and `enum` definitions, eliminating syntax parsing ambiguities.
 
-### Math & Native Modules
-- **Arbitrary-Precision Decimal**: Added the `decimal` module for exact base-10 floating-point arithmetic, featuring high-precision transcendental functions (exp, log, sin, cos, sqrt) evaluated via Taylor series and Newton iteration.
-- **BigInt Performance Leap**: Massively optimized `BigInt` and `Decimal` by eliminating string conversion overheads, introducing O(1) digit estimation, and utilizing thread-local power-of-10 caching.
+### Native Modules Upgrades
+- **FFI Module**: Implemented a zero-dependency JIT machine code generation engine (Windows x64) for true dynamic C function calls. Added full support for C ABI aggregate types (Structs). Added C-to-JC2 callback support backed by an executable memory pool. Added support for variadic C functions.
+- **Regex Module**: Replaced the script-based regex engine with a native C++ bytecode virtual machine, massively improving matching performance with full UTF-8 support. Introduced full-state memoization to completely eliminate catastrophic backtracking. Added an execution step limit API.
+- **Math & Bytes Modules**: Introduced SipHash and hash caching for `BigInt` and `Fraction` based on underlying memory, significantly improving performance when used as dictionary keys or set elements. Unified integer return type specifications across `ffi` and `bytes` modules.
 
 ---
 
@@ -121,6 +122,7 @@ Requires a C++20 compliant compiler and CMake 3.15+.
 
     +-- src/
     |   +-- main.cpp                Entry point, CLI parser, and Workspace I/O
+    |   +-- resource.rc             Windows resource file (Icon and Version info)
     |   +-- frontend/               Frontend syntax components (Lexer, Parser, AST, Highlight)
     |   +-- compiler/               Compiler backend (IRBuilder, Optimizer, Emitter, RegAlloc)
     |   +-- vm/                     Virtual Machine core (VM, Bytecode, Builtins, Interrupts)
@@ -130,6 +132,7 @@ Requires a C++20 compliant compiler and CMake 3.15+.
     |   +-- modules/                Native C++ extensions (Image, Probability, JSON, Socket, etc.)
     +-- lib/                        Standard JC2 libraries
     +-- examples/                   Showcase scripts
+    +-- tests/                      Automated test script suite
     +-- jc2-language/               VS Code Language Support Extension
 
 ---

@@ -1,6 +1,6 @@
 # ==============================================================================
 # Junk Calculator 2 - Ultimate CMake Build Script
-# Version: 2.5.3.0
+# Version: 2.5.4.0
 # ==============================================================================
 cmake_minimum_required(VERSION 3.15)
 
@@ -11,7 +11,7 @@ cmake_policy(SET CMP0091 NEW)
 # This permanently eliminates the "missing VCRUNTIME140.dll" error on target machines!
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-project(JunkCalculator2 VERSION 2.5.3.0 LANGUAGES CXX)
+project(JunkCalculator2 VERSION 2.5.4.0 LANGUAGES CXX)
 
 # Enforce C++ 20 Standard
 set(CMAKE_CXX_STANDARD 20)
@@ -252,7 +252,7 @@ endif()
 
 set(CPACK_GENERATOR "ZIP")
 set(CPACK_PACKAGE_NAME "JunkCalculator2")
-set(CPACK_PACKAGE_VERSION "2.5.3.0")
+set(CPACK_PACKAGE_VERSION "2.5.4.0")
 set(CPACK_PACKAGE_VENDOR "Yu Liangyang")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-Windows-x64")
 include(CPack)

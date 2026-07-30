@@ -1,7 +1,7 @@
 {
   "topics": {
     "main": [
-      "=================== Junk Calculator 2.5.3.0 — Help ===================",
+      "=================== Junk Calculator 2.5.4.0 — Help ===================",
       "",
       "  Session Commands",
       "  ────────────────────────────────────────────────────────────────────",
@@ -106,7 +106,7 @@
       "    socket      Low-level TCP/IP operating system bindings (import socket)",
       "    window      Real-time Native GUI window rendering (import window)",
       "    latex       Bi-directional LaTeX compiler & serializer (import latex)",
-      "    ffi         Zero-dependency Foreign Function Interface (import ffi)",
+      "    ffi         Zero-dependency Foreign Function Interface for Windows x64 (import ffi)",
       "    tensor      N-Dimensional Tensor engine with Autograd (import tensor)",
       "    decimal     Arbitrary-precision decimal arithmetic (import decimal)",
       "    regex       High-performance Regular Expression engine (import regex)",
@@ -3270,7 +3270,7 @@
       "      socket      Low-level TCP/IP operating system bindings",
       "      window      Real-time Native GUI window rendering",
       "      latex       Bi-directional LaTeX compiler & serializer",
-      "      ffi         Zero-dependency Foreign Function Interface",
+      "      ffi         Zero-dependency Foreign Function Interface (Windows x64 only)",
       "      tensor      N-Dimensional Tensor engine with Autograd",
       "",
       "    Native libraries take priority over .jc2 files with the same name.",

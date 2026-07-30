@@ -459,6 +459,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             assignVar(vp->name.lexeme, valNode, sym, mod, isExplicitConst);
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
+        IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
+        matchInit->setControl(currentControl);
+        matchInit->addData(valNode);
+        currentControl = matchInit;
+        valNode = matchInit;
+
         lit->literal->accept(*this);
         IRNode* eqNode = graph->createValueNode(IROp::Eq);
         eqNode->setControl(currentControl);
@@ -639,6 +645,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 error("Syntax Error: Invalid L-value in destructuring assignment.");
             }
         } else {
+            IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
+            matchInit->setControl(currentControl);
+            matchInit->addData(valNode);
+            currentControl = matchInit;
+            valNode = matchInit;
+
             exprPat->expr->accept(*this);
             IRNode* eqNode = graph->createValueNode(IROp::Eq);
             eqNode->setControl(currentControl);
@@ -659,6 +671,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             currentControl = ifTrue;
         }
     } else if (auto* dap = dynamic_cast<DynamicAssertPattern*>(pat)) {
+        IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
+        matchInit->setControl(currentControl);
+        matchInit->addData(valNode);
+        currentControl = matchInit;
+        valNode = matchInit;
+
         dap->expr->accept(*this);
         IRNode* eqNode = graph->createValueNode(IROp::Eq);
         eqNode->setControl(currentControl);
@@ -678,6 +696,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         
         currentControl = ifTrue;
     } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
+        IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
+        matchInit->setControl(currentControl);
+        matchInit->addData(valNode);
+        currentControl = matchInit;
+        valNode = matchInit;
+
         int restIndex = -1;
         for (size_t i = 0; i < lp->elements.size(); ++i) {
             if (dynamic_cast<RestPattern*>(lp->elements[i].get())) {
@@ -816,6 +840,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
+        IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
+        matchInit->setControl(currentControl);
+        matchInit->addData(valNode);
+        currentControl = matchInit;
+        valNode = matchInit;
+
         uint32_t minRows = 0;
         uint32_t maxRows = 0;
         bool hasRestRow = mp->restRow != nullptr;
@@ -1005,6 +1035,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
+        IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
+        matchInit->setControl(currentControl);
+        matchInit->addData(valNode);
+        currentControl = matchInit;
+        valNode = matchInit;
+
         auto createTypeCheck = [&](const std::string& typeName) {
             IRNode* typeNode = graph->createValueNode(IROp::GetGlobal);
             typeNode->name = typeName;

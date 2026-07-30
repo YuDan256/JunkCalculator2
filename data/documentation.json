@@ -2667,7 +2667,7 @@
       "      __next__()                   Returns the next value in iteration, or `none` to stop.",
       "      __call__(...)                Allows the instance to be called like a function: obj(args)",
       "",
-      "    Conversion & Hashing hooks:",
+      "    Conversion, Hashing & Matching hooks:",
       "      __str__()    → str(obj), print(obj), f\"{obj}\", format(\"{}\", obj)",
       "      __repr__()   → Custom representation in the REPL and object dumps",
       "      __len__()    → len(obj)",
@@ -2675,6 +2675,8 @@
       "      __bool__()   → bool(obj)",
       "      __hash__()   → Returns a hashable value (number/string). Allows the instance ",
       "                     to be used as a dict key or set element. (Must be paired with __eq__)",
+      "      __match__()  → Returns a 'view' object (like a list or dict) to be used instead of ",
+      "                     the instance during pattern matching and destructuring.",
       "",
       "  Method Resolution & Instance Overrides",
       "  ──────────────────────",
@@ -2830,7 +2832,23 @@
       "  ──────────────────────",
       "    • Variables bound in a pattern are strictly local to that branch's body.",
       "    • Patterns are evaluated top-to-bottom. The first match wins.",
-      "    • If no pattern matches, the expression safely returns `none`."
+      "    • If no pattern matches, the expression safely returns `none`.",
+      "",
+      "  9. Custom View Extractors (__match__)",
+      "  ──────────────────────",
+      "    Classes can define a `__match__()` dunder method to customize how their",
+      "    instances are destructured. When an instance is matched, the VM calls",
+      "    `__match__()` and matches against the returned 'view' object instead.",
+      "      class Point {",
+      "          init(x, y) = { self.x = x; self.y = y }",
+      "          __match__() = [self.x, self.y]  // Expose as an array!",
+      "      }",
+      "      [x, y] = Point(3, 4)                // Works perfectly!",
+      "",
+      "    ★ Trivial Recursion Interception:",
+      "      If `__match__()` returns `self` (the exact same instance), the VM",
+      "      safely intercepts it and falls back to default field matching.",
+      "      This allows dynamic conditional views without infinite loops."
     ],
     "macro": [
       "═══ Compile-Time Metaprogramming (Macros) ═══",
@@ -5997,6 +6015,11 @@
       "signature": "__call__(...)",
       "desc": "Dunder method: Allows an instance to be called like a function.",
       "examples": ["__call__(x) = self.multiplier * x"]
+    },
+    "__match__": {
+      "signature": "__match__()",
+      "desc": "Dunder method: Returns a view object (e.g., list or dict) to be used for pattern matching and destructuring. Returning self falls back to default field matching.",
+      "examples": ["__match__() = [self.x, self.y]"]
     },
     "gensym": {
       "signature": "gensym([prefix])",

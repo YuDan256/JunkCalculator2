@@ -621,6 +621,12 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::MatchInit: {
+                        int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto w = buildInstAB(OpCode::MATCH_INIT, node->physicalReg, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::Return: {
                         if (node->dataInputs[0]->op == IROp::Constant && node->dataInputs[0]->physicalReg == -1) {
                             int idx = chunk.addConstant(node->dataInputs[0]->constVal);
@@ -881,7 +887,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                           inst.node->op == IROp::BuildSet || inst.node->op == IROp::ConcatStrings ||
                           inst.node->op == IROp::BuildMatrix || inst.node->op == IROp::IndexGet ||
                           inst.node->op == IROp::IndexSet || inst.node->op == IROp::SliceGet ||
-                          inst.node->op == IROp::SliceSet || inst.node->op == IROp::BuildNamespace)) {
+                          inst.node->op == IROp::SliceSet || inst.node->op == IROp::BuildNamespace ||
+                          inst.node->op == IROp::MatchInit)) {
             int argsCount = static_cast<int>(inst.node->dataInputs.size());
             if (inst.node->op == IROp::BuildNamespace) argsCount += 1; // +1 for spillBase offset
             if (dynamicSpillBase + argsCount > absoluteMaxReg) {

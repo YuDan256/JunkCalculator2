@@ -6433,6 +6433,23 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
+            case OpCode::MATCH_INIT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                Value val = getReg(b);
+                if (val.isInstance()) {
+                    auto [method, owner] = findDunder(val, "__match__");
+                    if (method) {
+                        Value view = callDunder(val, method, owner, {});
+                        if (view.as_bits != val.as_bits) {
+                            getReg(a) = view;
+                            break;
+                        }
+                    }
+                }
+                getReg(a) = val;
+                break;
+            }
             case OpCode::MATCH_SHAPE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();

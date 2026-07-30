@@ -136,6 +136,7 @@ enum class IROp {
     AssertReturnType,
     MatchType,
     MatchShape,
+    MatchInit,
 
     // 寄存器操作 (用于 Phi 去结构化和寄存器溢出)
     Move,       // 寄存器间移动
@@ -255,6 +256,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::AssertReturnType: return "AssertReturnType";
         case IROp::MatchType: return "MatchType";
         case IROp::MatchShape: return "MatchShape";
+        case IROp::MatchInit: return "MatchInit";
         case IROp::Move: return "Move";
         case IROp::FreeReg: return "FreeReg";
         default: return "Unknown";

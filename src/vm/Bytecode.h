@@ -148,6 +148,7 @@ enum class OpCode : uint8_t {
     ASSERT_RETURN_TYPE, // assert_return(R(A)) [Ext]
     MATCH_TYPE,         // R(A) := match_type(R(B), typeObj = R(C)) [Ext]
     MATCH_SHAPE,        // R(A) := match_shape(R(B), shapeIdx = C) [Ext]
+    MATCH_INIT,         // R(A) := match_init(R(B)) [Ext]
 };
 
 inline std::string opCodeToString(OpCode op) {
@@ -257,6 +258,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::ASSERT_RETURN_TYPE: return "ASSERT_RETURN_TYPE";
         case OpCode::MATCH_TYPE: return "MATCH_TYPE";
         case OpCode::MATCH_SHAPE: return "MATCH_SHAPE";
+        case OpCode::MATCH_INIT: return "MATCH_INIT";
         default: return "UNKNOWN";
     }
 }
@@ -503,6 +505,10 @@ public:
 
             case OpCode::MATCH_TYPE:
                 std::cout << "R(" << a << ") " << b << " " << c;
+                break;
+
+            case OpCode::MATCH_INIT:
+                std::cout << "R(" << a << ") " << b;
                 break;
 
             case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:

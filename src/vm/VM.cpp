@@ -3651,19 +3651,11 @@ Value VM::run(int targetFrameDepth) {
                     }
                 );
 
-                for (int j = 0; j < fn->arity; ++j) {
-                    closure->paramNames.push_back("_" + std::to_string(j));
-                    closure->isRef.push_back(false);
-                }
+                closure->paramNames = fn->paramNames;
+                closure->isRef = fn->paramIsRef;
                 int defaultLimit = fn->hasRestParam ? (fn->maxArity - 1) : fn->maxArity;
                 for (int j = fn->arity; j < defaultLimit; ++j) {
-                    closure->paramNames.push_back("_" + std::to_string(j));
-                    closure->isRef.push_back(false);
                     closure->defaultValues.push_back(Value::uninit());
-                }
-                if (fn->hasRestParam) {
-                    closure->paramNames.push_back("...rest");
-                    closure->isRef.push_back(false);
                 }
                 closure->hasRestParam = fn->hasRestParam;
                 closure->boundSelf = frame->selfContext;

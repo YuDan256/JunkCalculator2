@@ -392,6 +392,9 @@ void BytecodeSerializer::writeFunction(std::ostream& os, const CompiledFunction*
     write16(os, static_cast<uint16_t>(fn->paramIsConst.size()));
     for (bool b : fn->paramIsConst) write8(os, b ? 1 : 0);
 
+    write16(os, static_cast<uint16_t>(fn->paramNames.size()));
+    for (const auto& name : fn->paramNames) writeString(os, name);
+
     write32(os, static_cast<uint32_t>(fn->refCount));
 
     write16(os, static_cast<uint16_t>(fn->paramTypeRegs.size()));
@@ -431,6 +434,10 @@ void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, in
     uint16_t pcSize = read16(is);
     fn->paramIsConst.resize(pcSize);
     for (uint16_t i = 0; i < pcSize; ++i) fn->paramIsConst[i] = read8(is) != 0;
+
+    uint16_t pnSize = read16(is);
+    fn->paramNames.resize(pnSize);
+    for (uint16_t i = 0; i < pnSize; ++i) fn->paramNames[i] = readString(is);
 
     fn->refCount = static_cast<int>(read32(is));
 

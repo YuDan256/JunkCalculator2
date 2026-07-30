@@ -14,7 +14,7 @@ class VM;
 class BytecodeSerializer {
 public:
     static constexpr uint32_t MAGIC_NUMBER = 0x4A434201; // JCB1
-    static constexpr uint32_t VERSION = 2;
+    static constexpr uint32_t VERSION = 3;
 
     // 将一组编译好的函数序列化为 .jcb 文件
     static void saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug = false);

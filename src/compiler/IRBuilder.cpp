@@ -2990,6 +2990,9 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
     currentFunction->hasRestParam = hasRestParam;
     currentFunction->paramIsRef = paramIsRef;
     currentFunction->paramIsConst = paramIsConst;
+    for (const auto& p : params) {
+        currentFunction->paramNames.push_back(p.lexeme);
+    }
     int refCount = 0;
     for (bool isRef : paramIsRef) if (isRef) refCount++;
     currentFunction->refCount = refCount;

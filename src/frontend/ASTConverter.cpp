@@ -636,7 +636,7 @@ Value AST_to_JC2(Expr* expr) {
     return visitor.result;
 }
 
-std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
+std::unique_ptr<Pattern> jc2ToPattern(const Value& val, MacroExpandFunc expander, int quoteDepth) {
     if (val.isNone()) return nullptr;
     auto inst = val.asInstance();
     auto getProp = [&](const std::string& key) -> Value {
@@ -648,12 +648,15 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
     };
     std::string type = getProp("type").asString();
     
+    auto toAST = [&](const Value& v) { return JC2_to_AST(v, expander, quoteDepth); };
+    auto toPat = [&](const Value& v) { return jc2ToPattern(v, expander, quoteDepth); };
+
     if (type == "LiteralPattern") {
-        return std::make_unique<LiteralPattern>(JC2_to_AST(getProp("literal")));
+        return std::make_unique<LiteralPattern>(toAST(getProp("literal")));
     } else if (type == "ExprPattern") {
-        return std::make_unique<ExprPattern>(JC2_to_AST(getProp("expr")));
+        return std::make_unique<ExprPattern>(toAST(getProp("expr")));
     } else if (type == "DynamicAssertPattern") {
-        return std::make_unique<DynamicAssertPattern>(JC2_to_AST(getProp("expr")));
+        return std::make_unique<DynamicAssertPattern>(toAST(getProp("expr")));
     } else if (type == "VariablePattern") {
         Token name(TokenType::IDENTIFIER, getProp("name").asString(), 0);
         return std::make_unique<VariablePattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy());
@@ -664,9 +667,9 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
         std::vector<std::unique_ptr<Pattern>> elements;
         Value elemsVal = getProp("elements");
         if (elemsVal.isObjType(ObjType::LIST)) {
-            for (const auto& v : static_cast<ObjList*>(elemsVal.asObj())->vec) elements.push_back(jc2ToPattern(v));
+            for (const auto& v : static_cast<ObjList*>(elemsVal.asObj())->vec) elements.push_back(toPat(v));
         }
-        auto rest = jc2ToPattern(getProp("rest"));
+        auto rest = toPat(getProp("rest"));
         return std::make_unique<ListPattern>(std::move(elements), std::unique_ptr<RestPattern>(static_cast<RestPattern*>(rest.release())));
     } else if (type == "MatrixPattern") {
         std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
@@ -675,12 +678,12 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
             for (const auto& rVal : static_cast<ObjList*>(rowsVal.asObj())->vec) {
                 std::vector<std::unique_ptr<Pattern>> row;
                 if (rVal.isObjType(ObjType::LIST)) {
-                    for (const auto& v : static_cast<ObjList*>(rVal.asObj())->vec) row.push_back(jc2ToPattern(v));
+                    for (const auto& v : static_cast<ObjList*>(rVal.asObj())->vec) row.push_back(toPat(v));
                 }
                 rows.push_back(std::move(row));
             }
         }
-        auto restRow = jc2ToPattern(getProp("restRow"));
+        auto restRow = toPat(getProp("restRow"));
         return std::make_unique<MatrixPattern>(std::move(rows), std::unique_ptr<RestPattern>(static_cast<RestPattern*>(restRow.release())));
     } else if (type == "DictPattern") {
         std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries;
@@ -689,28 +692,31 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val) {
             for (const auto& v : static_cast<ObjList*>(entriesVal.asObj())->vec) {
                 if (v.isObjType(ObjType::LIST)) {
                     auto kv = static_cast<ObjList*>(v.asObj());
-                    if (kv->vec.size() >= 2) entries.push_back({kv->vec[0].asString(), jc2ToPattern(kv->vec[1])});
+                    if (kv->vec.size() >= 2) entries.push_back({kv->vec[0].asString(), toPat(kv->vec[1])});
                 }
             }
         }
-        auto rest = jc2ToPattern(getProp("rest"));
+        auto rest = toPat(getProp("rest"));
         return std::make_unique<DictPattern>(std::move(entries), std::unique_ptr<RestPattern>(static_cast<RestPattern*>(rest.release())));
     } else if (type == "DefaultPattern") {
-        return std::make_unique<DefaultPattern>(jc2ToPattern(getProp("inner")), JC2_to_AST(getProp("defaultExpr")));
+        return std::make_unique<DefaultPattern>(toPat(getProp("inner")), toAST(getProp("defaultExpr")));
     }
     throw std::runtime_error("Macro Error: Unsupported pattern type '" + type + "'");
 }
 
-std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
+std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int quoteDepth) {
     if (val.isNone()) return nullptr;
     
+    auto toAST = [&](const Value& v) { return JC2_to_AST(v, expander, quoteDepth); };
+    auto toPat = [&](const Value& v) { return jc2ToPattern(v, expander, quoteDepth); };
+
     // ★ 核心机制：如果宏返回一个 List，将其转换为 SequenceExpr 以实现平铺（不引入作用域）
     if (val.isObjType(ObjType::LIST)) {
         auto objList = static_cast<ObjList*>(val.asObj());
         std::vector<std::unique_ptr<Expr>> exprs;
         for (const auto& v : objList->vec) {
             if (!v.isNone()) {
-                exprs.push_back(JC2_to_AST(v));
+                exprs.push_back(toAST(v));
             }
         }
         return std::make_unique<SequenceExpr>(std::move(exprs));
@@ -737,7 +743,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             auto objList = static_cast<ObjList*>(listVal.asObj());
             for (const auto& v : objList->vec) {
                 if (v.isNone()) list.push_back(nullptr);
-                else list.push_back(JC2_to_AST(v));
+                else list.push_back(toAST(v));
             }
         }
         return list;
@@ -747,13 +753,13 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     int line = getProp("line").isInt32() ? getProp("line").asInt32() : static_cast<int>(getProp("line").asDouble());
 
     if (type == "Binary") {
-        auto left = JC2_to_AST(getProp("left"));
-        auto right = JC2_to_AST(getProp("right"));
+        auto left = toAST(getProp("left"));
+        auto right = toAST(getProp("right"));
         std::string opStr = getProp("op").asString();
         Token op(stringToTokenType(opStr), opStr, line);
         return std::make_unique<Binary>(std::move(left), op, std::move(right));
     } else if (type == "Unary") {
-        auto right = JC2_to_AST(getProp("right"));
+        auto right = toAST(getProp("right"));
         std::string opStr = getProp("op").asString();
         Token op(stringToTokenType(opStr), opStr, line);
         return std::make_unique<Unary>(op, std::move(right));
@@ -767,7 +773,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     } else if (type == "Variable") {
         return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, getProp("name").asString(), line));
     } else if (type == "Assign") {
-        auto value = JC2_to_AST(getProp("value"));
+        auto value = toAST(getProp("value"));
         return std::make_unique<Assign>(
             Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
             std::move(value),
@@ -791,23 +797,23 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         }
         return std::make_unique<MatrixNode>(std::move(elements), getProp("forceList").truthy());
     } else if (type == "IfExpr") {
-        return std::make_unique<IfExpr>(JC2_to_AST(getProp("condition")), JC2_to_AST(getProp("thenBranch")), JC2_to_AST(getProp("elseBranch")));
+        return std::make_unique<IfExpr>(toAST(getProp("condition")), toAST(getProp("thenBranch")), toAST(getProp("elseBranch")));
     } else if (type == "WhileExpr") {
-        return std::make_unique<WhileExpr>(JC2_to_AST(getProp("condition")), JC2_to_AST(getProp("body")));
+        return std::make_unique<WhileExpr>(toAST(getProp("condition")), toAST(getProp("body")));
     } else if (type == "ForExpr") {
-        return std::make_unique<ForExpr>(JC2_to_AST(getProp("initializer")), JC2_to_AST(getProp("condition")), JC2_to_AST(getProp("update")), JC2_to_AST(getProp("body")));
+        return std::make_unique<ForExpr>(toAST(getProp("initializer")), toAST(getProp("condition")), toAST(getProp("update")), toAST(getProp("body")));
     } else if (type == "BreakExpr") {
         return std::make_unique<BreakExpr>(Token(TokenType::BREAK, "break", line));
     } else if (type == "ContinueExpr") {
         return std::make_unique<ContinueExpr>(Token(TokenType::CONTINUE, "continue", line));
     } else if (type == "ReturnExpr") {
-        return std::make_unique<ReturnExpr>(Token(TokenType::RETURN, "return", line), JC2_to_AST(getProp("value")));
+        return std::make_unique<ReturnExpr>(Token(TokenType::RETURN, "return", line), toAST(getProp("value")));
     } else if (type == "IndexAccess") {
-        return std::make_unique<IndexAccess>(JC2_to_AST(getProp("object")), getExprList(getProp("indices")));
+        return std::make_unique<IndexAccess>(toAST(getProp("object")), getExprList(getProp("indices")));
     } else if (type == "IndexAssign") {
         Token name(TokenType::IDENTIFIER, getProp("name").asString(), line);
-        auto objExpr = JC2_to_AST(getProp("objectExpr"));
-        auto valExpr = JC2_to_AST(getProp("value"));
+        auto objExpr = toAST(getProp("objectExpr"));
+        auto valExpr = toAST(getProp("value"));
         std::vector<std::vector<std::unique_ptr<Expr>>> chain;
         Value chainVal = getProp("indexChain");
         if (chainVal.isObjType(ObjType::LIST)) {
@@ -831,19 +837,19 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         }
         return std::make_unique<DeleteExpr>(std::move(names));
     } else if (type == "CompoundAssign") {
-        return std::make_unique<CompoundAssign>(JC2_to_AST(getProp("target")), static_cast<TokenType>(getProp("op").asDouble()), JC2_to_AST(getProp("value")), getProp("isRef").truthy(), getProp("isState").truthy(), getProp("isLocal").truthy());
+        return std::make_unique<CompoundAssign>(toAST(getProp("target")), static_cast<TokenType>(getProp("op").asDouble()), toAST(getProp("value")), getProp("isRef").truthy(), getProp("isState").truthy(), getProp("isLocal").truthy());
     } else if (type == "InvokeExpr") {
-        return std::make_unique<InvokeExpr>(JC2_to_AST(getProp("callee")), getExprList(getProp("arguments")));
+        return std::make_unique<InvokeExpr>(toAST(getProp("callee")), getExprList(getProp("arguments")));
     } else if (type == "ThrowExpr") {
-        return std::make_unique<ThrowExpr>(Token(TokenType::THROW, "throw", line), JC2_to_AST(getProp("value")));
+        return std::make_unique<ThrowExpr>(Token(TokenType::THROW, "throw", line), toAST(getProp("value")));
     } else if (type == "ImportExpr") {
-        return std::make_unique<ImportExpr>(JC2_to_AST(getProp("path")));
+        return std::make_unique<ImportExpr>(toAST(getProp("path")));
     } else if (type == "DotAccess") {
-        return std::make_unique<DotAccess>(JC2_to_AST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line));
+        return std::make_unique<DotAccess>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line));
     } else if (type == "DotAssign") {
-        return std::make_unique<DotAssign>(JC2_to_AST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line), JC2_to_AST(getProp("value")));
+        return std::make_unique<DotAssign>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line), toAST(getProp("value")));
     } else if (type == "MethodCallExpr") {
-        return std::make_unique<MethodCallExpr>(JC2_to_AST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("method").asString(), line), getExprList(getProp("arguments")));
+        return std::make_unique<MethodCallExpr>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("method").asString(), line), getExprList(getProp("arguments")));
     } else if (type == "SuperExpr") {
         return std::make_unique<SuperExpr>();
     } else if (type == "SelfExpr") {
@@ -861,7 +867,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             for (const auto& v : static_cast<ObjList*>(entriesVal.asObj())->vec) {
                 if (v.isObjType(ObjType::LIST)) {
                     auto kv = static_cast<ObjList*>(v.asObj());
-                    if (kv->vec.size() >= 2) entries.push_back({JC2_to_AST(kv->vec[0]), JC2_to_AST(kv->vec[1])});
+                    if (kv->vec.size() >= 2) entries.push_back({toAST(kv->vec[0]), toAST(kv->vec[1])});
                 }
             }
         }
@@ -869,11 +875,11 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
     } else if (type == "SetLiteral") {
         return std::make_unique<SetLiteral>(getExprList(getProp("elements")));
     } else if (type == "SliceExpr") {
-        return std::make_unique<SliceExpr>(JC2_to_AST(getProp("start")), JC2_to_AST(getProp("end")), JC2_to_AST(getProp("step")));
+        return std::make_unique<SliceExpr>(toAST(getProp("start")), toAST(getProp("end")), toAST(getProp("step")));
     } else if (type == "SequenceExpr") {
         return std::make_unique<SequenceExpr>(getExprList(getProp("expressions")));
     } else if (type == "GroupingExpr") {
-        return std::make_unique<GroupingExpr>(JC2_to_AST(getProp("expression")));
+        return std::make_unique<GroupingExpr>(toAST(getProp("expression")));
     } else if (type == "LambdaExpr") {
         std::vector<Token> params;
         Value paramsVal = getProp("params");
@@ -901,22 +907,22 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         return std::make_unique<LambdaExpr>(
             getProp("name").asString(), std::move(params), std::move(paramIsRef), std::move(paramIsConst),
             std::move(defaultExprs), getProp("hasRestParam").truthy(),
-            std::move(paramTypes), std::shared_ptr<Expr>(JC2_to_AST(getProp("returnType")).release()),
-            getProp("rawBody").asString(), std::shared_ptr<Expr>(JC2_to_AST(getProp("body")).release())
+            std::move(paramTypes), std::shared_ptr<Expr>(toAST(getProp("returnType")).release()),
+            getProp("rawBody").asString(), std::shared_ptr<Expr>(toAST(getProp("body")).release())
         );
     } else if (type == "ForInExpr") {
         return std::make_unique<ForInExpr>(
-            jc2ToPattern(getProp("pattern")),
-            JC2_to_AST(getProp("iterable")),
-            JC2_to_AST(getProp("body")),
+            toPat(getProp("pattern")),
+            toAST(getProp("iterable")),
+            toAST(getProp("body")),
             getProp("isLocal").truthy(),
             getProp("isConst").truthy()
         );
     } else if (type == "TryCatchExpr") {
         return std::make_unique<TryCatchExpr>(
-            JC2_to_AST(getProp("tryBody")),
-            jc2ToPattern(getProp("catchPattern")),
-            JC2_to_AST(getProp("catchBody"))
+            toAST(getProp("tryBody")),
+            toPat(getProp("catchPattern")),
+            toAST(getProp("catchBody"))
         );
     } else if (type == "SwitchExpr") {
         std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases;
@@ -929,18 +935,18 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                         std::vector<std::unique_ptr<Expr>> vals;
                         if (cList->vec[0].isObjType(ObjType::LIST)) {
                             for (const auto& v : static_cast<ObjList*>(cList->vec[0].asObj())->vec) {
-                                vals.push_back(JC2_to_AST(v));
+                                vals.push_back(toAST(v));
                             }
                         }
-                        cases.push_back({std::move(vals), JC2_to_AST(cList->vec[1])});
+                        cases.push_back({std::move(vals), toAST(cList->vec[1])});
                     }
                 }
             }
         }
         return std::make_unique<SwitchExpr>(
-            JC2_to_AST(getProp("subject")),
+            toAST(getProp("subject")),
             std::move(cases),
-            JC2_to_AST(getProp("defaultBody"))
+            toAST(getProp("defaultBody"))
         );
     } else if (type == "ClassDefExpr") {
         auto parseProps = [&](const Value& propsVal) {
@@ -953,7 +959,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                             Token pName(TokenType::IDENTIFIER, pList->vec[0].asString(), line);
                             bool isLoc = pList->vec.size() > 2 ? pList->vec[2].truthy() : false;
                             bool isCon = pList->vec.size() > 3 ? pList->vec[3].truthy() : false;
-                            properties.push_back({pName, JC2_to_AST(pList->vec[1]), isLoc, isCon});
+                            properties.push_back({pName, toAST(pList->vec[1]), isLoc, isCon});
                         }
                     }
                 }
@@ -968,7 +974,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         if (getProp("name").isString()) clsName = getProp("name").asString();
         return std::make_unique<ClassDefExpr>(
             Token(TokenType::IDENTIFIER, clsName, line),
-            JC2_to_AST(getProp("superClassExpr")),
+            toAST(getProp("superClassExpr")),
             std::move(staticProperties),
             std::move(instanceProperties)
         );
@@ -977,7 +983,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         if (getProp("name").isString()) nsName = getProp("name").asString();
         return std::make_unique<NamespaceDecl>(
             Token(TokenType::IDENTIFIER, nsName, line),
-            JC2_to_AST(getProp("body"))
+            toAST(getProp("body"))
         );
     } else if (type == "EnumDefExpr") {
         std::string enumName = "";
@@ -992,7 +998,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                         Token mName(TokenType::IDENTIFIER, mList->vec[0].asString(), line);
                         std::unique_ptr<Expr> mValExpr = nullptr;
                         if (!mList->vec[1].isNone()) {
-                            mValExpr = JC2_to_AST(mList->vec[1]);
+                            mValExpr = toAST(mList->vec[1]);
                         }
                         members.push_back({mName, std::move(mValExpr)});
                     }
@@ -1002,8 +1008,8 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
         return std::make_unique<EnumDefExpr>(Token(TokenType::IDENTIFIER, enumName, line), std::move(members));
     } else if (type == "DestructAssign") {
         return std::make_unique<DestructAssign>(
-            jc2ToPattern(getProp("pattern")),
-            JC2_to_AST(getProp("value")),
+            toPat(getProp("pattern")),
+            toAST(getProp("value")),
             getProp("isRef").truthy(),
             getProp("isState").truthy(),
             getProp("isLocal").truthy(),
@@ -1023,20 +1029,20 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                     return Value::none();
                 };
                 CompClause clause(
-                    jc2ToPattern(getCProp("pattern")),
-                    std::shared_ptr<Expr>(JC2_to_AST(getCProp("iterable")).release())
+                    toPat(getCProp("pattern")),
+                    std::shared_ptr<Expr>(toAST(getCProp("iterable")).release())
                 );
                 Value condsVal = getCProp("conditions");
                 if (condsVal.isObjType(ObjType::LIST)) {
                     for (const auto& condVal : static_cast<ObjList*>(condsVal.asObj())->vec) {
-                        clause.conditions.push_back(std::shared_ptr<Expr>(JC2_to_AST(condVal).release()));
+                        clause.conditions.push_back(std::shared_ptr<Expr>(toAST(condVal).release()));
                     }
                 }
                 clauses.push_back(std::move(clause));
             }
         }
         return std::make_unique<ListCompExpr>(
-            JC2_to_AST(getProp("valueExpr")),
+            toAST(getProp("valueExpr")),
             std::move(clauses),
             getProp("forceList").truthy()
         );
@@ -1054,20 +1060,20 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                     return Value::none();
                 };
                 CompClause clause(
-                    jc2ToPattern(getCProp("pattern")),
-                    std::shared_ptr<Expr>(JC2_to_AST(getCProp("iterable")).release())
+                    toPat(getCProp("pattern")),
+                    std::shared_ptr<Expr>(toAST(getCProp("iterable")).release())
                 );
                 Value condsVal = getCProp("conditions");
                 if (condsVal.isObjType(ObjType::LIST)) {
                     for (const auto& condVal : static_cast<ObjList*>(condsVal.asObj())->vec) {
-                        clause.conditions.push_back(std::shared_ptr<Expr>(JC2_to_AST(condVal).release()));
+                        clause.conditions.push_back(std::shared_ptr<Expr>(toAST(condVal).release()));
                     }
                 }
                 clauses.push_back(std::move(clause));
             }
         }
         return std::make_unique<SetCompExpr>(
-            JC2_to_AST(getProp("valueExpr")),
+            toAST(getProp("valueExpr")),
             std::move(clauses)
         );
     } else if (type == "DictCompExpr") {
@@ -1084,21 +1090,21 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                     return Value::none();
                 };
                 CompClause clause(
-                    jc2ToPattern(getCProp("pattern")),
-                    std::shared_ptr<Expr>(JC2_to_AST(getCProp("iterable")).release())
+                    toPat(getCProp("pattern")),
+                    std::shared_ptr<Expr>(toAST(getCProp("iterable")).release())
                 );
                 Value condsVal = getCProp("conditions");
                 if (condsVal.isObjType(ObjType::LIST)) {
                     for (const auto& condVal : static_cast<ObjList*>(condsVal.asObj())->vec) {
-                        clause.conditions.push_back(std::shared_ptr<Expr>(JC2_to_AST(condVal).release()));
+                        clause.conditions.push_back(std::shared_ptr<Expr>(toAST(condVal).release()));
                     }
                 }
                 clauses.push_back(std::move(clause));
             }
         }
         return std::make_unique<DictCompExpr>(
-            JC2_to_AST(getProp("keyExpr")),
-            JC2_to_AST(getProp("valueExpr")),
+            toAST(getProp("keyExpr")),
+            toAST(getProp("valueExpr")),
             std::move(clauses)
         );
     } else if (type == "MatchExpr") {
@@ -1118,16 +1124,16 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
                 Value patsVal = getBProp("patterns");
                 if (patsVal.isObjType(ObjType::LIST)) {
                     for (const auto& pVal : static_cast<ObjList*>(patsVal.asObj())->vec) {
-                        branch.patterns.push_back(jc2ToPattern(pVal));
+                        branch.patterns.push_back(toPat(pVal));
                     }
                 }
-                branch.guard = JC2_to_AST(getBProp("guard"));
-                branch.body = JC2_to_AST(getBProp("body"));
+                branch.guard = toAST(getBProp("guard"));
+                branch.body = toAST(getBProp("body"));
                 branches.push_back(std::move(branch));
             }
         }
         return std::make_unique<MatchExpr>(
-            JC2_to_AST(getProp("subject")),
+            toAST(getProp("subject")),
             std::move(branches)
         );
     } else if (type == "MacroDefExpr") {
@@ -1143,28 +1149,33 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val) {
             std::move(params),
             getProp("hasRestParam").truthy(),
             getProp("isTokenMacro").truthy(),
-            JC2_to_AST(getProp("body"))
+            toAST(getProp("body"))
         );
     } else if (type == "MacroCallExpr") {
+        std::string macroName = getProp("macroName").asString();
+        auto args = getExprList(getProp("arguments"));
+        if (quoteDepth == 0 && expander) {
+            return expander(macroName, args);
+        }
         return std::make_unique<MacroCallExpr>(
-            Token(TokenType::IDENTIFIER, getProp("macroName").asString(), line),
-            getExprList(getProp("arguments"))
+            Token(TokenType::IDENTIFIER, macroName, line),
+            std::move(args)
         );
     } else if (type == "QuoteExpr") {
-        return std::make_unique<QuoteExpr>(JC2_to_AST(getProp("body")));
+        return std::make_unique<QuoteExpr>(JC2_to_AST(getProp("body"), expander, quoteDepth + 1));
     } else if (type == "UnquoteExpr") {
-        return std::make_unique<UnquoteExpr>(JC2_to_AST(getProp("expr")));
+        return std::make_unique<UnquoteExpr>(JC2_to_AST(getProp("expr"), expander, std::max(0, quoteDepth - 1)));
     } else if (type == "ExprAssign") {
         return std::make_unique<ExprAssign>(
-            JC2_to_AST(getProp("target")),
-            JC2_to_AST(getProp("value")),
+            toAST(getProp("target")),
+            toAST(getProp("value")),
             getProp("isRef").truthy(),
             getProp("isState").truthy(),
             getProp("isLocal").truthy(),
             getProp("isConst").truthy()
         );
     } else if (type == "DeferExpr") {
-        return std::make_unique<DeferExpr>(JC2_to_AST(getProp("body")));
+        return std::make_unique<DeferExpr>(toAST(getProp("body")));
     }
 
     throw std::runtime_error("Macro Error: Unsupported node type '" + type + "'");

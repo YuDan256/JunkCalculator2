@@ -1486,7 +1486,11 @@ namespace jc {
                     }
                     GcValueGuard resultGuard(resultVal);
                     
-                    auto expandedAst = JC2_to_AST(resultVal);
+                    auto expander = [this](const std::string& mName, std::vector<std::unique_ptr<Expr>>& mArgs) -> std::unique_ptr<Expr> {
+                        return this->expandMacro(mName, mArgs);
+                    };
+                    
+                    auto expandedAst = JC2_to_AST(resultVal, expander, 0);
                     if (!expandedAst) throw std::runtime_error("Parser Error: Token Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
                     
                     return expandedAst;
@@ -1535,34 +1539,11 @@ namespace jc {
                     throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(macroFn->minArgs()) + (macroFn->hasRestParam ? " or more" : (macroFn->minArgs() == macroFn->maxArgs() ? "" : " to " + std::to_string(macroFn->maxArgs()))) + " arguments, got " + std::to_string(args.size()) + ".");
                 }
                 
-                std::vector<Value> callArgs;
-                std::vector<std::unique_ptr<GcValueGuard>> guards;
-                for (auto& a : args) {
-                    callArgs.push_back(AST_to_JC2(a.get()));
-                    guards.push_back(std::make_unique<GcValueGuard>(callArgs.back()));
+                if (quoteDepth > 0) {
+                    return std::make_unique<MacroCallExpr>(macroName, std::move(args));
                 }
                 
-                Value resultVal;
-                try {
-                    resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, callArgs, macroFn);
-                } catch (const ValueException& ex) {
-                    std::string errStr = ex.val.isString() ? ex.val.asString() : ex.val.toRepr();
-                    if (ex.val.isInstance() && ex.val.asInstance()->classDef->name == "Exception") {
-                        auto inst = ex.val.asInstance();
-                        auto itMsg = inst->properties.find("message");
-                        if (itMsg != inst->properties.end()) {
-                            Value mVal = itMsg->second.val;
-                            errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
-                        }
-                    }
-                    throw std::runtime_error("Macro Execution Error: " + errStr);
-                }
-                GcValueGuard resultGuard(resultVal);
-                
-                auto expandedAst = JC2_to_AST(resultVal);
-                if (!expandedAst) throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
-                
-                return expandedAst;
+                return expandMacro(macroName.lexeme, args);
             }
             if (!check(TokenType::LBRACKET)) {
                 throw std::runtime_error("Parser Error: Expect '[', '{', or identifier after '@'.");
@@ -1621,6 +1602,47 @@ namespace jc {
         throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");
     }
 
+    std::unique_ptr<Expr> Parser::expandMacro(const std::string& name, std::vector<std::unique_ptr<Expr>>& args) {
+        Value macroVal = resolveMacro(name);
+        if (macroVal.isNone() || !macroVal.isFunctionClosure()) {
+            throw std::runtime_error("Parser Error: Macro '" + name + "' is not defined or not a function.");
+        }
+        ObjClosure* macroFn = macroVal.asFunction();
+
+        std::vector<Value> callArgs;
+        std::vector<std::unique_ptr<GcValueGuard>> guards;
+        for (auto& a : args) {
+            callArgs.push_back(AST_to_JC2(a.get()));
+            guards.push_back(std::make_unique<GcValueGuard>(callArgs.back()));
+        }
+        
+        Value resultVal;
+        try {
+            resultVal = VM::activeVM->callVMFunction(macroFn->compiledFnIndex, callArgs, macroFn);
+        } catch (const ValueException& ex) {
+            std::string errStr = ex.val.isString() ? ex.val.asString() : ex.val.toRepr();
+            if (ex.val.isInstance() && ex.val.asInstance()->classDef->name == "Exception") {
+                auto inst = ex.val.asInstance();
+                auto itMsg = inst->properties.find("message");
+                if (itMsg != inst->properties.end()) {
+                    Value mVal = itMsg->second.val;
+                    errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
+                }
+            }
+            throw std::runtime_error("Macro Execution Error: " + errStr);
+        }
+        GcValueGuard resultGuard(resultVal);
+        
+        auto expander = [this](const std::string& mName, std::vector<std::unique_ptr<Expr>>& mArgs) -> std::unique_ptr<Expr> {
+            return this->expandMacro(mName, mArgs);
+        };
+        
+        auto expandedAst = JC2_to_AST(resultVal, expander, 0);
+        if (!expandedAst) throw std::runtime_error("Parser Error: Macro '" + name + "' did not return a valid ASTNode.");
+        
+        return expandedAst;
+    }
+
     std::unique_ptr<Expr> Parser::macroDefExpr(bool isTokenMacro) {
         Token name(TokenType::ERROR, "");
         if (match({ TokenType::DOLLAR })) {
@@ -1663,6 +1685,20 @@ namespace jc {
         }
 
         consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
+        
+        // ★ 注册占位符宏，允许递归调用
+        ObjClosure* dummyMacro = GcHeap::get().allocate<ObjClosure>(
+            std::vector<std::string>{}, std::vector<bool>{}, name.lexeme, nullptr
+        );
+        dummyMacro->isTokenMacro = isTokenMacro;
+        dummyMacro->hasRestParam = hasRestParam;
+        for (size_t i = 0; i < params.size(); ++i) {
+            dummyMacro->paramNames.push_back(params[i].lexeme);
+            dummyMacro->isRef.push_back(false);
+            dummyMacro->defaultValues.push_back(Value::uninit());
+        }
+        defineMacro(name.lexeme, Value(dummyMacro));
+
         auto body = parseStatementOrBlock();
         
         std::vector<bool> paramIsRef(params.size(), false);
@@ -2367,6 +2403,7 @@ namespace jc {
             }
             props.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
             props.push_back({"hasRestParam", std::make_unique<Literal>(mdef->hasRestParam ? "true" : "false", false, false, true)});
+            props.push_back({"isTokenMacro", std::make_unique<Literal>(mdef->isTokenMacro ? "true" : "false", false, false, true)});
             props.push_back({"body", transformQuote(mdef->body.get())});
             return makeASTNodeCall("MacroDefExpr", mdef->name.line, std::move(props));
         }
@@ -2392,7 +2429,9 @@ namespace jc {
 
     std::unique_ptr<Expr> Parser::quoteExpr() {
         while (match({ TokenType::NEWLINE })) {}
+        quoteDepth++;
         auto body = assignment();
+        quoteDepth--;
         return transformQuote(body.get());
     }
 

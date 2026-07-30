@@ -24,8 +24,10 @@ namespace jc {
         std::vector<Token> tokens;
         int current = 0;
         std::string sourceFile;
+        int quoteDepth = 0;
 
     public:
+        std::unique_ptr<Expr> expandMacro(const std::string& name, std::vector<std::unique_ptr<Expr>>& args);
         // --- 文法规则 (优先级从低到高) ---
         std::unique_ptr<Expr> expression();
         std::unique_ptr<Expr> parseStatementOrBlock();

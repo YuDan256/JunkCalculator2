@@ -456,11 +456,17 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             PendingFrameGuard pfg(this, newBase, newTotalCount);
 
             std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->hasRestParam, closure->isUFCS ? closure->boundSelf : Value::none());
-            int totalArgc = static_cast<int>(alignedArgs.size());
-
-            if (totalArgc < fnDef->arity || (!fnDef->hasRestParam && totalArgc > fnDef->maxArity)) {
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+            
+            for (int i = 0; i < fnDef->arity; ++i) {
+                if (alignedArgs[i].isUninit()) {
+                    throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                }
             }
+            if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+            }
+            
+            int totalArgc = static_cast<int>(alignedArgs.size());
 
             for (int i = 0; i < totalArgc; ++i) {
                 registers[newBase + i] = alignedArgs[i];
@@ -522,6 +528,12 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     throw std::runtime_error("TypeError: Native function '" + closure->rawBody + "' does not support keyword arguments.");
                 }
                 args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->hasRestParam);
+                
+                for (int i = 0; i < static_cast<int>(closure->minArgs()); ++i) {
+                    if (args[i].isUninit()) {
+                        throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + "' requires at least " + std::to_string(closure->minArgs()) + " arguments.");
+                    }
+                }
             } else {
                 args.reserve(argc);
                 for (int i = 0; i < argc; ++i) {
@@ -532,14 +544,22 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             int totalArgc = static_cast<int>(args.size());
             auto ait = builtinArity.find(closure->rawBody);
             if (ait != builtinArity.end() && !ait->second.empty()) {
-                if (ait->second.find(totalArgc) == ait->second.end()) {
+                // For builtins with specific arities, we need to count non-uninit args if kwArgc > 0
+                int actualArgc = totalArgc;
+                if (kwArgc > 0) {
+                    actualArgc = 0;
+                    for (const auto& arg : args) {
+                        if (!arg.isUninit()) actualArgc++;
+                    }
+                }
+                if (ait->second.find(actualArgc) == ait->second.end()) {
                     std::string expected;
                     for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
                         if (aIt != ait->second.begin()) expected += " or ";
                         expected += std::to_string(*aIt);
                     }
                     throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
-                        "' expects " + expected + " arguments, got " + std::to_string(totalArgc) + ".");
+                        "' expects " + expected + " arguments, got " + std::to_string(actualArgc) + ".");
                 }
             } else if (static_cast<int>(closure->maxArgs()) > 0 && !closure->hasRestParam) {
                 if (totalArgc < static_cast<int>(closure->minArgs()) || totalArgc > static_cast<int>(closure->maxArgs())) {
@@ -604,11 +624,17 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
                 std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->hasRestParam);
-                int totalArgc = static_cast<int>(alignedArgs.size());
-
-                if (totalArgc < fnDef->arity || (!fnDef->hasRestParam && totalArgc > fnDef->maxArity)) {
-                    throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                
+                for (int i = 0; i < fnDef->arity; ++i) {
+                    if (alignedArgs[i].isUninit()) {
+                        throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                    }
                 }
+                if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+                    throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+                }
+                
+                int totalArgc = static_cast<int>(alignedArgs.size());
 
                 for (int i = 0; i < totalArgc; ++i) {
                     registers[newBase + i] = alignedArgs[i];
@@ -670,6 +696,12 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                         throw std::runtime_error("TypeError: Native method 'init' does not support keyword arguments.");
                     }
                     args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->hasRestParam);
+                    
+                    for (int i = 0; i < static_cast<int>(initMethod->minArgs()); ++i) {
+                        if (args[i].isUninit()) {
+                            throw std::runtime_error("Runtime Error: Method 'init' requires at least " + std::to_string(initMethod->minArgs()) + " arguments.");
+                        }
+                    }
                 } else {
                     args.reserve(argc);
                     for (int i = 0; i < argc; ++i) args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
@@ -735,11 +767,17 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
                 std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->hasRestParam);
-                int totalArgc = static_cast<int>(alignedArgs.size());
-
-                if (totalArgc < fnDef->arity || (!fnDef->hasRestParam && totalArgc > fnDef->maxArity)) {
-                    throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                
+                for (int i = 0; i < fnDef->arity; ++i) {
+                    if (alignedArgs[i].isUninit()) {
+                        throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                    }
                 }
+                if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+                    throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+                }
+                
+                int totalArgc = static_cast<int>(alignedArgs.size());
 
                 for (int i = 0; i < totalArgc; ++i) {
                     registers[newBase + i] = alignedArgs[i];
@@ -801,6 +839,12 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                         throw std::runtime_error("TypeError: Native method '__call__' does not support keyword arguments.");
                     }
                     args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->hasRestParam);
+                    
+                    for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
+                        if (args[i].isUninit()) {
+                            throw std::runtime_error("Runtime Error: Method '__call__' requires at least " + std::to_string(method->minArgs()) + " arguments.");
+                        }
+                    }
                 } else {
                     args.reserve(argc);
                     for (int i = 0; i < argc; ++i) {
@@ -1476,11 +1520,17 @@ invoke_method:
         PendingFrameGuard pfg(this, newBase, newTotalCount);
 
         std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->hasRestParam);
-        int totalArgc = static_cast<int>(alignedArgs.size());
-
-        if (totalArgc < fnDef->arity || (!fnDef->hasRestParam && totalArgc > fnDef->maxArity)) {
-            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                
+        for (int i = 0; i < fnDef->arity; ++i) {
+            if (alignedArgs[i].isUninit()) {
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+            }
         }
+        if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+        }
+                
+        int totalArgc = static_cast<int>(alignedArgs.size());
 
         for (int i = 0; i < totalArgc; ++i) {
             registers[newBase + i] = alignedArgs[i];
@@ -1534,22 +1584,39 @@ invoke_method:
         profileFrameStart(&newFrame);
         frames[frameCount++] = newFrame;
     } else if (method->isNative()) {
+        int posArgc = argc - 2 * kwArgc;
+        std::vector<Value> args;
+        
+        if (kwArgc > 0) {
+            if (method->paramNames.empty()) {
+                throw std::runtime_error("TypeError: Native method '" + methodName + "' does not support keyword arguments.");
+            }
+            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->hasRestParam);
+            
+            for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
+                if (args[i].isUninit()) {
+                    throw std::runtime_error("Runtime Error: Method '" + methodName + "' requires at least " + std::to_string(method->minArgs()) + " arguments.");
+                }
+            }
+        } else {
+            args.reserve(argc);
+            for (int i = 0; i < argc; ++i) {
+                args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+            }
+        }
+
+        int totalArgc = static_cast<int>(args.size());
         if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
-            if (argc < static_cast<int>(method->minArgs()) || argc > static_cast<int>(method->maxArgs())) {
+            if (totalArgc < static_cast<int>(method->minArgs()) || totalArgc > static_cast<int>(method->maxArgs())) {
                 throw std::runtime_error("Runtime Error: Method '" + methodName + 
                     "' expects " + std::to_string(method->minArgs()) + " to " + 
                     std::to_string(method->maxArgs()) + " arguments, got " + 
-                    std::to_string(argc) + ".");
+                    std::to_string(totalArgc) + ".");
             }
         }
 
         helpers::nativeSelfStack.push_back(obj);
         helpers::nativeClassStack.push_back(owningClass ? Value(owningClass) : Value::none());
-        std::vector<Value> args;
-        args.reserve(argc);
-        for (int i = 0; i < argc; ++i) {
-            args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-        }
         pendingCallRefs.clear();
         try {
             auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
@@ -1687,6 +1754,12 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
                 throw std::runtime_error("TypeError: Native super method '" + methodName + "' does not support keyword arguments.");
             }
             args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->hasRestParam);
+            
+            for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
+                if (args[i].isUninit()) {
+                    throw std::runtime_error("Runtime Error: Super method '" + methodName + "' requires at least " + std::to_string(method->minArgs()) + " arguments.");
+                }
+            }
         } else {
             args.reserve(argc);
             for (int i = 0; i < argc; ++i) {

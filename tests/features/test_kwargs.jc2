@@ -1,0 +1,65 @@
+test_basic_kwargs() = {
+    f(a, b, c) = a * 100 + b * 10 + c
+    assert(f(1, 2, 3) == 123, "Positional failed")
+    assert(f(a=1, b=2, c=3) == 123, "Basic kwargs failed")
+    assert(f(c=3, a=1, b=2) == 123, "Out of order kwargs failed")
+    assert(f(1, c=3, b=2) == 123, "Mixed kwargs failed")
+}
+test_basic_kwargs()
+
+test_kwargs_with_defaults() = {
+    f(a, b=2, c=3) = a * 100 + b * 10 + c
+    assert(f(1) == 123, "Defaults failed")
+    assert(f(1, c=9) == 129, "Kwarg skipping default failed")
+    assert(f(a=5) == 523, "Kwarg only failed")
+}
+test_kwargs_with_defaults()
+
+test_kwargs_with_rest() = {
+    f(a, b=2, ...rest) = a + b + sum(rest)
+    assert(f(10, 20, 1, 2, 3) == 36, "Rest positional failed")
+    assert(f(10, b=5) == 15, "Rest with kwarg failed")
+    // Note: rest does not collect kwargs.
+}
+test_kwargs_with_rest()
+
+test_kwargs_errors() = {
+    f(a, b, c) = a + b + c
+    
+    try {
+        eval("f(a=1, 2, 3)")
+        assert(false, "Should throw SyntaxError for positional after kwarg")
+    } catch (e) {
+        assert("Positional argument cannot follow keyword argument" in e.message, "Wrong error for positional after kwarg")
+    }
+    
+    try {
+        f(1, 2, 3, d=4)
+        assert(false, "Should throw TypeError for unknown kwarg")
+    } catch (e) {
+        assert("Unexpected keyword argument 'd'" in e.message, "Wrong error for unknown kwarg")
+    }
+    
+    try {
+        f(1, 2, b=99)
+        assert(false, "Should throw TypeError for multiple values")
+    } catch (e) {
+        assert("Multiple values for argument 'b'" in e.message, "Wrong error for multiple values")
+    }
+}
+test_kwargs_errors()
+
+test_kwargs_escape_hatch() = {
+    f(x) = x
+    a = 0
+    assert(f((a = 42)) == 42, "Escape hatch failed")
+    assert(a == 42, "Variable not assigned in escape hatch")
+}
+test_kwargs_escape_hatch()
+
+test_native_kwargs() = {
+    // isapprox(a, b, rtol, atol)
+    assert(isapprox(1.0, 1.001, atol=0.01), "Native kwarg failed")
+    assert(!isapprox(1.0, 1.001, atol=0.0001), "Native kwarg failed (should be false)")
+}
+test_native_kwargs()

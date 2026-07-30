@@ -4341,7 +4341,7 @@ void BuiltinRegistry::registerCalculus() {
             if (df == 0.0) x += 1e-4; else x -= y / df;
         }
         throw std::runtime_error("Math Error: Equation solver did not converge.");
-        });
+        }, {"f", "x0"});
 
     reg("table", {}, [](const std::vector<Value>& args) -> Value {
         if (args.size() < 2) throw std::runtime_error("Runtime Error: table() expects at least 2 arguments.");
@@ -4409,7 +4409,7 @@ void BuiltinRegistry::registerCalculus() {
             return Value(RealMatrix(N, 1, rd));
         }
         throw std::runtime_error("Runtime Error: Argument count mismatch.");
-        });
+        }, {"f", "...args"});
 }
 
 // =================================================================
@@ -4425,7 +4425,7 @@ void BuiltinRegistry::registerFileIO() {
         if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
         std::ostringstream oss; oss << file.rdbuf(); file.close();
         return Value(oss.str());
-        });
+        }, {"path"});
 
     reg("writeFile", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -4438,7 +4438,7 @@ void BuiltinRegistry::registerFileIO() {
         if (!file.is_open()) throw std::runtime_error("IO Error: Cannot write to file '" + path + "'.");
         file << content; file.close();
         return Value::none();
-        });
+        }, {"path", "content"});
 
     reg("appendFile", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -4451,7 +4451,7 @@ void BuiltinRegistry::registerFileIO() {
         if (!file.is_open()) throw std::runtime_error("IO Error: Cannot append to file '" + path + "'.");
         file << content; file.close();
         return Value::none();
-        });
+        }, {"path", "content"});
 
     reg("readLines", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -4467,7 +4467,7 @@ void BuiltinRegistry::registerFileIO() {
             L->vec.push_back(Value(line));
         }
         file.close(); return Value(L);
-        });
+        }, {"path"});
 
     reg("writeLines", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -4483,13 +4483,13 @@ void BuiltinRegistry::registerFileIO() {
             else file << v << "\n";
         }
         file.close(); return Value::none();
-        });
+        }, {"path", "list"});
 
     reg("fileExists", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: fileExists() expects a string path.");
         return Value(std::filesystem::exists(safeResolvePath(args[0].asString())));
-        });
+        }, {"path"});
 
     reg("deleteFile", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -4499,7 +4499,7 @@ void BuiltinRegistry::registerFileIO() {
             throw std::runtime_error("IO Error: File '" + path + "' does not exist.");
         std::filesystem::remove(path);
         return Value::none();
-        });
+        }, {"path"});
 
     reg("fileSize", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -4508,7 +4508,7 @@ void BuiltinRegistry::registerFileIO() {
         if (!std::filesystem::exists(path))
             throw std::runtime_error("IO Error: File '" + path + "' does not exist.");
         return Value(BigInt(static_cast<int64_t>(std::filesystem::file_size(path))));
-        });
+        }, {"path"});
 
     reg("listDir", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         std::string dir;
@@ -4527,7 +4527,7 @@ void BuiltinRegistry::registerFileIO() {
         for (const auto& entry : std::filesystem::directory_iterator(dir))
             L->vec.push_back(Value(entry.path().filename().string()));
         return Value(L);
-        });
+        }, {"path"});
 
     // --- CSV ---
     reg("readCSV", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
@@ -4540,7 +4540,7 @@ void BuiltinRegistry::registerFileIO() {
         GcObjGuard guard(rows);
         while (std::getline(file, line)) { jc::checkInterrupt(); if (!line.empty() && line.back() == '\r') line.pop_back(); ObjList* row = GcHeap::get().allocate<ObjList>(); GcObjGuard rowGuard(row); size_t pos = 0, found; while ((found = line.find(delim, pos)) != std::string::npos) { row->vec.push_back(Value(line.substr(pos, found - pos))); pos = found + delim.size(); } row->vec.push_back(Value(line.substr(pos))); row->is_frozen = true; rows->vec.push_back(Value(row)); }
         file.close(); return Value(rows);
-        });
+        }, {"path", "delim"});
 
     reg("readCSVMat", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: readCSVMat() expects a string path.");
@@ -4552,7 +4552,7 @@ void BuiltinRegistry::registerFileIO() {
         while (std::getline(file, line)) { jc::checkInterrupt(); if (!line.empty() && line.back() == '\r') line.pop_back(); std::vector<std::string> row; size_t pos = 0, found; while ((found = line.find(delim, pos)) != std::string::npos) { row.push_back(line.substr(pos, found - pos)); pos = found + delim.size(); } row.push_back(line.substr(pos)); if (row.size() > maxCols) maxCols = row.size(); rowsData.push_back(row); }
         file.close(); std::vector<std::string> flat; for (auto& row : rowsData) { row.resize(maxCols, ""); flat.insert(flat.end(), row.begin(), row.end()); }
         return Value(StringMatrix(static_cast<int>(rowsData.size()), static_cast<int>(maxCols), flat));
-        });
+        }, {"path", "delim"});
 
     reg("parseCSVNum", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: parseCSVNum() expects a string path.");
@@ -4565,7 +4565,7 @@ void BuiltinRegistry::registerFileIO() {
         file.close(); if (rowsData.empty()) return Value(RealMatrix(0, 0));
         std::vector<double> flat; for (auto& row : rowsData) { row.resize(maxCols, 0.0); flat.insert(flat.end(), row.begin(), row.end()); }
         return Value(RealMatrix(static_cast<int>(rowsData.size()), static_cast<int>(maxCols), flat));
-        });
+        }, {"path", "delim"});
 
     reg("writeCSV", { 2, 3 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: writeCSV() expects a string path.");
@@ -4579,7 +4579,7 @@ void BuiltinRegistry::registerFileIO() {
         else if (args[1].isObjType(ObjType::LIST)) { for (const auto& e : static_cast<ObjList*>(args[1].asObj())->vec) { file << e << "\n"; } }
         else throw std::runtime_error("Type Error: writeCSV() expects a matrix or list.");
         file.close(); return Value::none();
-        });
+        }, {"path", "data", "delim"});
 }
 
 // =================================================================
@@ -4623,7 +4623,7 @@ void BuiltinRegistry::registerErrorHandling() {
             L->vec.push_back(Value(false)); L->vec.push_back(Value(std::string(ex.what())));
             L->is_frozen = true; L->is_hashable_cached = true; return Value(L);
         }
-        });
+        }, {"f"});
 
     reg("isError", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::LIST)) return Value(false);
@@ -4635,7 +4635,7 @@ void BuiltinRegistry::registerErrorHandling() {
         if (first.isNumber())
             return Value(first.asDouble() == 0.0);
         return Value(false);
-        });
+        }, {"status"});
 
     reg("assert", { 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
         if (args.size() == 1) {
@@ -4666,7 +4666,7 @@ void BuiltinRegistry::registerErrorHandling() {
             throw std::runtime_error(oss.str());
         }
         return Value(true);
-        });
+        }, {"cond_or_name", "msg_or_got", "expected"});
 }
 
 // =================================================================
@@ -4683,7 +4683,7 @@ void BuiltinRegistry::registerSystemShell() {
         }
         std::cout << "System constants restored: PI, E, i, I" << std::endl;
         return Value::none();
-        });
+        }, {});
 
     reg("resetType", { 0 }, [](const std::vector<Value>&) -> Value {
         if (VM::activeVM) {
@@ -4727,7 +4727,7 @@ void BuiltinRegistry::registerSystemShell() {
         }
         std::cout << "System types restored." << std::endl;
         return Value::none();
-        });
+        }, {});
 
     reg("setWorkspace", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::string p = args[0].asString();
@@ -4743,17 +4743,17 @@ void BuiltinRegistry::registerSystemShell() {
         }
         std::cout << "[System] Workspace set to: " << (g_workspacePath.empty() ? "./data" : g_workspacePath) << std::endl;
         return Value::none();
-        });
+        }, {"path"});
 
     reg("getWorkspace", { 0 }, [](const std::vector<Value>&) -> Value {
         return Value(g_workspacePath.empty() ? (std::filesystem::current_path() / "data").string() : g_workspacePath);
-        });
+        }, {});
 
     reg("pwd", { 0 }, [](const std::vector<Value>&) -> Value {
         std::cout << "  Script dir:    " << g_cwd() << std::endl;
         std::cout << "  Workspace dir: " << (g_workspacePath.empty() ? (std::filesystem::current_path() / "data").string() : g_workspacePath) << std::endl;
         return Value::none();
-        });
+        }, {});
 
     reg("cls", { 0 }, [](const std::vector<Value>&) -> Value {
 #ifdef _WIN32
@@ -4762,7 +4762,7 @@ void BuiltinRegistry::registerSystemShell() {
         std::system("clear");
 #endif
         return Value::none();
-        });
+        }, {});
 
     reg("run", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::string filepath = args[0].asString();
@@ -4782,7 +4782,7 @@ void BuiltinRegistry::registerSystemShell() {
         helpers::g_scriptDirStack.pop_back();
 
         return result;
-        });
+        }, {"path"});
 
     reg("compileCode", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: compileCode() expects a string.");
@@ -4832,7 +4832,7 @@ void BuiltinRegistry::registerSystemShell() {
         cls->compiledFnIndex = mainFnIdx;
         
         return Value(cls);
-        });
+        }, {"code"});
 
     reg("compileFile", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: compileFile() expects a string path.");
@@ -4907,7 +4907,7 @@ void BuiltinRegistry::registerSystemShell() {
         });
         
         return Value(proxy);
-        });
+        }, {"path"});
 
     reg("imgPlot", { 7, 8 }, [](const std::vector<Value>& args) -> Value {
         auto inst = args[0].asInstance();
@@ -4934,16 +4934,16 @@ void BuiltinRegistry::registerSystemShell() {
             prevPx = screenX; prevPy = screenY;
         }
         return args[0];
-        });
+        }, {"inst", "f", "xMin", "xMax", "yMin", "yMax", "color", "thick"});
 
     reg("breakpoint", { 0 }, [](const std::vector<Value>&) -> Value {
         if (VM::activeVM) {
             VM::activeVM->triggerDebugger();
         }
         return Value::none();
-        });
+        }, {});
     // 做个兼容别名
-    reg("debugger", builtinArity["breakpoint"], builtins["breakpoint"]);
+    reg("debugger", builtinArity["breakpoint"], builtins["breakpoint"], builtinParamNames["breakpoint"]);
 
     reg("disassemble", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isFunctionClosure()) {
@@ -4964,8 +4964,8 @@ void BuiltinRegistry::registerSystemShell() {
             std::cout << "Cannot disassemble native function: " << cl->rawBody << std::endl;
         }
         return Value::none();
-        });
-    reg("disasm", builtinArity["disassemble"], builtins["disassemble"]);
+        }, {"f"});
+    reg("disasm", builtinArity["disassemble"], builtins["disassemble"], builtinParamNames["disassemble"]);
 }
 
 // =================================================================
@@ -4977,14 +4977,14 @@ void BuiltinRegistry::registerTypeChecks() {
 
     reg("isbool", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isBool());
-        });
+        }, {"x"});
 
     reg("isint", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isInt32() || args[0].isBigInt() || args[0].isBool()) return Value(true);
         if (args[0].isObjType(ObjType::FRACTION))
             return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getDen() == BigInt(1));
         return Value(false);
-        });
+        }, {"x"});
 
     reg("iswhole", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isInt32() || args[0].isBigInt() || args[0].isBool()) return Value(true);
@@ -4999,11 +4999,11 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(c.imag == 0.0 && std::isfinite(c.real) && c.real == std::floor(c.real));
         }
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isdouble", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isDouble());
-        });
+        }, {"x"});
 
     reg("isnumeric", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& val = args[0];
@@ -5015,13 +5015,13 @@ void BuiltinRegistry::registerTypeChecks() {
                          invokeDunder(inst, DUNDER_SUB).first || invokeDunder(inst, DUNDER_DIV).first || invokeDunder(inst, DUNDER_LDIV).first);
         }
         return Value(false);
-        });
+        }, {"x"});
 
     reg("iscomplex", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(true);
         // double/BigInt/Fraction 在数学意义上也是复数（虚部为 0）
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isreal", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isNumber() ||
@@ -5032,19 +5032,19 @@ void BuiltinRegistry::registerTypeChecks() {
         if (args[0].isComplex())
             return Value(args[0].asComplex().imag == 0.0);
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isfrac", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::FRACTION));
-        });
+        }, {"x"});
 
     reg("isbase", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::BASENUM));
-        });
+        }, {"x"});
 
     reg("isexact", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isInt32() || args[0].isBigInt() || args[0].isBool() || args[0].isObjType(ObjType::FRACTION) || args[0].isObjType(ObjType::BASENUM) || args[0].isObjType(ObjType::SYMBOLIC));
-        });
+        }, {"x"});
 
     reg("isbinary", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isBool()) return Value(true);
@@ -5053,7 +5053,7 @@ void BuiltinRegistry::registerTypeChecks() {
             if (d == 0.0 || d == 1.0) return Value(true);
         } catch (...) {}
         return Value(false);
-        });
+        }, {"x"});
 
     // ═══ 容器类型谓词 ═══
 
@@ -5061,19 +5061,19 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(args[0].isObjType(ObjType::REAL_MATRIX) ||
             args[0].isObjType(ObjType::COMPLEX_MATRIX) ||
             args[0].isObjType(ObjType::STRING_MATRIX));
-        });
+        }, {"x"});
 
     reg("isrealmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::REAL_MATRIX));
-        });
+        }, {"x"});
 
     reg("iscomplexmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::COMPLEX_MATRIX));
-        });
+        }, {"x"});
 
     reg("isstringmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::STRING_MATRIX));
-        });
+        }, {"x"});
 
     reg("isvector", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
@@ -5089,7 +5089,7 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(m.getRows() == 1 || m.getCols() == 1);
         }
         return Value(false);
-        });
+        }, {"x"});
 
     reg("issquare", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX))
@@ -5099,15 +5099,15 @@ void BuiltinRegistry::registerTypeChecks() {
         if (args[0].isObjType(ObjType::STRING_MATRIX))
             return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getRows() == static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getCols());
         return Value(false);
-        });
+        }, {"x"});
 
     reg("islist", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::LIST));
-        });
+        }, {"x"});
 
     reg("isdict", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::DICT));
-        });
+        }, {"x"});
 
     reg("isiterable", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& val = args[0];
@@ -5119,14 +5119,14 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(invokeDunder(inst, DUNDER_ITER).first || invokeDunder(inst, DUNDER_NEXT).first);
         }
         return Value(false);
-        });
+        }, {"x"});
 
     reg("iscallable", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& val = args[0];
         if (val.isFunctionClosure() || val.isClass() || val.isString()) return Value(true);
         if (val.isInstance()) return Value(invokeDunder(val.asInstance(), DUNDER_CALL).first);
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isindexable", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& val = args[0];
@@ -5135,17 +5135,17 @@ void BuiltinRegistry::registerTypeChecks() {
             val.isObjType(ObjType::STRING_MATRIX)) return Value(true);
         if (val.isInstance()) return Value(invokeDunder(val.asInstance(), DUNDER_GETITEM).first);
         return Value(false);
-        });
+        }, {"x"});
 
     reg("ishashable", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isHashable());
-        });
+        }, {"x"});
 
     // ═══ 字符串谓词 ═══
 
     reg("isstring", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isString());
-        });
+        }, {"x"});
 
     reg("isalpha", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5153,7 +5153,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (s.empty()) return Value(false);
         for (char c : s) if (!std::isalpha(static_cast<unsigned char>(c))) return Value(false);
         return Value(true);
-        });
+        }, {"s"});
 
     reg("isdigit", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5161,7 +5161,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (s.empty()) return Value(false);
         for (char c : s) if (!std::isdigit(static_cast<unsigned char>(c))) return Value(false);
         return Value(true);
-        });
+        }, {"s"});
 
     reg("isalnum", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5169,7 +5169,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (s.empty()) return Value(false);
         for (char c : s) if (!std::isalnum(static_cast<unsigned char>(c))) return Value(false);
         return Value(true);
-        });
+        }, {"s"});
 
     reg("isspace", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5177,7 +5177,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (s.empty()) return Value(false);
         for (char c : s) if (!std::isspace(static_cast<unsigned char>(c))) return Value(false);
         return Value(true);
-        });
+        }, {"s"});
 
     reg("isupper", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5185,7 +5185,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (s.empty()) return Value(false);
         for (char c : s) if (std::isalpha(static_cast<unsigned char>(c)) && !std::isupper(static_cast<unsigned char>(c))) return Value(false);
         return Value(true);
-        });
+        }, {"s"});
 
     reg("islower", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5193,7 +5193,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (s.empty()) return Value(false);
         for (char c : s) if (std::isalpha(static_cast<unsigned char>(c)) && !std::islower(static_cast<unsigned char>(c))) return Value(false);
         return Value(true);
-        });
+        }, {"s"});
 
     reg("isempty", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isString())
@@ -5217,48 +5217,48 @@ void BuiltinRegistry::registerTypeChecks() {
         if (args[0].isObjType(ObjType::SET))
             return Value(static_cast<ObjSet*>(args[0].asObj())->elements.empty());
         return Value(false);
-        });
+        }, {"x"});
 
     // ═══ 特殊谓词 ═══
 
     reg("isnone", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isNone());
-        });
+        }, {"x"});
 
     reg("isfunction", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isFunctionClosure());
-        });
+        }, {"x"});
 
     reg("isclass", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isClass());
-        });
+        }, {"x"});
 
     reg("isnamespace", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::NAMESPACE));
-        });
+        }, {"x"});
 
     reg("issymbolic", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isSymbolic());
-        });
+        }, {"x"});
 
     reg("isnan", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isDouble())
             return Value(std::isnan(args[0].asDoubleRaw()));
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isinf", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isDouble())
             return Value(std::isinf(args[0].asDoubleRaw()));
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isfinite", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isDouble()) return Value(std::isfinite(v.asDoubleRaw()));
         if (v.isInt32() || v.isBigInt() || v.isObjType(ObjType::FRACTION)) return Value(true);
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isprime", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
@@ -5266,7 +5266,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (v.isBigInt()) return Value(static_cast<ObjBigInt*>(v.asObj())->num.isPrime());
         if (v.isDouble()) return Value(BigInt(static_cast<int64_t>(std::round(v.asDoubleRaw()))).isPrime());
         return Value(false);
-        });
+        }, {"x"});
 
     reg("iseven", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
@@ -5277,7 +5277,7 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(std::isfinite(d) && d == std::floor(d) && std::fmod(d, 2.0) == 0.0);
         }
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isodd", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
@@ -5288,7 +5288,7 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(std::isfinite(d) && d == std::floor(d) && std::fmod(d, 2.0) != 0.0);
         }
         return Value(false);
-        });
+        }, {"x"});
 
     reg("ispositive", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
@@ -5297,7 +5297,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (v.isBigInt()) return Value(!static_cast<ObjBigInt*>(v.asObj())->num.isZero() && !static_cast<ObjBigInt*>(v.asObj())->num.isNegative());
         if (v.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(v.asObj())->frac.toDouble() > 0.0);
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isnegative", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
@@ -5306,7 +5306,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (v.isBigInt()) return Value(static_cast<ObjBigInt*>(v.asObj())->num.isNegative());
         if (v.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(v.asObj())->frac.toDouble() < 0.0);
         return Value(false);
-        });
+        }, {"x"});
 
     reg("iszero", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
@@ -5319,7 +5319,7 @@ void BuiltinRegistry::registerTypeChecks() {
         }
         if (v.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(v.asObj())->frac.getNum().isZero());
         return Value(false);
-        });
+        }, {"x"});
 
     reg("isapprox", { 2, 3, 4 }, [](const std::vector<Value>& args) -> Value {
         double rtol = args.size() >= 3 ? args[2].asDouble() : 1e-9;
@@ -5347,11 +5347,11 @@ void BuiltinRegistry::registerTypeChecks() {
             double tol = std::max(atol, rtol * std::max(std::abs(a), std::abs(b)));
             return Value(diff <= tol);
         }
-        });
+        }, {"a", "b", "rtol", "atol"});
 
     reg("isset", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::SET));
-        });
+        }, {"x"});
 }
 
 // =================================================================

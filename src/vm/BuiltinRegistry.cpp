@@ -784,7 +784,7 @@ void BuiltinRegistry::registerMath() {
         return Value(gamma + std::log(std::abs(lnx)) + numInteg([](double t) { return t == 0.0 ? 1.0 : (std::exp(t) - 1.0) / t; }, 0.0, lnx));
         });
 
-    regMath("abs", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("abs", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         // ★ Dunder 钩子: __abs__
         if (args[0].isInstance()) {
             auto inst = args[0].asInstance();
@@ -797,15 +797,15 @@ void BuiltinRegistry::registerMath() {
         return Value(std::abs(args[0].asDouble()));
         });
 
-    regMath("pow", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regMath("pow", { 2 }, {"x", "y"}, [](const std::vector<Value>& args) -> Value {
         return args[0] ^ args[1];
     });
 
-    regMath("root", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regMath("root", { 2 }, {"x", "y"}, [](const std::vector<Value>& args) -> Value {
         return args[0] ^ (Value(BigInt(1)) / args[1]);
     });
 
-    regMath("rootD", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regMath("rootD", { 2 }, {"x", "y"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ (Value(1.0) / args[1]);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
         return res.isComplex() ? Value(res.asComplex()) : Value(res.asDouble());

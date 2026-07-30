@@ -3573,6 +3573,138 @@ void BuiltinRegistry::registerListConversion() {
         return Value(RealMatrix(n, 2, flat));
         });
 
+    reg("enumerate", { 1, 2 }, [this](const std::vector<Value>& args) -> Value {
+        Value iterable = args[0];
+        int start = args.size() == 2 ? static_cast<int>(std::round(args[1].asDouble())) : 0;
+        ObjList* result = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(result);
+        
+        int idx = start;
+        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
+            ObjList* pair = GcHeap::get().allocate<ObjList>();
+            pair->vec.push_back(Value::fromInt32(idx++));
+            pair->vec.push_back(nextVal);
+            pair->is_frozen = true;
+            result->vec.push_back(Value(pair));
+            return true;
+        })) {
+            return Value(result);
+        }
+        
+        if (iterable.isObjType(ObjType::LIST)) {
+            for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(Value::fromInt32(idx++));
+                pair->vec.push_back(e);
+                pair->is_frozen = true;
+                result->vec.push_back(Value(pair));
+            }
+        } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
+            for (double d : static_cast<ObjRealMatrix*>(iterable.asObj())->mat.rawData()) {
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(Value::fromInt32(idx++));
+                pair->vec.push_back(Value(d));
+                pair->is_frozen = true;
+                result->vec.push_back(Value(pair));
+            }
+        } else if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
+            for (const auto& c : static_cast<ObjComplexMatrix*>(iterable.asObj())->mat.rawData()) {
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(Value::fromInt32(idx++));
+                pair->vec.push_back(Value(c));
+                pair->is_frozen = true;
+                result->vec.push_back(Value(pair));
+            }
+        } else if (iterable.isObjType(ObjType::STRING_MATRIX)) {
+            for (const auto& s : static_cast<ObjStringMatrix*>(iterable.asObj())->mat.rawData()) {
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(Value::fromInt32(idx++));
+                pair->vec.push_back(Value(s));
+                pair->is_frozen = true;
+                result->vec.push_back(Value(pair));
+            }
+        } else if (iterable.isString()) {
+            ObjString* objStr = iterable.asObjString();
+            const std::string& str = objStr->str;
+            if (objStr->isAscii) {
+                for (char c : str) {
+                    ObjList* pair = GcHeap::get().allocate<ObjList>();
+                    pair->vec.push_back(Value::fromInt32(idx++));
+                    pair->vec.push_back(Value(std::string(1, c)));
+                    pair->is_frozen = true;
+                    result->vec.push_back(Value(pair));
+                }
+            } else {
+                size_t len = objStr->charLength;
+                for (size_t i = 0; i < len; ++i) {
+                    ObjList* pair = GcHeap::get().allocate<ObjList>();
+                    pair->vec.push_back(Value::fromInt32(idx++));
+                    pair->vec.push_back(Value(utf8::substring(str, i, 1, false)));
+                    pair->is_frozen = true;
+                    result->vec.push_back(Value(pair));
+                }
+            }
+        } else {
+            throw std::runtime_error("Type Error: enumerate() expects an iterable.");
+        }
+        return Value(result);
+    });
+
+    auto groupByCore = [this](const Value& argList, ObjClosure* cl) -> Value {
+        if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: groupBy() requires a single-parameter function.");
+        
+        ObjDict* result = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard guard(result);
+        
+        auto processElement = [&](const Value& val) {
+            jc::checkInterrupt();
+            Value key = safeCallFunction(cl, { val });
+            auto it = result->keyMap.find(key);
+            if (it != result->keyMap.end()) {
+                static_cast<ObjList*>(result->elements[it->second].second.asObj())->vec.push_back(val);
+            } else {
+                ObjList* groupList = GcHeap::get().allocate<ObjList>();
+                groupList->vec.push_back(val);
+                result->keyMap[key] = result->elements.size();
+                result->elements.push_back({key, Value(groupList)});
+            }
+        };
+
+        if (helpers::iterateIterable(argList, [&](const Value& nextVal) {
+            processElement(nextVal);
+            return true;
+        })) {
+            return Value(result);
+        }
+        
+        if (argList.isObjType(ObjType::LIST)) {
+            for (const auto& e : static_cast<ObjList*>(argList.asObj())->vec) processElement(e);
+        } else if (argList.isObjType(ObjType::REAL_MATRIX)) {
+            for (double d : static_cast<ObjRealMatrix*>(argList.asObj())->mat.rawData()) processElement(Value(d));
+        } else if (argList.isObjType(ObjType::COMPLEX_MATRIX)) {
+            for (const auto& c : static_cast<ObjComplexMatrix*>(argList.asObj())->mat.rawData()) processElement(Value(c));
+        } else if (argList.isObjType(ObjType::STRING_MATRIX)) {
+            for (const auto& s : static_cast<ObjStringMatrix*>(argList.asObj())->mat.rawData()) processElement(Value(s));
+        } else {
+            throw std::runtime_error("Type Error: groupBy() expects an iterable.");
+        }
+        return Value(result);
+    };
+
+    reg("groupBy", { 1, 2 }, [groupByCore](const std::vector<Value>& args) -> Value {
+        if (args.size() == 1) {
+            Value capturedFn = args[0];
+            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: groupBy() currying expects a function.");
+            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "groupBy_curried", nullptr);
+            bound->boundSelf = capturedFn;
+            bound->nativeFn = std::make_any<NativeCallable>([groupByCore](const std::vector<Value>& innerArgs) -> Value {
+                return groupByCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
+            });
+            return Value(bound);
+        }
+        return groupByCore(args[0], args[1].asFunction());
+    });
+
     reg("cat", {}, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) throw std::runtime_error("Runtime Error: cat() expects at least 1 argument.");
         bool hasList = false, hasStringMat = false, hasComplexMat = false;

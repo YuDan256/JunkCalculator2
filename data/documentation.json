@@ -2032,6 +2032,13 @@
       "    zip(a, b)           Pair-wise merge → N×2 matrix or list of pairs",
       "    toStrVec(v)         Convert list/stringmatrix to column stringmatrix",
       "",
+      "  Iteration Helpers",
+      "  ──────────────────────",
+      "    enumerate(v, [st])  Returns a list of @[index, value] pairs.",
+      "                          enumerate([\"a\", \"b\"])        → @[@[0, \"a\"], @[1, \"b\"]]",
+      "    groupBy(v, f)       Groups elements by f(x) into a dict.",
+      "                          [1,2,3,4].groupBy((x)=>x%2)  → {1: @[1,3], 0: @[2,4]}",
+      "",
       "  Pipe Operator",
       "  ──────────────────────",
       "    Chains data through multiple transformations left-to-right:",
@@ -5019,6 +5026,16 @@
       "signature": "cat(...)",
       "desc": "Concatenates multiple arrays or lists into one.",
       "examples": ["cat([1, 2], [3, 4])"]
+    },
+    "enumerate": {
+      "signature": "enumerate(iterable, [start=0])",
+      "desc": "Returns a list of @[index, value] pairs from an iterable.",
+      "examples": ["enumerate([\"a\", \"b\", \"c\"])"]
+    },
+    "groupBy": {
+      "signature": "v.groupBy(f) / groupBy(v, f) / groupBy(f)",
+      "desc": "Groups elements of an iterable by the result of function f. Returns a dict where keys are f(x) and values are lists of elements.",
+      "examples": ["[1, 2, 3, 4].groupBy((x) => x % 2)"]
     },
     "isinstance": {
       "signature": "isinstance(obj, [cls])",

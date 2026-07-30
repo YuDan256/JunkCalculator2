@@ -5322,8 +5322,8 @@ void BuiltinRegistry::registerTypeChecks() {
         }, {"x"});
 
     reg("isapprox", { 2, 3, 4 }, [](const std::vector<Value>& args) -> Value {
-        double rtol = args.size() >= 3 ? args[2].asDouble() : 1e-9;
-        double atol = args.size() == 4 ? args[3].asDouble() : 0.0;
+        double rtol = (args.size() >= 3 && !args[2].isUninit()) ? args[2].asDouble() : 1e-9;
+        double atol = (args.size() == 4 && !args[3].isUninit()) ? args[3].asDouble() : 0.0;
 
         bool isComp = false;
         if (args[0].isComplex() || args[1].isComplex()) isComp = true;

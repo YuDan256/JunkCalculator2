@@ -86,7 +86,7 @@ Value VM::getBuiltinClosure(const std::string& name) {
                 int minA = *ait->second.begin();
                 int maxA = *ait->second.rbegin();
                 for (int j = minA; j < maxA; ++j) {
-                    closure->defaultValues.push_back(Value::none());
+                    closure->defaultValues.push_back(Value::uninit());
                 }
             }
         } else if (ait != builtinArity.end() && !ait->second.empty()) {
@@ -97,7 +97,7 @@ Value VM::getBuiltinClosure(const std::string& name) {
                 closure->isRef.push_back(false);
             }
             for (int j = minA; j < maxA; ++j) {
-                closure->defaultValues.push_back(Value::none());
+                closure->defaultValues.push_back(Value::uninit());
             }
         }
         Value val(closure);

@@ -879,10 +879,10 @@ void BuiltinRegistry::registerMath() {
 // [2] 复数属性
 // =================================================================
 void BuiltinRegistry::registerComplex() {
-    reg("Re", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().real); return args[0]; });
-    reg("Im", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().imag); return Value(0.0); });
-    reg("arg", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().argument()); return Value(args[0].asDouble() >= 0 ? 0.0 : Complex::PI); });
-    reg("conj", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().conjugate()); return args[0]; });
+    reg("Re", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().real); return args[0]; }, {"z"});
+    reg("Im", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().imag); return Value(0.0); }, {"z"});
+    reg("arg", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().argument()); return Value(args[0].asDouble() >= 0 ? 0.0 : Complex::PI); }, {"z"});
+    reg("conj", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().conjugate()); return args[0]; }, {"z"});
 }
 
 // =================================================================
@@ -893,7 +893,7 @@ void BuiltinRegistry::registerFraction() {
         BigInt n = args[0].isBigInt() ? args[0].asBigInt() : BigInt(static_cast<int64_t>(std::round(args[0].asDouble())));
         BigInt d = args[1].isBigInt() ? args[1].asBigInt() : BigInt(static_cast<int64_t>(std::round(args[1].asDouble())));
         return Value(Fraction(n, d));
-    });
+    }, {"n", "d"});
     reg("toFrac", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
         if (v.isInt32() || v.isBigInt()) return v;
@@ -905,9 +905,9 @@ void BuiltinRegistry::registerFraction() {
         }
         if (f.getDen() == BigInt(1)) return Value(f.getNum());
         return Value(f);
-    });
-    reg("num", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getNum()); return args[0]; });
-    reg("den", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getDen()); return Value(1.0); });
+    }, {"x"});
+    reg("num", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getNum()); return args[0]; }, {"f"});
+    reg("den", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getDen()); return Value(1.0); }, {"f"});
 }
 
 // =================================================================
@@ -921,7 +921,7 @@ void BuiltinRegistry::registerPolySolver() {
         else if (args.size() == 4) roots = Complex::solveDegreeThree(args[0].asComplex(), args[1].asComplex(), args[2].asComplex(), args[3].asComplex());
         else roots = Complex::solveDegreeFour(args[0].asComplex(), args[1].asComplex(), args[2].asComplex(), args[3].asComplex(), args[4].asComplex());
         return Value(ComplexMatrix(static_cast<int>(roots.size()), 1, roots));
-    });
+    }, {"a", "b", "c", "d", "e"});
 
 }
 
@@ -996,10 +996,10 @@ void BuiltinRegistry::registerMatrixOps() {
             }
             return a + b; 
         }); 
-    });
-    reg("subE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "subE", [](const Value& a, const Value& b) { return a - b; }); });
-    reg("mulE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "mulE", [](const Value& a, const Value& b) { return a * b; }); });
-    reg("divE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "divE", [](const Value& a, const Value& b) { return a / b; }); });
+    }, {"A", "B"});
+    reg("subE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "subE", [](const Value& a, const Value& b) { return a - b; }); }, {"A", "B"});
+    reg("mulE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "mulE", [](const Value& a, const Value& b) { return a * b; }); }, {"A", "B"});
+    reg("divE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "divE", [](const Value& a, const Value& b) { return a / b; }); }, {"A", "B"});
     reg("idivE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { 
         return elementWiseOp(args[0], args[1], "idivE", [](const Value& a, const Value& b) { 
             if (a.isBigInt() && b.isBigInt()) {
@@ -1011,8 +1011,8 @@ void BuiltinRegistry::registerMatrixOps() {
             if (db == 0.0) throw std::runtime_error("Math Error: Division by zero.");
             return Value(BigInt(static_cast<int64_t>(std::trunc(da / db))));
         }); 
-    });
-    reg("powE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "powE", [](const Value& a, const Value& b) { return a ^ b; }); });
+    }, {"A", "B"});
+    reg("powE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "powE", [](const Value& a, const Value& b) { return a ^ b; }); }, {"A", "B"});
     reg("modE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { 
         return elementWiseOp(args[0], args[1], "modE", [](const Value& a, const Value& b) { 
             if (a.isComplex() && !b.isComplex()) {
@@ -1027,20 +1027,20 @@ void BuiltinRegistry::registerMatrixOps() {
             }
             return a % b; 
         }); 
-    });
-    reg("eqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "eqE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkEqual(a, b) ? 1 : 0); }); });
-    reg("neqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "neqE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkEqual(a, b) ? 1 : 0); }); });
-    reg("ltE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "ltE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkLess(a, b) ? 1 : 0); }); });
-    reg("leE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "leE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkGreater(a, b) ? 1 : 0); }); });
-    reg("gtE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "gtE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkGreater(a, b) ? 1 : 0); }); });
-    reg("geE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "geE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkLess(a, b) ? 1 : 0); }); });
-    reg("maxE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "maxE", [](const Value& a, const Value& b) { return helpers::checkGreater(a, b) ? a : b; }); });
-    reg("minE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "minE", [](const Value& a, const Value& b) { return helpers::checkLess(a, b) ? a : b; }); });
-    reg("andE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "andE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() && b.truthy()) ? 1 : 0); }); });
-    reg("orE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "orE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() || b.truthy()) ? 1 : 0); }); });
-    reg("xorE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "xorE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() != b.truthy()) ? 1 : 0); }); });
-    reg("atan2E", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "atan2E", [](const Value& a, const Value& b) { return Value(std::atan2(a.asDouble(), b.asDouble())); }); });
-    reg("hypotE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asDouble(), b.asDouble())); }); });
+    }, {"A", "B"});
+    reg("eqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "eqE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkEqual(a, b) ? 1 : 0); }); }, {"A", "B"});
+    reg("neqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "neqE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkEqual(a, b) ? 1 : 0); }); }, {"A", "B"});
+    reg("ltE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "ltE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkLess(a, b) ? 1 : 0); }); }, {"A", "B"});
+    reg("leE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "leE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkGreater(a, b) ? 1 : 0); }); }, {"A", "B"});
+    reg("gtE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "gtE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkGreater(a, b) ? 1 : 0); }); }, {"A", "B"});
+    reg("geE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "geE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkLess(a, b) ? 1 : 0); }); }, {"A", "B"});
+    reg("maxE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "maxE", [](const Value& a, const Value& b) { return helpers::checkGreater(a, b) ? a : b; }); }, {"A", "B"});
+    reg("minE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "minE", [](const Value& a, const Value& b) { return helpers::checkLess(a, b) ? a : b; }); }, {"A", "B"});
+    reg("andE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "andE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() && b.truthy()) ? 1 : 0); }); }, {"A", "B"});
+    reg("orE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "orE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() || b.truthy()) ? 1 : 0); }); }, {"A", "B"});
+    reg("xorE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "xorE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() != b.truthy()) ? 1 : 0); }); }, {"A", "B"});
+    reg("atan2E", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "atan2E", [](const Value& a, const Value& b) { return Value(std::atan2(a.asDouble(), b.asDouble())); }); }, {"Y", "X"});
+    reg("hypotE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asDouble(), b.asDouble())); }); }, {"A", "B"});
     reg("whereE", { 3 }, [](const std::vector<Value>& args) -> Value {
         const Value& mask = args[0]; const Value& a = args[1]; const Value& b = args[2];
         bool mMat = mask.isObjType(ObjType::REAL_MATRIX) || mask.isObjType(ObjType::COMPLEX_MATRIX) || mask.isObjType(ObjType::STRING_MATRIX);
@@ -1095,20 +1095,20 @@ void BuiltinRegistry::registerMatrixOps() {
             for (int i = 0; i < r * c; ++i) flat[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asDouble() : getElem(b, bMat ? i : 0).asDouble();
             return Value(RealMatrix(r, c, flat));
         }
-    });
+    }, {"mask", "A", "B"});
 
     // --- 性质 ---
-    reg("det", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.determinant()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.determinant()); throw std::runtime_error("Type Error: det() requires a matrix."); });
-    reg("inv", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.inverse()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.inverse()); throw std::runtime_error("Type Error: inv() requires a matrix."); });
-    reg("trans", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.transpose()); throw std::runtime_error("Type Error: trans() requires a matrix."); });
-    reg("gauss", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.gaussianElimination().first); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.gaussianElimination().first); throw std::runtime_error("Type Error: gauss() requires a matrix."); });
+    reg("det", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.determinant()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.determinant()); throw std::runtime_error("Type Error: det() requires a matrix."); }, {"A"});
+    reg("inv", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.inverse()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.inverse()); throw std::runtime_error("Type Error: inv() requires a matrix."); }, {"A"});
+    reg("trans", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.transpose()); throw std::runtime_error("Type Error: trans() requires a matrix."); }, {"A"});
+    reg("gauss", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.gaussianElimination().first); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.gaussianElimination().first); throw std::runtime_error("Type Error: gauss() requires a matrix."); }, {"A"});
 
-    reg("rank", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return Value::fromInt32(m.rank()); }); });
-    reg("tr", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.trace(); }); });
-    reg("norm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.norm(); }); });
-    reg("cond", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.condition(); }); });
-    reg("adj", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.adjugate(); }); });
-    reg("perm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.permanent(); }); });
+    reg("rank", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return Value::fromInt32(m.rank()); }); }, {"A"});
+    reg("tr", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.trace(); }); }, {"A"});
+    reg("norm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.norm(); }); }, {"A"});
+    reg("cond", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.condition(); }); }, {"A"});
+    reg("adj", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.adjugate(); }); }, {"A"});
+    reg("perm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.permanent(); }); }, {"A"});
     reg("sum", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value s(0.0);
@@ -1134,7 +1134,7 @@ void BuiltinRegistry::registerMatrixOps() {
             return listSum;
         }
         return matrixDispatch1(arg, [](const auto& m) { return m.sum(); });
-        });
+        }, {"A"});
 
     reg("prod", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -1161,11 +1161,11 @@ void BuiltinRegistry::registerMatrixOps() {
             return listProd;
         }
         return matrixDispatch1(arg, [](const auto& m) { return m.product(); });
-        });    
-    reg("null", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.nullSpace(); }); });
-    reg("orth", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.orthogonalize(); }); });
-    reg("ctrans", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.conjugateTranspose(); }); });
-    reg("mpow", { 2 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); return matrixDispatch1(args[0], [n](const auto& m) { return m.power(n); }); });
+        }, {"A"});    
+    reg("null", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.nullSpace(); }); }, {"A"});
+    reg("orth", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.orthogonalize(); }); }, {"A"});
+    reg("ctrans", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.conjugateTranspose(); }); }, {"A"});
+    reg("mpow", { 2 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); return matrixDispatch1(args[0], [n](const auto& m) { return m.power(n); }); }, {"A", "n"});
 
     // --- 维度 ---
     reg("row", { 1 }, [](const std::vector<Value>& args) -> Value {
@@ -1173,19 +1173,19 @@ void BuiltinRegistry::registerMatrixOps() {
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows());
         if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getRows());
         throw std::runtime_error("Type Error: row() requires a matrix.");
-    });
+    }, {"A"});
     reg("col", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getCols());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getCols());
         if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getCols());
         throw std::runtime_error("Type Error: col() requires a matrix.");
-    });
-    reg("rows", builtinArity["row"], builtins["row"]);
-    reg("cols", builtinArity["col"], builtins["col"]);
+    }, {"A"});
+    reg("rows", builtinArity["row"], builtins["row"], builtinParamNames["row"]);
+    reg("cols", builtinArity["col"], builtins["col"], builtinParamNames["col"]);
 
     // --- 元素/行列访问 ---
-    reg("getElement", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat(r, c)); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat(r, c)); throw std::runtime_error("Type Error: getElement() requires a matrix."); });
-    reg("setElement", { 4 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix res = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; res(r, c) = args[3].asDouble(); return Value(res); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix res = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; res(r, c) = args[3].asComplex(); return Value(res); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix res = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; if (args[3].isString()) res(r, c) = args[3].asString(); else { std::ostringstream oss; oss << args[3]; res(r, c) = oss.str(); } return Value(res); } throw std::runtime_error("Type Error: setElement() requires a matrix."); });
+    reg("getElement", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat(r, c)); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat(r, c)); throw std::runtime_error("Type Error: getElement() requires a matrix."); }, {"A", "r", "c"});
+    reg("setElement", { 4 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix res = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; res(r, c) = args[3].asDouble(); return Value(res); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix res = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; res(r, c) = args[3].asComplex(); return Value(res); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix res = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; if (args[3].isString()) res(r, c) = args[3].asString(); else { std::ostringstream oss; oss << args[3]; res(r, c) = oss.str(); } return Value(res); } throw std::runtime_error("Type Error: setElement() requires a matrix."); }, {"A", "r", "c", "val"});
 
     // 行列操作（简写宏化）
     #define ROW_COL_OP(NAME, BODY) reg(NAME, { 2 }, [](const std::vector<Value>& args) -> Value { \
@@ -1193,7 +1193,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.BODY); \
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.BODY); \
         if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.BODY); \
-        throw std::runtime_error("Type Error: requires a matrix."); })
+        throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "idx"})
 
     ROW_COL_OP("getR", getRow(idx));
     ROW_COL_OP("getC", getCol(idx));
@@ -1201,28 +1201,28 @@ void BuiltinRegistry::registerMatrixOps() {
     ROW_COL_OP("delC", deleteCol(idx));
     #undef ROW_COL_OP
 
-    reg("swapR", { 3 }, [](const std::vector<Value>& args) -> Value { int r1 = static_cast<int>(std::round(args[1].asDouble())), r2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("swapC", { 3 }, [](const std::vector<Value>& args) -> Value { int c1 = static_cast<int>(std::round(args[1].asDouble())), c2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("multiR", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.multiplyRow(r, args[2].asDouble()); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.multiplyRow(r, args[2].asComplex()); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("multiC", { 3 }, [](const std::vector<Value>& args) -> Value { int c = static_cast<int>(std::round(args[1].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; double s = args[2].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; Complex s = args[2].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("addR", { 4 }, [](const std::vector<Value>& args) -> Value { int r1 = static_cast<int>(std::round(args[1].asDouble())), r2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.addRows(r1, r2, args[3].asDouble()); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.addRows(r1, r2, args[3].asComplex()); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("addC", { 4 }, [](const std::vector<Value>& args) -> Value { int c1 = static_cast<int>(std::round(args[1].asDouble())), c2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; double s = args[3].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; Complex s = args[3].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); });
+    reg("swapR", { 3 }, [](const std::vector<Value>& args) -> Value { int r1 = static_cast<int>(std::round(args[1].asDouble())), r2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r1", "r2"});
+    reg("swapC", { 3 }, [](const std::vector<Value>& args) -> Value { int c1 = static_cast<int>(std::round(args[1].asDouble())), c2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "c1", "c2"});
+    reg("multiR", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.multiplyRow(r, args[2].asDouble()); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.multiplyRow(r, args[2].asComplex()); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "scalar"});
+    reg("multiC", { 3 }, [](const std::vector<Value>& args) -> Value { int c = static_cast<int>(std::round(args[1].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; double s = args[2].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; Complex s = args[2].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "c", "scalar"});
+    reg("addR", { 4 }, [](const std::vector<Value>& args) -> Value { int r1 = static_cast<int>(std::round(args[1].asDouble())), r2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.addRows(r1, r2, args[3].asDouble()); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.addRows(r1, r2, args[3].asComplex()); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r1", "r2", "scalar"});
+    reg("addC", { 4 }, [](const std::vector<Value>& args) -> Value { int c1 = static_cast<int>(std::round(args[1].asDouble())), c2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; double s = args[3].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; Complex s = args[3].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "c1", "c2", "scalar"});
 
     // --- 结构 ---
-    reg("reshape", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.reshape(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.reshape(r, c)); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.reshape(r, c)); throw std::runtime_error("Type Error: reshape() requires a matrix."); });
-    reg("sub", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.subMatrix(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.subMatrix(r, c)); throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("cof", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.cofactor(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.cofactor(r, c)); throw std::runtime_error("Type Error: requires a matrix."); });
-    reg("Acof", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.algebraicCofactor(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.algebraicCofactor(r, c)); throw std::runtime_error("Type Error: requires a matrix."); });
+    reg("reshape", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.reshape(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.reshape(r, c)); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.reshape(r, c)); throw std::runtime_error("Type Error: reshape() requires a matrix."); }, {"A", "r", "c"});
+    reg("sub", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.subMatrix(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.subMatrix(r, c)); throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "c"});
+    reg("cof", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.cofactor(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.cofactor(r, c)); throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "c"});
+    reg("Acof", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.algebraicCofactor(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.algebraicCofactor(r, c)); throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "c"});
 
     // --- 拼接 ---
-    reg("integR", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integR(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); if (args[0].isObjType(ObjType::STRING_MATRIX) && args[1].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.integR(static_cast<ObjStringMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integR(args[1].asComplexMatrix())); });
-    reg("integC", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integC(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); if (args[0].isObjType(ObjType::STRING_MATRIX) && args[1].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.integC(static_cast<ObjStringMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integC(args[1].asComplexMatrix())); });
-    reg("integD", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integD(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integD(args[1].asComplexMatrix())); });
+    reg("integR", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integR(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); if (args[0].isObjType(ObjType::STRING_MATRIX) && args[1].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.integR(static_cast<ObjStringMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integR(args[1].asComplexMatrix())); }, {"A", "B"});
+    reg("integC", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integC(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); if (args[0].isObjType(ObjType::STRING_MATRIX) && args[1].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.integC(static_cast<ObjStringMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integC(args[1].asComplexMatrix())); }, {"A", "B"});
+    reg("integD", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integD(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integD(args[1].asComplexMatrix())); }, {"A", "B"});
 
     // --- 生成器 ---
-    reg("id", { 1 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asDouble())); if (n < 1) throw std::runtime_error("Runtime Error: Size must be positive."); return Value(RealMatrix::identity(n)); });
-    reg("ones", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asDouble())); return Value(RealMatrix::ones(n, n)); } int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble())); return Value(RealMatrix::ones(r, c)); });
-    reg("zeros", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asDouble())); return Value(RealMatrix::zeros(n, n)); } int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble())); return Value(RealMatrix::zeros(r, c)); });
+    reg("id", { 1 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asDouble())); if (n < 1) throw std::runtime_error("Runtime Error: Size must be positive."); return Value(RealMatrix::identity(n)); }, {"n"});
+    reg("ones", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asDouble())); return Value(RealMatrix::ones(n, n)); } int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble())); return Value(RealMatrix::ones(r, c)); }, {"r", "c"});
+    reg("zeros", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asDouble())); return Value(RealMatrix::zeros(n, n)); } int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble())); return Value(RealMatrix::zeros(r, c)); }, {"r", "c"});
 }
 
 // =================================================================
@@ -1240,7 +1240,7 @@ void BuiltinRegistry::registerDecompositions() {
             L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
         } else throw std::runtime_error("Type Error: requires a matrix.");
         L->is_frozen = true; return Value(L);
-    });
+    }, {"A"});
     reg("lu", { 1 }, [](const std::vector<Value>& args) -> Value {
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
@@ -1252,9 +1252,9 @@ void BuiltinRegistry::registerDecompositions() {
             L->vec.push_back(Value(res.L)); L->vec.push_back(Value(res.U)); L->vec.push_back(Value(res.P));
         } else throw std::runtime_error("Type Error: requires a matrix.");
         L->is_frozen = true; return Value(L);
-    });
-    reg("eig", { 1 }, [](const std::vector<Value>& args) -> Value { std::vector<Complex> vals; if (args[0].isObjType(ObjType::REAL_MATRIX)) vals = computeEigenvalues(static_cast<ObjRealMatrix*>(args[0].asObj())->mat); else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) vals = computeEigenvalues(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat); else throw std::runtime_error("Type Error: requires a matrix."); return Value(ComplexMatrix(static_cast<int>(vals.size()), 1, vals)); });
-    reg("eigvec", { 1 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix(); auto vals = computeEigenvalues(A); return Value(computeEigenvectors(A, vals)); });
+    }, {"A"});
+    reg("eig", { 1 }, [](const std::vector<Value>& args) -> Value { std::vector<Complex> vals; if (args[0].isObjType(ObjType::REAL_MATRIX)) vals = computeEigenvalues(static_cast<ObjRealMatrix*>(args[0].asObj())->mat); else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) vals = computeEigenvalues(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat); else throw std::runtime_error("Type Error: requires a matrix."); return Value(ComplexMatrix(static_cast<int>(vals.size()), 1, vals)); }, {"A"});
+    reg("eigvec", { 1 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix(); auto vals = computeEigenvalues(A); return Value(computeEigenvectors(A, vals)); }, {"A"});
     reg("diag", { 1 }, [](const std::vector<Value>& args) -> Value {
         ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix();
         auto [P, D] = diagonalize(A);
@@ -1262,7 +1262,7 @@ void BuiltinRegistry::registerDecompositions() {
         GcObjGuard guard(L);
         L->vec.push_back(Value(P)); L->vec.push_back(Value(D));
         L->is_frozen = true; return Value(L);
-    });
+    }, {"A"});
 }
 
 // =================================================================
@@ -1326,9 +1326,9 @@ void BuiltinRegistry::registerLinearSolvers() {
             setField("basis", Value(A.nullSpace()));
         }
         return Value(d);
-    });
-    reg("lstsq", { 2 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); ComplexMatrix AH = A.conjugateTranspose(); ComplexMatrix aug = (AH * A).integR(AH * b); auto [rref, sw] = aug.gaussianElimination(); int n = (AH * A).getCols(); std::vector<Complex> sol(n); for (int i = 0; i < n; ++i) sol[i] = rref(i, n); return Value(ComplexMatrix(n, 1, sol)); });
-    reg("residual", { 3 }, [](const std::vector<Value>& args) -> Value { return Value(args[2].asComplexMatrix() - args[0].asComplexMatrix() * args[1].asComplexMatrix()); });
+    }, {"A", "b"});
+    reg("lstsq", { 2 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); ComplexMatrix AH = A.conjugateTranspose(); ComplexMatrix aug = (AH * A).integR(AH * b); auto [rref, sw] = aug.gaussianElimination(); int n = (AH * A).getCols(); std::vector<Complex> sol(n); for (int i = 0; i < n; ++i) sol[i] = rref(i, n); return Value(ComplexMatrix(n, 1, sol)); }, {"A", "b"});
+    reg("residual", { 3 }, [](const std::vector<Value>& args) -> Value { return Value(args[2].asComplexMatrix() - args[0].asComplexMatrix() * args[1].asComplexMatrix()); }, {"A", "x", "b"});
 }
 
 // =================================================================
@@ -1344,17 +1344,17 @@ void BuiltinRegistry::registerVectors() {
         if (args[0].isObjType(ObjType::REAL_MATRIX))
             return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows());
         return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows());
-        });    
-    reg("dot", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "dot"); assertVec(args[1], "dot"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); if (a.getRows() != b.getRows()) throw std::runtime_error("Math Error: Dimension mismatch."); return Value((a.conjugateTranspose() * b)(0, 0)); });
-    reg("vnorm", { 1 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "vnorm"); ComplexMatrix v = args[0].asComplexMatrix(); return Value(std::sqrt((v.conjugateTranspose() * v)(0, 0).real)); });
-    reg("normalize", { 1 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "normalize"); ComplexMatrix v = args[0].asComplexMatrix(); double len = std::sqrt((v.conjugateTranspose() * v)(0, 0).real); if (len == 0.0) throw std::runtime_error("Math Error: Cannot normalize a zero vector."); return Value(v / Complex(len)); });
-    reg("cross", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "cross"); assertVec(args[1], "cross"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); if (a.getRows() != 3 || b.getRows() != 3) throw std::runtime_error("Math Error: Cross product is 3D only."); std::vector<Complex> r = { a(1,0)*b(2,0)-a(2,0)*b(1,0), a(2,0)*b(0,0)-a(0,0)*b(2,0), a(0,0)*b(1,0)-a(1,0)*b(0,0) }; return Value(ComplexMatrix(3, 1, r)); });
-    reg("angle", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "angle"); assertVec(args[1], "angle"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double nA = std::sqrt((a.conjugateTranspose()*a)(0,0).real), nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nA == 0.0 || nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); double ct = (a.conjugateTranspose()*b)(0,0).real/(nA*nB); ct = std::max(-1.0, std::min(1.0, ct)); return Value(std::acos(ct)); });
-    reg("sproj", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "sproj"); assertVec(args[1], "sproj"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value((a.conjugateTranspose()*b)(0,0).real/nB); });
-    reg("vproj", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "vproj"); assertVec(args[1], "vproj"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); Complex dBB = (b.conjugateTranspose()*b)(0,0); if (dBB.real == 0.0 && dBB.imag == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value(b * ((a.conjugateTranspose()*b)(0,0)/dBB)); });
-    reg("triple", { 3 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "triple"); assertVec(args[1], "triple"); assertVec(args[2], "triple"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(), c = args[2].asComplexMatrix(); if (a.getRows()!=3||b.getRows()!=3||c.getRows()!=3) throw std::runtime_error("Math Error: 3D only."); std::vector<Complex> bc = { b(1,0)*c(2,0)-b(2,0)*c(1,0), b(2,0)*c(0,0)-b(0,0)*c(2,0), b(0,0)*c(1,0)-b(1,0)*c(0,0) }; return Value(a(0,0)*bc[0]+a(1,0)*bc[1]+a(2,0)*bc[2]); });
-    reg("isperp", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "isperp"); assertVec(args[1], "isperp"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double innerScale = a.norm()*b.norm(); return Value(Tol::clean((a.conjugateTranspose()*b)(0,0).modulus(), innerScale)==0.0); });
-    reg("isparallel", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "isparallel"); assertVec(args[1], "isparallel"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); return Value(a.integR(b).rank()<=1); });
+        }, {"v"});    
+    reg("dot", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "dot"); assertVec(args[1], "dot"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); if (a.getRows() != b.getRows()) throw std::runtime_error("Math Error: Dimension mismatch."); return Value((a.conjugateTranspose() * b)(0, 0)); }, {"a", "b"});
+    reg("vnorm", { 1 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "vnorm"); ComplexMatrix v = args[0].asComplexMatrix(); return Value(std::sqrt((v.conjugateTranspose() * v)(0, 0).real)); }, {"v"});
+    reg("normalize", { 1 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "normalize"); ComplexMatrix v = args[0].asComplexMatrix(); double len = std::sqrt((v.conjugateTranspose() * v)(0, 0).real); if (len == 0.0) throw std::runtime_error("Math Error: Cannot normalize a zero vector."); return Value(v / Complex(len)); }, {"v"});
+    reg("cross", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "cross"); assertVec(args[1], "cross"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); if (a.getRows() != 3 || b.getRows() != 3) throw std::runtime_error("Math Error: Cross product is 3D only."); std::vector<Complex> r = { a(1,0)*b(2,0)-a(2,0)*b(1,0), a(2,0)*b(0,0)-a(0,0)*b(2,0), a(0,0)*b(1,0)-a(1,0)*b(0,0) }; return Value(ComplexMatrix(3, 1, r)); }, {"a", "b"});
+    reg("angle", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "angle"); assertVec(args[1], "angle"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double nA = std::sqrt((a.conjugateTranspose()*a)(0,0).real), nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nA == 0.0 || nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); double ct = (a.conjugateTranspose()*b)(0,0).real/(nA*nB); ct = std::max(-1.0, std::min(1.0, ct)); return Value(std::acos(ct)); }, {"a", "b"});
+    reg("sproj", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "sproj"); assertVec(args[1], "sproj"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value((a.conjugateTranspose()*b)(0,0).real/nB); }, {"a", "b"});
+    reg("vproj", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "vproj"); assertVec(args[1], "vproj"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); Complex dBB = (b.conjugateTranspose()*b)(0,0); if (dBB.real == 0.0 && dBB.imag == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value(b * ((a.conjugateTranspose()*b)(0,0)/dBB)); }, {"a", "b"});
+    reg("triple", { 3 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "triple"); assertVec(args[1], "triple"); assertVec(args[2], "triple"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(), c = args[2].asComplexMatrix(); if (a.getRows()!=3||b.getRows()!=3||c.getRows()!=3) throw std::runtime_error("Math Error: 3D only."); std::vector<Complex> bc = { b(1,0)*c(2,0)-b(2,0)*c(1,0), b(2,0)*c(0,0)-b(0,0)*c(2,0), b(0,0)*c(1,0)-b(1,0)*c(0,0) }; return Value(a(0,0)*bc[0]+a(1,0)*bc[1]+a(2,0)*bc[2]); }, {"a", "b", "c"});
+    reg("isperp", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "isperp"); assertVec(args[1], "isperp"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double innerScale = a.norm()*b.norm(); return Value(Tol::clean((a.conjugateTranspose()*b)(0,0).modulus(), innerScale)==0.0); }, {"a", "b"});
+    reg("isparallel", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "isparallel"); assertVec(args[1], "isparallel"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); return Value(a.integR(b).rank()<=1); }, {"a", "b"});
 }
 
 // =================================================================

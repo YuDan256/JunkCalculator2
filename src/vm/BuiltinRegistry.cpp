@@ -2463,7 +2463,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(m.rawData()[0]);
         }
         return expectContainer("first");
-        });
+        }, {"v"});
 
     reg("last", { 1 }, [expectContainer](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
@@ -2490,7 +2490,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(m.rawData()[n - 1]);
         }
         return expectContainer("last");
-        });
+        }, {"v"});
 
     reg("pop", { 1 }, [expectContainer](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
@@ -2519,7 +2519,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(m.rawData()[n - 1]);
         }
         return expectContainer("pop");
-        });
+        }, {"v"});
 
     reg("shift", { 1 }, [expectContainer](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
@@ -2548,7 +2548,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(m.rawData()[0]);
         }
         return expectContainer("shift");
-        });
+        }, {"v"});
 
     reg("push", { 2 }, [expectContainer](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
@@ -2582,8 +2582,8 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(r, c, v));
         }
         return expectContainer("push");
-        });
-    reg("append", builtinArity["push"], builtins["push"]);
+        }, {"v", "val"});
+    reg("append", builtinArity["push"], builtins["push"], builtinParamNames["push"]);
 
     reg("prepend", { 2 }, [expectContainer](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
@@ -2617,7 +2617,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(r, c, v));
         }
         return expectContainer("prepend");
-        });
+        }, {"v", "val"});
 
     reg("insert", { 3 }, [expectContainer](const std::vector<Value>& args) -> Value {
         int idx = static_cast<int>(std::round(args[1].asDouble()));
@@ -2660,7 +2660,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(r, c, v));
         }
         return expectContainer("insert");
-        });
+        }, {"v", "idx", "val"});
 
     reg("removeAt", { 2 }, [expectContainer](const std::vector<Value>& args) -> Value {
         int idx = static_cast<int>(std::round(args[1].asDouble()));
@@ -2708,7 +2708,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(r, c, v));
         }
         return expectContainer("removeAt");
-        });
+        }, {"v", "idx"});
 
     reg("slice", { 2, 3 }, [expectContainer](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -2763,7 +2763,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(cr, cc, retV));
         }
         return expectContainer("slice");
-        });
+        }, {"v", "start", "end"});
 
     reg("reverse", { 1 }, [expectContainer](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -2801,7 +2801,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(m.getRows(), m.getCols(), v));
         }
         return expectContainer("reverse");
-        });
+        }, {"v"});
 
     reg("flatten", { 1 }, [expectContainer](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -2826,7 +2826,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(1, m.getRows() * m.getCols(), m.rawData()));
         }
         return expectContainer("flatten");
-        });
+        }, {"v"});
 
     reg("unique", { 1 }, [expectContainer](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -2879,7 +2879,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(StringMatrix(cr, cc, result));
         }
         return expectContainer("unique");
-        });
+        }, {"v"});
 
     reg("indexOf", { 2 }, [expectContainer, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -2925,7 +2925,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value::fromInt32(-1);
         }
         return expectContainer("indexOf");
-        });
+        }, {"v", "val"});
 
     reg("count", { 2 }, [expectContainer, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -2965,7 +2965,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value::fromInt32(countVal);
         }
         return expectContainer("count");
-        });
+        }, {"v", "val"});
 
     reg("join", { 2 }, [expectContainer, this](const std::vector<Value>& args) -> Value {
         if (!args[1].isString()) throw std::runtime_error("Type Error: delimiter must be a string.");
@@ -3026,7 +3026,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(result);
         }
         return expectContainer("join");
-        });
+        }, {"v", "delim"});
 
     auto applyMathVectorOp = [expectContainer](const Value& val, auto opBody) -> Value {
         if (val.isObjType(ObjType::LIST)) {
@@ -3063,10 +3063,10 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     reg("cumsum", { 1 }, [applyMathVectorOp](const std::vector<Value>& args) -> Value {
         return applyMathVectorOp(args[0], [](const Value& a, const Value& b) { return a + b; });
-        });
+        }, {"v"});
     reg("cumprod", { 1 }, [applyMathVectorOp](const std::vector<Value>& args) -> Value {
         return applyMathVectorOp(args[0], [](const Value& a, const Value& b) { return a * b; });
-        });
+        }, {"v"});
 
     reg("diffs", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -3093,25 +3093,25 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(ComplexMatrix(1, static_cast<int>(d.size()), d));
         }
         throw std::runtime_error("Type Error: diffs() expects a numeric vector or list.");
-        });
+        }, {"v"});
 
     // fill, linspace
-    reg("fill", { 2 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); if (n < 0) throw std::runtime_error("Runtime Error: count must be non-negative."); return Value(RealMatrix(1, n, std::vector<double>(n, args[0].asDouble()))); });
-    reg("linspace", { 3 }, [](const std::vector<Value>& args) -> Value { double a = args[0].asDouble(), b = args[1].asDouble(); int n = static_cast<int>(std::round(args[2].asDouble())); if (n < 1) throw std::runtime_error("Runtime Error: requires n >= 1."); std::vector<double> v(n); if (n == 1) v[0] = a; else { for (int i = 0; i < n; ++i) v[i] = a + (b - a) * i / (n - 1); } return Value(RealMatrix(1, n, v)); });
+    reg("fill", { 2 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); if (n < 0) throw std::runtime_error("Runtime Error: count must be non-negative."); return Value(RealMatrix(1, n, std::vector<double>(n, args[0].asDouble()))); }, {"val", "n"});
+    reg("linspace", { 3 }, [](const std::vector<Value>& args) -> Value { double a = args[0].asDouble(), b = args[1].asDouble(); int n = static_cast<int>(std::round(args[2].asDouble())); if (n < 1) throw std::runtime_error("Runtime Error: requires n >= 1."); std::vector<double> v(n); if (n == 1) v[0] = a; else { for (int i = 0; i < n; ++i) v[i] = a + (b - a) * i / (n - 1); } return Value(RealMatrix(1, n, v)); }, {"a", "b", "n"});
 }
 
 // =================================================================
 // [18] StringMatrix
 // =================================================================
 void BuiltinRegistry::registerStringMatrix() {
-    reg("strmat", {}, [](const std::vector<Value>& args) -> Value { if (args.size()<2) throw std::runtime_error("Runtime Error: strmat() expects at least 2 arguments."); int r=static_cast<int>(std::round(args[0].asDouble())),c=static_cast<int>(std::round(args[1].asDouble())); if (r<0||c<0) throw std::runtime_error("Runtime Error: strmat() dimensions must be non-negative."); if (args.size()==2) return Value(StringMatrix(r,c)); if (static_cast<int>(args.size())-2!=r*c) throw std::runtime_error("Runtime Error: strmat() element count does not match dimensions."); std::vector<std::string> flat; flat.reserve(r*c); for (size_t i=2;i<args.size();++i) { if (args[i].isString()) flat.push_back(args[i].asString()); else { std::ostringstream oss; oss<<args[i]; flat.push_back(oss.str()); } } return Value(StringMatrix(r,c,flat)); });
-    reg("strvec", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(static_cast<int>(flat.size()),1,flat)); });
-    reg("strrow", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(1,static_cast<int>(flat.size()),flat)); });
-    reg("strfill", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: strfill() expects a string and count."); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: strfill() count must be non-negative."); return Value(StringMatrix(1,n,std::vector<std::string>(n,args[0].asString()))); });
-    reg("strfind", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strfind() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& target=args[1].asString(); for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) if (m(i,j)==target) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)})); return Value::fromInt32(-1); });
-    reg("strjoin", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strjoin() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& delim=args[1].asString(); std::string result; bool first=true; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { if (!first) result+=delim; result+=m(i,j); first=false; } return Value(result); });
-    reg("strsort", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)) throw std::runtime_error("Type Error: strsort() expects a StringMatrix."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat=m.rawData(); std::sort(flat.begin(),flat.end()); return Value(StringMatrix(m.getRows(),m.getCols(),flat)); });
-    reg("toStrMat", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::STRING_MATRIX)) return args[0]; if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m=static_cast<ObjRealMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m=static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } throw std::runtime_error("Type Error: toStrMat() expects a matrix."); });
+    reg("strmat", {}, [](const std::vector<Value>& args) -> Value { if (args.size()<2) throw std::runtime_error("Runtime Error: strmat() expects at least 2 arguments."); int r=static_cast<int>(std::round(args[0].asDouble())),c=static_cast<int>(std::round(args[1].asDouble())); if (r<0||c<0) throw std::runtime_error("Runtime Error: strmat() dimensions must be non-negative."); if (args.size()==2) return Value(StringMatrix(r,c)); if (static_cast<int>(args.size())-2!=r*c) throw std::runtime_error("Runtime Error: strmat() element count does not match dimensions."); std::vector<std::string> flat; flat.reserve(r*c); for (size_t i=2;i<args.size();++i) { if (args[i].isString()) flat.push_back(args[i].asString()); else { std::ostringstream oss; oss<<args[i]; flat.push_back(oss.str()); } } return Value(StringMatrix(r,c,flat)); }, {"r", "c", "...elements"});
+    reg("strvec", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(static_cast<int>(flat.size()),1,flat)); }, {"...elements"});
+    reg("strrow", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(1,static_cast<int>(flat.size()),flat)); }, {"...elements"});
+    reg("strfill", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: strfill() expects a string and count."); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: strfill() count must be non-negative."); return Value(StringMatrix(1,n,std::vector<std::string>(n,args[0].asString()))); }, {"str", "n"});
+    reg("strfind", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strfind() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& target=args[1].asString(); for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) if (m(i,j)==target) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)})); return Value::fromInt32(-1); }, {"mat", "str"});
+    reg("strjoin", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strjoin() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& delim=args[1].asString(); std::string result; bool first=true; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { if (!first) result+=delim; result+=m(i,j); first=false; } return Value(result); }, {"mat", "delim"});
+    reg("strsort", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)) throw std::runtime_error("Type Error: strsort() expects a StringMatrix."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat=m.rawData(); std::sort(flat.begin(),flat.end()); return Value(StringMatrix(m.getRows(),m.getCols(),flat)); }, {"mat"});
+    reg("toStrMat", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::STRING_MATRIX)) return args[0]; if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m=static_cast<ObjRealMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m=static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } throw std::runtime_error("Type Error: toStrMat() expects a matrix."); }, {"A"});
 }
 
 // =================================================================
@@ -3127,7 +3127,7 @@ void BuiltinRegistry::registerDictFunctions() {
             d->elements.push_back({args[i], args[i + 1]}); 
         } 
         return Value(d); 
-    });
+    }, {"...pairs"});
 
     reg("keys", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
@@ -3151,9 +3151,9 @@ void BuiltinRegistry::registerDictFunctions() {
         GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) L->vec.push_back(k);
         return Value(L);
-        });
+        }, {"d"});
     // ★ 设定属性拾取别名！完美融合 Instance
-    reg("getFields", builtinArity["keys"], builtins["keys"]);
+    reg("getFields", builtinArity["keys"], builtins["keys"], builtinParamNames["keys"]);
 
     reg("values", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
@@ -3177,7 +3177,7 @@ void BuiltinRegistry::registerDictFunctions() {
         GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) L->vec.push_back(v);
         return Value(L);
-        });
+        }, {"d"});
 
     reg("hasKey", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
@@ -3193,10 +3193,10 @@ void BuiltinRegistry::registerDictFunctions() {
         }
         ObjDict* d = helpers::getDictMap(args[0], "hasKey");
         return Value(d->keyMap.find(args[1]) != d->keyMap.end());
-        });
+        }, {"d", "key"});
     // ★ 设定查询别名
-    reg("hasField", builtinArity["hasKey"], builtins["hasKey"]);
-    reg("has", builtinArity["hasKey"], builtins["hasKey"]);
+    reg("hasField", builtinArity["hasKey"], builtins["hasKey"], builtinParamNames["hasKey"]);
+    reg("has", builtinArity["hasKey"], builtins["hasKey"], builtinParamNames["hasKey"]);
 
     reg("removeKey", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
@@ -3214,7 +3214,7 @@ void BuiltinRegistry::registerDictFunctions() {
         ObjDict* d = helpers::getDictMap(args[0], "removeKey");
         d->remove(args[1]);
         return args[0];
-        });
+        }, {"d", "key"});
 
     reg("dictSize", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
@@ -3230,7 +3230,7 @@ void BuiltinRegistry::registerDictFunctions() {
             return Value::fromInt32(count);
         }
         ObjDict* d = helpers::getDictMap(args[0], "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
-        });
+        }, {"d"});
 
     reg("dictMerge", { 2 }, [](const std::vector<Value>& args) -> Value {
         auto getPairs = [](const Value& v) -> std::vector<std::pair<Value, Value>> {
@@ -3278,7 +3278,7 @@ void BuiltinRegistry::registerDictFunctions() {
             d1->set(k, v);
         }
         return args[0];
-        });
+        }, {"d1", "d2"});
 
     reg("dictPairs", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::NAMESPACE)) {
@@ -3319,14 +3319,14 @@ void BuiltinRegistry::registerDictFunctions() {
             L->vec.push_back(Value(pair));
         }
         return Value(L);
-        });
+        }, {"d"});
 }
 
 // =================================================================
 // [20] List & Conversion
 // =================================================================
 void BuiltinRegistry::registerListConversion() {
-    reg("list", {}, [](const std::vector<Value>& args) -> Value { ObjList* L = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(L); for (const auto& a : args) L->vec.push_back(a); return Value(L); });
+    reg("list", {}, [](const std::vector<Value>& args) -> Value { ObjList* L = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(L); for (const auto& a : args) L->vec.push_back(a); return Value(L); }, {"...elements"});
 
     reg("toList", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -3428,7 +3428,7 @@ void BuiltinRegistry::registerListConversion() {
         ObjList* L = GcHeap::get().allocate<ObjList>();
         L->vec.push_back(arg);
         return Value(L);
-        });
+        }, {"v"});
 
     reg("toStrVec", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -3451,7 +3451,7 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (arg.isObjType(ObjType::STRING_MATRIX)) return arg;
         throw std::runtime_error("Type Error: toStrVec() expects a List, StringMatrix, or Iterable.");
-        });
+        }, {"v"});
 
     reg("toArray", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -3467,7 +3467,7 @@ void BuiltinRegistry::registerListConversion() {
         std::vector<double> listFlat;
         for (const auto& v : L) listFlat.push_back(v.asDouble());
         return Value(RealMatrix(1, static_cast<int>(listFlat.size()), listFlat));
-        });
+        }, {"v"});
 
     reg("toMatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX) || args[0].isObjType(ObjType::COMPLEX_MATRIX) || args[0].isObjType(ObjType::STRING_MATRIX)) return args[0];
@@ -3505,7 +3505,7 @@ void BuiltinRegistry::registerListConversion() {
         if (allReal) { std::vector<double> flat; for (const auto& row : grid) for (const auto& v : row) flat.push_back(v.asDouble()); return Value(RealMatrix(rows, cols, flat)); }
         if (allNum) { std::vector<Complex> flat; for (const auto& row : grid) for (const auto& v : row) flat.push_back(v.asComplex()); return Value(ComplexMatrix(rows, cols, flat)); }
         std::vector<std::string> flat; for (const auto& row : grid) for (const auto& v : row) flat.push_back(valToStr(v)); return Value(StringMatrix(rows, cols, flat));
-        });
+        }, {"v"});
 
     reg("zip", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST) || args[1].isObjType(ObjType::LIST)) {
@@ -3571,7 +3571,7 @@ void BuiltinRegistry::registerListConversion() {
         std::vector<double> flat(n * 2);
         for (int i = 0; i < n; ++i) { flat[i * 2] = getLenAndFetch(args[0], i, false, false).asDouble(); flat[i * 2 + 1] = getLenAndFetch(args[1], i, false, false).asDouble(); }
         return Value(RealMatrix(n, 2, flat));
-        });
+        }, {"a", "b"});
 
     reg("enumerate", { 1, 2 }, [this](const std::vector<Value>& args) -> Value {
         Value iterable = args[0];
@@ -3648,7 +3648,7 @@ void BuiltinRegistry::registerListConversion() {
             throw std::runtime_error("Type Error: enumerate() expects an iterable.");
         }
         return Value(result);
-    });
+    }, {"iterable", "start"});
 
     auto groupByCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: groupBy() requires a single-parameter function.");
@@ -3703,7 +3703,7 @@ void BuiltinRegistry::registerListConversion() {
             return Value(bound);
         }
         return groupByCore(args[0], args[1].asFunction());
-    });
+    }, {"v", "f"});
 
     reg("cat", {}, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) throw std::runtime_error("Runtime Error: cat() expects at least 1 argument.");
@@ -3750,7 +3750,7 @@ void BuiltinRegistry::registerListConversion() {
             else { flat.push_back(a.asDouble()); }
         }
         return Value(RealMatrix(1, static_cast<int>(flat.size()), flat));
-        });
+        }, {"...args"});
 }
 
 // =================================================================
@@ -3771,9 +3771,9 @@ void BuiltinRegistry::registerIntrospection() {
         auto c = inst->classDef;
         while (c) { if (c == cls) return Value(true); c = c->parent; }
         return Value(false);
-        });    
-    reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) throw std::runtime_error("Type Error: getClass() expects an instance."); return Value(args[0].asInstance()->classDef); });
-    reg("getParent", { 1 }, [](const std::vector<Value>& args) -> Value { ObjClass* cls = nullptr; if (args[0].isClass()) cls=static_cast<ObjClass*>(args[0].asObj()); else if (args[0].isInstance()) cls=args[0].asInstance()->classDef; else throw std::runtime_error("Type Error: getParent() expects a class or instance."); if (!cls->parent) return Value::none(); return Value(cls->parent); });
+        }, {"obj", "cls"});    
+    reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) throw std::runtime_error("Type Error: getClass() expects an instance."); return Value(args[0].asInstance()->classDef); }, {"obj"});
+    reg("getParent", { 1 }, [](const std::vector<Value>& args) -> Value { ObjClass* cls = nullptr; if (args[0].isClass()) cls=static_cast<ObjClass*>(args[0].asObj()); else if (args[0].isInstance()) cls=args[0].asInstance()->classDef; else throw std::runtime_error("Type Error: getParent() expects a class or instance."); if (!cls->parent) return Value::none(); return Value(cls->parent); }, {"cls"});
 }
 
 // =================================================================
@@ -3801,7 +3801,7 @@ void BuiltinRegistry::registerFormatType() {
             else { result += fmt[i]; }
         }
         return Value(result);
-        });
+        }, {"fmt", "...args"});
 
     reg("type", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
@@ -3835,7 +3835,7 @@ void BuiltinRegistry::registerFormatType() {
         }
         td->normalize();
         return Value(td);
-        });
+        }, {"x"});
 }
 
 // =================================================================
@@ -3898,7 +3898,7 @@ void BuiltinRegistry::registerHigherOrder() {
             return Value(bound);
         }
         return applyCore(args[0], args[1].asFunction());
-        });
+        }, {"args", "f"});
 
     auto mapCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: map() requires a single-parameter function.");
@@ -3997,7 +3997,7 @@ void BuiltinRegistry::registerHigherOrder() {
             return Value(bound);
         }
         return mapCore(args[0], args[1].asFunction());
-        });
+        }, {"v", "f"});
 
     auto filterCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: filter() requires a single-parameter function.");
@@ -4064,7 +4064,7 @@ void BuiltinRegistry::registerHigherOrder() {
             return Value(bound);
         }
         return filterCore(args[0], args[1].asFunction());
-        });
+        }, {"v", "f"});
 
     auto reduceCore = [this](const Value& argList, ObjClosure* cl, const Value& initVal) -> Value {
         if (!cl->acceptsArgCount(2)) throw std::runtime_error("Runtime Error: reduce() requires a two-parameter function.");
@@ -4132,7 +4132,7 @@ void BuiltinRegistry::registerHigherOrder() {
             return Value(bound);
         }
         return reduceCore(args[0], args[1].asFunction(), args.size() == 3 ? args[2] : Value::none());
-        });
+        }, {"v", "f", "init"});
 
     auto iterateAndCheck = [this](const Value& argList, ObjClosure* cl, auto checkFn) -> Value {
         Value iterable = argList;
@@ -4190,7 +4190,7 @@ void BuiltinRegistry::registerHigherOrder() {
             return Value(bound);
         }
         return anyCore(args[0], args[1].asFunction());
-        });
+        }, {"v", "f"});
 
     auto allCore = [iterateAndCheck](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: all() requires a single-parameter function.");
@@ -4210,7 +4210,7 @@ void BuiltinRegistry::registerHigherOrder() {
             return Value(bound);
         }
         return allCore(args[0], args[1].asFunction());
-        });
+        }, {"v", "f"});
 
     auto countIfCore = [](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: countIf() requires a single-parameter function.");
@@ -4248,7 +4248,7 @@ void BuiltinRegistry::registerHigherOrder() {
             return Value(bound);
         }
         return countIfCore(args[0], args[1].asFunction());
-        });
+        }, {"v", "f"});
 
     auto sortCore = [this](const Value& argList, ObjClosure* cmp) -> Value {
         Value arg = argList;
@@ -4317,7 +4317,7 @@ void BuiltinRegistry::registerHigherOrder() {
         }
         if (args.size() == 1) return sortCore(args[0], nullptr);
         return sortCore(args[0], args[1].asFunction());
-        });
+        }, {"v", "cmp"});
 
 }
 

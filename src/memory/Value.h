@@ -1696,13 +1696,13 @@ namespace jc {
         }
 
         std::string toString() const {
-            if (isNative() && !isBytecode()) return "<function " + rawBody + "()>";
             std::string params;
             for (size_t i = 0; i < paramNames.size(); ++i) {
-                if (isRef[i]) params += "ref ";
+                if (i < isRef.size() && isRef[i]) params += "ref ";
                 params += paramNames[i];
                 if (i < paramNames.size() - 1) params += ", ";
             }
+            if (isNative() && !isBytecode()) return "<function " + rawBody + "(" + params + ")>";
             return "<function(" + params + ")>";
         }
     };

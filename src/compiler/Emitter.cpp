@@ -318,6 +318,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                             } else if (ref.sourceType == 3) {
                                 src.sourceRef = ref.upvalIdx;
                             }
+                            if (!ref.kwName.empty()) {
+                                src.kwNameIdx = chunk.addConstant(Value(ref.kwName));
+                            } else {
+                                src.kwNameIdx = 0;
+                            }
                             chunkRefs.push_back(src);
                         }
                         uint32_t sigIdx = chunk.addCallSignature(chunkRefs);
@@ -328,12 +333,18 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::Call:
                     case IROp::TailCall: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        if (node->payload2 > 0) {
+                            inst.words.push_back(CREATE_Ax(OpCode::SET_KW_ARGC, node->payload2));
+                        }
                         auto call = buildInstABC(node->op == IROp::Call ? OpCode::CALL : OpCode::TAIL_CALL, node->physicalReg, spillBase, node->payload1);
                         inst.words.insert(inst.words.end(), call.begin(), call.end());
                         break;
                     }
                     case IROp::Invoke: case IROp::TailInvoke: case IROp::InvokePrivate: case IROp::TailInvokePrivate: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        if (node->payload2 > 0) {
+                            inst.words.push_back(CREATE_Ax(OpCode::SET_KW_ARGC, node->payload2));
+                        }
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
                         OpCode op = OpCode::INVOKE;
                         if (node->op == IROp::TailInvoke) op = OpCode::TAIL_INVOKE;
@@ -350,6 +361,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::InvokeFallback:
                     case IROp::TailInvokeFallback: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        if (node->payload2 > 0) {
+                            inst.words.push_back(CREATE_Ax(OpCode::SET_KW_ARGC, node->payload2));
+                        }
                         uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
                         auto inv = buildInstABC(node->op == IROp::InvokeFallback ? OpCode::INVOKE_FALLBACK : OpCode::TAIL_INVOKE_FALLBACK, spillBase, node->payload1, icIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());
@@ -362,6 +376,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::SuperInvoke:
                     case IROp::TailSuperInvoke: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        if (node->payload2 > 0) {
+                            inst.words.push_back(CREATE_Ax(OpCode::SET_KW_ARGC, node->payload2));
+                        }
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
                         auto inv = buildInstABC(node->op == IROp::SuperInvoke ? OpCode::SUPER_INVOKE : OpCode::TAIL_SUPER_INVOKE, spillBase, node->payload1, nameIdx);
                         inst.words.insert(inst.words.end(), inv.begin(), inv.end());

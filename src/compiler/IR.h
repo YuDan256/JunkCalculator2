@@ -339,6 +339,7 @@ struct IRArgSource {
     std::string name;
     int upvalIdx;
     IRNode* localNode;
+    std::string kwName = ""; // ★ 记录命名参数的键名
 };
 
 struct IRCallSignature {

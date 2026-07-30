@@ -127,6 +127,8 @@ enum class OpCode : uint8_t {
     CONCAT_STRINGS, // R(A) := concat(R(B) ... R(B+C-1)) [Ext B, C]
     FORMAT_STRING,  // R(A) := format(R(B), Kst(C))
 
+    SET_KW_ARGC,    // Set kw_argc for the next call instruction [Ext Ax]
+
     // 异常处理
     TRY_BEGIN,      // Push Try Handler (catch PC = PC + sBx, errReg = A)
     TRY_END,        // Pop Try Handler
@@ -245,6 +247,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::STRINGIFY: return "STRINGIFY";
         case OpCode::CONCAT_STRINGS: return "CONCAT_STRINGS";
         case OpCode::FORMAT_STRING: return "FORMAT_STRING";
+        case OpCode::SET_KW_ARGC: return "SET_KW_ARGC";
         case OpCode::TRY_BEGIN: return "TRY_BEGIN";
         case OpCode::TRY_END: return "TRY_END";
         case OpCode::THROW: return "THROW";
@@ -356,6 +359,7 @@ struct ArgSource {
     uint8_t argIndex;
     uint8_t sourceType;
     uint32_t sourceRef;
+    uint32_t kwNameIdx = 0; // ★ 记录命名参数的键名常量池索引
 };
 
 struct CallSignature {
@@ -615,6 +619,7 @@ public:
                 break;
 
             case OpCode::EXTRAARG:
+            case OpCode::SET_KW_ARGC:
                 std::cout << ax;
                 break;
 

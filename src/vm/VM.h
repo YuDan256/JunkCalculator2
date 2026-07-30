@@ -116,17 +116,19 @@ private:
     Value wrapException(const std::string& type, Value val);
     std::string formatException(const Value& errVal);
 
-    void execCall(int calleeReg, int argc, int dstReg, bool isTailCall = false);
+    void execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall = false);
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
-    void execInvoke(int a, int b, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false);
-    void execSuperInvoke(int a, int b, uint32_t nameIdx, bool isTailCall);
+    void execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false);
+    void execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall);
     void execSliceGet(int a, int b, uint8_t dims);
     void execSliceSet(int a, int c, uint8_t dims);
     Value execImport(const std::string& name);
 
     void execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx);
     void execAssertReturnType(const Value& val);
+
+    std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, bool hasRestParam, Value boundSelf = Value::none());
 
     std::string getTypeName(const Value& val);
     bool evaluateTruthiness(const Value& val);

@@ -1373,13 +1373,13 @@ void IRBuilder::visitBinary(Binary* expr) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({0, 4, name, -1, readVariable(name, rs)});
+                sig.refs.push_back({0, 4, name, -1, readVariable(name, rs), ""});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({0, 2, name, -1, localNode});
+                    sig.refs.push_back({0, 2, name, -1, localNode, ""});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -1397,9 +1397,9 @@ void IRBuilder::visitBinary(Binary* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({0, 3, name, upvalIdx, nullptr});
+                        sig.refs.push_back({0, 3, name, upvalIdx, nullptr, ""});
                     } else {
-                        sig.refs.push_back({0, 1, name, -1, nullptr});
+                        sig.refs.push_back({0, 1, name, -1, nullptr, ""});
                     }
                 }
             }
@@ -1424,6 +1424,7 @@ void IRBuilder::visitBinary(Binary* expr) {
         callNode->addData(calleeNode);
         callNode->addData(argNode);
         callNode->payload1 = 1;
+        callNode->payload2 = 0;
         
         currentControl = callNode;
         lastValue = callNode;
@@ -1766,19 +1767,33 @@ void IRBuilder::visitCall(Call* expr) {
     std::vector<IRNode*> argNodes;
     IRCallSignature sig;
     
+    int kwArgc = 0;
     for (size_t i = 0; i < expr->arguments.size(); ++i) {
         auto& arg = expr->arguments[i];
-        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+        std::string kwName = "";
+        Expr* actualArg = arg.get();
+        
+        if (auto* kwArg = dynamic_cast<KeywordArgExpr*>(arg.get())) {
+            kwName = kwArg->name.lexeme;
+            actualArg = kwArg->value.get();
+            
+            IRNode* nameNode = graph->createConstant(Value(kwName));
+            nameNode->setControl(currentControl);
+            argNodes.push_back(nameNode);
+            kwArgc++;
+        }
+        
+        if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs)});
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -1796,14 +1811,14 @@ void IRBuilder::visitCall(Call* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName});
                     } else {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName});
                     }
                 }
             }
         }
-        arg->accept(*this);
+        actualArg->accept(*this);
         argNodes.push_back(lastValue);
     }
     
@@ -1825,6 +1840,7 @@ void IRBuilder::visitCall(Call* expr) {
         callNode->addData(arg);
     }
     callNode->payload1 = static_cast<uint32_t>(argNodes.size());
+    callNode->payload2 = static_cast<uint32_t>(kwArgc);
     
     currentControl = callNode;
     lastValue = callNode;
@@ -3122,19 +3138,33 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
     std::vector<IRNode*> argNodes;
     IRCallSignature sig;
     
+    int kwArgc = 0;
     for (size_t i = 0; i < expr->arguments.size(); ++i) {
         auto& arg = expr->arguments[i];
-        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+        std::string kwName = "";
+        Expr* actualArg = arg.get();
+        
+        if (auto* kwArg = dynamic_cast<KeywordArgExpr*>(arg.get())) {
+            kwName = kwArg->name.lexeme;
+            actualArg = kwArg->value.get();
+            
+            IRNode* nameNode = graph->createConstant(Value(kwName));
+            nameNode->setControl(currentControl);
+            argNodes.push_back(nameNode);
+            kwArgc++;
+        }
+        
+        if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs)});
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -3152,14 +3182,14 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName});
                     } else {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName});
                     }
                 }
             }
         }
-        arg->accept(*this);
+        actualArg->accept(*this);
         argNodes.push_back(lastValue);
     }
     
@@ -3179,6 +3209,7 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
     invokeNode->addData(calleeNode);
     for (auto* arg : argNodes) invokeNode->addData(arg);
     invokeNode->payload1 = static_cast<uint32_t>(argNodes.size());
+    invokeNode->payload2 = static_cast<uint32_t>(kwArgc);
         
     currentControl = invokeNode;
     lastValue = invokeNode;
@@ -3932,19 +3963,33 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     std::vector<IRNode*> argNodes;
     IRCallSignature sig;
     
+    int kwArgc = 0;
     for (size_t i = 0; i < expr->arguments.size(); ++i) {
         auto& arg = expr->arguments[i];
-        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+        std::string kwName = "";
+        Expr* actualArg = arg.get();
+        
+        if (auto* kwArg = dynamic_cast<KeywordArgExpr*>(arg.get())) {
+            kwName = kwArg->name.lexeme;
+            actualArg = kwArg->value.get();
+            
+            IRNode* nameNode = graph->createConstant(Value(kwName));
+            nameNode->setControl(currentControl);
+            argNodes.push_back(nameNode);
+            kwArgc++;
+        }
+        
+        if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
             if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs)});
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode});
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -3962,14 +4007,14 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName});
                     } else {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName});
                     }
                 }
             }
         }
-        arg->accept(*this);
+        actualArg->accept(*this);
         argNodes.push_back(lastValue);
     }
     
@@ -4053,6 +4098,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         invokeNode->addData(fallbackNode);
     }
     invokeNode->payload1 = static_cast<uint32_t>(argNodes.size());
+    invokeNode->payload2 = static_cast<uint32_t>(kwArgc);
     invokeNode->name = expr->method.lexeme;
         
     currentControl = invokeNode;
@@ -4592,6 +4638,10 @@ void IRBuilder::visitUnquoteExpr(UnquoteExpr*) {
 
 void IRBuilder::visitExprAssign(ExprAssign*) {
     error("Syntax Error: Invalid assignment target.");
+}
+
+void IRBuilder::visitKeywordArgExpr(KeywordArgExpr* expr) {
+    expr->value->accept(*this);
 }
 
 void IRBuilder::visitDeferExpr(DeferExpr* expr) {

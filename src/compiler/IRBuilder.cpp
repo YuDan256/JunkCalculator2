@@ -378,13 +378,40 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             IRNode* ifFalse = graph->createNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             
+            auto baseEnv = envStack;
+            
             currentControl = ifTrue;
             writeVariable(name, vNode, sym, isLocal, isConst);
             IRNode* trueCtrl = currentControl;
+            auto trueEnv = envStack;
+            
+            currentControl = ifFalse;
+            auto falseEnv = baseEnv;
             
             IRNode* merge = graph->createNode(IROp::Merge);
             merge->addData(trueCtrl);
             merge->addData(ifFalse);
+            
+            envStack = baseEnv;
+            for (size_t i = 0; i < baseEnv.size(); ++i) {
+                std::unordered_set<std::string> modifiedVars;
+                for (const auto& pair : trueEnv[i]) {
+                    if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                }
+                for (const auto& nameVar : modifiedVars) {
+                    IRNode* tNode = trueEnv[i].count(nameVar) ? trueEnv[i].at(nameVar) : baseEnv[i].at(nameVar);
+                    IRNode* fNode = falseEnv[i].count(nameVar) ? falseEnv[i].at(nameVar) : baseEnv[i].at(nameVar);
+                    if (tNode != fNode) {
+                        IRNode* phi = graph->createValueNode(IROp::Phi);
+                        phi->setControl(merge);
+                        phi->addData(tNode);
+                        phi->addData(fNode);
+                        phi->name = nameVar;
+                        envStack[i][nameVar] = phi;
+                    }
+                }
+            }
+            
             currentControl = merge;
         } else {
             writeVariable(name, vNode, sym, isLocal, isConst);
@@ -1616,6 +1643,8 @@ void IRBuilder::visitAssign(Assign* expr) {
         IRNode* ifFalse = graph->createNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
 
+        auto baseEnv = envStack;
+
         currentControl = ifTrue;
         
         expr->value->accept(*this);
@@ -1625,13 +1654,44 @@ void IRBuilder::visitAssign(Assign* expr) {
         
         writeVariable(expr->name.lexeme, valNode, sym, false);
         IRNode* trueCtrl = currentControl;
+        auto trueEnv = envStack;
+
+        currentControl = ifFalse;
+        auto falseEnv = baseEnv;
 
         IRNode* merge = graph->createNode(IROp::Merge);
         merge->addData(trueCtrl);
         merge->addData(ifFalse);
+        
+        envStack = baseEnv;
+        for (size_t i = 0; i < baseEnv.size(); ++i) {
+            std::unordered_set<std::string> modifiedVars;
+            for (const auto& pair : trueEnv[i]) {
+                if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+            }
+            for (const auto& nameVar : modifiedVars) {
+                IRNode* tNode = trueEnv[i].count(nameVar) ? trueEnv[i].at(nameVar) : baseEnv[i].at(nameVar);
+                IRNode* fNode = falseEnv[i].count(nameVar) ? falseEnv[i].at(nameVar) : baseEnv[i].at(nameVar);
+                if (tNode != fNode) {
+                    IRNode* phi = graph->createValueNode(IROp::Phi);
+                    phi->setControl(merge);
+                    phi->addData(tNode);
+                    phi->addData(fNode);
+                    phi->name = nameVar;
+                    envStack[i][nameVar] = phi;
+                }
+            }
+        }
+        
         currentControl = merge;
 
-        lastValue = valNode;
+        IRNode* phiVal = graph->createValueNode(IROp::Phi);
+        phiVal->setControl(merge);
+        phiVal->addData(valNode);
+        IRNode* noneNode = graph->createConstant(Value::none());
+        noneNode->setControl(merge);
+        phiVal->addData(noneNode);
+        lastValue = phiVal;
         return;
     }
 
@@ -4122,51 +4182,33 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     std::vector<std::string> tempStateNames;
     std::vector<std::pair<std::string, std::pair<int, IRNode*>>> hiddenVars;
 
-    if (expr->isLocal || expr->isState || expr->isConst) {
-        std::vector<std::string> patVars;
-        auto collectVars = [&](Pattern* p, auto& self) -> void {
-            if (!p) return;
-            if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
-                if (vp->name.lexeme != "_") patVars.push_back(vp->name.lexeme);
-            } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
-                if (rp->name.lexeme != "_") patVars.push_back(rp->name.lexeme);
-            } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
-                for (auto& e : lp->elements) self(e.get(), self);
-                if (lp->rest) self(lp->rest.get(), self);
-            } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
-                for (auto& row : mp->rows) {
-                    for (auto& e : row) self(e.get(), self);
-                }
-                if (mp->restRow) self(mp->restRow.get(), self);
-            } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
-                for (auto& e : dp->entries) self(e.second.get(), self);
-                if (dp->rest) self(dp->rest.get(), self);
-            } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
-                self(defp->inner.get(), self);
-            }
-        };
-        collectVars(expr->pattern.get(), collectVars);
-
-        for (const auto& name : patVars) {
-            for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
-                auto it = envStack[i].find(name);
-                if (it != envStack[i].end()) {
-                    hiddenVars.push_back({name, {i, it->second}});
-                    envStack[i].erase(it);
-                    break;
-                }
-            }
-        }
-    }
-
+    std::vector<std::string> patVarsToHide;
     for (const auto& varTuple : boundVars) {
         const std::string& name = std::get<0>(varTuple);
         ScopeModifier mod = std::get<1>(varTuple);
+        bool isConst = std::get<2>(varTuple);
+        
+        if (expr->isLocal || expr->isState || expr->isConst || 
+            mod == ScopeModifier::Local || mod == ScopeModifier::State || isConst) {
+            patVarsToHide.push_back(name);
+        }
+        
         if (mod == ScopeModifier::None) {
             if (expr->isState) mod = ScopeModifier::State;
         }
         if (mod == ScopeModifier::State) {
             tempStateNames.push_back(name);
+        }
+    }
+
+    for (const auto& name : patVarsToHide) {
+        for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
+            auto it = envStack[i].find(name);
+            if (it != envStack[i].end()) {
+                hiddenVars.push_back({name, {i, it->second}});
+                envStack[i].erase(it);
+                break;
+            }
         }
     }
     
@@ -4238,8 +4280,8 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
                 if (tNode != fNode) {
                     IRNode* phi = graph->createValueNode(IROp::Phi);
                     phi->setControl(skipMerge);
-                    phi->addData(tNode);
-                    phi->addData(fNode);
+                    phi->addData(fNode); // Index 0: ifFalse
+                    phi->addData(tNode); // Index 1: ifTrue_end
                     phi->name = name;
                     envStack[i][name] = phi;
                 }
@@ -4250,8 +4292,8 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         phi->setControl(skipMerge);
         IRNode* noneNode = graph->createConstant(Value::none());
         noneNode->setControl(skipMerge);
-        phi->addData(valNode);
-        phi->addData(noneNode);
+        phi->addData(noneNode); // Index 0: ifFalse
+        phi->addData(valNode);  // Index 1: ifTrue_end
         lastValue = phi;
     } else {
         lastValue = valNode;

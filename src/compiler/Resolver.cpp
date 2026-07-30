@@ -387,39 +387,45 @@ void Resolver::visitSelfExpr(SelfExpr* /*expr*/) {}
 void Resolver::visitDestructAssign(DestructAssign* expr) {
     std::vector<std::pair<std::string, std::pair<int, ResolvedSym>>> hiddenVars;
 
-    if (expr->isLocal || expr->isState || expr->isConst) {
-        std::vector<std::string> patVars;
-        auto collectVars = [&](Pattern* p, auto& self) -> void {
-            if (!p) return;
-            if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
-                if (vp->name.lexeme != "_") patVars.push_back(vp->name.lexeme);
-            } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
-                if (rp->name.lexeme != "_") patVars.push_back(rp->name.lexeme);
-            } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
-                for (auto& e : lp->elements) self(e.get(), self);
-                if (lp->rest) self(lp->rest.get(), self);
-            } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
-                for (auto& row : mp->rows) {
-                    for (auto& e : row) self(e.get(), self);
+    std::vector<std::string> patVarsToHide;
+    auto collectVars = [&](Pattern* p, auto& self) -> void {
+        if (!p) return;
+        if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
+            if (vp->name.lexeme != "_") {
+                if (expr->isLocal || expr->isState || expr->isConst || vp->modifier == ScopeModifier::Local || vp->modifier == ScopeModifier::State || vp->isConst) {
+                    patVarsToHide.push_back(vp->name.lexeme);
                 }
-                if (mp->restRow) self(mp->restRow.get(), self);
-            } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
-                for (auto& e : dp->entries) self(e.second.get(), self);
-                if (dp->rest) self(dp->rest.get(), self);
-            } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
-                self(defp->inner.get(), self);
             }
-        };
-        collectVars(expr->pattern.get(), collectVars);
-
-        for (const auto& name : patVars) {
-            for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
-                auto it = scopes[i].symbols.find(name);
-                if (it != scopes[i].symbols.end()) {
-                    hiddenVars.push_back({name, {i, it->second}});
-                    scopes[i].symbols.erase(it);
-                    break;
+        } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
+            if (rp->name.lexeme != "_") {
+                if (expr->isLocal || expr->isState || expr->isConst || rp->modifier == ScopeModifier::Local || rp->modifier == ScopeModifier::State || rp->isConst) {
+                    patVarsToHide.push_back(rp->name.lexeme);
                 }
+            }
+        } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
+            for (auto& e : lp->elements) self(e.get(), self);
+            if (lp->rest) self(lp->rest.get(), self);
+        } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
+            for (auto& row : mp->rows) {
+                for (auto& e : row) self(e.get(), self);
+            }
+            if (mp->restRow) self(mp->restRow.get(), self);
+        } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+            for (auto& e : dp->entries) self(e.second.get(), self);
+            if (dp->rest) self(dp->rest.get(), self);
+        } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
+            self(defp->inner.get(), self);
+        }
+    };
+    collectVars(expr->pattern.get(), collectVars);
+
+    for (const auto& name : patVarsToHide) {
+        for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+            auto it = scopes[i].symbols.find(name);
+            if (it != scopes[i].symbols.end()) {
+                hiddenVars.push_back({name, {i, it->second}});
+                scopes[i].symbols.erase(it);
+                break;
             }
         }
     }

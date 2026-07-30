@@ -891,7 +891,9 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
         int newBase = 0;
         if (frameCount > 0) {
             CallFrame* currentFrame = &frames[frameCount - 1];
-            newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+            int locals = currentFrame->function ? currentFrame->function->localCount : 0;
+            int refs = currentFrame->function ? currentFrame->function->refCount : 0;
+            newBase = currentFrame->registerBase + locals + refs;
         }
         
         int newTotalCount = fnDef->localCount + fnDef->refCount;
@@ -2762,8 +2764,10 @@ VM::VM() {
         if (delMethod) {
             try {
                 callDunder(Value(inst), delMethod, owner, {});
+            } catch (const std::exception& e) {
+                std::cerr << jc::col(jc::Ansi::RED) << "Exception ignored in __del__: " << e.what() << jc::col(jc::Ansi::RESET) << "\n";
             } catch (...) {
-                // Exception Isolation: silently ignore exceptions in __del__
+                std::cerr << jc::col(jc::Ansi::RED) << "Unknown exception ignored in __del__" << jc::col(jc::Ansi::RESET) << "\n";
             }
         }
     };

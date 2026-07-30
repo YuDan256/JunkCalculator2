@@ -101,6 +101,23 @@ namespace jc {
             return allocsSinceGc_ >= gcThreshold_;
         }
 
+        size_t trackedCount() const {
+            size_t count = 0;
+            Obj* curr = objects_;
+            while(curr) { count++; curr = curr->next; }
+            return count;
+        }
+        size_t threshold() const { return gcThreshold_; }
+        size_t allocsSinceGc() const { return allocsSinceGc_; }
+
+        void pushTempRoot(Obj* obj) { tempObjRoots_.push_back(obj); }
+        void popTempRoot() { tempObjRoots_.pop_back(); }
+        const std::vector<Obj*>& getTempObjRoots() const { return tempObjRoots_; }
+
+        void pushTempValueRoot(Value* val) { tempValueRoots_.push_back(val); }
+        void popTempValueRoot() { tempValueRoots_.pop_back(); }
+        const std::vector<Value*>& getTempValueRoots() const { return tempValueRoots_; }
+
     private:
         int sweep() {
             isSweeping_ = true;
@@ -165,24 +182,6 @@ namespace jc {
             return freed;
         }
 
-        size_t trackedCount() const {
-            size_t count = 0;
-            Obj* curr = objects_;
-            while(curr) { count++; curr = curr->next; }
-            return count;
-        }
-        size_t threshold() const { return gcThreshold_; }
-        size_t allocsSinceGc() const { return allocsSinceGc_; }
-
-        void pushTempRoot(Obj* obj) { tempObjRoots_.push_back(obj); }
-        void popTempRoot() { tempObjRoots_.pop_back(); }
-        const std::vector<Obj*>& getTempObjRoots() const { return tempObjRoots_; }
-
-        void pushTempValueRoot(Value* val) { tempValueRoots_.push_back(val); }
-        void popTempValueRoot() { tempValueRoots_.pop_back(); }
-        const std::vector<Value*>& getTempValueRoots() const { return tempValueRoots_; }
-
-    private:
         GcHeap() = default;
         std::vector<Obj*> tempObjRoots_;
         std::vector<Value*> tempValueRoots_;

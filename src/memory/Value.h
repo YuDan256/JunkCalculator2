@@ -572,6 +572,7 @@ namespace jc {
         void (*c_nativeDtor)(void*) = nullptr;
         Value (*c_nativeNext)(ObjInstance*) = nullptr;
         bool is_frozen = false;
+        bool is_finalized = false;
         mutable bool is_hashable_cached = false;
         mutable bool has_cached_hash = false;
         mutable size_t cached_hash = 0;
@@ -2847,6 +2848,9 @@ inline void GcHeap::markValue(const Value& val) {
 }
 
 inline void GcHeap::collectGarbage() {
+    if (gc_locked_) return;
+    gc_locked_ = true;
+
     if (markCallback) markCallback();
     
     for (Obj* obj : tempObjRoots_) markObj(obj);
@@ -2854,9 +2858,33 @@ inline void GcHeap::collectGarbage() {
         if (val) markValue(*val);
     }
 
+    std::vector<Obj*> finalizerQueue;
+    if (hasFinalizerCallback) {
+        Obj* curr = objects_;
+        while (curr) {
+            if (!curr->isMarked && curr->type == ObjType::INSTANCE) {
+                if (hasFinalizerCallback(curr)) {
+                    finalizerQueue.push_back(curr);
+                }
+            }
+            curr = curr->next;
+        }
+        for (Obj* obj : finalizerQueue) {
+            markObj(obj);
+        }
+    }
+
     if (sweepCallback) sweepCallback();
 
     sweep();
+
+    if (!finalizerQueue.empty() && executeFinalizerCallback) {
+        for (Obj* obj : finalizerQueue) {
+            executeFinalizerCallback(obj);
+        }
+    }
+
+    gc_locked_ = false;
 }
 
 inline ObjString* internString(const std::string& str) {

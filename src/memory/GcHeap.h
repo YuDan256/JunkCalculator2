@@ -52,10 +52,13 @@ namespace jc {
 
         std::function<void()> markCallback;
         std::function<void()> sweepCallback;
+        std::function<bool(Obj*)> hasFinalizerCallback;
+        std::function<void(Obj*)> executeFinalizerCallback;
 
         void markObj(Obj* obj);
         void markValue(const Value& val);
         void collectGarbage();
+        bool gc_locked_ = false;
 
         template<typename T, typename... Args>
         T* allocate(Args&&... args) {

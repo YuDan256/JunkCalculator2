@@ -2743,6 +2743,31 @@ VM::VM() {
         }
     };
 
+    GcHeap::get().hasFinalizerCallback = [this](Obj* obj) -> bool {
+        if (obj->type != ObjType::INSTANCE) return false;
+        ObjInstance* inst = static_cast<ObjInstance*>(obj);
+        if (inst->is_finalized) return false;
+        auto [delMethod, owner] = findDunder(Value(inst), "__del__");
+        if (delMethod) {
+            inst->is_finalized = true;
+            return true;
+        }
+        return false;
+    };
+
+    GcHeap::get().executeFinalizerCallback = [this](Obj* obj) {
+        if (obj->type != ObjType::INSTANCE) return;
+        ObjInstance* inst = static_cast<ObjInstance*>(obj);
+        auto [delMethod, owner] = findDunder(Value(inst), "__del__");
+        if (delMethod) {
+            try {
+                callDunder(Value(inst), delMethod, owner, {});
+            } catch (...) {
+                // Exception Isolation: silently ignore exceptions in __del__
+            }
+        }
+    };
+
     auto makeType = [](BuiltinType bt) {
         ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
         td->types.push_back(bt);

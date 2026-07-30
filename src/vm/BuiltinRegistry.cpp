@@ -5370,7 +5370,7 @@ void BuiltinRegistry::registerSetFunctions() {
             }
         }
         return Value(s);
-        });
+        }, {"...elements"});
 
     reg("toSet", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::SET)) return args[0];
@@ -5436,7 +5436,7 @@ void BuiltinRegistry::registerSetFunctions() {
             throw std::runtime_error("Type Error: toSet() expects a list, array, string, set, or iterable.");
         }
         return Value(s);
-        });
+        }, {"v"});
 
     // ═══ 元素操作（引用语义，原地修改）═══
     reg("setAdd", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -5445,7 +5445,7 @@ void BuiltinRegistry::registerSetFunctions() {
         auto s = static_cast<ObjSet*>(args[0].asObj());
         s->add(args[1]);
         return args[0];
-        });
+        }, {"s", "val"});
 
     reg("setRemove", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET))
@@ -5453,7 +5453,7 @@ void BuiltinRegistry::registerSetFunctions() {
         auto s = static_cast<ObjSet*>(args[0].asObj());
         s->remove(args[1]);
         return args[0];
-        });
+        }, {"s", "val"});
 
     reg("setDiscard", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET))
@@ -5461,7 +5461,7 @@ void BuiltinRegistry::registerSetFunctions() {
         auto s = static_cast<ObjSet*>(args[0].asObj());
         s->discard(args[1]);
         return args[0];
-        });
+        }, {"s", "val"});
 
     reg("setClear", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET))
@@ -5469,27 +5469,27 @@ void BuiltinRegistry::registerSetFunctions() {
         auto s = static_cast<ObjSet*>(args[0].asObj());
         s->clear();
         return args[0];
-        });
+        }, {"s"});
 
     reg("setPop", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setPop() expects a Set.");
         auto s = static_cast<ObjSet*>(args[0].asObj());
         return s->pop();
-        });
+        }, {"s"});
 
     // ═══ 集合运算（返回新 Set）═══
     reg("setUnion", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setUnion() expects two Sets.");
         return args[0] | args[1];
-        });
+        }, {"a", "b"});
 
     reg("setIntersect", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setIntersect() expects two Sets.");
         return args[0] & args[1];
-        });
+        }, {"a", "b"});
 
     reg("setDiff", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
@@ -5505,13 +5505,13 @@ void BuiltinRegistry::registerSetFunctions() {
             }
         }
         return Value(result);
-        });
+        }, {"a", "b"});
 
     reg("setSymDiff", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setSymDiff() expects two Sets.");
         return bitXor(args[0], args[1]);
-        });
+        }, {"a", "b"});
 
     // ═══ 集合关系谓词 ═══
     reg("isSubset", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -5523,7 +5523,7 @@ void BuiltinRegistry::registerSetFunctions() {
             if (b->keys.find(val) == b->keys.end()) return Value(false);
         }
         return Value(true);
-        });
+        }, {"a", "b"});
 
     reg("isSuperset", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
@@ -5534,7 +5534,7 @@ void BuiltinRegistry::registerSetFunctions() {
             if (a->keys.find(val) == a->keys.end()) return Value(false);
         }
         return Value(true);
-        });
+        }, {"a", "b"});
 
     reg("isDisjoint", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
@@ -5545,7 +5545,7 @@ void BuiltinRegistry::registerSetFunctions() {
             if (b->keys.find(val) != b->keys.end()) return Value(false);
         }
         return Value(true);
-        });
+        }, {"a", "b"});
 
     // ═══ 笛卡尔积 ═══
     reg("setProduct", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -5553,7 +5553,7 @@ void BuiltinRegistry::registerSetFunctions() {
             throw std::runtime_error("Type Error: setProduct() expects two Sets.");
         // 直接触发刚写好的重载 *
         return args[0] * args[1];
-        });
+        }, {"a", "b"});
 
     // ═══ 集合幂集 ═══
     reg("setPow", { 1 }, [](const std::vector<Value>& args) -> Value {
@@ -5586,7 +5586,7 @@ void BuiltinRegistry::registerSetFunctions() {
             result->elements.push_back(subVal);
         }
         return Value(result);
-        });
+        }, {"s"});
 }
 
 // =================================================================
@@ -5611,7 +5611,7 @@ void BuiltinRegistry::registerCAS() {
 
     reg("sym", { 1 }, [getVarName](const std::vector<Value>& args) -> Value {
         return Value(SymExpr::makeVar(getVarName(args[0], "sym")));
-        });
+        }, {"name"});
 
     reg("RootOf", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         SymExpr poly = args[0].asSymbolic();
@@ -5620,7 +5620,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(SymExpr(std::make_shared<SymFunc>("RootOf", std::vector<std::shared_ptr<SymNode>>{
             poly.ptr, SymExpr::makeVar(var).ptr, k.ptr
         })));
-        });
+        }, {"poly", "var", "k"});
 
     reg("RootSum", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
@@ -5629,23 +5629,23 @@ void BuiltinRegistry::registerCAS() {
         return Value(SymExpr(std::make_shared<SymFunc>("RootSum", std::vector<std::shared_ptr<SymNode>>{
             expr.ptr, SymExpr::makeVar(var).ptr, poly.ptr
         })));
-        });
+        }, {"expr", "var", "poly"});
 
     reg("expand", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(expand(args[0].asSymbolic()));
-        });
+        }, {"expr"});
 
     reg("simplify", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(full_simplify(args[0].asSymbolic()));
-        });
+        }, {"expr"});
 
     reg("contract", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(contract(args[0].asSymbolic()));
-        });
+        }, {"expr"});
 
     reg("trigsimp", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(trigsimp(args[0].asSymbolic()));
-        });
+        }, {"expr"});
 
     reg("subs", { 3 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr result = args[0].asSymbolic();
@@ -5722,7 +5722,7 @@ void BuiltinRegistry::registerCAS() {
             return casValToValue(num->value);
         }
         return Value(result);
-        });
+        }, {"expr", "var", "val"});
 
     reg("toFunc", { 2 }, [this](const std::vector<Value>& args) -> Value {
         jc::SymExpr ast = args[0].asSymbolic();
@@ -5802,7 +5802,7 @@ void BuiltinRegistry::registerCAS() {
             };
         cls->nativeFn = std::make_any<NativeCallable>(std::move(jc_caller));
         return jc::Value(cls);
-        });
+        }, {"expr", "vars"});
 
     reg("evalf", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
@@ -5832,7 +5832,7 @@ void BuiltinRegistry::registerCAS() {
             } catch (...) {}
         }
         return Value(expr);
-        });
+        }, {"expr"});
 
     reg("evalv", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
@@ -5862,14 +5862,14 @@ void BuiltinRegistry::registerCAS() {
             } catch (...) {}
         }
         return Value(expr);
-        });
+        }, {"expr"});
 
     reg("replaceRule", { 3 }, [](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         SymExpr pattern = args[1].asSymbolic();
         SymExpr target = args[2].asSymbolic();
         return Value(jc::simplify(jc::applyRule(expr, pattern, target)));
-    });
+    }, {"expr", "pat", "tgt"});
 
     reg("solveEq", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
         auto roots = jc::solveEq(args[0].asSymbolic(), getVarName(args[1], "solveEq"));
@@ -5901,7 +5901,7 @@ void BuiltinRegistry::registerCAS() {
             L->vec.push_back(Value(r));
         }
         return Value(L);
-    });
+    }, {"expr", "var"});
 
     reg("polyDiv", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         auto [q, r] = jc::polyDiv(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "polyDiv"));
@@ -5912,15 +5912,15 @@ void BuiltinRegistry::registerCAS() {
         L->is_frozen = true;
         L->is_hashable_cached = true;
         return Value(L);
-    });
+    }, {"A", "B", "var"});
 
     reg("polyGCD", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         return Value(jc::polyGCD(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "polyGCD")));
-    });
+    }, {"A", "B", "var"});
 
     reg("resultant", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         return Value(jc::polyResultant(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "resultant")));
-    });
+    }, {"A", "B", "var"});
 
     reg("factor", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value {
         if (args[0].isSymbolic()) {
@@ -5936,17 +5936,17 @@ void BuiltinRegistry::registerCAS() {
             d->elements.push_back({k, v});
         }
         return Value(d);
-        });
+        }, {"expr"});
 
     reg("factorReal", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(jc::factorReal(args[0].asSymbolic()));
-        });
+        }, {"expr"});
 
     reg("taylor", { 3, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
         int order = 5;
         if (args.size() == 4) order = static_cast<int>(std::round(args[3].asDouble()));
         return Value(jc::taylor(args[0].asSymbolic(), getVarName(args[1], "taylor"), args[2].asSymbolic(), order));
-    });
+    }, {"expr", "var", "a", "order"});
 
     reg("limit", { 2, 3, 4 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
         bool isSymLimit = args[0].isSymbolic();
@@ -6010,7 +6010,7 @@ void BuiltinRegistry::registerCAS() {
         }
         
         throw std::runtime_error("Math Error: Limit does not exist (left and right limits differ significantly or are undefined).");
-    });
+    }, {"expr", "var", "val", "dir"});
 
     reg("verifyInteg", { 2 }, [getVarName, this](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
@@ -6060,7 +6060,7 @@ void BuiltinRegistry::registerCAS() {
         
         if (valid_tests > 0 && pass_count == valid_tests) return Value(true);
         return Value(false);
-    });
+    }, {"expr", "var"});
 
     reg("diff", { 2 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
         bool isSymDiff = args[0].isSymbolic();
@@ -6082,7 +6082,7 @@ void BuiltinRegistry::registerCAS() {
         double d = (-evalFunc(cl, x + 2 * h) + 8 * evalFunc(cl, x + h)
             - 8 * evalFunc(cl, x - h) + evalFunc(cl, x - 2 * h)) / (12 * h);
         return Value(d);
-        });
+        }, {"expr", "var"});
 
     reg("integ", { 2, 3, 4 }, [evalFunc, getVarName, this](const std::vector<Value>& args) -> Value {
         bool isSymInteg = args[0].isSymbolic();
@@ -6117,7 +6117,7 @@ void BuiltinRegistry::registerCAS() {
         for (int i = 1; i < n; i += 2) { jc::checkInterrupt(); s += 4 * evalFunc(cl, a + i * h); }
         for (int i = 2; i < n - 1; i += 2) { jc::checkInterrupt(); s += 2 * evalFunc(cl, a + i * h); }
         return Value(s * h / 3.0);
-        });
+        }, {"expr", "var", "a", "b"});
 }
 
 } // namespace jc

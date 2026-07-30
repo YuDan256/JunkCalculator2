@@ -2656,6 +2656,8 @@
       "    Indexing & Dynamic Attributes:",
       "      __getitem__(i)               Called by:  obj[i]",
       "      __setitem__(i, v)            Called by:  obj[i] = v",
+      "      __getslice__(start, end, step) Called by: obj[start:end:step]",
+      "      __setslice__(start, end, step, val) Called by: obj[start:end:step] = val",
       "      __getattr__(key)             Called when accessing a non-existent field: obj.key",
       "      __setattr__(key, val)        Called when assigning to any field: obj.key = val",
       "",
@@ -5935,6 +5937,16 @@
       "signature": "__setitem__(key, val)",
       "desc": "Dunder method: Overloads index/key assignment (self[key] = val).",
       "examples": ["__setitem__(i, v) = { self.items[i] = v }"]
+    },
+    "__getslice__": {
+      "signature": "__getslice__(start, end, step)",
+      "desc": "Dunder method: Overloads slice access (self[start:end:step]). Missing bounds are passed as none.",
+      "examples": ["__getslice__(s, e, st) = slice(self.items, s, e, st)"]
+    },
+    "__setslice__": {
+      "signature": "__setslice__(start, end, step, val)",
+      "desc": "Dunder method: Overloads slice assignment (self[start:end:step] = val). Missing bounds are passed as none.",
+      "examples": ["__setslice__(s, e, st, v) = { /* custom slice assignment */ }"]
     },
     "__str__": {
       "signature": "__str__()",

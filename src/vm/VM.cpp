@@ -824,6 +824,8 @@ static const std::string DUNDER_GT = "__gt__";
 static const std::string DUNDER_GE = "__ge__";
 static const std::string DUNDER_GETITEM = "__getitem__";
 static const std::string DUNDER_SETITEM = "__setitem__";
+static const std::string DUNDER_GETSLICE = "__getslice__";
+static const std::string DUNDER_SETSLICE = "__setslice__";
 static const std::string DUNDER_GETATTR = "__getattr__";
 static const std::string DUNDER_SETATTR = "__setattr__";
 static const std::string DUNDER_CALL = "__call__";
@@ -1665,6 +1667,18 @@ void VM::execSliceGet(int a, int b, uint8_t dims) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     const Value& obj = registers[currentFrame->registerBase + b];
     
+    if (obj.isInstance()) {
+        auto [method, owner] = findDunder(obj, DUNDER_GETSLICE);
+        if (method) {
+            std::vector<Value> args;
+            for (int i = 0; i < dims * 3; ++i) {
+                args.push_back(registers[currentFrame->registerBase + b + 1 + i]);
+            }
+            registers[currentFrame->registerBase + a] = callDunder(obj, method, owner, args);
+            return;
+        }
+    }
+
     auto readOptionalInt = [&](int idx) -> std::pair<bool, int> {
         Value v = registers[currentFrame->registerBase + b + 1 + idx];
         if (v.isNone()) return { false, 0 };
@@ -1808,6 +1822,19 @@ void VM::execSliceSet(int a, int c, uint8_t dims) {
     Value obj = registers[currentFrame->registerBase + a];
     const Value& val = registers[currentFrame->registerBase + a + 3 * dims + 1];
     
+    if (obj.isInstance()) {
+        auto [method, owner] = findDunder(obj, DUNDER_SETSLICE);
+        if (method) {
+            std::vector<Value> args;
+            for (int i = 0; i < dims * 3; ++i) {
+                args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
+            }
+            args.push_back(val);
+            callDunder(obj, method, owner, args);
+            return;
+        }
+    }
+
     auto readOptionalInt = [&](int idx) -> std::pair<bool, int> {
         Value v = registers[currentFrame->registerBase + a + 1 + idx];
         if (v.isNone()) return { false, 0 };

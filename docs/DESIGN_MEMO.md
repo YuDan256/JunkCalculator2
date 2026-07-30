@@ -34,5 +34,6 @@
 *   **视图提取器**：`__match__` 解耦对象内部结构与外部匹配接口。返回 `self` 触发平凡拦截，回退至默认字段匹配。
 
 ## 6. 底层规范与序列化 (Low-Level Rules & Serialization)
+*   **零依赖与标准 C++ 哲学 (Zero-Dependency & Standard C++ Philosophy)**：JC2 严格禁止使用任何非标准 C++ 特性（如编译器特有扩展），且**绝对禁止**引入任何第三方库（如 libffi、Boost、GMP 等）。所有核心功能（包括大整数、正则、CAS、JIT FFI 等）必须基于 C++20 标准库从零手写，以保证极致的跨平台可移植性与代码的绝对掌控力。
 *   **GC 保护**：C++ 内部操作未挂载的 GC 对象必须使用 `GcObjGuard`。
 *   **JCB 字节码格式**：小端序，支持调试信息剥离。常量池深度反序列化（支持 BigInt 二进制块与冻结 Namespace）。值语义对象依赖 RC，引用语义对象依赖 GC Root 扫描。

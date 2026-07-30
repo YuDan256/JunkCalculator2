@@ -160,7 +160,7 @@ static JC2_ValueHandle host_make_instance(JC2_VMContext, JC2_ValueHandle class_h
     return protect(Value(inst));
 }
 
-static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data) {
+static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, const char** param_names, int param_count, void* user_data) {
     Value clsVal = from_handle(class_handle);
     if (!clsVal.isClass()) throw std::runtime_error("Type Error: bind_method expects a Class handle.");
     ObjClass* cls = static_cast<ObjClass*>(clsVal.asObj());
@@ -189,7 +189,15 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
     auto closure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, name, nullptr);
     closure->nativeFn = std::make_any<NativeCallable>(callable);
     
-    if (!has_rest) {
+    if (param_count > 0) {
+        for (int i = 0; i < param_count; ++i) {
+            closure->paramNames.push_back(param_names[i]);
+            closure->isRef.push_back(false);
+        }
+        for (int i = min_arity; i < param_count; ++i) {
+            closure->defaultValues.push_back(Value::none());
+        }
+    } else if (!has_rest) {
         for (int i = 0; i < max_arity; ++i) {
             closure->paramNames.push_back("_" + std::to_string(i));
             closure->isRef.push_back(false);
@@ -198,7 +206,7 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
             closure->defaultValues.push_back(Value::none());
         }
     }
-    
+        
     cls->properties[name] = {Value(closure), false, false};
 }
 
@@ -227,7 +235,7 @@ static void host_register_function_help(JC2_VMContext, const char* name, const c
     jc::HelpRouter::addFunctionHelp(name, signature, desc, example);
 }
 
-static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, void* user_data) {
+static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, const char** param_names, int param_count, void* user_data) {
     ModuleLoadContext* mctx = static_cast<ModuleLoadContext*>(mod);
     
     NativeCallable callable = [fn, user_data](const std::vector<Value>& args) -> Value {
@@ -255,6 +263,12 @@ static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const ch
         }
     }
     (*mctx->arity)[name] = aritySet;
+        
+    if (param_count > 0) {
+        std::vector<std::string> pnames;
+        for (int i = 0; i < param_count; ++i) pnames.push_back(param_names[i]);
+        (*mctx->paramNames)[name] = pnames;
+    }
 }
 
 static void host_register_int(JC2_VMContext, JC2_ModuleHandle mod, const char* name, int32_t val) {

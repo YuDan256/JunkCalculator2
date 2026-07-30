@@ -253,16 +253,20 @@ public:
 
     std::map<std::string, NativeCallable>& getBuiltins() { return builtins; }
     std::map<std::string, std::set<int>>& getArity() { return builtinArity; }
+    std::map<std::string, std::vector<std::string>>& getParamNames() { return builtinParamNames; }
     const std::map<std::string, NativeCallable>& getBuiltins() const { return builtins; }
     const std::map<std::string, std::set<int>>& getArity() const { return builtinArity; }
+    const std::map<std::string, std::vector<std::string>>& getParamNames() const { return builtinParamNames; }
 
 private:
     std::map<std::string, NativeCallable> builtins;
     std::map<std::string, std::set<int>> builtinArity;
+    std::map<std::string, std::vector<std::string>> builtinParamNames;
 
-    void reg(const std::string& name, std::set<int> arity, NativeCallable fn) {
+    void reg(const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}) {
         builtins[name] = std::move(fn);
         builtinArity[name] = std::move(arity);
+        builtinParamNames[name] = std::move(paramNames);
     }
 
     void registerMath();

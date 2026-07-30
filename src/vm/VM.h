@@ -65,6 +65,7 @@ private:
 
     std::unordered_map<std::string, NativeCallable> nativeBuiltins;
     std::unordered_map<std::string, std::set<int>> builtinArity;
+    std::unordered_map<std::string, std::vector<std::string>> builtinParamNames;
     std::unordered_map<std::string, Value> builtinClosures;
     std::unordered_map<std::string, Value> builtinValues;
 
@@ -205,7 +206,7 @@ public:
         }
     }
 
-    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity);
+    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {});
     Value getBuiltinClosure(const std::string& name);
     void registerBuiltinValue(const std::string& name, const Value& val) { builtinValues[name] = val; }
     Value getBuiltinValue(const std::string& name) const {

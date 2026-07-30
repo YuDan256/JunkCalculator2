@@ -16,6 +16,7 @@ struct ModuleLoadContext {
     std::unordered_map<std::string, Value>* env;
     std::unordered_map<std::string, std::function<Value(const std::vector<Value>&)>>* builtins;
     std::unordered_map<std::string, std::set<int>>* arity;
+    std::unordered_map<std::string, std::vector<std::string>>* paramNames;
 };
 
 const JC2_HostAPI* get_host_api();

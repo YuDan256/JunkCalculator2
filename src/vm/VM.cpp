@@ -55,9 +55,10 @@ Value VM::makeTokenInstance(const Token& t) {
     return Value(inst);
 }
 
-void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity) {
+void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames) {
     nativeBuiltins[name] = fn;
     builtinArity[name] = arity;
+    builtinParamNames[name] = paramNames;
 }
 
 Value VM::getBuiltinClosure(const std::string& name) {
@@ -75,7 +76,20 @@ Value VM::getBuiltinClosure(const std::string& name) {
         );
         closure->nativeFn = std::make_any<NativeCallable>(nit->second);
         auto ait = builtinArity.find(name);
-        if (ait != builtinArity.end() && !ait->second.empty()) {
+        auto pit = builtinParamNames.find(name);
+        if (pit != builtinParamNames.end() && !pit->second.empty()) {
+            closure->paramNames = pit->second;
+            for (size_t j = 0; j < closure->paramNames.size(); ++j) {
+                closure->isRef.push_back(false);
+            }
+            if (ait != builtinArity.end() && !ait->second.empty()) {
+                int minA = *ait->second.begin();
+                int maxA = *ait->second.rbegin();
+                for (int j = minA; j < maxA; ++j) {
+                    closure->defaultValues.push_back(Value::none());
+                }
+            }
+        } else if (ait != builtinArity.end() && !ait->second.empty()) {
             int maxA = *ait->second.rbegin();
             int minA = *ait->second.begin();
             for (int j = 0; j < maxA; ++j) {
@@ -2166,8 +2180,9 @@ Value VM::execImport(const std::string& name) {
         std::unordered_map<std::string, Value> tempGlobals;
         std::unordered_map<std::string, NativeCallable> tempNatives;
         std::unordered_map<std::string, std::set<int>> tempArity;
+        std::unordered_map<std::string, std::vector<std::string>> tempParamNames;
 
-        ModuleLoadContext mctx = { &tempGlobals, &tempNatives, &tempArity };
+        ModuleLoadContext mctx = { &tempGlobals, &tempNatives, &tempArity, &tempParamNames };
 
         size_t old_size = jc::nativeTempRefs.size();
         int res = init_fn(reinterpret_cast<JC2_VMContext>(this), &mctx, get_host_api());
@@ -2192,7 +2207,21 @@ Value VM::execImport(const std::string& name) {
             closure->nativeFn = std::make_any<NativeCallable>(kv.second);
             
             auto ait = tempArity.find(kv.first);
-            if (ait != tempArity.end() && !ait->second.empty()) {
+            auto pit = tempParamNames.find(kv.first);
+            
+            if (pit != tempParamNames.end() && !pit->second.empty()) {
+                closure->paramNames = pit->second;
+                for (size_t j = 0; j < closure->paramNames.size(); ++j) {
+                    closure->isRef.push_back(false);
+                }
+                if (ait != tempArity.end() && !ait->second.empty()) {
+                    int minA = *ait->second.begin();
+                    int maxA = *ait->second.rbegin();
+                    for (int j = minA; j < maxA; ++j) {
+                        closure->defaultValues.push_back(Value::uninit());
+                    }
+                }
+            } else if (ait != tempArity.end() && !ait->second.empty()) {
                 int maxA = *ait->second.rbegin();
                 int minA = *ait->second.begin();
                 for (int j = 0; j < maxA; ++j) {

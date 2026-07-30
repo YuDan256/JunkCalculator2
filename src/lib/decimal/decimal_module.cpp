@@ -627,20 +627,20 @@ int jc2_init(jc2::Module& mod) {
     mod.register_value("Decimal", *g_decimalClass);
 
     g_decimalClass->bind_method("__str__", decimal___str__, 0, 0, false);
-    g_decimalClass->bind_method("__add__", decimal___add__, 1, 1, false);
-    g_decimalClass->bind_method("__radd__", decimal___radd__, 1, 1, false);
-    g_decimalClass->bind_method("__sub__", decimal___sub__, 1, 1, false);
-    g_decimalClass->bind_method("__rsub__", decimal___rsub__, 1, 1, false);
-    g_decimalClass->bind_method("__mul__", decimal___mul__, 1, 1, false);
-    g_decimalClass->bind_method("__rmul__", decimal___rmul__, 1, 1, false);
-    g_decimalClass->bind_method("__div__", decimal___div__, 1, 1, false);
-    g_decimalClass->bind_method("__rdiv__", decimal___rdiv__, 1, 1, false);
-    g_decimalClass->bind_method("__eq__", decimal___eq__, 1, 1, false);
-    g_decimalClass->bind_method("__lt__", decimal___lt__, 1, 1, false);
-    g_decimalClass->bind_method("__gt__", decimal___gt__, 1, 1, false);
-    g_decimalClass->bind_method("__le__", decimal___le__, 1, 1, false);
-    g_decimalClass->bind_method("__ge__", decimal___ge__, 1, 1, false);
-    g_decimalClass->bind_method("__neq__", decimal___neq__, 1, 1, false);
+    g_decimalClass->bind_method("__add__", decimal___add__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__radd__", decimal___radd__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__sub__", decimal___sub__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__rsub__", decimal___rsub__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__mul__", decimal___mul__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__rmul__", decimal___rmul__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__div__", decimal___div__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__rdiv__", decimal___rdiv__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__eq__", decimal___eq__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__lt__", decimal___lt__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__gt__", decimal___gt__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__le__", decimal___le__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__ge__", decimal___ge__, 1, 1, false, {"other"});
+    g_decimalClass->bind_method("__neq__", decimal___neq__, 1, 1, false, {"other"});
     g_decimalClass->bind_method("__hash__", decimal___hash__, 0, 0, false);
     g_decimalClass->bind_method("__neg__", decimal___neg__, 0, 0, false);
     g_decimalClass->bind_method("__bool__", decimal___bool__, 0, 0, false);
@@ -662,7 +662,7 @@ int jc2_init(jc2::Module& mod) {
     g_decimalClass->set_allocator(global_Decimal);
 
     mod.register_function("getcontext", global_getcontext, 0, 0, false);
-    mod.register_function("setcontext", global_setcontext, 1, 1, false);
+    mod.register_function("setcontext", global_setcontext, 1, 1, false, {"prec"});
     mod.register_function("pi", global_pi, 0, 0, false);
 
     mod.register_help("decimal",

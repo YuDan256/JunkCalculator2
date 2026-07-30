@@ -1014,25 +1014,25 @@ int jc2_init(jc2::Module& mod) {
 
     g_regexClass = new jc2::Class("Regex");
     g_regexClass->set_allocator(regex_init);
-    g_regexClass->bind_method("search", regex_search, 1, 1, false);
-    g_regexClass->bind_method("match", regex_match, 1, 1, false);
-    g_regexClass->bind_method("test", regex_test, 1, 1, false);
-    g_regexClass->bind_method("findall", regex_findall, 1, 1, false);
-    g_regexClass->bind_method("split", regex_split, 1, 1, false);
-    g_regexClass->bind_method("subst", regex_subst, 2, 2, false);
+    g_regexClass->bind_method("search", regex_search, 1, 1, false, {"text"});
+    g_regexClass->bind_method("match", regex_match, 1, 1, false, {"text"});
+    g_regexClass->bind_method("test", regex_test, 1, 1, false, {"text"});
+    g_regexClass->bind_method("findall", regex_findall, 1, 1, false, {"text"});
+    g_regexClass->bind_method("split", regex_split, 1, 1, false, {"text"});
+    g_regexClass->bind_method("subst", regex_subst, 2, 2, false, {"text", "repl"});
     g_regexClass->bind_method("__str__", regex_str, 0, 0, false);
-    g_regexClass->bind_method("__call__", regex_search, 1, 1, false);
+    g_regexClass->bind_method("__call__", regex_search, 1, 1, false, {"text"});
     mod.register_value("Regex", *g_regexClass);
 
     mod.register_function("getcontext", global_getcontext, 0, 0, false);
-    mod.register_function("setcontext", global_setcontext, 1, 1, false);
-    mod.register_function("compile", global_compile, 1, 1, false);
-    mod.register_function("test", global_test, 2, 2, false);
-    mod.register_function("match", global_match, 2, 2, false);
-    mod.register_function("search", global_search, 2, 2, false);
-    mod.register_function("findall", global_findall, 2, 2, false);
-    mod.register_function("split", global_split, 2, 2, false);
-    mod.register_function("subst", global_subst, 3, 3, false);
+    mod.register_function("setcontext", global_setcontext, 1, 1, false, {"steps"});
+    mod.register_function("compile", global_compile, 1, 1, false, {"pat"});
+    mod.register_function("test", global_test, 2, 2, false, {"pat", "text"});
+    mod.register_function("match", global_match, 2, 2, false, {"pat", "text"});
+    mod.register_function("search", global_search, 2, 2, false, {"pat", "text"});
+    mod.register_function("findall", global_findall, 2, 2, false, {"pat", "text"});
+    mod.register_function("split", global_split, 2, 2, false, {"pat", "text"});
+    mod.register_function("subst", global_subst, 3, 3, false, {"pat", "text", "repl"});
 
     mod.register_help("regex",
         "═══ Regular Expressions (Native Module) ═══\n\n"

@@ -209,18 +209,18 @@ int jc2_init(jc2::Module& mod) {
     g_bytesClass = new jc2::Class("Bytes");
     mod.register_value("Bytes", *g_bytesClass);
 
-    g_bytesClass->bind_method("writeFile", bytes_writeFile, 1, 1, false);
-    g_bytesClass->bind_method("set", bytes_set, 3, 3, false);
-    g_bytesClass->bind_method("write_arr", bytes_write_arr, 3, 3, false);
-    g_bytesClass->bind_method("get", bytes_get, 2, 3, false);
+    g_bytesClass->bind_method("writeFile", bytes_writeFile, 1, 1, false, {"path"});
+    g_bytesClass->bind_method("set", bytes_set, 3, 3, false, {"offset", "val", "type"});
+    g_bytesClass->bind_method("write_arr", bytes_write_arr, 3, 3, false, {"offset", "arr", "type"});
+    g_bytesClass->bind_method("get", bytes_get, 2, 3, false, {"offset", "type", "len"});
     g_bytesClass->bind_method("len", bytes_len, 0, 0, false);
     g_bytesClass->bind_method("address", bytes_address, 0, 0, false);
 
     g_bytesClass->set_allocator(global_alloc);
 
-    mod.register_function("alloc", global_alloc, 1, 1, false);
-    mod.register_function("pack", global_pack, 1, 1, false);
-    mod.register_function("readFile", global_readFile, 1, 1, false);
+    mod.register_function("alloc", global_alloc, 1, 1, false, {"size"});
+    mod.register_function("pack", global_pack, 1, 1, false, {"arr"});
+    mod.register_function("readFile", global_readFile, 1, 1, false, {"path"});
 
     mod.register_help("bytes",
         "═══ Bare-Metal Memory Engine — Native Module ═══\n\n"

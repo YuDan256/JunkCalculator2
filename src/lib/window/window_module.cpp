@@ -394,11 +394,11 @@ int jc2_init(jc2::Module& mod) {
     g_windowClass->set_allocator(win_allocator);
     g_windowClass->bind_method("isOpen", win_isOpen, 0, 0, false);
     g_windowClass->bind_method("pollEvent", win_pollEvent, 0, 0, false);
-    g_windowClass->bind_method("isKeyDown", win_isKeyDown, 1, 1, false);
-    g_windowClass->bind_method("show", win_show, 1, 1, false);
-    g_windowClass->bind_method("setImeEnabled", win_setImeEnabled, 1, 1, false);
-    g_windowClass->bind_method("showCursor", win_showCursor, 1, 1, false);
-    g_windowClass->bind_method("setCursorPos", win_setCursorPos, 2, 2, false);
+    g_windowClass->bind_method("isKeyDown", win_isKeyDown, 1, 1, false, {"key"});
+    g_windowClass->bind_method("show", win_show, 1, 1, false, {"img"});
+    g_windowClass->bind_method("setImeEnabled", win_setImeEnabled, 1, 1, false, {"enable"});
+    g_windowClass->bind_method("showCursor", win_showCursor, 1, 1, false, {"show"});
+    g_windowClass->bind_method("setCursorPos", win_setCursorPos, 2, 2, false, {"x", "y"});
 
     mod.register_help("window",
         "═══ Native Window Engine — Native Module ═══\n\n"

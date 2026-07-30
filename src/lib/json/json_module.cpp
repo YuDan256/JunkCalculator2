@@ -306,11 +306,11 @@ JC2_ValueHandle global_decode(JC2_VMContext, int, JC2_ValueHandle* argv, void*) 
 }
 
 int jc2_init(jc2::Module& mod) {
-    mod.register_function("encode", global_encode, 1, 1, false);
-    mod.register_function("stringify", global_encode, 1, 1, false);
-    mod.register_function("pretty", global_pretty, 1, 2, false);
-    mod.register_function("decode", global_decode, 1, 1, false);
-    mod.register_function("parse", global_decode, 1, 1, false);
+    mod.register_function("encode", global_encode, 1, 1, false, {"val"});
+    mod.register_function("stringify", global_encode, 1, 1, false, {"val"});
+    mod.register_function("pretty", global_pretty, 1, 2, false, {"val", "indent"});
+    mod.register_function("decode", global_decode, 1, 1, false, {"str"});
+    mod.register_function("parse", global_decode, 1, 1, false, {"str"});
 
     mod.register_help("json",
         "═══ JSON Module — Native Module ═══\n\n"

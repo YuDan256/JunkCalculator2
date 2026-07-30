@@ -1373,61 +1373,61 @@ void BuiltinRegistry::registerNumberTheory() {
         return static_cast<int64_t>(std::round(v.asDouble()));
     };
 
-    reg("factorial", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::factorial(toInt64(args[0]))); });
-    reg("fib", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::fibonacci(toInt64(args[0]))); });
-    reg("gcd", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::gcd(toBigInt(args[0]), toBigInt(args[1]))); });
-    reg("lcm", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::lcm(toBigInt(args[0]), toBigInt(args[1]))); });
+    reg("factorial", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::factorial(toInt64(args[0]))); }, {"n"});
+    reg("fib", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::fibonacci(toInt64(args[0]))); }, {"n"});
+    reg("gcd", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::gcd(toBigInt(args[0]), toBigInt(args[1]))); }, {"a", "b"});
+    reg("lcm", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::lcm(toBigInt(args[0]), toBigInt(args[1]))); }, {"a", "b"});
     reg("digits", { 1 }, [](const std::vector<Value>& args) -> Value { 
         if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
         if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
         if (args[0].isObjType(ObjType::BASENUM)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBaseNum*>(args[0].asObj())->base.digitCount()));
         throw std::runtime_error("Type Error: expects an integer or basenum."); 
-    });
-    reg("isPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPrime()); });
-    reg("nextPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).nextPrime()); });
-    reg("nthPrime", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::nthPrime(toInt64(args[0]))); });
-    reg("primePi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).primePi())); });
-    reg("phi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).eulerPhi()); });
-    reg("divisors", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).divisorCount()); });
-    reg("sigma", { 1, 2 }, [toBigInt, toInt64](const std::vector<Value>& args) -> Value { int64_t k = (args.size()==2) ? toInt64(args[1]) : 1; return Value(toBigInt(args[0]).divisorSum(k)); });
-    reg("omega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).omega())); });
-    reg("bigOmega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).bigOmega())); });
-    reg("mobius", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).mobius())); });
-    reg("isPerfect", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPerfect()); });
+    }, {"n"});
+    reg("isPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPrime()); }, {"n"});
+    reg("nextPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).nextPrime()); }, {"n"});
+    reg("nthPrime", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::nthPrime(toInt64(args[0]))); }, {"k"});
+    reg("primePi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).primePi())); }, {"n"});
+    reg("phi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).eulerPhi()); }, {"n"});
+    reg("divisors", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).divisorCount()); }, {"n"});
+    reg("sigma", { 1, 2 }, [toBigInt, toInt64](const std::vector<Value>& args) -> Value { int64_t k = (args.size()==2) ? toInt64(args[1]) : 1; return Value(toBigInt(args[0]).divisorSum(k)); }, {"n", "k"});
+    reg("omega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).omega())); }, {"n"});
+    reg("bigOmega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).bigOmega())); }, {"n"});
+    reg("mobius", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).mobius())); }, {"n"});
+    reg("isPerfect", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPerfect()); }, {"n"});
     reg("mod", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value {
         if ((args[0].isBigInt() || args[0].isInt32()) && (args[1].isBigInt() || args[1].isInt32())) return Value(BigInt::mathMod(toBigInt(args[0]), toBigInt(args[1])));
         if (args[0].isObjType(ObjType::FRACTION)) { const auto& f = static_cast<ObjFraction*>(args[0].asObj())->frac; if (f.getDen() == BigInt(1)) return Value(BigInt::mathMod(f.getNum(), toBigInt(args[1]))); }
         double a = args[0].asDouble(), b = args[1].asDouble();
         if (b == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
         double r = std::fmod(a, b); if (r < 0) r += std::abs(b); return Value(r);
-    });
-    reg("modpow", { 3 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::modPow(toBigInt(args[0]), toBigInt(args[1]), toBigInt(args[2]))); });
-    reg("C", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: C(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); if (k>n-k) k = n-k; BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); result = result/BigInt(i+1); } return Value(result); });
-    reg("A", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: A(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); } return Value(result); });
-    reg("catalan", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]); if (n<0) throw std::runtime_error("Math Error: catalan(n) requires non-negative integer."); BigInt result(1); for (int64_t i = 0; i < n; ++i) { jc::checkInterrupt(); result = result*BigInt(2*n-i); result = result/BigInt(i+1); } result = result/BigInt(n+1); return Value(result); });
+    }, {"a", "b"});
+    reg("modpow", { 3 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::modPow(toBigInt(args[0]), toBigInt(args[1]), toBigInt(args[2]))); }, {"a", "e", "m"});
+    reg("C", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: C(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); if (k>n-k) k = n-k; BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); result = result/BigInt(i+1); } return Value(result); }, {"n", "k"});
+    reg("A", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: A(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); } return Value(result); }, {"n", "k"});
+    reg("catalan", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]); if (n<0) throw std::runtime_error("Math Error: catalan(n) requires non-negative integer."); BigInt result(1); for (int64_t i = 0; i < n; ++i) { jc::checkInterrupt(); result = result*BigInt(2*n-i); result = result/BigInt(i+1); } result = result/BigInt(n+1); return Value(result); }, {"n"});
 }
 
 // =================================================================
 // [10] 多进制与位运算
 // =================================================================
 void BuiltinRegistry::registerBase() {
-    reg("base", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); });
-    reg("bnum", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: First arg must be a string."); return Value(BaseNum::fromString(args[0].asString(), static_cast<int>(std::round(args[1].asDouble())))); });
-    reg("changeBase", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); });
-    reg("data", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asBigInt()); });
+    reg("base", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); }, {"val", "r"});
+    reg("bnum", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: First arg must be a string."); return Value(BaseNum::fromString(args[0].asString(), static_cast<int>(std::round(args[1].asDouble())))); }, {"str", "r"});
+    reg("changeBase", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); }, {"v", "r"});
+    reg("data", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asBigInt()); }, {"b"});
 
     reg("bitand", { 2 }, [](const std::vector<Value>& args) -> Value { 
         if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitand() does not support Sets.");
         return args[0] & args[1]; 
-    });
+    }, {"a", "b"});
     reg("bitor", { 2 }, [](const std::vector<Value>& args) -> Value { 
         if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitor() does not support Sets.");
         return args[0] | args[1]; 
-    });
+    }, {"a", "b"});
     reg("bitxor", { 2 }, [](const std::vector<Value>& args) -> Value { 
         if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitxor() does not support Sets.");
         return bitXor(args[0], args[1]); 
-    });
+    }, {"a", "b"});
     
     reg("bitnot", { 1, 2 }, [](const std::vector<Value>& args) -> Value { 
         int width = -1;
@@ -1451,7 +1451,7 @@ void BuiltinRegistry::registerBase() {
             }
             return Value(-a.asBigInt() - BigInt(1));
         }
-    });
+    }, {"a", "w"});
     
     reg("bitshift", { 2 }, [](const std::vector<Value>& args) -> Value { 
         int shift = static_cast<int>(std::round(args[1].asDouble())); 
@@ -1492,18 +1492,18 @@ void BuiltinRegistry::registerBase() {
             }
         }
         throw std::runtime_error("Type Error: bitshift() not supported for these types.");
-    });
+    }, {"a", "n"});
 }
 
 // =================================================================
 // [12] 统计（用静态 helper，无需 this）
 // =================================================================
 void BuiltinRegistry::registerStatistics() {
-    reg("mean", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "mean"); return Value(computeMean(d)); });
-    reg("var", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "var"); return Value(computeVar(d)); });
-    reg("svar", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "svar"); if (d.size()<2) throw std::runtime_error("Math Error: Sample variance requires at least 2 data points."); return Value(computeSvar(d)); });
-    reg("std", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "std"); return Value(computeStd(d)); });
-    reg("sstd", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "sstd"); if (d.size()<2) throw std::runtime_error("Math Error: Sample std requires at least 2 data points."); return Value(std::sqrt(computeSvar(d))); });
+    reg("mean", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "mean"); return Value(computeMean(d)); }, {"X"});
+    reg("var", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "var"); return Value(computeVar(d)); }, {"X"});
+    reg("svar", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "svar"); if (d.size()<2) throw std::runtime_error("Math Error: Sample variance requires at least 2 data points."); return Value(computeSvar(d)); }, {"X"});
+    reg("std", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "std"); return Value(computeStd(d)); }, {"X"});
+    reg("sstd", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "sstd"); if (d.size()<2) throw std::runtime_error("Math Error: Sample std requires at least 2 data points."); return Value(std::sqrt(computeSvar(d))); }, {"X"});
     reg("max", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value mx;
@@ -1531,7 +1531,7 @@ void BuiltinRegistry::registerStatistics() {
         }
         auto d = extractDS(arg, "max");
         double mx_d = d[0]; for (double v : d) if (v > mx_d) mx_d = v; return Value(mx_d);
-        });
+        }, {"X"});
 
     reg("min", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -1560,7 +1560,7 @@ void BuiltinRegistry::registerStatistics() {
         }
         auto d = extractDS(arg, "min");
         double mn_d = d[0]; for (double v : d) if (v < mn_d) mn_d = v; return Value(mn_d);
-        });
+        }, {"X"});
 
     reg("span", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -1599,7 +1599,7 @@ void BuiltinRegistry::registerStatistics() {
         double mx_d = d[0], mn_d = d[0];
         for (double v : d) { if (v > mx_d) mx_d = v; if (v < mn_d) mn_d = v; }
         return Value(mx_d - mn_d);
-        });
+        }, {"X"});
 
     reg("perc", { 2 }, [](const std::vector<Value>& args) -> Value {
         auto d = extractDS(args[0], "perc");
@@ -1617,8 +1617,8 @@ void BuiltinRegistry::registerStatistics() {
         if (std::abs(f) > 1e-9) return Value(d[m]);
         if (kk < n) return Value((d[m] + d[kk]) / 2.0);
         return Value(d[m]);
-    });
-    reg("median", { 1 }, [this](const std::vector<Value>& args) -> Value { return builtins["perc"]({ args[0], Value(50.0) }); });
+    }, {"X", "p"});
+    reg("median", { 1 }, [this](const std::vector<Value>& args) -> Value { return builtins["perc"]({ args[0], Value(50.0) }); }, {"X"});
 
     reg("mode", { 1 }, [](const std::vector<Value>& args) -> Value {
         auto d = extractDS(args[0], "mode");
@@ -1631,11 +1631,11 @@ void BuiltinRegistry::registerStatistics() {
         std::sort(modes.begin(), modes.end());
         if (modes.size() == 1) return Value(modes[0]);
         return Value(RealMatrix(1, static_cast<int>(modes.size()), modes));
-    });
+    }, {"X"});
 
-    reg("cov", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "cov"), Y = extractDS(args[1], "cov"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); return Value(computeCov(X, Y)); });
-    reg("corr", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "corr"), Y = extractDS(args[1], "corr"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); return Value(computeCorr(X, Y)); });
-    reg("rsq", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "rsq"), Y = extractDS(args[1], "rsq"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); double r = computeCorr(X, Y); return Value(r * r); });
+    reg("cov", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "cov"), Y = extractDS(args[1], "cov"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); return Value(computeCov(X, Y)); }, {"X", "Y"});
+    reg("corr", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "corr"), Y = extractDS(args[1], "corr"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); return Value(computeCorr(X, Y)); }, {"X", "Y"});
+    reg("rsq", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "rsq"), Y = extractDS(args[1], "rsq"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); double r = computeCorr(X, Y); return Value(r * r); }, {"X", "Y"});
     reg("regress", { 2 }, [](const std::vector<Value>& args) -> Value {
         auto X = extractDS(args[0], "regress"), Y = extractDS(args[1], "regress");
         if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch.");
@@ -1649,33 +1649,33 @@ void BuiltinRegistry::registerStatistics() {
         GcObjGuard guard(L);
         L->vec.push_back(Value(a)); L->vec.push_back(Value(b));
         L->is_frozen = true; return Value(L);
-    });
+    }, {"X", "Y"});
 }
 
 // =================================================================
 // [13] 随机数
 // =================================================================
 void BuiltinRegistry::registerRandom() {
-    reg("rand", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); if (args.size()==0) return Value(std::uniform_real_distribution<double>(0,1)(gen)); double lo = args[0].asDouble(), hi = args[1].asDouble(); return Value(std::uniform_real_distribution<double>(lo, hi)(gen)); });
-    reg("randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value::fromInt32(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asDouble())), static_cast<int>(std::round(args[1].asDouble())))(gen)); });
-    reg("randc", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); double lo=0,hi=1; if (args.size()==2){lo=args[0].asDouble();hi=args[1].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); return Value(Complex(dist(gen),dist(gen))); });
-    reg("randmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=dist(gen); return Value(RealMatrix(r,c,d)); });
-    reg("randimat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c,lo=0,hi=10; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=static_cast<int>(std::round(args[2].asDouble()));hi=static_cast<int>(std::round(args[3].asDouble()));} std::uniform_int_distribution<int> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=static_cast<double>(dist(gen)); return Value(RealMatrix(r,c,d)); });
-    reg("randcmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<Complex> d(r*c); for (auto& v:d) v=Complex(dist(gen),dist(gen)); return Value(ComplexMatrix(r,c,d)); });
-    reg("magic", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(RealMatrix::magic(static_cast<int>(std::round(args[0].asDouble())))); });
+    reg("rand", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); if (args.size()==0) return Value(std::uniform_real_distribution<double>(0,1)(gen)); double lo = args[0].asDouble(), hi = args[1].asDouble(); return Value(std::uniform_real_distribution<double>(lo, hi)(gen)); }, {"min", "max"});
+    reg("randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value::fromInt32(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asDouble())), static_cast<int>(std::round(args[1].asDouble())))(gen)); }, {"min", "max"});
+    reg("randc", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); double lo=0,hi=1; if (args.size()==2){lo=args[0].asDouble();hi=args[1].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); return Value(Complex(dist(gen),dist(gen))); }, {"min", "max"});
+    reg("randmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=dist(gen); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    reg("randimat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c,lo=0,hi=10; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=static_cast<int>(std::round(args[2].asDouble()));hi=static_cast<int>(std::round(args[3].asDouble()));} std::uniform_int_distribution<int> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=static_cast<double>(dist(gen)); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    reg("randcmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<Complex> d(r*c); for (auto& v:d) v=Complex(dist(gen),dist(gen)); return Value(ComplexMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    reg("magic", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(RealMatrix::magic(static_cast<int>(std::round(args[0].asDouble())))); }, {"n"});
 }
 
 // =================================================================
 // [14] 系统工具（无状态部分）
 // =================================================================
 void BuiltinRegistry::registerSystemUtils() {
-    reg("buildIndex", { 0 }, [](const std::vector<Value>&) -> Value { BigInt::buildFileIndex(); return Value::none(); });
-    reg("loadPrimes", builtinArity["buildIndex"], builtins["buildIndex"]);
-    reg("mountPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Runtime Error: mountPrimes(\"path\") expects a string."); BigInt::setPrimeFilePath(args[0].asString()); return Value::none(); });
-    reg("extendPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { int64_t count = static_cast<int64_t>(std::round(args[0].asDouble())); if (count <= 0) throw std::runtime_error("Runtime Error: count must be positive."); BigInt::extendPrimeTable(count); return Value::none(); });
-    reg("convertPrimes", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString() || !args[1].isString()) throw std::runtime_error("Type Error: convertPrimes() expects two strings (txtPath, binPath)."); BigInt::convertTxtToJCP1(helpers::safeResolvePath(args[0].asString()), helpers::safeResolvePath(args[1].asString())); return Value::none(); });
-    reg("verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); });
-    reg("sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); });
+    reg("buildIndex", { 0 }, [](const std::vector<Value>&) -> Value { BigInt::buildFileIndex(); return Value::none(); }, {});
+    reg("loadPrimes", builtinArity["buildIndex"], builtins["buildIndex"], builtinParamNames["buildIndex"]);
+    reg("mountPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Runtime Error: mountPrimes(\"path\") expects a string."); BigInt::setPrimeFilePath(args[0].asString()); return Value::none(); }, {"path"});
+    reg("extendPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { int64_t count = static_cast<int64_t>(std::round(args[0].asDouble())); if (count <= 0) throw std::runtime_error("Runtime Error: count must be positive."); BigInt::extendPrimeTable(count); return Value::none(); }, {"n"});
+    reg("convertPrimes", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString() || !args[1].isString()) throw std::runtime_error("Type Error: convertPrimes() expects two strings (txtPath, binPath)."); BigInt::convertTxtToJCP1(helpers::safeResolvePath(args[0].asString()), helpers::safeResolvePath(args[1].asString())); return Value::none(); }, {"txtPath", "binPath"});
+    reg("verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); }, {});
+    reg("sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); }, {});
 
     reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         static uint64_t counter = 0;
@@ -1698,7 +1698,7 @@ void BuiltinRegistry::registerSystemUtils() {
         inst->properties["name"] = {Value(uniqueName), false, false};
         
         return Value(inst);
-    });
+    }, {"prefix"});
     reg("gc", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         // 1. 清理符号表达式的弱引用池
         jc::SymExpr::cleanupPool();
@@ -1716,7 +1716,7 @@ void BuiltinRegistry::registerSystemUtils() {
         std::cout << "[GC] Collected " << freed << " unreachable object(s). "
             << "Tracked: " << GcHeap::get().trackedCount() << std::endl;
         return Value::fromInt32(freed);
-        });
+        }, {"aggressive"});
 
     reg("gcinfo", { 0 }, [](const std::vector<Value>&) -> Value {
         auto& heap = GcHeap::get();
@@ -1726,7 +1726,7 @@ void BuiltinRegistry::registerSystemUtils() {
             << "  Next GC threshold:   " << heap.threshold() << "\n"
             << "-----------------" << std::endl;
         return Value::none();
-        });
+        }, {});
 
     reg("freeze", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
@@ -1741,7 +1741,7 @@ void BuiltinRegistry::registerSystemUtils() {
             static_cast<ObjNamespace*>(args[0].asObj())->is_frozen = true;
         }
         return args[0];
-        });
+        }, {"obj"});
 
     reg("isFrozen", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
@@ -1756,13 +1756,13 @@ void BuiltinRegistry::registerSystemUtils() {
             return Value(static_cast<ObjNamespace*>(args[0].asObj())->is_frozen);
         }
         return Value(false);
-        });
+        }, {"obj"});
 
     reg("hash", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isHashable()) throw std::runtime_error("TypeError: unhashable type.");
         size_t h = jc::ValueHasher{}(args[0]);
         return Value(BigInt(static_cast<int64_t>(h)));
-        });
+        }, {"x"});
 
     reg("clone", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
@@ -1841,7 +1841,7 @@ void BuiltinRegistry::registerSystemUtils() {
             return v;
         };
         return deepCopy(args[0]);
-        });
+        }, {"obj"});
 
     reg("copy", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
@@ -1929,7 +1929,7 @@ void BuiltinRegistry::registerSystemUtils() {
             return v;
         };
         return deepCopyExact(args[0]);
-        });
+        }, {"obj"});
 
     reg("val", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
@@ -2017,7 +2017,7 @@ void BuiltinRegistry::registerSystemUtils() {
             return v;
         };
         return deepCopyAndFreeze(args[0]);
-        });
+        }, {"obj"});
 
     reg("symconfig", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {
@@ -2058,7 +2058,7 @@ void BuiltinRegistry::registerSystemUtils() {
         if (auto v = getField("maxDepth")) SymConfig::maxDepth = static_cast<int>(v->asDouble());
         if (auto v = getField("debugIntegration")) SymConfig::debugIntegration = v->truthy();
         return Value::none();
-        });
+        }, {"dict_or_default"});
 
     reg("setSymLimit", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -2099,7 +2099,7 @@ void BuiltinRegistry::registerSystemUtils() {
         else if (key == "maxDepth") SymConfig::maxDepth = static_cast<int>(val);
         else throw std::runtime_error("Runtime Error: Unknown SymConfig key '" + key + "'.");
         return Value::none();
-        });
+        }, {"key", "val"});
 
     reg("__register_help", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString() || !args[1].isString()) {
@@ -2109,7 +2109,7 @@ void BuiltinRegistry::registerSystemUtils() {
         std::string text = args[1].asString();
         jc::DynamicHelp[topic] = text; // 存入 C++ 内存池
         return Value::none();
-        });
+        }, {"topic", "text"});
     // ★ 暴露给用户的原生 help() 内置函数
     reg("help", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {
@@ -2123,7 +2123,7 @@ void BuiltinRegistry::registerSystemUtils() {
         std::string topic = args[0].asString();
         jc::HelpRouter::printHelpTopic(topic);
         return Value::none();
-        });
+        }, {"topic"});
 }
 
 // =================================================================
@@ -2142,7 +2142,7 @@ void BuiltinRegistry::registerControlFlow() {
             std::cout << args[i];
         }
         std::cout << std::flush; return Value::none();
-        });
+        }, {"...args"});
     reg("println", {}, [](const std::vector<Value>& args) -> Value {
         for (size_t i = 0; i < args.size(); ++i) {
             if (i > 0) std::cout << " ";
@@ -2155,7 +2155,7 @@ void BuiltinRegistry::registerControlFlow() {
             std::cout << args[i];
         }
         std::cout << std::endl; return Value::none();
-        });
+        }, {"...args"});
     reg("bool", { 1 }, [](const std::vector<Value>& args) -> Value {
         // ★ Dunder 钩子: __bool__
         if (args[0].isInstance()) {
@@ -2164,10 +2164,10 @@ void BuiltinRegistry::registerControlFlow() {
             if (found) return Value(result.truthy());
         }
         return Value(args[0].truthy());
-        });
-    reg("not", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(!args[0].truthy()); });
-    reg("and", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() && args[1].truthy()); });
-    reg("or", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() || args[1].truthy()); });
+        }, {"x"});
+    reg("not", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(!args[0].truthy()); }, {"x"});
+    reg("and", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() && args[1].truthy()); }, {"a", "b"});
+    reg("or", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() || args[1].truthy()); }, {"a", "b"});
 
     reg("seq", { 2, 3 }, [](const std::vector<Value>& args) -> Value {
         double start, step, end;
@@ -2179,48 +2179,48 @@ void BuiltinRegistry::registerControlFlow() {
         else { for (double v=start; v>=end-Tol::EPS*100; v+=step) { jc::checkInterrupt(); vals.push_back(v); } }
         if (vals.empty()) throw std::runtime_error("Math Error: seq() produced empty sequence.");
         return Value(RealMatrix(static_cast<int>(vals.size()), 1, vals));
-    });
+    }, {"start", "step", "end"});
 
     reg("error", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::string msg;
         if (args[0].isString()) msg = args[0].asString();
         else { std::ostringstream oss; oss << args[0]; msg = oss.str(); }
         throw ErrorSignal{ msg };
-    });
+    }, {"msg"});
     reg("input", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.size()==1) { if (args[0].isString()) std::cout << args[0].asString(); else std::cout << args[0]; std::cout << std::flush; }
         std::string line;
         if (!std::getline(std::cin, line)) throw std::runtime_error("IO Error: Failed to read input.");
         return Value(line);
-    });
+    }, {"prompt"});
     reg("clock", { 0 }, [](const std::vector<Value>&) -> Value {
         auto now = std::chrono::high_resolution_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
         return Value(static_cast<double>(ms) / 1e6);
-    });
+    }, {});
     reg("sleep", { 1 }, [](const std::vector<Value>& args) -> Value {
         int ms = static_cast<int>(std::round(args[0].asDouble() * 1000));
         if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
         return Value::none();
-    });
+    }, {"seconds"});
     reg("highlight", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: highlight() expects a string.");
         return Value(jc::highlightCode(args[0].asString()));
-    });
+    }, {"code"});
     reg("color", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: color() expects \"on\" or \"off\".");
         std::string arg = args[0].asString();
         if (arg=="on") jc::colorsEnabled = true; else if (arg=="off") jc::colorsEnabled = false;
         else throw std::runtime_error("Runtime Error: color() expects \"on\" or \"off\".");
         return Value::none();
-    });
+    }, {"state"});
     reg("debugInteg", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: debugInteg() expects \"on\" or \"off\".");
         std::string arg = args[0].asString();
         if (arg=="on") jc::SymConfig::debugIntegration = true; else if (arg=="off") jc::SymConfig::debugIntegration = false;
         else throw std::runtime_error("Runtime Error: debugInteg() expects \"on\" or \"off\".");
         return Value::none();
-    });
+    }, {"state"});
 
     // =================================================================
     // [大一统泛型 API] add / remove / discard / clear
@@ -2259,7 +2259,7 @@ void BuiltinRegistry::registerControlFlow() {
             return args[0];
         }
         throw std::runtime_error("Type Error: add() expects a Set, List, Dict, Instance, or Namespace.");
-        });
+        }, {"collection", "key_or_val", "val"});
 
     reg("remove", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::SET)) {
@@ -2293,7 +2293,7 @@ void BuiltinRegistry::registerControlFlow() {
             return args[0];
         }
         throw std::runtime_error("Type Error: remove() expects a Set, List, Dict, Instance, or Namespace.");
-        });
+        }, {"collection", "val_or_key"});
 
     reg("discard", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::SET)) {
@@ -2319,7 +2319,7 @@ void BuiltinRegistry::registerControlFlow() {
             return args[0];
         }
         throw std::runtime_error("Type Error: discard() expects a Set, Dict, Instance, or Namespace.");
-        });
+        }, {"collection", "val_or_key"});
 
     reg("clear", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::SET)) {
@@ -2348,7 +2348,7 @@ void BuiltinRegistry::registerControlFlow() {
             return args[0];
         }
         throw std::runtime_error("Type Error: clear() expects a Set, List, Dict, Instance, or Namespace.");
-        });
+        }, {"collection"});
 }
 
 // =================================================================
@@ -2364,8 +2364,8 @@ void BuiltinRegistry::registerStringFunctions() {
         }
         if (args[0].isString()) return args[0];
         std::ostringstream oss; oss << args[0]; return Value(oss.str());
-        });
-    reg("string", builtinArity["str"], builtins["str"]);
+        }, {"x"});
+    reg("string", builtinArity["str"], builtins["str"], builtinParamNames["str"]);
 
     reg("len", { 1 }, [](const std::vector<Value>& args) -> Value {
         // ★ Dunder 钩子: __len__
@@ -2387,9 +2387,9 @@ void BuiltinRegistry::registerStringFunctions() {
         if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
         if (args[0].isObjType(ObjType::BASENUM)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBaseNum*>(args[0].asObj())->base.digitCount()));
         throw std::runtime_error("Type Error: len() expects a string, vector, matrix, dict, list, set, namespace, integer, or basenum.");
-        });
-    reg("length", builtinArity["len"], builtins["len"]);
-    reg("size", builtinArity["len"], builtins["len"]);
+        }, {"x"});
+    reg("length", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
+    reg("size", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
 
     reg("eval", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
@@ -2397,17 +2397,17 @@ void BuiltinRegistry::registerStringFunctions() {
         if (!helpers::evalCallback)
             throw std::runtime_error("Runtime Error: eval() not available in this context.");
         return helpers::evalCallback(args[0].asString());
-        });
+        }, {"expr"});
 
-    reg("substr", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: substr() expects a string."); ObjString* objStr = args[0].asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[1].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args.size()==2) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[2].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); });
-    reg("charAt", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: charAt() expects a string."); ObjString* objStr = args[0].asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[1].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) throw std::runtime_error("Runtime Error: charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); });
-    reg("upper", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: upper() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::toupper(c)); }); return Value(s); });
-    reg("lower", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: lower() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); }); return Value(s); });
-    reg("trim", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: trim() expects a string."); std::string s = args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); size_t b=s.find_last_not_of(" \t\r\n"); if (a==std::string::npos) return Value(std::string("")); return Value(s.substr(a, b-a+1)); });
-    reg("find", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: find() expects two strings."); ObjString* objStr = args[0].asObjString(); const std::string& s=objStr->str; const std::string& sub=args[1].asString(); size_t startChar=0; if (args.size()==3) startChar=static_cast<size_t>(std::round(args[2].asDouble())); size_t startByte = utf8::byteOffset(s, startChar, objStr->isAscii); if (startByte == std::string::npos) return Value::fromInt32(-1); size_t pos=s.find(sub, startByte); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(utf8::charIndex(s, pos, objStr->isAscii))); });
-    reg("contains", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: contains() expects two strings."); return Value(args[0].asString().find(args[1].asString())!=std::string::npos); });
-    reg("replace", { 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()||!args[2].isString()) throw std::runtime_error("Type Error: replace() expects three strings."); std::string s=args[0].asString(); const std::string& from=args[1].asString(); const std::string& to=args[2].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); });
-    reg("repeat", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: repeat() expects a string."); const std::string& s = args[0].asString(); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); });
+    reg("substr", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: substr() expects a string."); ObjString* objStr = args[0].asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[1].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args.size()==2) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[2].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); }, {"s", "start", "length"});
+    reg("charAt", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: charAt() expects a string."); ObjString* objStr = args[0].asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[1].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) throw std::runtime_error("Runtime Error: charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); }, {"s", "i"});
+    reg("upper", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: upper() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::toupper(c)); }); return Value(s); }, {"s"});
+    reg("lower", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: lower() expects a string."); std::string s = args[0].asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); }); return Value(s); }, {"s"});
+    reg("trim", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: trim() expects a string."); std::string s = args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); size_t b=s.find_last_not_of(" \t\r\n"); if (a==std::string::npos) return Value(std::string("")); return Value(s.substr(a, b-a+1)); }, {"s"});
+    reg("find", { 2, 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: find() expects two strings."); ObjString* objStr = args[0].asObjString(); const std::string& s=objStr->str; const std::string& sub=args[1].asString(); size_t startChar=0; if (args.size()==3) startChar=static_cast<size_t>(std::round(args[2].asDouble())); size_t startByte = utf8::byteOffset(s, startChar, objStr->isAscii); if (startByte == std::string::npos) return Value::fromInt32(-1); size_t pos=s.find(sub, startByte); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(utf8::charIndex(s, pos, objStr->isAscii))); }, {"s", "sub", "pos"});
+    reg("contains", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: contains() expects two strings."); return Value(args[0].asString().find(args[1].asString())!=std::string::npos); }, {"s", "sub"});
+    reg("replace", { 3 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()||!args[2].isString()) throw std::runtime_error("Type Error: replace() expects three strings."); std::string s=args[0].asString(); const std::string& from=args[1].asString(); const std::string& to=args[2].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); }, {"s", "old", "new"});
+    reg("repeat", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: repeat() expects a string."); const std::string& s = args[0].asString(); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); }, {"s", "n"});
     reg("concat", {}, [](const std::vector<Value>& args) -> Value {
         bool allStrings = true;
         size_t totalLen = 0;
@@ -2424,13 +2424,13 @@ void BuiltinRegistry::registerStringFunctions() {
         std::ostringstream oss;
         for (const auto& a : args) oss << a;
         return Value(oss.str());
-    });
-    reg("startsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: startsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& prefix=args[1].asString(); return Value(s.size()>=prefix.size()&&s.compare(0,prefix.size(),prefix)==0); });
-    reg("endsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: endsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& suffix=args[1].asString(); return Value(s.size()>=suffix.size()&&s.compare(s.size()-suffix.size(),suffix.size(),suffix)==0); });
-    reg("split", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: split() expects two strings."); const std::string& s=args[0].asString(); const std::string& delim=args[1].asString(); if (delim.empty()) throw std::runtime_error("Runtime Error: split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(result); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); });
-    reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: ord() expects a string."); const std::string& s=args[0].asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value::fromInt32(utf8::codepoint(s, 0)); });
-    reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>0x10FFFF) throw std::runtime_error("Runtime Error: chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); });
-    reg("parseNum", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: parseNum() expects a string."); const std::string& s=args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) throw std::runtime_error("Math Error: Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { throw std::runtime_error("Math Error: Cannot parse '"+trimmed+"' as a number."); } });
+    }, {"...args"});
+    reg("startsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: startsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& prefix=args[1].asString(); return Value(s.size()>=prefix.size()&&s.compare(0,prefix.size(),prefix)==0); }, {"s", "prefix"});
+    reg("endsWith", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: endsWith() expects two strings."); const std::string& s=args[0].asString(); const std::string& suffix=args[1].asString(); return Value(s.size()>=suffix.size()&&s.compare(s.size()-suffix.size(),suffix.size(),suffix)==0); }, {"s", "suffix"});
+    reg("split", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()||!args[1].isString()) throw std::runtime_error("Type Error: split() expects two strings."); const std::string& s=args[0].asString(); const std::string& delim=args[1].asString(); if (delim.empty()) throw std::runtime_error("Runtime Error: split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(result); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); }, {"s", "delim"});
+    reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: ord() expects a string."); const std::string& s=args[0].asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value::fromInt32(utf8::codepoint(s, 0)); }, {"s"});
+    reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>0x10FFFF) throw std::runtime_error("Runtime Error: chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); }, {"code"});
+    reg("parseNum", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: parseNum() expects a string."); const std::string& s=args[0].asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) throw std::runtime_error("Math Error: Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { throw std::runtime_error("Math Error: Cannot parse '"+trimmed+"' as a number."); } }, {"s"});
 }
 
 // =================================================================

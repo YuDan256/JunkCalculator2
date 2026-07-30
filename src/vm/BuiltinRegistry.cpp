@@ -348,7 +348,7 @@ void BuiltinRegistry::registerAll() {
 // =================================================================
 void BuiltinRegistry::registerMath() {
 
-    auto regMath = [&](const std::string& name, std::set<int> arities, NativeCallable fn) {
+    auto regMath = [&](const std::string& name, std::set<int> arities, std::vector<std::string> paramNames, NativeCallable fn) {
         reg(name, std::move(arities), [name, fn](const std::vector<Value>& args) -> Value {
             // 扫描：是否有任何参数是符号表达式？
             bool hasSymbolic = false;
@@ -385,13 +385,13 @@ void BuiltinRegistry::registerMath() {
             }
             // 否则正常执行数值计算
             return fn(args);
-            });
+            }, std::move(paramNames));
         };
 
     // 我们在此插入您要求的常量工厂和泛类型构造：
-    reg("pi", { 0 }, [](const std::vector<Value>&) -> Value { return Value(3.14159265358979323846); });
-    reg("e", { 0 }, [](const std::vector<Value>&) -> Value { return Value(2.71828182845904523536); });
-    reg("i", { 0 }, [](const std::vector<Value>&) -> Value { return Value(Complex(0.0, 1.0)); });
+    reg("pi", { 0 }, [](const std::vector<Value>&) -> Value { return Value(3.14159265358979323846); }, {});
+    reg("e", { 0 }, [](const std::vector<Value>&) -> Value { return Value(2.71828182845904523536); }, {});
+    reg("i", { 0 }, [](const std::vector<Value>&) -> Value { return Value(Complex(0.0, 1.0)); }, {});
     reg("complex", { 1, 2 }, [this](const std::vector<Value>& args) -> Value {
         auto evalIfSym = [this](Value v) {
             if (v.isSymbolic()) {
@@ -409,7 +409,7 @@ void BuiltinRegistry::registerMath() {
         }
         // complex(a, b) → Complex(a, b)
         return Value(Complex(evalIfSym(args[0]).asDouble(), evalIfSym(args[1]).asDouble()));
-        });
+        }, {"real", "imag"});
 
     reg("double", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value val = args[0];
@@ -425,7 +425,7 @@ void BuiltinRegistry::registerMath() {
             return Value(c.real);
         }
         return Value(val.asDouble());
-        });
+        }, {"x"});
 
     reg("int", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value val = args[0];
@@ -484,7 +484,7 @@ void BuiltinRegistry::registerMath() {
             throw std::runtime_error("Type Error: Cannot parse '" + val.asString() + "' as integer.");
         }
         return Value(val.asBigInt());
-        });
+        }, {"x"});
 
     reg("matrix", {}, [](const std::vector<Value>& args) -> Value {
         if (args.size() < 2)
@@ -544,51 +544,51 @@ void BuiltinRegistry::registerMath() {
         for (int i = 0; i < total; ++i)
             flat.push_back(args[i + 2].asDouble());
         return Value(RealMatrix(r, c, flat));
-        });
+        }, {"rows", "cols", "...elements"});
 
-    regMath("sin", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("sin", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSin());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matSin());
         if (args[0].isComplex()) return Value(sin(args[0].asComplex()));
         return Value(std::sin(args[0].asDouble()));
     });
-    regMath("cos", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("cos", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matCos());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matCos());
         if (args[0].isComplex()) return Value(cos(args[0].asComplex()));
         return Value(std::cos(args[0].asDouble()));
     });
-    regMath("tan", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("tan", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matTan());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matTan());
         if (args[0].isComplex()) return Value(tan(args[0].asComplex()));
         return Value(std::tan(args[0].asDouble()));
     });
-    regMath("exp", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("exp", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matExp());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matExp());
         if (args[0].isComplex()) return Value(exp(args[0].asComplex()));
         return Value(std::exp(args[0].asDouble()));
     });
-    regMath("sinh", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("sinh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSinh());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matSinh());
         if (args[0].isComplex()) return Value(sinh(args[0].asComplex()));
         return Value(std::sinh(args[0].asDouble()));
     });
-    regMath("cosh", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("cosh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matCosh());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matCosh());
         if (args[0].isComplex()) return Value(cosh(args[0].asComplex()));
         return Value(std::cosh(args[0].asDouble()));
     });
-    regMath("tanh", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("tanh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matTanh());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matTanh());
         if (args[0].isComplex()) return Value(tanh(args[0].asComplex()));
         return Value(std::tanh(args[0].asDouble()));
     });
-    regMath("cot", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("cot", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
             auto m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matTan();
             std::vector<double> flat = m.rawData();
@@ -604,7 +604,7 @@ void BuiltinRegistry::registerMath() {
         if (args[0].isComplex()) return Value(Complex(1.0, 0.0) / tan(args[0].asComplex()));
         return Value(1.0 / std::tan(args[0].asDouble()));
     });
-    regMath("sec", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("sec", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
             auto m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matCos();
             std::vector<double> flat = m.rawData();
@@ -620,7 +620,7 @@ void BuiltinRegistry::registerMath() {
         if (args[0].isComplex()) return Value(Complex(1.0, 0.0) / cos(args[0].asComplex()));
         return Value(1.0 / std::cos(args[0].asDouble()));
     });
-    regMath("csc", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("csc", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
             auto m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSin();
             std::vector<double> flat = m.rawData();
@@ -637,7 +637,7 @@ void BuiltinRegistry::registerMath() {
         return Value(1.0 / std::sin(args[0].asDouble()));
     });
 
-    regMath("log", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
+    regMath("log", { 1, 2 }, {"base", "x"}, [](const std::vector<Value>& args) -> Value {
         if (args.size() == 1) {
             if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(matLog(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
             if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(matLog(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat));
@@ -651,7 +651,7 @@ void BuiltinRegistry::registerMath() {
         return Value(log(x) / log(base));
     });
 
-    regMath("ln", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("ln", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(matLog(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(matLog(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat));
         if (args[0].isComplex()) return Value(log(args[0].asComplex()));
@@ -661,21 +661,21 @@ void BuiltinRegistry::registerMath() {
         return Value(std::log(x));
     });
 
-    regMath("sqrt", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("sqrt", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         return args[0] ^ Value(Fraction(1, 2));
     });
 
-    regMath("sqrtD", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("sqrtD", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ Value(0.5);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
         return res.isComplex() ? Value(res.asComplex()) : Value(res.asDouble());
     });
 
-    regMath("cbrt", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("cbrt", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         return args[0] ^ Value(Fraction(1, 3));
     });
 
-    regMath("cbrtD", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("cbrtD", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ Value(1.0 / 3.0);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
         return res.isComplex() ? Value(res.asComplex()) : Value(res.asDouble());
@@ -683,36 +683,36 @@ void BuiltinRegistry::registerMath() {
 
     reg("matpow", { 2 }, [](const std::vector<Value>& args) -> Value {
         return Value(matPow(args[0].asComplexMatrix(), args[1].asComplexMatrix()));
-    });
+    }, {"A", "B"});
 
-    regMath("asin", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("asin", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(asin(args[0].asComplex()));
         double x = args[0].asDouble();
         if (x < -1.0 || x > 1.0) return Value(asin(Complex(x, 0.0)));
         return Value(std::asin(x));
     });
-    regMath("acos", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("acos", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(acos(args[0].asComplex()));
         double x = args[0].asDouble();
         if (x < -1.0 || x > 1.0) return Value(acos(Complex(x, 0.0)));
         return Value(std::acos(x));
     });
-    regMath("atan", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("atan", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(atan(args[0].asComplex()));
         return Value(std::atan(args[0].asDouble()));
     });
-    regMath("atan2", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regMath("atan2", { 2 }, {"y", "x"}, [](const std::vector<Value>& args) -> Value {
         return Value(std::atan2(args[0].asDouble(), args[1].asDouble()));
         });
 
-    regMath("asinh", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("asinh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) {
             Complex z = args[0].asComplex();
             return Value(log(z + sqrt(z * z + Complex(1.0, 0.0))));
         }
         return Value(std::asinh(args[0].asDouble()));
     });
-    regMath("acosh", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("acosh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) {
             Complex z = args[0].asComplex();
             return Value(log(z + sqrt(z * z - Complex(1.0, 0.0))));
@@ -724,7 +724,7 @@ void BuiltinRegistry::registerMath() {
         }
         return Value(std::acosh(x));
     });
-    regMath("atanh", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("atanh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) {
             Complex z = args[0].asComplex();
             return Value(Complex(0.5, 0.0) * log((Complex(1.0, 0.0) + z) / (Complex(1.0, 0.0) - z)));
@@ -737,7 +737,7 @@ void BuiltinRegistry::registerMath() {
         return Value(std::atanh(x));
     });
 
-    regMath("erf", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regMath("erf", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         return Value(std::erf(args[0].asDouble()));
         });
     // 通用高精度数值积分器 (Simpson's 1/3 Rule)
@@ -752,31 +752,31 @@ void BuiltinRegistry::registerMath() {
         return sum * h / 3.0;
     };
 
-    regMath("fresnel_s", { 1 }, [numInteg](const std::vector<Value>& args) -> Value {
+    regMath("fresnel_s", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
         double x = args[0].asDouble();
         return Value(numInteg([](double t) { return std::sin(1.57079632679489661923 * t * t); }, 0.0, x));
         });
-    regMath("fresnel_c", { 1 }, [numInteg](const std::vector<Value>& args) -> Value {
+    regMath("fresnel_c", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
         double x = args[0].asDouble();
         return Value(numInteg([](double t) { return std::cos(1.57079632679489661923 * t * t); }, 0.0, x));
         });
-    regMath("Si", { 1 }, [numInteg](const std::vector<Value>& args) -> Value {
+    regMath("Si", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
         double x = args[0].asDouble();
         return Value(numInteg([](double t) { return t == 0.0 ? 1.0 : std::sin(t) / t; }, 0.0, x));
         });
-    regMath("Ci", { 1 }, [numInteg](const std::vector<Value>& args) -> Value {
+    regMath("Ci", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
         double x = args[0].asDouble();
         if (x <= 0.0) throw std::runtime_error("Math Error: Ci(x) is only real for x > 0.");
         double gamma = 0.577215664901532860606; // Euler-Mascheroni constant
         return Value(gamma + std::log(x) + numInteg([](double t) { return t == 0.0 ? 0.0 : (std::cos(t) - 1.0) / t; }, 0.0, x));
         });
-    regMath("Ei", { 1 }, [numInteg](const std::vector<Value>& args) -> Value {
+    regMath("Ei", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
         double x = args[0].asDouble();
         if (x == 0.0) throw std::runtime_error("Math Error: Ei(0) is undefined.");
         double gamma = 0.577215664901532860606; // Euler-Mascheroni constant
         return Value(gamma + std::log(std::abs(x)) + numInteg([](double t) { return t == 0.0 ? 1.0 : (std::exp(t) - 1.0) / t; }, 0.0, x));
         });
-    regMath("Li", { 1 }, [numInteg](const std::vector<Value>& args) -> Value {
+    regMath("Li", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
         double x = args[0].asDouble();
         if (x <= 0.0 || x == 1.0) throw std::runtime_error("Math Error: Li(x) is defined for x > 0 and x != 1.");
         double lnx = std::log(x);
@@ -853,14 +853,14 @@ void BuiltinRegistry::registerMath() {
             return Value(result);
         };
 
-    regMath("round", { 1, 2 }, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "round", [](double x) { return std::round(x); }); });
-    regMath("floor", { 1, 2 }, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "floor", [](double x) { return std::floor(x); }); });
-    regMath("ceil", { 1, 2 }, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "ceil", [](double x) { return std::ceil(x); }); });
-    regMath("trunc", { 1, 2 }, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "trunc", [](double x) { return std::trunc(x); }); });
+    regMath("round", { 1, 2 }, {"x", "n"}, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "round", [](double x) { return std::round(x); }); });
+    regMath("floor", { 1, 2 }, {"x", "n"}, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "floor", [](double x) { return std::floor(x); }); });
+    regMath("ceil", { 1, 2 }, {"x", "n"}, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "ceil", [](double x) { return std::ceil(x); }); });
+    regMath("trunc", { 1, 2 }, {"x", "n"}, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "trunc", [](double x) { return std::trunc(x); }); });
 
-    regMath("sgn", { 1 }, [](const std::vector<Value>& args) -> Value { double x = args[0].asDouble(); return Value::fromInt32(x > 0 ? 1 : (x < 0 ? -1 : 0)); });
-    regMath("deg", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / Complex::PI * 180.0); });
-    regMath("rad", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / 180.0 * Complex::PI); });
+    regMath("sgn", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { double x = args[0].asDouble(); return Value::fromInt32(x > 0 ? 1 : (x < 0 ? -1 : 0)); });
+    regMath("deg", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / Complex::PI * 180.0); });
+    regMath("rad", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / 180.0 * Complex::PI); });
     
     reg("idiv", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isBigInt() && args[1].isBigInt()) {
@@ -871,7 +871,7 @@ void BuiltinRegistry::registerMath() {
         double a = args[0].asDouble(), b = args[1].asDouble();
         if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
         return Value(BigInt(static_cast<int64_t>(std::trunc(a / b))));
-    });
+    }, {"a", "b"});
 
 }
 

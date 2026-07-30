@@ -193,6 +193,7 @@ public:
     void visitUnquoteExpr(UnquoteExpr* expr) override;
     void visitExprAssign(ExprAssign* expr) override;
     void visitDeferExpr(DeferExpr* expr) override;
+    void visitKeywordArgExpr(KeywordArgExpr* expr) override;
 };
 
 } // namespace jc

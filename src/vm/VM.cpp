@@ -446,7 +446,6 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             auto& fnDef = compiledFunctions[closure->compiledFnIndex];
             
             int posArgc = argc - 2 * kwArgc;
-            int ufcsOffset = closure->isUFCS ? 1 : 0;
             
             if (closure->isUFCS) {
                 for (auto& pr : pendingCallRefs) pr.first += 1;
@@ -1377,7 +1376,6 @@ invoke_method:
         }
         
         if (ic.cachedGlobalSlot == -4) {
-            int posArgc = argc - 2 * kwArgc;
             std::vector<Value> argsVec;
             if (kwArgc > 0) {
                 ic.cachedGlobalSlot = -1;
@@ -3293,6 +3291,7 @@ Value VM::run(int targetFrameDepth) {
                 int bx = instruction >> 16;
                 int sbx = bx - 0x7FFF;
                 int sax = static_cast<int>(instruction >> 8) - 0x7FFFFF;
+                int ax = instruction >> 8;
 
                 switch (op) {
             case OpCode::MOVE: {

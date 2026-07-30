@@ -2,145 +2,37 @@
 
 本文档记录了 Junk Calculator 2 (JC2) 架构开发中的核心设计哲学、语义界定与踩坑记录，供后续 C++ 底层开发与重构参考。
 
-## 1. 字符串化接口语义 (Stringification Semantics)
-在 C++ 虚拟机底层，`Value` 对象的字符串化存在严格的语义区分，绝不可混用：
+## 1. 核心语义与内存模型 (Core Semantics & Memory Model)
+*   **字符串化**：`toString()` (对应 `__str__`) 目标是“人类可读”，不带引号；`toRepr()` (对应 `__repr__`) 目标是“开发者无歧义”，严格区分类型（如 `"1"` vs `1`）。
+*   **内存语义**：`Matrix` 和 `Array` 采用**值语义**（深拷贝，无副作用）；`List`, `Dict`, `Set`, `Instance` 采用**引用语义**（共享内存，由 GC 追踪）。
+*   **哈希与不可变性**：采用**原生值哈希**，`1.0`、`int(1)`、`frac(1,1)` 哈希值绝对一致。仅**被冻结 (Frozen)** 的容器可作为 Dict 键或 Set 元素。
+*   **作用域修饰符**：
+    *   `local`：严格块级作用域。
+    *   `ref`：向上作用域解析（按名捕获/引用传递）。
+    *   `state`：私有持久化状态，初始化仅执行一次。
+    *   `const`：严格不可变，无法被重新赋值或 `delete`。
+*   **占位符 `_`**：零开销丢弃符。不产生绑定，不增加 GC 压力，读取会抛出 `SyntaxError`。
 
-*   **`toString()` (对应 `__str__`)：目标是“人类可读”（Human-readable）。**
-    *   **场景**：`print()` 输出、字符串拼接 (`+`)、f-string 插值 (`f"{x}"`)。
-    *   **特征**：对于字符串，直接返回裸字符串内容（**不带引号**）。对于复杂对象，返回易于阅读的摘要。
-*   **`toRepr()` (对应 `__repr__`)：目标是“开发者无歧义”（Developer-readable / Unambiguous）。**
-    *   **场景**：REPL 顶层回显、错误信息 (Traceback)、以及集合（List/Dict/Set）内部元素的打印。
-    *   **特征**：必须能严格区分类型。例如，数字 `1` 返回 `"1"`，而字符串 `"1"` 必须返回带引号的 `"\"1\""`。
+## 2. 异常与垃圾回收 (Exceptions & Garbage Collection)
+*   **异常机制**：C++ 底层**绝对禁止**抛出标准库异常，必须统一抛出 `jc::RuntimeError` 或 `jc::ValueException`。VM 会自动将其包装为 `Exception` 实例并填充 Traceback。
+*   **析构与防僵尸复活**：
+    *   `__del__` 仅执行一次（由 `is_finalized` 标志保证），即使对象在析构中被复活。
+    *   Native 析构 (`c_nativeDtor`) 严格在 Sweep 阶段执行，彻底杜绝悬空指针。
+    *   析构异常被静默隔离，且执行期间锁定 GC 重入（`gc_locked`），防止破坏堆链表。
 
-## 2. 容器的内存语义 (Container Memory Semantics)
-JC2 混合了值语义与引用语义，以兼顾数学计算的高效与通用编程的灵活：
+## 3. 面向对象与扩展架构 (OOP & Extension Architecture)
+*   **Native 类防幽灵机制**：`is_native` 标志拦截非法实例化，`native_allocator` 路由至 C++ 构造函数，确保底层句柄安全。
+*   **C ABI 与类型代数**：支持 `is_type`, `type_union` 等接口，Native 模块可动态操作 JC2 容器与类型系统。
+*   **零依赖 FFI**：基于运行时机器码生成 (JIT Trampoline)，隔离 ABI，支持任意参数传递与结构体按值传递。
 
-*   **值语义 (Value Semantics)**：`Matrix` (包含 `realmatrix`, `complexmatrix`, `stringmatrix`)、`Array` (行向量)。
-    *   赋值 `A = B` 会触发**深度拷贝**。修改 `A` 绝不会影响 `B`。
-    *   适用于纯数学计算，保证无副作用。
-*   **引用语义 (Reference Semantics)**：`List`, `Dict`, `Set`, `Instance` (类实例)。
-    *   赋值 `L2 = L1` 仅拷贝指针，两者共享同一块底层内存。
-    *   由虚拟机的 **Mark-and-Sweep 垃圾回收器 (GC)** 负责追踪和销毁，允许循环引用。
+## 4. 编译期与元编程 (Compile-Time & Metaprogramming)
+*   **零开销枚举**：`enum` 在编译期折叠为冻结的 `ObjNamespace`，作为常量池对象，零运行时开销。匿名枚举内部 `name` 严格为空。
+*   **Token 宏**：`syntax` 宏直接操作词法 Token 流，允许定义全新 DSL。支持词法容错 (`ERROR_TOKEN`) 与底层解析桥梁 (`parseExpr`)。
 
-## 3. 哈希与不可变性 (Hashing & Immutability)
-JC2 采用高性能的**原生值哈希 (Native Value Hashing)** 架构：
+## 5. CAS 与模式匹配 (CAS & Pattern Matching)
+*   **数值与符号边界**：标准数学函数允许符号节点提升为 `SymFunc`，不兼容函数遇符号变量立即求值或报错。
+*   **视图提取器**：`__match__` 解耦对象内部结构与外部匹配接口。返回 `self` 触发平凡拦截，回退至默认字段匹配。
 
-*   **值等价碰撞**：`1.0` (double)、`int(1)`、`frac(1,1)` 在语义上完全相等，它们的哈希值必须绝对一致，且在 Dict/Set 中会发生完美碰撞。
-*   **容器作为键**：只有**被冻结 (Frozen)** 的容器（通过 `freeze()` 或 `val()`）才能作为 Dict 的键或 Set 的元素。未冻结的容器在插入时必须抛出 `TypeError`。
-*   **类实例哈希**：类实例默认按引用（指针）比较和哈希。如果重写了 `__hash__` 和 `__eq__`，则按自定义逻辑哈希。
-
-## 4. 作用域修饰符 (Scope Modifiers)
-变量声明时的修饰符决定了其内存生命周期与捕获方式：
-
-*   **(默认)**：函数级自动局部变量。**闭包默认按值捕获 (Capture by Value)**。
-*   `local`：严格的**块级作用域**（Block Scope）。离开 `{}`、`if`、`for` 后立即销毁。
-*   `ref`：**向上作用域解析**。跨越函数边界直接绑定并修改外部变量（按名捕获/引用传递）。
-*   `state`：**私有持久化状态**。为闭包提供跨调用的持久内存，且初始化表达式仅在首次调用时执行一次。
-*   `const`：**严格不可变**。无法被重新赋值，也无法被 `delete` 关键字删除。
-
-## 5. 异常与 Traceback (Exceptions & Tracebacks)
-*   所有通过 `throw` 抛出的值（无论类型），在虚拟机内部都会被自动包装为 `Exception` 类的实例。
-*   如果抛出的已经是 `Exception` 实例且没有 `traceback`，VM 会自动为其填充当前的调用栈。
-*   **C++ 底层抛出规范**：在 C++ 运行时底层（如内置函数、类型检查、VM 指令执行等），**绝对禁止**抛出裸的 `std::runtime_error`、`std::invalid_argument` 等标准库异常。必须借鉴 `VM.cpp` 的机制，统一抛出 `jc::RuntimeError("ErrorType", Value("Message"))` 或 `jc::ValueException`。这避免了 VM 在捕获时还需要低效地解析字符串前缀（如 `"Math Error: ..."`），并保证了异常类型的精确传递。
-*   在 C++ 宿主层捕获的 `RuntimeError`，其 `what()` 方法应调用内部 `Exception` 实例的 `toString()`（即 `__str__`），以确保打印出格式化好的完整 Traceback，而不是简写的 `<Exception: ...>`。
-
-## 6. CAS 与数值计算的边界 (CAS vs Numerical Boundary)
-*   **数值域 (Numerical)**：变量持有具体的值，表达式立即求值。
-*   **符号域 (Symbolic)**：变量持有 AST 节点（如 `sym("x")`），表达式构建代数树。
-*   **跨界规则**：只有标准的数学函数（sin, cos, exp 等）允许捕获符号节点并向上提升为 `SymFunc`。用户自定义函数或不兼容的内置函数遇到符号变量时，应立即求值或抛出 `TypeError`。
-
-## 7. C++ 底层开发与扩展规范 (C++ Low-Level Development & Extension Rules)
-*   **GC 保护 (GC Guard)**：在 C++ 内部创建或操作受 GC 管理的原生对象（如 `ObjList`, `ObjDict`, `ObjInstance` 等）时，如果在将其挂载到根节点（如压入栈或存入其他已被追踪的对象）之前发生新的内存分配，**必须**使用 `GcObjGuard` 将其包裹，防止在触发 GC 时被误伤回收。
-*   **AST 节点与宏系统 (AST Nodes & Macros)**：当在编译器中加入新的 AST 节点时，必须同步处理宏系统中的双向转换逻辑。即在 `ASTNode` 类（供 JC2 脚本操作的字典结构）与 C++ 底层的真 AST 节点之间，实现完整的序列化与反序列化支持。
-
-## 8. 枚举的编译期零开销语义 (Compile-Time Zero-Overhead Enum Semantics)
-*   **语法糖与底层映射**：`enum` 在 JC2 中并非引入新的运行时数据结构，而是直接映射为**被冻结的命名空间 (Frozen Namespace)**。
-*   **编译期求值 (Compile-Time Evaluation)**：为了实现真正的零开销，`EnumDefExpr` 节点在 IR 构建阶段（`IRBuilder`）就会被完全求值。枚举成员的值必须是编译期常量（字面量或可常量折叠的表达式）。
-*   **常量池嵌入**：构建好的 `ObjNamespace` 会在编译期直接被标记为 `is_frozen = true`，并作为 `IROp::Constant` 塞入当前函数的常量池中。运行时仅需一条 `LOADK` 指令即可加载整个枚举，没有任何动态分配或函数调用开销。
-*   **匿名纯洁性**：匿名枚举（以及匿名类、匿名命名空间）的内部 `name` 字段严格保持为空字符串 `""`。为了防止与名为 `anonymous` 的变量混淆，打印时由 `Value::toJC2Expression` 拦截并格式化为 `<anonymous namespace>`。
-
-## 9. 占位符与丢弃符的零开销语义 (Zero-Overhead Placeholder & Discard Semantics)
-*   **语法降级**：`_` 在 JC2 中被彻底剥夺了“合法标识符”的身份，降级为纯粹的**占位符/丢弃符 (Placeholder/Discard)**。
-*   **读取拦截**：在 Resolver 阶段，任何试图读取 `_` 的行为（如 `print(_)`）都会直接抛出 `SyntaxError`，保证了语义的绝对纯洁性。
-*   **零开销绑定**：在 Resolver 阶段，`_` 永远不会被注册到任何作用域的符号表中。在 IRBuilder 阶段，目标为 `_` 的赋值（如 `_ = expr` 或 `[_, b] = [1, 2]`）会正常对右侧求值（以保证副作用），但**直接丢弃结果，不生成任何写入变量的 IR 节点**。
-*   **GC 压力释放**：由于 `_` 不产生绑定，它不会增加对象的引用计数，也不会进入环境栈，从而完美实现了真正的零开销丢弃，极大减轻了 GC 压力。
-*   **语义统一**：这使得 `_` 在解构丢弃、顶层裸赋值丢弃（`_ = func()`）以及偏函数应用（`f(_, 10)`）中达到了完美的逻辑自洽——它永远代表一个“洞”，而不是一个“值”。
-
-## 10. JCB 字节码序列化格式 (JCB Bytecode Serialization Format)
-为了提升大型脚本与标准库的加载速度并支持闭源分发，JC2 引入了 `.jcb` (Junk Calculator Bytecode) 格式。
-*   **文件头与版本校验 (Header & Versioning)**：文件必须以魔数 (Magic Number) 开头（如 `0x4A 0x43 0x42 0x01`），紧跟严格的 VM 指令集版本号。版本不匹配时必须拒绝加载，防止底层段错误 (Segfault)。
-*   **可选的调试信息剥离 (Optional Debug Stripping)**：为了极致的文件体积和闭源安全性，`.jcb` 格式支持在编译时剥离调试信息（`--strip`）。剥离后，`Chunk::lines` 数组为空，`sourceFile` 和闭包捕获的变量名被置为空字符串。VM 的 Traceback 系统已对此做了安全兼容（行号显示为 0）。
-*   **跨平台字节序 (Endianness)**：`.jcb` 文件内部的所有多字节原生数据（如 `int32_t`, `double`）必须统一采用 **小端序 (Little-Endian)** 序列化，以保证在 x64 和 ARM 架构之间的完美跨平台兼容。
-*   **常量池的深度反序列化 (Deep Constant Pool Deserialization)**：常量池不仅需要支持标量（Double, Int, String, Fraction, Complex），还**必须支持特定容器的序列化**。
-    *   **大整数 (BigInt) 的二进制序列化**：为了极致的加载性能，`BigInt` 必须导出其内部的 `std::vector<uint32_t>` 块，而不是转换为十进制字符串。序列化格式为：1 字节符号位 (`negative`) + 4 字节数组长度 (`size`) + 连续的小端序 `uint32_t` 数组。
-    *   **枚举支持**：由于 `enum` 语法在编译期被折叠为 `ObjNamespace` 并存入常量池，`.jcb` 必须支持 `TAG_NAMESPACE` 的递归序列化。反序列化时，需读取其内部的所有键值对，并在内存中重建后严格标记为 `is_frozen = true`。
-*   **常量池的序列化边界与内存管理 (Serialization Boundary & Memory Management)**：
-    *   **无需序列化**：`Class`, `Instance`, `Closure`, `List`, `Dict`, `Set`。这些对象具有引用语义或依赖运行时上下文，由 VM 在运行时通过指令（如 `CLASS`, `BUILD_LIST`）动态构建，**绝不会**进入常量池。
-    *   **按需序列化**：`RealMatrix`, `ComplexMatrix`, `StringMatrix` 具有值语义，未来优化器实现矩阵常量折叠后会进入常量池，因此需支持其序列化（写入维度与连续内存块）。
-    *   **内存保护机制 (Memory Protection)**：常量池（`Chunk::constants`）在反序列化后会持有这些复杂对象的 `Value`。
-        *   **值语义对象**（如 `String`, `BigInt`, `Matrix`）：自动接入底层的**引用计数 (RC)**，只要 `Chunk` 存活，其 `refCount > 0` 即可免于回收。
-        *   **引用语义对象**（如冻结的 `Namespace`）：由于 RC 不保护容器对象，它们依赖于 **GC 标记阶段 (Mark Phase)**。VM 会将当前所有活跃 `Chunk` 的常量池作为 GC Root 进行扫描，确保其绝不会被误杀。
-*   **加载优先级**：在执行 `import "module"` 时，VM 的 Resolver 必须优先探测是否存在版本匹配的 `module.jcb`。如果存在则直接反序列化绕过编译前端；如果不存在或魔数/版本号不匹配，则回退加载 `module.jc2` 源码。
-
-## 11. Native 类的实例化与防幽灵机制 (Native Class Instantiation & Ghost Prevention)
-在早期的架构中，用户可以通过 `getClass(NativeObj)()` 绕过 Native 模块的工厂函数，直接在 VM 层分配一个空的泛型 `Instance` 字典，从而制造出缺乏 C++ 底层数据支撑的“幽灵实例 (Ghost Instance)”，导致底层解包时发生 Segfault 或 TypeError。
-为了彻底解决此 FFI (Foreign Function Interface) 边界的生命周期漏洞，并实现真正的面向对象构造，JC2 引入了双层防御与分配器拦截机制：
-
-*   **`is_native` 标志 (防幽灵拦截)**：所有通过 C++ API (`host_make_class`) 注册的类，其 `is_native` 标志默认设为 `true`。当 VM 的 `CALL` 指令尝试实例化一个类时，如果该类没有自定义分配器且没有原生的 `init` 方法，VM 会直接抛出 `TypeError: Cannot instantiate native class 'xxx' directly.`。这为 `Socket`、`FFILibrary` 等严格受控的底层资源类提供了完美的保护伞，彻底封死了幽灵实例的产生路径。
-*   **`native_allocator` (分配器钩子)**：借鉴 Python 底层的 `tp_new` 机制，Native 类可以通过 `set_allocator` 注册自定义的 C++ 构造函数。当用户执行 `ClassName(...)` 时，VM 会完全跳过默认的空实例分配和 `init` 调用，直接将参数路由给该 Allocator。
-*   **架构收益**：得益于分配器钩子，`Decimal`、`Tensor`、`Image`、`Bytes` 等核心数据类彻底摆脱了“伪装成类的同名全局工厂函数”，实现了真正的 OOP 实例化（如 `tensor.Tensor(@[1,2], @[2])`），同时保证了底层 C++ 句柄内存布局的绝对安全。
-
-## 12. C ABI 扩展与类型代数支持 (C ABI Extensions & Type Algebra Support)
-为了让 Native 扩展模块能够更深度地与 JC2 引擎交互，最近对 C ABI (`JC2_HostAPI`) 进行了全面的能力扩充：
-*   **类型系统深度集成 (Type System Integration)**：新增了 `is_type`, `get_type`, `type_name`, `type_union`, `type_intersect`, `check_type` 等底层接口。Native 模块现在可以像 JC2 脚本一样，动态获取任何值的类型对象，执行类型代数运算（如构建 `int | string` 联合类型），并对传入的参数进行严格的类型契约校验。
-*   **容器操作补全 (Container API Completion)**：新增了 `list_set`, `dict_remove`, `set_elements` 接口，填补了之前 C ABI 在容器修改和遍历上的空白，使得 C++ 扩展能够对 JC2 的 List、Dict、Set 进行完整的 CRUD 操作。
-*   **C++ 包装器升级 (C++ Wrapper Upgrades)**：在 `jc2_extension_cpp.h` 中新增了 `jc2::Type` 类，并重载了 `|` 和 `&` 运算符以支持优雅的类型代数。同时为 `List`, `Dict`, `Set` 补充了 `set`, `remove`, `elements` 等便捷方法，极大提升了 Native 模块的面向对象开发体验。
-
-## 13. Token 宏与终极语法自由度 (Token Macros & Syntactic Freedom)
-在 AST 宏的基础上，JC2 计划引入更底层的 Token 宏（Token Macros），将语言的语法定义权彻底开放给用户，允许在 JC2 中无缝嵌入任意 DSL（领域特定语言）。目前确定的核心架构设计如下：
-*   **`syntax` 关键字与定界符隔离**：为了与普通的 AST 宏（`macro`）区分，Token 宏使用 `syntax` 关键字定义。调用时严格限制在 `{}` 定界符内（例如 `@sql { SELECT * FROM users }`）。Lexer 在遇到 Token 宏调用时，仅进行括号匹配，不进行任何语法树解析。
-*   **词法容错与 `ERROR_TOKEN`**：在 Token 收集模式下，Lexer 即使遇到无法识别的字符（如未闭合的字符串、非法符号）也**绝不抛出异常**，而是生成 `ERROR` 类型的 Token。这赋予了宏作者定义全新词法规则的终极自由。
-*   **预定义 `Token` 类**：宏接收到的参数是一个包含 `Token` 对象的列表。`Token` 将作为 JC2 的内置预定义类，包含 `type`, `lexeme`, `line`, `col` 字段。这使得用户可以极其方便地对 Token 进行模式匹配解构、字段篡改，甚至凭空实例化新的 Token。
-*   **底层解析桥梁 (`parseExpr` / `parseStmt`)**：为了将处理后的 Token 流转换回 AST，JC2 将提供内置函数 `parseExpr(tokens)` 和 `parseStmt(tokens)`。它们在底层会实例化一个隔离的临时 Parser，将 Token 列表重新解析为合法的 ASTNode，完美复用 JC2 强大的前端解析能力。Token 宏的最终返回值必须是一个合法的 `ASTNode`。
-
-## 14. 真正的零依赖 FFI 架构设计 (True Zero-Dependency FFI Architecture)
-为了彻底摆脱基于 C++ 模板元编程的“伪 FFI”（参数数量受限、极易触发 UB），且在不引入 `libffi` 等第三方库的前提下实现真正的动态函数调用，JC2 设计了一套基于**运行时机器码生成 (JIT Trampoline)** 的纯粹零依赖 FFI 架构。
-为了保证十万行级别项目的高内聚与低耦合，并为未来的跨平台（SysV ABI, ARM64）及高级特性（结构体传值、回调函数）留出扩展空间，底层被严格划分为以下五个抽象层：
-
-*   **内存管理层 (`ExecutableMemory`)**：
-    *   **职责**：RAII 风格的可执行内存管理器。负责向操作系统申请 `RWX` 或 `RX` 内存（Windows `VirtualAlloc` / POSIX `mmap`），并在析构时安全释放。
-    *   **扩展性**：未来可演进为可执行内存池，为 C 回调 JC2 闭包动态分配微型 Thunk 机器码。
-*   **类型描述系统 (`FFITypeDesc`)**：
-    *   **职责**：精确描述参数的底层物理特征（基础类型、字节大小 `size`、对齐要求 `alignment`）。
-    *   **扩展性**：为未来支持复杂的“结构体按值传递 (Structs by Value)”提供必要的内存排布元数据。
-*   **核心调用引擎 (`ABIHandler` 接口)**：
-    *   **职责**：隔离不同操作系统和 CPU 架构的调用约定（Calling Convention）。
-    *   **设计**：定义统一的 `invoke` 接口。V1 版本实现 `Win64ABIHandler`（处理 RCX/XMM0 寄存器排布与 32 字节 Shadow Space）。未来可无缝扩展 `SysV64ABIHandler` 和 `ARM64ABIHandler`。
-*   **机器码生成器 (`TrampolineBuilder`)**：
-    *   **职责**：在运行时动态组装机器码。将 Prologue（保存现场）、参数装载（寄存器与栈分配）、Call 指令、Epilogue（恢复现场）拼接并写入 `ExecutableMemory`。
-    *   **优势**：突破硬编码限制，支持任意数量的参数传递。
-*   **宿主安全层 (`SafeInvoke`)**：
-    *   **职责**：包裹最终的机器码执行过程。
-    *   **扩展性**：未来可在此层接入 Windows SEH (`__try / __except`) 或 POSIX 信号处理，拦截 C/C++ DLL 内部的段错误（Access Violation），防止宿主虚拟机进程崩溃。
-
-**V2 版本 API 边界与限制：**
-1.  **基础类型**：支持定长整数 (`i8`~`i64`, `u8`~`u64`)、浮点数 (`f32`, `f64`)、字符串 (`string`) 和裸指针 (`pointer`)。
-2.  **内存联动**：完美联动 `buffer` 模块，允许 JC2 分配内存并交由 C/C++ 读写。
-3.  **高级特性**：完美支持可变参数 (`...`) 以及结构体按值/按指针传递 (`ffi.Struct`)。
-4.  **暂不支持**：C 回调 JC2 函数。
-5.  **平台限制**：当前仅支持 Windows x64 架构。
-
-## 15. 模式匹配的视图提取器语义 (Pattern Matching View Extractor Semantics)
-在 JC2 中，类实例的模式匹配与解构赋值通过 `__match__` 魔术方法实现了彻底的解耦，将其定位为**“视图提取器 (View Extractor)”**：
-*   **机制**：当 VM 尝试对一个 `Instance` 进行模式匹配或解构时，如果该实例定义了 `__match__`，VM 会无参调用 `obj.__match__()`，并将返回的结果代替 `obj` 本身去和模式进行匹配。
-*   **表现力**：这赋予了对象极大的自由度。若要支持数组解构 `[x, y] = obj`，只需在 `__match__` 中返回一个 `List`；若要支持字典解构 `{name, age} = obj`，则返回 `Dict`；若要支持标量状态码匹配，直接返回 `int` 或 `string`。这彻底解耦了对象的内部存储结构和外部匹配接口。
-*   **无限制递归与平凡拦截 (Trivial Recursion Interception)**：VM 故意不限制 `__match__` 的提取层级，将控制权完全交给开发者。但为了安全与灵活性，VM 内置了平凡递归拦截：如果 `obj.__match__()` 返回了 `obj` 自身（指针相等），VM 将立即终止提取，并回退到默认的实例字段匹配。这不仅防止了最常见的无限递归死循环，还允许开发者在 `__match__` 中根据条件动态决定是返回提取视图还是保持原样。
-
-## 16. 析构函数与僵尸复活防御 (Finalizer & Object Resurrection Defense)
-JC2 的垃圾回收器 (GC) 采用 Finalizer Queue 方案来处理对象的 `__del__` 析构函数，并引入了严格的防御机制以应对“僵尸复活 (Object Resurrection)”问题：
-*   **僵尸复活**：在执行 `__del__` 时，对象处于“半死不活”状态。如果用户在 `__del__` 代码中将 `self` 重新赋值给全局变量，该对象会再次变得可达（复活）。
-*   **`is_finalized` 标志位**：为了防止恶意或存在缺陷的代码导致对象在未来的 GC 中被无限次调用 `__del__`，`ObjInstance` 底层结构中增加了一个 `is_finalized` 布尔标志位。
-*   **生命周期契约**：当不可达对象首次进入 Finalizer Queue 时，`is_finalized` 立即被置为 `true`。无论对象在析构过程中是否被复活，`__del__` 在其整个生命周期中**绝对只会被触发一次**。如果复活后的对象再次变得不可达，下一次 GC 将直接安全回收其内存。
-*   **Native 析构的严格分离 (Native Dtor Separation)**：对于携带 C++ 底层数据的 Native 实例，其 `c_nativeDtor` 的执行时机与脚本层的 `__del__` 严格分离。脚本层的 `__del__` 在对象进入 Finalizer Queue 时执行，而 `c_nativeDtor` **绝对只在**对象真正被 Sweep（内存释放）时执行。这保证了即使对象在 `__del__` 中被复活，其底层的 C++ 句柄和内存依然完全有效，彻底杜绝了 Native 层的悬空指针 (Dangling Pointer) 崩溃。
-*   **析构异常隔离 (Exception Isolation)**：由于 `__del__` 是由 GC 隐式调用的，其执行上下文可能与当前主程序的逻辑毫无关联。如果 `__del__` 内部抛出异常，VM 必须在底层使用 `pcall` 机制将其安全捕获并转化为静默的警告日志（或直接丢弃），**绝对禁止**异常向外传播导致 GC 过程中断或宿主 C++ 进程崩溃。
-*   **GC 重入锁 (GC Re-entrancy Lock)**：`__del__` 内部可以执行任意 JC2 脚本，这意味着它可能会分配新内存。如果分配行为触发了嵌套的 GC 循环，将彻底破坏当前正在进行的 Sweep 阶段的堆链表结构。因此，VM 必须在执行 Finalizer Queue 时引入 `gc_locked` 标志，强制挂起所有嵌套的 GC 触发请求（允许分配，但禁止触发回收），直到当前析构队列清空。
+## 6. 底层规范与序列化 (Low-Level Rules & Serialization)
+*   **GC 保护**：C++ 内部操作未挂载的 GC 对象必须使用 `GcObjGuard`。
+*   **JCB 字节码格式**：小端序，支持调试信息剥离。常量池深度反序列化（支持 BigInt 二进制块与冻结 Namespace）。值语义对象依赖 RC，引用语义对象依赖 GC Root 扫描。

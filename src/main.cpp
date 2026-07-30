@@ -398,7 +398,8 @@ int main(int argc, char* argv[]) {
     registry.registerAll();
     for (const auto& [name, fn] : registry.getBuiltins()) {
         const auto& arities = registry.getArity().find(name)->second;
-        vm.registerBuiltin(name, fn, arities);
+        const auto& paramNames = registry.getParamNames().find(name)->second;
+        vm.registerBuiltin(name, fn, arities, paramNames);
         // ★ 我们把内置方法只留给原生表处理！彻底释放 Globals 字典空间供用户自由重载调用！
     }
 

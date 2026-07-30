@@ -627,6 +627,14 @@ public:
             {"body", body}
         });
     }
+
+    void visitKeywordArgExpr(KeywordArgExpr* expr) override {
+        expr->value->accept(*this); Value val = result;
+        result = makeASTNode("KeywordArgExpr", expr->name.line, {
+            {"name", Value(expr->name.lexeme)},
+            {"value", val}
+        });
+    }
 };
 
 Value AST_to_JC2(Expr* expr) {
@@ -1176,6 +1184,11 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         );
     } else if (type == "DeferExpr") {
         return std::make_unique<DeferExpr>(toAST(getProp("body")));
+    } else if (type == "KeywordArgExpr") {
+        return std::make_unique<KeywordArgExpr>(
+            Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
+            toAST(getProp("value"))
+        );
     }
 
     throw std::runtime_error("Macro Error: Unsupported node type '" + type + "'");

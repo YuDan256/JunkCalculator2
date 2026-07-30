@@ -694,9 +694,19 @@ namespace jc {
                     std::vector<std::unique_ptr<Expr>> args;
                     while (match({ TokenType::NEWLINE })) {}
                     if (!check(TokenType::RPAREN)) {
+                        bool hasKwArg = false;
                         do {
                             while (match({ TokenType::NEWLINE })) {}
-                            args.push_back(assignment()); // ★ 降级调用，保护函数参数的逗号
+                            if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
+                                Token kwName = advance();
+                                advance(); // consume '='
+                                auto val = assignment();
+                                args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
+                                hasKwArg = true;
+                            } else {
+                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                args.push_back(assignment()); // ★ 降级调用，保护函数参数的逗号
+                            }
                             while (match({ TokenType::NEWLINE })) {}
                         } while (match({ TokenType::COMMA }));
                     }
@@ -743,9 +753,19 @@ namespace jc {
                 std::vector<std::unique_ptr<Expr>> args;
                 while (match({ TokenType::NEWLINE })) {}
                 if (!check(TokenType::RPAREN)) {
+                    bool hasKwArg = false;
                     do {
                         while (match({ TokenType::NEWLINE })) {}
-                        args.push_back(assignment());
+                        if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
+                            Token kwName = advance();
+                            advance(); // consume '='
+                            auto val = assignment();
+                            args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
+                            hasKwArg = true;
+                        } else {
+                            if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                            args.push_back(assignment());
+                        }
                         while (match({ TokenType::NEWLINE })) {}
                     } while (match({ TokenType::COMMA }));
                 }
@@ -1500,8 +1520,18 @@ namespace jc {
                 
                 if (match({ TokenType::LPAREN })) {
                     if (!check(TokenType::RPAREN)) {
+                        bool hasKwArg = false;
                         do {
-                            args.push_back(assignment());
+                            if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
+                                Token kwName = advance();
+                                advance(); // consume '='
+                                auto val = assignment();
+                                args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
+                                hasKwArg = true;
+                            } else {
+                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                args.push_back(assignment());
+                            }
                         } while (match({ TokenType::COMMA }));
                     }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");
@@ -2422,6 +2452,12 @@ namespace jc {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"body", transformQuote(def->body.get())});
             return makeASTNodeCall("DeferExpr", 0, std::move(props));
+        }
+        if (auto* kw = dynamic_cast<KeywordArgExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(kw->name.lexeme, true)});
+            props.push_back({"value", transformQuote(kw->value.get())});
+            return makeASTNodeCall("KeywordArgExpr", kw->name.line, std::move(props));
         }
         
         throw std::runtime_error("Parser Error: Unsupported AST node in quote block.");

@@ -121,6 +121,7 @@ namespace jc {
     struct UnquoteExpr;      // ★ 新增
     struct ExprAssign;       // ★ 新增
     struct DeferExpr;        // ★ 新增
+    struct KeywordArgExpr;   // ★ 新增
 
     struct DefaultPattern;   // ★ 新增
 
@@ -259,6 +260,7 @@ namespace jc {
         virtual void visitUnquoteExpr(UnquoteExpr* expr) = 0;
         virtual void visitExprAssign(ExprAssign* expr) = 0;
         virtual void visitDeferExpr(DeferExpr* expr) = 0;
+        virtual void visitKeywordArgExpr(KeywordArgExpr* expr) = 0;
     };
 
     struct Expr {
@@ -849,6 +851,14 @@ namespace jc {
         std::unique_ptr<Expr> body;
         explicit DeferExpr(std::unique_ptr<Expr> body) : body(std::move(body)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitDeferExpr(this); }
+    };
+
+    struct KeywordArgExpr : public Expr {
+        Token name;
+        std::unique_ptr<Expr> value;
+        KeywordArgExpr(Token name, std::unique_ptr<Expr> value)
+            : name(std::move(name)), value(std::move(value)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitKeywordArgExpr(this); }
     };
 
 } // namespace jc

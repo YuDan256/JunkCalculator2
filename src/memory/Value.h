@@ -2847,12 +2847,12 @@ inline void GcHeap::markValue(const Value& val) {
     if (val.isObj()) markObj(val.asObj());
 }
 
-inline void GcHeap::collectGarbage() {
-    if (gc_locked_) return;
+inline int GcHeap::collectGarbage() {
+    if (gc_locked_) return 0;
     gc_locked_ = true;
 
     if (markCallback) markCallback();
-    
+        
     for (Obj* obj : tempObjRoots_) markObj(obj);
     for (Value* val : tempValueRoots_) {
         if (val) markValue(*val);
@@ -2876,7 +2876,7 @@ inline void GcHeap::collectGarbage() {
 
     if (sweepCallback) sweepCallback();
 
-    sweep();
+    int freed = sweep();
 
     if (!finalizerQueue.empty() && executeFinalizerCallback) {
         for (Obj* obj : finalizerQueue) {
@@ -2885,6 +2885,7 @@ inline void GcHeap::collectGarbage() {
     }
 
     gc_locked_ = false;
+    return freed;
 }
 
 inline ObjString* internString(const std::string& str) {

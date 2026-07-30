@@ -1711,9 +1711,7 @@ void BuiltinRegistry::registerSystemUtils() {
             VM::activeVM->setGlobal("ANS", Value::none());
         }
 
-        if (GcHeap::get().markCallback) GcHeap::get().markCallback();
-        if (GcHeap::get().sweepCallback) GcHeap::get().sweepCallback();
-        int freed = GcHeap::get().sweep();
+        int freed = GcHeap::get().collectGarbage();
 
         std::cout << "[GC] Collected " << freed << " unreachable object(s). "
             << "Tracked: " << GcHeap::get().trackedCount() << std::endl;

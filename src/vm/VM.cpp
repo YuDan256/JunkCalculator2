@@ -2665,7 +2665,9 @@ VM::VM() {
     frames = new CallFrame[MAX_FRAMES];
     
     GcHeap::get().markCallback = [this]() {
-        for (auto& v : globals) GcHeap::get().markValue(v);
+        for (size_t i = 0; i < globals.size(); ++i) {
+            GcHeap::get().markValue(globals[i]);
+        }
         
         int maxReg = 0;
         for (int i = 0; i < frameCount; ++i) {

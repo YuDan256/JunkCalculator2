@@ -57,7 +57,7 @@ namespace jc {
 
         void markObj(Obj* obj);
         void markValue(const Value& val);
-        void collectGarbage();
+        int collectGarbage();
         bool gc_locked_ = false;
 
         template<typename T, typename... Args>
@@ -101,6 +101,7 @@ namespace jc {
             return allocsSinceGc_ >= gcThreshold_;
         }
 
+    private:
         int sweep() {
             isSweeping_ = true;
             Obj* curr = objects_;

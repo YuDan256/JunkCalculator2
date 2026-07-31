@@ -56,6 +56,7 @@ private:
     std::unordered_map<std::string, uint32_t> globalNames;
     std::unordered_set<std::string> constGlobals;
     std::unordered_map<std::string, Value> loadedModules;
+    std::unordered_map<std::string, Value> builtinModules;
     std::unordered_set<std::string> importedModules;
 
     std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
@@ -155,7 +156,7 @@ public:
         globalNames.clear();
         constGlobals.clear();
         importedModules.clear();
-        loadedModules.clear();
+        loadedModules = builtinModules;
         builtinClosures.clear();
         openUpvalues = nullptr;
         deferStack.clear();
@@ -209,7 +210,10 @@ public:
     void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {});
     Value getBuiltinClosure(const std::string& name);
     void registerBuiltinValue(const std::string& name, const Value& val) { builtinValues[name] = val; }
-    void injectModule(const std::string& name, const Value& moduleVal) { loadedModules[name] = moduleVal; }
+    void injectModule(const std::string& name, const Value& moduleVal) { 
+        loadedModules[name] = moduleVal; 
+        builtinModules[name] = moduleVal;
+    }
     Value getBuiltinValue(const std::string& name) const {
         auto it = builtinValues.find(name);
         return it != builtinValues.end() ? it->second : Value::none();

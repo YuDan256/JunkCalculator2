@@ -394,6 +394,7 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, sigintHandler);
     std::string exeDir = getExecutableDir();
     // ===== 初始化超级虚拟机 =====
+    jc::VM::activeVM = &vm;
     jc::BuiltinRegistry registry;
     registry.registerAll();
     for (const auto& [name, fn] : registry.getBuiltins()) {

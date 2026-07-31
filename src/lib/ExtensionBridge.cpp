@@ -189,10 +189,15 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
     auto closure = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, name, nullptr);
     closure->nativeFn = std::make_any<NativeCallable>(callable);
     
+    closure->hasRestParam = has_rest;
     if (param_count > 0) {
         for (int i = 0; i < param_count; ++i) {
             closure->paramNames.push_back(param_names[i]);
             closure->isRef.push_back(false);
+        }
+        if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
+            closure->hasRestParam = true;
+            closure->paramNames.back() = closure->paramNames.back().substr(3);
         }
         for (int i = min_arity; i < param_count; ++i) {
             closure->defaultValues.push_back(Value::none());

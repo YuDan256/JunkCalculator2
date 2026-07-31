@@ -909,7 +909,7 @@ int jc2_init(jc2::Module& mod) {
     g_callbackClass = std::make_unique<Class>("Callback");
     
     g_libClass->set_allocator(lib_alloc);
-    g_libClass->bind_method("bind", lib_bind, 2, 16777215, true, {"func_name", "ret_type"});
+    g_libClass->bind_method("bind", lib_bind, 2, 16777215, true, {"func_name", "ret_type", "...arg_types"});
     
     g_funcClass->bind_method("__call__", func_call, 0, 16777215, true);
 

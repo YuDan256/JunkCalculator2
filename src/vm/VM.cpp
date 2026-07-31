@@ -85,6 +85,8 @@ Value VM::getBuiltinClosure(const std::string& name) {
             if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
                 closure->hasRestParam = true;
                 closure->paramNames.back() = closure->paramNames.back().substr(3);
+            } else if (ait == builtinArity.end() || ait->second.empty()) {
+                closure->hasRestParam = true;
             }
             if (ait != builtinArity.end() && !ait->second.empty()) {
                 int minA = *ait->second.begin();
@@ -103,6 +105,8 @@ Value VM::getBuiltinClosure(const std::string& name) {
             for (int j = minA; j < maxA; ++j) {
                 closure->defaultValues.push_back(Value::uninit());
             }
+        } else {
+            closure->hasRestParam = true;
         }
         Value val(closure);
         builtinClosures[name] = val;
@@ -2292,6 +2296,8 @@ Value VM::execImport(const std::string& name) {
                 if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
                     closure->hasRestParam = true;
                     closure->paramNames.back() = closure->paramNames.back().substr(3);
+                } else if (ait == tempArity.end() || ait->second.empty()) {
+                    closure->hasRestParam = true;
                 }
                 if (ait != tempArity.end() && !ait->second.empty()) {
                     int minA = *ait->second.begin();
@@ -2310,6 +2316,8 @@ Value VM::execImport(const std::string& name) {
                 for (int j = minA; j < maxA; ++j) {
                     closure->defaultValues.push_back(Value::uninit());
                 }
+            } else {
+                closure->hasRestParam = true;
             }
 
             auto uv = GcHeap::get().allocate<ObjUpVal>();

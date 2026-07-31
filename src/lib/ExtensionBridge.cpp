@@ -635,6 +635,36 @@ static bool host_is_namespace(JC2_VMContext, JC2_ValueHandle v) {
     return from_handle(v).isObjType(ObjType::NAMESPACE);
 }
 
+static JC2_ValueHandle host_make_slice(JC2_VMContext, int start, int end, int step) {
+    ObjSlice* slice = GcHeap::get().allocate<ObjSlice>();
+    slice->start = start;
+    slice->end = end;
+    slice->step = step;
+    return protect(Value(slice));
+}
+
+static int host_slice_get_start(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isSlice()) return val.asSlice()->start;
+    return ObjSlice::SLICE_NONE;
+}
+
+static int host_slice_get_end(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isSlice()) return val.asSlice()->end;
+    return ObjSlice::SLICE_NONE;
+}
+
+static int host_slice_get_step(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isSlice()) return val.asSlice()->step;
+    return ObjSlice::SLICE_NONE;
+}
+
+static bool host_is_slice(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isSlice();
+}
+
 static void host_set_class_parent(JC2_VMContext, JC2_ValueHandle cls, JC2_ValueHandle parent) {
     Value c = from_handle(cls);
     Value p = from_handle(parent);
@@ -845,6 +875,11 @@ static const JC2_HostAPI host_api = {
     host_namespace_set,
     host_namespace_get,
     host_is_namespace,
+    host_make_slice,
+    host_slice_get_start,
+    host_slice_get_end,
+    host_slice_get_step,
+    host_is_slice,
     host_get_type,
     host_type_name,
     host_type_union,

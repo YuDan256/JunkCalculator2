@@ -45,6 +45,7 @@ public:
     bool is_bigint() const { return Env::api->is_bigint(Env::ctx, handle); }
     bool is_fraction() const { return Env::api->is_fraction(Env::ctx, handle); }
     bool is_namespace() const { return Env::api->is_namespace(Env::ctx, handle); }
+    bool is_slice() const { return Env::api->is_slice(Env::ctx, handle); }
     bool is_type() const { return Env::api->is_type(Env::ctx, handle); }
 
     Value get_type() const { return Value(Env::api->get_type(Env::ctx, handle)); }
@@ -320,6 +321,18 @@ public:
     Value get(const std::string& key) const {
         return Value(Env::api->namespace_get(Env::ctx, get_handle(), key.c_str()));
     }
+};
+
+class Slice : public Value {
+public:
+    static const int NONE = JC2_SLICE_NONE;
+
+    Slice(int start, int end, int step) : Value(Env::api->make_slice(Env::ctx, start, end, step)) {}
+    Slice(JC2_ValueHandle h) : Value(h) {}
+    
+    int start() const { return Env::api->slice_get_start(Env::ctx, get_handle()); }
+    int end() const { return Env::api->slice_get_end(Env::ctx, get_handle()); }
+    int step() const { return Env::api->slice_get_step(Env::ctx, get_handle()); }
 };
 
 class Module {

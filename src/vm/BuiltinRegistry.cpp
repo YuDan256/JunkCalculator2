@@ -996,19 +996,19 @@ void BuiltinRegistry::registerMatrixOps() {
         }
     };
 
-    reg("addE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { 
-        return elementWiseOp(args[0], args[1], "addE", [](const Value& a, const Value& b) { 
+    regMethod(VM::activeVM->matrixProto, "addE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { 
+        return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "addE", [](const Value& a, const Value& b) { 
             if (a.isString() || b.isString()) {
                 std::ostringstream oss; oss << a << b; return Value(oss.str());
             }
             return a + b; 
         }); 
-    }, {"A", "B"});
-    reg("subE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "subE", [](const Value& a, const Value& b) { return a - b; }); }, {"A", "B"});
-    reg("mulE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "mulE", [](const Value& a, const Value& b) { return a * b; }); }, {"A", "B"});
-    reg("divE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "divE", [](const Value& a, const Value& b) { return a / b; }); }, {"A", "B"});
-    reg("idivE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { 
-        return elementWiseOp(args[0], args[1], "idivE", [](const Value& a, const Value& b) { 
+    });
+    regMethod(VM::activeVM->matrixProto, "subE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "subE", [](const Value& a, const Value& b) { return a - b; }); });
+    regMethod(VM::activeVM->matrixProto, "mulE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "mulE", [](const Value& a, const Value& b) { return a * b; }); });
+    regMethod(VM::activeVM->matrixProto, "divE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "divE", [](const Value& a, const Value& b) { return a / b; }); });
+    regMethod(VM::activeVM->matrixProto, "idivE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { 
+        return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "idivE", [](const Value& a, const Value& b) { 
             if (a.isBigInt() && b.isBigInt()) {
                 BigInt ba = a.asBigInt(), bb = b.asBigInt();
                 if (bb.isZero()) throw std::runtime_error("Math Error: Division by zero.");
@@ -1018,10 +1018,10 @@ void BuiltinRegistry::registerMatrixOps() {
             if (db == 0.0) throw std::runtime_error("Math Error: Division by zero.");
             return Value(BigInt(static_cast<int64_t>(std::trunc(da / db))));
         }); 
-    }, {"A", "B"});
-    reg("powE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "powE", [](const Value& a, const Value& b) { return a ^ b; }); }, {"A", "B"});
-    reg("modE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { 
-        return elementWiseOp(args[0], args[1], "modE", [](const Value& a, const Value& b) { 
+    });
+    regMethod(VM::activeVM->matrixProto, "powE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "powE", [](const Value& a, const Value& b) { return a ^ b; }); });
+    regMethod(VM::activeVM->matrixProto, "modE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { 
+        return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "modE", [](const Value& a, const Value& b) { 
             if (a.isComplex() && !b.isComplex()) {
                 Complex ca = a.asComplex();
                 double cb = b.asDouble();
@@ -1034,22 +1034,22 @@ void BuiltinRegistry::registerMatrixOps() {
             }
             return a % b; 
         }); 
-    }, {"A", "B"});
-    reg("eqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "eqE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkEqual(a, b) ? 1 : 0); }); }, {"A", "B"});
-    reg("neqE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "neqE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkEqual(a, b) ? 1 : 0); }); }, {"A", "B"});
-    reg("ltE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "ltE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkLess(a, b) ? 1 : 0); }); }, {"A", "B"});
-    reg("leE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "leE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkGreater(a, b) ? 1 : 0); }); }, {"A", "B"});
-    reg("gtE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "gtE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkGreater(a, b) ? 1 : 0); }); }, {"A", "B"});
-    reg("geE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "geE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkLess(a, b) ? 1 : 0); }); }, {"A", "B"});
-    reg("maxE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "maxE", [](const Value& a, const Value& b) { return helpers::checkGreater(a, b) ? a : b; }); }, {"A", "B"});
-    reg("minE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "minE", [](const Value& a, const Value& b) { return helpers::checkLess(a, b) ? a : b; }); }, {"A", "B"});
-    reg("andE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "andE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() && b.truthy()) ? 1 : 0); }); }, {"A", "B"});
-    reg("orE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "orE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() || b.truthy()) ? 1 : 0); }); }, {"A", "B"});
-    reg("xorE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "xorE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() != b.truthy()) ? 1 : 0); }); }, {"A", "B"});
-    reg("atan2E", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "atan2E", [](const Value& a, const Value& b) { return Value(std::atan2(a.asDouble(), b.asDouble())); }); }, {"Y", "X"});
-    reg("hypotE", { 2 }, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(args[0], args[1], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asDouble(), b.asDouble())); }); }, {"A", "B"});
-    reg("whereE", { 3 }, [](const std::vector<Value>& args) -> Value {
-        const Value& mask = args[0]; const Value& a = args[1]; const Value& b = args[2];
+    });
+    regMethod(VM::activeVM->matrixProto, "eqE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "eqE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkEqual(a, b) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "neqE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "neqE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkEqual(a, b) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "ltE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "ltE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkLess(a, b) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "leE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "leE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkGreater(a, b) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "gtE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "gtE", [](const Value& a, const Value& b) { return Value::fromInt32(helpers::checkGreater(a, b) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "geE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "geE", [](const Value& a, const Value& b) { return Value::fromInt32(!helpers::checkLess(a, b) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "maxE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "maxE", [](const Value& a, const Value& b) { return helpers::checkGreater(a, b) ? a : b; }); });
+    regMethod(VM::activeVM->matrixProto, "minE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "minE", [](const Value& a, const Value& b) { return helpers::checkLess(a, b) ? a : b; }); });
+    regMethod(VM::activeVM->matrixProto, "andE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "andE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() && b.truthy()) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "orE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "orE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() || b.truthy()) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "xorE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "xorE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() != b.truthy()) ? 1 : 0); }); });
+    regMethod(VM::activeVM->matrixProto, "atan2E", {"X"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "atan2E", [](const Value& a, const Value& b) { return Value(std::atan2(a.asDouble(), b.asDouble())); }); });
+    regMethod(VM::activeVM->matrixProto, "hypotE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asDouble(), b.asDouble())); }); });
+    regMethod(VM::activeVM->matrixProto, "whereE", {"A", "B"}, [](const std::vector<Value>& args) -> Value {
+        const Value& mask = helpers::nativeSelfStack.back(); const Value& a = args[0]; const Value& b = args[1];
         bool mMat = mask.isObjType(ObjType::REAL_MATRIX) || mask.isObjType(ObjType::COMPLEX_MATRIX) || mask.isObjType(ObjType::STRING_MATRIX);
         bool aMat = a.isObjType(ObjType::REAL_MATRIX) || a.isObjType(ObjType::COMPLEX_MATRIX) || a.isObjType(ObjType::STRING_MATRIX);
         bool bMat = b.isObjType(ObjType::REAL_MATRIX) || b.isObjType(ObjType::COMPLEX_MATRIX) || b.isObjType(ObjType::STRING_MATRIX);
@@ -1102,7 +1102,7 @@ void BuiltinRegistry::registerMatrixOps() {
             for (int i = 0; i < r * c; ++i) flat[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asDouble() : getElem(b, bMat ? i : 0).asDouble();
             return Value(RealMatrix(r, c, flat));
         }
-    }, {"mask", "A", "B"});
+    });
 
     // --- 性质 ---
     auto detFn = [](const std::vector<Value>&) -> Value {
@@ -1491,8 +1491,16 @@ void BuiltinRegistry::registerDecompositions() {
 // [7] 线性方程组
 // =================================================================
 void BuiltinRegistry::registerLinearSolvers() {
-    reg("lsolve", { 2 }, [](const std::vector<Value>& args) -> Value {
-        ComplexMatrix A = args[0].asComplexMatrix(), b = args[1].asComplexMatrix();
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
+    auto lsolveFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        ComplexMatrix A = self.asComplexMatrix(), b = args[0].asComplexMatrix();
         if (A.getRows() != b.getRows()) throw std::runtime_error("Math Error: Row count mismatch.");
         if (b.getCols() != 1) throw std::runtime_error("Math Error: b must be Nx1.");
         int n = A.getCols();
@@ -1548,9 +1556,14 @@ void BuiltinRegistry::registerLinearSolvers() {
             setField("basis", Value(A.nullSpace()));
         }
         return Value(d);
-    }, {"A", "b"});
-    reg("lstsq", { 2 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); ComplexMatrix AH = A.conjugateTranspose(); ComplexMatrix aug = (AH * A).integR(AH * b); auto [rref, sw] = aug.gaussianElimination(); int n = (AH * A).getCols(); std::vector<Complex> sol(n); for (int i = 0; i < n; ++i) sol[i] = rref(i, n); return Value(ComplexMatrix(n, 1, sol)); }, {"A", "b"});
-    reg("residual", { 3 }, [](const std::vector<Value>& args) -> Value { return Value(args[2].asComplexMatrix() - args[0].asComplexMatrix() * args[1].asComplexMatrix()); }, {"A", "x", "b"});
+    };
+    regMethod(VM::activeVM->matrixProto, "lsolve", {"b"}, lsolveFn);
+
+    auto lstsqFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); ComplexMatrix A = self.asComplexMatrix(), b = args[0].asComplexMatrix(); ComplexMatrix AH = A.conjugateTranspose(); ComplexMatrix aug = (AH * A).integR(AH * b); auto [rref, sw] = aug.gaussianElimination(); int n = (AH * A).getCols(); std::vector<Complex> sol(n); for (int i = 0; i < n; ++i) sol[i] = rref(i, n); return Value(ComplexMatrix(n, 1, sol)); };
+    regMethod(VM::activeVM->matrixProto, "lstsq", {"b"}, lstsqFn);
+
+    auto residualFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); return Value(args[1].asComplexMatrix() - self.asComplexMatrix() * args[0].asComplexMatrix()); };
+    regMethod(VM::activeVM->matrixProto, "residual", {"x", "b"}, residualFn);
 }
 
 // =================================================================
@@ -1559,24 +1572,54 @@ void BuiltinRegistry::registerLinearSolvers() {
 void BuiltinRegistry::registerVectors() {
     auto assertVec = [](const Value& v, const std::string& f) { if (v.isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols() != 1) throw std::runtime_error(f + "() expects Nx1 column vector."); } else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols() != 1) throw std::runtime_error(f + "() expects Nx1 column vector."); } else throw std::runtime_error(f + "() requires a matrix."); };
 
-    reg("dim", { 1 }, [assertVec](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::LIST))
-            return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
-        assertVec(args[0], "dim");
-        if (args[0].isObjType(ObjType::REAL_MATRIX))
-            return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows());
-        return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows());
-        }, {"v"});    
-    reg("dot", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "dot"); assertVec(args[1], "dot"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); if (a.getRows() != b.getRows()) throw std::runtime_error("Math Error: Dimension mismatch."); return Value((a.conjugateTranspose() * b)(0, 0)); }, {"a", "b"});
-    reg("vnorm", { 1 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "vnorm"); ComplexMatrix v = args[0].asComplexMatrix(); return Value(std::sqrt((v.conjugateTranspose() * v)(0, 0).real)); }, {"v"});
-    reg("normalize", { 1 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "normalize"); ComplexMatrix v = args[0].asComplexMatrix(); double len = std::sqrt((v.conjugateTranspose() * v)(0, 0).real); if (len == 0.0) throw std::runtime_error("Math Error: Cannot normalize a zero vector."); return Value(v / Complex(len)); }, {"v"});
-    reg("cross", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "cross"); assertVec(args[1], "cross"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); if (a.getRows() != 3 || b.getRows() != 3) throw std::runtime_error("Math Error: Cross product is 3D only."); std::vector<Complex> r = { a(1,0)*b(2,0)-a(2,0)*b(1,0), a(2,0)*b(0,0)-a(0,0)*b(2,0), a(0,0)*b(1,0)-a(1,0)*b(0,0) }; return Value(ComplexMatrix(3, 1, r)); }, {"a", "b"});
-    reg("angle", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "angle"); assertVec(args[1], "angle"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double nA = std::sqrt((a.conjugateTranspose()*a)(0,0).real), nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nA == 0.0 || nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); double ct = (a.conjugateTranspose()*b)(0,0).real/(nA*nB); ct = std::max(-1.0, std::min(1.0, ct)); return Value(std::acos(ct)); }, {"a", "b"});
-    reg("sproj", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "sproj"); assertVec(args[1], "sproj"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value((a.conjugateTranspose()*b)(0,0).real/nB); }, {"a", "b"});
-    reg("vproj", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "vproj"); assertVec(args[1], "vproj"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); Complex dBB = (b.conjugateTranspose()*b)(0,0); if (dBB.real == 0.0 && dBB.imag == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value(b * ((a.conjugateTranspose()*b)(0,0)/dBB)); }, {"a", "b"});
-    reg("triple", { 3 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "triple"); assertVec(args[1], "triple"); assertVec(args[2], "triple"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(), c = args[2].asComplexMatrix(); if (a.getRows()!=3||b.getRows()!=3||c.getRows()!=3) throw std::runtime_error("Math Error: 3D only."); std::vector<Complex> bc = { b(1,0)*c(2,0)-b(2,0)*c(1,0), b(2,0)*c(0,0)-b(0,0)*c(2,0), b(0,0)*c(1,0)-b(1,0)*c(0,0) }; return Value(a(0,0)*bc[0]+a(1,0)*bc[1]+a(2,0)*bc[2]); }, {"a", "b", "c"});
-    reg("isperp", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "isperp"); assertVec(args[1], "isperp"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); double innerScale = a.norm()*b.norm(); return Value(Tol::clean((a.conjugateTranspose()*b)(0,0).modulus(), innerScale)==0.0); }, {"a", "b"});
-    reg("isparallel", { 2 }, [assertVec](const std::vector<Value>& args) -> Value { assertVec(args[0], "isparallel"); assertVec(args[1], "isparallel"); ComplexMatrix a = args[0].asComplexMatrix(), b = args[1].asComplexMatrix(); return Value(a.integR(b).rank()<=1); }, {"a", "b"});
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
+    auto dimFn = [assertVec](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::LIST))
+            return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(self.asObj())->vec.size()));
+        assertVec(self, "dim");
+        if (self.isObjType(ObjType::REAL_MATRIX))
+            return Value::fromInt32(static_cast<ObjRealMatrix*>(self.asObj())->mat.getRows());
+        return Value::fromInt32(static_cast<ObjComplexMatrix*>(self.asObj())->mat.getRows());
+    };
+    regMethod(VM::activeVM->listProto, "dim", {}, dimFn);
+    regMethod(VM::activeVM->matrixProto, "dim", {}, dimFn);
+
+    auto dotFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "dot"); assertVec(args[0], "dot"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); if (a.getRows() != b.getRows()) throw std::runtime_error("Math Error: Dimension mismatch."); return Value((a.conjugateTranspose() * b)(0, 0)); };
+    regMethod(VM::activeVM->matrixProto, "dot", {"b"}, dotFn);
+
+    auto vnormFn = [assertVec](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "vnorm"); ComplexMatrix v = self.asComplexMatrix(); return Value(std::sqrt((v.conjugateTranspose() * v)(0, 0).real)); };
+    regMethod(VM::activeVM->matrixProto, "vnorm", {}, vnormFn);
+
+    auto normalizeFn = [assertVec](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "normalize"); ComplexMatrix v = self.asComplexMatrix(); double len = std::sqrt((v.conjugateTranspose() * v)(0, 0).real); if (len == 0.0) throw std::runtime_error("Math Error: Cannot normalize a zero vector."); return Value(v / Complex(len)); };
+    regMethod(VM::activeVM->matrixProto, "normalize", {}, normalizeFn);
+
+    auto crossFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "cross"); assertVec(args[0], "cross"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); if (a.getRows() != 3 || b.getRows() != 3) throw std::runtime_error("Math Error: Cross product is 3D only."); std::vector<Complex> r = { a(1,0)*b(2,0)-a(2,0)*b(1,0), a(2,0)*b(0,0)-a(0,0)*b(2,0), a(0,0)*b(1,0)-a(1,0)*b(0,0) }; return Value(ComplexMatrix(3, 1, r)); };
+    regMethod(VM::activeVM->matrixProto, "cross", {"b"}, crossFn);
+
+    auto angleFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "angle"); assertVec(args[0], "angle"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); double nA = std::sqrt((a.conjugateTranspose()*a)(0,0).real), nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nA == 0.0 || nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); double ct = (a.conjugateTranspose()*b)(0,0).real/(nA*nB); ct = std::max(-1.0, std::min(1.0, ct)); return Value(std::acos(ct)); };
+    regMethod(VM::activeVM->matrixProto, "angle", {"b"}, angleFn);
+
+    auto sprojFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "sproj"); assertVec(args[0], "sproj"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); double nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nB == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value((a.conjugateTranspose()*b)(0,0).real/nB); };
+    regMethod(VM::activeVM->matrixProto, "sproj", {"b"}, sprojFn);
+
+    auto vprojFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "vproj"); assertVec(args[0], "vproj"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); Complex dBB = (b.conjugateTranspose()*b)(0,0); if (dBB.real == 0.0 && dBB.imag == 0.0) throw std::runtime_error("Math Error: Zero vector."); return Value(b * ((a.conjugateTranspose()*b)(0,0)/dBB)); };
+    regMethod(VM::activeVM->matrixProto, "vproj", {"b"}, vprojFn);
+
+    auto tripleFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "triple"); assertVec(args[0], "triple"); assertVec(args[1], "triple"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(), c = args[1].asComplexMatrix(); if (a.getRows()!=3||b.getRows()!=3||c.getRows()!=3) throw std::runtime_error("Math Error: 3D only."); std::vector<Complex> bc = { b(1,0)*c(2,0)-b(2,0)*c(1,0), b(2,0)*c(0,0)-b(0,0)*c(2,0), b(0,0)*c(1,0)-b(1,0)*c(0,0) }; return Value(a(0,0)*bc[0]+a(1,0)*bc[1]+a(2,0)*bc[2]); };
+    regMethod(VM::activeVM->matrixProto, "triple", {"b", "c"}, tripleFn);
+
+    auto isperpFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "isperp"); assertVec(args[0], "isperp"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); double innerScale = a.norm()*b.norm(); return Value(Tol::clean((a.conjugateTranspose()*b)(0,0).modulus(), innerScale)==0.0); };
+    regMethod(VM::activeVM->matrixProto, "isperp", {"b"}, isperpFn);
+
+    auto isparallelFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "isparallel"); assertVec(args[0], "isparallel"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); return Value(a.integR(b).rank()<=1); };
+    regMethod(VM::activeVM->matrixProto, "isparallel", {"b"}, isparallelFn);
 }
 
 // =================================================================
@@ -1638,83 +1681,6 @@ void BuiltinRegistry::registerBase() {
     reg("changeBase", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); }, {"v", "r"});
     reg("data", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asBigInt()); }, {"b"});
 
-    reg("bitand", { 2 }, [](const std::vector<Value>& args) -> Value { 
-        if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitand() does not support Sets.");
-        return args[0] & args[1]; 
-    }, {"a", "b"});
-    reg("bitor", { 2 }, [](const std::vector<Value>& args) -> Value { 
-        if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitor() does not support Sets.");
-        return args[0] | args[1]; 
-    }, {"a", "b"});
-    reg("bitxor", { 2 }, [](const std::vector<Value>& args) -> Value { 
-        if (args[0].isObjType(ObjType::SET) || args[1].isObjType(ObjType::SET)) throw std::runtime_error("Type Error: bitxor() does not support Sets.");
-        return bitXor(args[0], args[1]); 
-    }, {"a", "b"});
-    
-    reg("bitnot", { 1, 2 }, [](const std::vector<Value>& args) -> Value { 
-        int width = -1;
-        if (args.size() == 2) {
-            width = static_cast<int>(std::round(args[1].asDouble()));
-            if (width <= 0) throw std::runtime_error("Math Error: Bit width must be positive.");
-        }
-        const Value& a = args[0];
-        if (width > 0) {
-            if (a.isObjType(ObjType::BASENUM)) {
-                auto& base = static_cast<ObjBaseNum*>(a.asObj())->base;
-                return Value(base.bitNot(width));
-            }
-            BaseNum base(a.asBigInt(), 2);
-            return Value(base.bitNot(width).getValue());
-        } else {
-            if (a.isInt32()) return Value::fromInt32(~a.asInt32());
-            if (a.isObjType(ObjType::BASENUM)) {
-                auto& base = static_cast<ObjBaseNum*>(a.asObj())->base;
-                return Value(BaseNum(-base.getValue() - BigInt(1), base.getRadix()));
-            }
-            return Value(-a.asBigInt() - BigInt(1));
-        }
-    }, {"a", "w"});
-    
-    reg("bitshift", { 2 }, [](const std::vector<Value>& args) -> Value { 
-        int shift = static_cast<int>(std::round(args[1].asDouble())); 
-        const Value& a = args[0];
-        if (a.isObjType(ObjType::BASENUM)) {
-            auto& base = static_cast<ObjBaseNum*>(a.asObj())->base;
-            return Value(shift > 0 ? base.shiftLeft(shift) : base.shiftRight(-shift));
-        }
-        if (a.isInt32()) {
-            int32_t v = a.asInt32();
-            if (shift > 0) {
-                if (v == 0) return Value::fromInt32(0);
-                if (shift < 31) {
-                    int64_t res = static_cast<int64_t>(v) << shift;
-                    if (res >= -2147483648LL && res <= 2147483647LL) {
-                        return Value::fromInt32(static_cast<int32_t>(res));
-                    }
-                }
-            } else {
-                int rshift = -shift;
-                if (rshift < 31) return Value::fromInt32(v >> rshift);
-                return Value::fromInt32(v < 0 ? -1 : 0);
-            }
-        }
-        bool lhsIsInt = a.isInt32() || a.isBigInt() || a.isBool();
-        if (lhsIsInt) {
-            BigInt lVal = a.isBool() ? BigInt(a.asBool() ? 1 : 0) : a.asBigInt();
-            if (shift > 0) {
-                return Value(lVal * BigInt(2).pow(shift));
-            } else {
-                int rshift = -shift;
-                BigInt divisor = BigInt(2).pow(rshift);
-                BigInt res = lVal / divisor;
-                if (lVal.isNegative() && !(lVal % divisor).isZero()) {
-                    res = res - BigInt(1);
-                }
-                return Value(res);
-            }
-        }
-        throw std::runtime_error("Type Error: bitshift() not supported for these types.");
-    }, {"a", "n"});
 }
 
 // =================================================================

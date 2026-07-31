@@ -310,6 +310,16 @@ namespace jc {
 
 using namespace helpers;
 
+void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount) {
+    if (!proto) return;
+    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    closure->nativeFn = std::make_any<NativeCallable>(fn);
+    for (int i = 0; i < defaultCount; ++i) {
+        closure->defaultValues.push_back(Value::uninit());
+    }
+    proto->properties[name] = {Value(closure), false, false};
+}
+
 void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames) {
     if (!ns) return;
     auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
@@ -986,16 +996,6 @@ void BuiltinRegistry::registerPolySolver() {
 // =================================================================
 void BuiltinRegistry::registerMatrixOps() {
 
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        for (int i = 0; i < defaultCount; ++i) {
-            closure->defaultValues.push_back(Value::uninit());
-        }
-        proto->properties[name] = {Value(closure), false, false};
-    };
-
     auto matrixDispatch1 = [](const Value& arg, auto func) -> Value {
         if (arg.isObjType(ObjType::REAL_MATRIX)) return Value(func(static_cast<ObjRealMatrix*>(arg.asObj())->mat));
         if (arg.isObjType(ObjType::COMPLEX_MATRIX)) return Value(func(static_cast<ObjComplexMatrix*>(arg.asObj())->mat));
@@ -1479,16 +1479,6 @@ void BuiltinRegistry::registerMatrixOps() {
 // [6] 矩阵分解与特征值
 // =================================================================
 void BuiltinRegistry::registerDecompositions() {
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        for (int i = 0; i < defaultCount; ++i) {
-            closure->defaultValues.push_back(Value::uninit());
-        }
-        proto->properties[name] = {Value(closure), false, false};
-    };
-
     auto qrFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         ObjList* L = GcHeap::get().allocate<ObjList>();
@@ -1553,13 +1543,6 @@ void BuiltinRegistry::registerDecompositions() {
 // [7] 线性方程组
 // =================================================================
 void BuiltinRegistry::registerLinearSolvers() {
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        proto->properties[name] = {Value(closure), false, false};
-    };
-
     auto lsolveFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         ComplexMatrix A = self.asComplexMatrix(), b = args[0].asComplexMatrix();
@@ -1633,13 +1616,6 @@ void BuiltinRegistry::registerLinearSolvers() {
 // =================================================================
 void BuiltinRegistry::registerVectors() {
     auto assertVec = [](const Value& v, const std::string& f) { if (v.isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols() != 1) throw std::runtime_error(f + "() expects Nx1 column vector."); } else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols() != 1) throw std::runtime_error(f + "() expects Nx1 column vector."); } else throw std::runtime_error(f + "() requires a matrix."); };
-
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        proto->properties[name] = {Value(closure), false, false};
-    };
 
     auto dimFn = [assertVec](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -1762,13 +1738,6 @@ void BuiltinRegistry::registerBase() {
 // [12] 统计（用静态 helper，无需 this）
 // =================================================================
 void BuiltinRegistry::registerStatistics() {
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        proto->properties[name] = {Value(closure), false, false};
-    };
-
     auto meanFn = [](const std::vector<Value>&) -> Value { auto d = extractDS(helpers::nativeSelfStack.back(), "mean"); return Value(computeMean(d)); };
     regMethod(VM::activeVM->listProto, "mean", {}, meanFn);
     regMethod(VM::activeVM->matrixProto, "mean", {}, meanFn);
@@ -2720,16 +2689,6 @@ void BuiltinRegistry::registerStringFunctions() {
         return helpers::evalCallback(args[0].asString());
         }, {"expr"});
 
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        for (int i = 0; i < defaultCount; ++i) {
-            closure->defaultValues.push_back(Value::uninit());
-        }
-        proto->properties[name] = {Value(closure), false, false};
-    };
-
     auto substrFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) throw std::runtime_error("Type Error: substr() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[0].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args[1].isUninit()) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[1].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); };
     regMethod(VM::activeVM->stringProto, "substr", {"start", "length"}, substrFn, 1);
 
@@ -2800,16 +2759,6 @@ void BuiltinRegistry::registerArrayFunctions() {
     auto expectContainer = [](const std::string& name) -> Value {
         throw std::runtime_error("Type Error: " + name + "() expects a List or a Matrix (Real/Complex/String).");
         };
-
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        for (int i = 0; i < defaultCount; ++i) {
-            closure->defaultValues.push_back(Value::uninit());
-        }
-        proto->properties[name] = {Value(closure), false, false};
-    };
 
     auto firstFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -3578,13 +3527,6 @@ void BuiltinRegistry::registerDictFunctions() {
         } 
         return Value(d); 
     }, {"...pairs"});
-
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        proto->properties[name] = {Value(closure), false, false};
-    };
 
     auto keysFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -4360,16 +4302,6 @@ void BuiltinRegistry::registerHigherOrder() {
         }
         
         return safeCallFunction(cl, unpackedList->vec);
-    };
-
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        for (int i = 0; i < defaultCount; ++i) {
-            closure->defaultValues.push_back(Value::uninit());
-        }
-        proto->properties[name] = {Value(closure), false, false};
     };
 
     auto applyFn = [applyCore](const std::vector<Value>& args) -> Value {
@@ -5947,13 +5879,6 @@ void BuiltinRegistry::registerSetFunctions() {
         }
         return Value(s);
         }, {"v"});
-
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
-        if (!proto) return;
-        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
-        closure->nativeFn = std::make_any<NativeCallable>(fn);
-        proto->properties[name] = {Value(closure), false, false};
-    };
 
     // ═══ 元素操作（引用语义，原地修改）═══
     auto setAddFn = [](const std::vector<Value>& args) -> Value {

@@ -314,6 +314,7 @@ private:
     ObjNamespace* random_ns = nullptr;
 
     void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {});
+    void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0);
 };
 
 void registerPredefinedClasses();

@@ -209,6 +209,7 @@ public:
     void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {});
     Value getBuiltinClosure(const std::string& name);
     void registerBuiltinValue(const std::string& name, const Value& val) { builtinValues[name] = val; }
+    void injectModule(const std::string& name, const Value& moduleVal) { loadedModules[name] = moduleVal; }
     Value getBuiltinValue(const std::string& name) const {
         auto it = builtinValues.find(name);
         return it != builtinValues.end() ? it->second : Value::none();

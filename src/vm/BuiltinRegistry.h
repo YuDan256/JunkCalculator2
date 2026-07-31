@@ -306,6 +306,14 @@ private:
     void registerSystemShell();
     void registerTypeChecks();
     void registerSetFunctions();
+
+    ObjNamespace* sys_ns = nullptr;
+    ObjNamespace* io_ns = nullptr;
+    ObjNamespace* cas_ns = nullptr;
+    ObjNamespace* math_ns = nullptr;
+    ObjNamespace* random_ns = nullptr;
+
+    void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {});
 };
 
 void registerPredefinedClasses();

@@ -310,7 +310,47 @@ namespace jc {
 
 using namespace helpers;
 
+void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames) {
+    if (!ns) return;
+    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    closure->nativeFn = std::make_any<NativeCallable>(fn);
+    if (!paramNames.empty() && paramNames.back().substr(0, 3) == "...") {
+        closure->hasRestParam = true;
+        closure->paramNames.back() = closure->paramNames.back().substr(3);
+    } else if (arity.empty()) {
+        closure->hasRestParam = true;
+    }
+    if (!arity.empty()) {
+        int minA = *arity.begin();
+        int maxA = *arity.rbegin();
+        if (paramNames.empty()) {
+            for (int j = 0; j < maxA; ++j) {
+                closure->paramNames.push_back("_" + std::to_string(j));
+                closure->isRef.push_back(false);
+            }
+        }
+        for (int j = minA; j < maxA; ++j) {
+            closure->defaultValues.push_back(Value::uninit());
+        }
+    }
+    ns->setField(name, Value(closure));
+}
+
 void BuiltinRegistry::registerAll() {
+    sys_ns = GcHeap::get().allocate<ObjNamespace>(); sys_ns->name = "sys";
+    io_ns = GcHeap::get().allocate<ObjNamespace>(); io_ns->name = "io";
+    cas_ns = GcHeap::get().allocate<ObjNamespace>(); cas_ns->name = "cas";
+    math_ns = GcHeap::get().allocate<ObjNamespace>(); math_ns->name = "math";
+    random_ns = GcHeap::get().allocate<ObjNamespace>(); random_ns->name = "random";
+
+    if (VM::activeVM) {
+        VM::activeVM->injectModule("sys", Value(sys_ns));
+        VM::activeVM->injectModule("io", Value(io_ns));
+        VM::activeVM->injectModule("cas", Value(cas_ns));
+        VM::activeVM->injectModule("math", Value(math_ns));
+        VM::activeVM->injectModule("random", Value(random_ns));
+    }
+
     registerMath();
     registerComplex();
     registerFraction();
@@ -914,7 +954,7 @@ void BuiltinRegistry::registerFraction() {
 // [4] 多项式求解
 // =================================================================
 void BuiltinRegistry::registerPolySolver() {
-    reg("solve", { 2, 3, 4, 5 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "solve", { 2, 3, 4, 5 }, [](const std::vector<Value>& args) -> Value {
         std::vector<Complex> roots;
         if (args.size() == 2) roots = Complex::solveDegreeOne(args[0].asComplex(), args[1].asComplex());
         else if (args.size() == 3) roots = Complex::solveDegreeTwo(args[0].asComplex(), args[1].asComplex(), args[2].asComplex());
@@ -1638,38 +1678,38 @@ void BuiltinRegistry::registerNumberTheory() {
         return static_cast<int64_t>(std::round(v.asDouble()));
     };
 
-    reg("factorial", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::factorial(toInt64(args[0]))); }, {"n"});
-    reg("fib", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::fibonacci(toInt64(args[0]))); }, {"n"});
-    reg("gcd", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::gcd(toBigInt(args[0]), toBigInt(args[1]))); }, {"a", "b"});
-    reg("lcm", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::lcm(toBigInt(args[0]), toBigInt(args[1]))); }, {"a", "b"});
-    reg("digits", { 1 }, [](const std::vector<Value>& args) -> Value { 
+    regModule(math_ns, "factorial", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::factorial(toInt64(args[0]))); }, {"n"});
+    regModule(math_ns, "fib", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::fibonacci(toInt64(args[0]))); }, {"n"});
+    regModule(math_ns, "gcd", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::gcd(toBigInt(args[0]), toBigInt(args[1]))); }, {"a", "b"});
+    regModule(math_ns, "lcm", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::lcm(toBigInt(args[0]), toBigInt(args[1]))); }, {"a", "b"});
+    regModule(math_ns, "digits", { 1 }, [](const std::vector<Value>& args) -> Value { 
         if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
         if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
         if (args[0].isObjType(ObjType::BASENUM)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBaseNum*>(args[0].asObj())->base.digitCount()));
         throw std::runtime_error("Type Error: expects an integer or basenum."); 
     }, {"n"});
-    reg("isPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPrime()); }, {"n"});
-    reg("nextPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).nextPrime()); }, {"n"});
-    reg("nthPrime", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::nthPrime(toInt64(args[0]))); }, {"k"});
-    reg("primePi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).primePi())); }, {"n"});
-    reg("phi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).eulerPhi()); }, {"n"});
-    reg("divisors", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).divisorCount()); }, {"n"});
-    reg("sigma", { 1, 2 }, [toBigInt, toInt64](const std::vector<Value>& args) -> Value { int64_t k = (args.size()==2) ? toInt64(args[1]) : 1; return Value(toBigInt(args[0]).divisorSum(k)); }, {"n", "k"});
-    reg("omega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).omega())); }, {"n"});
-    reg("bigOmega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).bigOmega())); }, {"n"});
-    reg("mobius", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).mobius())); }, {"n"});
-    reg("isPerfect", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPerfect()); }, {"n"});
-    reg("mod", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "isPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPrime()); }, {"n"});
+    regModule(math_ns, "nextPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).nextPrime()); }, {"n"});
+    regModule(math_ns, "nthPrime", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::nthPrime(toInt64(args[0]))); }, {"k"});
+    regModule(math_ns, "primePi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).primePi())); }, {"n"});
+    regModule(math_ns, "phi", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).eulerPhi()); }, {"n"});
+    regModule(math_ns, "divisors", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).divisorCount()); }, {"n"});
+    regModule(math_ns, "sigma", { 1, 2 }, [toBigInt, toInt64](const std::vector<Value>& args) -> Value { int64_t k = (args.size()==2) ? toInt64(args[1]) : 1; return Value(toBigInt(args[0]).divisorSum(k)); }, {"n", "k"});
+    regModule(math_ns, "omega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).omega())); }, {"n"});
+    regModule(math_ns, "bigOmega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).bigOmega())); }, {"n"});
+    regModule(math_ns, "mobius", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).mobius())); }, {"n"});
+    regModule(math_ns, "isPerfect", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPerfect()); }, {"n"});
+    regModule(math_ns, "mod", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value {
         if ((args[0].isBigInt() || args[0].isInt32()) && (args[1].isBigInt() || args[1].isInt32())) return Value(BigInt::mathMod(toBigInt(args[0]), toBigInt(args[1])));
         if (args[0].isObjType(ObjType::FRACTION)) { const auto& f = static_cast<ObjFraction*>(args[0].asObj())->frac; if (f.getDen() == BigInt(1)) return Value(BigInt::mathMod(f.getNum(), toBigInt(args[1]))); }
         double a = args[0].asDouble(), b = args[1].asDouble();
         if (b == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
         double r = std::fmod(a, b); if (r < 0) r += std::abs(b); return Value(r);
     }, {"a", "b"});
-    reg("modpow", { 3 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::modPow(toBigInt(args[0]), toBigInt(args[1]), toBigInt(args[2]))); }, {"a", "e", "m"});
-    reg("C", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: C(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); if (k>n-k) k = n-k; BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); result = result/BigInt(i+1); } return Value(result); }, {"n", "k"});
-    reg("A", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: A(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); } return Value(result); }, {"n", "k"});
-    reg("catalan", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]); if (n<0) throw std::runtime_error("Math Error: catalan(n) requires non-negative integer."); BigInt result(1); for (int64_t i = 0; i < n; ++i) { jc::checkInterrupt(); result = result*BigInt(2*n-i); result = result/BigInt(i+1); } result = result/BigInt(n+1); return Value(result); }, {"n"});
+    regModule(math_ns, "modpow", { 3 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt::modPow(toBigInt(args[0]), toBigInt(args[1]), toBigInt(args[2]))); }, {"a", "e", "m"});
+    regModule(math_ns, "C", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: C(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); if (k>n-k) k = n-k; BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); result = result/BigInt(i+1); } return Value(result); }, {"n", "k"});
+    regModule(math_ns, "A", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: A(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); } return Value(result); }, {"n", "k"});
+    regModule(math_ns, "catalan", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]); if (n<0) throw std::runtime_error("Math Error: catalan(n) requires non-negative integer."); BigInt result(1); for (int64_t i = 0; i < n; ++i) { jc::checkInterrupt(); result = result*BigInt(2*n-i); result = result/BigInt(i+1); } result = result/BigInt(n+1); return Value(result); }, {"n"});
 }
 
 // =================================================================
@@ -1909,28 +1949,28 @@ void BuiltinRegistry::registerStatistics() {
 // [13] 随机数
 // =================================================================
 void BuiltinRegistry::registerRandom() {
-    reg("rand", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); if (args.size()==0) return Value(std::uniform_real_distribution<double>(0,1)(gen)); double lo = args[0].asDouble(), hi = args[1].asDouble(); return Value(std::uniform_real_distribution<double>(lo, hi)(gen)); }, {"min", "max"});
-    reg("randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value::fromInt32(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asDouble())), static_cast<int>(std::round(args[1].asDouble())))(gen)); }, {"min", "max"});
-    reg("randc", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); double lo=0,hi=1; if (args.size()==2){lo=args[0].asDouble();hi=args[1].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); return Value(Complex(dist(gen),dist(gen))); }, {"min", "max"});
-    reg("randmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=dist(gen); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
-    reg("randimat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c,lo=0,hi=10; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=static_cast<int>(std::round(args[2].asDouble()));hi=static_cast<int>(std::round(args[3].asDouble()));} std::uniform_int_distribution<int> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=static_cast<double>(dist(gen)); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
-    reg("randcmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<Complex> d(r*c); for (auto& v:d) v=Complex(dist(gen),dist(gen)); return Value(ComplexMatrix(r,c,d)); }, {"r", "c", "min", "max"});
-    reg("magic", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(RealMatrix::magic(static_cast<int>(std::round(args[0].asDouble())))); }, {"n"});
+    regModule(random_ns, "rand", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); if (args.size()==0) return Value(std::uniform_real_distribution<double>(0,1)(gen)); double lo = args[0].asDouble(), hi = args[1].asDouble(); return Value(std::uniform_real_distribution<double>(lo, hi)(gen)); }, {"min", "max"});
+    regModule(random_ns, "randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value::fromInt32(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asDouble())), static_cast<int>(std::round(args[1].asDouble())))(gen)); }, {"min", "max"});
+    regModule(random_ns, "randc", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); double lo=0,hi=1; if (args.size()==2){lo=args[0].asDouble();hi=args[1].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); return Value(Complex(dist(gen),dist(gen))); }, {"min", "max"});
+    regModule(random_ns, "randmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=dist(gen); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    regModule(random_ns, "randimat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c,lo=0,hi=10; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=static_cast<int>(std::round(args[2].asDouble()));hi=static_cast<int>(std::round(args[3].asDouble()));} std::uniform_int_distribution<int> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=static_cast<double>(dist(gen)); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    regModule(random_ns, "randcmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<Complex> d(r*c); for (auto& v:d) v=Complex(dist(gen),dist(gen)); return Value(ComplexMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    regModule(random_ns, "magic", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(RealMatrix::magic(static_cast<int>(std::round(args[0].asDouble())))); }, {"n"});
 }
 
 // =================================================================
 // [14] 系统工具（无状态部分）
 // =================================================================
 void BuiltinRegistry::registerSystemUtils() {
-    reg("buildIndex", { 0 }, [](const std::vector<Value>&) -> Value { BigInt::buildFileIndex(); return Value::none(); }, {});
-    reg("loadPrimes", builtinArity["buildIndex"], builtins["buildIndex"], builtinParamNames["buildIndex"]);
-    reg("mountPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Runtime Error: mountPrimes(\"path\") expects a string."); BigInt::setPrimeFilePath(args[0].asString()); return Value::none(); }, {"path"});
-    reg("extendPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { int64_t count = static_cast<int64_t>(std::round(args[0].asDouble())); if (count <= 0) throw std::runtime_error("Runtime Error: count must be positive."); BigInt::extendPrimeTable(count); return Value::none(); }, {"n"});
-    reg("convertPrimes", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString() || !args[1].isString()) throw std::runtime_error("Type Error: convertPrimes() expects two strings (txtPath, binPath)."); BigInt::convertTxtToJCP1(helpers::safeResolvePath(args[0].asString()), helpers::safeResolvePath(args[1].asString())); return Value::none(); }, {"txtPath", "binPath"});
-    reg("verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); }, {});
-    reg("sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); }, {});
+    regModule(sys_ns, "buildIndex", { 0 }, [](const std::vector<Value>&) -> Value { BigInt::buildFileIndex(); return Value::none(); }, {});
+    regModule(sys_ns, "loadPrimes", { 0 }, [](const std::vector<Value>&) -> Value { BigInt::buildFileIndex(); return Value::none(); }, {});
+    regModule(sys_ns, "mountPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Runtime Error: mountPrimes(\"path\") expects a string."); BigInt::setPrimeFilePath(args[0].asString()); return Value::none(); }, {"path"});
+    regModule(sys_ns, "extendPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { int64_t count = static_cast<int64_t>(std::round(args[0].asDouble())); if (count <= 0) throw std::runtime_error("Runtime Error: count must be positive."); BigInt::extendPrimeTable(count); return Value::none(); }, {"n"});
+    regModule(sys_ns, "convertPrimes", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString() || !args[1].isString()) throw std::runtime_error("Type Error: convertPrimes() expects two strings (txtPath, binPath)."); BigInt::convertTxtToJCP1(helpers::safeResolvePath(args[0].asString()), helpers::safeResolvePath(args[1].asString())); return Value::none(); }, {"txtPath", "binPath"});
+    regModule(sys_ns, "verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); }, {});
+    regModule(sys_ns, "sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); }, {});
 
-    reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         static uint64_t counter = 0;
         std::string prefix = "gensym";
         if (args.size() == 1 && args[0].isString()) {
@@ -1952,7 +1992,7 @@ void BuiltinRegistry::registerSystemUtils() {
         
         return Value(inst);
     }, {"prefix"});
-    reg("gc", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "gc", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         // 1. 清理符号表达式的弱引用池
         jc::SymExpr::cleanupPool();
 
@@ -1971,7 +2011,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::fromInt32(freed);
         }, {"aggressive"});
 
-    reg("gcinfo", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "gcinfo", { 0 }, [](const std::vector<Value>&) -> Value {
         auto& heap = GcHeap::get();
         std::cout << "--- GC Status ---\n"
             << "  Tracked objects:     " << heap.trackedCount() << "\n"
@@ -1981,7 +2021,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::none();
         }, {});
 
-    reg("freeze", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "freeze", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
             static_cast<ObjList*>(args[0].asObj())->is_frozen = true;
         } else if (args[0].isObjType(ObjType::DICT)) {
@@ -1996,7 +2036,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return args[0];
         }, {"obj"});
 
-    reg("isFrozen", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "isFrozen", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
             return Value(static_cast<ObjList*>(args[0].asObj())->is_frozen);
         } else if (args[0].isObjType(ObjType::DICT)) {
@@ -2011,13 +2051,13 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value(false);
         }, {"obj"});
 
-    reg("hash", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "hash", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isHashable()) throw std::runtime_error("TypeError: unhashable type.");
         size_t h = jc::ValueHasher{}(args[0]);
         return Value(BigInt(static_cast<int64_t>(h)));
         }, {"x"});
 
-    reg("clone", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "clone", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
         std::function<Value(const Value&)> deepCopy = [&](const Value& v) -> Value {
             if (v.isObjType(ObjType::LIST)) {
@@ -2096,7 +2136,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return deepCopy(args[0]);
         }, {"obj"});
 
-    reg("copy", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "copy", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
         std::function<Value(const Value&)> deepCopyExact = [&](const Value& v) -> Value {
             if (v.isObjType(ObjType::LIST)) {
@@ -2184,7 +2224,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return deepCopyExact(args[0]);
         }, {"obj"});
 
-    reg("val", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "val", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
         std::function<Value(const Value&)> deepCopyAndFreeze = [&](const Value& v) -> Value {
             if (v.isObjType(ObjType::LIST)) {
@@ -2272,7 +2312,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return deepCopyAndFreeze(args[0]);
         }, {"obj"});
 
-    reg("symconfig", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "symconfig", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {
             ObjDict* d = GcHeap::get().allocate<ObjDict>();
             GcObjGuard guard(d);
@@ -2313,7 +2353,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::none();
         }, {"dict_or_default"});
 
-    reg("setSymLimit", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "setSymLimit", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: setSymLimit() expects a string key.");
         std::string key = args[0].asString();
@@ -2354,7 +2394,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::none();
         }, {"key", "val"});
 
-    reg("__register_help", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "__register_help", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString() || !args[1].isString()) {
             throw std::runtime_error("System Error: __register_help expects two strings.");
         }
@@ -2446,12 +2486,12 @@ void BuiltinRegistry::registerControlFlow() {
         if (!std::getline(std::cin, line)) throw std::runtime_error("IO Error: Failed to read input.");
         return Value(line);
     }, {"prompt"});
-    reg("clock", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "clock", { 0 }, [](const std::vector<Value>&) -> Value {
         auto now = std::chrono::high_resolution_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
         return Value(static_cast<double>(ms) / 1e6);
     }, {});
-    reg("sleep", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "sleep", { 1 }, [](const std::vector<Value>& args) -> Value {
         int ms = static_cast<int>(std::round(args[0].asDouble() * 1000));
         if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
         return Value::none();
@@ -4775,7 +4815,7 @@ void BuiltinRegistry::registerCalculus() {
 // =================================================================
 void BuiltinRegistry::registerFileIO() {
 
-    reg("readFile", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "readFile", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: readFile() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
@@ -4785,7 +4825,7 @@ void BuiltinRegistry::registerFileIO() {
         return Value(oss.str());
         }, {"path"});
 
-    reg("writeFile", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "writeFile", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: writeFile() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
@@ -4798,7 +4838,7 @@ void BuiltinRegistry::registerFileIO() {
         return Value::none();
         }, {"path", "content"});
 
-    reg("appendFile", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "appendFile", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: appendFile() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
@@ -4811,7 +4851,7 @@ void BuiltinRegistry::registerFileIO() {
         return Value::none();
         }, {"path", "content"});
 
-    reg("readLines", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "readLines", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: readLines() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
@@ -4827,7 +4867,7 @@ void BuiltinRegistry::registerFileIO() {
         file.close(); return Value(L);
         }, {"path"});
 
-    reg("writeLines", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "writeLines", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: writeLines() expects a string path.");
         if (!args[1].isObjType(ObjType::LIST))
@@ -4843,13 +4883,13 @@ void BuiltinRegistry::registerFileIO() {
         file.close(); return Value::none();
         }, {"path", "list"});
 
-    reg("fileExists", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "fileExists", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: fileExists() expects a string path.");
         return Value(std::filesystem::exists(safeResolvePath(args[0].asString())));
         }, {"path"});
 
-    reg("deleteFile", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "deleteFile", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: deleteFile() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
@@ -4859,7 +4899,7 @@ void BuiltinRegistry::registerFileIO() {
         return Value::none();
         }, {"path"});
 
-    reg("fileSize", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "fileSize", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             throw std::runtime_error("Type Error: fileSize() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
@@ -4868,7 +4908,7 @@ void BuiltinRegistry::registerFileIO() {
         return Value(BigInt(static_cast<int64_t>(std::filesystem::file_size(path))));
         }, {"path"});
 
-    reg("listDir", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "listDir", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         std::string dir;
         if (args.size() == 1) {
             if (!args[0].isString())
@@ -4888,7 +4928,7 @@ void BuiltinRegistry::registerFileIO() {
         }, {"path"});
 
     // --- CSV ---
-    reg("readCSV", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "readCSV", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: readCSV() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
         std::string delim = ",";
@@ -4900,7 +4940,7 @@ void BuiltinRegistry::registerFileIO() {
         file.close(); return Value(rows);
         }, {"path", "delim"});
 
-    reg("readCSVMat", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "readCSVMat", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: readCSVMat() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
         std::string delim = ",";
@@ -4912,7 +4952,7 @@ void BuiltinRegistry::registerFileIO() {
         return Value(StringMatrix(static_cast<int>(rowsData.size()), static_cast<int>(maxCols), flat));
         }, {"path", "delim"});
 
-    reg("parseCSVNum", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "parseCSVNum", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: parseCSVNum() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
         std::string delim = ",";
@@ -4925,7 +4965,7 @@ void BuiltinRegistry::registerFileIO() {
         return Value(RealMatrix(static_cast<int>(rowsData.size()), static_cast<int>(maxCols), flat));
         }, {"path", "delim"});
 
-    reg("writeCSV", { 2, 3 }, [](const std::vector<Value>& args) -> Value {
+    regModule(io_ns, "writeCSV", { 2, 3 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: writeCSV() expects a string path.");
         std::string path = safeResolvePath(args[0].asString());
         std::string delim = ",";
@@ -5032,7 +5072,7 @@ void BuiltinRegistry::registerErrorHandling() {
 // =================================================================
 void BuiltinRegistry::registerSystemShell() {
 
-    reg("resetConst", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "resetConst", { 0 }, [](const std::vector<Value>&) -> Value {
         if (helpers::setGlobalCallback) {
             helpers::setGlobalCallback("PI", Value(3.14159265358979323846));
             helpers::setGlobalCallback("E", Value(2.71828182845904523536));
@@ -5043,7 +5083,7 @@ void BuiltinRegistry::registerSystemShell() {
         return Value::none();
         }, {});
 
-    reg("resetType", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "resetType", { 0 }, [](const std::vector<Value>&) -> Value {
         if (VM::activeVM) {
             auto makeType = [](BuiltinType bt) {
                 ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
@@ -5087,7 +5127,7 @@ void BuiltinRegistry::registerSystemShell() {
         return Value::none();
         }, {});
 
-    reg("setWorkspace", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "setWorkspace", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::string p = args[0].asString();
         if (p == "default") {
             g_workspacePath = "";
@@ -5103,17 +5143,17 @@ void BuiltinRegistry::registerSystemShell() {
         return Value::none();
         }, {"path"});
 
-    reg("getWorkspace", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "getWorkspace", { 0 }, [](const std::vector<Value>&) -> Value {
         return Value(g_workspacePath.empty() ? (std::filesystem::current_path() / "data").string() : g_workspacePath);
         }, {});
 
-    reg("pwd", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "pwd", { 0 }, [](const std::vector<Value>&) -> Value {
         std::cout << "  Script dir:    " << g_cwd() << std::endl;
         std::cout << "  Workspace dir: " << (g_workspacePath.empty() ? (std::filesystem::current_path() / "data").string() : g_workspacePath) << std::endl;
         return Value::none();
         }, {});
 
-    reg("cls", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "cls", { 0 }, [](const std::vector<Value>&) -> Value {
 #ifdef _WIN32
         std::system("cls");
 #else
@@ -5122,7 +5162,7 @@ void BuiltinRegistry::registerSystemShell() {
         return Value::none();
         }, {});
 
-    reg("run", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "run", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::string filepath = args[0].asString();
         std::string resolved = helpers::safeResolvePath(filepath);
         if (!std::filesystem::exists(resolved)) resolved = helpers::safeResolvePath(filepath + ".jc2");
@@ -5142,7 +5182,7 @@ void BuiltinRegistry::registerSystemShell() {
         return result;
         }, {"path"});
 
-    reg("compileCode", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "compileCode", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: compileCode() expects a string.");
         std::string code = args[0].asString();
         
@@ -5192,7 +5232,7 @@ void BuiltinRegistry::registerSystemShell() {
         return Value(cls);
         }, {"code"});
 
-    reg("compileFile", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "compileFile", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: compileFile() expects a string path.");
         std::string filepath = args[0].asString();
         std::string resolved = helpers::safeResolvePath(filepath);
@@ -5267,7 +5307,7 @@ void BuiltinRegistry::registerSystemShell() {
         return Value(proxy);
         }, {"path"});
 
-    reg("imgPlot", { 7, 8 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "imgPlot", { 7, 8 }, [](const std::vector<Value>& args) -> Value {
         auto inst = args[0].asInstance();
         auto& im = std::any_cast<std::shared_ptr<Image>&>(inst->nativeData);
         auto fn_actual = args[1].asFunction();
@@ -5294,16 +5334,21 @@ void BuiltinRegistry::registerSystemShell() {
         return args[0];
         }, {"inst", "f", "xMin", "xMax", "yMin", "yMax", "color", "thick"});
 
-    reg("breakpoint", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "breakpoint", { 0 }, [](const std::vector<Value>&) -> Value {
         if (VM::activeVM) {
             VM::activeVM->triggerDebugger();
         }
         return Value::none();
         }, {});
     // 做个兼容别名
-    reg("debugger", builtinArity["breakpoint"], builtins["breakpoint"], builtinParamNames["breakpoint"]);
+    regModule(sys_ns, "debugger", { 0 }, [](const std::vector<Value>&) -> Value {
+        if (VM::activeVM) {
+            VM::activeVM->triggerDebugger();
+        }
+        return Value::none();
+        }, {});
 
-    reg("disassemble", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "disassemble", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isFunctionClosure()) {
             throw std::runtime_error("Type Error: disassemble() expects a function.");
         }
@@ -5323,7 +5368,26 @@ void BuiltinRegistry::registerSystemShell() {
         }
         return Value::none();
         }, {"f"});
-    reg("disasm", builtinArity["disassemble"], builtins["disassemble"], builtinParamNames["disassemble"]);
+    regModule(sys_ns, "disasm", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isFunctionClosure()) {
+            throw std::runtime_error("Type Error: disassemble() expects a function.");
+        }
+        auto cl = args[0].asFunction();
+        if (cl->compiledFnIndex >= 0) {
+            if (VM::activeVM) {
+                auto fns = VM::activeVM->getCompiledFunctions();
+                if (cl->compiledFnIndex < static_cast<int>(fns.size())) {
+                    auto fn = fns[cl->compiledFnIndex];
+                    fn->chunk.disassemble(fn->name.empty() ? "Function" : fn->name);
+                } else {
+                    std::cout << "Invalid compiled function index." << std::endl;
+                }
+            }
+        } else {
+            std::cout << "Cannot disassemble native function: " << cl->rawBody << std::endl;
+        }
+        return Value::none();
+        }, {"f"});
 }
 
 // =================================================================

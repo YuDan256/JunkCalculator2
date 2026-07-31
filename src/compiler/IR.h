@@ -85,8 +85,7 @@ enum class IROp {
     BuildSet,
     IndexGet,
     IndexSet,
-    SliceGet,
-    SliceSet,
+    BuildSlice,
     ListInit,
     ListAppend,
     ListCompEnd,
@@ -216,8 +215,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::BuildSet: return "BuildSet";
         case IROp::IndexGet: return "IndexGet";
         case IROp::IndexSet: return "IndexSet";
-        case IROp::SliceGet: return "SliceGet";
-        case IROp::SliceSet: return "SliceSet";
+        case IROp::BuildSlice: return "BuildSlice";
         case IROp::ListInit: return "ListInit";
         case IROp::ListAppend: return "ListAppend";
         case IROp::ListCompEnd: return "ListCompEnd";

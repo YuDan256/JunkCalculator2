@@ -119,8 +119,7 @@ enum class OpCode : uint8_t {
     DICT_APPEND,    // R(A)[R(B)] = R(C)
     INDEX_GET,      // R(A) := R(B)[R(B+1)...R(B+C)] [Ext A, B, C]
     INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(A+C+1) [Ext A, C]
-    SLICE_GET,      // R(A) := slice_get(R(B), dims = C, args = R(B+1)...) [Ext A, B, C]
-    SLICE_SET,      // slice_set(R(A), dims = C, args = R(A+1)..., val = R(A + 3*C + 1)) [Ext A, C]
+    BUILD_SLICE,    // R(A) := slice(start=R(B), end=R(B+1), step=R(B+2)) [Ext B]
 
     // 字符串操作
     STRINGIFY,      // R(A) := str(R(B))
@@ -242,8 +241,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::DICT_APPEND: return "DICT_APPEND";
         case OpCode::INDEX_GET: return "INDEX_GET";
         case OpCode::INDEX_SET: return "INDEX_SET";
-        case OpCode::SLICE_GET: return "SLICE_GET";
-        case OpCode::SLICE_SET: return "SLICE_SET";
+        case OpCode::BUILD_SLICE: return "BUILD_SLICE";
         case OpCode::STRINGIFY: return "STRINGIFY";
         case OpCode::CONCAT_STRINGS: return "CONCAT_STRINGS";
         case OpCode::FORMAT_STRING: return "FORMAT_STRING";
@@ -465,7 +463,7 @@ public:
             case OpCode::BUILD_LIST: case OpCode::BUILD_DICT: case OpCode::BUILD_SET:
             case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
             case OpCode::INDEX_GET: case OpCode::INDEX_SET: 
-            case OpCode::SLICE_GET: case OpCode::SLICE_SET: 
+            case OpCode::BUILD_SLICE:
             case OpCode::ITER_INIT: case OpCode::IN: case OpCode::MATCH_SHAPE:
             case OpCode::DICT_APPEND:
                 std::cout << "R(" << a << ") " << b << " " << c;

@@ -573,33 +573,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
 
                 IRNode* finalNode = nullptr;
-                if (hasSlice) {
-                    std::vector<IRNode*> sliceArgs;
-                    for (auto& idxExpr : chain[0]->indices) {
-                        if (auto* slice = dynamic_cast<SliceExpr*>(idxExpr.get())) {
-                            if (slice->start) { slice->start->accept(*this); sliceArgs.push_back(lastValue); }
-                            else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-                            
-                            if (slice->end) { slice->end->accept(*this); sliceArgs.push_back(lastValue); }
-                            else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-                            
-                            if (slice->step) { slice->step->accept(*this); sliceArgs.push_back(lastValue); }
-                            else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-                        } else {
-                            idxExpr->accept(*this); sliceArgs.push_back(lastValue);
-                            IRNode* n1 = graph->createConstant(Value::none()); n1->setControl(currentControl); sliceArgs.push_back(n1);
-                            IRNode* n2 = graph->createConstant(Value(0.0)); n2->setControl(currentControl); sliceArgs.push_back(n2);
-                        }
-                    }
-                    IRNode* node = graph->createValueNode(IROp::SliceSet);
-                    node->setControl(currentControl);
-                    node->addData(objNode);
-                    for (auto* arg : sliceArgs) node->addData(arg);
-                    node->addData(valNode);
-                    node->payload1 = static_cast<uint32_t>(chain[0]->indices.size());
-                    currentControl = node;
-                    finalNode = node;
-                } else {
+                {
                     std::vector<std::vector<IRNode*>> allIndices;
                     for (size_t i = 0; i < chain.size(); ++i) {
                         std::vector<IRNode*> levelIndices;
@@ -609,7 +583,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         }
                         allIndices.push_back(levelIndices);
                     }
-                    
+                
                     int depth = static_cast<int>(chain.size());
                     if (depth == 1) {
                         IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
@@ -623,7 +597,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     } else {
                         std::vector<IRNode*> chainObjs;
                         chainObjs.push_back(objNode);
-                        
+                    
                         for (size_t i = 0; i < chain.size() - 1; ++i) {
                             IRNode* getNode = graph->createValueNode(IROp::IndexGet);
                             getNode->setControl(currentControl);
@@ -633,7 +607,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             currentControl = getNode;
                             chainObjs.push_back(getNode);
                         }
-                        
+                    
                         IRNode* setNode = graph->createValueNode(IROp::IndexSet);
                         setNode->setControl(currentControl);
                         setNode->addData(chainObjs.back());
@@ -642,7 +616,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
                         currentControl = setNode;
                         finalNode = setNode;
-                        
+                    
                         for (int level = depth - 2; level >= 0; --level) {
                             IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
                             backSetNode->setControl(currentControl);
@@ -787,13 +761,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 IRNode* stepNode = graph->createConstant(Value::none());
                 stepNode->setControl(currentControl);
                 
-                IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
+                IRNode* buildSliceNode = graph->createValueNode(IROp::BuildSlice);
+                buildSliceNode->setControl(currentControl);
+                buildSliceNode->addData(startNode);
+                buildSliceNode->addData(endNode);
+                buildSliceNode->addData(stepNode);
+                currentControl = buildSliceNode;
+
+                IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
                 sliceNode->setControl(currentControl);
                 sliceNode->addData(valNode);
-                sliceNode->addData(startNode);
-                sliceNode->addData(endNode);
-                sliceNode->addData(stepNode);
+                sliceNode->addData(buildSliceNode);
                 sliceNode->payload1 = 1;
+                sliceNode->payload2 = 0;
                 currentControl = sliceNode;
                 
                 if (restPat->name.lexeme != "_") {
@@ -844,13 +824,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             IRNode* stepNode = graph->createConstant(Value::none());
             stepNode->setControl(currentControl);
             
-            IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
+            IRNode* buildSliceNode = graph->createValueNode(IROp::BuildSlice);
+            buildSliceNode->setControl(currentControl);
+            buildSliceNode->addData(startNode);
+            buildSliceNode->addData(endNode);
+            buildSliceNode->addData(stepNode);
+            currentControl = buildSliceNode;
+
+            IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
             sliceNode->setControl(currentControl);
             sliceNode->addData(valNode);
-            sliceNode->addData(startNode);
-            sliceNode->addData(endNode);
-            sliceNode->addData(stepNode);
+            sliceNode->addData(buildSliceNode);
             sliceNode->payload1 = 1;
+            sliceNode->payload2 = 0;
             currentControl = sliceNode;
             
             auto it = patternSymbols->find(restPat);
@@ -967,16 +953,27 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         IRNode* cStepNode = graph->createConstant(Value::none());
                         cStepNode->setControl(currentControl);
 
-                        IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
+                        IRNode* rSliceNode = graph->createValueNode(IROp::BuildSlice);
+                        rSliceNode->setControl(currentControl);
+                        rSliceNode->addData(rStartNode);
+                        rSliceNode->addData(rEndNode);
+                        rSliceNode->addData(rStepNode);
+                        currentControl = rSliceNode;
+
+                        IRNode* cSliceNode = graph->createValueNode(IROp::BuildSlice);
+                        cSliceNode->setControl(currentControl);
+                        cSliceNode->addData(cStartNode);
+                        cSliceNode->addData(cEndNode);
+                        cSliceNode->addData(cStepNode);
+                        currentControl = cSliceNode;
+
+                        IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
                         sliceNode->setControl(currentControl);
                         sliceNode->addData(valNode);
-                        sliceNode->addData(rStartNode);
-                        sliceNode->addData(rEndNode);
-                        sliceNode->addData(rStepNode);
-                        sliceNode->addData(cStartNode);
-                        sliceNode->addData(cEndNode);
-                        sliceNode->addData(cStepNode);
+                        sliceNode->addData(rSliceNode);
+                        sliceNode->addData(cSliceNode);
                         sliceNode->payload1 = 2;
+                        sliceNode->payload2 = 0;
                         currentControl = sliceNode;
 
                         auto it = patternSymbols->find(restPat);
@@ -1036,16 +1033,27 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             IRNode* cStepNode = graph->createConstant(Value::none());
             cStepNode->setControl(currentControl);
 
-            IRNode* sliceNode = graph->createValueNode(IROp::SliceGet);
+            IRNode* rSliceNode = graph->createValueNode(IROp::BuildSlice);
+            rSliceNode->setControl(currentControl);
+            rSliceNode->addData(rStartNode);
+            rSliceNode->addData(rEndNode);
+            rSliceNode->addData(rStepNode);
+            currentControl = rSliceNode;
+
+            IRNode* cSliceNode = graph->createValueNode(IROp::BuildSlice);
+            cSliceNode->setControl(currentControl);
+            cSliceNode->addData(cStartNode);
+            cSliceNode->addData(cEndNode);
+            cSliceNode->addData(cStepNode);
+            currentControl = cSliceNode;
+
+            IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
             sliceNode->setControl(currentControl);
             sliceNode->addData(valNode);
-            sliceNode->addData(rStartNode);
-            sliceNode->addData(rEndNode);
-            sliceNode->addData(rStepNode);
-            sliceNode->addData(cStartNode);
-            sliceNode->addData(cEndNode);
-            sliceNode->addData(cStepNode);
+            sliceNode->addData(rSliceNode);
+            sliceNode->addData(cSliceNode);
             sliceNode->payload1 = 2;
+            sliceNode->payload2 = 0;
             currentControl = sliceNode;
 
             auto it = patternSymbols->find(restPat);
@@ -2364,44 +2372,8 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
 }
     
 void IRBuilder::visitIndexAccess(IndexAccess* expr) {
-    bool hasSlice = false;
-    for (auto& idx : expr->indices) {
-        if (dynamic_cast<SliceExpr*>(idx.get())) {
-            hasSlice = true;
-            break;
-        }
-    }
-
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
-
-    if (hasSlice) {
-        std::vector<IRNode*> sliceArgs;
-        for (auto& idx : expr->indices) {
-            if (auto* slice = dynamic_cast<SliceExpr*>(idx.get())) {
-                if (slice->start) { slice->start->accept(*this); sliceArgs.push_back(lastValue); }
-                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-                
-                if (slice->end) { slice->end->accept(*this); sliceArgs.push_back(lastValue); }
-                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-                
-                if (slice->step) { slice->step->accept(*this); sliceArgs.push_back(lastValue); }
-                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-            } else {
-                idx->accept(*this); sliceArgs.push_back(lastValue);
-                IRNode* n1 = graph->createConstant(Value::none()); n1->setControl(currentControl); sliceArgs.push_back(n1);
-                IRNode* n2 = graph->createConstant(Value(0.0)); n2->setControl(currentControl); sliceArgs.push_back(n2);
-            }
-        }
-        IRNode* node = graph->createValueNode(IROp::SliceGet);
-        node->setControl(currentControl);
-        node->addData(objNode);
-        for (auto* arg : sliceArgs) node->addData(arg);
-        node->payload1 = static_cast<uint32_t>(expr->indices.size());
-        currentControl = node;
-        lastValue = node;
-        return;
-    }
 
     std::vector<IRNode*> indices;
     for (auto& idx : expr->indices) {
@@ -2444,78 +2416,11 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
     }
     IRNode* rootObjNode = lastValue;
 
-    bool hasSlice = false;
-    if (expr->indexChain.size() == 1) {
-        for (auto& idx : expr->indexChain[0]) {
-            if (dynamic_cast<SliceExpr*>(idx.get())) {
-                hasSlice = true;
-                break;
-            }
-        }
-    }
-
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
 
     if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
         if (valNode->name.empty()) valNode->name = expr->name.lexeme;
-    }
-
-    if (hasSlice) {
-        std::vector<IRNode*> sliceArgs;
-        for (auto& idx : expr->indexChain[0]) {
-            if (auto* slice = dynamic_cast<SliceExpr*>(idx.get())) {
-                if (slice->start) { slice->start->accept(*this); sliceArgs.push_back(lastValue); }
-                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-                
-                if (slice->end) { slice->end->accept(*this); sliceArgs.push_back(lastValue); }
-                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-                
-                if (slice->step) { slice->step->accept(*this); sliceArgs.push_back(lastValue); }
-                else { IRNode* n = graph->createConstant(Value::none()); n->setControl(currentControl); sliceArgs.push_back(n); }
-            } else {
-                idx->accept(*this); sliceArgs.push_back(lastValue);
-                IRNode* n1 = graph->createConstant(Value::none()); n1->setControl(currentControl); sliceArgs.push_back(n1);
-                IRNode* n2 = graph->createConstant(Value(0.0)); n2->setControl(currentControl); sliceArgs.push_back(n2);
-            }
-        }
-        IRNode* node = graph->createValueNode(IROp::SliceSet);
-        node->setControl(currentControl);
-        node->addData(rootObjNode);
-        for (auto* arg : sliceArgs) node->addData(arg);
-        node->addData(valNode);
-        node->payload1 = static_cast<uint32_t>(expr->indexChain[0].size());
-        currentControl = node;
-        
-        if (!expr->hasObjectExpr()) {
-            auto it = exprSymbols->find(expr);
-            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(expr->name.lexeme, node, sym, false, false);
-        } else if (dotParentNode) {
-            IROp setOp = IROp::SetProperty;
-            if (!classStack.empty()) {
-                auto* dotTarget = static_cast<DotAccess*>(expr->objectExpr.get());
-                bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
-                bool isClassVar = false;
-                if (auto* objVar = dynamic_cast<Variable*>(dotTarget->object.get())) {
-                    if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
-                        isClassVar = true;
-                    }
-                }
-                if ((isSelf || isClassVar) && classStack.back().privateMembers.count(dotPropName)) {
-                    setOp = IROp::SetPrivate;
-                }
-            }
-
-            IRNode* setProp = graph->createValueNode(setOp);
-            setProp->setControl(currentControl);
-            setProp->addData(dotParentNode);
-            setProp->addData(node);
-            setProp->name = dotPropName;
-            currentControl = setProp;
-        }
-        lastValue = valNode;
-        return;
     }
 
     std::vector<std::vector<IRNode*>> indicesTmp(expr->indexChain.size());
@@ -4647,8 +4552,41 @@ void IRBuilder::visitSetLiteral(SetLiteral* expr) {
     lastValue = node;
 }
 
-void IRBuilder::visitSliceExpr(SliceExpr*) {
-    error("Syntax Error: Slice expression should be handled by visitIndexAccess.");
+void IRBuilder::visitSliceExpr(SliceExpr* expr) {
+    IRNode* startNode = nullptr;
+    if (expr->start) {
+        expr->start->accept(*this);
+        startNode = lastValue;
+    } else {
+        startNode = graph->createConstant(Value::none());
+        startNode->setControl(currentControl);
+    }
+
+    IRNode* endNode = nullptr;
+    if (expr->end) {
+        expr->end->accept(*this);
+        endNode = lastValue;
+    } else {
+        endNode = graph->createConstant(Value::none());
+        endNode->setControl(currentControl);
+    }
+
+    IRNode* stepNode = nullptr;
+    if (expr->step) {
+        expr->step->accept(*this);
+        stepNode = lastValue;
+    } else {
+        stepNode = graph->createConstant(Value::none());
+        stepNode->setControl(currentControl);
+    }
+
+    IRNode* node = graph->createValueNode(IROp::BuildSlice);
+    node->setControl(currentControl);
+    node->addData(startNode);
+    node->addData(endNode);
+    node->addData(stepNode);
+    currentControl = node;
+    lastValue = node;
 }
     
 void IRBuilder::visitSequenceExpr(SequenceExpr* expr) {

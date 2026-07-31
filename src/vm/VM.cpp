@@ -6744,17 +6744,24 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
-            case OpCode::SLICE_GET: {
+            case OpCode::BUILD_SLICE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
-                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
-                execSliceGet(a, b, static_cast<uint8_t>(c));
-                break;
-            }
-            case OpCode::SLICE_SET: {
-                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
-                execSliceSet(a, c, static_cast<uint8_t>(c));
+                
+                ObjSlice* slice = GcHeap::get().allocate<ObjSlice>();
+                getReg(a) = Value(slice); // ★ 立即 Root 防止 GC 误杀
+                
+                auto readInt = [&](int idx) -> int64_t {
+                    Value v = getReg(b + idx);
+                    if (v.isNone()) return ObjSlice::SLICE_NONE;
+                    if (v.isInt32()) return v.asInt32();
+                    if (v.isDouble()) return static_cast<int64_t>(std::round(v.asDoubleRaw()));
+                    return static_cast<int64_t>(std::round(v.asDouble()));
+                };
+                
+                slice->start = readInt(0);
+                slice->end = readInt(1);
+                slice->step = readInt(2);
                 break;
             }
             case OpCode::DEFER: {

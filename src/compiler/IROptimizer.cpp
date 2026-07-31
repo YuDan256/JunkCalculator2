@@ -44,7 +44,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
         case IROp::InvokePrivate: case IROp::TailInvokePrivate:
         case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
-        case IROp::IndexGet: case IROp::IndexSet: case IROp::SliceGet: case IROp::SliceSet: 
+        case IROp::IndexGet: case IROp::IndexSet: case IROp::BuildSlice: 
         case IROp::GetProperty: case IROp::GetPrivate: case IROp::TryGetProperty: 
         case IROp::SetProperty: case IROp::SetPrivate: case IROp::DefinePrivate: case IROp::DefinePrivateConst:
         case IROp::DefineProp: case IROp::DefinePropConst:

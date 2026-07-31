@@ -2448,7 +2448,7 @@ void BuiltinRegistry::registerArrayFunctions() {
         proto->properties[name] = {Value(closure), false, false};
     };
 
-    auto firstFn = [expectContainer](const std::vector<Value>& args) -> Value {
+    auto firstFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
@@ -2475,7 +2475,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->listProto, "first", {}, firstFn);
     regMethod(VM::activeVM->matrixProto, "first", {}, firstFn);
 
-    auto lastFn = [expectContainer](const std::vector<Value>& args) -> Value {
+    auto lastFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
@@ -2505,7 +2505,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->listProto, "last", {}, lastFn);
     regMethod(VM::activeVM->matrixProto, "last", {}, lastFn);
 
-    auto popFn = [expectContainer](const std::vector<Value>& args) -> Value {
+    auto popFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
@@ -2537,7 +2537,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->listProto, "pop", {}, popFn);
     regMethod(VM::activeVM->matrixProto, "pop", {}, popFn);
 
-    auto shiftFn = [expectContainer](const std::vector<Value>& args) -> Value {
+    auto shiftFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
@@ -2799,7 +2799,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->listProto, "slice", {"start", "end"}, sliceFn);
     regMethod(VM::activeVM->matrixProto, "slice", {"start", "end"}, sliceFn);
 
-    auto reverseFn = [expectContainer](const std::vector<Value>& args) -> Value {
+    auto reverseFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isString()) {
             ObjString* objStr = self.asObjString();

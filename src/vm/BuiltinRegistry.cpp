@@ -6132,7 +6132,7 @@ void BuiltinRegistry::registerCAS() {
         throw std::runtime_error("TypeError: " + funcName + "() expects a variable name (string or symbol).");
     };
 
-    regModule(cas_ns, "sym", { 1 }, [getVarName](const std::vector<Value>& args) -> Value {
+    reg("sym", { 1 }, [getVarName](const std::vector<Value>& args) -> Value {
         return Value(SymExpr::makeVar(getVarName(args[0], "sym")));
         }, {"name"});
 

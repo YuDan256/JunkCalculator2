@@ -939,7 +939,7 @@
       "",
       "  Symbolic Variables & Expressions",
       "  ──────────────────────",
-      "    x = cas.sym(\"x\")             Create a symbolic variable",
+      "    x = sym(\"x\")                 Create a symbolic variable",
       "    expr = x^2 + 2*x + 1         Build exact symbolic expressions",
       "    cas.subs(expr, x, 5)         Substitute x with 5 → 36 (Strings like \"x\" also work!)",
       "    cas.subs(x + y, [x, y], [1, 2]) Multiple substitution",
@@ -4663,10 +4663,10 @@
       ]
     },
     "sym": {
-      "signature": "cas.sym(name)",
+      "signature": "sym(name)",
       "desc": "Creates a symbolic variable for CAS operations.",
       "examples": [
-        "x = cas.sym(\"x\")"
+        "x = sym(\"x\")"
       ]
     },
     "diff": {

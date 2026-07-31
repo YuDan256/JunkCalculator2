@@ -2720,10 +2720,13 @@ void BuiltinRegistry::registerStringFunctions() {
         return helpers::evalCallback(args[0].asString());
         }, {"expr"});
 
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
         if (!proto) return;
         auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
         closure->nativeFn = std::make_any<NativeCallable>(fn);
+        for (int i = 0; i < defaultCount; ++i) {
+            closure->defaultValues.push_back(Value::uninit());
+        }
         proto->properties[name] = {Value(closure), false, false};
     };
 
@@ -2798,10 +2801,13 @@ void BuiltinRegistry::registerArrayFunctions() {
         throw std::runtime_error("Type Error: " + name + "() expects a List or a Matrix (Real/Complex/String).");
         };
 
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
         if (!proto) return;
         auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
         closure->nativeFn = std::make_any<NativeCallable>(fn);
+        for (int i = 0; i < defaultCount; ++i) {
+            closure->defaultValues.push_back(Value::uninit());
+        }
         proto->properties[name] = {Value(closure), false, false};
     };
 
@@ -4036,10 +4042,13 @@ void BuiltinRegistry::registerListConversion() {
         return Value(RealMatrix(n, 2, flat));
         }, {"a", "b"});
 
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
         if (!proto) return;
         auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
         closure->nativeFn = std::make_any<NativeCallable>(fn);
+        for (int i = 0; i < defaultCount; ++i) {
+            closure->defaultValues.push_back(Value::uninit());
+        }
         proto->properties[name] = {Value(closure), false, false};
     };
 
@@ -4353,10 +4362,13 @@ void BuiltinRegistry::registerHigherOrder() {
         return safeCallFunction(cl, unpackedList->vec);
     };
 
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
         if (!proto) return;
         auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
         closure->nativeFn = std::make_any<NativeCallable>(fn);
+        for (int i = 0; i < defaultCount; ++i) {
+            closure->defaultValues.push_back(Value::uninit());
+        }
         proto->properties[name] = {Value(closure), false, false};
     };
 

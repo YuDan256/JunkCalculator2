@@ -349,10 +349,7 @@ namespace jc {
         ObjSuper* asSuperProxy() const;
         static Value makeSuperProxy(ObjInstance* inst, ObjClass* parent);
 
-        ObjSlice* asSlice() const {
-            if (!isSlice()) throw std::runtime_error("Type Error: Expected a slice.");
-            return static_cast<ObjSlice*>(asObj());
-        }
+        ObjSlice* asSlice() const;
 
         static Value fromFraction(const Fraction& f) {
             if (f.getDen() == BigInt(1)) return Value(f.getNum());
@@ -641,6 +638,14 @@ namespace jc {
         ObjSym(SymExpr s) : sym(std::move(s)) { type = ObjType::SYMBOLIC; }
     };
 
+    struct ObjSlice : public Obj {
+        static constexpr int64_t SLICE_NONE = INT64_MIN;
+        int64_t start;
+        int64_t end;
+        int64_t step;
+        ObjSlice() : start(SLICE_NONE), end(SLICE_NONE), step(SLICE_NONE) { type = ObjType::SLICE; }
+    };
+
     inline Value::Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {
         if (val.ptr && val.ptr->getType() == SymType::NUM) {
             auto numNode = std::static_pointer_cast<SymNum>(val.ptr);
@@ -683,6 +688,11 @@ namespace jc {
     inline ObjSuper* Value::asSuperProxy() const {
         if (!isSuperProxy()) throw std::runtime_error("Type Error: Expected super proxy.");
         return static_cast<ObjSuper*>(asObj());
+    }
+
+    inline ObjSlice* Value::asSlice() const {
+        if (!isSlice()) throw std::runtime_error("Type Error: Expected a slice.");
+        return static_cast<ObjSlice*>(asObj());
     }
 
     inline Value Value::makeSuperProxy(ObjInstance* inst, ObjClass* parent) {
@@ -1596,7 +1606,8 @@ namespace jc {
             case ObjType::TYPE_DEF: return "<type '" + static_cast<ObjTypeDef*>(obj)->name() + "'>";
             case ObjType::SLICE: {
                 auto slice = static_cast<ObjSlice*>(obj);
-                return "slice(" + slice->start.toJC2Expression() + ", " + slice->end.toJC2Expression() + ", " + slice->step.toJC2Expression() + ")";
+                auto fmt = [](int64_t v) { return v == ObjSlice::SLICE_NONE ? std::string("none()") : std::to_string(v); };
+                return "slice(" + fmt(slice->start) + ", " + fmt(slice->end) + ", " + fmt(slice->step) + ")";
             }
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
@@ -1756,11 +1767,8 @@ namespace jc {
             case ObjType::SUPER_PROXY:
             case ObjType::UPVALUE:
             case ObjType::TYPE_DEF:
+            case ObjType::SLICE:
                 return true;
-            case ObjType::SLICE: {
-                auto slice = static_cast<ObjSlice*>(obj);
-                return slice->start.isHashable() && slice->end.isHashable() && slice->step.isHashable();
-            }
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
                 if (!list->is_frozen) return false;
@@ -2003,7 +2011,7 @@ namespace jc {
                 case ObjType::SLICE: {
                     auto a = static_cast<ObjSlice*>(lobj);
                     auto b = static_cast<ObjSlice*>(robj);
-                    return equals(a->start, b->start) && equals(a->end, b->end) && equals(a->step, b->step);
+                    return a->start == b->start && a->end == b->end && a->step == b->step;
                 }
                 case ObjType::TYPE_DEF: {
                     auto a = static_cast<ObjTypeDef*>(lobj);
@@ -2485,13 +2493,11 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         case ObjType::TYPE_DEF: os << "<type '" << static_cast<ObjTypeDef*>(obj)->name() << "'>"; break;
         case ObjType::SLICE: {
             auto slice = static_cast<ObjSlice*>(obj);
+            auto printArg = [&os](int64_t v) { if (v == ObjSlice::SLICE_NONE) os << "none"; else os << v; };
             os << "slice(";
-            try { printNested(slice->start); } catch (...) { os << "?"; }
-            os << ", ";
-            try { printNested(slice->end); } catch (...) { os << "?"; }
-            os << ", ";
-            try { printNested(slice->step); } catch (...) { os << "?"; }
-            os << ")";
+            printArg(slice->start); os << ", ";
+            printArg(slice->end); os << ", ";
+            printArg(slice->step); os << ")";
             break;
         }
         case ObjType::LIST: {
@@ -2716,9 +2722,9 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         case ObjType::TYPE_DEF: return sipHash24String(static_cast<ObjTypeDef*>(obj)->name());
         case ObjType::SLICE: {
             auto slice = static_cast<ObjSlice*>(obj);
-            size_t h1 = ValueHasher{}(slice->start);
-            size_t h2 = ValueHasher{}(slice->end);
-            size_t h3 = ValueHasher{}(slice->step);
+            size_t h1 = sipHash24Double(static_cast<double>(slice->start));
+            size_t h2 = sipHash24Double(static_cast<double>(slice->end));
+            size_t h3 = sipHash24Double(static_cast<double>(slice->step));
             size_t h = h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
             return h ^ (h3 + 0x9e3779b9 + (h << 6) + (h >> 2));
         }
@@ -2884,13 +2890,6 @@ inline void GcHeap::markObj(Obj* obj) {
                     markObj(std::get<ObjClass*>(t));
                 }
             }
-            break;
-        }
-        case ObjType::SLICE: {
-            auto slice = static_cast<ObjSlice*>(obj);
-            markValue(slice->start);
-            markValue(slice->end);
-            markValue(slice->step);
             break;
         }
         default: break;

@@ -43,18 +43,6 @@ namespace jc {
         virtual void clearTotal() { clear(); } // 供 GC 调用，无视冻结状态
     };
 
-    struct ObjSlice : public Obj {
-        Value start;
-        Value end;
-        Value step;
-        ObjSlice() { type = ObjType::SLICE; }
-        void clearTotal() override {
-            start = Value();
-            end = Value();
-            step = Value();
-        }
-    };
-
     class GcHeap {
     public:
         bool isSweeping_ = false; // ★ 新增：防止 freeObj 与 sweep 冲突

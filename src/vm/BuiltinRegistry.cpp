@@ -2757,9 +2757,18 @@ void BuiltinRegistry::registerStringFunctions() {
 // =================================================================
 void BuiltinRegistry::registerArrayFunctions() {
     reg("slice", { 0, 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
-        Value start = args.size() > 0 ? args[0] : Value::none();
-        Value end = args.size() > 1 ? args[1] : Value::none();
-        Value step = args.size() > 2 ? args[2] : Value::none();
+        auto checkArg = [](const Value& v, const std::string& name) -> int64_t {
+            if (v.isNone()) return ObjSlice::SLICE_NONE;
+            if (!v.isNumber() && !v.isBigInt()) {
+                throw std::runtime_error("Type Error: slice " + name + " must be a number or none.");
+            }
+            if (v.isDouble()) return static_cast<int64_t>(std::round(v.asDouble()));
+            if (v.isInt32()) return v.asInt32();
+            return v.asBigInt().toInt64();
+        };
+        int64_t start = args.size() > 0 ? checkArg(args[0], "start") : ObjSlice::SLICE_NONE;
+        int64_t end = args.size() > 1 ? checkArg(args[1], "end") : ObjSlice::SLICE_NONE;
+        int64_t step = args.size() > 2 ? checkArg(args[2], "step") : ObjSlice::SLICE_NONE;
         ObjSlice* sliceObj = GcHeap::get().allocate<ObjSlice>();
         sliceObj->start = start;
         sliceObj->end = end;

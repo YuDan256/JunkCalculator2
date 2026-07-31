@@ -556,6 +556,7 @@ namespace jc {
                         case BuiltinType::NUMERIC: res += "numeric"; break;
                         case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
                         case BuiltinType::TYPE_DEF: res += "type"; break;
+                        case BuiltinType::SLICE: res += "slice"; break;
                         default: res += "unknown"; break;
                     }
                 } else {

@@ -6107,7 +6107,21 @@ void BuiltinRegistry::registerCAS() {
     };
 
     reg("sym", { 1 }, [getVarName](const std::vector<Value>& args) -> Value {
-        return Value(SymExpr::makeVar(getVarName(args[0], "sym")));
+        std::string name = getVarName(args[0], "sym");
+        if (name.empty()) throw std::runtime_error("Value Error: sym() variable name cannot be empty.");
+        
+        unsigned char first = static_cast<unsigned char>(name[0]);
+        if (!std::isalpha(first) && first != '_' && first < 128) {
+            throw std::runtime_error("Value Error: sym() expects a valid identifier name.");
+        }
+        for (size_t i = 1; i < name.size(); ++i) {
+            unsigned char c = static_cast<unsigned char>(name[i]);
+            if (!std::isalnum(c) && c != '_' && c < 128) {
+                throw std::runtime_error("Value Error: sym() expects a valid identifier name.");
+            }
+        }
+        
+        return Value(SymExpr::makeVar(name));
         }, {"name"});
 
     regModule(cas_ns, "RootOf", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {

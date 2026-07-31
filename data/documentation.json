@@ -4679,7 +4679,7 @@
     },
     "sym": {
       "signature": "sym(name)",
-      "desc": "Creates a symbolic variable for CAS operations.",
+      "desc": "Creates a symbolic variable for CAS operations. The name must be a valid identifier.",
       "examples": [
         "x = sym(\"x\")"
       ]

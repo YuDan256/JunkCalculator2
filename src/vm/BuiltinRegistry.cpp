@@ -930,6 +930,13 @@ void BuiltinRegistry::registerPolySolver() {
 // =================================================================
 void BuiltinRegistry::registerMatrixOps() {
 
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
     auto matrixDispatch1 = [](const Value& arg, auto func) -> Value {
         if (arg.isObjType(ObjType::REAL_MATRIX)) return Value(func(static_cast<ObjRealMatrix*>(arg.asObj())->mat));
         if (arg.isObjType(ObjType::COMPLEX_MATRIX)) return Value(func(static_cast<ObjComplexMatrix*>(arg.asObj())->mat));
@@ -1098,17 +1105,63 @@ void BuiltinRegistry::registerMatrixOps() {
     }, {"mask", "A", "B"});
 
     // --- 性质 ---
-    reg("det", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.determinant()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.determinant()); throw std::runtime_error("Type Error: det() requires a matrix."); }, {"A"});
-    reg("inv", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.inverse()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.inverse()); throw std::runtime_error("Type Error: inv() requires a matrix."); }, {"A"});
-    reg("trans", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.transpose()); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.transpose()); throw std::runtime_error("Type Error: trans() requires a matrix."); }, {"A"});
-    reg("gauss", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.gaussianElimination().first); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.gaussianElimination().first); throw std::runtime_error("Type Error: gauss() requires a matrix."); }, {"A"});
+    auto detFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.determinant());
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.determinant());
+        throw std::runtime_error("Type Error: det() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "det", {}, detFn);
 
-    reg("rank", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return Value::fromInt32(m.rank()); }); }, {"A"});
-    reg("tr", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.trace(); }); }, {"A"});
-    reg("norm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.norm(); }); }, {"A"});
-    reg("cond", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.condition(); }); }, {"A"});
-    reg("adj", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.adjugate(); }); }, {"A"});
-    reg("perm", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.permanent(); }); }, {"A"});
+    auto invFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.inverse());
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.inverse());
+        throw std::runtime_error("Type Error: inv() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "inv", {}, invFn);
+
+    auto transFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.transpose());
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.transpose());
+        if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.transpose());
+        throw std::runtime_error("Type Error: trans() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "trans", {}, transFn);
+
+    auto gaussFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.gaussianElimination().first);
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.gaussianElimination().first);
+        throw std::runtime_error("Type Error: gauss() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "gauss", {}, gaussFn);
+
+    auto matrixDispatchProto = [](const Value& arg, auto func) -> Value {
+        if (arg.isObjType(ObjType::REAL_MATRIX)) return Value(func(static_cast<ObjRealMatrix*>(arg.asObj())->mat));
+        if (arg.isObjType(ObjType::COMPLEX_MATRIX)) return Value(func(static_cast<ObjComplexMatrix*>(arg.asObj())->mat));
+        throw std::runtime_error("Type Error: Expected a matrix.");
+    };
+
+    auto rankFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return Value::fromInt32(m.rank()); }); };
+    regMethod(VM::activeVM->matrixProto, "rank", {}, rankFn);
+
+    auto trFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.trace(); }); };
+    regMethod(VM::activeVM->matrixProto, "tr", {}, trFn);
+
+    auto normFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.norm(); }); };
+    regMethod(VM::activeVM->matrixProto, "norm", {}, normFn);
+
+    auto condFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.condition(); }); };
+    regMethod(VM::activeVM->matrixProto, "cond", {}, condFn);
+
+    auto adjFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.adjugate(); }); };
+    regMethod(VM::activeVM->matrixProto, "adj", {}, adjFn);
+
+    auto permFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.permanent(); }); };
+    regMethod(VM::activeVM->matrixProto, "perm", {}, permFn);
+
     reg("sum", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         Value s(0.0);
@@ -1162,62 +1215,196 @@ void BuiltinRegistry::registerMatrixOps() {
         }
         return matrixDispatch1(arg, [](const auto& m) { return m.product(); });
         }, {"A"});    
-    reg("null", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.nullSpace(); }); }, {"A"});
-    reg("orth", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.orthogonalize(); }); }, {"A"});
-    reg("ctrans", { 1 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { return matrixDispatch1(args[0], [](const auto& m) { return m.conjugateTranspose(); }); }, {"A"});
-    reg("mpow", { 2 }, [matrixDispatch1](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); return matrixDispatch1(args[0], [n](const auto& m) { return m.power(n); }); }, {"A", "n"});
+
+    auto nullFn = [matrixDispatch1](const std::vector<Value>&) -> Value { return matrixDispatch1(helpers::nativeSelfStack.back(), [](const auto& m) { return m.nullSpace(); }); };
+    regMethod(VM::activeVM->matrixProto, "null", {}, nullFn);
+
+    auto orthFn = [matrixDispatch1](const std::vector<Value>&) -> Value { return matrixDispatch1(helpers::nativeSelfStack.back(), [](const auto& m) { return m.orthogonalize(); }); };
+    regMethod(VM::activeVM->matrixProto, "orth", {}, orthFn);
+
+    auto ctransFn = [matrixDispatch1](const std::vector<Value>&) -> Value { return matrixDispatch1(helpers::nativeSelfStack.back(), [](const auto& m) { return m.conjugateTranspose(); }); };
+    regMethod(VM::activeVM->matrixProto, "ctrans", {}, ctransFn);
+
+    auto mpowFn = [matrixDispatch1](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asDouble())); return matrixDispatch1(helpers::nativeSelfStack.back(), [n](const auto& m) { return m.power(n); }); };
+    regMethod(VM::activeVM->matrixProto, "mpow", {"n"}, mpowFn);
 
     // --- 维度 ---
-    reg("row", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows());
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows());
-        if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getRows());
+    auto rowFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(self.asObj())->mat.getRows());
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(self.asObj())->mat.getRows());
+        if (self.isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(self.asObj())->mat.getRows());
         throw std::runtime_error("Type Error: row() requires a matrix.");
-    }, {"A"});
-    reg("col", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getCols());
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getCols());
-        if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getCols());
+    };
+    regMethod(VM::activeVM->matrixProto, "row", {}, rowFn);
+    regMethod(VM::activeVM->matrixProto, "rows", {}, rowFn);
+
+    auto colFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(self.asObj())->mat.getCols());
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(self.asObj())->mat.getCols());
+        if (self.isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(self.asObj())->mat.getCols());
         throw std::runtime_error("Type Error: col() requires a matrix.");
-    }, {"A"});
-    reg("rows", builtinArity["row"], builtins["row"], builtinParamNames["row"]);
-    reg("cols", builtinArity["col"], builtins["col"], builtinParamNames["col"]);
+    };
+    regMethod(VM::activeVM->matrixProto, "col", {}, colFn);
+    regMethod(VM::activeVM->matrixProto, "cols", {}, colFn);
 
     // --- 元素/行列访问 ---
-    reg("getElement", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat(r, c)); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat(r, c)); throw std::runtime_error("Type Error: getElement() requires a matrix."); }, {"A", "r", "c"});
-    reg("setElement", { 4 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix res = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; res(r, c) = args[3].asDouble(); return Value(res); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix res = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; res(r, c) = args[3].asComplex(); return Value(res); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix res = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; if (args[3].isString()) res(r, c) = args[3].asString(); else { std::ostringstream oss; oss << args[3]; res(r, c) = oss.str(); } return Value(res); } throw std::runtime_error("Type Error: setElement() requires a matrix."); }, {"A", "r", "c", "val"});
+    auto getElementFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat(r, c));
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat(r, c));
+        if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat(r, c));
+        throw std::runtime_error("Type Error: getElement() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "getElement", {"r", "c"}, getElementFn);
+
+    auto setElementFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix res = static_cast<ObjRealMatrix*>(self.asObj())->mat; res(r, c) = args[2].asDouble(); return Value(res); }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix res = static_cast<ObjComplexMatrix*>(self.asObj())->mat; res(r, c) = args[2].asComplex(); return Value(res); }
+        if (self.isObjType(ObjType::STRING_MATRIX)) { StringMatrix res = static_cast<ObjStringMatrix*>(self.asObj())->mat; if (args[2].isString()) res(r, c) = args[2].asString(); else { std::ostringstream oss; oss << args[2]; res(r, c) = oss.str(); } return Value(res); }
+        throw std::runtime_error("Type Error: setElement() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "setElement", {"r", "c", "val"}, setElementFn);
 
     // 行列操作（简写宏化）
-    #define ROW_COL_OP(NAME, BODY) reg(NAME, { 2 }, [](const std::vector<Value>& args) -> Value { \
-        int idx = static_cast<int>(std::round(args[1].asDouble())); \
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.BODY); \
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.BODY); \
-        if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.BODY); \
-        throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "idx"})
+    #define ROW_COL_OP_PROTO(NAME, BODY) \
+    auto NAME##Fn = [](const std::vector<Value>& args) -> Value { \
+        Value self = helpers::nativeSelfStack.back(); \
+        int idx = static_cast<int>(std::round(args[0].asDouble())); \
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.BODY); \
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.BODY); \
+        if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.BODY); \
+        throw std::runtime_error("Type Error: requires a matrix."); \
+    }; \
+    regMethod(VM::activeVM->matrixProto, #NAME, {"idx"}, NAME##Fn)
 
-    ROW_COL_OP("getR", getRow(idx));
-    ROW_COL_OP("getC", getCol(idx));
-    ROW_COL_OP("delR", deleteRow(idx));
-    ROW_COL_OP("delC", deleteCol(idx));
-    #undef ROW_COL_OP
+    ROW_COL_OP_PROTO(getR, getRow(idx));
+    ROW_COL_OP_PROTO(getC, getCol(idx));
+    ROW_COL_OP_PROTO(delR, deleteRow(idx));
+    ROW_COL_OP_PROTO(delC, deleteCol(idx));
+    #undef ROW_COL_OP_PROTO
 
-    reg("swapR", { 3 }, [](const std::vector<Value>& args) -> Value { int r1 = static_cast<int>(std::round(args[1].asDouble())), r2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; m.swapRows(r1, r2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r1", "r2"});
-    reg("swapC", { 3 }, [](const std::vector<Value>& args) -> Value { int c1 = static_cast<int>(std::round(args[1].asDouble())), c2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } if (args[0].isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat; m.swapCols(c1, c2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "c1", "c2"});
-    reg("multiR", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.multiplyRow(r, args[2].asDouble()); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.multiplyRow(r, args[2].asComplex()); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "scalar"});
-    reg("multiC", { 3 }, [](const std::vector<Value>& args) -> Value { int c = static_cast<int>(std::round(args[1].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; double s = args[2].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; Complex s = args[2].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "c", "scalar"});
-    reg("addR", { 4 }, [](const std::vector<Value>& args) -> Value { int r1 = static_cast<int>(std::round(args[1].asDouble())), r2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; m.addRows(r1, r2, args[3].asDouble()); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; m.addRows(r1, r2, args[3].asComplex()); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r1", "r2", "scalar"});
-    reg("addC", { 4 }, [](const std::vector<Value>& args) -> Value { int c1 = static_cast<int>(std::round(args[1].asDouble())), c2 = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; double s = args[3].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; Complex s = args[3].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); } throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "c1", "c2", "scalar"});
+    auto swapRFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r1 = static_cast<int>(std::round(args[0].asDouble())), r2 = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
+        if (self.isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "swapR", {"r1", "r2"}, swapRFn);
+
+    auto swapCFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int c1 = static_cast<int>(std::round(args[0].asDouble())), c2 = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
+        if (self.isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "swapC", {"c1", "c2"}, swapCFn);
+
+    auto multiRFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r = static_cast<int>(std::round(args[0].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.multiplyRow(r, args[1].asDouble()); return Value(m); }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.multiplyRow(r, args[1].asComplex()); return Value(m); }
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "multiR", {"r", "scalar"}, multiRFn);
+
+    auto multiCFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int c = static_cast<int>(std::round(args[0].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; double s = args[1].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; Complex s = args[1].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); }
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "multiC", {"c", "scalar"}, multiCFn);
+
+    auto addRFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r1 = static_cast<int>(std::round(args[0].asDouble())), r2 = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.addRows(r1, r2, args[2].asDouble()); return Value(m); }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.addRows(r1, r2, args[2].asComplex()); return Value(m); }
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "addR", {"r1", "r2", "scalar"}, addRFn);
+
+    auto addCFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int c1 = static_cast<int>(std::round(args[0].asDouble())), c2 = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; double s = args[2].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; Complex s = args[2].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); }
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "addC", {"c1", "c2", "scalar"}, addCFn);
 
     // --- 结构 ---
-    reg("reshape", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.reshape(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.reshape(r, c)); if (args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.reshape(r, c)); throw std::runtime_error("Type Error: reshape() requires a matrix."); }, {"A", "r", "c"});
-    reg("sub", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.subMatrix(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.subMatrix(r, c)); throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "c"});
-    reg("cof", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.cofactor(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.cofactor(r, c)); throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "c"});
-    reg("Acof", { 3 }, [](const std::vector<Value>& args) -> Value { int r = static_cast<int>(std::round(args[1].asDouble())), c = static_cast<int>(std::round(args[2].asDouble())); if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.algebraicCofactor(r, c)); if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.algebraicCofactor(r, c)); throw std::runtime_error("Type Error: requires a matrix."); }, {"A", "r", "c"});
+    auto reshapeFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.reshape(r, c));
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.reshape(r, c));
+        if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.reshape(r, c));
+        throw std::runtime_error("Type Error: reshape() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "reshape", {"r", "c"}, reshapeFn);
+
+    auto subFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.subMatrix(r, c));
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.subMatrix(r, c));
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "sub", {"r", "c"}, subFn);
+
+    auto cofFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.cofactor(r, c));
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.cofactor(r, c));
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "cof", {"r", "c"}, cofFn);
+
+    auto AcofFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
+        throw std::runtime_error("Type Error: requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "Acof", {"r", "c"}, AcofFn);
 
     // --- 拼接 ---
-    reg("integR", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integR(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); if (args[0].isObjType(ObjType::STRING_MATRIX) && args[1].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.integR(static_cast<ObjStringMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integR(args[1].asComplexMatrix())); }, {"A", "B"});
-    reg("integC", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integC(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); if (args[0].isObjType(ObjType::STRING_MATRIX) && args[1].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.integC(static_cast<ObjStringMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integC(args[1].asComplexMatrix())); }, {"A", "B"});
-    reg("integD", { 2 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::REAL_MATRIX) && args[1].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.integD(static_cast<ObjRealMatrix*>(args[1].asObj())->mat)); return Value(args[0].asComplexMatrix().integD(args[1].asComplexMatrix())); }, {"A", "B"});
+    auto integRFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.integR(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::STRING_MATRIX) && args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.integR(static_cast<ObjStringMatrix*>(args[0].asObj())->mat));
+        return Value(self.asComplexMatrix().integR(args[0].asComplexMatrix()));
+    };
+    regMethod(VM::activeVM->matrixProto, "integR", {"B"}, integRFn);
+
+    auto integCFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.integC(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::STRING_MATRIX) && args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.integC(static_cast<ObjStringMatrix*>(args[0].asObj())->mat));
+        return Value(self.asComplexMatrix().integC(args[0].asComplexMatrix()));
+    };
+    regMethod(VM::activeVM->matrixProto, "integC", {"B"}, integCFn);
+
+    auto integDFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.integD(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
+        return Value(self.asComplexMatrix().integD(args[0].asComplexMatrix()));
+    };
+    regMethod(VM::activeVM->matrixProto, "integD", {"B"}, integDFn);
 
     // --- 生成器 ---
     reg("id", { 1 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asDouble())); if (n < 1) throw std::runtime_error("Runtime Error: Size must be positive."); return Value(RealMatrix::identity(n)); }, {"n"});
@@ -1229,40 +1416,71 @@ void BuiltinRegistry::registerMatrixOps() {
 // [6] 矩阵分解与特征值
 // =================================================================
 void BuiltinRegistry::registerDecompositions() {
-    reg("qr", { 1 }, [](const std::vector<Value>& args) -> Value {
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
+    auto qrFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) {
-            auto [Q, R] = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.qrDecomposition();
+        if (self.isObjType(ObjType::REAL_MATRIX)) {
+            auto [Q, R] = static_cast<ObjRealMatrix*>(self.asObj())->mat.qrDecomposition();
             L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
-        } else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto [Q, R] = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.qrDecomposition();
+        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto [Q, R] = static_cast<ObjComplexMatrix*>(self.asObj())->mat.qrDecomposition();
             L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
         } else throw std::runtime_error("Type Error: requires a matrix.");
         L->is_frozen = true; return Value(L);
-    }, {"A"});
-    reg("lu", { 1 }, [](const std::vector<Value>& args) -> Value {
+    };
+    regMethod(VM::activeVM->matrixProto, "qr", {}, qrFn);
+
+    auto luFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) {
-            auto res = static_cast<ObjRealMatrix*>(args[0].asObj())->mat.luDecomposition();
+        if (self.isObjType(ObjType::REAL_MATRIX)) {
+            auto res = static_cast<ObjRealMatrix*>(self.asObj())->mat.luDecomposition();
             L->vec.push_back(Value(res.L)); L->vec.push_back(Value(res.U)); L->vec.push_back(Value(res.P));
-        } else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto res = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.luDecomposition();
+        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto res = static_cast<ObjComplexMatrix*>(self.asObj())->mat.luDecomposition();
             L->vec.push_back(Value(res.L)); L->vec.push_back(Value(res.U)); L->vec.push_back(Value(res.P));
         } else throw std::runtime_error("Type Error: requires a matrix.");
         L->is_frozen = true; return Value(L);
-    }, {"A"});
-    reg("eig", { 1 }, [](const std::vector<Value>& args) -> Value { std::vector<Complex> vals; if (args[0].isObjType(ObjType::REAL_MATRIX)) vals = computeEigenvalues(static_cast<ObjRealMatrix*>(args[0].asObj())->mat); else if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) vals = computeEigenvalues(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat); else throw std::runtime_error("Type Error: requires a matrix."); return Value(ComplexMatrix(static_cast<int>(vals.size()), 1, vals)); }, {"A"});
-    reg("eigvec", { 1 }, [](const std::vector<Value>& args) -> Value { ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix(); auto vals = computeEigenvalues(A); return Value(computeEigenvectors(A, vals)); }, {"A"});
-    reg("diag", { 1 }, [](const std::vector<Value>& args) -> Value {
-        ComplexMatrix A = args[0].isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(args[0].asObj())->mat.toComplexMatrix() : args[0].asComplexMatrix();
+    };
+    regMethod(VM::activeVM->matrixProto, "lu", {}, luFn);
+
+    auto eigFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        std::vector<Complex> vals; 
+        if (self.isObjType(ObjType::REAL_MATRIX)) vals = computeEigenvalues(static_cast<ObjRealMatrix*>(self.asObj())->mat); 
+        else if (self.isObjType(ObjType::COMPLEX_MATRIX)) vals = computeEigenvalues(static_cast<ObjComplexMatrix*>(self.asObj())->mat); 
+        else throw std::runtime_error("Type Error: requires a matrix."); 
+        return Value(ComplexMatrix(static_cast<int>(vals.size()), 1, vals)); 
+    };
+    regMethod(VM::activeVM->matrixProto, "eig", {}, eigFn);
+
+    auto eigvecFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        ComplexMatrix A = self.isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(self.asObj())->mat.toComplexMatrix() : self.asComplexMatrix(); 
+        auto vals = computeEigenvalues(A); 
+        return Value(computeEigenvectors(A, vals)); 
+    };
+    regMethod(VM::activeVM->matrixProto, "eigvec", {}, eigvecFn);
+
+    auto diagFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        ComplexMatrix A = self.isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(self.asObj())->mat.toComplexMatrix() : self.asComplexMatrix();
         auto [P, D] = diagonalize(A);
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
         L->vec.push_back(Value(P)); L->vec.push_back(Value(D));
         L->is_frozen = true; return Value(L);
-    }, {"A"});
+    };
+    regMethod(VM::activeVM->matrixProto, "diag", {}, diagFn);
 }
 
 // =================================================================

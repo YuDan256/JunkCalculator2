@@ -312,7 +312,7 @@ using namespace helpers;
 
 void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount) {
     if (!proto) return;
-    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    auto closure = GcHeap::get().allocateImmortal<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
     for (int i = 0; i < defaultCount; ++i) {
         closure->defaultValues.push_back(Value::uninit());
@@ -322,7 +322,7 @@ void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::v
 
 void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames) {
     if (!ns) return;
-    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    auto closure = GcHeap::get().allocateImmortal<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
     if (!paramNames.empty() && paramNames.back().substr(0, 3) == "...") {
         closure->hasRestParam = true;
@@ -347,11 +347,11 @@ void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::
 }
 
 void BuiltinRegistry::registerAll() {
-    sys_ns = GcHeap::get().allocate<ObjNamespace>(); sys_ns->name = "sys";
-    io_ns = GcHeap::get().allocate<ObjNamespace>(); io_ns->name = "io";
-    cas_ns = GcHeap::get().allocate<ObjNamespace>(); cas_ns->name = "cas";
-    math_ns = GcHeap::get().allocate<ObjNamespace>(); math_ns->name = "math";
-    random_ns = GcHeap::get().allocate<ObjNamespace>(); random_ns->name = "random";
+    sys_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); sys_ns->name = "sys";
+    io_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); io_ns->name = "io";
+    cas_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); cas_ns->name = "cas";
+    math_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); math_ns->name = "math";
+    random_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); random_ns->name = "random";
 
     if (VM::activeVM) {
         VM::activeVM->injectModule("sys", Value(sys_ns));
@@ -5138,43 +5138,39 @@ void BuiltinRegistry::registerSystemShell() {
 
     regModule(sys_ns, "resetType", { 0 }, [](const std::vector<Value>&) -> Value {
         if (VM::activeVM) {
-            auto makeType = [](BuiltinType bt) {
-                ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
-                td->types.push_back(bt);
-                return Value(td);
-            };
-            VM::activeVM->setGlobal("any_type", makeType(BuiltinType::ANY));
-            VM::activeVM->setGlobal("int", makeType(BuiltinType::INT));
-            VM::activeVM->setGlobal("double", makeType(BuiltinType::FLOAT));
-            VM::activeVM->setGlobal("real", makeType(BuiltinType::REAL));
-            VM::activeVM->setGlobal("number", makeType(BuiltinType::NUMBER));
-            VM::activeVM->setGlobal("whole", makeType(BuiltinType::WHOLE));
-            VM::activeVM->setGlobal("exact", makeType(BuiltinType::EXACT));
-            VM::activeVM->setGlobal("string", makeType(BuiltinType::STRING));
-            VM::activeVM->setGlobal("bool", makeType(BuiltinType::BOOL));
-            VM::activeVM->setGlobal("binary", makeType(BuiltinType::BINARY));
-            VM::activeVM->setGlobal("none_type", makeType(BuiltinType::NONE_TYPE));
-            VM::activeVM->setGlobal("list", makeType(BuiltinType::LIST));
-            VM::activeVM->setGlobal("dict", makeType(BuiltinType::DICT));
-            VM::activeVM->setGlobal("set", makeType(BuiltinType::SET));
-            VM::activeVM->setGlobal("fraction", makeType(BuiltinType::FRACTION));
-            VM::activeVM->setGlobal("complex", makeType(BuiltinType::COMPLEX));
-            VM::activeVM->setGlobal("basenum", makeType(BuiltinType::BASENUM));
-            VM::activeVM->setGlobal("symbolic", makeType(BuiltinType::SYMBOLIC));
-            VM::activeVM->setGlobal("realmatrix", makeType(BuiltinType::REALMAT));
-            VM::activeVM->setGlobal("complexmatrix", makeType(BuiltinType::COMPLEXMAT));
-            VM::activeVM->setGlobal("stringmatrix", makeType(BuiltinType::STRINGMAT));
-            VM::activeVM->setGlobal("matrix", makeType(BuiltinType::MATRIX));
-            VM::activeVM->setGlobal("function", makeType(BuiltinType::FUNC));
-            VM::activeVM->setGlobal("class_type", makeType(BuiltinType::CLASS));
-            VM::activeVM->setGlobal("instance", makeType(BuiltinType::INSTANCE));
-            VM::activeVM->setGlobal("namespace_type", makeType(BuiltinType::NAMESPACE));
-            VM::activeVM->setGlobal("iterable", makeType(BuiltinType::ITERABLE));
-            VM::activeVM->setGlobal("callable", makeType(BuiltinType::CALLABLE));
-            VM::activeVM->setGlobal("indexable", makeType(BuiltinType::INDEXABLE));
-            VM::activeVM->setGlobal("hashable", makeType(BuiltinType::HASHABLE));
-            VM::activeVM->setGlobal("numeric", makeType(BuiltinType::NUMERIC));
-            VM::activeVM->setGlobal("type", makeType(BuiltinType::TYPE_DEF));
+            VM::activeVM->setGlobal("any_type", VM::activeVM->getBuiltinValue("any_type"));
+            VM::activeVM->setGlobal("int", VM::activeVM->getBuiltinValue("int"));
+            VM::activeVM->setGlobal("double", VM::activeVM->getBuiltinValue("double"));
+            VM::activeVM->setGlobal("real", VM::activeVM->getBuiltinValue("real"));
+            VM::activeVM->setGlobal("number", VM::activeVM->getBuiltinValue("number"));
+            VM::activeVM->setGlobal("whole", VM::activeVM->getBuiltinValue("whole"));
+            VM::activeVM->setGlobal("exact", VM::activeVM->getBuiltinValue("exact"));
+            VM::activeVM->setGlobal("string", VM::activeVM->getBuiltinValue("string"));
+            VM::activeVM->setGlobal("bool", VM::activeVM->getBuiltinValue("bool"));
+            VM::activeVM->setGlobal("binary", VM::activeVM->getBuiltinValue("binary"));
+            VM::activeVM->setGlobal("none_type", VM::activeVM->getBuiltinValue("none_type"));
+            VM::activeVM->setGlobal("list", VM::activeVM->getBuiltinValue("list"));
+            VM::activeVM->setGlobal("dict", VM::activeVM->getBuiltinValue("dict"));
+            VM::activeVM->setGlobal("set", VM::activeVM->getBuiltinValue("set"));
+            VM::activeVM->setGlobal("fraction", VM::activeVM->getBuiltinValue("fraction"));
+            VM::activeVM->setGlobal("complex", VM::activeVM->getBuiltinValue("complex"));
+            VM::activeVM->setGlobal("basenum", VM::activeVM->getBuiltinValue("basenum"));
+            VM::activeVM->setGlobal("symbolic", VM::activeVM->getBuiltinValue("symbolic"));
+            VM::activeVM->setGlobal("realmatrix", VM::activeVM->getBuiltinValue("realmatrix"));
+            VM::activeVM->setGlobal("complexmatrix", VM::activeVM->getBuiltinValue("complexmatrix"));
+            VM::activeVM->setGlobal("stringmatrix", VM::activeVM->getBuiltinValue("stringmatrix"));
+            VM::activeVM->setGlobal("matrix", VM::activeVM->getBuiltinValue("matrix"));
+            VM::activeVM->setGlobal("function", VM::activeVM->getBuiltinValue("function"));
+            VM::activeVM->setGlobal("class_type", VM::activeVM->getBuiltinValue("class_type"));
+            VM::activeVM->setGlobal("instance", VM::activeVM->getBuiltinValue("instance"));
+            VM::activeVM->setGlobal("namespace_type", VM::activeVM->getBuiltinValue("namespace_type"));
+            VM::activeVM->setGlobal("iterable", VM::activeVM->getBuiltinValue("iterable"));
+            VM::activeVM->setGlobal("callable", VM::activeVM->getBuiltinValue("callable"));
+            VM::activeVM->setGlobal("indexable", VM::activeVM->getBuiltinValue("indexable"));
+            VM::activeVM->setGlobal("hashable", VM::activeVM->getBuiltinValue("hashable"));
+            VM::activeVM->setGlobal("numeric", VM::activeVM->getBuiltinValue("numeric"));
+            VM::activeVM->setGlobal("type", VM::activeVM->getBuiltinValue("type"));
+            VM::activeVM->setGlobal("slice", VM::activeVM->getBuiltinValue("slice"));
         }
         std::cout << "System types restored." << std::endl;
         return Value::none();

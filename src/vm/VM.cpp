@@ -68,7 +68,7 @@ Value VM::getBuiltinClosure(const std::string& name) {
     }
     auto nit = nativeBuiltins.find(name);
     if (nit != nativeBuiltins.end()) {
-        auto closure = GcHeap::get().allocate<ObjClosure>(
+        auto closure = GcHeap::get().allocateImmortal<ObjClosure>(
             std::vector<std::string>{},
             std::vector<bool>{},
             name,
@@ -2623,7 +2623,7 @@ VM::VM() {
     };
 
     auto makeType = [](BuiltinType bt) {
-        ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+        ObjTypeDef* td = GcHeap::get().allocateImmortal<ObjTypeDef>();
         td->types.push_back(bt);
         return Value(td);
     };
@@ -2661,15 +2661,15 @@ VM::VM() {
     builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
     builtinValues["slice"] = makeType(BuiltinType::SLICE);
 
-    listProto = GcHeap::get().allocate<ObjClass>();
+    listProto = GcHeap::get().allocateImmortal<ObjClass>();
     listProto->name = "List";
-    dictProto = GcHeap::get().allocate<ObjClass>();
+    dictProto = GcHeap::get().allocateImmortal<ObjClass>();
     dictProto->name = "Dict";
-    setProto = GcHeap::get().allocate<ObjClass>();
+    setProto = GcHeap::get().allocateImmortal<ObjClass>();
     setProto->name = "Set";
-    stringProto = GcHeap::get().allocate<ObjClass>();
+    stringProto = GcHeap::get().allocateImmortal<ObjClass>();
     stringProto->name = "String";
-    matrixProto = GcHeap::get().allocate<ObjClass>();
+    matrixProto = GcHeap::get().allocateImmortal<ObjClass>();
     matrixProto->name = "Matrix";
 
     nativeBuiltins["__dbg_reg"] = [this](const std::vector<Value>& args) -> Value {

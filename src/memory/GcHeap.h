@@ -35,6 +35,7 @@ namespace jc {
     struct Obj {
         ObjType type = ObjType::STRING;
         bool isMarked = false;
+        bool isImmortal = false; // ★ 新增：标记是否为永生代对象
         uint32_t refCount = 0; // ★ 新增引用计数，用于 COW
         Obj* next = nullptr;
         Obj* prev = nullptr; // ★ 新增：双向链表，支持 O(1) 摘除
@@ -77,8 +78,21 @@ namespace jc {
             return object;
         }
 
+        template<typename T, typename... Args>
+        T* allocateImmortal(Args&&... args) {
+            T* object = new T(std::forward<Args>(args)...);
+            object->isMarked = false;
+            object->isImmortal = true;
+            object->next = immortals_;
+            object->prev = nullptr;
+            if (immortals_) immortals_->prev = object;
+            immortals_ = object;
+            return object;
+        }
+
         void freeObj(Obj* obj) {
             if (isSweeping_) return; // GC 正在清理时，交由 GC 统一回收
+            if (obj->isImmortal) return; // 永生代对象永不释放
             
             // ★ 核心修复：只允许非容器且非驻留字符串的纯数据类型立即释放
             // 容器类型、UPVALUE、STRING 等可能被裸指针持有或参与循环引用，必须交由 GC 统一回收
@@ -178,6 +192,12 @@ namespace jc {
                 curr = next;
             }
 
+            Obj* imm = immortals_;
+            while (imm != nullptr) {
+                imm->isMarked = false;
+                imm = imm->next;
+            }
+
             allocsSinceGc_ = 0;
             gcThreshold_ = std::max(static_cast<size_t>(65536), surviving * 2);
             isSweeping_ = false;
@@ -185,9 +205,24 @@ namespace jc {
         }
 
         GcHeap() = default;
+        ~GcHeap() {
+            Obj* curr = objects_;
+            while (curr) {
+                Obj* next = curr->next;
+                delete curr;
+                curr = next;
+            }
+            curr = immortals_;
+            while (curr) {
+                Obj* next = curr->next;
+                delete curr;
+                curr = next;
+            }
+        }
         std::vector<Obj*> tempObjRoots_;
         std::vector<Value*> tempValueRoots_;
         Obj* objects_ = nullptr;
+        Obj* immortals_ = nullptr;
         size_t allocsSinceGc_ = 0;
         size_t gcThreshold_ = 65536;
     };

@@ -60,3 +60,11 @@
 *   **管道操作符演进 (Pipe Operator)**：采用显式方法调用语法 `data |> .sort() |> .unique()`。在编译期解构为 `data.sort().unique()`，彻底消除作用域解析歧义，并完美兼容全局归约函数（如 `data |> .filter(f) |> sum`）。
 *   **内置命名空间 (Built-in Namespaces)**：边缘函数打包为小写的命名空间（如 `sys`, `io`, `cas`），必须通过 `import sys` 显式引入。这不仅实现了与用户定义类型（大写驼峰）的视觉隔离，更实现了零开销的极速冷启动。
 *   **鸭子类型谓词 (Duck-Typing Predicates)**：保留 `isiterable`, `iscallable` 等行为契约检查函数，以支持鲁棒的泛型编程与多态；而具体类型检查则收敛为 `type(x) == list` 或 `isinstance`。
+
+## 10. [规划中] 符号矩阵与高级特性 (Planned: Symbolic Matrix & Advanced Features)
+*   **符号矩阵的双重身份 (Dual Role of SymMatrix)**：由于 `RealMatrix` 底层强制使用 `double`（在 $2^{53}$ 后丢失精度），`SymMatrix` 不仅用于代数推导，更是 JC2 中**唯一的精确数学矩阵**。通过 `symmatrix(r, c, ...)` 或 `toSymMat(list)` 构建，内部的 `SymConst` 节点可完美无损地承载任意精度的 `BigInt` 和 `Fraction`，从而支持精确的矩阵求逆与特征值计算。
+*   **内存模型与生命周期 (Memory Model & Lifecycle)**：`SymExpr` 是基于 DAG 的不可变 RC 对象。`ObjSymMatrix` 底层直接采用连续的 `std::vector<SymExpr>`（而非 `std::vector<Value>`）并继承 COW 机制。这从类型系统层面彻底杜绝了挂载常规 GC 对象（如 List/Dict）的可能性，完美摆脱了恶心的循环引用问题。当 RC 归零时瞬间析构，**绝对不参与** GC 的 Mark-and-Sweep 扫描，实现真正的零 GC 负担。
+*   **构建与类型提升网络 (Construction & Promotion Lattice)**：字面量 `[1, 2; 3, 4]` 绝对保留为 `realmatrix` 以维持极致性能。仅当混入符号变量时触发**按需懒提升 (Lazy Promotion)**。若矩阵构建中同时混入 `string` 和 `symbolic`，则触发**降级机制 (Degradation)** 退化为异构的 `list`，以保证矩阵代数运算的类型安全。复数在提升为符号节点时，会自动解构为 `Re(z) + Im(z) * i` 的 AST 树。
+*   **基础算术与表达式膨胀控制 (Arithmetic & Swell Control)**：在矩阵乘法 ($O(N^3)$) 的最内层循环中，必须强制调用轻量级的 `cas.simplify()` 或 `cas.contract()`，在合并同类项的同时压平 AST 树，防止表达式呈指数级爆炸。
+*   **高级线性代数 (Advanced Linear Algebra)**：彻底摒弃浮点 LU 分解。行列式计算对于大矩阵 ($N > 3$) 必须实现 **Bareiss 算法 (无分母高斯消元法)**，保证中间结果始终在多项式环内；求逆采用伴随矩阵法；特征值通过构造特征多项式 $\det(A - \lambda I) = 0$ 并联动 `cas.solveEq()` 求解。
+*   **与 CAS 引擎的深度联动 (CAS Integration)**：微积分操作 (`diff`, `integ`) 自动在矩阵元素上广播。执行 `subs` 变量替换后，若矩阵内所有元素均退化为纯数值，引擎需将其**向下折叠 (Demotion)** 回 `realmatrix` 或 `complexmatrix`，恢复后续计算的极速性能。

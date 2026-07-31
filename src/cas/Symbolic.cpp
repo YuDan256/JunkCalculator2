@@ -451,24 +451,15 @@ namespace jc {
     SymExpr::SymExpr(const BigInt& v) : ptr(intern(std::make_shared<SymNum>(v))) {}
     SymExpr::SymExpr(const Fraction& v) : ptr(intern(std::make_shared<SymNum>(v))) {}
     SymExpr::SymExpr(const Complex& v) {
-        // 终极防御：高斯整数吸附 (Gaussian Integer Snapping)
-        // 防止任何带有微小浮点误差的复数 (如 1.0 + 6.32e-16i) 污染纯符号 AST
-        auto makeExactIfPossible = [](double d) -> SymExpr {
-            if (d == std::round(d)) {
-                return SymExpr(BigInt(static_cast<int64_t>(std::round(d))));
-            }
-            return SymExpr(d);
-        };
-
         if (v.imag == 0.0) {
-            ptr = makeExactIfPossible(v.real).ptr;
+            ptr = intern(std::make_shared<SymNum>(v.real));
         } else if (v.real == 0.0) {
-            SymExpr imagPart = makeExactIfPossible(v.imag);
+            SymExpr imagPart(v.imag);
             SymExpr iVar = SymExpr::makeVar("i");
             ptr = intern((imagPart * iVar).ptr);
         } else {
-            SymExpr realPart = makeExactIfPossible(v.real);
-            SymExpr imagPart = makeExactIfPossible(v.imag);
+            SymExpr realPart(v.real);
+            SymExpr imagPart(v.imag);
             SymExpr iVar = SymExpr::makeVar("i");
             ptr = intern((realPart + imagPart * iVar).ptr);
         }

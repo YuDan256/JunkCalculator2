@@ -3179,16 +3179,24 @@ void BuiltinRegistry::registerDictFunctions() {
         return Value(d); 
     }, {"...pairs"});
 
-    reg("keys", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
+    auto keysFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
             for (const auto& [k, v] : ns->fields) L->vec.push_back(Value(k));
             return Value(L);
         }
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
             for (const auto& [k, v] : inst->properties) {
@@ -3196,25 +3204,26 @@ void BuiltinRegistry::registerDictFunctions() {
             }
             return Value(L);
         }
-        ObjDict* d = helpers::getDictMap(args[0], "keys");
+        ObjDict* d = helpers::getDictMap(self, "keys");
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) L->vec.push_back(k);
         return Value(L);
-        }, {"d"});
-    // ★ 设定属性拾取别名！完美融合 Instance
-    reg("getFields", builtinArity["keys"], builtins["keys"], builtinParamNames["keys"]);
+    };
+    regMethod(VM::activeVM->dictProto, "keys", {}, keysFn);
+    regMethod(VM::activeVM->dictProto, "getFields", {}, keysFn);
 
-    reg("values", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
+    auto valuesFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
             for (const auto& [k, v] : ns->fields) L->vec.push_back(*(v.upval->location));
             return Value(L);
         }
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
             for (const auto& [k, v] : inst->properties) {
@@ -3222,67 +3231,75 @@ void BuiltinRegistry::registerDictFunctions() {
             }
             return Value(L);
         }
-        ObjDict* d = helpers::getDictMap(args[0], "values");
+        ObjDict* d = helpers::getDictMap(self, "values");
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) L->vec.push_back(v);
         return Value(L);
-        }, {"d"});
+    };
+    regMethod(VM::activeVM->dictProto, "values", {}, valuesFn);
 
-    reg("hasKey", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            if (!args[1].isString()) return Value(false);
-            return Value(ns->fields.find(args[1].asString()) != ns->fields.end());
+    auto hasKeyFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            if (!args[0].isString()) return Value(false);
+            return Value(ns->fields.find(args[0].asString()) != ns->fields.end());
         }
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
-            if (!args[1].isString()) return Value(false);
-            auto it = inst->properties.find(args[1].asString());
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            if (!args[0].isString()) return Value(false);
+            auto it = inst->properties.find(args[0].asString());
             return Value(it != inst->properties.end() && !it->second.is_local);
         }
-        ObjDict* d = helpers::getDictMap(args[0], "hasKey");
-        return Value(d->keyMap.find(args[1]) != d->keyMap.end());
-        }, {"d", "key"});
-    // ★ 设定查询别名
-    reg("hasField", builtinArity["hasKey"], builtins["hasKey"], builtinParamNames["hasKey"]);
-    reg("has", builtinArity["hasKey"], builtins["hasKey"], builtinParamNames["hasKey"]);
+        ObjDict* d = helpers::getDictMap(self, "hasKey");
+        return Value(d->keyMap.find(args[0]) != d->keyMap.end());
+    };
+    regMethod(VM::activeVM->dictProto, "hasKey", {"key"}, hasKeyFn);
+    regMethod(VM::activeVM->dictProto, "hasField", {"key"}, hasKeyFn);
+    regMethod(VM::activeVM->dictProto, "has", {"key"}, hasKeyFn);
 
-    reg("removeKey", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            if (!args[1].isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
-            ns->removeField(args[1].asString());
-            return args[0];
+    auto removeKeyFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            if (!args[0].isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
+            ns->removeField(args[0].asString());
+            return self;
         }
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
-            if (!args[1].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
-            inst->removeProperty(args[1].asString());
-            return args[0];
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            if (!args[0].isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
+            inst->removeProperty(args[0].asString());
+            return self;
         }
-        ObjDict* d = helpers::getDictMap(args[0], "removeKey");
-        d->remove(args[1]);
-        return args[0];
-        }, {"d", "key"});
+        ObjDict* d = helpers::getDictMap(self, "removeKey");
+        d->remove(args[0]);
+        return self;
+    };
+    regMethod(VM::activeVM->dictProto, "removeKey", {"key"}, removeKeyFn);
 
-    reg("dictSize", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
+    auto dictSizeFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
             return Value::fromInt32(static_cast<int32_t>(ns->fields.size()));
         }
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
             int32_t count = 0;
             for (const auto& [k, v] : inst->properties) {
                 if (!v.is_local) count++;
             }
             return Value::fromInt32(count);
         }
-        ObjDict* d = helpers::getDictMap(args[0], "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
-        }, {"d"});
+        ObjDict* d = helpers::getDictMap(self, "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
+    };
+    regMethod(VM::activeVM->dictProto, "dictSize", {}, dictSizeFn);
+    regMethod(VM::activeVM->dictProto, "size", {}, dictSizeFn);
 
-    reg("dictMerge", { 2 }, [](const std::vector<Value>& args) -> Value {
+    auto dictMergeFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         auto getPairs = [](const Value& v) -> std::vector<std::pair<Value, Value>> {
             if (v.isObjType(ObjType::NAMESPACE)) {
                 std::vector<std::pair<Value, Value>> res;
@@ -3302,37 +3319,39 @@ void BuiltinRegistry::registerDictFunctions() {
             return d->elements;
         };
         
-        if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            auto pairs2 = getPairs(args[1]);
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            auto pairs2 = getPairs(args[0]);
             for (const auto& [k, v] : pairs2) {
                 if (!k.isString()) throw std::runtime_error("Type Error: Namespace keys must be strings.");
                 ns->setField(k.asString(), v);
             }
-            return args[0];
+            return self;
         }
         
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
-            auto pairs2 = getPairs(args[1]);
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            auto pairs2 = getPairs(args[0]);
             for (const auto& [k, v] : pairs2) {
                 if (!k.isString()) throw std::runtime_error("Type Error: Instance keys must be strings.");
                 inst->setProperty(k.asString(), v);
             }
-            return args[0];
+            return self;
         }
 
-        ObjDict* d1 = helpers::getDictMap(args[0], "dictMerge");
-        auto pairs2 = getPairs(args[1]);
+        ObjDict* d1 = helpers::getDictMap(self, "dictMerge");
+        auto pairs2 = getPairs(args[0]);
         for (const auto& [k, v] : pairs2) {
             d1->set(k, v);
         }
-        return args[0];
-        }, {"d1", "d2"});
+        return self;
+    };
+    regMethod(VM::activeVM->dictProto, "dictMerge", {"d2"}, dictMergeFn);
 
-    reg("dictPairs", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
+    auto dictPairsFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
             for (const auto& [k, v] : ns->fields) {
@@ -3344,8 +3363,8 @@ void BuiltinRegistry::registerDictFunctions() {
             }
             return Value(L);
         }
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
             for (const auto& [k, prop] : inst->properties) {
@@ -3358,7 +3377,7 @@ void BuiltinRegistry::registerDictFunctions() {
             }
             return Value(L);
         }
-        ObjDict* d = helpers::getDictMap(args[0], "dictPairs");
+        ObjDict* d = helpers::getDictMap(self, "dictPairs");
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
         for (const auto& [k, v] : d->elements) {
@@ -3369,7 +3388,8 @@ void BuiltinRegistry::registerDictFunctions() {
             L->vec.push_back(Value(pair));
         }
         return Value(L);
-        }, {"d"});
+    };
+    regMethod(VM::activeVM->dictProto, "dictPairs", {}, dictPairsFn);
 }
 
 // =================================================================
@@ -5446,64 +5466,91 @@ void BuiltinRegistry::registerSetFunctions() {
         return Value(s);
         }, {"v"});
 
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
     // ═══ 元素操作（引用语义，原地修改）═══
-    reg("setAdd", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET))
+    auto setAddFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setAdd() expects a Set.");
-        auto s = static_cast<ObjSet*>(args[0].asObj());
-        s->add(args[1]);
-        return args[0];
-        }, {"s", "val"});
+        auto s = static_cast<ObjSet*>(self.asObj());
+        s->add(args[0]);
+        return self;
+    };
+    regMethod(VM::activeVM->setProto, "setAdd", {"val"}, setAddFn);
+    regMethod(VM::activeVM->setProto, "add", {"val"}, setAddFn);
 
-    reg("setRemove", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET))
+    auto setRemoveFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setRemove() expects a Set.");
-        auto s = static_cast<ObjSet*>(args[0].asObj());
-        s->remove(args[1]);
-        return args[0];
-        }, {"s", "val"});
+        auto s = static_cast<ObjSet*>(self.asObj());
+        s->remove(args[0]);
+        return self;
+    };
+    regMethod(VM::activeVM->setProto, "setRemove", {"val"}, setRemoveFn);
+    regMethod(VM::activeVM->setProto, "remove", {"val"}, setRemoveFn);
 
-    reg("setDiscard", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET))
+    auto setDiscardFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setDiscard() expects a Set.");
-        auto s = static_cast<ObjSet*>(args[0].asObj());
-        s->discard(args[1]);
-        return args[0];
-        }, {"s", "val"});
+        auto s = static_cast<ObjSet*>(self.asObj());
+        s->discard(args[0]);
+        return self;
+    };
+    regMethod(VM::activeVM->setProto, "setDiscard", {"val"}, setDiscardFn);
+    regMethod(VM::activeVM->setProto, "discard", {"val"}, setDiscardFn);
 
-    reg("setClear", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET))
+    auto setClearFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setClear() expects a Set.");
-        auto s = static_cast<ObjSet*>(args[0].asObj());
+        auto s = static_cast<ObjSet*>(self.asObj());
         s->clear();
-        return args[0];
-        }, {"s"});
+        return self;
+    };
+    regMethod(VM::activeVM->setProto, "setClear", {}, setClearFn);
+    regMethod(VM::activeVM->setProto, "clear", {}, setClearFn);
 
-    reg("setPop", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET))
+    auto setPopFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setPop() expects a Set.");
-        auto s = static_cast<ObjSet*>(args[0].asObj());
+        auto s = static_cast<ObjSet*>(self.asObj());
         return s->pop();
-        }, {"s"});
+    };
+    regMethod(VM::activeVM->setProto, "setPop", {}, setPopFn);
+    regMethod(VM::activeVM->setProto, "pop", {}, setPopFn);
 
     // ═══ 集合运算（返回新 Set）═══
-    reg("setUnion", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto setUnionFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setUnion() expects two Sets.");
-        return args[0] | args[1];
-        }, {"a", "b"});
+        return self | args[0];
+    };
+    regMethod(VM::activeVM->setProto, "setUnion", {"b"}, setUnionFn);
 
-    reg("setIntersect", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto setIntersectFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setIntersect() expects two Sets.");
-        return args[0] & args[1];
-        }, {"a", "b"});
+        return self & args[0];
+    };
+    regMethod(VM::activeVM->setProto, "setIntersect", {"b"}, setIntersectFn);
 
-    reg("setDiff", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto setDiffFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setDiff() expects two Sets.");
-        auto a = static_cast<ObjSet*>(args[0].asObj());
-        auto b = static_cast<ObjSet*>(args[1].asObj());
+        auto a = static_cast<ObjSet*>(self.asObj());
+        auto b = static_cast<ObjSet*>(args[0].asObj());
         ObjSet* result = GcHeap::get().allocate<ObjSet>();
         GcObjGuard guard(result);
         for (const auto& val : a->elements) {
@@ -5513,62 +5560,74 @@ void BuiltinRegistry::registerSetFunctions() {
             }
         }
         return Value(result);
-        }, {"a", "b"});
+    };
+    regMethod(VM::activeVM->setProto, "setDiff", {"b"}, setDiffFn);
 
-    reg("setSymDiff", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto setSymDiffFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setSymDiff() expects two Sets.");
-        return bitXor(args[0], args[1]);
-        }, {"a", "b"});
+        return bitXor(self, args[0]);
+    };
+    regMethod(VM::activeVM->setProto, "setSymDiff", {"b"}, setSymDiffFn);
 
     // ═══ 集合关系谓词 ═══
-    reg("isSubset", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto isSubsetFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: isSubset() expects two Sets.");
-        auto a = static_cast<ObjSet*>(args[0].asObj());
-        auto b = static_cast<ObjSet*>(args[1].asObj());
+        auto a = static_cast<ObjSet*>(self.asObj());
+        auto b = static_cast<ObjSet*>(args[0].asObj());
         for (const auto& val : a->elements) {
             if (b->keys.find(val) == b->keys.end()) return Value(false);
         }
         return Value(true);
-        }, {"a", "b"});
+    };
+    regMethod(VM::activeVM->setProto, "isSubset", {"b"}, isSubsetFn);
 
-    reg("isSuperset", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto isSupersetFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: isSuperset() expects two Sets.");
-        auto a = static_cast<ObjSet*>(args[0].asObj());
-        auto b = static_cast<ObjSet*>(args[1].asObj());
+        auto a = static_cast<ObjSet*>(self.asObj());
+        auto b = static_cast<ObjSet*>(args[0].asObj());
         for (const auto& val : b->elements) {
             if (a->keys.find(val) == a->keys.end()) return Value(false);
         }
         return Value(true);
-        }, {"a", "b"});
+    };
+    regMethod(VM::activeVM->setProto, "isSuperset", {"b"}, isSupersetFn);
 
-    reg("isDisjoint", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto isDisjointFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: isDisjoint() expects two Sets.");
-        auto a = static_cast<ObjSet*>(args[0].asObj());
-        auto b = static_cast<ObjSet*>(args[1].asObj());
+        auto a = static_cast<ObjSet*>(self.asObj());
+        auto b = static_cast<ObjSet*>(args[0].asObj());
         for (const auto& val : a->elements) {
             if (b->keys.find(val) != b->keys.end()) return Value(false);
         }
         return Value(true);
-        }, {"a", "b"});
+    };
+    regMethod(VM::activeVM->setProto, "isDisjoint", {"b"}, isDisjointFn);
 
     // ═══ 笛卡尔积 ═══
-    reg("setProduct", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET) || !args[1].isObjType(ObjType::SET))
+    auto setProductFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setProduct() expects two Sets.");
         // 直接触发刚写好的重载 *
-        return args[0] * args[1];
-        }, {"a", "b"});
+        return self * args[0];
+    };
+    regMethod(VM::activeVM->setProto, "setProduct", {"b"}, setProductFn);
 
     // ═══ 集合幂集 ═══
-    reg("setPow", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::SET))
+    auto setPowFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET))
             throw std::runtime_error("Type Error: setPow() expects a Set.");
 
-        auto s = static_cast<ObjSet*>(args[0].asObj());
+        auto s = static_cast<ObjSet*>(self.asObj());
         int n = static_cast<int>(s->elements.size());
         if (n > 20)
             throw std::runtime_error("Math Error: Set size too large for powerset (max 20 elements).");
@@ -5594,7 +5653,8 @@ void BuiltinRegistry::registerSetFunctions() {
             result->elements.push_back(subVal);
         }
         return Value(result);
-        }, {"s"});
+    };
+    regMethod(VM::activeVM->setProto, "setPow", {}, setPowFn);
 }
 
 // =================================================================

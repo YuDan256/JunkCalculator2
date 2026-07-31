@@ -1664,11 +1664,16 @@ namespace jc {
 
         int minArgs() const {
             int count = static_cast<int>(paramNames.size());
+            if (isUFCS && count > 0) count--;
             if (hasRestParam && count > 0) count--;
             count -= static_cast<int>(defaultValues.size());
             return count < 0 ? 0 : count;
         }
-        int maxArgs() const { return static_cast<int>(paramNames.size()); }
+        int maxArgs() const { 
+            int count = static_cast<int>(paramNames.size());
+            if (isUFCS && count > 0) count--;
+            return count;
+        }
         bool acceptsArgCount(int n) const { return n >= minArgs() && (hasRestParam || n <= maxArgs()); }
         bool hasRef() const { for (bool b : isRef) if (b) return true; return false; }
         bool hasCaptures() const { return upvalueCount > 0; }
@@ -1697,7 +1702,8 @@ namespace jc {
 
         std::string toString() const {
             std::string params;
-            for (size_t i = 0; i < paramNames.size(); ++i) {
+            size_t startIdx = isUFCS ? 1 : 0;
+            for (size_t i = startIdx; i < paramNames.size(); ++i) {
                 if (i < isRef.size() && isRef[i]) params += "ref ";
                 params += paramNames[i];
                 if (i < paramNames.size() - 1) params += ", ";

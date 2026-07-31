@@ -467,11 +467,15 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             
             for (int i = 0; i < fnDef->arity; ++i) {
                 if (alignedArgs[i].isUninit()) {
-                    throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                    int expected = closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
+                    if (expected < 0) expected = 0;
+                    throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
                 }
             }
             if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+                int expected = closure->isUFCS ? fnDef->maxArity - 1 : fnDef->maxArity;
+                if (expected < 0) expected = 0;
+                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(expected) + " arguments.");
             }
             
             int totalArgc = static_cast<int>(alignedArgs.size());
@@ -3056,24 +3060,35 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     newFrame.selfContext = boundSelf;
     newFrame.classContext = boundClass;
     
-    int totalArgc = static_cast<int>(args.size());
+    std::vector<Value> actualArgs;
+    if (closure && closure->isUFCS) {
+        actualArgs.reserve(args.size() + 1);
+        actualArgs.push_back(closure->boundSelf);
+        actualArgs.insert(actualArgs.end(), args.begin(), args.end());
+    } else {
+        actualArgs = args;
+    }
+    
+    int totalArgc = static_cast<int>(actualArgs.size());
 
     if (fnDef->hasRestParam) {
         int fixedMax = fnDef->maxArity - 1;
         if (totalArgc < fnDef->arity) {
-            throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+            int expected = closure && closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
+            if (expected < 0) expected = 0;
+            throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
         }
         ObjList* restList = GcHeap::get().allocate<ObjList>();
         if (totalArgc > fixedMax) {
             int restCount = totalArgc - fixedMax;
             restList->vec.reserve(restCount);
             for (int j = 0; j < restCount; j++) {
-                restList->vec.push_back(args[fixedMax + j]);
+                restList->vec.push_back(actualArgs[fixedMax + j]);
             }
         }
         
         for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
-            registers[newBase + i] = args[i];
+            registers[newBase + i] = actualArgs[i];
         }
         for (int i = totalArgc; i < fixedMax; ++i) {
             registers[newBase + i] = Value::uninit();
@@ -3081,10 +3096,16 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         registers[newBase + fixedMax] = Value(restList);
     } else {
         if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+            int expMin = closure && closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
+            int expMax = closure && closure->isUFCS ? fnDef->maxArity - 1 : fnDef->maxArity;
+            if (expMin < 0) expMin = 0;
+            if (expMax < 0) expMax = 0;
+            int gotArgs = closure && closure->isUFCS ? totalArgc - 1 : totalArgc;
+            if (gotArgs < 0) gotArgs = 0;
+            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(expMin) + " to " + std::to_string(expMax) + " arguments, got " + std::to_string(gotArgs) + ".");
         }
         for (int i = 0; i < totalArgc; ++i) {
-            registers[newBase + i] = args[i];
+            registers[newBase + i] = actualArgs[i];
         }
         for (int i = totalArgc; i < fnDef->maxArity; ++i) {
             registers[newBase + i] = Value::uninit();

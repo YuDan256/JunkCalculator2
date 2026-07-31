@@ -1241,6 +1241,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     ObjClosure* method = nullptr;
     ObjClass* owningClass = nullptr;
     ObjClass* nativeProto = nullptr;
+    BuiltinType objBt = BuiltinType::UNKNOWN;
 
     const std::string& methodName = keyVal.asString();
 
@@ -1303,7 +1304,6 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         throw std::runtime_error("VM Error: Cannot invoke private method on this type.");
     }
 
-    BuiltinType objBt = BuiltinType::UNKNOWN;
     if (obj.isObjType(ObjType::LIST)) objBt = BuiltinType::LIST;
     else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
     else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;

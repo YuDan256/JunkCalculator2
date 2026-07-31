@@ -8,6 +8,8 @@
 //            and 256 unsigned cyclic overflow wrap-around.
 // ═══════════════════════════════════════════════════════════════
 
+import sys
+
 println("=================================================")
 println("  JC2 Brainfuck Engine (VM in VM)                ")
 println("=================================================\n")
@@ -27,8 +29,8 @@ println("\n[1/3] Parsing brackets and building jump tables...")
 jumps = dict()
 stack = list()
 
-t0 = clock()
-for (i = 0; i < bf_code.len(); i += 1) {
+t0 = sys.clock()
+for (i = 0; i < len(bf_code); i += 1) {
     c = bf_code[i]
     if (c == "[") {
         stack.push(i)
@@ -40,8 +42,8 @@ for (i = 0; i < bf_code.len(); i += 1) {
         jumps[str(i)] = open_pos
     }
 }
-t1 = clock()
-println(f"      Matched {jumps.len()/2} bracket pairs in {t1 - t0::.4f}s.")
+t1 = sys.clock()
+println(f"      Matched {len(jumps)/2} bracket pairs in {t1 - t0::.4f}s.")
 
 // 3. Initialize Turing Machine State
 println("[2/3] Initializing Turing Machine Tape and Pointers...")
@@ -58,9 +60,9 @@ println(">>>>> OUTPUT START >>>>>")
 // 4. Core Turing Machine Hot Loop
 output_str = ""
 steps = 0
-t2 = clock()
+t2 = sys.clock()
 
-while (ip < bf_code.len()) {
+while (ip < len(bf_code)) {
     cmd = bf_code[ip]
     
     if (cmd == ">") {
@@ -72,24 +74,24 @@ while (ip < bf_code.len()) {
     else if (cmd == "+") {
         // Brainfuck requires 8-bit unsigned integers (0~255) with cyclic wrapping.
         dp_s = str(dp)
-        val = tape.hasKey(dp_s) ? tape[dp_s] : 0
+        val = (dp_s in tape) ? tape[dp_s] : 0
         tape[dp_s] = (val + 1) % 256
     } 
     else if (cmd == "-") {
         dp_s = str(dp)
-        val = tape.hasKey(dp_s) ? tape[dp_s] : 0
+        val = (dp_s in tape) ? tape[dp_s] : 0
         tape[dp_s] = (val - 1 + 256) % 256
     } 
     else if (cmd == ".") {
         dp_s = str(dp)
-        val = tape.hasKey(dp_s) ? tape[dp_s] : 0
+        val = (dp_s in tape) ? tape[dp_s] : 0
         // Defensive C++ bridging: clamp bounds to prevent the native chr() from panicking
         output_str += (val >= 0 && val <= 127) ? chr(val) : "?"
     }
     else if (cmd == "[") {
         // If current cell is 0, skip the loop and jump past the matching ]
         dp_s = str(dp)
-        val = tape.hasKey(dp_s) ? tape[dp_s] : 0
+        val = (dp_s in tape) ? tape[dp_s] : 0
         if (val == 0) {
             ip = jumps[str(ip)]
         }
@@ -97,7 +99,7 @@ while (ip < bf_code.len()) {
     else if (cmd == "]") {
         // If current cell is NOT 0, jump back to the matching [ and continue the loop
         dp_s = str(dp)
-        val = tape.hasKey(dp_s) ? tape[dp_s] : 0
+        val = (dp_s in tape) ? tape[dp_s] : 0
         if (val != 0) {
             ip = jumps[str(ip)]
         }
@@ -108,7 +110,7 @@ while (ip < bf_code.len()) {
     steps += 1
 }
 
-t3 = clock()
+t3 = sys.clock()
 
 // Flush the captured 1D output buffer to the console.
 println(output_str)

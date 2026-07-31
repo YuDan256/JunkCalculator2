@@ -1,6 +1,9 @@
 import image
 import window
 import socket
+import sys
+import io
+import random
 
 println("══════════════════════════════════════════════════")
 println("  JC2 Ultimate Sorting Visualizer (Bomb-Proof Edition)  ")
@@ -36,7 +39,7 @@ class VisualSorter {
     shuffle() = {
         self.data = [x for (x in range(1, self.N + 1))].toList()
         for (i = self.N - 1; i > 0; i -= 1) {
-            j = randint(0, i)
+            j = random.randint(0, i)
             tmp = self.data[i]; self.data[i] = self.data[j]; self.data[j] = tmp
         }
     }
@@ -55,7 +58,7 @@ class VisualSorter {
             self.stream_sock.close()
             self.stream_sock = none
         }
-        try { deleteFile("stream_buffer.bmp") } catch(e) {}
+        try { io.deleteFile("stream_buffer.bmp") } catch(e) {}
     }
 
     // Abstracted rendering layer (invoked directly by algorithms)
@@ -88,8 +91,8 @@ class VisualSorter {
         self.win = window.Window(f"JC2 Live: {name}", self.W, self.H)
         self.frame_count = 0
 
-        println(f"[{clock()::.3f}] > Started {name}...")
-        t_start = clock()
+        println(f"[{sys.clock()::.3f}] > Started {name}...")
+        t_start = sys.clock()
         
         // Plug in and execute the higher-order sorting algorithm
         algo_func(self)
@@ -102,11 +105,11 @@ class VisualSorter {
             }
         }
 
-        t_end = clock()
+        t_end = sys.clock()
         self.disconnect()
         println(f"  ✓ {name} finished in {t_end - t_start::.3f}s. Frames: {self.frame_count}")
         
-        while (self.win.isOpen()) { sleep(0.1) } // Block until window is manually closed
+        while (self.win.isOpen()) { sys.sleep(0.1) } // Block until window is manually closed
     }
 }
 

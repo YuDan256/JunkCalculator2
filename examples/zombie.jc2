@@ -1,4 +1,6 @@
 import engine
+import sys
+import random
 
 class FpsProbe {
     init(samples) = {
@@ -14,7 +16,7 @@ class FpsProbe {
         self.idx = (self.idx + 1) % self.max_samples
         
         if (self.idx % 10 == 0) {
-            sum_dt = sum(self.history)
+            sum_dt = self.history.sum()
             avg_dt = sum_dt / double(self.max_samples)
             if (avg_dt > 0.0) self.avg_fps = int(1.0 / avg_dt)
         }
@@ -174,7 +176,7 @@ class Raycaster3D extends engine.GameEngine {
             dirs = list(list(2,0), list(-2,0), list(0,2), list(0,-2))
             
             for (k = 0; k < 6; k += 1) {
-                i1 = randint(0, 3); i2 = randint(0, 3)
+                i1 = random.randint(0, 3); i2 = random.randint(0, 3)
                 [dirs[i2], dirs[i1]] = [dirs[i1], dirs[i2]]// Destructuring swap
             }
             
@@ -196,7 +198,7 @@ class Raycaster3D extends engine.GameEngine {
         }
         
         // ★ 向量化替换：将所有 1.0 的墙体随机替换为 1~4 的纹理索引
-        self.map = whereE(eqE(self.map, 1.0), randimat(self.size, self.size, 1, 4), self.map)
+        self.map = self.map.eqE(1.0).whereE(random.randimat(self.size, self.size, 1, 4), self.map)
         self.map[self.size - 2, self.size - 2] = 5.0
         
         self.zombies = list()
@@ -207,16 +209,16 @@ class Raycaster3D extends engine.GameEngine {
                 if (self.map[r, c] == 0.0) {
                     // 留出玩家出生地(1,1)周围的安全空间
                     if (r > 5 || c > 5) {
-                        rng = rand()
+                        rng = random.rand()
                         if (rng > 0.88) {
-                            z_hp = 100.0 + (self.level - 1) * 25.0 + double(randint(-10, 10)) // 动态递增难度血量
-                            push(self.zombies, {x: double(r) + 0.5, y: double(c) + 0.5, hp: z_hp, status: "ALIVE", hurt_timer: 0.0})
+                            z_hp = 100.0 + (self.level - 1) * 25.0 + double(random.randint(-10, 10)) // 动态递增难度血量
+                            self.zombies.push({x: double(r) + 0.5, y: double(c) + 0.5, hp: z_hp, status: "ALIVE", hurt_timer: 0.0})
                         } else if (rng > 0.83) {
                             // 血包道具（白底红十字）
-                            push(self.items, {x: double(r) + 0.5, y: double(c) + 0.5, type: "HP", active: true})
+                            self.items.push({x: double(r) + 0.5, y: double(c) + 0.5, type: "HP", active: true})
                         } else if (rng > 0.76) {
                             // 弹药盒（绿底黄束）
-                            push(self.items, {x: double(r) + 0.5, y: double(c) + 0.5, type: "AMMO", active: true})
+                            self.items.push({x: double(r) + 0.5, y: double(c) + 0.5, type: "AMMO", active: true})
                         }
                     }
                 }
@@ -409,7 +411,7 @@ class Raycaster3D extends engine.GameEngine {
     }
 
     drawCentered(im, txt, y, color, scale) = {
-        txt_width = txt.len() * 8 * scale
+        txt_width = len(txt) * 8 * scale
         im.text(txt, int((self.W - txt_width) / 2), y, color, scale)
     }
 
@@ -473,13 +475,13 @@ class Raycaster3D extends engine.GameEngine {
         for (z in self.zombies) {
             z.dist = (z.x - self.pos_x)^2 + (z.y - self.pos_y)^2
             z.is_zombie = true
-            push(entities, z)
+            entities.push(z)
         }
         for (item in self.items) {
             if (item.active) { // 只渲染还没吃的道具
                 item.dist = (item.x - self.pos_x)^2 + (item.y - self.pos_y)^2
                 item.is_zombie = false
-                push(entities, item)
+                entities.push(item)
             }
         }
 
@@ -566,8 +568,8 @@ class Raycaster3D extends engine.GameEngine {
         im.fillRect(gun_x + 5, gun_y, gun_w - 10, gun_h, "#333344")
         
         if (self.shoot_flash > 0.0) {
-            im.fillCircle(self.W/2, gun_y - 12, randint(25, 40), "#FFCC00")
-            im.fillCircle(self.W/2, gun_y - 12, randint(10, 20), "#FFFFFF")
+            im.fillCircle(self.W/2, gun_y - 12, random.randint(25, 40), "#FFCC00")
+            im.fillCircle(self.W/2, gun_y - 12, random.randint(10, 20), "#FFFFFF")
         }
         im.fillRect(400 - 10, 300 - 1, 20, 2, "#FFFFFF")
         im.fillRect(400 - 1, 300 - 10, 2, 20, "#FFFFFF")

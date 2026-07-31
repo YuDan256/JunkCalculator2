@@ -2,6 +2,7 @@
 // tetris.jc2 — Coded entirely in Junk Calculator 2 
 // ═══════════════════════════════════════════════════════════════
 import engine
+import random
 
 class Tetris extends engine.GameEngine {
     init() = {
@@ -55,7 +56,7 @@ class Tetris extends engine.GameEngine {
         self.fall_timer = 0.0
         
         // Generate the first "Next" piece, then spawn
-        self.next_idx = randint(0, 6)
+        self.next_idx = random.randint(0, 6)
         self.spawnPiece()
     }
 
@@ -65,10 +66,10 @@ class Tetris extends engine.GameEngine {
         self.curr_color = self.next_idx + 1
         
         // Reroll the upcoming 'next' piece
-        self.next_idx = randint(0, 6)
+        self.next_idx = random.randint(0, 6)
         
         self.curr_r = 0
-        self.curr_c = int(self.COLS / 2) - int(col(self.curr_piece) / 2)
+        self.curr_c = int(self.COLS / 2) - int(self.curr_piece.cols() / 2)
         
         // If it collides on spawn, the board is full -> GAME OVER
         if (!self.isValid(self.curr_piece, self.curr_r, self.curr_c)) {
@@ -78,8 +79,8 @@ class Tetris extends engine.GameEngine {
 
     // ─── Core Logic: Physical Collision Detection ───
     isValid(piece, br, bc) = {
-        local pr = row(piece)
-        local pc = col(piece)
+        local pr = piece.rows()
+        local pc = piece.cols()
         
         for (local r = 0; r < pr; r += 1) {
             for (local c = 0; c < pc; c += 1) {
@@ -103,8 +104,8 @@ class Tetris extends engine.GameEngine {
 
     // Mathematical 90-degree Clockwise Matrix Rotation!
     rotatePiece(piece) = {
-        local pr = row(piece)
-        local pc = col(piece)
+        local pr = piece.rows()
+        local pc = piece.cols()
         local res = zeros(pc, pr)
         
         for (local r = 0; r < pr; r += 1) {
@@ -116,8 +117,8 @@ class Tetris extends engine.GameEngine {
     }
 
     lockPiece() = {
-        local pr = row(self.curr_piece)
-        local pc = col(self.curr_piece)
+        local pr = self.curr_piece.rows()
+        local pc = self.curr_piece.cols()
         
         // Bake the falling piece into the background board matrix
         for (local r = 0; r < pr; r += 1) {
@@ -246,8 +247,8 @@ class Tetris extends engine.GameEngine {
             local ghost_r = self.curr_r
             while (self.isValid(self.curr_piece, ghost_r + 1, self.curr_c)) ghost_r += 1
             
-            local pr = row(self.curr_piece)
-            local pc = col(self.curr_piece)
+            local pr = self.curr_piece.rows()
+            local pc = self.curr_piece.cols()
             
             for (local r = 0; r < pr; r += 1) {
                 for (local c = 0; c < pc; c += 1) {
@@ -283,8 +284,8 @@ class Tetris extends engine.GameEngine {
         im.rect(ui_x, next_y + 30, 160, 120, "#333344", 2.0)
         
         local next_p = self.shapes[self.next_idx]
-        local nr = row(next_p)
-        local nc = col(next_p)
+        local nr = next_p.rows()
+        local nc = next_p.cols()
         
         // Mathematically center the preview piece inside the 160x120 box!
         local prev_ox = ui_x + int((160 - nc * self.CELL) / 2)

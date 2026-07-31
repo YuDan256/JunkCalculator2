@@ -1162,12 +1162,12 @@ void BuiltinRegistry::registerMatrixOps() {
     auto permFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.permanent(); }); };
     regMethod(VM::activeVM->matrixProto, "perm", {}, permFn);
 
-    reg("sum", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
-        Value arg = args[0];
+    auto sumFn = [matrixDispatch1, this](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         Value s(0.0);
         GcValueGuard sGuard(s);
         bool first = true;
-        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+        if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { s = nextVal; first = false; }
             else s = s + nextVal;
             return true;
@@ -1175,26 +1175,28 @@ void BuiltinRegistry::registerMatrixOps() {
             if (first) return Value(0.0);
             return s;
         }
-        // ★ 新增：无缝支持 List 容器
-        if (arg.isObjType(ObjType::LIST)) {
-            const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
+        if (self.isObjType(ObjType::LIST)) {
+            const auto& L = static_cast<ObjList*>(self.asObj())->vec;
             if (L.empty()) return Value(0.0);
             Value listSum = L[0];
             GcValueGuard listSumGuard(listSum);
             for (size_t i = 1; i < L.size(); ++i) {
-                listSum = listSum + L[i];  // 利用 Value 的重载 +
+                listSum = listSum + L[i];
             }
             return listSum;
         }
-        return matrixDispatch1(arg, [](const auto& m) { return m.sum(); });
-        }, {"A"});
+        return matrixDispatch1(self, [](const auto& m) { return m.sum(); });
+    };
+    regMethod(VM::activeVM->listProto, "sum", {}, sumFn);
+    regMethod(VM::activeVM->matrixProto, "sum", {}, sumFn);
+    regMethod(VM::activeVM->setProto, "sum", {}, sumFn);
 
-    reg("prod", { 1 }, [matrixDispatch1, this](const std::vector<Value>& args) -> Value {
-        Value arg = args[0];
+    auto prodFn = [matrixDispatch1, this](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         Value p(1.0);
         GcValueGuard pGuard(p);
         bool first = true;
-        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+        if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { p = nextVal; first = false; }
             else p = p * nextVal;
             return true;
@@ -1202,19 +1204,21 @@ void BuiltinRegistry::registerMatrixOps() {
             if (first) return Value(1.0);
             return p;
         }
-        // ★ 新增：无缝支持 List 容器
-        if (arg.isObjType(ObjType::LIST)) {
-            const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
+        if (self.isObjType(ObjType::LIST)) {
+            const auto& L = static_cast<ObjList*>(self.asObj())->vec;
             if (L.empty()) return Value(1.0);
             Value listProd = L[0];
             GcValueGuard listProdGuard(listProd);
             for (size_t i = 1; i < L.size(); ++i) {
-                listProd = listProd * L[i];  // 利用 Value 的重载 *
+                listProd = listProd * L[i];
             }
             return listProd;
         }
-        return matrixDispatch1(arg, [](const auto& m) { return m.product(); });
-        }, {"A"});    
+        return matrixDispatch1(self, [](const auto& m) { return m.product(); });
+    };
+    regMethod(VM::activeVM->listProto, "prod", {}, prodFn);
+    regMethod(VM::activeVM->matrixProto, "prod", {}, prodFn);
+    regMethod(VM::activeVM->setProto, "prod", {}, prodFn);
 
     auto nullFn = [matrixDispatch1](const std::vector<Value>&) -> Value { return matrixDispatch1(helpers::nativeSelfStack.back(), [](const auto& m) { return m.nullSpace(); }); };
     regMethod(VM::activeVM->matrixProto, "null", {}, nullFn);
@@ -1717,17 +1721,39 @@ void BuiltinRegistry::registerBase() {
 // [12] 统计（用静态 helper，无需 this）
 // =================================================================
 void BuiltinRegistry::registerStatistics() {
-    reg("mean", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "mean"); return Value(computeMean(d)); }, {"X"});
-    reg("var", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "var"); return Value(computeVar(d)); }, {"X"});
-    reg("svar", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "svar"); if (d.size()<2) throw std::runtime_error("Math Error: Sample variance requires at least 2 data points."); return Value(computeSvar(d)); }, {"X"});
-    reg("std", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "std"); return Value(computeStd(d)); }, {"X"});
-    reg("sstd", { 1 }, [](const std::vector<Value>& args) -> Value { auto d = extractDS(args[0], "sstd"); if (d.size()<2) throw std::runtime_error("Math Error: Sample std requires at least 2 data points."); return Value(std::sqrt(computeSvar(d))); }, {"X"});
-    reg("max", { 1 }, [this](const std::vector<Value>& args) -> Value {
-        Value arg = args[0];
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
+    auto meanFn = [](const std::vector<Value>&) -> Value { auto d = extractDS(helpers::nativeSelfStack.back(), "mean"); return Value(computeMean(d)); };
+    regMethod(VM::activeVM->listProto, "mean", {}, meanFn);
+    regMethod(VM::activeVM->matrixProto, "mean", {}, meanFn);
+
+    auto varFn = [](const std::vector<Value>&) -> Value { auto d = extractDS(helpers::nativeSelfStack.back(), "var"); return Value(computeVar(d)); };
+    regMethod(VM::activeVM->listProto, "var", {}, varFn);
+    regMethod(VM::activeVM->matrixProto, "var", {}, varFn);
+
+    auto svarFn = [](const std::vector<Value>&) -> Value { auto d = extractDS(helpers::nativeSelfStack.back(), "svar"); if (d.size()<2) throw std::runtime_error("Math Error: Sample variance requires at least 2 data points."); return Value(computeSvar(d)); };
+    regMethod(VM::activeVM->listProto, "svar", {}, svarFn);
+    regMethod(VM::activeVM->matrixProto, "svar", {}, svarFn);
+
+    auto stdFn = [](const std::vector<Value>&) -> Value { auto d = extractDS(helpers::nativeSelfStack.back(), "std"); return Value(computeStd(d)); };
+    regMethod(VM::activeVM->listProto, "std", {}, stdFn);
+    regMethod(VM::activeVM->matrixProto, "std", {}, stdFn);
+
+    auto sstdFn = [](const std::vector<Value>&) -> Value { auto d = extractDS(helpers::nativeSelfStack.back(), "sstd"); if (d.size()<2) throw std::runtime_error("Math Error: Sample std requires at least 2 data points."); return Value(std::sqrt(computeSvar(d))); };
+    regMethod(VM::activeVM->listProto, "sstd", {}, sstdFn);
+    regMethod(VM::activeVM->matrixProto, "sstd", {}, sstdFn);
+
+    auto maxFn = [this](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         Value mx;
         GcValueGuard mxGuard(mx);
         bool first = true;
-        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+        if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { mx = nextVal; first = false; }
             else if (helpers::checkGreater(nextVal, mx)) mx = nextVal;
             return true;
@@ -1735,28 +1761,30 @@ void BuiltinRegistry::registerStatistics() {
             if (first) throw std::runtime_error("Math Error: Cannot compute max of empty iterable.");
             return mx;
         }
-        if (arg.isObjType(ObjType::LIST)) {
-            const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
+        if (self.isObjType(ObjType::LIST)) {
+            const auto& L = static_cast<ObjList*>(self.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute max of empty list.");
             Value listMx = L[0];
             GcValueGuard listMxGuard(listMx);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
-                // ★ 正确的 C++ 比较
                 if (helpers::checkGreater(v, listMx)) listMx = v;
             }
             return listMx;
         }
-        auto d = extractDS(arg, "max");
+        auto d = extractDS(self, "max");
         double mx_d = d[0]; for (double v : d) if (v > mx_d) mx_d = v; return Value(mx_d);
-        }, {"X"});
+    };
+    regMethod(VM::activeVM->listProto, "max", {}, maxFn);
+    regMethod(VM::activeVM->matrixProto, "max", {}, maxFn);
+    regMethod(VM::activeVM->setProto, "max", {}, maxFn);
 
-    reg("min", { 1 }, [this](const std::vector<Value>& args) -> Value {
-        Value arg = args[0];
+    auto minFn = [this](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         Value mn;
         GcValueGuard mnGuard(mn);
         bool first = true;
-        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+        if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { mn = nextVal; first = false; }
             else if (helpers::checkLess(nextVal, mn)) mn = nextVal;
             return true;
@@ -1764,29 +1792,31 @@ void BuiltinRegistry::registerStatistics() {
             if (first) throw std::runtime_error("Math Error: Cannot compute min of empty iterable.");
             return mn;
         }
-        if (arg.isObjType(ObjType::LIST)) {
-            const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
+        if (self.isObjType(ObjType::LIST)) {
+            const auto& L = static_cast<ObjList*>(self.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute min of empty list.");
             Value listMn = L[0];
             GcValueGuard listMnGuard(listMn);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
-                // ★ 正确的 C++ 比较
                 if (helpers::checkLess(v, listMn)) listMn = v;
             }
             return listMn;
         }
-        auto d = extractDS(arg, "min");
+        auto d = extractDS(self, "min");
         double mn_d = d[0]; for (double v : d) if (v < mn_d) mn_d = v; return Value(mn_d);
-        }, {"X"});
+    };
+    regMethod(VM::activeVM->listProto, "min", {}, minFn);
+    regMethod(VM::activeVM->matrixProto, "min", {}, minFn);
+    regMethod(VM::activeVM->setProto, "min", {}, minFn);
 
-    reg("span", { 1 }, [this](const std::vector<Value>& args) -> Value {
-        Value arg = args[0];
+    auto spanFn = [this](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
         Value mn, mx;
         GcValueGuard mnGuard(mn);
         GcValueGuard mxGuard(mx);
         bool first = true;
-        if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
+        if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { mn = nextVal; mx = nextVal; first = false; }
             else {
                 if (helpers::checkGreater(nextVal, mx)) mx = nextVal;
@@ -1797,8 +1827,8 @@ void BuiltinRegistry::registerStatistics() {
             if (first) throw std::runtime_error("Math Error: Cannot compute span of empty iterable.");
             return mx - mn;
         }
-        if (arg.isObjType(ObjType::LIST)) {
-            const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
+        if (self.isObjType(ObjType::LIST)) {
+            const auto& L = static_cast<ObjList*>(self.asObj())->vec;
             if (L.empty()) throw std::runtime_error("Math Error: Cannot compute span of empty list.");
             Value listMn = L[0];
             Value listMx = L[0];
@@ -1806,23 +1836,25 @@ void BuiltinRegistry::registerStatistics() {
             GcValueGuard listMxGuard(listMx);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
-                // ★ 正确的 C++ 比较
                 if (helpers::checkGreater(v, listMx)) listMx = v;
                 if (helpers::checkLess(v, listMn)) listMn = v;
             }
-            // 利用 Value 的重载减法返回 span
             return listMx - listMn;
         }
-        auto d = extractDS(arg, "span");
+        auto d = extractDS(self, "span");
         double mx_d = d[0], mn_d = d[0];
         for (double v : d) { if (v > mx_d) mx_d = v; if (v < mn_d) mn_d = v; }
         return Value(mx_d - mn_d);
-        }, {"X"});
+    };
+    regMethod(VM::activeVM->listProto, "span", {}, spanFn);
+    regMethod(VM::activeVM->matrixProto, "span", {}, spanFn);
+    regMethod(VM::activeVM->setProto, "span", {}, spanFn);
 
-    reg("perc", { 2 }, [](const std::vector<Value>& args) -> Value {
-        auto d = extractDS(args[0], "perc");
+    auto percFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto d = extractDS(self, "perc");
         if (d.empty()) throw std::runtime_error("Math Error: Cannot compute percentile of empty dataset.");
-        double p = args[1].asDouble();
+        double p = args[0].asDouble();
         if (p<0||p>100) throw std::runtime_error("Math Error: Percentile must be [0,100].");
         std::sort(d.begin(), d.end());
         int n = static_cast<int>(d.size());
@@ -1835,11 +1867,19 @@ void BuiltinRegistry::registerStatistics() {
         if (std::abs(f) > 1e-9) return Value(d[m]);
         if (kk < n) return Value((d[m] + d[kk]) / 2.0);
         return Value(d[m]);
-    }, {"X", "p"});
-    reg("median", { 1 }, [this](const std::vector<Value>& args) -> Value { return builtins["perc"]({ args[0], Value(50.0) }); }, {"X"});
+    };
+    regMethod(VM::activeVM->listProto, "perc", {"p"}, percFn);
+    regMethod(VM::activeVM->matrixProto, "perc", {"p"}, percFn);
 
-    reg("mode", { 1 }, [](const std::vector<Value>& args) -> Value {
-        auto d = extractDS(args[0], "mode");
+    auto medianFn = [percFn](const std::vector<Value>&) -> Value { 
+        return percFn({ Value(50.0) }); 
+    };
+    regMethod(VM::activeVM->listProto, "median", {}, medianFn);
+    regMethod(VM::activeVM->matrixProto, "median", {}, medianFn);
+
+    auto modeFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto d = extractDS(self, "mode");
         if (d.empty()) throw std::runtime_error("Math Error: Cannot compute mode of empty dataset.");
         struct Bucket { double representative; int count; };
         std::vector<Bucket> buckets;
@@ -1849,13 +1889,40 @@ void BuiltinRegistry::registerStatistics() {
         std::sort(modes.begin(), modes.end());
         if (modes.size() == 1) return Value(modes[0]);
         return Value(RealMatrix(1, static_cast<int>(modes.size()), modes));
-    }, {"X"});
+    };
+    regMethod(VM::activeVM->listProto, "mode", {}, modeFn);
+    regMethod(VM::activeVM->matrixProto, "mode", {}, modeFn);
 
-    reg("cov", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "cov"), Y = extractDS(args[1], "cov"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); return Value(computeCov(X, Y)); }, {"X", "Y"});
-    reg("corr", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "corr"), Y = extractDS(args[1], "corr"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); return Value(computeCorr(X, Y)); }, {"X", "Y"});
-    reg("rsq", { 2 }, [](const std::vector<Value>& args) -> Value { auto X = extractDS(args[0], "rsq"), Y = extractDS(args[1], "rsq"); if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); double r = computeCorr(X, Y); return Value(r * r); }, {"X", "Y"});
-    reg("regress", { 2 }, [](const std::vector<Value>& args) -> Value {
-        auto X = extractDS(args[0], "regress"), Y = extractDS(args[1], "regress");
+    auto covFn = [](const std::vector<Value>& args) -> Value { 
+        Value self = helpers::nativeSelfStack.back();
+        auto X = extractDS(self, "cov"), Y = extractDS(args[0], "cov"); 
+        if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); 
+        return Value(computeCov(X, Y)); 
+    };
+    regMethod(VM::activeVM->listProto, "cov", {"Y"}, covFn);
+    regMethod(VM::activeVM->matrixProto, "cov", {"Y"}, covFn);
+
+    auto corrFn = [](const std::vector<Value>& args) -> Value { 
+        Value self = helpers::nativeSelfStack.back();
+        auto X = extractDS(self, "corr"), Y = extractDS(args[0], "corr"); 
+        if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); 
+        return Value(computeCorr(X, Y)); 
+    };
+    regMethod(VM::activeVM->listProto, "corr", {"Y"}, corrFn);
+    regMethod(VM::activeVM->matrixProto, "corr", {"Y"}, corrFn);
+
+    auto rsqFn = [](const std::vector<Value>& args) -> Value { 
+        Value self = helpers::nativeSelfStack.back();
+        auto X = extractDS(self, "rsq"), Y = extractDS(args[0], "rsq"); 
+        if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch."); 
+        double r = computeCorr(X, Y); return Value(r * r); 
+    };
+    regMethod(VM::activeVM->listProto, "rsq", {"Y"}, rsqFn);
+    regMethod(VM::activeVM->matrixProto, "rsq", {"Y"}, rsqFn);
+
+    auto regressFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto X = extractDS(self, "regress"), Y = extractDS(args[0], "regress");
         if (X.size()!=Y.size()) throw std::runtime_error("Math Error: Size mismatch.");
         double vX = computeVar(X);
         if (vX == 0.0) throw std::runtime_error("Math Error: Zero variance in X.");
@@ -1867,7 +1934,9 @@ void BuiltinRegistry::registerStatistics() {
         GcObjGuard guard(L);
         L->vec.push_back(Value(a)); L->vec.push_back(Value(b));
         L->is_frozen = true; return Value(L);
-    }, {"X", "Y"});
+    };
+    regMethod(VM::activeVM->listProto, "regress", {"Y"}, regressFn);
+    regMethod(VM::activeVM->matrixProto, "regress", {"Y"}, regressFn);
 }
 
 // =================================================================

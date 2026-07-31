@@ -1108,29 +1108,29 @@
       "",
       "  Central Tendency & Dispersion",
       "  ──────────────────────",
-      "    mean(X)             Arithmetic mean",
-      "    median(X)           Median (50th percentile)",
-      "    mode(X)             Mode  (returns a row array if multimodal)",
-      "    var(X)              Population variance       (divided by N)",
-      "    svar(X)             Sample variance           (divided by N−1)",
-      "    std(X)              Population std dev",
-      "    sstd(X)             Sample std dev",
-      "    span(X)             Statistical range: max(X) − min(X)",
+      "    X.mean()            Arithmetic mean",
+      "    X.median()          Median (50th percentile)",
+      "    X.mode()            Mode  (returns a row array if multimodal)",
+      "    X.var()             Population variance       (divided by N)",
+      "    X.svar()            Sample variance           (divided by N−1)",
+      "    X.std()             Population std dev",
+      "    X.sstd()            Sample std dev",
+      "    X.span()            Statistical range: X.max() − X.min()",
       "",
       "  Extremes & Quantiles",
       "  ──────────────────────",
-      "    max(X), min(X)      Extreme values",
-      "    perc(X, p)          p-th percentile  (0 ≤ p ≤ 100)",
-      "    sort(X)             Sorted copy  (always returns a row array)",
+      "    X.max(), X.min()    Extreme values",
+      "    X.perc(p)           p-th percentile  (0 ≤ p ≤ 100)",
+      "    X.sort()            Sorted copy  (always returns a row array)",
       "",
       "  Bivariate Analysis",
       "  ──────────────────────",
       "    X and Y must have the exact same number of elements.",
       "    ",
-      "    cov(X, Y)           Population covariance",
-      "    corr(X, Y)          Pearson correlation coefficient  r",
-      "    rsq(X, Y)           Coefficient of determination  R²",
-      "    regress(X, Y)       Linear regression Y = a + bX",
+      "    X.cov(Y)            Population covariance",
+      "    X.corr(Y)           Pearson correlation coefficient  r",
+      "    X.rsq(Y)            Coefficient of determination  R²",
+      "    X.regress(Y)        Linear regression Y = a + bX",
       "                        Automatically prints the model equation & returns @[a, b]."
     ],
     "int": [
@@ -3861,17 +3861,17 @@
       ]
     },
     "sum": {
-      "signature": "sum(A)",
+      "signature": "A.sum()",
       "desc": "Returns the sum of all elements in a matrix or list.",
       "examples": [
-        "sum([1, 2, 3])"
+        "[1, 2, 3].sum()"
       ]
     },
     "prod": {
-      "signature": "prod(A)",
+      "signature": "A.prod()",
       "desc": "Returns the product of all elements in a matrix or list.",
       "examples": [
-        "prod([1, 2, 3, 4])"
+        "[1, 2, 3, 4].prod()"
       ]
     },
     "null": {
@@ -4294,111 +4294,111 @@
       ]
     },
     "mean": {
-      "signature": "mean(X) / dist.mean()",
+      "signature": "X.mean() / dist.mean()",
       "desc": "Returns the arithmetic mean of a dataset, or the theoretical mean of a Distribution.",
       "examples": [
-        "mean([1, 2, 3, 4, 5])",
+        "[1, 2, 3, 4, 5].mean()",
         "prob.Normal(0, 1).mean()"
       ]
     },
     "var": {
-      "signature": "var(X) / dist.var()",
+      "signature": "X.var() / dist.var()",
       "desc": "Returns the population variance of a dataset (divided by N), or the theoretical variance of a Distribution.",
       "examples": [
-        "var([1, 2, 3, 4, 5])",
+        "[1, 2, 3, 4, 5].var()",
         "prob.Normal(0, 1).var()"
       ]
     },
     "svar": {
-      "signature": "svar(X)",
+      "signature": "X.svar()",
       "desc": "Returns the sample variance of a dataset (divided by N-1).",
       "examples": [
-        "svar([1, 2, 3, 4, 5])"
+        "[1, 2, 3, 4, 5].svar()"
       ]
     },
     "std": {
-      "signature": "std(X) / dist.std()",
+      "signature": "X.std() / dist.std()",
       "desc": "Returns the population standard deviation of a dataset, or the theoretical standard deviation of a Distribution.",
       "examples": [
-        "std([1, 2, 3, 4, 5])",
+        "[1, 2, 3, 4, 5].std()",
         "prob.Normal(0, 1).std()"
       ]
     },
     "sstd": {
-      "signature": "sstd(X)",
+      "signature": "X.sstd()",
       "desc": "Returns the sample standard deviation of a dataset.",
       "examples": [
-        "sstd([1, 2, 3, 4, 5])"
+        "[1, 2, 3, 4, 5].sstd()"
       ]
     },
     "max": {
-      "signature": "max(X)",
+      "signature": "X.max()",
       "desc": "Returns the maximum value in a dataset or list.",
       "examples": [
-        "max([1, 5, 3])"
+        "[1, 5, 3].max()"
       ]
     },
     "min": {
-      "signature": "min(X)",
+      "signature": "X.min()",
       "desc": "Returns the minimum value in a dataset or list.",
       "examples": [
-        "min([1, 5, 3])"
+        "[1, 5, 3].min()"
       ]
     },
     "span": {
-      "signature": "span(X)",
+      "signature": "X.span()",
       "desc": "Returns the statistical range (max - min) of a dataset.",
       "examples": [
-        "span([1, 5, 3])"
+        "[1, 5, 3].span()"
       ]
     },
     "perc": {
-      "signature": "perc(X, p)",
+      "signature": "X.perc(p)",
       "desc": "Returns the p-th percentile of a dataset (0 <= p <= 100).",
       "examples": [
-        "perc([1, 2, 3, 4, 5], 90)"
+        "[1, 2, 3, 4, 5].perc(90)"
       ]
     },
     "median": {
-      "signature": "median(X)",
+      "signature": "X.median()",
       "desc": "Returns the median (50th percentile) of a dataset.",
       "examples": [
-        "median([1, 3, 10])"
+        "[1, 3, 10].median()"
       ]
     },
     "mode": {
-      "signature": "mode(X)",
+      "signature": "X.mode()",
       "desc": "Returns the mode(s) of a dataset. Returns a row vector if multimodal.",
       "examples": [
-        "mode([1, 2, 2, 3])"
+        "[1, 2, 2, 3].mode()"
       ]
     },
     "cov": {
-      "signature": "cov(X, Y)",
+      "signature": "X.cov(Y)",
       "desc": "Returns the population covariance between two datasets.",
       "examples": [
-        "cov([1, 2, 3], [2, 4, 5])"
+        "[1, 2, 3].cov([2, 4, 5])"
       ]
     },
     "corr": {
-      "signature": "corr(X, Y)",
+      "signature": "X.corr(Y)",
       "desc": "Returns the Pearson correlation coefficient (r) between two datasets.",
       "examples": [
-        "corr([1, 2, 3], [2, 4, 5])"
+        "[1, 2, 3].corr([2, 4, 5])"
       ]
     },
     "rsq": {
-      "signature": "rsq(X, Y)",
+      "signature": "X.rsq(Y)",
       "desc": "Returns the coefficient of determination (R^2) between two datasets.",
       "examples": [
-        "rsq([1, 2, 3], [2, 4, 5])"
+        "[1, 2, 3].rsq([2, 4, 5])"
       ]
     },
     "regress": {
-      "signature": "regress(X, Y)",
+      "signature": "X.regress(Y)",
       "desc": "Performs linear regression Y = a + bX. Prints the model and returns @[a, b].",
       "examples": [
-        "regress([1, 2, 3], [2, 4, 5])"
+        "[1, 2, 3].regress([2, 4, 5])"
       ]
     },
     "rand": {

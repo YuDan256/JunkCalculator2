@@ -53,7 +53,7 @@
 *   **语法糖隔离 (Parser-Friendly Syntax)**：冒号 `:` 切片语法严格限制在 `[]` 内部使用（由 Parser 直接生成 `SliceExpr`）。在外部作用域，强制使用内置函数 `slice(start, end, step)` 创建切片对象。此举彻底避免了与三元运算符 `? :`、字典 `{k: v}` 及类型注解的语法冲突。
 *   **C++ 切片解析层 (C++ Slice Utility)**：在 `jc2` 核心库中提供统一的 `ShapeStrider` 或 `SliceIterator` 工具类。Native 模块（如 Matrix, Tensor）接收到变长参数后，直接交由该工具类进行越界检查、负数回绕与内存步长计算，避免重复造轮子。
 
-## 9. 标准库模块化与命名空间重构 (Stdlib Modularization & Namespace Refactoring) [规划中]
+## 9. 标准库模块化与命名空间重构 (Stdlib Modularization & Namespace Refactoring)
 *   **痛点**：当前 `BuiltinRegistry` 注册了超过 200 个全局原生函数，导致严重的命名空间污染、UFCS（统一函数调用）语义隐患以及自动补全困难。
 *   **核心保留 (Core Prelude)**：保留最常用的基础数学函数（如 `sin`, `cos`, `sqrt`, `abs`, `len`, `print`）在全局作用域，维持 JC2 作为“科学计算器”的极佳手感。
 *   **内置类型原型链 (Type Prototypes)**：将容器与字符串操作（如 `push`, `map`, `filter`, `split`, `join`, `keys`）从全局函数中彻底剔除，改为挂载到 `List`, `Dict`, `String`, `Matrix` 等内置类型的 `ObjClass` 原型上。这不仅符合纯正的 OOP 语义，还能极大提升 VM 方法查找（Inline Cache）的效率与安全性。

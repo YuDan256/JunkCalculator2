@@ -40,7 +40,15 @@ namespace helpers {
             }
             return r;
         }
-        throw std::runtime_error(f + "() requires a matrix/vector.");
+        if (v.isObjType(ObjType::LIST)) {
+            const auto& vec = static_cast<ObjList*>(v.asObj())->vec;
+            std::vector<double> r(vec.size());
+            for (size_t i = 0; i < vec.size(); ++i) {
+                r[i] = vec[i].asDouble();
+            }
+            return r;
+        }
+        throw std::runtime_error(f + "() requires a matrix/vector or list.");
     }
 
     inline double computeMean(const std::vector<double>& d) {

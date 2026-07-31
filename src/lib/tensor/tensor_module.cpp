@@ -60,7 +60,7 @@ static std::pair<jc::DType, bool> parseTensorOptions(int argc, JC2_ValueHandle* 
 }
 
 // Macros for methods
-#define METHOD(name) JC2_ValueHandle tensor_##name(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
+#define METHOD(name) JC2_ValueHandle tensor_##name(JC2_VMContext, [[maybe_unused]] int argc, JC2_ValueHandle* argv, void*)
 #define GET_SELF auto t1 = getTensor(jc2::Value(argv[0]))
 
 METHOD(__str__) { GET_SELF; return jc2::Value(t1->toString()).get_handle(); }
@@ -232,7 +232,7 @@ METHOD(getFlat) { GET_SELF; return jc2::Value(t1->getFlat(static_cast<size_t>(jc
 METHOD(setFlat) { GET_SELF; t1->setFlat(static_cast<size_t>(jc2::Value(argv[1]).as_double()), jc2::Value(argv[2]).as_double()); return argv[0]; }
 
 // Global functions
-#define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
+#define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, [[maybe_unused]] int argc, JC2_ValueHandle* argv, void*)
 
 FUNC(tensor) {
     if (argc < 2) jc2::throw_error("TypeError: Tensor() takes at least 2 arguments (data_list, shape_list).");

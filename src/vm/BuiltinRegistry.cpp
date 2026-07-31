@@ -3936,19 +3936,19 @@ void BuiltinRegistry::registerHigherOrder() {
         return safeCallFunction(cl, unpackedList->vec);
     };
 
-    reg("apply", { 1, 2 }, [applyCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: apply() currying expects a function.");
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "apply_curried", nullptr);
-            bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([applyCore](const std::vector<Value>& innerArgs) -> Value {
-                return applyCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        return applyCore(args[0], args[1].asFunction());
-        }, {"args", "f"});
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
+    auto applyFn = [applyCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return applyCore(self, args[0].asFunction());
+    };
+    regMethod(VM::activeVM->listProto, "apply", {"f"}, applyFn);
+    regMethod(VM::activeVM->matrixProto, "apply", {"f"}, applyFn);
 
     auto mapCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: map() requires a single-parameter function.");
@@ -4035,19 +4035,13 @@ void BuiltinRegistry::registerHigherOrder() {
         throw std::runtime_error("Type Error: map() expects a vector/matrix/list.");
     };
 
-    reg("map", { 1, 2 }, [mapCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: map() currying expects a function.");
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "map_curried", nullptr);
-            bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([mapCore](const std::vector<Value>& innerArgs) -> Value {
-                return mapCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        return mapCore(args[0], args[1].asFunction());
-        }, {"v", "f"});
+    auto mapFn = [mapCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return mapCore(self, args[0].asFunction());
+    };
+    regMethod(VM::activeVM->listProto, "map", {"f"}, mapFn);
+    regMethod(VM::activeVM->matrixProto, "map", {"f"}, mapFn);
+    regMethod(VM::activeVM->stringProto, "map", {"f"}, mapFn);
 
     auto filterCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: filter() requires a single-parameter function.");
@@ -4102,19 +4096,13 @@ void BuiltinRegistry::registerHigherOrder() {
         throw std::runtime_error("Type Error: filter() expects a vector/matrix/list.");
     };
 
-    reg("filter", { 1, 2 }, [filterCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: filter() currying expects a function.");
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "filter_curried", nullptr);
-            bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([filterCore](const std::vector<Value>& innerArgs) -> Value {
-                return filterCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        return filterCore(args[0], args[1].asFunction());
-        }, {"v", "f"});
+    auto filterFn = [filterCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return filterCore(self, args[0].asFunction());
+    };
+    regMethod(VM::activeVM->listProto, "filter", {"f"}, filterFn);
+    regMethod(VM::activeVM->matrixProto, "filter", {"f"}, filterFn);
+    regMethod(VM::activeVM->stringProto, "filter", {"f"}, filterFn);
 
     auto reduceCore = [this](const Value& argList, ObjClosure* cl, const Value& initVal) -> Value {
         if (!cl->acceptsArgCount(2)) throw std::runtime_error("Runtime Error: reduce() requires a two-parameter function.");
@@ -4168,21 +4156,14 @@ void BuiltinRegistry::registerHigherOrder() {
         throw std::runtime_error("Type Error: reduce() expects a vector/matrix/list.");
     };
 
-    reg("reduce", { 1, 2, 3 }, [reduceCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1 || (args.size() == 2 && args[0].isFunctionClosure())) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: reduce() currying expects a function.");
-            Value capturedInit = args.size() == 2 ? args[1] : Value::none();
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "reduce_curried", nullptr);
-            bound->boundSelf = capturedFn;   // ★ 让 GC 追踪
-            bound->boundClass = capturedInit; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([reduceCore](const std::vector<Value>& innerArgs) -> Value {
-                return reduceCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction(), helpers::nativeClassStack.back());
-            });
-            return Value(bound);
-        }
-        return reduceCore(args[0], args[1].asFunction(), args.size() == 3 ? args[2] : Value::none());
-        }, {"v", "f", "init"});
+    auto reduceFn = [reduceCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        Value initVal = args.size() == 2 ? args[1] : Value::none();
+        return reduceCore(self, args[0].asFunction(), initVal);
+    };
+    regMethod(VM::activeVM->listProto, "reduce", {"f", "init"}, reduceFn);
+    regMethod(VM::activeVM->matrixProto, "reduce", {"f", "init"}, reduceFn);
+    regMethod(VM::activeVM->stringProto, "reduce", {"f", "init"}, reduceFn);
 
     auto iterateAndCheck = [this](const Value& argList, ObjClosure* cl, auto checkFn) -> Value {
         Value iterable = argList;
@@ -4228,19 +4209,13 @@ void BuiltinRegistry::registerHigherOrder() {
         return iterateAndCheck(argList, cl, [](bool res) { return res; });
     };
 
-    reg("any", { 1, 2 }, [anyCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: any() currying expects a function.");
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "any_curried", nullptr);
-            bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([anyCore](const std::vector<Value>& innerArgs) -> Value {
-                return anyCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        return anyCore(args[0], args[1].asFunction());
-        }, {"v", "f"});
+    auto anyFn = [anyCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return anyCore(self, args[0].asFunction());
+    };
+    regMethod(VM::activeVM->listProto, "any", {"f"}, anyFn);
+    regMethod(VM::activeVM->matrixProto, "any", {"f"}, anyFn);
+    regMethod(VM::activeVM->stringProto, "any", {"f"}, anyFn);
 
     auto allCore = [iterateAndCheck](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: all() requires a single-parameter function.");
@@ -4248,19 +4223,13 @@ void BuiltinRegistry::registerHigherOrder() {
         return Value(!res.asBool());
     };
 
-    reg("all", { 1, 2 }, [allCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: all() currying expects a function.");
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "all_curried", nullptr);
-            bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([allCore](const std::vector<Value>& innerArgs) -> Value {
-                return allCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        return allCore(args[0], args[1].asFunction());
-        }, {"v", "f"});
+    auto allFn = [allCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return allCore(self, args[0].asFunction());
+    };
+    regMethod(VM::activeVM->listProto, "all", {"f"}, allFn);
+    regMethod(VM::activeVM->matrixProto, "all", {"f"}, allFn);
+    regMethod(VM::activeVM->stringProto, "all", {"f"}, allFn);
 
     auto countIfCore = [](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: countIf() requires a single-parameter function.");
@@ -4286,19 +4255,13 @@ void BuiltinRegistry::registerHigherOrder() {
         return Value::fromInt32(c);
     };
 
-    reg("countIf", { 1, 2 }, [countIfCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: countIf() currying expects a function.");
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "countIf_curried", nullptr);
-            bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([countIfCore](const std::vector<Value>& innerArgs) -> Value {
-                return countIfCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        return countIfCore(args[0], args[1].asFunction());
-        }, {"v", "f"});
+    auto countIfFn = [countIfCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return countIfCore(self, args[0].asFunction());
+    };
+    regMethod(VM::activeVM->listProto, "countIf", {"f"}, countIfFn);
+    regMethod(VM::activeVM->matrixProto, "countIf", {"f"}, countIfFn);
+    regMethod(VM::activeVM->stringProto, "countIf", {"f"}, countIfFn);
 
     auto sortCore = [this](const Value& argList, ObjClosure* cmp) -> Value {
         Value arg = argList;
@@ -4355,19 +4318,14 @@ void BuiltinRegistry::registerHigherOrder() {
         }
     };
 
-    reg("sort", { 1, 2 }, [sortCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1 && args[0].isFunctionClosure()) {
-            Value capturedFn = args[0];
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "sort_curried", nullptr);
-            bound->boundSelf = capturedFn; // ★ 让 GC 追踪
-            bound->nativeFn = std::make_any<NativeCallable>([sortCore](const std::vector<Value>& innerArgs) -> Value {
-                return sortCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        if (args.size() == 1) return sortCore(args[0], nullptr);
-        return sortCore(args[0], args[1].asFunction());
-        }, {"v", "cmp"});
+    auto sortFn = [sortCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        ObjClosure* cmp = args.size() == 1 ? args[0].asFunction() : nullptr;
+        return sortCore(self, cmp);
+    };
+    regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortFn);
+    regMethod(VM::activeVM->matrixProto, "sort", {"cmp"}, sortFn);
+    regMethod(VM::activeVM->stringProto, "sort", {"cmp"}, sortFn);
 
 }
 

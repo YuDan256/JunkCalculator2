@@ -4484,6 +4484,19 @@ Value VM::run(int targetFrameDepth) {
                                 }
                             }
                         }
+                    } else if (obj.isSlice()) {
+                        if (!idx.isString()) {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("VM Error: Slice properties must be accessed with string keys.");
+                        } else {
+                            Value prop = obj.asSlice()->getProperty(idx.asString());
+                            if (prop.isUninit()) {
+                                if (noThrow) result = Value::uninit();
+                                else throw std::runtime_error("VM Error: Property '" + idx.asString() + "' not found on slice.");
+                            } else {
+                                result = prop;
+                            }
+                        }
                     } else {
                         if (noThrow) result = Value::uninit();
                         else throw std::runtime_error("VM Error: Unsupported 1D index get.");
@@ -5682,6 +5695,12 @@ Value VM::run(int targetFrameDepth) {
                         result = *(it->second.upval->location);
                         found = true;
                     }
+                } else if (!found && obj.isSlice()) {
+                    Value prop = obj.asSlice()->getProperty(field);
+                    if (!prop.isUninit()) {
+                        result = prop;
+                        found = true;
+                    }
                 } else if (!found && obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     while (cls) {
@@ -6040,6 +6059,12 @@ Value VM::run(int targetFrameDepth) {
                     auto it = ns->fields.find(field);
                     if (it != ns->fields.end()) {
                         result = *(it->second.upval->location);
+                        found = true;
+                    }
+                } else if (!found && obj.isSlice()) {
+                    Value prop = obj.asSlice()->getProperty(field);
+                    if (!prop.isUninit()) {
+                        result = prop;
                         found = true;
                     }
                 } else if (!found && obj.isClass()) {

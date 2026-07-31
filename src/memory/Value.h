@@ -693,6 +693,13 @@ namespace jc {
 
             return { st, s, count };
         }
+
+        Value getProperty(const std::string& name) const {
+            if (name == "start") return start == SLICE_NONE ? Value::none() : Value(start);
+            if (name == "end") return end == SLICE_NONE ? Value::none() : Value(end);
+            if (name == "step") return step == SLICE_NONE ? Value::none() : Value(step);
+            return Value::uninit();
+        }
     };
 
     inline Value::Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {

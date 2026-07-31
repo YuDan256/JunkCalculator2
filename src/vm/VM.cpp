@@ -82,6 +82,10 @@ Value VM::getBuiltinClosure(const std::string& name) {
             for (size_t j = 0; j < closure->paramNames.size(); ++j) {
                 closure->isRef.push_back(false);
             }
+            if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
+                closure->hasRestParam = true;
+                closure->paramNames.back() = closure->paramNames.back().substr(3);
+            }
             if (ait != builtinArity.end() && !ait->second.empty()) {
                 int minA = *ait->second.begin();
                 int maxA = *ait->second.rbegin();
@@ -2284,6 +2288,10 @@ Value VM::execImport(const std::string& name) {
                 closure->paramNames = pit->second;
                 for (size_t j = 0; j < closure->paramNames.size(); ++j) {
                     closure->isRef.push_back(false);
+                }
+                if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
+                    closure->hasRestParam = true;
+                    closure->paramNames.back() = closure->paramNames.back().substr(3);
                 }
                 if (ait != tempArity.end() && !ait->second.empty()) {
                     int minA = *ait->second.begin();

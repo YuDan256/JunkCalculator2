@@ -1683,80 +1683,6 @@ invoke_method:
     }
 }
 
-namespace {
-    struct SliceInfo { int start; int step; int count; };
-
-    SliceInfo computeSlice(int dimSize, int s_start, int s_end, int s_step) {
-        int step = (s_step == ObjSlice::SLICE_NONE) ? 1 : s_step;
-        if (step == 0) throw std::runtime_error("ValueError: slice step cannot be zero.");
-
-        int start, end;
-        if (step > 0) {
-            start = (s_start == ObjSlice::SLICE_NONE) ? 0 : s_start;
-            end = (s_end == ObjSlice::SLICE_NONE) ? dimSize : s_end;
-        } else {
-            start = (s_start == ObjSlice::SLICE_NONE) ? dimSize - 1 : s_start;
-            end = (s_end == ObjSlice::SLICE_NONE) ? -1 : s_end;
-        }
-
-        if (start < 0) start += dimSize;
-        if (end < 0 && s_end != ObjSlice::SLICE_NONE) end += dimSize;
-
-        if (step > 0) {
-            start = std::max(0, std::min(dimSize, start));
-            end = std::max(0, std::min(dimSize, end));
-        } else {
-            start = std::max(-1, std::min(dimSize - 1, start));
-            end = std::max(-1, std::min(dimSize - 1, end));
-        }
-
-        int count = 0;
-        if (step > 0) {
-            if (end > start) count = (end - start + step - 1) / step;
-        } else {
-            if (end < start) count = (start - end - step - 1) / (-step);
-        }
-
-        return { start, step, count };
-    }
-
-    struct IndexRange {
-        bool isSlice;
-        int scalarIdx;
-        SliceInfo sliceInfo;
-    };
-
-    IndexRange getIndexRange(const Value& idxVal, int dimSize, bool noThrow) {
-        if (idxVal.isSlice()) {
-            ObjSlice* slice = idxVal.asSlice();
-            return { true, 0, computeSlice(dimSize, slice->start, slice->end, slice->step) };
-        } else {
-            int64_t val64 = 0;
-            if (idxVal.isInt32()) {
-                val64 = idxVal.asInt32();
-            } else if (idxVal.isDouble()) {
-                val64 = static_cast<int64_t>(std::round(idxVal.asDoubleRaw()));
-            } else if (idxVal.isBigInt()) {
-                try { val64 = idxVal.asBigInt().toInt64(); } catch (...) { throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1."); }
-            } else {
-                val64 = static_cast<int64_t>(std::round(idxVal.asDouble()));
-            }
-            
-            if (val64 > 2147483647LL || val64 < -2147483647LL) {
-                throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1.");
-            }
-            
-            int i = static_cast<int>(val64);
-            if (i < 0) i += dimSize;
-            if (i < 0 || i >= dimSize) {
-                if (noThrow) return { false, -1, {0,0,0} };
-                throw std::out_of_range("VM Error: Index out of bounds.");
-            }
-            return { false, i, {0,0,0} };
-        }
-    }
-}
-
 void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     const std::string& methodName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
@@ -4330,7 +4256,7 @@ Value VM::run(int targetFrameDepth) {
                     Value idx = args[0];
                     if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
-                        auto range = getIndexRange(idx, static_cast<int>(list->vec.size()), noThrow);
+                        auto range = idx.parseIndex(static_cast<int>(list->vec.size()), noThrow);
                         if (!range.isSlice && range.scalarIdx == -1) result = Value::uninit();
                         else if (!range.isSlice) result = list->vec[range.scalarIdx];
                         else {
@@ -4343,7 +4269,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     } else if (obj.isString()) {
                         ObjString* objStr = obj.asObjString();
-                        auto range = getIndexRange(idx, static_cast<int>(objStr->charLength), noThrow);
+                        auto range = idx.parseIndex(static_cast<int>(objStr->charLength), noThrow);
                         if (!range.isSlice && range.scalarIdx == -1) result = Value::uninit();
                         else if (!range.isSlice) {
                             if (objStr->isAscii) {
@@ -4370,7 +4296,7 @@ Value VM::run(int targetFrameDepth) {
                         auto processMatGet = [&](const auto& m) -> Value {
                             using MatType = std::decay_t<decltype(m)>;
                             int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                            auto range = getIndexRange(idx, n, noThrow);
+                            auto range = idx.parseIndex(n, noThrow);
                             if (!range.isSlice && range.scalarIdx == -1) return Value::uninit();
                             
                             if (!range.isSlice) {
@@ -4568,8 +4494,8 @@ Value VM::run(int targetFrameDepth) {
                     if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) {
                         auto processMatGet2D = [&](const auto& m) -> Value {
                             using MatType = std::decay_t<decltype(m)>;
-                            auto rRange = getIndexRange(rowIdx, m.getRows(), noThrow);
-                            auto cRange = getIndexRange(colIdx, m.getCols(), noThrow);
+                            auto rRange = rowIdx.parseIndex(m.getRows(), noThrow);
+                            auto cRange = colIdx.parseIndex(m.getCols(), noThrow);
                             
                             if ((!rRange.isSlice && rRange.scalarIdx == -1) || (!cRange.isSlice && cRange.scalarIdx == -1)) return Value::uninit();
                             
@@ -4667,7 +4593,7 @@ Value VM::run(int targetFrameDepth) {
                     Value idx = args[0];
                     if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
-                        auto range = getIndexRange(idx, static_cast<int>(list->vec.size()), false);
+                        auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
                         if (!range.isSlice) {
                             list->mut()[range.scalarIdx] = val;
                         } else {
@@ -4682,7 +4608,7 @@ Value VM::run(int targetFrameDepth) {
                     } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) {
                         auto processMatSet = [&](auto& m) {
                             int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                            auto range = getIndexRange(idx, n, false);
+                            auto range = idx.parseIndex(n, false);
                             using ElemType = std::decay_t<decltype(m(0,0))>;
                             
                             if (!range.isSlice) {
@@ -4895,8 +4821,8 @@ Value VM::run(int targetFrameDepth) {
                     if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) {
                         auto processMatSet2D = [&](auto& m) {
                             using ElemType = std::decay_t<decltype(m(0,0))>;
-                            auto rRange = getIndexRange(rowIdx, m.getRows(), false);
-                            auto cRange = getIndexRange(colIdx, m.getCols(), false);
+                            auto rRange = rowIdx.parseIndex(m.getRows(), false);
+                            auto cRange = colIdx.parseIndex(m.getCols(), false);
                             
                             if (!rRange.isSlice && !cRange.isSlice) {
                                 ElemType scalarVal{};

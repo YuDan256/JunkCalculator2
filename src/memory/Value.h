@@ -481,6 +481,8 @@ namespace jc {
         std::string toString() const;
 
         std::string toRepr() const;
+
+        IndexRange parseIndex(int dimSize, bool noThrow = false) const;
     }; // class Value
 
     struct PropertyDescriptor {
@@ -639,12 +641,58 @@ namespace jc {
         ObjSym(SymExpr s) : sym(std::move(s)) { type = ObjType::SYMBOLIC; }
     };
 
+    struct SliceInfo {
+        int start;
+        int step;
+        int count;
+    };
+
     struct ObjSlice : public Obj {
         static constexpr int SLICE_NONE = INT32_MIN;
         int start;
         int end;
         int step;
         ObjSlice() : start(SLICE_NONE), end(SLICE_NONE), step(SLICE_NONE) { type = ObjType::SLICE; }
+
+        SliceInfo compute(int dimSize) const {
+            int s = (step == SLICE_NONE) ? 1 : step;
+            if (s == 0) throw std::runtime_error("ValueError: slice step cannot be zero.");
+
+            int st, en;
+            if (s > 0) {
+                st = (start == SLICE_NONE) ? 0 : start;
+                en = (end == SLICE_NONE) ? dimSize : end;
+            } else {
+                st = (start == SLICE_NONE) ? dimSize - 1 : start;
+                en = (end == SLICE_NONE) ? -1 : end;
+            }
+
+            if (st < 0) st += dimSize;
+            if (en < 0 && end != SLICE_NONE) en += dimSize;
+
+            if (s > 0) {
+                st = std::max(0, std::min(dimSize, st));
+                en = std::max(0, std::min(dimSize, en));
+            } else {
+                st = std::max(-1, std::min(dimSize - 1, st));
+                en = std::max(-1, std::min(dimSize - 1, en));
+            }
+
+            int count = 0;
+            if (s > 0) {
+                if (en > st) count = (en - st + s - 1) / s;
+            } else {
+                if (en < st) count = (st - en - s - 1) / (-s);
+            }
+
+            return { st, s, count };
+        }
+    };
+
+    struct IndexRange {
+        bool isSlice;
+        int scalarIdx;
+        SliceInfo sliceInfo;
     };
 
     inline Value::Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {
@@ -694,6 +742,35 @@ namespace jc {
     inline ObjSlice* Value::asSlice() const {
         if (!isSlice()) throw std::runtime_error("Type Error: Expected a slice.");
         return static_cast<ObjSlice*>(asObj());
+    }
+
+    inline IndexRange Value::parseIndex(int dimSize, bool noThrow) const {
+        if (isSlice()) {
+            return { true, 0, asSlice()->compute(dimSize) };
+        } else {
+            int64_t val64 = 0;
+            if (isInt32()) {
+                val64 = asInt32();
+            } else if (isDouble()) {
+                val64 = static_cast<int64_t>(std::round(asDoubleRaw()));
+            } else if (isBigInt()) {
+                try { val64 = asBigInt().toInt64(); } catch (...) { throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1."); }
+            } else {
+                val64 = static_cast<int64_t>(std::round(asDouble()));
+            }
+            
+            if (val64 > 2147483647LL || val64 < -2147483647LL) {
+                throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1.");
+            }
+            
+            int i = static_cast<int>(val64);
+            if (i < 0) i += dimSize;
+            if (i < 0 || i >= dimSize) {
+                if (noThrow) return { false, -1, {0,0,0} };
+                throw std::out_of_range("VM Error: Index out of bounds.");
+            }
+            return { false, i, {0,0,0} };
+        }
     }
 
     inline Value Value::makeSuperProxy(ObjInstance* inst, ObjClass* parent) {

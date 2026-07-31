@@ -1910,10 +1910,7 @@
       "      strmat(r, c, ...)                   Construct stringmatrix",
       "      strvec(...)                         Construct column stringmatrix",
       "      strrow(...)                         Construct row stringmatrix",
-      "      strfill(str, n)                     Create 1xN stringmatrix filled with str",
-      "      strfind(mat, str)                   Find string in stringmatrix",
-      "      strjoin(mat, delim)                 Join stringmatrix elements",
-      "      strsort(mat)                        Sort stringmatrix elements"
+      "      strfill(str, n)                     Create 1xN stringmatrix filled with str"
     ],
     "array": [
       "═══ Array / Data Functions ═══",
@@ -2034,9 +2031,9 @@
       "  ──────────────────────",
       "    sum(v)              Sum of all elements",
       "    prod(v)             Product of all elements",
-      "    cumsum(v)           Cumulative sum     [1,2,3] → [1,3,6]",
-      "    cumprod(v)          Cumulative product  [1,2,3] → [1,2,6]",
-      "    diffs(v)            Adjacent differences [10,20,35] → [10,15]",
+      "    v.cumsum()          Cumulative sum     [1,2,3] → [1,3,6]",
+      "    v.cumprod()         Cumulative product  [1,2,3] → [1,2,6]",
+      "    v.diffs()           Adjacent differences [10,20,35] → [10,15]",
       "",
       "  Concatenation & Joining",
       "  ──────────────────────",
@@ -2049,9 +2046,9 @@
       "",
       "  Iteration Helpers",
       "  ──────────────────────",
-      "    enumerate(v, [st])  Returns a list of @[index, value] pairs.",
-      "                          enumerate([\"a\", \"b\"])        → @[@[0, \"a\"], @[1, \"b\"]]",
-      "    groupBy(v, f)       Groups elements by f(x) into a dict.",
+      "    v.enumerate([st])   Returns a list of @[index, value] pairs.",
+      "                          [\"a\", \"b\"].enumerate()       → @[@[0, \"a\"], @[1, \"b\"]]",
+      "    v.groupBy(f)        Groups elements by f(x) into a dict.",
       "                          [1,2,3,4].groupBy((x)=>x%2)  → {1: @[1,3], 0: @[2,4]}",
       "",
       "  Pipe Operator",
@@ -2164,9 +2161,9 @@
       "",
       "  Accumulation",
       "  ──────────────────────",
-      "    cumsum(L)               Cumulative sum",
-      "    cumprod(L)              Cumulative product",
-      "    diffs(L)                Adjacent differences",
+      "    L.cumsum()              Cumulative sum",
+      "    L.cumprod()             Cumulative product",
+      "    L.diffs()               Adjacent differences",
       "",
       "  String Interop",
       "  ──────────────────────",
@@ -4823,9 +4820,9 @@
       "examples": ["trim(\"  hello  \")"]
     },
     "find": {
-      "signature": "find(s, sub, [pos])",
-      "desc": "Returns the index of the first match of sub in s, or -1 if absent.",
-      "examples": ["find(\"hello\", \"l\")"]
+      "signature": "find(s, sub, [pos]) / mat.find(val)",
+      "desc": "Returns the index of the first match of sub in string s, or the [row, col] of val in a matrix. Returns -1 if absent.",
+      "examples": ["find(\"hello\", \"l\")", "M.find(42)"]
     },
     "contains": {
       "signature": "contains(s, sub)",
@@ -4928,19 +4925,19 @@
       "examples": ["count([1, 2, 2, 3], 2)"]
     },
     "cumsum": {
-      "signature": "cumsum(v)",
+      "signature": "v.cumsum()",
       "desc": "Returns the cumulative sum of the elements.",
-      "examples": ["cumsum([1, 2, 3])"]
+      "examples": ["[1, 2, 3].cumsum()"]
     },
     "cumprod": {
-      "signature": "cumprod(v)",
+      "signature": "v.cumprod()",
       "desc": "Returns the cumulative product of the elements.",
-      "examples": ["cumprod([1, 2, 3])"]
+      "examples": ["[1, 2, 3].cumprod()"]
     },
     "diffs": {
-      "signature": "diffs(v)",
+      "signature": "v.diffs()",
       "desc": "Returns the adjacent differences of the elements.",
-      "examples": ["diffs([1, 3, 6])"]
+      "examples": ["[1, 3, 6].diffs()"]
     },
     "range": {
       "signature": "range([start], end, [step])",
@@ -4976,21 +4973,6 @@
       "signature": "strfill(str, n)",
       "desc": "Creates a 1xN stringmatrix filled with str.",
       "examples": ["strfill(\"x\", 3)"]
-    },
-    "strfind": {
-      "signature": "strfind(mat, str)",
-      "desc": "Finds a string in a stringmatrix, returning its [row, col] or -1.",
-      "examples": ["strfind(M, \"target\")"]
-    },
-    "strjoin": {
-      "signature": "strjoin(mat, delim)",
-      "desc": "Joins all elements of a stringmatrix with a delimiter.",
-      "examples": ["strjoin(M, \",\")"]
-    },
-    "strsort": {
-      "signature": "strsort(mat)",
-      "desc": "Sorts the elements of a stringmatrix lexicographically.",
-      "examples": ["strsort(M)"]
     },
     "toStrMat": {
       "signature": "toStrMat(A)",
@@ -5044,9 +5026,9 @@
       "examples": ["cat([1, 2], [3, 4])"]
     },
     "enumerate": {
-      "signature": "enumerate(iterable, [start=0])",
+      "signature": "v.enumerate([start=0])",
       "desc": "Returns a list of @[index, value] pairs from an iterable.",
-      "examples": ["enumerate([\"a\", \"b\", \"c\"])"]
+      "examples": ["[\"a\", \"b\", \"c\"].enumerate()"]
     },
     "groupBy": {
       "signature": "v.groupBy(f) / groupBy(v, f) / groupBy(f)",

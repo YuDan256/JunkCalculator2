@@ -3365,31 +3365,38 @@ void BuiltinRegistry::registerArrayFunctions() {
         throw std::runtime_error("Type Error: cumsum/cumprod expects a numeric vector or list.");
         };
 
-    reg("cumsum", { 1 }, [applyMathVectorOp](const std::vector<Value>& args) -> Value {
-        return applyMathVectorOp(args[0], [](const Value& a, const Value& b) { return a + b; });
-        }, {"v"});
-    reg("cumprod", { 1 }, [applyMathVectorOp](const std::vector<Value>& args) -> Value {
-        return applyMathVectorOp(args[0], [](const Value& a, const Value& b) { return a * b; });
-        }, {"v"});
+    auto cumsumFn = [applyMathVectorOp](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return applyMathVectorOp(self, [](const Value& a, const Value& b) { return a + b; });
+    };
+    regMethod(VM::activeVM->listProto, "cumsum", {}, cumsumFn);
+    regMethod(VM::activeVM->matrixProto, "cumsum", {}, cumsumFn);
 
-    reg("diffs", { 1 }, [](const std::vector<Value>& args) -> Value {
-        Value arg = args[0];
-        if (arg.isObjType(ObjType::LIST)) {
-            auto l = static_cast<ObjList*>(arg.asObj());
+    auto cumprodFn = [applyMathVectorOp](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return applyMathVectorOp(self, [](const Value& a, const Value& b) { return a * b; });
+    };
+    regMethod(VM::activeVM->listProto, "cumprod", {}, cumprodFn);
+    regMethod(VM::activeVM->matrixProto, "cumprod", {}, cumprodFn);
+
+    auto diffsFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::LIST)) {
+            auto l = static_cast<ObjList*>(self.asObj());
             if (l->vec.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
             ObjList* result = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(result);
             for (size_t i = 0; i < l->vec.size() - 1; ++i) result->vec.push_back(l->vec[i + 1] - l->vec[i]);
             return Value(result);
-        } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(arg.asObj())->mat;
+        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
+            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
             auto v = m.rawData();
             if (v.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
             std::vector<double> d(v.size() - 1);
             for (size_t i = 0; i < d.size(); ++i) d[i] = v[i + 1] - v[i];
             return Value(RealMatrix(1, static_cast<int>(d.size()), d));
-        } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(arg.asObj())->mat;
+        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
             auto v = m.rawData();
             if (v.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
             std::vector<Complex> d(v.size() - 1);
@@ -3397,7 +3404,40 @@ void BuiltinRegistry::registerArrayFunctions() {
             return Value(ComplexMatrix(1, static_cast<int>(d.size()), d));
         }
         throw std::runtime_error("Type Error: diffs() expects a numeric vector or list.");
-        }, {"v"});
+    };
+    regMethod(VM::activeVM->listProto, "diffs", {}, diffsFn);
+    regMethod(VM::activeVM->matrixProto, "diffs", {}, diffsFn);
+
+    auto findFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        Value target = args[0];
+        if (self.isObjType(ObjType::REAL_MATRIX)) {
+            const auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
+            if (!target.isNumber()) return Value::fromInt32(-1);
+            double t = target.asDouble();
+            for (int i=0; i<m.getRows(); ++i)
+                for (int j=0; j<m.getCols(); ++j)
+                    if (m(i,j) == t) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)}));
+            return Value::fromInt32(-1);
+        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            const auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
+            if (!target.isNumber() && !target.isComplex()) return Value::fromInt32(-1);
+            Complex t = target.asComplex();
+            for (int i=0; i<m.getRows(); ++i)
+                for (int j=0; j<m.getCols(); ++j)
+                    if (m(i,j) == t) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)}));
+            return Value::fromInt32(-1);
+        } else if (self.isObjType(ObjType::STRING_MATRIX)) {
+            const auto& m = static_cast<ObjStringMatrix*>(self.asObj())->mat;
+            std::string t = target.isString() ? target.asString() : target.toString();
+            for (int i=0; i<m.getRows(); ++i)
+                for (int j=0; j<m.getCols(); ++j)
+                    if (m(i,j) == t) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)}));
+            return Value::fromInt32(-1);
+        }
+        throw std::runtime_error("Type Error: find() expects a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "find", {"val"}, findFn);
 
     // fill, linspace
     reg("fill", { 2 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); if (n < 0) throw std::runtime_error("Runtime Error: count must be non-negative."); return Value(RealMatrix(1, n, std::vector<double>(n, args[0].asDouble()))); }, {"val", "n"});
@@ -3412,9 +3452,6 @@ void BuiltinRegistry::registerStringMatrix() {
     reg("strvec", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(static_cast<int>(flat.size()),1,flat)); }, {"...elements"});
     reg("strrow", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(1,static_cast<int>(flat.size()),flat)); }, {"...elements"});
     reg("strfill", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: strfill() expects a string and count."); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: strfill() count must be non-negative."); return Value(StringMatrix(1,n,std::vector<std::string>(n,args[0].asString()))); }, {"str", "n"});
-    reg("strfind", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strfind() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& target=args[1].asString(); for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) if (m(i,j)==target) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)})); return Value::fromInt32(-1); }, {"mat", "str"});
-    reg("strjoin", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)||!args[1].isString()) throw std::runtime_error("Type Error: strjoin() expects StringMatrix and string."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; const std::string& delim=args[1].asString(); std::string result; bool first=true; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { if (!first) result+=delim; result+=m(i,j); first=false; } return Value(result); }, {"mat", "delim"});
-    reg("strsort", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isObjType(ObjType::STRING_MATRIX)) throw std::runtime_error("Type Error: strsort() expects a StringMatrix."); const auto& m=static_cast<ObjStringMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat=m.rawData(); std::sort(flat.begin(),flat.end()); return Value(StringMatrix(m.getRows(),m.getCols(),flat)); }, {"mat"});
     reg("toStrMat", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::STRING_MATRIX)) return args[0]; if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m=static_cast<ObjRealMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m=static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } throw std::runtime_error("Type Error: toStrMat() expects a matrix."); }, {"A"});
 }
 
@@ -3897,14 +3934,21 @@ void BuiltinRegistry::registerListConversion() {
         return Value(RealMatrix(n, 2, flat));
         }, {"a", "b"});
 
-    reg("enumerate", { 1, 2 }, [this](const std::vector<Value>& args) -> Value {
-        Value iterable = args[0];
-        int start = args.size() == 2 ? static_cast<int>(std::round(args[1].asDouble())) : 0;
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+        if (!proto) return;
+        auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+        closure->nativeFn = std::make_any<NativeCallable>(fn);
+        proto->properties[name] = {Value(closure), false, false};
+    };
+
+    auto enumerateFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int start = args.size() == 1 ? static_cast<int>(std::round(args[0].asDouble())) : 0;
         ObjList* result = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(result);
         
         int idx = start;
-        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
+        if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             ObjList* pair = GcHeap::get().allocate<ObjList>();
             pair->vec.push_back(Value::fromInt32(idx++));
             pair->vec.push_back(nextVal);
@@ -3915,40 +3959,40 @@ void BuiltinRegistry::registerListConversion() {
             return Value(result);
         }
         
-        if (iterable.isObjType(ObjType::LIST)) {
-            for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
+        if (self.isObjType(ObjType::LIST)) {
+            for (const auto& e : static_cast<ObjList*>(self.asObj())->vec) {
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value::fromInt32(idx++));
                 pair->vec.push_back(e);
                 pair->is_frozen = true;
                 result->vec.push_back(Value(pair));
             }
-        } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
-            for (double d : static_cast<ObjRealMatrix*>(iterable.asObj())->mat.rawData()) {
+        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
+            for (double d : static_cast<ObjRealMatrix*>(self.asObj())->mat.rawData()) {
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value::fromInt32(idx++));
                 pair->vec.push_back(Value(d));
                 pair->is_frozen = true;
                 result->vec.push_back(Value(pair));
             }
-        } else if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
-            for (const auto& c : static_cast<ObjComplexMatrix*>(iterable.asObj())->mat.rawData()) {
+        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            for (const auto& c : static_cast<ObjComplexMatrix*>(self.asObj())->mat.rawData()) {
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value::fromInt32(idx++));
                 pair->vec.push_back(Value(c));
                 pair->is_frozen = true;
                 result->vec.push_back(Value(pair));
             }
-        } else if (iterable.isObjType(ObjType::STRING_MATRIX)) {
-            for (const auto& s : static_cast<ObjStringMatrix*>(iterable.asObj())->mat.rawData()) {
+        } else if (self.isObjType(ObjType::STRING_MATRIX)) {
+            for (const auto& s : static_cast<ObjStringMatrix*>(self.asObj())->mat.rawData()) {
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value::fromInt32(idx++));
                 pair->vec.push_back(Value(s));
                 pair->is_frozen = true;
                 result->vec.push_back(Value(pair));
             }
-        } else if (iterable.isString()) {
-            ObjString* objStr = iterable.asObjString();
+        } else if (self.isString()) {
+            ObjString* objStr = self.asObjString();
             const std::string& str = objStr->str;
             if (objStr->isAscii) {
                 for (char c : str) {
@@ -3972,7 +4016,10 @@ void BuiltinRegistry::registerListConversion() {
             throw std::runtime_error("Type Error: enumerate() expects an iterable.");
         }
         return Value(result);
-    }, {"iterable", "start"});
+    };
+    regMethod(VM::activeVM->listProto, "enumerate", {"start"}, enumerateFn);
+    regMethod(VM::activeVM->matrixProto, "enumerate", {"start"}, enumerateFn);
+    regMethod(VM::activeVM->stringProto, "enumerate", {"start"}, enumerateFn);
 
     auto groupByCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: groupBy() requires a single-parameter function.");
@@ -4015,19 +4062,13 @@ void BuiltinRegistry::registerListConversion() {
         return Value(result);
     };
 
-    reg("groupBy", { 1, 2 }, [groupByCore](const std::vector<Value>& args) -> Value {
-        if (args.size() == 1) {
-            Value capturedFn = args[0];
-            if (!capturedFn.isFunctionClosure()) throw std::runtime_error("Type Error: groupBy() currying expects a function.");
-            auto bound = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"v"}, std::vector<bool>{false}, "groupBy_curried", nullptr);
-            bound->boundSelf = capturedFn;
-            bound->nativeFn = std::make_any<NativeCallable>([groupByCore](const std::vector<Value>& innerArgs) -> Value {
-                return groupByCore(innerArgs[0], helpers::nativeSelfStack.back().asFunction());
-            });
-            return Value(bound);
-        }
-        return groupByCore(args[0], args[1].asFunction());
-    }, {"v", "f"});
+    auto groupByFn = [groupByCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return groupByCore(self, args[0].asFunction());
+    };
+    regMethod(VM::activeVM->listProto, "groupBy", {"f"}, groupByFn);
+    regMethod(VM::activeVM->matrixProto, "groupBy", {"f"}, groupByFn);
+    regMethod(VM::activeVM->stringProto, "groupBy", {"f"}, groupByFn);
 
     reg("cat", {}, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) throw std::runtime_error("Runtime Error: cat() expects at least 1 argument.");

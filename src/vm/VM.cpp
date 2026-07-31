@@ -5861,6 +5861,15 @@ Value VM::run(int targetFrameDepth) {
                             std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                         );
                         bound->boundSelf = obj;
+                        
+                        Value builtinClosureVal = getBuiltinClosure(field);
+                        ObjClosure* targetFn = builtinClosureVal.asFunction();
+                        bound->paramNames = targetFn->paramNames;
+                        bound->isRef = targetFn->isRef;
+                        bound->defaultValues = targetFn->defaultValues;
+                        bound->hasRestParam = targetFn->hasRestParam;
+                        bound->isUFCS = true;
+
                         bound->nativeFn = ic.cachedNativeFn;
                         result = Value(bound);
                         found = true;
@@ -5873,6 +5882,12 @@ Value VM::run(int targetFrameDepth) {
                                 bound->boundSelf = obj;
                                 ObjClosure* targetFn = globals[ic.cachedGlobalSlot].asFunction();
                             
+                                bound->hasRestParam = targetFn->hasRestParam;
+                                bound->paramNames = targetFn->paramNames;
+                                bound->isRef = targetFn->isRef;
+                                bound->defaultValues = targetFn->defaultValues;
+                                bound->isUFCS = true;
+
                                 if (targetFn->isBytecode()) {
                                     bound->compiledFnIndex = targetFn->compiledFnIndex;
                                     if (targetFn->upvalueCount > 0) {
@@ -5890,11 +5905,6 @@ Value VM::run(int targetFrameDepth) {
                                         }
                                     }
                                     bound->returnType = targetFn->returnType;
-                                    bound->hasRestParam = targetFn->hasRestParam;
-                                    bound->paramNames = targetFn->paramNames;
-                                    bound->isRef = targetFn->isRef;
-                                    bound->defaultValues = targetFn->defaultValues;
-                                    bound->isUFCS = true;
                                     bound->nativeFn = targetFn->nativeFn;
                                 } else {
                                     bound->nativeFn = std::make_any<NativeCallable>(
@@ -5923,6 +5933,12 @@ Value VM::run(int targetFrameDepth) {
                                 bound->boundSelf = obj;
                                 ObjClosure* targetFn = globals[gIt->second].asFunction();
                             
+                                bound->hasRestParam = targetFn->hasRestParam;
+                                bound->paramNames = targetFn->paramNames;
+                                bound->isRef = targetFn->isRef;
+                                bound->defaultValues = targetFn->defaultValues;
+                                bound->isUFCS = true;
+
                                 if (targetFn->isBytecode()) {
                                     bound->compiledFnIndex = targetFn->compiledFnIndex;
                                     if (targetFn->upvalueCount > 0) {
@@ -5940,11 +5956,6 @@ Value VM::run(int targetFrameDepth) {
                                         }
                                     }
                                     bound->returnType = targetFn->returnType;
-                                    bound->hasRestParam = targetFn->hasRestParam;
-                                    bound->paramNames = targetFn->paramNames;
-                                    bound->isRef = targetFn->isRef;
-                                    bound->defaultValues = targetFn->defaultValues;
-                                    bound->isUFCS = true;
                                     bound->nativeFn = targetFn->nativeFn;
                                 } else {
                                     bound->nativeFn = std::make_any<NativeCallable>(
@@ -5972,6 +5983,15 @@ Value VM::run(int targetFrameDepth) {
                                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );
                                 bound->boundSelf = obj;
+                                
+                                Value builtinClosureVal = getBuiltinClosure(field);
+                                ObjClosure* targetFn = builtinClosureVal.asFunction();
+                                bound->paramNames = targetFn->paramNames;
+                                bound->isRef = targetFn->isRef;
+                                bound->defaultValues = targetFn->defaultValues;
+                                bound->hasRestParam = targetFn->hasRestParam;
+                                bound->isUFCS = true;
+
                                 NativeCallable nativeFn = nIt->second;
                                 
                                 auto ait = builtinArity.find(field);

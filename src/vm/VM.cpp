@@ -1731,7 +1731,22 @@ namespace {
             ObjSlice* slice = idxVal.asSlice();
             return { true, 0, computeSlice(dimSize, slice->start, slice->end, slice->step) };
         } else {
-            int i = idxVal.isInt32() ? idxVal.asInt32() : static_cast<int>(std::round(idxVal.asDouble()));
+            int64_t val64 = 0;
+            if (idxVal.isInt32()) {
+                val64 = idxVal.asInt32();
+            } else if (idxVal.isDouble()) {
+                val64 = static_cast<int64_t>(std::round(idxVal.asDoubleRaw()));
+            } else if (idxVal.isBigInt()) {
+                try { val64 = idxVal.asBigInt().toInt64(); } catch (...) { throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1."); }
+            } else {
+                val64 = static_cast<int64_t>(std::round(idxVal.asDouble()));
+            }
+            
+            if (val64 > 2147483647LL || val64 < -2147483647LL) {
+                throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1.");
+            }
+            
+            int i = static_cast<int>(val64);
             if (i < 0) i += dimSize;
             if (i < 0 || i >= dimSize) {
                 if (noThrow) return { false, -1, {0,0,0} };
@@ -6623,9 +6638,24 @@ Value VM::run(int targetFrameDepth) {
                 auto readInt = [&](int idx) -> int {
                     Value v = getReg(b + idx);
                     if (v.isNone()) return ObjSlice::SLICE_NONE;
-                    if (v.isInt32()) return v.asInt32();
-                    if (v.isDouble()) return static_cast<int>(std::round(v.asDoubleRaw()));
-                    return static_cast<int>(std::round(v.asDouble()));
+                    int64_t val64 = 0;
+                    if (v.isInt32()) {
+                        val64 = v.asInt32();
+                    } else if (v.isDouble()) {
+                        val64 = static_cast<int64_t>(std::round(v.asDoubleRaw()));
+                    } else if (v.isBigInt()) {
+                        try {
+                            val64 = v.asBigInt().toInt64();
+                        } catch (...) {
+                            throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+                        }
+                    } else {
+                        val64 = static_cast<int64_t>(std::round(v.asDouble()));
+                    }
+                    if (val64 > 2147483647LL || val64 < -2147483647LL) {
+                        throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+                    }
+                    return static_cast<int>(val64);
                 };
                 
                 slice->start = readInt(0);

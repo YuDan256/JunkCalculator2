@@ -2757,18 +2757,31 @@ void BuiltinRegistry::registerStringFunctions() {
 // =================================================================
 void BuiltinRegistry::registerArrayFunctions() {
     reg("slice", { 0, 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
-        auto checkArg = [](const Value& v, const std::string& name) -> int64_t {
+        auto checkArg = [](const Value& v, const std::string& name) -> int {
             if (v.isNone()) return ObjSlice::SLICE_NONE;
             if (!v.isNumber() && !v.isBigInt()) {
                 throw std::runtime_error("Type Error: slice " + name + " must be a number or none.");
             }
-            if (v.isDouble()) return static_cast<int64_t>(std::round(v.asDouble()));
-            if (v.isInt32()) return v.asInt32();
-            return v.asBigInt().toInt64();
+            int64_t val64 = 0;
+            if (v.isInt32()) {
+                val64 = v.asInt32();
+            } else if (v.isDouble()) {
+                val64 = static_cast<int64_t>(std::round(v.asDouble()));
+            } else {
+                try {
+                    val64 = v.asBigInt().toInt64();
+                } catch (...) {
+                    throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
+                }
+            }
+            if (val64 > 2147483647LL || val64 < -2147483647LL) {
+                throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
+            }
+            return static_cast<int>(val64);
         };
-        int64_t start = args.size() > 0 ? checkArg(args[0], "start") : ObjSlice::SLICE_NONE;
-        int64_t end = args.size() > 1 ? checkArg(args[1], "end") : ObjSlice::SLICE_NONE;
-        int64_t step = args.size() > 2 ? checkArg(args[2], "step") : ObjSlice::SLICE_NONE;
+        int start = args.size() > 0 ? checkArg(args[0], "start") : ObjSlice::SLICE_NONE;
+        int end = args.size() > 1 ? checkArg(args[1], "end") : ObjSlice::SLICE_NONE;
+        int step = args.size() > 2 ? checkArg(args[2], "step") : ObjSlice::SLICE_NONE;
         ObjSlice* sliceObj = GcHeap::get().allocate<ObjSlice>();
         sliceObj->start = start;
         sliceObj->end = end;

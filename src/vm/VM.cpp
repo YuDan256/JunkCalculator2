@@ -1232,6 +1232,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
 
     ObjClosure* method = nullptr;
     ObjClass* owningClass = nullptr;
+    ObjClass* nativeProto = nullptr;
 
     const std::string& methodName = keyVal.asString();
 
@@ -1305,7 +1306,6 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         }
     }
 
-    ObjClass* nativeProto = nullptr;
     if (obj.isObjType(ObjType::LIST)) nativeProto = listProto;
     else if (obj.isObjType(ObjType::DICT)) nativeProto = dictProto;
     else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;

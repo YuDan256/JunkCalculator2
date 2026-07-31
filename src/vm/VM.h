@@ -229,6 +229,12 @@ public:
 
     Value makeTokenInstance(const Token& t);
 
+    ObjClass* listProto = nullptr;
+    ObjClass* dictProto = nullptr;
+    ObjClass* setProto = nullptr;
+    ObjClass* stringProto = nullptr;
+    ObjClass* matrixProto = nullptr;
+
     static inline VM* activeVM = nullptr;
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());
 

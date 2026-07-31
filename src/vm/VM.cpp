@@ -1305,7 +1305,29 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         }
     }
 
-    if (obj.isObjType(ObjType::DICT)) {
+    ObjClass* nativeProto = nullptr;
+    if (obj.isObjType(ObjType::LIST)) nativeProto = listProto;
+    else if (obj.isObjType(ObjType::DICT)) nativeProto = dictProto;
+    else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
+    else if (obj.isString()) nativeProto = stringProto;
+    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) nativeProto = matrixProto;
+
+    if (nativeProto) {
+        auto it = nativeProto->properties.find(methodName);
+        if (it != nativeProto->properties.end() && !it->second.is_local) {
+            Value fv = it->second.val;
+            if (fv.isFunctionClosure()) {
+                method = fv.asFunction();
+                owningClass = nativeProto;
+            } else {
+                registers[currentFrame->registerBase + a] = fv;
+                execCall(a, b, kwArgc, a, isTailCall);
+                return;
+            }
+        }
+    }
+
+    if (!method && obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
         auto it = d->keyMap.find(keyVal);
         if (it != d->keyMap.end()) {
@@ -1318,7 +1340,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 return;
             }
         }
-    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+    } else if (!method && obj.isObjType(ObjType::NAMESPACE)) {
         auto ns = static_cast<ObjNamespace*>(obj.asObj());
         auto it = ns->fields.find(keyVal.asString());
         if (it != ns->fields.end()) {
@@ -2880,6 +2902,11 @@ VM::VM() {
         for (auto& [k, v] : builtinValues) {
             GcHeap::get().markValue(v);
         }
+        if (listProto) GcHeap::get().markObj(listProto);
+        if (dictProto) GcHeap::get().markObj(dictProto);
+        if (setProto) GcHeap::get().markObj(setProto);
+        if (stringProto) GcHeap::get().markObj(stringProto);
+        if (matrixProto) GcHeap::get().markObj(matrixProto);
 
         for (auto& v : helpers::nativeSelfStack) GcHeap::get().markValue(v);
         for (auto& v : helpers::nativeClassStack) GcHeap::get().markValue(v);
@@ -2970,6 +2997,17 @@ VM::VM() {
     builtinValues["hashable"] = makeType(BuiltinType::HASHABLE);
     builtinValues["numeric"] = makeType(BuiltinType::NUMERIC);
     builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
+
+    listProto = GcHeap::get().allocate<ObjClass>();
+    listProto->name = "List";
+    dictProto = GcHeap::get().allocate<ObjClass>();
+    dictProto->name = "Dict";
+    setProto = GcHeap::get().allocate<ObjClass>();
+    setProto->name = "Set";
+    stringProto = GcHeap::get().allocate<ObjClass>();
+    stringProto->name = "String";
+    matrixProto = GcHeap::get().allocate<ObjClass>();
+    matrixProto->name = "Matrix";
 
     nativeBuiltins["__dbg_reg"] = [this](const std::vector<Value>& args) -> Value {
         if (!currentDebuggerFrame) throw std::runtime_error("Debugger not active.");
@@ -5697,14 +5735,62 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                     }
-                } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                } else {
+                    ObjClass* nativeProto = nullptr;
+                    if (obj.isObjType(ObjType::LIST)) nativeProto = listProto;
+                    else if (obj.isObjType(ObjType::DICT)) nativeProto = dictProto;
+                    else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
+                    else if (obj.isString()) nativeProto = stringProto;
+                    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) nativeProto = matrixProto;
+
+                    if (nativeProto) {
+                        auto it = nativeProto->properties.find(field);
+                        if (it != nativeProto->properties.end() && !it->second.is_local) {
+                            if (it->second.val.isFunctionClosure()) {
+                                auto rawMethod = it->second.val.asFunction();
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                                );
+                                bound->paramNames = rawMethod->paramNames;
+                                bound->isRef = rawMethod->isRef;
+                                bound->defaultValues = rawMethod->defaultValues;
+                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                if (rawMethod->upvalueCount > 0) {
+                                    bound->upvalueCount = rawMethod->upvalueCount;
+                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                        bound->upvalues[i] = rawMethod->upvalues[i];
+                                    }
+                                }
+                                if (rawMethod->paramTypesCount > 0) {
+                                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                                    bound->paramTypes = new Value[bound->paramTypesCount];
+                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                    }
+                                }
+                                bound->returnType = rawMethod->returnType;
+                                bound->nativeFn = rawMethod->nativeFn;
+                                bound->boundSelf = obj;
+                                bound->boundClass = Value(nativeProto);
+                                result = Value(bound);
+                            } else {
+                                result = it->second.val;
+                            }
+                            found = true;
+                        }
+                    }
+                }
+                
+                if (!found && obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
                     auto it = ns->fields.find(field);
                     if (it != ns->fields.end()) {
                         result = *(it->second.upval->location);
                         found = true;
                     }
-                } else if (obj.isClass()) {
+                } else if (!found && obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     while (cls) {
                         auto it = cls->properties.find(field);
@@ -6030,14 +6116,62 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                     }
-                } else if (obj.isObjType(ObjType::NAMESPACE)) {
+                } else {
+                    ObjClass* nativeProto = nullptr;
+                    if (obj.isObjType(ObjType::LIST)) nativeProto = listProto;
+                    else if (obj.isObjType(ObjType::DICT)) nativeProto = dictProto;
+                    else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
+                    else if (obj.isString()) nativeProto = stringProto;
+                    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) nativeProto = matrixProto;
+
+                    if (nativeProto) {
+                        auto it = nativeProto->properties.find(field);
+                        if (it != nativeProto->properties.end() && !it->second.is_local) {
+                            if (it->second.val.isFunctionClosure()) {
+                                auto rawMethod = it->second.val.asFunction();
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                                );
+                                bound->paramNames = rawMethod->paramNames;
+                                bound->isRef = rawMethod->isRef;
+                                bound->defaultValues = rawMethod->defaultValues;
+                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                if (rawMethod->upvalueCount > 0) {
+                                    bound->upvalueCount = rawMethod->upvalueCount;
+                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                        bound->upvalues[i] = rawMethod->upvalues[i];
+                                    }
+                                }
+                                if (rawMethod->paramTypesCount > 0) {
+                                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                                    bound->paramTypes = new Value[bound->paramTypesCount];
+                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                    }
+                                }
+                                bound->returnType = rawMethod->returnType;
+                                bound->nativeFn = rawMethod->nativeFn;
+                                bound->boundSelf = obj;
+                                bound->boundClass = Value(nativeProto);
+                                result = Value(bound);
+                            } else {
+                                result = it->second.val;
+                            }
+                            found = true;
+                        }
+                    }
+                }
+                
+                if (!found && obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
                     auto it = ns->fields.find(field);
                     if (it != ns->fields.end()) {
                         result = *(it->second.upval->location);
                         found = true;
                     }
-                } else if (obj.isClass()) {
+                } else if (!found && obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     auto it = cls->properties.find(field);
                     if (it != cls->properties.end() && !it->second.is_local) {

@@ -986,10 +986,13 @@ void BuiltinRegistry::registerPolySolver() {
 // =================================================================
 void BuiltinRegistry::registerMatrixOps() {
 
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
         if (!proto) return;
         auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
         closure->nativeFn = std::make_any<NativeCallable>(fn);
+        for (int i = 0; i < defaultCount; ++i) {
+            closure->defaultValues.push_back(Value::uninit());
+        }
         proto->properties[name] = {Value(closure), false, false};
     };
 
@@ -1476,10 +1479,13 @@ void BuiltinRegistry::registerMatrixOps() {
 // [6] 矩阵分解与特征值
 // =================================================================
 void BuiltinRegistry::registerDecompositions() {
-    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn) {
+    auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
         if (!proto) return;
         auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
         closure->nativeFn = std::make_any<NativeCallable>(fn);
+        for (int i = 0; i < defaultCount; ++i) {
+            closure->defaultValues.push_back(Value::uninit());
+        }
         proto->properties[name] = {Value(closure), false, false};
     };
 
@@ -2721,8 +2727,8 @@ void BuiltinRegistry::registerStringFunctions() {
         proto->properties[name] = {Value(closure), false, false};
     };
 
-    auto substrFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) throw std::runtime_error("Type Error: substr() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[0].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args.size()==1) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[1].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); };
-    regMethod(VM::activeVM->stringProto, "substr", {"start", "length"}, substrFn);
+    auto substrFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) throw std::runtime_error("Type Error: substr() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[0].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args[1].isUninit()) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[1].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); };
+    regMethod(VM::activeVM->stringProto, "substr", {"start", "length"}, substrFn, 1);
 
     auto charAtFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) throw std::runtime_error("Type Error: charAt() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[0].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) throw std::runtime_error("Runtime Error: charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); };
     regMethod(VM::activeVM->stringProto, "charAt", {"i"}, charAtFn);
@@ -2736,8 +2742,8 @@ void BuiltinRegistry::registerStringFunctions() {
     auto trimFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) throw std::runtime_error("Type Error: trim() expects a string."); std::string s = self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); size_t b=s.find_last_not_of(" \t\r\n"); if (a==std::string::npos) return Value(std::string("")); return Value(s.substr(a, b-a+1)); };
     regMethod(VM::activeVM->stringProto, "trim", {}, trimFn);
 
-    auto findFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) throw std::runtime_error("Type Error: find() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s=objStr->str; const std::string& sub=args[0].asString(); size_t startChar=0; if (args.size()==2) startChar=static_cast<size_t>(std::round(args[1].asDouble())); size_t startByte = utf8::byteOffset(s, startChar, objStr->isAscii); if (startByte == std::string::npos) return Value::fromInt32(-1); size_t pos=s.find(sub, startByte); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(utf8::charIndex(s, pos, objStr->isAscii))); };
-    regMethod(VM::activeVM->stringProto, "find", {"sub", "pos"}, findFn);
+    auto findFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) throw std::runtime_error("Type Error: find() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s=objStr->str; const std::string& sub=args[0].asString(); size_t startChar=0; if (!args[1].isUninit()) startChar=static_cast<size_t>(std::round(args[1].asDouble())); size_t startByte = utf8::byteOffset(s, startChar, objStr->isAscii); if (startByte == std::string::npos) return Value::fromInt32(-1); size_t pos=s.find(sub, startByte); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(utf8::charIndex(s, pos, objStr->isAscii))); };
+    regMethod(VM::activeVM->stringProto, "find", {"sub", "pos"}, findFn, 1);
 
     auto containsFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) throw std::runtime_error("Type Error: contains() expects a string."); return Value(self.asString().find(args[0].asString())!=std::string::npos); };
     regMethod(VM::activeVM->stringProto, "contains", {"sub"}, containsFn);
@@ -3147,8 +3153,8 @@ void BuiltinRegistry::registerArrayFunctions() {
         }
         return expectContainer("slice");
     };
-    regMethod(VM::activeVM->listProto, "slice", {"start", "end"}, sliceFn);
-    regMethod(VM::activeVM->matrixProto, "slice", {"start", "end"}, sliceFn);
+    regMethod(VM::activeVM->listProto, "slice", {"start", "end"}, sliceFn, 1);
+    regMethod(VM::activeVM->matrixProto, "slice", {"start", "end"}, sliceFn, 1);
 
     auto reverseFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -4113,9 +4119,9 @@ void BuiltinRegistry::registerListConversion() {
         }
         return Value(result);
     };
-    regMethod(VM::activeVM->listProto, "enumerate", {"start"}, enumerateFn);
-    regMethod(VM::activeVM->matrixProto, "enumerate", {"start"}, enumerateFn);
-    regMethod(VM::activeVM->stringProto, "enumerate", {"start"}, enumerateFn);
+    regMethod(VM::activeVM->listProto, "enumerate", {"start"}, enumerateFn, 1);
+    regMethod(VM::activeVM->matrixProto, "enumerate", {"start"}, enumerateFn, 1);
+    regMethod(VM::activeVM->stringProto, "enumerate", {"start"}, enumerateFn, 1);
 
     auto groupByCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: groupBy() requires a single-parameter function.");
@@ -4572,9 +4578,9 @@ void BuiltinRegistry::registerHigherOrder() {
         Value initVal = args.size() == 2 ? args[1] : Value::none();
         return reduceCore(self, args[0].asFunction(), initVal);
     };
-    regMethod(VM::activeVM->listProto, "reduce", {"f", "init"}, reduceFn);
-    regMethod(VM::activeVM->matrixProto, "reduce", {"f", "init"}, reduceFn);
-    regMethod(VM::activeVM->stringProto, "reduce", {"f", "init"}, reduceFn);
+    regMethod(VM::activeVM->listProto, "reduce", {"f", "init"}, reduceFn, 1);
+    regMethod(VM::activeVM->matrixProto, "reduce", {"f", "init"}, reduceFn, 1);
+    regMethod(VM::activeVM->stringProto, "reduce", {"f", "init"}, reduceFn, 1);
 
     auto iterateAndCheck = [this](const Value& argList, ObjClosure* cl, auto checkFn) -> Value {
         Value iterable = argList;
@@ -4734,9 +4740,9 @@ void BuiltinRegistry::registerHigherOrder() {
         ObjClosure* cmp = args.size() == 1 ? args[0].asFunction() : nullptr;
         return sortCore(self, cmp);
     };
-    regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortFn);
-    regMethod(VM::activeVM->matrixProto, "sort", {"cmp"}, sortFn);
-    regMethod(VM::activeVM->stringProto, "sort", {"cmp"}, sortFn);
+    regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortFn, 1);
+    regMethod(VM::activeVM->matrixProto, "sort", {"cmp"}, sortFn, 1);
+    regMethod(VM::activeVM->stringProto, "sort", {"cmp"}, sortFn, 1);
 
 }
 

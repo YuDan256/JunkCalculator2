@@ -91,6 +91,7 @@ namespace jc {
     struct ObjUpVal;
     struct NamespaceField;
     struct ObjTypeDef;
+    struct ObjSlice;
 
     inline std::unordered_map<std::string, ObjString*> g_internedStrings;
     ObjString* internString(const std::string& str);
@@ -338,6 +339,7 @@ namespace jc {
         bool isComplex() const { return isObjType(ObjType::COMPLEX); }
         bool isSymbolic() const { return isObjType(ObjType::SYMBOLIC); }
         bool isType() const { return isObjType(ObjType::TYPE_DEF); }
+        bool isSlice() const { return isObjType(ObjType::SLICE); }
 
         SymExpr asSymbolic() const;
 
@@ -346,6 +348,11 @@ namespace jc {
         bool isSuperProxy() const { return isObjType(ObjType::SUPER_PROXY); }
         ObjSuper* asSuperProxy() const;
         static Value makeSuperProxy(ObjInstance* inst, ObjClass* parent);
+
+        ObjSlice* asSlice() const {
+            if (!isSlice()) throw std::runtime_error("Type Error: Expected a slice.");
+            return static_cast<ObjSlice*>(asObj());
+        }
 
         static Value fromFraction(const Fraction& f) {
             if (f.getDen() == BigInt(1)) return Value(f.getNum());
@@ -1587,6 +1594,10 @@ namespace jc {
                 return n.empty() ? "\"<anonymous namespace>\"" : "\"<namespace " + n + ">\"";
             }
             case ObjType::TYPE_DEF: return "<type '" + static_cast<ObjTypeDef*>(obj)->name() + "'>";
+            case ObjType::SLICE: {
+                auto slice = static_cast<ObjSlice*>(obj);
+                return "slice(" + slice->start.toJC2Expression() + ", " + slice->end.toJC2Expression() + ", " + slice->step.toJC2Expression() + ")";
+            }
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
                 RecursionGuard guard(visited, list);
@@ -1746,6 +1757,10 @@ namespace jc {
             case ObjType::UPVALUE:
             case ObjType::TYPE_DEF:
                 return true;
+            case ObjType::SLICE: {
+                auto slice = static_cast<ObjSlice*>(obj);
+                return slice->start.isHashable() && slice->end.isHashable() && slice->step.isHashable();
+            }
             case ObjType::LIST: {
                 ObjList* list = static_cast<ObjList*>(obj);
                 if (!list->is_frozen) return false;
@@ -1832,6 +1847,7 @@ namespace jc {
             case ObjType::SET: return !static_cast<ObjSet*>(obj)->elements.empty();
             case ObjType::SYMBOLIC: return !static_cast<ObjSym*>(obj)->sym.isZero();
             case ObjType::NAMESPACE: return true;
+            case ObjType::SLICE: return true;
             case ObjType::INSTANCE: {
                 auto inst = static_cast<ObjInstance*>(obj);
                 auto [found, res] = invokeDunder(inst, "__bool__");
@@ -1984,6 +2000,11 @@ namespace jc {
                 case ObjType::NAMESPACE:
                 case ObjType::UPVALUE:
                     return false; // Pointer equality already checked
+                case ObjType::SLICE: {
+                    auto a = static_cast<ObjSlice*>(lobj);
+                    auto b = static_cast<ObjSlice*>(robj);
+                    return equals(a->start, b->start) && equals(a->end, b->end) && equals(a->step, b->step);
+                }
                 case ObjType::TYPE_DEF: {
                     auto a = static_cast<ObjTypeDef*>(lobj);
                     auto b = static_cast<ObjTypeDef*>(robj);
@@ -2124,6 +2145,7 @@ namespace jc {
             case ObjType::NAMESPACE: return "namespace_type";
             case ObjType::UPVALUE: return "upvalue";
             case ObjType::TYPE_DEF: return "type";
+            case ObjType::SLICE: return "slice";
         }
         return "unknown";
     }
@@ -2461,6 +2483,17 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         }
         case ObjType::UPVALUE: os << "<upvalue>"; break;
         case ObjType::TYPE_DEF: os << "<type '" << static_cast<ObjTypeDef*>(obj)->name() << "'>"; break;
+        case ObjType::SLICE: {
+            auto slice = static_cast<ObjSlice*>(obj);
+            os << "slice(";
+            try { printNested(slice->start); } catch (...) { os << "?"; }
+            os << ", ";
+            try { printNested(slice->end); } catch (...) { os << "?"; }
+            os << ", ";
+            try { printNested(slice->step); } catch (...) { os << "?"; }
+            os << ")";
+            break;
+        }
         case ObjType::LIST: {
             ObjList* list = static_cast<ObjList*>(obj);
             RecursionGuard guard(visited, list);
@@ -2681,6 +2714,14 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         }
         case ObjType::SYMBOLIC: return sipHash24String(static_cast<ObjSym*>(obj)->sym.toString());
         case ObjType::TYPE_DEF: return sipHash24String(static_cast<ObjTypeDef*>(obj)->name());
+        case ObjType::SLICE: {
+            auto slice = static_cast<ObjSlice*>(obj);
+            size_t h1 = ValueHasher{}(slice->start);
+            size_t h2 = ValueHasher{}(slice->end);
+            size_t h3 = ValueHasher{}(slice->step);
+            size_t h = h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+            return h ^ (h3 + 0x9e3779b9 + (h << 6) + (h >> 2));
+        }
         case ObjType::LIST: {
             auto l = static_cast<ObjList*>(obj);
             if (!l->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
@@ -2843,6 +2884,13 @@ inline void GcHeap::markObj(Obj* obj) {
                     markObj(std::get<ObjClass*>(t));
                 }
             }
+            break;
+        }
+        case ObjType::SLICE: {
+            auto slice = static_cast<ObjSlice*>(obj);
+            markValue(slice->start);
+            markValue(slice->end);
+            markValue(slice->step);
             break;
         }
         default: break;

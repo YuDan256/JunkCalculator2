@@ -18,7 +18,7 @@ namespace jc {
         REAL_MATRIX, COMPLEX_MATRIX, STRING_MATRIX,
         LIST, DICT, SET,
         CLOSURE, CLASS, INSTANCE, SUPER_PROXY, SYMBOLIC, NAMESPACE,
-        UPVALUE, TYPE_DEF
+        UPVALUE, TYPE_DEF, SLICE
     };
 
     enum class BuiltinType : int8_t {
@@ -27,8 +27,10 @@ namespace jc {
         LIST, DICT, SET, FRACTION, COMPLEX, BASENUM, SYMBOLIC,
         REALMAT, COMPLEXMAT, STRINGMAT, MATRIX, FUNC, CLASS, INSTANCE, NAMESPACE,
         ITERABLE, CALLABLE, INDEXABLE, HASHABLE, NUMERIC,
-        CUSTOM_CLASS, TYPE_DEF
+        CUSTOM_CLASS, TYPE_DEF, SLICE
     };
+
+    struct ObjSlice;
 
     struct Obj {
         ObjType type = ObjType::STRING;
@@ -39,6 +41,18 @@ namespace jc {
         virtual ~Obj() = default;
         virtual void clear() {} // ★ 新增：在真正 delete 前清理内部引用的 Value，防止循环引用导致的 Use-After-Free
         virtual void clearTotal() { clear(); } // 供 GC 调用，无视冻结状态
+    };
+
+    struct ObjSlice : public Obj {
+        Value start;
+        Value end;
+        Value step;
+        ObjSlice() { type = ObjType::SLICE; }
+        void clearTotal() override {
+            start = Value();
+            end = Value();
+            step = Value();
+        }
     };
 
     class GcHeap {

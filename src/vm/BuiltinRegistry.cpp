@@ -2756,6 +2756,17 @@ void BuiltinRegistry::registerStringFunctions() {
 // [17] 数组引擎
 // =================================================================
 void BuiltinRegistry::registerArrayFunctions() {
+    reg("slice", { 0, 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
+        Value start = args.size() > 0 ? args[0] : Value::none();
+        Value end = args.size() > 1 ? args[1] : Value::none();
+        Value step = args.size() > 2 ? args[2] : Value::none();
+        ObjSlice* sliceObj = GcHeap::get().allocate<ObjSlice>();
+        sliceObj->start = start;
+        sliceObj->end = end;
+        sliceObj->step = step;
+        return Value(sliceObj);
+    }, {"start", "end", "step"});
+
     auto expectContainer = [](const std::string& name) -> Value {
         throw std::runtime_error("Type Error: " + name + "() expects a List or a Matrix (Real/Complex/String).");
         };

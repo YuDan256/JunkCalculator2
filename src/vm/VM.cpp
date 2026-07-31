@@ -409,6 +409,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
                     else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                     else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+                    else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
                     resTd->types.push_back(vbt);
                 }
                 resTd->normalize();
@@ -1143,6 +1144,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                     break;
                 }
                 case BuiltinType::TYPE_DEF: if (val.isType()) return true; break;
+                case BuiltinType::SLICE: if (val.isObjType(ObjType::SLICE)) return true; break;
                 case BuiltinType::CUSTOM_CLASS: break;
             }
         } else {
@@ -3019,6 +3021,7 @@ VM::VM() {
     builtinValues["hashable"] = makeType(BuiltinType::HASHABLE);
     builtinValues["numeric"] = makeType(BuiltinType::NUMERIC);
     builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
+    builtinValues["slice"] = makeType(BuiltinType::SLICE);
 
     listProto = GcHeap::get().allocate<ObjClass>();
     listProto->name = "List";

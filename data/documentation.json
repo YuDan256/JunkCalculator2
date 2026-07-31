@@ -3919,18 +3919,18 @@
         "[1, 2, 3, 4].reshape(2, 2)"
       ]
     },
-    "integR": {
-      "signature": "A.integR(B)",
+    "hcat": {
+      "signature": "A.hcat(B)",
       "desc": "Horizontally concatenates two matrices [A | B].",
       "examples": [
-        "[1; 2].integR([3; 4])"
+        "[1; 2].hcat([3; 4])"
       ]
     },
-    "integC": {
-      "signature": "A.integC(B)",
+    "vcat": {
+      "signature": "A.vcat(B)",
       "desc": "Vertically concatenates two matrices [A ; B].",
       "examples": [
-        "[1, 2].integC([3, 4])"
+        "[1, 2].vcat([3, 4])"
       ]
     },
     "id": {
@@ -4067,11 +4067,12 @@
       ]
     },
     "solve": {
-      "signature": "math.solve(a, b, [c, d, e])",
-      "desc": "Finds all complex roots of a polynomial up to degree 4. E.g., math.solve(a,b,c) solves ax^2 + bx + c = 0.",
+      "signature": "math.solve(a, b, [c, d, e]) / math.solve(f, x0) / cas.solve(expr, var)",
+      "desc": "Finds all complex roots of a polynomial up to degree 4, numerically finds a root of f(x) = 0 near x0, or symbolically solves an equation expr = 0.",
       "examples": [
         "math.solve(1, 0, -1)",
-        "math.solve(1, 0, 0, -1)"
+        "math.solve((x) => x^2 - 4, 3)",
+        "cas.solve(x^2 - 2, x)"
       ]
     },
     "factorial": {
@@ -4561,18 +4562,18 @@
         "{a: 1}.hasKey(\"a\")"
       ]
     },
-    "setUnion": {
-      "signature": "a.setUnion(b)",
+    "union": {
+      "signature": "a.union(b)",
       "desc": "Returns a new set containing all elements from both sets.",
       "examples": [
-        "@{1, 2}.setUnion(@{2, 3})"
+        "@{1, 2}.union(@{2, 3})"
       ]
     },
-    "setIntersect": {
-      "signature": "a.setIntersect(b)",
+    "intersect": {
+      "signature": "a.intersect(b)",
       "desc": "Returns a new set containing elements present in both sets.",
       "examples": [
-        "@{1, 2}.setIntersect(@{2, 3})"
+        "@{1, 2}.intersect(@{2, 3})"
       ]
     },
     "print": {
@@ -4669,33 +4670,27 @@
       ]
     },
     "diff": {
-      "signature": "cas.diff(expr, var)",
-      "desc": "Computes the symbolic or numerical derivative of an expression or function.",
+      "signature": "cas.diff(expr, var) / math.diff(f, x0)",
+      "desc": "Computes the exact symbolic derivative of an expression, or the numerical derivative of a function at x0.",
       "examples": [
-        "cas.diff(x^2, x)"
+        "cas.diff(x^2, x)",
+        "math.diff((x) => x^2, 2)"
       ]
     },
     "integ": {
-      "signature": "cas.integ(expr, var, [a, b])",
-      "desc": "Computes the symbolic indefinite/definite integral, or numerical definite integral.",
+      "signature": "cas.integ(expr, var, [a, b]) / math.integ(f, a, b, [n])",
+      "desc": "Computes the exact symbolic indefinite/definite integral, or the numerical definite integral of a function.",
       "examples": [
-        "cas.integ(x^2, x)"
+        "cas.integ(x^2, x)",
+        "math.integ((x) => x^2, 0, 1)"
       ]
     },
     "limit": {
-      "signature": "cas.limit(expr, var, val, [dir])",
-      "desc": "Computes the symbolic or numerical limit of an expression as var approaches val. Default is two-sided. dir can be \"+\" or \"-\". val can be \"inf\".",
+      "signature": "cas.limit(expr, var, val, [dir]) / math.limit(f, x0, [dir])",
+      "desc": "Computes the exact symbolic limit of an expression, or the numerical limit of a function. dir can be \"+\" or \"-\".",
       "examples": [
         "cas.limit(sin(x)/x, x, 0)",
-        "cas.limit(1/x, x, 0, \"-\")",
-        "cas.limit((1+1/x)^x, x, \"inf\")"
-      ]
-    },
-    "solveEq": {
-      "signature": "cas.solveEq(expr, var)",
-      "desc": "Symbolically solves an equation expr = 0 for the given variable.",
-      "examples": [
-        "cas.solveEq(x^2 - 2, x)"
+        "math.limit((x) => 1/x, 0, \"+\")"
       ]
     },
     "expand": {
@@ -4939,21 +4934,15 @@
       "desc": "Converts any matrix to a stringmatrix.",
       "examples": ["toStrMat([1, 2; 3, 4])"]
     },
-    "dictSize": {
-      "signature": "d.dictSize()",
-      "desc": "Returns the number of key-value entries in a dict.",
-      "aliases": ["size"],
-      "examples": ["{a: 1}.dictSize()"]
-    },
-    "dictMerge": {
-      "signature": "d1.dictMerge(d2)",
+    "merge": {
+      "signature": "d1.merge(d2)",
       "desc": "Merges d2 into d1, overwriting existing keys.",
-      "examples": ["d1.dictMerge(d2)"]
+      "examples": ["d1.merge(d2)"]
     },
-    "dictPairs": {
-      "signature": "d.dictPairs()",
+    "entries": {
+      "signature": "d.entries()",
       "desc": "Returns a list of @[key, value] pairs from a dict.",
-      "examples": ["{a: 1}.dictPairs()"]
+      "examples": ["{a: 1}.entries()"]
     },
     "toList": {
       "signature": "toList(v)",
@@ -5010,15 +4999,15 @@
       "desc": "Returns the parent class of a class definition.",
       "examples": ["getParent(Dog)"]
     },
-    "setDiff": {
-      "signature": "a.setDiff(b)",
+    "difference": {
+      "signature": "a.difference(b)",
       "desc": "Returns a set of elements in a but not in b.",
-      "examples": ["@{1, 2}.setDiff(@{2, 3})"]
+      "examples": ["@{1, 2}.difference(@{2, 3})"]
     },
-    "setSymDiff": {
-      "signature": "a.setSymDiff(b)",
+    "symDiff": {
+      "signature": "a.symDiff(b)",
       "desc": "Returns a set of elements in exactly one of the sets. Equivalent to the ^^ operator.",
-      "examples": ["@{1, 2}.setSymDiff(@{2, 3})"]
+      "examples": ["@{1, 2}.symDiff(@{2, 3})"]
     },
     "isSubset": {
       "signature": "a.isSubset(b)",
@@ -5035,15 +5024,15 @@
       "desc": "Returns true if a and b share no elements.",
       "examples": ["@{1}.isDisjoint(@{2})"]
     },
-    "setProduct": {
-      "signature": "a.setProduct(b)",
+    "cartesian": {
+      "signature": "a.cartesian(b)",
       "desc": "Returns the Cartesian product of two sets.",
-      "examples": ["@{1}.setProduct(@{\"a\"})"]
+      "examples": ["@{1}.cartesian(@{\"a\"})"]
     },
-    "setPow": {
-      "signature": "s.setPow()",
+    "powerSet": {
+      "signature": "s.powerSet()",
       "desc": "Returns the powerset of s (set of all subsets).",
-      "examples": ["@{1, 2}.setPow()"]
+      "examples": ["@{1, 2}.powerSet()"]
     },
     "appendFile": {
       "signature": "io.appendFile(path, content)",
@@ -5146,9 +5135,9 @@
       "examples": ["cas.resultant(x^2 - 1, x^2 + 1, x)"]
     },
     "factor": {
-      "signature": "cas.factor(expr)",
-      "desc": "Factors a polynomial, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
-      "examples": ["cas.factor(x^4 - 1)", "cas.factor(12)"]
+      "signature": "cas.factor(expr) / math.factor(n)",
+      "desc": "Factors a polynomial symbolically, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
+      "examples": ["cas.factor(x^4 - 1)", "math.factor(12)"]
     },
     "factorReal": {
       "signature": "cas.factorReal(expr)",
@@ -5244,34 +5233,34 @@
       "examples": ["sys.sysinfo()"]
     },
     "freeze": {
-      "signature": "sys.freeze(obj)",
+      "signature": "freeze(obj)",
       "desc": "Locks a container permanently, preventing modification.",
-      "examples": ["sys.freeze(myList)"]
+      "examples": ["freeze(myList)"]
     },
     "isFrozen": {
-      "signature": "sys.isFrozen(obj)",
+      "signature": "isFrozen(obj)",
       "desc": "Returns true if the container is locked, false otherwise.",
-      "examples": ["sys.isFrozen(myList)"]
+      "examples": ["isFrozen(myList)"]
     },
     "hash": {
-      "signature": "sys.hash(x)",
+      "signature": "hash(x)",
       "desc": "Returns the native hash value of x as an int.",
-      "examples": ["sys.hash(\"hello\")"]
+      "examples": ["hash(\"hello\")"]
     },
     "clone": {
-      "signature": "sys.clone(obj)",
+      "signature": "clone(obj)",
       "desc": "Returns a deep-copied, fully unfrozen clone of the object.",
-      "examples": ["sys.clone(myDict)"]
+      "examples": ["clone(myDict)"]
     },
     "copy": {
-      "signature": "sys.copy(obj)",
+      "signature": "copy(obj)",
       "desc": "Returns a deep-copied clone of the object, preserving its exact frozen/unfrozen state.",
-      "examples": ["sys.copy(myDict)"]
+      "examples": ["copy(myDict)"]
     },
     "val": {
-      "signature": "sys.val(obj)",
+      "signature": "val(obj)",
       "desc": "Returns a deep-copied, fully frozen snapshot of the object.",
-      "examples": ["sys.val(myDict)"]
+      "examples": ["val(myDict)"]
     },
     "symconfig": {
       "signature": "sys.symconfig([dict_or_default])",
@@ -5703,10 +5692,10 @@
       "desc": "Returns the algebraic cofactor of the element at row r and column c.",
       "examples": ["A.Acof(0, 0)"]
     },
-    "integD": {
-      "signature": "A.integD(B)",
+    "blkdiag": {
+      "signature": "A.blkdiag(B)",
       "desc": "Returns the block diagonal concatenation of matrices A and B.",
-      "examples": ["A.integD(B)"]
+      "examples": ["A.blkdiag(B)"]
     },
     "qr": {
       "signature": "A.qr()",
@@ -5774,19 +5763,14 @@
       "examples": ["sys.sleep(1.5)"]
     },
     "highlight": {
-      "signature": "highlight(code)",
+      "signature": "sys.highlight(code)",
       "desc": "Returns a syntax-highlighted version of the JC2 code string.",
-      "examples": ["highlight(\"x = 1\")"]
+      "examples": ["sys.highlight(\"x = 1\")"]
     },
     "color": {
-      "signature": "color(state)",
+      "signature": "sys.color(state)",
       "desc": "Enables (\"on\") or disables (\"off\") REPL syntax highlighting.",
-      "examples": ["color(\"on\")"]
-    },
-    "debugInteg": {
-      "signature": "debugInteg(state)",
-      "desc": "Enables (\"on\") or disables (\"off\") verbose integration debug output.",
-      "examples": ["debugInteg(\"on\")"]
+      "examples": ["sys.color(\"on\")"]
     },
     "removeKey": {
       "signature": "d.removeKey(key)",
@@ -5813,40 +5797,10 @@
       "desc": "Counts the number of elements in v that satisfy function f.",
       "examples": ["[-1, 1, 2].countIf((x) => x > 0)"]
     },
-    "solveE": {
-      "signature": "solveE(f, x0)",
-      "desc": "Numerically finds a root of f(x) = 0 near x0 using Newton-Raphson.",
-      "examples": ["solveE((x) => x^2 - 4, 3)"]
-    },
     "table": {
       "signature": "table(f, ...)",
       "desc": "Evaluates function f over a sequence or matrix of inputs.",
       "examples": ["table((x) => x^2, 1, 1, 5)"]
-    },
-    "setAdd": {
-      "signature": "s.setAdd(val)",
-      "desc": "Adds an element to a Set (legacy alias for add).",
-      "examples": ["s.setAdd(1)"]
-    },
-    "setRemove": {
-      "signature": "s.setRemove(val)",
-      "desc": "Removes an element from a Set (legacy alias for remove).",
-      "examples": ["s.setRemove(1)"]
-    },
-    "setDiscard": {
-      "signature": "s.setDiscard(val)",
-      "desc": "Silently removes an element from a Set (legacy alias for discard).",
-      "examples": ["s.setDiscard(1)"]
-    },
-    "setClear": {
-      "signature": "s.setClear()",
-      "desc": "Clears all elements from a Set (legacy alias for clear).",
-      "examples": ["s.setClear()"]
-    },
-    "setPop": {
-      "signature": "s.setPop()",
-      "desc": "Removes and returns an arbitrary element from a Set.",
-      "examples": ["s.setPop()"]
     },
     "matpow": {
       "signature": "matpow(A, B)",
@@ -6004,13 +5958,13 @@
       "examples": ["__del__() = print(\"Object destroyed\")"]
     },
     "gensym": {
-      "signature": "sys.gensym([prefix])",
+      "signature": "gensym([prefix])",
       "desc": [
         "Generates a globally unique AST Variable node.",
         "Used in macros to create hygienic variables that will never collide with user variables."
       ],
       "examples": [
-        "temp_var = sys.gensym(\"temp\")"
+        "temp_var = gensym(\"temp\")"
       ]
     }
   },

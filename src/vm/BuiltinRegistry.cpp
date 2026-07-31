@@ -954,14 +954,30 @@ void BuiltinRegistry::registerFraction() {
 // [4] 多项式求解
 // =================================================================
 void BuiltinRegistry::registerPolySolver() {
-    regModule(math_ns, "solve", { 2, 3, 4, 5 }, [](const std::vector<Value>& args) -> Value {
+    auto evalFunc = [](ObjClosure* cl, double x) -> double {
+        return safeCallFunction(cl, { Value(x) }).asDouble();
+    };
+
+    regModule(math_ns, "solve", { 2, 3, 4, 5 }, [evalFunc](const std::vector<Value>& args) -> Value {
+        if (args[0].isFunctionClosure()) {
+            if (args.size() != 2) throw std::runtime_error("Math Error: solve(f, x0) expects exactly 2 arguments.");
+            auto cl = args[0].asFunction(); double x = args[1].asDouble(); double h = 1e-5;
+            for (int i = 0; i < 1000; ++i) {
+                jc::checkInterrupt();
+                double y = evalFunc(cl, x);
+                if (Tol::clean(y, std::max(1.0, std::abs(x)), 1e7) == 0.0) return Value(x);
+                double df = (evalFunc(cl, x + h) - evalFunc(cl, x - h)) / (2 * h);
+                if (df == 0.0) x += 1e-4; else x -= y / df;
+            }
+            throw std::runtime_error("Math Error: Equation solver did not converge.");
+        }
         std::vector<Complex> roots;
         if (args.size() == 2) roots = Complex::solveDegreeOne(args[0].asComplex(), args[1].asComplex());
         else if (args.size() == 3) roots = Complex::solveDegreeTwo(args[0].asComplex(), args[1].asComplex(), args[2].asComplex());
         else if (args.size() == 4) roots = Complex::solveDegreeThree(args[0].asComplex(), args[1].asComplex(), args[2].asComplex(), args[3].asComplex());
         else roots = Complex::solveDegreeFour(args[0].asComplex(), args[1].asComplex(), args[2].asComplex(), args[3].asComplex(), args[4].asComplex());
         return Value(ComplexMatrix(static_cast<int>(roots.size()), 1, roots));
-    }, {"a", "b", "c", "d", "e"});
+    }, {"a_or_f", "b_or_x0", "c", "d", "e"});
 
 }
 
@@ -1433,7 +1449,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::STRING_MATRIX) && args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.integR(static_cast<ObjStringMatrix*>(args[0].asObj())->mat));
         return Value(self.asComplexMatrix().integR(args[0].asComplexMatrix()));
     };
-    regMethod(VM::activeVM->matrixProto, "integR", {"B"}, integRFn);
+    regMethod(VM::activeVM->matrixProto, "hcat", {"B"}, integRFn);
 
     auto integCFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -1441,14 +1457,14 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::STRING_MATRIX) && args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.integC(static_cast<ObjStringMatrix*>(args[0].asObj())->mat));
         return Value(self.asComplexMatrix().integC(args[0].asComplexMatrix()));
     };
-    regMethod(VM::activeVM->matrixProto, "integC", {"B"}, integCFn);
+    regMethod(VM::activeVM->matrixProto, "vcat", {"B"}, integCFn);
 
     auto integDFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.integD(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
         return Value(self.asComplexMatrix().integD(args[0].asComplexMatrix()));
     };
-    regMethod(VM::activeVM->matrixProto, "integD", {"B"}, integDFn);
+    regMethod(VM::activeVM->matrixProto, "blkdiag", {"B"}, integDFn);
 
     // --- 生成器 ---
     reg("id", { 1 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asDouble())); if (n < 1) throw std::runtime_error("Runtime Error: Size must be positive."); return Value(RealMatrix::identity(n)); }, {"n"});
@@ -1710,6 +1726,19 @@ void BuiltinRegistry::registerNumberTheory() {
     regModule(math_ns, "C", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: C(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); if (k>n-k) k = n-k; BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); result = result/BigInt(i+1); } return Value(result); }, {"n", "k"});
     regModule(math_ns, "A", { 2 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]), k = toInt64(args[1]); if (n<0||k<0) throw std::runtime_error("Math Error: A(n,k) requires non-negative integers."); if (k>n) return Value(BigInt(0)); BigInt result(1); for (int64_t i = 0; i < k; ++i) { jc::checkInterrupt(); result = result*BigInt(n-i); } return Value(result); }, {"n", "k"});
     regModule(math_ns, "catalan", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { int64_t n = toInt64(args[0]); if (n<0) throw std::runtime_error("Math Error: catalan(n) requires non-negative integer."); BigInt result(1); for (int64_t i = 0; i < n; ++i) { jc::checkInterrupt(); result = result*BigInt(2*n-i); result = result/BigInt(i+1); } result = result/BigInt(n+1); return Value(result); }, {"n"});
+
+    regModule(math_ns, "factor", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value {
+        auto factors = toBigInt(args[0]).factorize();
+        ObjDict* d = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard guard(d);
+        for (const auto& f : factors) {
+            Value k(f.first);
+            Value v = Value::fromInt32(f.second);
+            d->keyMap[k] = d->elements.size();
+            d->elements.push_back({k, v});
+        }
+        return Value(d);
+    }, {"n"});
 }
 
 // =================================================================
@@ -1970,7 +1999,7 @@ void BuiltinRegistry::registerSystemUtils() {
     regModule(sys_ns, "verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); }, {});
     regModule(sys_ns, "sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); }, {});
 
-    regModule(sys_ns, "gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         static uint64_t counter = 0;
         std::string prefix = "gensym";
         if (args.size() == 1 && args[0].isString()) {
@@ -2021,7 +2050,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::none();
         }, {});
 
-    regModule(sys_ns, "freeze", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("freeze", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
             static_cast<ObjList*>(args[0].asObj())->is_frozen = true;
         } else if (args[0].isObjType(ObjType::DICT)) {
@@ -2036,7 +2065,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return args[0];
         }, {"obj"});
 
-    regModule(sys_ns, "isFrozen", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isFrozen", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
             return Value(static_cast<ObjList*>(args[0].asObj())->is_frozen);
         } else if (args[0].isObjType(ObjType::DICT)) {
@@ -2051,13 +2080,13 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value(false);
         }, {"obj"});
 
-    regModule(sys_ns, "hash", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("hash", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isHashable()) throw std::runtime_error("TypeError: unhashable type.");
         size_t h = jc::ValueHasher{}(args[0]);
         return Value(BigInt(static_cast<int64_t>(h)));
         }, {"x"});
 
-    regModule(sys_ns, "clone", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("clone", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
         std::function<Value(const Value&)> deepCopy = [&](const Value& v) -> Value {
             if (v.isObjType(ObjType::LIST)) {
@@ -2136,7 +2165,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return deepCopy(args[0]);
         }, {"obj"});
 
-    regModule(sys_ns, "copy", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("copy", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
         std::function<Value(const Value&)> deepCopyExact = [&](const Value& v) -> Value {
             if (v.isObjType(ObjType::LIST)) {
@@ -2224,7 +2253,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return deepCopyExact(args[0]);
         }, {"obj"});
 
-    regModule(sys_ns, "val", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("val", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
         std::function<Value(const Value&)> deepCopyAndFreeze = [&](const Value& v) -> Value {
             if (v.isObjType(ObjType::LIST)) {
@@ -2496,22 +2525,15 @@ void BuiltinRegistry::registerControlFlow() {
         if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
         return Value::none();
     }, {"seconds"});
-    reg("highlight", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "highlight", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: highlight() expects a string.");
         return Value(jc::highlightCode(args[0].asString()));
     }, {"code"});
-    reg("color", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "color", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) throw std::runtime_error("Type Error: color() expects \"on\" or \"off\".");
         std::string arg = args[0].asString();
         if (arg=="on") jc::colorsEnabled = true; else if (arg=="off") jc::colorsEnabled = false;
         else throw std::runtime_error("Runtime Error: color() expects \"on\" or \"off\".");
-        return Value::none();
-    }, {"state"});
-    reg("debugInteg", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) throw std::runtime_error("Type Error: debugInteg() expects \"on\" or \"off\".");
-        std::string arg = args[0].asString();
-        if (arg=="on") jc::SymConfig::debugIntegration = true; else if (arg=="off") jc::SymConfig::debugIntegration = false;
-        else throw std::runtime_error("Runtime Error: debugInteg() expects \"on\" or \"off\".");
         return Value::none();
     }, {"state"});
 
@@ -3661,7 +3683,6 @@ void BuiltinRegistry::registerDictFunctions() {
         }
         ObjDict* d = helpers::getDictMap(self, "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
     };
-    regMethod(VM::activeVM->dictProto, "dictSize", {}, dictSizeFn);
     regMethod(VM::activeVM->dictProto, "size", {}, dictSizeFn);
 
     auto dictMergeFn = [](const std::vector<Value>& args) -> Value {
@@ -3712,7 +3733,7 @@ void BuiltinRegistry::registerDictFunctions() {
         }
         return self;
     };
-    regMethod(VM::activeVM->dictProto, "dictMerge", {"d2"}, dictMergeFn);
+    regMethod(VM::activeVM->dictProto, "merge", {"d2"}, dictMergeFn);
 
     auto dictPairsFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -3755,7 +3776,7 @@ void BuiltinRegistry::registerDictFunctions() {
         }
         return Value(L);
     };
-    regMethod(VM::activeVM->dictProto, "dictPairs", {}, dictPairsFn);
+    regMethod(VM::activeVM->dictProto, "entries", {}, dictPairsFn);
 }
 
 // =================================================================
@@ -4729,17 +4750,66 @@ void BuiltinRegistry::registerCalculus() {
         return safeCallFunction(cl, { Value(x) }).asDouble();
         };
 
-    reg("solveE", { 2 }, [evalFunc](const std::vector<Value>& args) -> Value {
-        auto cl = args[0].asFunction(); double x = args[1].asDouble(); double h = 1e-5;
-        for (int i = 0; i < 1000; ++i) {
-            jc::checkInterrupt();
-            double y = evalFunc(cl, x);
-            if (Tol::clean(y, std::max(1.0, std::abs(x)), 1e7) == 0.0) return Value(x);
-            double df = (evalFunc(cl, x + h) - evalFunc(cl, x - h)) / (2 * h);
-            if (df == 0.0) x += 1e-4; else x -= y / df;
-        }
-        throw std::runtime_error("Math Error: Equation solver did not converge.");
+    regModule(math_ns, "diff", { 2 }, [evalFunc](const std::vector<Value>& args) -> Value {
+        auto cl = args[0].asFunction();
+        double x = args[1].asDouble();
+        double h = 1e-4;
+        double d = (-evalFunc(cl, x + 2 * h) + 8 * evalFunc(cl, x + h)
+            - 8 * evalFunc(cl, x - h) + evalFunc(cl, x - 2 * h)) / (12 * h);
+        return Value(d);
         }, {"f", "x0"});
+
+    regModule(math_ns, "integ", { 3, 4 }, [evalFunc](const std::vector<Value>& args) -> Value {
+        auto cl = args[0].asFunction();
+        double a = args[1].asDouble(), b = args[2].asDouble();
+        int n = (args.size() == 4) ? static_cast<int>(std::round(args[3].asDouble())) : 100000;
+        if (n <= 0 || n % 2 != 0) n = 100000;
+        double h = (b - a) / n, s = evalFunc(cl, a) + evalFunc(cl, b);
+        for (int i = 1; i < n; i += 2) { jc::checkInterrupt(); s += 4 * evalFunc(cl, a + i * h); }
+        for (int i = 2; i < n - 1; i += 2) { jc::checkInterrupt(); s += 2 * evalFunc(cl, a + i * h); }
+        return Value(s * h / 3.0);
+        }, {"f", "a", "b", "n"});
+
+    regModule(math_ns, "limit", { 2, 3 }, [evalFunc](const std::vector<Value>& args) -> Value {
+        auto cl = args[0].asFunction();
+        double x0 = args[1].asDouble();
+        double h = 1e-7;
+        
+        auto safeEval = [&](double x) -> double {
+            try { return evalFunc(cl, x); }
+            catch (const jc::EngineInterruptError&) { throw; }
+            catch (...) { return std::numeric_limits<double>::quiet_NaN(); }
+        };
+
+        std::string dir = "";
+        if (args.size() == 3) {
+            if (args[2].isString()) dir = args[2].asString();
+            else if (args[2].isNumber()) {
+                double d = args[2].asDouble();
+                dir = d > 0 ? "+" : (d < 0 ? "-" : "");
+            }
+        }
+        
+        if (dir == "+") {
+            double v = safeEval(x0 + h);
+            if (std::isnan(v)) throw std::runtime_error("Math Error: Right limit does not exist.");
+            return Value(v);
+        }
+        if (dir == "-") {
+            double v = safeEval(x0 - h);
+            if (std::isnan(v)) throw std::runtime_error("Math Error: Left limit does not exist.");
+            return Value(v);
+        }
+        
+        double left = safeEval(x0 - h);
+        double right = safeEval(x0 + h);
+        
+        if (!std::isnan(left) && !std::isnan(right) && std::abs(left - right) < 1e-4) {
+            return Value((left + right) / 2.0);
+        }
+        
+        throw std::runtime_error("Math Error: Limit does not exist (left and right limits differ significantly or are undefined).");
+        }, {"f", "x0", "dir"});
 
     reg("table", {}, [](const std::vector<Value>& args) -> Value {
         if (args.size() < 2) throw std::runtime_error("Runtime Error: table() expects at least 2 arguments.");
@@ -5871,78 +5941,73 @@ void BuiltinRegistry::registerSetFunctions() {
     auto setAddFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setAdd() expects a Set.");
+            throw std::runtime_error("Type Error: add() expects a Set.");
         auto s = static_cast<ObjSet*>(self.asObj());
         s->add(args[0]);
         return self;
     };
-    regMethod(VM::activeVM->setProto, "setAdd", {"val"}, setAddFn);
     regMethod(VM::activeVM->setProto, "add", {"val"}, setAddFn);
 
     auto setRemoveFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setRemove() expects a Set.");
+            throw std::runtime_error("Type Error: remove() expects a Set.");
         auto s = static_cast<ObjSet*>(self.asObj());
         s->remove(args[0]);
         return self;
     };
-    regMethod(VM::activeVM->setProto, "setRemove", {"val"}, setRemoveFn);
     regMethod(VM::activeVM->setProto, "remove", {"val"}, setRemoveFn);
 
     auto setDiscardFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setDiscard() expects a Set.");
+            throw std::runtime_error("Type Error: discard() expects a Set.");
         auto s = static_cast<ObjSet*>(self.asObj());
         s->discard(args[0]);
         return self;
     };
-    regMethod(VM::activeVM->setProto, "setDiscard", {"val"}, setDiscardFn);
     regMethod(VM::activeVM->setProto, "discard", {"val"}, setDiscardFn);
 
     auto setClearFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setClear() expects a Set.");
+            throw std::runtime_error("Type Error: clear() expects a Set.");
         auto s = static_cast<ObjSet*>(self.asObj());
         s->clear();
         return self;
     };
-    regMethod(VM::activeVM->setProto, "setClear", {}, setClearFn);
     regMethod(VM::activeVM->setProto, "clear", {}, setClearFn);
 
     auto setPopFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setPop() expects a Set.");
+            throw std::runtime_error("Type Error: pop() expects a Set.");
         auto s = static_cast<ObjSet*>(self.asObj());
         return s->pop();
     };
-    regMethod(VM::activeVM->setProto, "setPop", {}, setPopFn);
     regMethod(VM::activeVM->setProto, "pop", {}, setPopFn);
 
     // ═══ 集合运算（返回新 Set）═══
     auto setUnionFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setUnion() expects two Sets.");
+            throw std::runtime_error("Type Error: union() expects two Sets.");
         return self | args[0];
     };
-    regMethod(VM::activeVM->setProto, "setUnion", {"b"}, setUnionFn);
+    regMethod(VM::activeVM->setProto, "union", {"b"}, setUnionFn);
 
     auto setIntersectFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setIntersect() expects two Sets.");
+            throw std::runtime_error("Type Error: intersect() expects two Sets.");
         return self & args[0];
     };
-    regMethod(VM::activeVM->setProto, "setIntersect", {"b"}, setIntersectFn);
+    regMethod(VM::activeVM->setProto, "intersect", {"b"}, setIntersectFn);
 
     auto setDiffFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setDiff() expects two Sets.");
+            throw std::runtime_error("Type Error: difference() expects two Sets.");
         auto a = static_cast<ObjSet*>(self.asObj());
         auto b = static_cast<ObjSet*>(args[0].asObj());
         ObjSet* result = GcHeap::get().allocate<ObjSet>();
@@ -5955,15 +6020,15 @@ void BuiltinRegistry::registerSetFunctions() {
         }
         return Value(result);
     };
-    regMethod(VM::activeVM->setProto, "setDiff", {"b"}, setDiffFn);
+    regMethod(VM::activeVM->setProto, "difference", {"b"}, setDiffFn);
 
     auto setSymDiffFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setSymDiff() expects two Sets.");
+            throw std::runtime_error("Type Error: symDiff() expects two Sets.");
         return bitXor(self, args[0]);
     };
-    regMethod(VM::activeVM->setProto, "setSymDiff", {"b"}, setSymDiffFn);
+    regMethod(VM::activeVM->setProto, "symDiff", {"b"}, setSymDiffFn);
 
     // ═══ 集合关系谓词 ═══
     auto isSubsetFn = [](const std::vector<Value>& args) -> Value {
@@ -6009,17 +6074,17 @@ void BuiltinRegistry::registerSetFunctions() {
     auto setProductFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setProduct() expects two Sets.");
+            throw std::runtime_error("Type Error: cartesian() expects two Sets.");
         // 直接触发刚写好的重载 *
         return self * args[0];
     };
-    regMethod(VM::activeVM->setProto, "setProduct", {"b"}, setProductFn);
+    regMethod(VM::activeVM->setProto, "cartesian", {"b"}, setProductFn);
 
     // ═══ 集合幂集 ═══
     auto setPowFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET))
-            throw std::runtime_error("Type Error: setPow() expects a Set.");
+            throw std::runtime_error("Type Error: powerSet() expects a Set.");
 
         auto s = static_cast<ObjSet*>(self.asObj());
         int n = static_cast<int>(s->elements.size());
@@ -6048,7 +6113,7 @@ void BuiltinRegistry::registerSetFunctions() {
         }
         return Value(result);
     };
-    regMethod(VM::activeVM->setProto, "setPow", {}, setPowFn);
+    regMethod(VM::activeVM->setProto, "powerSet", {}, setPowFn);
 }
 
 // =================================================================
@@ -6059,10 +6124,6 @@ void BuiltinRegistry::registerCAS() {
 
     auto toBigInt = [](const Value& v) -> BigInt {
         return v.isBigInt() ? v.asBigInt() : BigInt(static_cast<int64_t>(std::round(v.asDouble())));
-    };
-
-    auto evalFunc = [](ObjClosure* cl, double x) -> double {
-        return safeCallFunction(cl, { Value(x) }).asDouble();
     };
 
     auto getVarName = [](const Value& v, const std::string& funcName) -> std::string {
@@ -6335,8 +6396,8 @@ void BuiltinRegistry::registerCAS() {
         return Value(jc::simplify(jc::applyRule(expr, pattern, target)));
     }, {"expr", "pat", "tgt"});
 
-    regModule(cas_ns, "solveEq", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
-        auto roots = jc::solveEq(args[0].asSymbolic(), getVarName(args[1], "solveEq"));
+    regModule(cas_ns, "solve", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
+        auto roots = jc::solveEq(args[0].asSymbolic(), getVarName(args[1], "solve"));
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
         for (const auto& r : roots) {
@@ -6386,20 +6447,8 @@ void BuiltinRegistry::registerCAS() {
         return Value(jc::polyResultant(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "resultant")));
     }, {"A", "B", "var"});
 
-    regModule(cas_ns, "factor", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value {
-        if (args[0].isSymbolic()) {
-            return Value(jc::factor(args[0].asSymbolic()));
-        }
-        auto factors = toBigInt(args[0]).factorize();
-        ObjDict* d = GcHeap::get().allocate<ObjDict>();
-        GcObjGuard guard(d);
-        for (const auto& f : factors) {
-            Value k(f.first);
-            Value v = Value::fromInt32(f.second);
-            d->keyMap[k] = d->elements.size();
-            d->elements.push_back({k, v});
-        }
-        return Value(d);
+    regModule(cas_ns, "factor", { 1 }, [](const std::vector<Value>& args) -> Value {
+        return Value(jc::factor(args[0].asSymbolic()));
         }, {"expr"});
 
     regModule(cas_ns, "factorReal", { 1 }, [](const std::vector<Value>& args) -> Value {
@@ -6412,68 +6461,16 @@ void BuiltinRegistry::registerCAS() {
         return Value(jc::taylor(args[0].asSymbolic(), getVarName(args[1], "taylor"), args[2].asSymbolic(), order));
     }, {"expr", "var", "a", "order"});
 
-    regModule(cas_ns, "limit", { 2, 3, 4 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
-        bool isSymLimit = args[0].isSymbolic();
-        if (!isSymLimit && args.size() >= 3) {
-            if (args[1].isString() || (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR)) {
-                isSymLimit = true;
-            }
-        }
-        if (isSymLimit) {
-            if (args.size() < 3 || args.size() > 4) throw std::runtime_error("TypeError: Symbolic limit expects 3 or 4 arguments: expr, var, val, [dir].");
-            std::string dir = "";
-            if (args.size() == 4) {
-                if (!args[3].isString()) throw std::runtime_error("TypeError: Symbolic limit direction must be a string ('+' or '-').");
-                dir = args[3].asString();
-            }
-            SymExpr valExpr;
-            if (args[2].isString()) valExpr = SymExpr::makeVar(args[2].asString());
-            else valExpr = args[2].asSymbolic();
-            return Value(jc::limit(args[0].asSymbolic(), getVarName(args[1], "limit"), valExpr, dir));
-        }
-
-        if (args.size() > 3) {
-            throw std::runtime_error("TypeError: Numeric limit expects 2 or 3 arguments: func, x0, [dir].");
-        }
-
-        auto cl = args[0].asFunction();
-        double x0 = args[1].asDouble();
-        double h = 1e-7;
-        
-        auto safeEval = [&](double x) -> double {
-            try { return evalFunc(cl, x); }
-            catch (const jc::EngineInterruptError&) { throw; }
-            catch (...) { return std::numeric_limits<double>::quiet_NaN(); }
-        };
-
+    regModule(cas_ns, "limit", { 3, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
         std::string dir = "";
-        if (args.size() == 3) {
-            if (args[2].isString()) dir = args[2].asString();
-            else if (args[2].isNumber()) {
-                double d = args[2].asDouble();
-                dir = d > 0 ? "+" : (d < 0 ? "-" : "");
-            }
+        if (args.size() == 4) {
+            if (!args[3].isString()) throw std::runtime_error("TypeError: Symbolic limit direction must be a string ('+' or '-').");
+            dir = args[3].asString();
         }
-        
-        if (dir == "+") {
-            double v = safeEval(x0 + h);
-            if (std::isnan(v)) throw std::runtime_error("Math Error: Right limit does not exist.");
-            return Value(v);
-        }
-        if (dir == "-") {
-            double v = safeEval(x0 - h);
-            if (std::isnan(v)) throw std::runtime_error("Math Error: Left limit does not exist.");
-            return Value(v);
-        }
-        
-        double left = safeEval(x0 - h);
-        double right = safeEval(x0 + h);
-        
-        if (!std::isnan(left) && !std::isnan(right) && std::abs(left - right) < 1e-4) {
-            return Value((left + right) / 2.0);
-        }
-        
-        throw std::runtime_error("Math Error: Limit does not exist (left and right limits differ significantly or are undefined).");
+        SymExpr valExpr;
+        if (args[2].isString()) valExpr = SymExpr::makeVar(args[2].asString());
+        else valExpr = args[2].asSymbolic();
+        return Value(jc::limit(args[0].asSymbolic(), getVarName(args[1], "limit"), valExpr, dir));
     }, {"expr", "var", "val", "dir"});
 
     regModule(cas_ns, "verifyInteg", { 2 }, [getVarName, doEvalf](const std::vector<Value>& args) -> Value {
@@ -6524,61 +6521,22 @@ void BuiltinRegistry::registerCAS() {
         return Value(false);
     }, {"expr", "var"});
 
-    regModule(cas_ns, "diff", { 2 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
-        bool isSymDiff = args[0].isSymbolic();
-        if (!isSymDiff) {
-            if (args[1].isString() || (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR)) {
-                isSymDiff = true;
-            }
-        }
-        if (isSymDiff) {
-            SymExpr expr = args[0].asSymbolic();
-            std::string var = getVarName(args[1], "diff");
-            return Value(simplify(jc::diff(expr, var)));
-        }
-
-        auto cl = args[0].asFunction();
-        double x = args[1].asDouble();
-        double h = 1e-4;
-
-        double d = (-evalFunc(cl, x + 2 * h) + 8 * evalFunc(cl, x + h)
-            - 8 * evalFunc(cl, x - h) + evalFunc(cl, x - 2 * h)) / (12 * h);
-        return Value(d);
+    regModule(cas_ns, "diff", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
+        SymExpr expr = args[0].asSymbolic();
+        std::string var = getVarName(args[1], "diff");
+        return Value(simplify(jc::diff(expr, var)));
         }, {"expr", "var"});
 
-    regModule(cas_ns, "integ", { 2, 3, 4 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
-        bool isSymInteg = args[0].isSymbolic();
-        if (!isSymInteg && args.size() >= 2) {
-            if (args[1].isString() || (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR)) {
-                isSymInteg = true;
-            }
+    regModule(cas_ns, "integ", { 2, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
+        SymExpr expr = args[0].asSymbolic();
+        std::string var = getVarName(args[1], "integ");
+        
+        if (args.size() == 4) {
+            SymExpr a = args[2].asSymbolic();
+            SymExpr b = args[3].asSymbolic();
+            return Value(jc::defint(expr, var, a, b));
         }
-        if (isSymInteg) {
-            SymExpr expr = args[0].asSymbolic();
-            std::string var = getVarName(args[1], "integ");
-            
-            if (args.size() == 4) {
-                SymExpr a = args[2].asSymbolic();
-                SymExpr b = args[3].asSymbolic();
-                return Value(jc::defint(expr, var, a, b));
-            } else if (args.size() == 3) {
-                throw std::runtime_error("TypeError: Symbolic definite integration expects 4 arguments: expr, var, a, b.");
-            }
-            return Value(simplify(jc::integrate(expr, var)));
-        }
-
-        if (args.size() < 3) {
-            throw std::runtime_error("TypeError: Numeric integration expects at least 3 arguments: func, a, b.");
-        }
-
-        auto cl = args[0].asFunction();
-        double a = args[1].asDouble(), b = args[2].asDouble();
-        int n = (args.size() == 4) ? static_cast<int>(std::round(args[3].asDouble())) : 100000;
-        if (n <= 0 || n % 2 != 0) n = 100000;
-        double h = (b - a) / n, s = evalFunc(cl, a) + evalFunc(cl, b);
-        for (int i = 1; i < n; i += 2) { jc::checkInterrupt(); s += 4 * evalFunc(cl, a + i * h); }
-        for (int i = 2; i < n - 1; i += 2) { jc::checkInterrupt(); s += 2 * evalFunc(cl, a + i * h); }
-        return Value(s * h / 3.0);
+        return Value(simplify(jc::integrate(expr, var)));
         }, {"expr", "var", "a", "b"});
 }
 

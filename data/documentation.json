@@ -1968,6 +1968,12 @@
       "    All indices support negative wrapping:",
       "      v[-3 : -1]              Extract 3rd-to-last to 2nd-to-last",
       "",
+      "    First-Class Slice Objects:",
+      "      You can create standalone slice objects using the `slice()` function:",
+      "        s = slice(1, 5, 2)",
+      "        v[s]                  Equivalent to v[1:5:2]",
+      "      Slice objects have readable properties: s.start, s.end, s.step.",
+      "",
       "    Function form (also supports all types):",
       "      v.slice(start)          From start to end",
       "      v.slice(start, end)     From start to end (exclusive)",
@@ -2681,8 +2687,8 @@
       "                        (If not defined, 'in' checks fields, methods, and __getattr__ by default)",
       "",
       "    Indexing & Dynamic Attributes:",
-      "      __getitem__(...dims)         Called by:  obj[i, j, ...]",
-      "      __setitem__(...dims, val)    Called by:  obj[i, j, ...] = val",
+      "      __getitem__(...dims)         Called by:  obj[i, j, ...]. Dims can be ints, strings, or slice objects.",
+      "      __setitem__(...args)         Called by:  obj[i, j, ...] = val. The last argument is the value.",
       "      __getattr__(key)             Called when accessing a non-existent field: obj.key",
       "      __setattr__(key, val)        Called when assigning to any field: obj.key = val",
       "",
@@ -4859,9 +4865,9 @@
       "examples": ["[1, 2, 3].removeAt(1)"]
     },
     "slice": {
-      "signature": "v.slice(start, [end])",
-      "desc": "Extracts a slice of the container from start to end.",
-      "examples": ["[1, 2, 3, 4].slice(1, 3)"]
+      "signature": "slice([start], [end], [step]) / v.slice(start, [end])",
+      "desc": "Constructs a first-class slice object, or extracts a slice of the container from start to end. Slice objects have .start, .end, and .step properties.",
+      "examples": ["slice(1, 5, 2)", "[1, 2, 3, 4].slice(1, 3)"]
     },
     "reverse": {
       "signature": "v.reverse()",
@@ -5887,14 +5893,14 @@
       "examples": ["__contains__(v) = v in self.items"]
     },
     "__getitem__": {
-      "signature": "__getitem__(key)",
-      "desc": "Dunder method: Overloads index/key access (self[key]).",
-      "examples": ["__getitem__(i) = self.items[i]"]
+      "signature": "__getitem__(...dims)",
+      "desc": "Dunder method: Overloads index/key access (self[i, j, ...]). Arguments can be integers, strings, or slice objects.",
+      "examples": ["__getitem__(...dims) = self.items[dims[0]]"]
     },
     "__setitem__": {
-      "signature": "__setitem__(key, val)",
-      "desc": "Dunder method: Overloads index/key assignment (self[key] = val).",
-      "examples": ["__setitem__(i, v) = { self.items[i] = v }"]
+      "signature": "__setitem__(...args)",
+      "desc": "Dunder method: Overloads index/key assignment (self[i, j, ...] = val). The last argument in the variadic list is the value to assign.",
+      "examples": ["__setitem__(...args) = { self.items[args[0]] = args[1] }"]
     },
     "__str__": {
       "signature": "__str__()",

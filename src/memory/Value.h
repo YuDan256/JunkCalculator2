@@ -156,6 +156,18 @@ namespace jc {
 
     std::pair<bool, Value> invokeDunder(ObjInstance* inst, const char* methodName, const std::vector<Value>& args = {});
 
+    struct SliceInfo {
+        int start;
+        int step;
+        int count;
+    };
+
+    struct IndexRange {
+        bool isSlice;
+        int scalarIdx;
+        SliceInfo sliceInfo;
+    };
+
     class Value {
     public:
         uint64_t as_bits;
@@ -641,12 +653,6 @@ namespace jc {
         ObjSym(SymExpr s) : sym(std::move(s)) { type = ObjType::SYMBOLIC; }
     };
 
-    struct SliceInfo {
-        int start;
-        int step;
-        int count;
-    };
-
     struct ObjSlice : public Obj {
         static constexpr int SLICE_NONE = INT32_MIN;
         int start;
@@ -687,12 +693,6 @@ namespace jc {
 
             return { st, s, count };
         }
-    };
-
-    struct IndexRange {
-        bool isSlice;
-        int scalarIdx;
-        SliceInfo sliceInfo;
     };
 
     inline Value::Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {

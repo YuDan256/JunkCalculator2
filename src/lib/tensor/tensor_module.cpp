@@ -115,15 +115,69 @@ METHOD(__eq__) {
     return jc2::Value(true).get_handle();
 }
 METHOD(__getitem__) {
-    GET_SELF; int idx = static_cast<int>(jc2::Value(argv[1]).as_double());
-    if (t1->dim() == 1) return jc2::Value(t1->getFlat(idx < 0 ? idx + t1->shape[0] : idx)).get_handle();
-    return wrapTensor(t1->select(0, idx)).get_handle();
+    GET_SELF;
+    jc::Tensor current = *t1;
+    int dims_provided = argc - 1;
+    if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
+
+    int current_dim = 0;
+    for (int i = 0; i < dims_provided; ++i) {
+        jc2::Value idx_val(argv[i + 1]);
+        if (idx_val.is_slice()) {
+            jc2::Slice sl(idx_val.get_handle());
+            current = current.slice_dim(current_dim, sl.start(), sl.end(), sl.step());
+            current_dim++;
+        } else {
+            int idx = static_cast<int>(idx_val.as_double());
+            current = current.select(current_dim, idx);
+        }
+    }
+
+    if (current.shape.empty()) {
+        return jc2::Value(current.getByAbsIdx(current.offset)).get_handle();
+    }
+    return wrapTensor(current).get_handle();
 }
 METHOD(__setitem__) {
-    GET_SELF; int idx = static_cast<int>(jc2::Value(argv[1]).as_double());
-    if (idx < 0) idx += t1->shape[0];
-    if (t1->dim() == 1) t1->setFlat(idx, jc2::Value(argv[2]).as_double());
-    else jc2::throw_error("Tensor Error: __setitem__ only supports 1D scalar assignment.");
+    GET_SELF;
+    if (argc < 2) jc2::throw_error("Tensor Error: __setitem__ requires at least one index and a value.");
+    int dims_provided = argc - 2;
+    jc2::Value val(argv[argc - 1]);
+
+    jc::Tensor current = *t1;
+    if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
+
+    int current_dim = 0;
+    for (int i = 0; i < dims_provided; ++i) {
+        jc2::Value idx_val(argv[i + 1]);
+        if (idx_val.is_slice()) {
+            jc2::Slice sl(idx_val.get_handle());
+            current = current.slice_dim(current_dim, sl.start(), sl.end(), sl.step());
+            current_dim++;
+        } else {
+            int idx = static_cast<int>(idx_val.as_double());
+            current = current.select(current_dim, idx);
+        }
+    }
+
+    if (current.shape.empty()) {
+        current.setByAbsIdx(current.offset, val.as_double());
+    } else {
+        if (isTensor(val)) {
+            auto val_t = getTensor(val);
+            if (val_t->numel() == 1) {
+                current.fill_(val_t->item());
+            } else if (current.shape == val_t->shape) {
+                for (size_t i = 0; i < current.numel(); ++i) {
+                    current.setFlat(i, val_t->getFlat(i));
+                }
+            } else {
+                jc2::throw_error("Tensor Error: Shape mismatch in __setitem__.");
+            }
+        } else {
+            current.fill_(val.as_double());
+        }
+    }
     return jc2::Value().get_handle();
 }
 METHOD(__len__) { GET_SELF; return jc2::Value(t1->dim() > 0 ? static_cast<double>(t1->shape[0]) : 0.0).get_handle(); }
@@ -341,8 +395,8 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("__pow__", tensor___pow__, 1, 1, false, {"exponent"});
     g_tensorClass->bind_method("__neg__", tensor___neg__, 0, 0, false);
     g_tensorClass->bind_method("__eq__", tensor___eq__, 1, 1, false, {"other"});
-    g_tensorClass->bind_method("__getitem__", tensor___getitem__, 1, 1, false, {"idx"});
-    g_tensorClass->bind_method("__setitem__", tensor___setitem__, 2, 2, false, {"idx", "val"});
+    g_tensorClass->bind_method("__getitem__", tensor___getitem__, 1, 16777215, true, {"...dims"});
+    g_tensorClass->bind_method("__setitem__", tensor___setitem__, 2, 16777215, true, {"...dims_and_val"});
     g_tensorClass->bind_method("__len__", tensor___len__, 0, 0, false);
     g_tensorClass->bind_method("__abs__", tensor___abs__, 0, 0, false);
 

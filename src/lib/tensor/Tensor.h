@@ -369,9 +369,50 @@ namespace jc {
             return transpose(dim() - 2, dim() - 1);
         }
 
+        static constexpr int SLICE_NONE = -2147483647 - 1;
+
         // ====================================================================
         // 切片 — 返回子视图
         // ====================================================================
+        Tensor slice_dim(int dimension, int start, int end, int step) const {
+            if (dimension < 0 || dimension >= dim())
+                throw std::runtime_error("Tensor Error: slice dimension out of range.");
+            if (step == 0) throw std::runtime_error("Tensor Error: slice step cannot be zero.");
+
+            int dim_size = shape[dimension];
+            int st = start == SLICE_NONE ? (step > 0 ? 0 : dim_size - 1) : start;
+            int en = end == SLICE_NONE ? (step > 0 ? dim_size : -1) : end;
+
+            if (st < 0 && start != SLICE_NONE) st += dim_size;
+            if (en < 0 && end != SLICE_NONE) en += dim_size;
+
+            if (step > 0) {
+                st = std::max(0, std::min(dim_size, st));
+                en = std::max(0, std::min(dim_size, en));
+            } else {
+                st = std::max(-1, std::min(dim_size - 1, st));
+                en = std::max(-1, std::min(dim_size - 1, en));
+            }
+
+            int count = 0;
+            if (step > 0) {
+                if (en > st) count = (en - st + step - 1) / step;
+            } else {
+                if (en < st) count = (st - en - step - 1) / (-step);
+            }
+
+            Tensor t;
+            t.storage = storage;
+            t.offset = offset + st * strides[dimension];
+            t.shape = shape;
+            t.strides = strides;
+            t.shape[dimension] = count;
+            t.strides[dimension] *= step;
+            t.requires_grad = requires_grad;
+            t.is_leaf = false;
+            return t;
+        }
+
         Tensor select(int dimension, int index) const {
             if (dimension < 0 || dimension >= dim())
                 throw std::runtime_error("Tensor Error: select dimension out of range.");

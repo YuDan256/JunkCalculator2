@@ -46,7 +46,7 @@
 *   **Native C++ 扩展无痛升级**：扩展 `bind_method` 注册 API，允许 C++ 侧提供参数名列表（如 `{"a", "b", "rtol"}`）。VM 在调用 Native 函数前，自动将位置参数和命名参数“预对齐”成一个标准的 `std::vector<Value>`，C++ 函数体逻辑无需任何修改。
 *   **可变参数 (`...rest`) 隔离**：`...rest` 仅收集多余的位置参数，绝不收集命名参数。命名参数必须与函数签名严格匹配（名花有主）。对于开放式的配置项，不引入 `**kwargs`，而是推荐使用现有的字典解构 `f(opts = {})`。
 
-## 8. N维索引与切片架构 (N-Dimensional Indexing & Slicing) [规划中]
+## 8. N维索引与切片架构 (N-Dimensional Indexing & Slicing)
 *   **统一路由 (Unified Routing)**：废弃 `__getslice__`，将所有 `[]` 操作统一路由至 `__getitem__(...dims)` 和 `__setitem__(...dims, val)`。利用变长参数机制，原生支持任意维度的索引与切片。
 *   **一等公民 Slice (First-Class Slice)**：引入 `ObjSlice` 类型，彻底消除“高级索引 (List)”与“切片 (Slice)”在多维访问中的语义歧义。
 *   **零 GC 压力 (Zero GC Overhead)**：`ObjSlice` 仅包含 `start, end, step`，无循环引用风险。底层通过**专属免锁对象池 (Free-list)** 分配，并依赖**引用计数 (RC)** 瞬间回收，完全绕过 Mark-and-Sweep 扫描，性能媲美栈分配。

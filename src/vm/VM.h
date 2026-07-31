@@ -123,8 +123,6 @@ private:
 
     void execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false);
     void execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall);
-    void execSliceGet(int a, int b, uint8_t dims);
-    void execSliceSet(int a, int c, uint8_t dims);
     Value execImport(const std::string& name);
 
     void execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx);

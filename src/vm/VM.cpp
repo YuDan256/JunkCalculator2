@@ -930,8 +930,6 @@ static const std::string DUNDER_GT = "__gt__";
 static const std::string DUNDER_GE = "__ge__";
 static const std::string DUNDER_GETITEM = "__getitem__";
 static const std::string DUNDER_SETITEM = "__setitem__";
-static const std::string DUNDER_GETSLICE = "__getslice__";
-static const std::string DUNDER_SETSLICE = "__setslice__";
 static const std::string DUNDER_GETATTR = "__getattr__";
 static const std::string DUNDER_SETATTR = "__setattr__";
 static const std::string DUNDER_CALL = "__call__";
@@ -1685,6 +1683,100 @@ invoke_method:
     }
 }
 
+namespace {
+    struct SliceInfo { int start; int step; int count; };
+
+    SliceInfo computeSlice(int dimSize, int64_t s_start, int64_t s_end, int64_t s_step) {
+        int step = (s_step == ObjSlice::SLICE_NONE) ? 1 : static_cast<int>(s_step);
+        if (step == 0) throw std::runtime_error("ValueError: slice step cannot be zero.");
+
+        int start, end;
+        if (step > 0) {
+            start = (s_start == ObjSlice::SLICE_NONE) ? 0 : static_cast<int>(s_start);
+            end = (s_end == ObjSlice::SLICE_NONE) ? dimSize : static_cast<int>(s_end);
+        } else {
+            start = (s_start == ObjSlice::SLICE_NONE) ? dimSize - 1 : static_cast<int>(s_start);
+            end = (s_end == ObjSlice::SLICE_NONE) ? -1 : static_cast<int>(s_end);
+        }
+
+        if (start < 0) start += dimSize;
+        if (end < 0 && s_end != ObjSlice::SLICE_NONE) end += dimSize;
+
+        if (step > 0) {
+            start = std::max(0, std::min(dimSize, start));
+            end = std::max(0, std::min(dimSize, end));
+        } else {
+            start = std::max(-1, std::min(dimSize - 1, start));
+            end = std::max(-1, std::min(dimSize - 1, end));
+        }
+
+        int count = 0;
+        if (step > 0) {
+            if (end > start) count = (end - start + step - 1) / step;
+        } else {
+            if (end < start) count = (start - end - step - 1) / (-step);
+        }
+
+        return { start, step, count };
+    }
+
+    struct IndexRange {
+        bool isSlice;
+        int scalarIdx;
+        SliceInfo sliceInfo;
+    };
+
+    IndexRange getIndexRange(const Value& idxVal, int dimSize, bool noThrow) {
+        if (idxVal.isSlice()) {
+            ObjSlice* slice = idxVal.asSlice();
+            return { true, 0, computeSlice(dimSize, slice->start, slice->end, slice->step) };
+        } else {
+            int i = idxVal.isInt32() ? idxVal.asInt32() : static_cast<int>(std::round(idxVal.asDouble()));
+            if (i < 0) i += dimSize;
+            if (i < 0 || i >= dimSize) {
+                if (noThrow) return { false, -1, {0,0,0} };
+                throw std::out_of_range("VM Error: Index out of bounds.");
+            }
+            return { false, i, {0,0,0} };
+        }
+    }
+}
+
+void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall) {
+        int step = (s_step == ObjSlice::SLICE_NONE) ? 1 : static_cast<int>(s_step);
+        if (step == 0) throw std::runtime_error("ValueError: slice step cannot be zero.");
+
+        int start, end;
+        if (step > 0) {
+            start = (s_start == ObjSlice::SLICE_NONE) ? 0 : static_cast<int>(s_start);
+            end = (s_end == ObjSlice::SLICE_NONE) ? dimSize : static_cast<int>(s_end);
+        } else {
+            start = (s_start == ObjSlice::SLICE_NONE) ? dimSize - 1 : static_cast<int>(s_start);
+            end = (s_end == ObjSlice::SLICE_NONE) ? -1 : static_cast<int>(s_end);
+        }
+
+        if (start < 0) start += dimSize;
+        if (end < 0 && s_end != ObjSlice::SLICE_NONE) end += dimSize;
+
+        if (step > 0) {
+            start = std::max(0, std::min(dimSize, start));
+            end = std::max(0, std::min(dimSize, end));
+        } else {
+            start = std::max(-1, std::min(dimSize - 1, start));
+            end = std::max(-1, std::min(dimSize - 1, end));
+        }
+
+        int count = 0;
+        if (step > 0) {
+            if (end > start) count = (end - start + step - 1) / step;
+        } else {
+            if (end < start) count = (start - end - step - 1) / (-step);
+        }
+
+        return { start, step, count };
+    }
+}
+
 void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     const std::string& methodName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
@@ -1844,366 +1936,6 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         }
         helpers::nativeSelfStack.pop_back();
         helpers::nativeClassStack.pop_back();
-    }
-}
-
-void VM::execSliceGet(int a, int b, uint8_t dims) {
-    CallFrame* currentFrame = &frames[frameCount - 1];
-    const Value& obj = registers[currentFrame->registerBase + b];
-    
-    if (obj.isInstance()) {
-        auto [method, owner] = findDunder(obj, DUNDER_GETSLICE);
-        if (method) {
-            std::vector<Value> args;
-            for (int i = 0; i < dims * 3; ++i) {
-                args.push_back(registers[currentFrame->registerBase + b + 1 + i]);
-            }
-            registers[currentFrame->registerBase + a] = callDunder(obj, method, owner, args);
-            return;
-        }
-    }
-
-    auto readOptionalInt = [&](int idx) -> std::pair<bool, int> {
-        Value v = registers[currentFrame->registerBase + b + 1 + idx];
-        if (v.isNone()) return { false, 0 };
-        if (v.isInt32()) return { true, v.asInt32() };
-        if (v.isDouble()) return { true, static_cast<int>(std::round(v.asDoubleRaw())) };
-        return { true, static_cast<int>(std::round(v.asDouble())) };
-    };
-
-    struct SliceInfo { int start; int step; int count; };
-    auto buildSliceInfo = [](int dimSize, std::pair<bool, int> start, std::pair<bool, int> end, std::pair<bool, int> step) -> SliceInfo {
-        int sp = step.first ? step.second : 1;
-        if (step.first && sp == 0) {
-            int idx = start.first ? start.second : 0;
-            if (idx < 0) idx = dimSize + idx;
-            if (idx < 0 || idx >= dimSize) throw std::out_of_range("VM Error: Index out of bounds.");
-            return { idx, 0, 1 };
-        }
-        int st, en;
-        if (sp > 0) {
-            st = start.first ? start.second : 0;
-            en = end.first ? end.second : dimSize;
-        } else {
-            st = start.first ? start.second : dimSize - 1;
-            en = end.first ? end.second : -1;
-        }
-        if (st < 0) st = dimSize + st;
-        if (en < 0 && end.first) en = dimSize + en;
-        if (sp > 0) {
-            st = std::max(0, std::min(dimSize, st));
-            en = std::max(0, std::min(dimSize, en));
-        } else {
-            st = std::max(-1, std::min(dimSize - 1, st));
-            en = std::max(-1, std::min(dimSize - 1, en));
-        }
-        int count = 0;
-        if (sp > 0) {
-            if (en > st) count = (en - st + sp - 1) / sp;
-        } else {
-            if (en < st) count = (st - en - sp - 1) / (-sp);
-        }
-        return { st, sp, count };
-    };
-
-    if (dims == 1) {
-        auto start = readOptionalInt(0);
-        auto end = readOptionalInt(1);
-        auto step = readOptionalInt(2);
-        
-        if (obj.isString()) {
-            ObjString* objStr = obj.asObjString();
-            const auto& s = objStr->str;
-            auto info = buildSliceInfo(static_cast<int>(objStr->charLength), start, end, step);
-            std::string result;
-            if (objStr->isAscii) {
-                result.reserve(info.count);
-                for (int i = 0; i < info.count; ++i) result += s[info.start + i * info.step];
-            } else {
-                for (int i = 0; i < info.count; ++i) result += utf8::substring(s, info.start + i * info.step, 1, false);
-            }
-            registers[currentFrame->registerBase + a] = Value(result);
-            return;
-        }
-        
-        if (obj.isObjType(ObjType::LIST)) {
-            const auto& L = static_cast<ObjList*>(obj.asObj())->vec;
-            auto info = buildSliceInfo(static_cast<int>(L.size()), start, end, step);
-            ObjList* result = GcHeap::get().allocate<ObjList>();
-            result->vec.reserve(info.count);
-            for (int i = 0; i < info.count; ++i) result->vec.push_back(L[info.start + i * info.step]);
-            registers[currentFrame->registerBase + a] = Value(result);
-            return;
-        }
-        
-        if (obj.isObjType(ObjType::REAL_MATRIX)) {
-            const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
-            int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-            auto info = buildSliceInfo(n, start, end, step);
-            std::vector<double> result;
-            result.reserve(info.count);
-            if (m.getRows() == 1) {
-                for (int i = 0; i < info.count; ++i) result.push_back(m(0, info.start + i * info.step));
-                registers[currentFrame->registerBase + a] = Value(RealMatrix(1, info.count, result));
-            } else if (m.getCols() == 1) {
-                for (int i = 0; i < info.count; ++i) result.push_back(m(info.start + i * info.step, 0));
-                registers[currentFrame->registerBase + a] = Value(RealMatrix(info.count, 1, result));
-            } else {
-                std::vector<double> flat;
-                flat.reserve(info.count * m.getCols());
-                for (int i = 0; i < info.count; ++i) {
-                    int id = info.start + i * info.step;
-                    for (int j = 0; j < m.getCols(); ++j) flat.push_back(m(id, j));
-                }
-                registers[currentFrame->registerBase + a] = Value(RealMatrix(info.count, m.getCols(), flat));
-            }
-            return;
-        }
-        
-        throw std::runtime_error("VM Error: Cannot slice a value of type '" + getTypeName(obj) + "'.");
-    } else if (dims == 2) {
-        auto rStart = readOptionalInt(0);
-        auto rEnd = readOptionalInt(1);
-        auto rStep = readOptionalInt(2);
-        auto cStart = readOptionalInt(3);
-        auto cEnd = readOptionalInt(4);
-        auto cStep = readOptionalInt(5);
-        
-        auto processMatSlice = [&](const auto& m) {
-            auto rInfo = buildSliceInfo(m.getRows(), rStart, rEnd, rStep);
-            auto cInfo = buildSliceInfo(m.getCols(), cStart, cEnd, cStep);
-            using MatType = std::decay_t<decltype(m)>;
-            using ElemType = std::decay_t<decltype(m(0, 0))>;
-            std::vector<ElemType> flat;
-            flat.reserve(rInfo.count * cInfo.count);
-            for (int i = 0; i < rInfo.count; ++i) {
-                int ri = rInfo.start + i * rInfo.step;
-                for (int j = 0; j < cInfo.count; ++j) {
-                    int ci = cInfo.start + j * cInfo.step;
-                    flat.push_back(m(ri, ci));
-                }
-            }
-            registers[currentFrame->registerBase + a] = Value(MatType(rInfo.count, cInfo.count, flat));
-        };
-        
-        if (obj.isObjType(ObjType::REAL_MATRIX)) {
-            processMatSlice(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-        } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-            processMatSlice(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-        } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-            processMatSlice(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
-        } else {
-            throw std::runtime_error("VM Error: 2D slicing requires a matrix.");
-        }
-    } else {
-        throw std::runtime_error("VM Error: Unsupported slice dimensionality.");
-    }
-}
-
-void VM::execSliceSet(int a, int c, uint8_t dims) {
-    (void)c;
-    CallFrame* currentFrame = &frames[frameCount - 1];
-    Value obj = registers[currentFrame->registerBase + a];
-    const Value& val = registers[currentFrame->registerBase + a + 3 * dims + 1];
-    
-    if (obj.isInstance()) {
-        auto [method, owner] = findDunder(obj, DUNDER_SETSLICE);
-        if (method) {
-            std::vector<Value> args;
-            for (int i = 0; i < dims * 3; ++i) {
-                args.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-            }
-            args.push_back(val);
-            callDunder(obj, method, owner, args);
-            return;
-        }
-    }
-
-    auto readOptionalInt = [&](int idx) -> std::pair<bool, int> {
-        Value v = registers[currentFrame->registerBase + a + 1 + idx];
-        if (v.isNone()) return { false, 0 };
-        if (v.isInt32()) return { true, v.asInt32() };
-        if (v.isDouble()) return { true, static_cast<int>(std::round(v.asDoubleRaw())) };
-        return { true, static_cast<int>(std::round(v.asDouble())) };
-    };
-
-    struct SliceInfo { int start; int step; int count; };
-    auto buildSliceInfo = [](int dimSize, std::pair<bool, int> start, std::pair<bool, int> end, std::pair<bool, int> step) -> SliceInfo {
-        int sp = step.first ? step.second : 1;
-        if (step.first && sp == 0) {
-            int idx = start.first ? start.second : 0;
-            if (idx < 0) idx = dimSize + idx;
-            if (idx < 0 || idx >= dimSize) throw std::out_of_range("VM Error: Index out of bounds.");
-            return { idx, 0, 1 };
-        }
-        int st, en;
-        if (sp > 0) {
-            st = start.first ? start.second : 0;
-            en = end.first ? end.second : dimSize;
-        } else {
-            st = start.first ? start.second : dimSize - 1;
-            en = end.first ? end.second : -1;
-        }
-        if (st < 0) st = dimSize + st;
-        if (en < 0 && end.first) en = dimSize + en;
-        if (sp > 0) {
-            st = std::max(0, std::min(dimSize, st));
-            en = std::max(0, std::min(dimSize, en));
-        } else {
-            st = std::max(-1, std::min(dimSize - 1, st));
-            en = std::max(-1, std::min(dimSize - 1, en));
-        }
-        int count = 0;
-        if (sp > 0) {
-            if (en > st) count = (en - st + sp - 1) / sp;
-        } else {
-            if (en < st) count = (st - en - sp - 1) / (-sp);
-        }
-        return { st, sp, count };
-    };
-
-    if (dims == 1) {
-        auto start = readOptionalInt(0);
-        auto end = readOptionalInt(1);
-        auto step = readOptionalInt(2);
-        
-        if (obj.isObjType(ObjType::LIST)) {
-            auto list = static_cast<ObjList*>(obj.asObj());
-            auto info = buildSliceInfo(static_cast<int>(list->vec.size()), start, end, step);
-            if (val.isObjType(ObjType::LIST)) {
-                const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
-                if (static_cast<int>(srcL.size()) != info.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
-                for (int k = 0; k < info.count; ++k) list->mut()[info.start + k * info.step] = srcL[k];
-            } else {
-                for (int i = 0; i < info.count; ++i) list->mut()[info.start + i * info.step] = val;
-            }
-        } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
-            if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
-            auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
-            int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-            auto info = buildSliceInfo(n, start, end, step);
-            
-            if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION)) {
-                double v = val.asDouble();
-                if (m.getRows() == 1) {
-                    for (int i = 0; i < info.count; ++i) m(0, info.start + i * info.step) = v;
-                } else if (m.getCols() == 1) {
-                    for (int i = 0; i < info.count; ++i) m(info.start + i * info.step, 0) = v;
-                } else {
-                    for (int i = 0; i < info.count; ++i) {
-                        int id = info.start + i * info.step;
-                        for (int j = 0; j < m.getCols(); ++j) m(id, j) = v;
-                    }
-                }
-            } else if (val.isObjType(ObjType::REAL_MATRIX)) {
-                const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
-                auto srcFlat = src.rawData();
-                if (m.getRows() == 1 || m.getCols() == 1) {
-                    if (static_cast<int>(srcFlat.size()) != info.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
-                    if (m.getRows() == 1) {
-                        for (int k = 0; k < info.count; ++k) m(0, info.start + k * info.step) = srcFlat[k];
-                    } else {
-                        for (int k = 0; k < info.count; ++k) m(info.start + k * info.step, 0) = srcFlat[k];
-                    }
-                } else {
-                    if (static_cast<int>(srcFlat.size()) != info.count * m.getCols()) throw std::runtime_error("VM Error: Slice assignment size mismatch for matrix row.");
-                    for (int k = 0; k < info.count; ++k) {
-                        int id = info.start + k * info.step;
-                        for (int j = 0; j < m.getCols(); ++j) m(id, j) = srcFlat[k * m.getCols() + j];
-                    }
-                }
-            } else {
-                throw std::runtime_error("VM Error: Cannot assign this type to slice.");
-            }
-            registers[currentFrame->registerBase + a] = obj;
-        } else {
-            throw std::runtime_error("VM Error: Cannot slice-assign a value of type '" + getTypeName(obj) + "'.");
-        }
-    } else if (dims == 2) {
-        auto rStart = readOptionalInt(0);
-        auto rEnd = readOptionalInt(1);
-        auto rStep = readOptionalInt(2);
-        auto cStart = readOptionalInt(3);
-        auto cEnd = readOptionalInt(4);
-        auto cStep = readOptionalInt(5);
-        
-        auto processMatSliceSet = [&](auto& m) {
-            auto rInfo = buildSliceInfo(m.getRows(), rStart, rEnd, rStep);
-            auto cInfo = buildSliceInfo(m.getCols(), cStart, cEnd, cStep);
-            int dstR = rInfo.count;
-            int dstC = cInfo.count;
-            using ElemType = std::decay_t<decltype(m(0, 0))>;
-            
-            bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX);
-            if (isRhsMat) {
-                int srcR = 0, srcC = 0;
-                if (val.isObjType(ObjType::REAL_MATRIX)) {
-                    srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows();
-                    srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols();
-                } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
-                    srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows();
-                    srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols();
-                } else {
-                    srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows();
-                    srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols();
-                }
-                if (srcR != dstR || srcC != dstC) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
-                
-                for (int i = 0; i < dstR; ++i) {
-                    int ri = rInfo.start + i * rInfo.step;
-                    for (int j = 0; j < dstC; ++j) {
-                        int ci = cInfo.start + j * cInfo.step;
-                        if constexpr (std::is_same_v<ElemType, double>) {
-                            if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j);
-                            else throw std::runtime_error("VM Error: Cannot assign complex/string matrix to real matrix slice.");
-                        } else if constexpr (std::is_same_v<ElemType, Complex>) {
-                            if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(ri, ci) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j);
-                            else if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
-                            else throw std::runtime_error("VM Error: Cannot assign string matrix to complex matrix slice.");
-                        } else if constexpr (std::is_same_v<ElemType, std::string>) {
-                            std::ostringstream oss;
-                            if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(i, j);
-                            else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j));
-                            else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
-                            m(ri, ci) = oss.str();
-                        }
-                    }
-                }
-            } else {
-                ElemType scalarVal{};
-                if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
-                else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
-                else if constexpr (std::is_same_v<ElemType, std::string>) {
-                    if (val.isString()) scalarVal = val.asString();
-                    else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
-                }
-                for (int i = 0; i < rInfo.count; ++i) {
-                    int ri = rInfo.start + i * rInfo.step;
-                    for (int j = 0; j < cInfo.count; ++j) {
-                        int ci = cInfo.start + j * cInfo.step;
-                        m(ri, ci) = scalarVal;
-                    }
-                }
-            }
-        };
-        
-        if (obj.isObjType(ObjType::REAL_MATRIX)) {
-            if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
-            processMatSliceSet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-            registers[currentFrame->registerBase + a] = obj;
-        } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-            if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
-            processMatSliceSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-            registers[currentFrame->registerBase + a] = obj;
-        } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-            if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-            processMatSliceSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
-            registers[currentFrame->registerBase + a] = obj;
-        } else {
-            throw std::runtime_error("VM Error: 2D slice assignment requires a matrix.");
-        }
-    } else {
-        throw std::runtime_error("VM Error: Unsupported slice assignment dimensionality.");
     }
 }
 
@@ -4564,88 +4296,138 @@ Value VM::run(int targetFrameDepth) {
                 int dims = c & 0x7F;
                 
                 Value obj = getReg(b);
+                std::vector<Value> args;
+                args.reserve(dims);
+                for (int i = 0; i < dims; ++i) {
+                    args.push_back(getReg(b + 1 + i));
+                }
+
+                Value result;
+
+                if (obj.isInstance()) {
+                    auto inst = obj.asInstance();
+                    auto [getitemMethod, owner] = findDunder(obj, DUNDER_GETITEM);
+                    if (getitemMethod) {
+                        try {
+                            result = callDunder(obj, getitemMethod, owner, args);
+                        } catch (...) {
+                            if (noThrow) result = Value::uninit();
+                            else throw;
+                        }
+                        getReg(a) = result;
+                        break;
+                    }
+                    if (dims == 1 && args[0].isString()) {
+                        std::string keyStr = args[0].asString();
+                        ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                        bool foundPrivate = false;
+                        if (ctxOwner) {
+                            std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                            auto it = inst->properties.find(mangledName);
+                            if (it != inst->properties.end()) {
+                                result = it->second.val;
+                                foundPrivate = true;
+                            }
+                        }
+                        if (!foundPrivate) {
+                            auto it = inst->properties.find(keyStr);
+                            if (it != inst->properties.end() && !it->second.is_local) {
+                                result = it->second.val;
+                            } else {
+                                if (noThrow) result = Value::uninit();
+                                else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
+                            }
+                        }
+                        getReg(a) = result;
+                        break;
+                    } else {
+                        if (noThrow) { getReg(a) = Value::uninit(); break; }
+                        throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __getitem__.");
+                    }
+                }
+
                 if (dims == 1) {
-                    Value idx = getReg(b + 1);
-                    Value result;
+                    Value idx = args[0];
                     if (obj.isObjType(ObjType::LIST)) {
                         auto list = static_cast<ObjList*>(obj.asObj());
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = static_cast<int>(list->vec.size());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: List index out of bounds.");
-                        } else {
-                            result = list->vec[i];
-                        }
-                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
-                        const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        } else {
-                            if (m.getRows() == 1) result = Value(m(0, i));
-                            else if (m.getCols() == 1) result = Value(m(i, 0));
-                            else {
-                                std::vector<double> row(m.getCols());
-                                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                                result = Value(RealMatrix(1, m.getCols(), row));
+                        auto range = getIndexRange(idx, static_cast<int>(list->vec.size()), noThrow);
+                        if (!range.isSlice && range.scalarIdx == -1) result = Value::uninit();
+                        else if (!range.isSlice) result = list->vec[range.scalarIdx];
+                        else {
+                            ObjList* resList = GcHeap::get().allocate<ObjList>();
+                            resList->vec.reserve(range.sliceInfo.count);
+                            for (int i = 0; i < range.sliceInfo.count; ++i) {
+                                resList->vec.push_back(list->vec[range.sliceInfo.start + i * range.sliceInfo.step]);
                             }
-                        }
-                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-                        const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        } else {
-                            if (m.getRows() == 1) result = Value(m(0, i));
-                            else if (m.getCols() == 1) result = Value(m(i, 0));
-                            else {
-                                std::vector<Complex> row(m.getCols());
-                                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                                result = Value(ComplexMatrix(1, m.getCols(), row));
-                            }
-                        }
-                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                        const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        } else {
-                            if (m.getRows() == 1) result = Value(m(0, i));
-                            else if (m.getCols() == 1) result = Value(m(i, 0));
-                            else {
-                                std::vector<std::string> row(m.getCols());
-                                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                                result = Value(StringMatrix(1, m.getCols(), row));
-                            }
+                            result = Value(resList);
                         }
                     } else if (obj.isString()) {
                         ObjString* objStr = obj.asObjString();
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int len = static_cast<int>(objStr->charLength);
-                        if (i < 0) i = len + i;
-                        if (i < 0 || i >= len) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: String index out of bounds.");
-                        } else {
+                        auto range = getIndexRange(idx, static_cast<int>(objStr->charLength), noThrow);
+                        if (!range.isSlice && range.scalarIdx == -1) result = Value::uninit();
+                        else if (!range.isSlice) {
                             if (objStr->isAscii) {
-                                char c_str[2] = { objStr->str[i], '\0' };
+                                char c_str[2] = { objStr->str[range.scalarIdx], '\0' };
                                 result = Value(c_str);
                             } else {
-                                result = Value(utf8::substring(objStr->str, i, 1, objStr->isAscii));
+                                result = Value(utf8::substring(objStr->str, range.scalarIdx, 1, objStr->isAscii));
                             }
+                        } else {
+                            std::string resStr;
+                            if (objStr->isAscii) {
+                                resStr.reserve(range.sliceInfo.count);
+                                for (int i = 0; i < range.sliceInfo.count; ++i) {
+                                    resStr += objStr->str[range.sliceInfo.start + i * range.sliceInfo.step];
+                                }
+                            } else {
+                                for (int i = 0; i < range.sliceInfo.count; ++i) {
+                                    resStr += utf8::substring(objStr->str, range.sliceInfo.start + i * range.sliceInfo.step, 1, false);
+                                }
+                            }
+                            result = Value(resStr);
                         }
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) {
+                        auto processMatGet = [&](const auto& m) -> Value {
+                            using MatType = std::decay_t<decltype(m)>;
+                            int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                            auto range = getIndexRange(idx, n, noThrow);
+                            if (!range.isSlice && range.scalarIdx == -1) return Value::uninit();
+                            
+                            if (!range.isSlice) {
+                                if (m.getRows() == 1) return Value(m(0, range.scalarIdx));
+                                else if (m.getCols() == 1) return Value(m(range.scalarIdx, 0));
+                                else {
+                                    using ElemType = std::decay_t<decltype(m(0,0))>;
+                                    std::vector<ElemType> row(m.getCols());
+                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(range.scalarIdx, j);
+                                    return Value(MatType(1, m.getCols(), row));
+                                }
+                            } else {
+                                using ElemType = std::decay_t<decltype(m(0,0))>;
+                                std::vector<ElemType> flat;
+                                if (m.getRows() == 1) {
+                                    flat.reserve(range.sliceInfo.count);
+                                    for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(0, range.sliceInfo.start + i * range.sliceInfo.step));
+                                    return Value(MatType(1, range.sliceInfo.count, flat));
+                                } else if (m.getCols() == 1) {
+                                    flat.reserve(range.sliceInfo.count);
+                                    for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(range.sliceInfo.start + i * range.sliceInfo.step, 0));
+                                    return Value(MatType(range.sliceInfo.count, 1, flat));
+                                } else {
+                                    flat.reserve(range.sliceInfo.count * m.getCols());
+                                    for (int i = 0; i < range.sliceInfo.count; ++i) {
+                                        int r = range.sliceInfo.start + i * range.sliceInfo.step;
+                                        for (int j = 0; j < m.getCols(); ++j) flat.push_back(m(r, j));
+                                    }
+                                    return Value(MatType(range.sliceInfo.count, m.getCols(), flat));
+                                }
+                            }
+                        };
+                        if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                        else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                        else result = processMatGet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                     } else if (obj.isObjType(ObjType::DICT)) {
+                        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
                         auto dict = static_cast<ObjDict*>(obj.asObj());
                         auto it = dict->keyMap.find(idx);
                         if (it == dict->keyMap.end()) {
@@ -4653,43 +4435,6 @@ Value VM::run(int targetFrameDepth) {
                             else throw std::runtime_error("VM Error: Key not found.");
                         } else {
                             result = dict->elements[it->second].second;
-                        }
-                    } else if (obj.isInstance()) {
-                        auto inst = obj.asInstance();
-                        auto [getitemMethod, owner] = findDunder(obj, DUNDER_GETITEM);
-                        if (getitemMethod) {
-                            try {
-                                result = callDunder(obj, getitemMethod, owner, {idx});
-                            } catch (...) {
-                                if (noThrow) result = Value::uninit();
-                                else throw;
-                            }
-                        } else {
-                            if (!idx.isString()) {
-                                if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __getitem__ to support custom indexing.");
-                            } else {
-                                std::string keyStr = idx.asString();
-                                ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                                bool foundPrivate = false;
-                                if (ctxOwner) {
-                                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
-                                    auto it = inst->properties.find(mangledName);
-                                    if (it != inst->properties.end()) {
-                                        result = it->second.val;
-                                        foundPrivate = true;
-                                    }
-                                }
-                                if (!foundPrivate) {
-                                    auto it = inst->properties.find(keyStr);
-                                    if (it != inst->properties.end() && !it->second.is_local) {
-                                        result = it->second.val;
-                                    } else {
-                                        if (noThrow) result = Value::uninit();
-                                        else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
-                                    }
-                                }
-                            }
                         }
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
@@ -4837,161 +4582,267 @@ Value VM::run(int targetFrameDepth) {
                         if (noThrow) result = Value::uninit();
                         else throw std::runtime_error("VM Error: Unsupported 1D index get.");
                     }
-                    getReg(a) = result;
                 } else if (dims == 2) {
-                    Value row = getReg(b + 1);
-                    Value col = getReg(b + 2);
-                    int r = static_cast<int>(std::round(row.asDouble()));
-                    int c_idx = static_cast<int>(std::round(col.asDouble()));
-                    Value result;
-                    if (obj.isObjType(ObjType::REAL_MATRIX)) {
-                        const auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
-                        if (r < 0) r = m.getRows() + r;
-                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        } else {
-                            result = Value(m(r, c_idx));
-                        }
-                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-                        const auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
-                        if (r < 0) r = m.getRows() + r;
-                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        } else {
-                            result = Value(m(r, c_idx));
-                        }
-                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                        const auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
-                        if (r < 0) r = m.getRows() + r;
-                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) {
-                            if (noThrow) result = Value::uninit();
-                            else throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        } else {
-                            result = Value(m(r, c_idx));
-                        }
+                    Value rowIdx = args[0];
+                    Value colIdx = args[1];
+                    if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) {
+                        auto processMatGet2D = [&](const auto& m) -> Value {
+                            using MatType = std::decay_t<decltype(m)>;
+                            auto rRange = getIndexRange(rowIdx, m.getRows(), noThrow);
+                            auto cRange = getIndexRange(colIdx, m.getCols(), noThrow);
+                            
+                            if ((!rRange.isSlice && rRange.scalarIdx == -1) || (!cRange.isSlice && cRange.scalarIdx == -1)) return Value::uninit();
+                            
+                            if (!rRange.isSlice && !cRange.isSlice) {
+                                return Value(m(rRange.scalarIdx, cRange.scalarIdx));
+                            } else if (!rRange.isSlice && cRange.isSlice) {
+                                using ElemType = std::decay_t<decltype(m(0,0))>;
+                                std::vector<ElemType> flat;
+                                flat.reserve(cRange.sliceInfo.count);
+                                for (int j = 0; j < cRange.sliceInfo.count; ++j) {
+                                    flat.push_back(m(rRange.scalarIdx, cRange.sliceInfo.start + j * cRange.sliceInfo.step));
+                                }
+                                return Value(MatType(1, cRange.sliceInfo.count, flat));
+                            } else if (rRange.isSlice && !cRange.isSlice) {
+                                using ElemType = std::decay_t<decltype(m(0,0))>;
+                                std::vector<ElemType> flat;
+                                flat.reserve(rRange.sliceInfo.count);
+                                for (int i = 0; i < rRange.sliceInfo.count; ++i) {
+                                    flat.push_back(m(rRange.sliceInfo.start + i * rRange.sliceInfo.step, cRange.scalarIdx));
+                                }
+                                return Value(MatType(rRange.sliceInfo.count, 1, flat));
+                            } else {
+                                using ElemType = std::decay_t<decltype(m(0,0))>;
+                                std::vector<ElemType> flat;
+                                flat.reserve(rRange.sliceInfo.count * cRange.sliceInfo.count);
+                                for (int i = 0; i < rRange.sliceInfo.count; ++i) {
+                                    int r = rRange.sliceInfo.start + i * rRange.sliceInfo.step;
+                                    for (int j = 0; j < cRange.sliceInfo.count; ++j) {
+                                        int c = cRange.sliceInfo.start + j * cRange.sliceInfo.step;
+                                        flat.push_back(m(r, c));
+                                    }
+                                }
+                                return Value(MatType(rRange.sliceInfo.count, cRange.sliceInfo.count, flat));
+                            }
+                        };
+                        if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                        else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                        else result = processMatGet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                     } else {
                         if (noThrow) result = Value::uninit();
                         else throw std::runtime_error("VM Error: Unsupported 2D index get.");
                     }
-                    getReg(a) = result;
                 } else {
                     throw std::runtime_error("VM Error: Unsupported index dimensionality.");
                 }
+                getReg(a) = result;
                 break;
             }
             case OpCode::INDEX_SET: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
+                int dims = c;
                 Value obj = getReg(a);
                 Value val = getReg(a + c + 1);
                 
-                if (c == 1) {
-                    Value idx = getReg(a + 1);
-                    if (obj.isObjType(ObjType::LIST)) {
-                        auto list = static_cast<ObjList*>(obj.asObj());
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = static_cast<int>(list->vec.size());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: List index out of bounds.");
-                        list->mut()[i] = val;
-                    } else if (obj.isObjType(ObjType::REAL_MATRIX)) {
-                        if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
-                        auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        
-                        if (m.getRows() == 1) m(0, i) = val.asDouble();
-                        else if (m.getCols() == 1) m(i, 0) = val.asDouble();
-                        else {
-                            if (val.isObjType(ObjType::REAL_MATRIX)) {
-                                const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
-                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
-                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
-                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
-                            } else throw std::runtime_error("VM Error: Matrix row assignment requires a row vector.");
-                        }
-                        getReg(a) = obj;
-                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-                        if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
-                        auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        
-                        if (m.getRows() == 1) m(0, i) = val.asComplex();
-                        else if (m.getCols() == 1) m(i, 0) = val.asComplex();
-                        else {
-                            if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
-                                const auto& src = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
-                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
-                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
-                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
-                            } else if (val.isObjType(ObjType::REAL_MATRIX)) {
-                                const auto& src = static_cast<ObjRealMatrix*>(val.asObj())->mat;
-                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
-                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = Complex(src(0, j));
-                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
-                            } else throw std::runtime_error("VM Error: Matrix row assignment requires a row vector.");
-                        }
-                        getReg(a) = obj;
-                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                        if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                        auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
-                        int i = idx.isInt32() ? idx.asInt32() : static_cast<int>(idx.asDouble());
-                        int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
-                        if (i < 0) i = n + i;
-                        if (i < 0 || i >= n) throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        
-                        if (m.getRows() == 1) m(0, i) = val.asString();
-                        else if (m.getCols() == 1) m(i, 0) = val.asString();
-                        else {
-                            if (val.isObjType(ObjType::STRING_MATRIX)) {
-                                const auto& src = static_cast<ObjStringMatrix*>(val.asObj())->mat;
-                                if (src.getRows() == 1 && src.getCols() == m.getCols()) {
-                                    for (int j = 0; j < m.getCols(); ++j) m(i, j) = src(0, j);
-                                } else throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
-                            } else throw std::runtime_error("VM Error: Matrix row assignment requires a row vector.");
-                        }
-                        getReg(a) = obj;
-                    } else if (obj.isObjType(ObjType::DICT)) {
-                        auto dict = static_cast<ObjDict*>(obj.asObj());
-                        dict->set(idx, val);
-                    } else if (obj.isInstance()) {
-                        auto inst = obj.asInstance();
-                        inst->checkModify();
-                        auto [setitemMethod, owner] = findDunder(obj, DUNDER_SETITEM);
-                        if (setitemMethod) {
-                            callDunder(obj, setitemMethod, owner, {idx, val});
-                        } else {
-                            if (!idx.isString()) {
-                                throw std::runtime_error("TypeError: Instance does not support indexing by non-string. Implement __setitem__ to support custom indexing.");
-                            } else {
-                                std::string keyStr = idx.asString();
-                                ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                                bool foundPrivate = false;
-                                if (ctxOwner) {
-                                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
-                                    auto it = inst->properties.find(mangledName);
-                                    if (it != inst->properties.end()) {
-                                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
-                                        it->second.val = val;
-                                        foundPrivate = true;
-                                    }
-                                }
-                                if (!foundPrivate) {
-                                    inst->setProperty(keyStr, val);
-                                }
+                std::vector<Value> args;
+                args.reserve(dims);
+                for (int i = 0; i < dims; ++i) {
+                    args.push_back(getReg(a + 1 + i));
+                }
+
+                if (obj.isInstance()) {
+                    auto inst = obj.asInstance();
+                    inst->checkModify();
+                    auto [setitemMethod, owner] = findDunder(obj, DUNDER_SETITEM);
+                    if (setitemMethod) {
+                        args.push_back(val);
+                        callDunder(obj, setitemMethod, owner, args);
+                        break;
+                    }
+                    if (dims == 1 && args[0].isString()) {
+                        std::string keyStr = args[0].asString();
+                        ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                        bool foundPrivate = false;
+                        if (ctxOwner) {
+                            std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                            auto it = inst->properties.find(mangledName);
+                            if (it != inst->properties.end()) {
+                                if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
+                                it->second.val = val;
+                                foundPrivate = true;
                             }
                         }
+                        if (!foundPrivate) {
+                            inst->setProperty(keyStr, val);
+                        }
+                        break;
+                    } else {
+                        throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __setitem__.");
+                    }
+                }
+
+                if (dims == 1) {
+                    Value idx = args[0];
+                    if (obj.isObjType(ObjType::LIST)) {
+                        auto list = static_cast<ObjList*>(obj.asObj());
+                        auto range = getIndexRange(idx, static_cast<int>(list->vec.size()), false);
+                        if (!range.isSlice) {
+                            list->mut()[range.scalarIdx] = val;
+                        } else {
+                            if (val.isObjType(ObjType::LIST)) {
+                                const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
+                                if (static_cast<int>(srcL.size()) != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                                for (int k = 0; k < range.sliceInfo.count; ++k) list->mut()[range.sliceInfo.start + k * range.sliceInfo.step] = srcL[k];
+                            } else {
+                                for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
+                            }
+                        }
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) {
+                        auto processMatSet = [&](auto& m) {
+                            int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                            auto range = getIndexRange(idx, n, false);
+                            using ElemType = std::decay_t<decltype(m(0,0))>;
+                            
+                            if (!range.isSlice) {
+                                ElemType scalarVal{};
+                                if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                                else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                                else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                    if (val.isString()) scalarVal = val.asString();
+                                    else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                                }
+                                
+                                if (m.getRows() == 1) m(0, range.scalarIdx) = scalarVal;
+                                else if (m.getCols() == 1) m(range.scalarIdx, 0) = scalarVal;
+                                else {
+                                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX);
+                                    if (isRhsMat) {
+                                        int srcR = 0, srcC = 0;
+                                        if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
+                                        else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
+                                        else { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
+                                        
+                                        if (srcR != 1 || srcC != m.getCols()) throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
+                                        
+                                        for (int j = 0; j < m.getCols(); ++j) {
+                                            if constexpr (std::is_same_v<ElemType, double>) {
+                                                if (val.isObjType(ObjType::REAL_MATRIX)) m(range.scalarIdx, j) = static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j);
+                                                else throw std::runtime_error("VM Error: Cannot assign complex/string matrix to real matrix row.");
+                                            } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                                if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(range.scalarIdx, j) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(0, j);
+                                                else if (val.isObjType(ObjType::REAL_MATRIX)) m(range.scalarIdx, j) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j));
+                                                else throw std::runtime_error("VM Error: Cannot assign string matrix to complex matrix row.");
+                                            } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                                std::ostringstream oss;
+                                                if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(0, j);
+                                                else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(0, j));
+                                                else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j));
+                                                m(range.scalarIdx, j) = oss.str();
+                                            }
+                                        }
+                                    } else {
+                                        for (int j = 0; j < m.getCols(); ++j) m(range.scalarIdx, j) = scalarVal;
+                                    }
+                                }
+                            } else {
+                                bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX);
+                                if (isRhsMat) {
+                                    int srcR = 0, srcC = 0;
+                                    if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
+                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
+                                    else { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
+                                    
+                                    if (m.getRows() == 1 || m.getCols() == 1) {
+                                        int srcLen = (srcR == 1) ? srcC : ((srcC == 1) ? srcR : srcR * srcC);
+                                        if (srcLen != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                                        
+                                        auto getSrcVal = [&](int k) -> ElemType {
+                                            int sr = (srcR == 1) ? 0 : ((srcC == 1) ? k : k / srcC);
+                                            int sc = (srcR == 1) ? k : ((srcC == 1) ? 0 : k % srcC);
+                                            if constexpr (std::is_same_v<ElemType, double>) {
+                                                if (val.isObjType(ObjType::REAL_MATRIX)) return static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc);
+                                                throw std::runtime_error("VM Error: Cannot assign complex/string matrix to real matrix slice.");
+                                            } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                                if (val.isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(val.asObj())->mat(sr, sc);
+                                                if (val.isObjType(ObjType::REAL_MATRIX)) return Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc));
+                                                throw std::runtime_error("VM Error: Cannot assign string matrix to complex matrix slice.");
+                                            } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                                std::ostringstream oss;
+                                                if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(sr, sc);
+                                                else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(sr, sc));
+                                                else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc));
+                                                return oss.str();
+                                            }
+                                        };
+                                        
+                                        if (m.getRows() == 1) {
+                                            for (int k = 0; k < range.sliceInfo.count; ++k) m(0, range.sliceInfo.start + k * range.sliceInfo.step) = getSrcVal(k);
+                                        } else {
+                                            for (int k = 0; k < range.sliceInfo.count; ++k) m(range.sliceInfo.start + k * range.sliceInfo.step, 0) = getSrcVal(k);
+                                        }
+                                    } else {
+                                        if (srcR != range.sliceInfo.count || srcC != m.getCols()) throw std::runtime_error("VM Error: Slice assignment size mismatch for matrix rows.");
+                                        for (int k = 0; k < range.sliceInfo.count; ++k) {
+                                            int id = range.sliceInfo.start + k * range.sliceInfo.step;
+                                            for (int j = 0; j < m.getCols(); ++j) {
+                                                if constexpr (std::is_same_v<ElemType, double>) {
+                                                    if (val.isObjType(ObjType::REAL_MATRIX)) m(id, j) = static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j);
+                                                    else throw std::runtime_error("VM Error: Cannot assign complex/string matrix to real matrix slice.");
+                                                } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                                    if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(id, j) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(k, j);
+                                                    else if (val.isObjType(ObjType::REAL_MATRIX)) m(id, j) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j));
+                                                    else throw std::runtime_error("VM Error: Cannot assign string matrix to complex matrix slice.");
+                                                } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                                    std::ostringstream oss;
+                                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(k, j);
+                                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(k, j));
+                                                    else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j));
+                                                    m(id, j) = oss.str();
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    ElemType scalarVal{};
+                                    if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                                    else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                                    else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                        if (val.isString()) scalarVal = val.asString();
+                                        else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                                    }
+                                    if (m.getRows() == 1) {
+                                        for (int i = 0; i < range.sliceInfo.count; ++i) m(0, range.sliceInfo.start + i * range.sliceInfo.step) = scalarVal;
+                                    } else if (m.getCols() == 1) {
+                                        for (int i = 0; i < range.sliceInfo.count; ++i) m(range.sliceInfo.start + i * range.sliceInfo.step, 0) = scalarVal;
+                                    } else {
+                                        for (int i = 0; i < range.sliceInfo.count; ++i) {
+                                            int id = range.sliceInfo.start + i * range.sliceInfo.step;
+                                            for (int j = 0; j < m.getCols(); ++j) m(id, j) = scalarVal;
+                                        }
+                                    }
+                                }
+                            }
+                        };
+                        
+                        if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                            if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                            processMatSet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                            getReg(a) = obj;
+                        } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                            if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                            processMatSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                            getReg(a) = obj;
+                        } else {
+                            if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                            processMatSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                            getReg(a) = obj;
+                        }
+                    } else if (obj.isObjType(ObjType::DICT)) {
+                        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+                        auto dict = static_cast<ObjDict*>(obj.asObj());
+                        dict->set(idx, val);
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
                         if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
@@ -5058,36 +4909,89 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 1D index set.");
                     }
-                } else if (c == 2) {
-                    Value row = getReg(a + 1);
-                    Value col = getReg(a + 2);
-                    int r = static_cast<int>(std::round(row.asDouble()));
-                    int c_idx = static_cast<int>(std::round(col.asDouble()));
-                    if (obj.isObjType(ObjType::REAL_MATRIX)) {
-                        if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
-                        auto& m = static_cast<ObjRealMatrix*>(obj.asObj())->mat;
-                        if (r < 0) r = m.getRows() + r;
-                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        m(r, c_idx) = val.asDouble();
-                        getReg(a) = obj;
-                    } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-                        if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
-                        auto& m = static_cast<ObjComplexMatrix*>(obj.asObj())->mat;
-                        if (r < 0) r = m.getRows() + r;
-                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        m(r, c_idx) = val.asComplex();
-                        getReg(a) = obj;
-                    } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                        if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                        auto& m = static_cast<ObjStringMatrix*>(obj.asObj())->mat;
-                        if (r < 0) r = m.getRows() + r;
-                        if (c_idx < 0) c_idx = m.getCols() + c_idx;
-                        if (r < 0 || r >= m.getRows() || c_idx < 0 || c_idx >= m.getCols()) throw std::out_of_range("VM Error: Matrix index out of bounds.");
-                        if (val.isString()) m(r, c_idx) = val.asString();
-                        else { std::ostringstream oss; oss << val; m(r, c_idx) = oss.str(); }
-                        getReg(a) = obj;
+                } else if (dims == 2) {
+                    Value rowIdx = args[0];
+                    Value colIdx = args[1];
+                    if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) {
+                        auto processMatSet2D = [&](auto& m) {
+                            using ElemType = std::decay_t<decltype(m(0,0))>;
+                            auto rRange = getIndexRange(rowIdx, m.getRows(), false);
+                            auto cRange = getIndexRange(colIdx, m.getCols(), false);
+                            
+                            if (!rRange.isSlice && !cRange.isSlice) {
+                                ElemType scalarVal{};
+                                if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                                else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                                else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                    if (val.isString()) scalarVal = val.asString();
+                                    else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                                }
+                                m(rRange.scalarIdx, cRange.scalarIdx) = scalarVal;
+                            } else {
+                                int dstR = rRange.isSlice ? rRange.sliceInfo.count : 1;
+                                int dstC = cRange.isSlice ? cRange.sliceInfo.count : 1;
+                                
+                                bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX);
+                                if (isRhsMat) {
+                                    int srcR = 0, srcC = 0;
+                                    if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
+                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
+                                    else { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
+                                    
+                                    if (srcR != dstR || srcC != dstC) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                                    
+                                    for (int i = 0; i < dstR; ++i) {
+                                        int ri = rRange.isSlice ? rRange.sliceInfo.start + i * rRange.sliceInfo.step : rRange.scalarIdx;
+                                        for (int j = 0; j < dstC; ++j) {
+                                            int ci = cRange.isSlice ? cRange.sliceInfo.start + j * cRange.sliceInfo.step : cRange.scalarIdx;
+                                            if constexpr (std::is_same_v<ElemType, double>) {
+                                                if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j);
+                                                else throw std::runtime_error("VM Error: Cannot assign complex/string matrix to real matrix slice.");
+                                            } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                                if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(ri, ci) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j);
+                                                else if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
+                                                else throw std::runtime_error("VM Error: Cannot assign string matrix to complex matrix slice.");
+                                            } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                                std::ostringstream oss;
+                                                if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(i, j);
+                                                else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j));
+                                                else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
+                                                m(ri, ci) = oss.str();
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    ElemType scalarVal{};
+                                    if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                                    else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                                    else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                        if (val.isString()) scalarVal = val.asString();
+                                        else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                                    }
+                                    for (int i = 0; i < dstR; ++i) {
+                                        int ri = rRange.isSlice ? rRange.sliceInfo.start + i * rRange.sliceInfo.step : rRange.scalarIdx;
+                                        for (int j = 0; j < dstC; ++j) {
+                                            int ci = cRange.isSlice ? cRange.sliceInfo.start + j * cRange.sliceInfo.step : cRange.scalarIdx;
+                                            m(ri, ci) = scalarVal;
+                                        }
+                                    }
+                                }
+                            }
+                        };
+                        
+                        if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                            if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                            processMatSet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                            getReg(a) = obj;
+                        } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                            if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                            processMatSet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                            getReg(a) = obj;
+                        } else {
+                            if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                            processMatSet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                            getReg(a) = obj;
+                        }
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 2D index set.");
                     }

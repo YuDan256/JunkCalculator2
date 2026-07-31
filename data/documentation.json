@@ -20,23 +20,23 @@
       "    /profile on | off      Enable/disable execution profiler",
       "    /show_none on | off    Enable/disable printing 'none' at the top level",
       "    /silent on | off       Enable/disable silent REPL (no automatic return value printing)",
-      "    gcinfo()               Show current Garbage Collector tracking status",
-      "    gc()                   Force a Mark-and-Sweep garbage collection cycle",
+      "    sys.gcinfo()           Show current Garbage Collector tracking status",
+      "    sys.gc()               Force a Mark-and-Sweep garbage collection cycle",
       "",
       "  Workspace & Scripts",
       "  ────────────────────────────────────────────────────────────────────",
       "    /save <name>           Snapshot variables  → data/<name>.jc2",
       "    /load <name>           Restore a previously saved workspace",
-      "    run(\"file\")            Execute a script (sets relative path context)",
-      "    compileFile(\"file\")    Compile a script to bytecode and return it as a function",
-      "    compileCode(\"code\")    Compile a string of code to bytecode and return it as a function",
+      "    sys.run(\"file\")        Execute a script (sets relative path context)",
+      "    sys.compileFile(\"f\")   Compile a script to bytecode and return it as a function",
+      "    sys.compileCode(\"c\")   Compile a string of code to bytecode and return it as a function",
       "    import module          Load a module and bind to a variable (recommended)",
       "    const import module    Load a module and bind as an immutable constant",
       "    import \"module\"        Load a module and return its Namespace without binding",
       "",
-      "    setWorkspace(\"path\")   Change workspace directory (function form)",
-      "    getWorkspace()         Returns current workspace path",
-      "    pwd()                  Print script dir and workspace dir",
+      "    sys.setWorkspace(\"p\")  Change workspace directory (function form)",
+      "    sys.getWorkspace()     Returns current workspace path",
+      "    sys.pwd()              Print script dir and workspace dir",
       "",
       "  Command-Line Usage",
       "  ────────────────────────────────────────────────────────────────────",
@@ -190,7 +190,7 @@
       "    ",
       "    * Note: To prevent syntax ambiguity and precedence issues with polynomials, ",
       "      the caret (^) is STRICTLY reserved for exponentiation. ",
-      "      For bitwise XOR, use the function `bitxor(a, b)`.",
+      "      For bitwise XOR, use the operator `^^`.",
       "",
       "    ★ Modern Precedence: Unlike C/C++, JC2 gives bitwise/set operators (| & ^^)",
       "      HIGHER precedence than comparison operators (== < >).",
@@ -691,10 +691,10 @@
       "    ",
       "    A + c,  c + A               ≡ A + c·I   (square only, diagonal shift)",
       "    ",
-      "    addE(A, B)  subE(A, B)  mulE(A, B)  divE(A, B)  idivE(A, B) powE(A, B)  modE(A, B)",
-      "    eqE(A, B)   neqE(A, B)  ltE(A, B)   leE(A, B)   gtE(A, B)   geE(A, B)",
-      "    maxE(A, B)  minE(A, B)  andE(A, B)  orE(A, B)   xorE(A, B)",
-      "    atan2E(A, B) hypotE(A, B)  whereE(mask, A, B)",
+      "    A.addE(B)  A.subE(B)  A.mulE(B)  A.divE(B)  A.idivE(B) A.powE(B)  A.modE(B)",
+      "    A.eqE(B)   A.neqE(B)  A.ltE(B)   A.leE(B)   A.gtE(B)   A.geE(B)",
+      "    A.maxE(B)  A.minE(B)  A.andE(B)  A.orE(B)   A.xorE(B)",
+      "    A.atan2E(B) A.hypotE(B)  mask.whereE(A, B)",
       "      (Element-wise operations. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
       "       Comparisons also support stringmatrix and strings.)",
       "",
@@ -820,7 +820,7 @@
       "",
       "  Primary Solver",
       "  ──────────────────────",
-      "    lsolve(A, b)        Automatic solver via Gaussian Elimination. Returns a Dict:",
+      "    A.lsolve(b)         Automatic solver via Gaussian Elimination. Returns a Dict:",
       "                          • Unique solution     → {status: \"unique\", solution: x}",
       "                          • Infinite solutions  → {status: \"infinite\", particular: x, basis: B}",
       "                          • No solution         → {status: \"least_squares\", approx: x, residual: r}",
@@ -828,11 +828,11 @@
       "",
       "  Diagnostics",
       "  ──────────────────────",
-      "    residual(A, x, b)   Residual vector  r = b − A*x",
+      "    A.residual(x, b)    Residual vector  r = b − A*x",
       "",
       "  Least-Squares (forced)",
       "  ──────────────────────",
-      "    lstsq(A, b)         Normal-equation path: solves (A*A)x = A*b"
+      "    A.lstsq(b)          Normal-equation path: solves (A*A)x = A*b"
     ],
     "matfunc": [
       "═══ Matrix Transcendental Functions ═══",
@@ -870,26 +870,26 @@
       "",
       "  Properties",
       "  ──────────────────────",
-      "    dim(v)               Number of components (rows)",
-      "    vnorm(v)             Euclidean length / magnitude  ‖v‖",
-      "    normalize(v)         Unit vector  v / ‖v‖",
+      "    v.dim()              Number of components (rows)",
+      "    v.vnorm()            Euclidean length / magnitude  ‖v‖",
+      "    v.normalize()        Unit vector  v / ‖v‖",
       "",
       "  Products",
       "  ──────────────────────",
-      "    dot(a, b)           Hermitian inner product (a* · b). Works in ℂ.",
-      "    cross(a, b)         Cross product (strictly 3-D).",
-      "    triple(a, b, c)     Scalar triple product: dot(a, cross(b, c))",
+      "    a.dot(b)            Hermitian inner product (a* · b). Works in ℂ.",
+      "    a.cross(b)          Cross product (strictly 3-D).",
+      "    a.triple(b, c)      Scalar triple product: a.dot(b.cross(c))",
       "",
       "  Projections & Angles",
       "  ──────────────────────",
-      "    sproj(a, b)         Scalar projection of 'a' onto 'b'",
-      "    vproj(a, b)         Vector projection of 'a' onto 'b'",
-      "    angle(a, b)         Angle between 'a' and 'b' (in radians)",
+      "    a.sproj(b)          Scalar projection of 'a' onto 'b'",
+      "    a.vproj(b)          Vector projection of 'a' onto 'b'",
+      "    a.angle(b)          Angle between 'a' and 'b' (in radians)",
       "",
       "  Boolean Tests (return true or false)",
       "  ──────────────────────",
-      "    isperp(a, b)        Are vectors perpendicular?",
-      "    isparallel(a, b)    Are vectors parallel?"
+      "    a.isperp(b)         Are vectors perpendicular?",
+      "    a.isparallel(b)     Are vectors parallel?"
     ],
     "poly": [
       "═══ Polynomial Equation Solver (degree 1–4) ═══",
@@ -900,17 +900,17 @@
       "",
       "  Usage",
       "  ──────────────────────",
-      "    solve(a, b)                  ax + b = 0             (linear)",
-      "    solve(a, b, c)               ax² + bx + c = 0       (quadratic)",
-      "    solve(a, b, c, d)            ax³ + … = 0            (Cardano)",
-      "    solve(a, b, c, d, e)         ax⁴ + … = 0            (Ferrari)",
-      "    solveEq(expr, x)             Exact symbolic solver (see: /help cas)",
+      "    math.solve(a, b)             ax + b = 0             (linear)",
+      "    math.solve(a, b, c)          ax² + bx + c = 0       (quadratic)",
+      "    math.solve(a, b, c, d)       ax³ + … = 0            (Cardano)",
+      "    math.solve(a, b, c, d, e)    ax⁴ + … = 0            (Ferrari)",
+      "    cas.solveEq(expr, x)         Exact symbolic solver (see: /help cas)",
       "    ",
       "  Examples",
       "  ──────────────────────",
-      "    solve(1, 0, −1)              x² = 1   → [1; −1]",
-      "    solve(1, 0, 0, −1)           x³ = 1   → cube roots of unity",
-      "    solve(i, −2, 4*i, 3, −1)     Complex coefficients work perfectly!"
+      "    math.solve(1, 0, −1)         x² = 1   → [1; −1]",
+      "    math.solve(1, 0, 0, −1)      x³ = 1   → cube roots of unity",
+      "    math.solve(i, −2, 4*i, 3, −1) Complex coefficients work perfectly!"
     ],
     "cas": [
       "═══ Computer Algebra System (CAS) ═══",
@@ -939,57 +939,57 @@
       "",
       "  Symbolic Variables & Expressions",
       "  ──────────────────────",
-      "    x = sym(\"x\")                 Create a symbolic variable",
+      "    x = cas.sym(\"x\")             Create a symbolic variable",
       "    expr = x^2 + 2*x + 1         Build exact symbolic expressions",
-      "    subs(expr, x, 5)             Substitute x with 5 → 36 (Strings like \"x\" also work!)",
-      "    subs(x + y, [x, y], [1, 2])  Multiple substitution",
+      "    cas.subs(expr, x, 5)         Substitute x with 5 → 36 (Strings like \"x\" also work!)",
+      "    cas.subs(x + y, [x, y], [1, 2]) Multiple substitution",
       "",
       "  ★ Variable Name Inputs",
       "  ──────────────────────",
       "    All CAS functions (diff, integ, limit, solveEq, taylor, polyDiv, etc.) now ",
       "    accept direct symbolic variables instead of just strings. ",
-      "    Example: diff(x^2, x) is perfectly equivalent to diff(x^2, \"x\").",
+      "    Example: cas.diff(x^2, x) is perfectly equivalent to cas.diff(x^2, \"x\").",
       "",
       "  Algebraic Manipulation",
       "  ──────────────────────",
-      "    expand((x+1)^3)              → x^3 + 3*x^2 + 3*x + 1",
-      "    factor(x^4 - 1)              → (x - 1) * (x + 1) * (x^2 + 1) (Cantor-Zassenhaus)",
-      "    factorReal(x^2 + 1)          → Factor over reals",
-      "    simplify(expr)               Smart heuristic simplification",
-      "    contract(2*log(x) + log(y))  → log(x^2 * y)",
-      "    trigsimp(sin(x)^2 + cos(x)^2)→ 1",
-      "    replaceRule(expr, pat, tgt)  Pattern matching replacement",
+      "    cas.expand((x+1)^3)          → x^3 + 3*x^2 + 3*x + 1",
+      "    cas.factor(x^4 - 1)          → (x - 1) * (x + 1) * (x^2 + 1) (Cantor-Zassenhaus)",
+      "    cas.factorReal(x^2 + 1)      → Factor over reals",
+      "    cas.simplify(expr)           Smart heuristic simplification",
+      "    cas.contract(2*log(x) + log(y)) → log(x^2 * y)",
+      "    cas.trigsimp(sin(x)^2 + cos(x)^2) → 1",
+      "    cas.replaceRule(expr, pat, tgt) Pattern matching replacement",
       "",
       "  Polynomial Operations",
       "  ──────────────────────",
-      "    polyDiv(A, B, x)             Polynomial division → @[quotient, remainder]",
-      "    polyGCD(A, B, x)             Polynomial greatest common divisor",
-      "    resultant(A, B, x)           Sylvester resultant of two polynomials",
+      "    cas.polyDiv(A, B, x)         Polynomial division → @[quotient, remainder]",
+      "    cas.polyGCD(A, B, x)         Polynomial greatest common divisor",
+      "    cas.resultant(A, B, x)       Sylvester resultant of two polynomials",
       "",
       "  Algebraic Numbers (Implicit Roots)",
       "  ──────────────────────",
-      "    RootOf(poly, x, k)           Represents the k-th exact root of the polynomial `poly` ",
+      "    cas.RootOf(poly, x, k)       Represents the k-th exact root of the polynomial `poly` ",
       "                                 with respect to `x`. Used to express roots of high-degree ",
       "                                 polynomials (degree ≥ 5) that cannot be solved in radicals.",
-      "    RootSum(expr, x, poly)       Represents the sum of `expr` evaluated over all roots `x` ",
+      "    cas.RootSum(expr, x, poly)   Represents the sum of `expr` evaluated over all roots `x` ",
       "                                 of the polynomial `poly`. Essential for exact symbolic ",
       "                                 integration of rational functions.",
       "",
       "  Calculus (Exact Symbolic)",
       "  ──────────────────────",
-      "    diff(sin(x^2), x)            → 2 * x * cos(x^2)",
-      "    integ(exp(x^2), x)           → Risch Algorithm (Liouvillian extensions)",
-      "    integ(x^2, x, 0, 1)          → 1/3 (Definite integral)",
-      "    verifyInteg(expr, x)         → true if diff(integ(expr, x), x) == expr, else false",
-      "    limit(sin(x)/x, x, 0)        → 1 (Gruntz asymptotic expansion algorithm)",
-      "    limit(1/x, x, 0, \"-\")        → -oo (Left-sided limit)",
-      "    taylor(sin(x), x, 0, 5)      → x - 1/6 * x^3 + 1/120 * x^5",
+      "    cas.diff(sin(x^2), x)        → 2 * x * cos(x^2)",
+      "    cas.integ(exp(x^2), x)       → Risch Algorithm (Liouvillian extensions)",
+      "    cas.integ(x^2, x, 0, 1)      → 1/3 (Definite integral)",
+      "    cas.verifyInteg(expr, x)     → true if diff(integ(expr, x), x) == expr, else false",
+      "    cas.limit(sin(x)/x, x, 0)    → 1 (Gruntz asymptotic expansion algorithm)",
+      "    cas.limit(1/x, x, 0, \"-\")    → -oo (Left-sided limit)",
+      "    cas.taylor(sin(x), x, 0, 5)  → x - 1/6 * x^3 + 1/120 * x^5",
       "    debugInteg(\"on\")             → Print detailed integration steps & Risch algorithm trace",
       "",
       "  Equation Solving",
       "  ──────────────────────",
-      "    solveEq(x^2 - 2, x)          → @[sqrt(2), -sqrt(2)] (Exact roots!)",
-      "    solveEq(x^3 - 1, x)          → @[1, E^(2/3 * PI * i), E^(4/3 * PI * i)] (All complex roots!)",
+      "    cas.solveEq(x^2 - 2, x)      → @[sqrt(2), -sqrt(2)] (Exact roots!)",
+      "    cas.solveEq(x^3 - 1, x)      → @[1, E^(2/3 * PI * i), E^(4/3 * PI * i)] (All complex roots!)",
       "",
       "    ★ Constants & Limitations:",
       "    • PI and E are now parsed as exact symbolic constants in the CAS engine ",
@@ -1001,9 +1001,9 @@
       "",
       "  Compilation & Evaluation",
       "  ──────────────────────",
-      "    evalf(expr)                  Force evaluate to floating point",
-      "    evalv(expr)                  Evaluate preserving exact types (fraction/complex)",
-      "    f = toFunc(x^2 + y, [\"x\", \"y\"])  Compile AST to blazing-fast VM closure",
+      "    cas.evalf(expr)              Force evaluate to floating point",
+      "    cas.evalv(expr)              Evaluate preserving exact types (fraction/complex)",
+      "    f = cas.toFunc(x^2 + y, [\"x\", \"y\"]) Compile AST to blazing-fast VM closure",
       "    f(3, 4)                      → 13"
     ],
     "function": [
@@ -1170,43 +1170,43 @@
       "",
       "  Combinatorics (Exact int Results)",
       "  ──────────────────────",
-      "    factorial(n)         n!",
-      "    fib(n)               Fibonacci Fₙ",
-      "    C(n, k)              Binomial coefficient",
-      "    A(n, k)              Permutations (Arrangements)",
-      "    catalan(n)           Catalan number",
+      "    math.factorial(n)    n!",
+      "    math.fib(n)          Fibonacci Fₙ",
+      "    math.C(n, k)         Binomial coefficient",
+      "    math.A(n, k)         Permutations (Arrangements)",
+      "    math.catalan(n)      Catalan number",
       "",
       "  Divisibility & Primes",
       "  ──────────────────────",
-      "    gcd(a, b), lcm(a, b), digits(n)",
-      "    isPrime(n)           Deterministic Miller-Rabin test",
-      "    isprime(n)           Lowercase alias (same function)",
-      "    nextPrime(n)         Smallest prime > n",
-      "    nthPrime(k)          k-th prime (requires mounted Prime.bin)",
-      "    primePi(n)           π(n) — number of primes ≤ n",
-      "    factor(n)            Returns a dict of {Prime: Exponent}",
+      "    math.gcd(a, b), math.lcm(a, b), math.digits(n)",
+      "    math.isPrime(n)      Deterministic Miller-Rabin test",
+      "    math.isprime(n)      Lowercase alias (same function)",
+      "    math.nextPrime(n)    Smallest prime > n",
+      "    math.nthPrime(k)     k-th prime (requires mounted Prime.bin)",
+      "    math.primePi(n)      π(n) — number of primes ≤ n",
+      "    cas.factor(n)        Returns a dict of {Prime: Exponent}",
       "",
       "    ★ Prime Engine Acceleration:",
-      "      If a JCP1 prime database (Prime.bin) is mounted via mountPrimes(),",
+      "      If a JCP1 prime database (Prime.bin) is mounted via sys.mountPrimes(),",
       "      isPrime, nextPrime, and primePi will automatically use O(1)",
       "      disk lookups and binary streaming, making them thousands of times faster.",
       "      See `/help sys` for details on generating and mounting prime tables.",
       "",
       "    ★ Advanced Factorization:",
-      "      factor(n) uses a hybrid approach: trial division for small primes,",
+      "      cas.factor(n) uses a hybrid approach: trial division for small primes,",
       "      followed by Pollard's rho and Lenstra Elliptic Curve Factorization (ECM)",
       "      for extremely fast large integer factorization.",
       "",
       "  Arithmetic Functions & Modular Arithmetic",
       "  ──────────────────────",
-      "    phi(n)               Euler's totient",
-      "    divisors(n)          Divisor count",
-      "    sigma(n, k)          Sum of k-th powers of divisors",
-      "    omega(n), bigOmega(n) Prime factor counts",
-      "    mobius(n)            Möbius function",
-      "    isPerfect(n)         Perfect number test",
-      "    mod(a, b)            Mathematical mod (always ≥ 0)",
-      "    modpow(a, e, m)      aᵉ mod m",
+      "    math.phi(n)          Euler's totient",
+      "    math.divisors(n)     Divisor count",
+      "    math.sigma(n, k)     Sum of k-th powers of divisors",
+      "    math.omega(n), math.bigOmega(n) Prime factor counts",
+      "    math.mobius(n)       Möbius function",
+      "    math.isPerfect(n)    Perfect number test",
+      "    math.mod(a, b)       Mathematical mod (always ≥ 0)",
+      "    math.modpow(a, e, m) aᵉ mod m",
       "",
       "  Numeric Predicates (see also: /help type)",
       "  ──────────────────────",
@@ -1254,14 +1254,9 @@
       "    a ^^= b              Compound XOR assignment",
       "    a << b               Shift Left (requires b >= 0)",
       "    a >> b               Shift Right (requires b >= 0)",
-      "    bitxor(a, b)         XOR (Function equivalent)",
-      "    bitnot(a, w)         NOT (Returns -a - 1 if w omitted, else w-bit inversion)",
-      "    bitshift(a, n)       Logical Shift: Left (n > 0) / Right (n < 0)",
       "",
       "    * Note on Shifting: The operators `<<` and `>>` strictly require a non-negative",
-      "      shift count. The function `bitshift(a, n)` allows negative `n` to reverse the",
-      "      shift direction (e.g., bitshift(a, -2) is equivalent to a >> 2).",
-      "      Shifting supports int, bool, and basenum types."
+      "      shift count. Shifting supports int, bool, and basenum types."
     ],
     "type": [
       "═══ First-Class Types & Type Algebra ═══",
@@ -1448,11 +1443,11 @@
       "",
       "  Random Number Generation (Mersenne Twister)",
       "  ──────────────────────",
-      "    rand()  /  rand(min, max)            Continuous [min, max)",
-      "    randint(min, max)                    Discrete [min, max]",
-      "    randmat(r, c, min, max)              Matrix of doubles",
-      "    randimat(r, c, min, max)             Matrix of integers",
-      "    randc() / randcmat()                 Complex equivalents",
+      "    random.rand() / rand(min, max)       Continuous [min, max)",
+      "    random.randint(min, max)             Discrete [min, max]",
+      "    random.randmat(r, c, min, max)       Matrix of doubles",
+      "    random.randimat(r, c, min, max)      Matrix of integers",
+      "    random.randc() / randcmat()          Complex equivalents",
       "",
       "  System Constants & Recovery",
       "  ──────────────────────",
@@ -1460,7 +1455,7 @@
       "    overwritten or deleted. (true, false, and none are immutable keywords).",
       "    To recover the overridable constants:",
       "",
-      "    resetConst()          Restore all 4 constants at once",
+      "    sys.resetConst()      Restore all 4 constants at once",
       "    PI = pi()             Restore individually via factory function",
       "    E = e()               (factory functions are built-in and permanent)",
       "    i = i()               (or just use the literal suffix: 3 + 4i)",
@@ -1473,48 +1468,48 @@
       "  Prime Engine (Block-Differential I/O)",
       "  ──────────────────────",
       "    JC2 streams `Prime.bin` using a highly compressed JCP1 format (2 bytes/prime).",
-      "    sysinfo()                    Current prime database status",
-      "    mountPrimes(\"path\")          Redirect the engine to a custom prime file",
-      "    buildIndex()                 Build an O(1) anchor tree in RAM",
-      "    extendPrimes(n)              Generate and append n new primes to the mounted file",
-      "    convertPrimes(\"in\", \"out\")   Convert an old .txt prime table to JCP1 .bin format",
-      "    verifyPrimes()               Verify the integrity and accuracy of the mounted prime table",
+      "    sys.sysinfo()                    Current prime database status",
+      "    sys.mountPrimes(\"path\")          Redirect the engine to a custom prime file",
+      "    sys.buildIndex()                 Build an O(1) anchor tree in RAM",
+      "    sys.extendPrimes(n)              Generate and append n new primes to the mounted file",
+      "    sys.convertPrimes(\"in\", \"out\")   Convert an old .txt prime table to JCP1 .bin format",
+      "    sys.verifyPrimes()               Verify the integrity and accuracy of the mounted prime table",
       "",
       "  Garbage Collector (Mark-and-Sweep)",
       "  ──────────────────────",
       "    JC2 runs an automatic background Garbage Collector to track reference ",
       "    types (lists, dicts, instances, closures) and prevent cyclic memory leaks.",
       "    ",
-      "    gcinfo()              Print current heap status (tracked objects, thresholds)",
-      "    gc()                  Force a standard GC sweep, returning freed object count",
-      "    gc(true)              Aggressive sweep (clears the 'ANS' variable first to ",
+      "    sys.gcinfo()          Print current heap status (tracked objects, thresholds)",
+      "    sys.gc()              Force a standard GC sweep, returning freed object count",
+      "    sys.gc(true)          Aggressive sweep (clears the 'ANS' variable first to ",
       "                          prevent it from shielding dead objects from collection)",
       "",
       "  CAS Configuration",
       "  ──────────────────────",
-      "    symconfig()                  Returns current CAS limits as a Dict",
-      "    symconfig(\"default\")         Reset CAS limits to default",
-      "    setSymLimit(\"maxDepth\", 50)  Set specific CAS limit",
-      "    debugInteg(\"on\") / (\"off\")   Enable/disable verbose integration debug output",
+      "    sys.symconfig()                  Returns current CAS limits as a Dict",
+      "    sys.symconfig(\"default\")         Reset CAS limits to default",
+      "    sys.setSymLimit(\"maxDepth\", 50)  Set specific CAS limit",
+      "    debugInteg(\"on\") / (\"off\")       Enable/disable verbose integration debug output",
       "",
       "  Workspace & Path Management",
       "  ──────────────────────",
       "    All workspace operations are function-based:",
       "",
-      "    setWorkspace(\"path\")         Change workspace directory",
-      "    setWorkspace(\"default\")      Reset to ./data/",
-      "    getWorkspace()               Returns current workspace path as string",
-      "    pwd()                        Print both script dir and workspace dir",
-      "    cls()                        Clear the console screen",
+      "    sys.setWorkspace(\"path\")         Change workspace directory",
+      "    sys.setWorkspace(\"default\")      Reset to ./data/",
+      "    sys.getWorkspace()               Returns current workspace path as string",
+      "    sys.pwd()                        Print both script dir and workspace dir",
+      "    sys.cls()                        Clear the console screen",
       "",
       "    /save <name>                 REPL command: snapshot variables → data/<name>.jc2",
       "    /load <name>                 REPL command: restore saved workspace",
       "",
       "  Script Execution & Path Context",
       "  ──────────────────────",
-      "    run(\"path\")                  Execute a .jc2 script file (function form)",
-      "    compileFile(\"path\")          Compile a script to bytecode and return it as a function",
-      "    compileCode(\"code\")          Compile a string of code to bytecode and return it as a function",
+      "    sys.run(\"path\")                  Execute a .jc2 script file (function form)",
+      "    sys.compileFile(\"path\")          Compile a script to bytecode and return it as a function",
+      "    sys.compileCode(\"code\")          Compile a string of code to bytecode and return it as a function",
       "",
       "    Executing a script automatically pushes its directory onto the",
       "    Path Stack. All relative file operations (readFile, import) inside",
@@ -3267,25 +3262,25 @@
       "",
       "  Text Files",
       "  ──────────────────────",
-      "    readFile(path)              Reads the entire file into a single string.",
-      "    writeFile(path, content)    Writes a string to the file (overwrites existing).",
-      "    appendFile(path, content)   Appends a string to the end of the file.",
-      "    readLines(path)             Reads the file line-by-line into a list of strings.",
-      "    writeLines(path, list)      Writes a list of elements as separate lines.",
+      "    io.readFile(path)           Reads the entire file into a single string.",
+      "    io.writeFile(path, content) Writes a string to the file (overwrites existing).",
+      "    io.appendFile(path, content) Appends a string to the end of the file.",
+      "    io.readLines(path)          Reads the file line-by-line into a list of strings.",
+      "    io.writeLines(path, list)   Writes a list of elements as separate lines.",
       "",
       "  CSV Files (Data Analysis)",
       "  ──────────────────────",
-      "    readCSV(path, delim)        Reads a CSV into a list of lists.",
-      "    readCSVMat(path, delim)     Reads a CSV directly into a stringmatrix.",
-      "    parseCSVNum(path, delim)    Reads a CSV into a mathematical realmatrix.",
-      "    writeCSV(path, data, delim) Writes a matrix or list out to a CSV file.",
+      "    io.readCSV(path, delim)     Reads a CSV into a list of lists.",
+      "    io.readCSVMat(path, delim)  Reads a CSV directly into a stringmatrix.",
+      "    io.parseCSVNum(path, delim) Reads a CSV into a mathematical realmatrix.",
+      "    io.writeCSV(path, data, delim) Writes a matrix or list out to a CSV file.",
       "",
       "  Path Resolution (Script-Centric)",
       "  ──────────────────────",
       "    JC2 resolves all relative file paths based on the location of the ",
       "    CURRENTLY EXECUTING script, not the terminal's working directory.",
       "",
-      "    If `C:/project/src/main.jc2` calls `readFile(\"data.txt\")`, it will",
+      "    If `C:/project/src/main.jc2` calls `io.readFile(\"data.txt\")`, it will",
       "    look for `C:/project/src/data.txt`. This allows you to build standalone,",
       "    portable JC2 packages and modules that bundle their own data files.",
       "",
@@ -3294,10 +3289,10 @@
       "",
       "  File System Operations",
       "  ──────────────────────",
-      "    fileExists(path)            Returns true if the file/folder exists, false otherwise.",
-      "    fileSize(path)              Returns the physical file size in bytes.",
-      "    deleteFile(path)            Permanently deletes the specified file.",
-      "    listDir(path)               Returns a list of filenames in the specified directory."
+      "    io.fileExists(path)         Returns true if the file/folder exists, false otherwise.",
+      "    io.fileSize(path)           Returns the physical file size in bytes.",
+      "    io.deleteFile(path)         Permanently deletes the specified file.",
+      "    io.listDir(path)            Returns a list of filenames in the specified directory."
     ],
     "import": [
       "═══ Import (Code Reuse & Native Modules) ═══",
@@ -3981,253 +3976,253 @@
       ]
     },
     "lsolve": {
-      "signature": "lsolve(A, b)",
+      "signature": "A.lsolve(b)",
       "desc": "Solves the linear system Ax = b. Returns a dict with 'status' (\"unique\", \"infinite\", or \"least_squares\") and corresponding fields ('solution', or 'particular' and 'basis', or 'approx' and 'residual').",
       "examples": [
-        "lsolve([1, 2; 3, 4], [5; 11])"
+        "[1, 2; 3, 4].lsolve([5; 11])"
       ]
     },
     "lstsq": {
-      "signature": "lstsq(A, b)",
+      "signature": "A.lstsq(b)",
       "desc": "Solves the linear system Ax = b using the least-squares method (Normal Equations).",
       "examples": [
-        "lstsq([1, 1; 1, 2; 1, 3], [1; 2; 2])"
+        "[1, 1; 1, 2; 1, 3].lstsq([1; 2; 2])"
       ]
     },
     "dim": {
-      "signature": "dim(v)",
+      "signature": "v.dim()",
       "desc": "Returns the number of components (rows) in a column vector, or elements in a list.",
       "examples": [
-        "dim([1; 2; 3])"
+        "[1; 2; 3].dim()"
       ]
     },
     "dot": {
-      "signature": "dot(a, b)",
+      "signature": "a.dot(b)",
       "desc": "Returns the Hermitian inner product (dot product) of two vectors.",
       "examples": [
-        "dot([1; 2], [3; 4])"
+        "[1; 2].dot([3; 4])"
       ]
     },
     "vnorm": {
-      "signature": "vnorm(v)",
+      "signature": "v.vnorm()",
       "desc": "Returns the Euclidean length (magnitude) of a vector.",
       "examples": [
-        "vnorm([3; 4])"
+        "[3; 4].vnorm()"
       ]
     },
     "normalize": {
-      "signature": "normalize(v)",
+      "signature": "v.normalize()",
       "desc": "Returns a unit vector in the same direction as v.",
       "examples": [
-        "normalize([3; 4])"
+        "[3; 4].normalize()"
       ]
     },
     "cross": {
-      "signature": "cross(a, b)",
+      "signature": "a.cross(b)",
       "desc": "Returns the cross product of two 3D vectors.",
       "examples": [
-        "cross([1; 0; 0], [0; 1; 0])"
+        "[1; 0; 0].cross([0; 1; 0])"
       ]
     },
     "angle": {
-      "signature": "angle(a, b)",
+      "signature": "a.angle(b)",
       "desc": "Returns the angle between two vectors in radians.",
       "examples": [
-        "angle([1; 0], [0; 1])"
+        "[1; 0].angle([0; 1])"
       ]
     },
     "sproj": {
-      "signature": "sproj(a, b)",
+      "signature": "a.sproj(b)",
       "desc": "Returns the scalar projection of vector a onto vector b.",
       "examples": [
-        "sproj([3; 4], [1; 0])"
+        "[3; 4].sproj([1; 0])"
       ]
     },
     "vproj": {
-      "signature": "vproj(a, b)",
+      "signature": "a.vproj(b)",
       "desc": "Returns the vector projection of vector a onto vector b.",
       "examples": [
-        "vproj([3; 4], [1; 0])"
+        "[3; 4].vproj([1; 0])"
       ]
     },
     "triple": {
-      "signature": "triple(a, b, c)",
-      "desc": "Returns the scalar triple product of three 3D vectors: dot(a, cross(b, c)).",
+      "signature": "a.triple(b, c)",
+      "desc": "Returns the scalar triple product of three 3D vectors: a.dot(b.cross(c)).",
       "examples": [
-        "triple([1; 0; 0], [0; 1; 0], [0; 0; 1])"
+        "[1; 0; 0].triple([0; 1; 0], [0; 0; 1])"
       ]
     },
     "isperp": {
-      "signature": "isperp(a, b)",
+      "signature": "a.isperp(b)",
       "desc": "Returns true if vectors a and b are perpendicular (orthogonal), false otherwise.",
       "examples": [
-        "isperp([1; 0], [0; 1])"
+        "[1; 0].isperp([0; 1])"
       ]
     },
     "isparallel": {
-      "signature": "isparallel(a, b)",
+      "signature": "a.isparallel(b)",
       "desc": "Returns true if vectors a and b are parallel, false otherwise.",
       "examples": [
-        "isparallel([1; 2], [2; 4])"
+        "[1; 2].isparallel([2; 4])"
       ]
     },
     "solve": {
-      "signature": "solve(a, b, [c, d, e])",
-      "desc": "Finds all complex roots of a polynomial up to degree 4. E.g., solve(a,b,c) solves ax^2 + bx + c = 0.",
+      "signature": "math.solve(a, b, [c, d, e])",
+      "desc": "Finds all complex roots of a polynomial up to degree 4. E.g., math.solve(a,b,c) solves ax^2 + bx + c = 0.",
       "examples": [
-        "solve(1, 0, -1)",
-        "solve(1, 0, 0, -1)"
+        "math.solve(1, 0, -1)",
+        "math.solve(1, 0, 0, -1)"
       ]
     },
     "factorial": {
-      "signature": "factorial(n)",
+      "signature": "math.factorial(n)",
       "desc": "Returns the factorial of n (n!). Exact for ints.",
       "examples": [
-        "factorial(100)"
+        "math.factorial(100)"
       ]
     },
     "fib": {
-      "signature": "fib(n)",
+      "signature": "math.fib(n)",
       "desc": "Returns the n-th Fibonacci number.",
       "examples": [
-        "fib(10)"
+        "math.fib(10)"
       ]
     },
     "gcd": {
-      "signature": "gcd(a, b)",
+      "signature": "math.gcd(a, b)",
       "desc": "Returns the greatest common divisor of a and b.",
       "examples": [
-        "gcd(48, 18)"
+        "math.gcd(48, 18)"
       ]
     },
     "lcm": {
-      "signature": "lcm(a, b)",
+      "signature": "math.lcm(a, b)",
       "desc": "Returns the least common multiple of a and b.",
       "examples": [
-        "lcm(4, 6)"
+        "math.lcm(4, 6)"
       ]
     },
     "digits": {
-      "signature": "digits(n)",
+      "signature": "math.digits(n)",
       "desc": "Returns the number of digits in an integer (base-10) or a basenum (in its respective base).",
       "examples": [
-        "digits(factorial(100))",
-        "digits(base(255, 16))"
+        "math.digits(math.factorial(100))",
+        "math.digits(base(255, 16))"
       ]
     },
     "isPrime": {
-      "signature": "isPrime(n)",
+      "signature": "math.isPrime(n)",
       "desc": "Returns true if n is a prime number (via Miller-Rabin test), false otherwise.",
       "aliases": [
         "isprime"
       ],
       "examples": [
-        "isPrime(10^9 + 7)"
+        "math.isPrime(10^9 + 7)"
       ]
     },
     "nextPrime": {
-      "signature": "nextPrime(n)",
+      "signature": "math.nextPrime(n)",
       "desc": "Returns the smallest prime number strictly greater than n.",
       "examples": [
-        "nextPrime(100)"
+        "math.nextPrime(100)"
       ]
     },
     "nthPrime": {
-      "signature": "nthPrime(k)",
+      "signature": "math.nthPrime(k)",
       "desc": "Returns the k-th prime number. Uses a mounted Prime.bin database if available, otherwise computes dynamically.",
       "examples": [
-        "nthPrime(1000)"
+        "math.nthPrime(1000)"
       ]
     },
     "primePi": {
-      "signature": "primePi(n)",
+      "signature": "math.primePi(n)",
       "desc": "Returns the number of primes less than or equal to n (Prime Counting Function).",
       "examples": [
-        "primePi(100)"
+        "math.primePi(100)"
       ]
     },
     "phi": {
-      "signature": "phi(n)",
+      "signature": "math.phi(n)",
       "desc": "Returns Euler's totient function (number of integers up to n that are coprime to n).",
       "examples": [
-        "phi(100)"
+        "math.phi(100)"
       ]
     },
     "divisors": {
-      "signature": "divisors(n)",
+      "signature": "math.divisors(n)",
       "desc": "Returns the number of positive divisors of n.",
       "examples": [
-        "divisors(12)"
+        "math.divisors(12)"
       ]
     },
     "sigma": {
-      "signature": "sigma(n, [k])",
+      "signature": "math.sigma(n, [k])",
       "desc": "Returns the sum of the k-th powers of the positive divisors of n. k defaults to 1.",
       "examples": [
-        "sigma(12)"
+        "math.sigma(12)"
       ]
     },
     "omega": {
-      "signature": "omega(n)",
+      "signature": "math.omega(n)",
       "desc": "Returns the number of distinct prime factors of n.",
       "examples": [
-        "omega(12)"
+        "math.omega(12)"
       ]
     },
     "bigOmega": {
-      "signature": "bigOmega(n)",
+      "signature": "math.bigOmega(n)",
       "desc": "Returns the total number of prime factors of n (counted with multiplicity).",
       "examples": [
-        "bigOmega(12)"
+        "math.bigOmega(12)"
       ]
     },
     "mobius": {
-      "signature": "mobius(n)",
+      "signature": "math.mobius(n)",
       "desc": "Returns the Möbius function of n: 0 if n has a squared prime factor, else (-1)^omega(n).",
       "examples": [
-        "mobius(10)"
+        "math.mobius(10)"
       ]
     },
     "isPerfect": {
-      "signature": "isPerfect(n)",
+      "signature": "math.isPerfect(n)",
       "desc": "Returns true if n is a perfect number (sum of proper divisors equals n), false otherwise.",
       "examples": [
-        "isPerfect(28)"
+        "math.isPerfect(28)"
       ]
     },
     "mod": {
-      "signature": "mod(a, b)",
+      "signature": "math.mod(a, b)",
       "desc": "Returns the mathematical modulo of a w.r.t b. The result is always non-negative.",
       "examples": [
-        "mod(-7, 3)"
+        "math.mod(-7, 3)"
       ]
     },
     "modpow": {
-      "signature": "modpow(a, e, m)",
+      "signature": "math.modpow(a, e, m)",
       "desc": "Returns (a^e) mod m efficiently.",
       "examples": [
-        "modpow(2, 10, 1000)"
+        "math.modpow(2, 10, 1000)"
       ]
     },
     "C": {
-      "signature": "C(n, k)",
+      "signature": "math.C(n, k)",
       "desc": "Returns the binomial coefficient (n choose k).",
       "examples": [
-        "C(5, 2)"
+        "math.C(5, 2)"
       ]
     },
     "A": {
-      "signature": "A(n, k)",
+      "signature": "math.A(n, k)",
       "desc": "Returns the number of k-permutations of n.",
       "examples": [
-        "A(5, 2)"
+        "math.A(5, 2)"
       ]
     },
     "catalan": {
-      "signature": "catalan(n)",
+      "signature": "math.catalan(n)",
       "desc": "Returns the n-th Catalan number.",
       "examples": [
-        "catalan(5)"
+        "math.catalan(5)"
       ]
     },
     "base": {
@@ -4257,42 +4252,6 @@
       "desc": "Strips the radix shell from a BaseNum, returning a plain int.",
       "examples": [
         "data(base(255, 16))"
-      ]
-    },
-    "bitand": {
-      "signature": "bitand(a, b)",
-      "desc": "Returns the bitwise AND of two numbers.",
-      "examples": [
-        "bitand(base(12, 2), base(10, 2))"
-      ]
-    },
-    "bitor": {
-      "signature": "bitor(a, b)",
-      "desc": "Returns the bitwise OR of two numbers.",
-      "examples": [
-        "bitor(base(12, 2), base(10, 2))"
-      ]
-    },
-    "bitxor": {
-      "signature": "bitxor(a, b)",
-      "desc": "Returns the bitwise XOR of two numbers.",
-      "examples": [
-        "bitxor(base(12, 2), base(10, 2))"
-      ]
-    },
-    "bitnot": {
-      "signature": "bitnot(a, [w])",
-      "desc": "Returns the bitwise NOT of a number. If w is omitted, returns -a - 1. Otherwise, performs w-bit inversion.",
-      "examples": [
-        "bitnot(5)",
-        "bitnot(base(0, 2), 8)"
-      ]
-    },
-    "bitshift": {
-      "signature": "bitshift(a, n)",
-      "desc": "Logical shift: Left if n > 0, Right if n < 0.",
-      "examples": [
-        "bitshift(base(1, 2), 3)"
       ]
     },
     "mean": {
@@ -4404,54 +4363,54 @@
       ]
     },
     "rand": {
-      "signature": "rand([min, max])",
+      "signature": "random.rand([min, max])",
       "desc": "Returns a random continuous double. Defaults to [0, 1) if no arguments provided.",
       "examples": [
-        "rand()",
-        "rand(10, 20)"
+        "random.rand()",
+        "random.rand(10, 20)"
       ]
     },
     "randint": {
-      "signature": "randint(min, max)",
+      "signature": "random.randint(min, max)",
       "desc": "Returns a random discrete integer in the closed interval [min, max].",
       "examples": [
-        "randint(1, 6)"
+        "random.randint(1, 6)"
       ]
     },
     "randc": {
-      "signature": "randc([min, max])",
+      "signature": "random.randc([min, max])",
       "desc": "Returns a random complex number with real and imaginary parts in [min, max).",
       "examples": [
-        "randc()"
+        "random.randc()"
       ]
     },
     "randmat": {
-      "signature": "randmat(r, c, [min, max])",
+      "signature": "random.randmat(r, c, [min, max])",
       "desc": "Returns an r x c matrix of random continuous doubles.",
       "examples": [
-        "randmat(3, 3)",
-        "randmat(2, 2, -10, 10)"
+        "random.randmat(3, 3)",
+        "random.randmat(2, 2, -10, 10)"
       ]
     },
     "randimat": {
-      "signature": "randimat(r, c, [min, max])",
+      "signature": "random.randimat(r, c, [min, max])",
       "desc": "Returns an r x c matrix of random discrete integers. Defaults to [0, 10].",
       "examples": [
-        "randimat(3, 3, 1, 100)"
+        "random.randimat(3, 3, 1, 100)"
       ]
     },
     "randcmat": {
-      "signature": "randcmat(r, c, [min, max])",
+      "signature": "random.randcmat(r, c, [min, max])",
       "desc": "Returns an r x c matrix of random complex numbers.",
       "examples": [
-        "randcmat(2, 2)"
+        "random.randcmat(2, 2)"
       ]
     },
     "magic": {
-      "signature": "magic(n)",
+      "signature": "random.magic(n)",
       "desc": "Returns an n x n magic square matrix (n >= 3).",
       "examples": [
-        "magic(3)"
+        "random.magic(3)"
       ]
     },
     "str": {
@@ -4552,30 +4511,29 @@
       ]
     },
     "map": {
-      "signature": "v.map(f) / map(v, f) / map(f)",
-      "desc": "Applies function f to each element of v. If only f is provided, returns a curried function.",
+      "signature": "v.map(f)",
+      "desc": "Applies function f to each element of v.",
       "examples": [
-        "[1, 2, 3].map((x) => x^2)",
-        "map((x) => x^2)([1, 2, 3])"
+        "[1, 2, 3].map((x) => x^2)"
       ]
     },
     "filter": {
-      "signature": "v.filter(f) / filter(v, f) / filter(f)",
-      "desc": "Keeps elements of v for which function f returns a truthy value. Supports currying.",
+      "signature": "v.filter(f)",
+      "desc": "Keeps elements of v for which function f returns a truthy value.",
       "examples": [
         "[-1, 0, 1].filter((x) => x > 0)"
       ]
     },
     "reduce": {
-      "signature": "v.reduce(f, [init]) / reduce(v, f, [init]) / reduce(f, [init])",
-      "desc": "Reduces v to a single value using a left fold with function f. Supports currying.",
+      "signature": "v.reduce(f, [init])",
+      "desc": "Reduces v to a single value using a left fold with function f.",
       "examples": [
         "[1, 2, 3].reduce((a, b) => a + b)"
       ]
     },
     "sort": {
-      "signature": "v.sort([cmp]) / sort(v, [cmp]) / sort(cmp)",
-      "desc": "Stably sorts a list or array using natural ordering. Optionally accepts a custom comparator function. Supports currying.",
+      "signature": "v.sort([cmp])",
+      "desc": "Stably sorts a list or array using natural ordering. Optionally accepts a custom comparator function.",
       "examples": [
         "[3, 1, 2].sort()"
       ]
@@ -4632,24 +4590,24 @@
       ]
     },
     "readFile": {
-      "signature": "readFile(path)",
+      "signature": "io.readFile(path)",
       "desc": "Reads the entire contents of a file into a string.",
       "examples": [
-        "readFile(\"data.txt\")"
+        "io.readFile(\"data.txt\")"
       ]
     },
     "writeFile": {
-      "signature": "writeFile(path, content)",
+      "signature": "io.writeFile(path, content)",
       "desc": "Writes a string to a file, overwriting existing content.",
       "examples": [
-        "writeFile(\"out.txt\", \"Hello\")"
+        "io.writeFile(\"out.txt\", \"Hello\")"
       ]
     },
     "readCSV": {
-      "signature": "readCSV(path, [delim])",
+      "signature": "io.readCSV(path, [delim])",
       "desc": "Reads a CSV file into a list of lists.",
       "examples": [
-        "readCSV(\"data.csv\")"
+        "io.readCSV(\"data.csv\")"
       ]
     },
     "pcall": {
@@ -4667,10 +4625,10 @@
       ]
     },
     "gc": {
-      "signature": "gc([aggressive])",
+      "signature": "sys.gc([aggressive])",
       "desc": "Forces a Garbage Collection cycle. Returns the number of freed objects.",
       "examples": [
-        "gc()"
+        "sys.gc()"
       ]
     },
     "help": {
@@ -4681,91 +4639,91 @@
       ]
     },
     "run": {
-      "signature": "run(path)",
+      "signature": "sys.run(path)",
       "desc": "Executes a .jc2 script file in the current environment.",
       "examples": [
-        "run(\"script.jc2\")"
+        "sys.run(\"script.jc2\")"
       ]
     },
     "compileFile": {
-      "signature": "compileFile(path)",
+      "signature": "sys.compileFile(path)",
       "desc": "Compiles a .jc2 script file into bytecode and returns it as a callable function. Preserves relative path context.",
       "examples": [
-        "logic = compileFile(\"script.jc2\")",
+        "logic = sys.compileFile(\"script.jc2\")",
         "logic()"
       ]
     },
     "compileCode": {
-      "signature": "compileCode(code)",
+      "signature": "sys.compileCode(code)",
       "desc": "Compiles a string of JC2 code into bytecode and returns it as a callable function.",
       "examples": [
-        "f = compileCode(\"print(1+1)\")",
+        "f = sys.compileCode(\"print(1+1)\")",
         "f()"
       ]
     },
     "sym": {
-      "signature": "sym(name)",
+      "signature": "cas.sym(name)",
       "desc": "Creates a symbolic variable for CAS operations.",
       "examples": [
-        "x = sym(\"x\")"
+        "x = cas.sym(\"x\")"
       ]
     },
     "diff": {
-      "signature": "diff(expr, var)",
+      "signature": "cas.diff(expr, var)",
       "desc": "Computes the symbolic or numerical derivative of an expression or function.",
       "examples": [
-        "diff(x^2, x)"
+        "cas.diff(x^2, x)"
       ]
     },
     "integ": {
-      "signature": "integ(expr, var, [a, b])",
+      "signature": "cas.integ(expr, var, [a, b])",
       "desc": "Computes the symbolic indefinite/definite integral, or numerical definite integral.",
       "examples": [
-        "integ(x^2, x)"
+        "cas.integ(x^2, x)"
       ]
     },
     "limit": {
-      "signature": "limit(expr, var, val, [dir])",
+      "signature": "cas.limit(expr, var, val, [dir])",
       "desc": "Computes the symbolic or numerical limit of an expression as var approaches val. Default is two-sided. dir can be \"+\" or \"-\". val can be \"inf\".",
       "examples": [
-        "limit(sin(x)/x, x, 0)",
-        "limit(1/x, x, 0, \"-\")",
-        "limit((1+1/x)^x, x, \"inf\")"
+        "cas.limit(sin(x)/x, x, 0)",
+        "cas.limit(1/x, x, 0, \"-\")",
+        "cas.limit((1+1/x)^x, x, \"inf\")"
       ]
     },
     "solveEq": {
-      "signature": "solveEq(expr, var)",
+      "signature": "cas.solveEq(expr, var)",
       "desc": "Symbolically solves an equation expr = 0 for the given variable.",
       "examples": [
-        "solveEq(x^2 - 2, x)"
+        "cas.solveEq(x^2 - 2, x)"
       ]
     },
     "expand": {
-      "signature": "expand(expr)",
+      "signature": "cas.expand(expr)",
       "desc": "Expands a symbolic algebraic expression.",
       "examples": [
-        "expand((x + 1)^2)"
+        "cas.expand((x + 1)^2)"
       ]
     },
     "simplify": {
-      "signature": "simplify(expr)",
+      "signature": "cas.simplify(expr)",
       "desc": "Simplifies a symbolic algebraic expression.",
       "examples": [
-        "simplify(x + x)"
+        "cas.simplify(x + x)"
       ]
     },
     "subs": {
-      "signature": "subs(expr, var, val)",
+      "signature": "cas.subs(expr, var, val)",
       "desc": "Substitutes a variable with a value in a symbolic expression.",
       "examples": [
-        "subs(x^2, x, 3)"
+        "cas.subs(x^2, x, 3)"
       ]
     },
     "evalf": {
-      "signature": "evalf(expr)",
+      "signature": "cas.evalf(expr)",
       "desc": "Forces numerical floating-point evaluation of a symbolic expression.",
       "examples": [
-        "evalf(PI)"
+        "cas.evalf(PI)"
       ]
     },
     "clear": {
@@ -4822,9 +4780,9 @@
       "examples": ["\"  hello  \".trim()"]
     },
     "find": {
-      "signature": "find(s, sub, [pos]) / mat.find(val)",
+      "signature": "s.find(sub, [pos]) / mat.find(val)",
       "desc": "Returns the index of the first match of sub in string s, or the [row, col] of val in a matrix. Returns -1 if absent.",
-      "examples": ["find(\"hello\", \"l\")", "M.find(42)"]
+      "examples": ["\"hello\".find(\"l\")", "M.find(42)"]
     },
     "contains": {
       "signature": "s.contains(sub)",
@@ -5033,7 +4991,7 @@
       "examples": ["[\"a\", \"b\", \"c\"].enumerate()"]
     },
     "groupBy": {
-      "signature": "v.groupBy(f) / groupBy(v, f) / groupBy(f)",
+      "signature": "v.groupBy(f)",
       "desc": "Groups elements of an iterable by the result of function f. Returns a dict where keys are f(x) and values are lists of elements.",
       "examples": ["[1, 2, 3, 4].groupBy((x) => x % 2)"]
     },
@@ -5088,124 +5046,124 @@
       "examples": ["@{1, 2}.setPow()"]
     },
     "appendFile": {
-      "signature": "appendFile(path, content)",
+      "signature": "io.appendFile(path, content)",
       "desc": "Appends a string to the end of a file.",
-      "examples": ["appendFile(\"log.txt\", \"Error\\n\")"]
+      "examples": ["io.appendFile(\"log.txt\", \"Error\\n\")"]
     },
     "readLines": {
-      "signature": "readLines(path)",
+      "signature": "io.readLines(path)",
       "desc": "Reads a file line-by-line into a List of strings.",
-      "examples": ["readLines(\"data.txt\")"]
+      "examples": ["io.readLines(\"data.txt\")"]
     },
     "writeLines": {
-      "signature": "writeLines(path, list)",
+      "signature": "io.writeLines(path, list)",
       "desc": "Writes a List of elements as separate lines to a file.",
-      "examples": ["writeLines(\"out.txt\", myList)"]
+      "examples": ["io.writeLines(\"out.txt\", myList)"]
     },
     "fileExists": {
-      "signature": "fileExists(path)",
+      "signature": "io.fileExists(path)",
       "desc": "Returns true if the file or directory exists, false otherwise.",
-      "examples": ["fileExists(\"data.txt\")"]
+      "examples": ["io.fileExists(\"data.txt\")"]
     },
     "deleteFile": {
-      "signature": "deleteFile(path)",
+      "signature": "io.deleteFile(path)",
       "desc": "Permanently deletes the specified file.",
-      "examples": ["deleteFile(\"temp.txt\")"]
+      "examples": ["io.deleteFile(\"temp.txt\")"]
     },
     "fileSize": {
-      "signature": "fileSize(path)",
+      "signature": "io.fileSize(path)",
       "desc": "Returns the physical file size in bytes.",
-      "examples": ["fileSize(\"data.txt\")"]
+      "examples": ["io.fileSize(\"data.txt\")"]
     },
     "listDir": {
-      "signature": "listDir([path])",
+      "signature": "io.listDir([path])",
       "desc": "Returns a List of filenames in the specified directory.",
-      "examples": ["listDir(\"./data\")"]
+      "examples": ["io.listDir(\"./data\")"]
     },
     "readCSVMat": {
-      "signature": "readCSVMat(path, [delim])",
+      "signature": "io.readCSVMat(path, [delim])",
       "desc": "Reads a CSV file directly into a StringMatrix.",
-      "examples": ["readCSVMat(\"data.csv\")"]
+      "examples": ["io.readCSVMat(\"data.csv\")"]
     },
     "parseCSVNum": {
-      "signature": "parseCSVNum(path, [delim])",
+      "signature": "io.parseCSVNum(path, [delim])",
       "desc": "Reads a CSV file into a mathematical RealMatrix.",
-      "examples": ["parseCSVNum(\"data.csv\")"]
+      "examples": ["io.parseCSVNum(\"data.csv\")"]
     },
     "writeCSV": {
-      "signature": "writeCSV(path, data, [delim])",
+      "signature": "io.writeCSV(path, data, [delim])",
       "desc": "Writes a Matrix or List out to a CSV file.",
-      "examples": ["writeCSV(\"out.csv\", M)"]
+      "examples": ["io.writeCSV(\"out.csv\", M)"]
     },
     "RootOf": {
-      "signature": "RootOf(poly, var, k)",
+      "signature": "cas.RootOf(poly, var, k)",
       "desc": "Represents the k-th exact root of the polynomial.",
-      "examples": ["RootOf(x^5 - x + 1, x, 1)"]
+      "examples": ["cas.RootOf(x^5 - x + 1, x, 1)"]
     },
     "RootSum": {
-      "signature": "RootSum(expr, var, poly)",
+      "signature": "cas.RootSum(expr, var, poly)",
       "desc": "Represents the sum of expr evaluated over all roots of poly.",
-      "examples": ["RootSum(x^2, x, x^3 - 2)"]
+      "examples": ["cas.RootSum(x^2, x, x^3 - 2)"]
     },
     "contract": {
-      "signature": "contract(expr)",
+      "signature": "cas.contract(expr)",
       "desc": "Contracts logarithmic and trigonometric expressions.",
-      "examples": ["contract(2*log(x) + log(y))"]
+      "examples": ["cas.contract(2*log(x) + log(y))"]
     },
     "trigsimp": {
-      "signature": "trigsimp(expr)",
+      "signature": "cas.trigsimp(expr)",
       "desc": "Simplifies trigonometric expressions.",
-      "examples": ["trigsimp(sin(x)^2 + cos(x)^2)"]
+      "examples": ["cas.trigsimp(sin(x)^2 + cos(x)^2)"]
     },
     "toFunc": {
-      "signature": "toFunc(expr, vars)",
+      "signature": "cas.toFunc(expr, vars)",
       "desc": "Compiles a symbolic AST to a blazing-fast VM closure.",
-      "examples": ["f = toFunc(x^2 + y, [\"x\", \"y\"])"]
+      "examples": ["f = cas.toFunc(x^2 + y, [\"x\", \"y\"])"]
     },
     "evalv": {
-      "signature": "evalv(expr)",
+      "signature": "cas.evalv(expr)",
       "desc": "Evaluates a symbolic expression preserving exact types (fraction/complex).",
-      "examples": ["evalv(x + 1)"]
+      "examples": ["cas.evalv(x + 1)"]
     },
     "replaceRule": {
-      "signature": "replaceRule(expr, pat, tgt)",
+      "signature": "cas.replaceRule(expr, pat, tgt)",
       "desc": "Pattern matching replacement in a symbolic expression.",
-      "examples": ["replaceRule(sin(x)^2, sin(x)^2, 1 - cos(x)^2)"]
+      "examples": ["cas.replaceRule(sin(x)^2, sin(x)^2, 1 - cos(x)^2)"]
     },
     "polyDiv": {
-      "signature": "polyDiv(A, B, var)",
+      "signature": "cas.polyDiv(A, B, var)",
       "desc": "Polynomial division, returning @[quotient, remainder].",
-      "examples": ["polyDiv(x^2 - 1, x - 1, x)"]
+      "examples": ["cas.polyDiv(x^2 - 1, x - 1, x)"]
     },
     "polyGCD": {
-      "signature": "polyGCD(A, B, var)",
+      "signature": "cas.polyGCD(A, B, var)",
       "desc": "Polynomial greatest common divisor.",
-      "examples": ["polyGCD(x^2 - 1, x^2 + 2*x + 1, x)"]
+      "examples": ["cas.polyGCD(x^2 - 1, x^2 + 2*x + 1, x)"]
     },
     "resultant": {
-      "signature": "resultant(A, B, var)",
+      "signature": "cas.resultant(A, B, var)",
       "desc": "Sylvester resultant of two polynomials.",
-      "examples": ["resultant(x^2 - 1, x^2 + 1, x)"]
+      "examples": ["cas.resultant(x^2 - 1, x^2 + 1, x)"]
     },
     "factor": {
-      "signature": "factor(expr)",
+      "signature": "cas.factor(expr)",
       "desc": "Factors a polynomial, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
-      "examples": ["factor(x^4 - 1)", "factor(12)"]
+      "examples": ["cas.factor(x^4 - 1)", "cas.factor(12)"]
     },
     "factorReal": {
-      "signature": "factorReal(expr)",
+      "signature": "cas.factorReal(expr)",
       "desc": "Factors a polynomial over the real numbers.",
-      "examples": ["factorReal(x^2 + 1)"]
+      "examples": ["cas.factorReal(x^2 + 1)"]
     },
     "taylor": {
-      "signature": "taylor(expr, var, a, [order])",
+      "signature": "cas.taylor(expr, var, a, [order])",
       "desc": "Computes the Taylor series expansion of expr around a.",
-      "examples": ["taylor(sin(x), x, 0, 5)"]
+      "examples": ["cas.taylor(sin(x), x, 0, 5)"]
     },
     "verifyInteg": {
-      "signature": "verifyInteg(expr, var)",
+      "signature": "cas.verifyInteg(expr, var)",
       "desc": "Verifies if the derivative of the integral matches the original expression.",
-      "examples": ["verifyInteg(x^2, x)"]
+      "examples": ["cas.verifyInteg(x^2, x)"]
     },
     "isError": {
       "signature": "isError(status)",
@@ -5213,117 +5171,117 @@
       "examples": ["isError(pcall(f))"]
     },
     "resetConst": {
-      "signature": "resetConst()",
+      "signature": "sys.resetConst()",
       "desc": "Restores system constants PI, E, i, I.",
-      "examples": ["resetConst()"]
+      "examples": ["sys.resetConst()"]
     },
     "resetType": {
-      "signature": "resetType()",
+      "signature": "sys.resetType()",
       "desc": "Restores all built-in type objects (int, string, list, etc.) to the global scope.",
-      "examples": ["resetType()"]
+      "examples": ["sys.resetType()"]
     },
     "setWorkspace": {
-      "signature": "setWorkspace(path)",
+      "signature": "sys.setWorkspace(path)",
       "desc": "Changes the workspace directory.",
-      "examples": ["setWorkspace(\"./my_project\")"]
+      "examples": ["sys.setWorkspace(\"./my_project\")"]
     },
     "getWorkspace": {
-      "signature": "getWorkspace()",
+      "signature": "sys.getWorkspace()",
       "desc": "Returns the current workspace path.",
-      "examples": ["getWorkspace()"]
+      "examples": ["sys.getWorkspace()"]
     },
     "pwd": {
-      "signature": "pwd()",
+      "signature": "sys.pwd()",
       "desc": "Prints the script directory and workspace directory.",
-      "examples": ["pwd()"]
+      "examples": ["sys.pwd()"]
     },
     "cls": {
-      "signature": "cls()",
+      "signature": "sys.cls()",
       "desc": "Clears the console screen.",
-      "examples": ["cls()"]
+      "examples": ["sys.cls()"]
     },
     "breakpoint": {
-      "signature": "breakpoint()",
+      "signature": "sys.breakpoint()",
       "desc": "Suspends VM execution and opens the interactive step-debugger.",
       "aliases": ["debugger"],
-      "examples": ["breakpoint()"]
+      "examples": ["sys.breakpoint()"]
     },
     "disassemble": {
-      "signature": "disassemble(f)",
+      "signature": "sys.disassemble(f)",
       "desc": "Prints the bytecode disassembly of a function closure.",
       "aliases": ["disasm"],
-      "examples": ["disassemble(myFunc)"]
+      "examples": ["sys.disassemble(myFunc)"]
     },
     "buildIndex": {
-      "signature": "buildIndex()",
+      "signature": "sys.buildIndex()",
       "desc": "Builds an O(1) anchor tree in RAM for the prime database.",
       "aliases": ["loadPrimes"],
-      "examples": ["buildIndex()"]
+      "examples": ["sys.buildIndex()"]
     },
     "mountPrimes": {
-      "signature": "mountPrimes(path)",
+      "signature": "sys.mountPrimes(path)",
       "desc": "Redirects the prime engine to a custom Prime.bin file.",
-      "examples": ["mountPrimes(\"Prime.bin\")"]
+      "examples": ["sys.mountPrimes(\"Prime.bin\")"]
     },
     "extendPrimes": {
-      "signature": "extendPrimes(n)",
+      "signature": "sys.extendPrimes(n)",
       "desc": "Generates and appends n new primes to the currently mounted Prime.bin file.",
-      "examples": ["extendPrimes(1000000)"]
+      "examples": ["sys.extendPrimes(1000000)"]
     },
     "convertPrimes": {
-      "signature": "convertPrimes(txtPath, binPath)",
+      "signature": "sys.convertPrimes(txtPath, binPath)",
       "desc": "Converts a legacy plain-text prime table (one prime per line) into the highly compressed JCP1 binary format.",
-      "examples": ["convertPrimes(\"Prime.txt\", \"Prime.bin\")"]
+      "examples": ["sys.convertPrimes(\"Prime.txt\", \"Prime.bin\")"]
     },
     "verifyPrimes": {
-      "signature": "verifyPrimes()",
+      "signature": "sys.verifyPrimes()",
       "desc": "Verifies the integrity and mathematical accuracy of the currently mounted JCP1 prime table.",
-      "examples": ["verifyPrimes()"]
+      "examples": ["sys.verifyPrimes()"]
     },
     "sysinfo": {
-      "signature": "sysinfo()",
+      "signature": "sys.sysinfo()",
       "desc": "Prints current system and prime database status.",
-      "examples": ["sysinfo()"]
+      "examples": ["sys.sysinfo()"]
     },
     "freeze": {
-      "signature": "freeze(obj)",
+      "signature": "sys.freeze(obj)",
       "desc": "Locks a container permanently, preventing modification.",
-      "examples": ["freeze(myList)"]
+      "examples": ["sys.freeze(myList)"]
     },
     "isFrozen": {
-      "signature": "isFrozen(obj)",
+      "signature": "sys.isFrozen(obj)",
       "desc": "Returns true if the container is locked, false otherwise.",
-      "examples": ["isFrozen(myList)"]
+      "examples": ["sys.isFrozen(myList)"]
     },
     "hash": {
-      "signature": "hash(x)",
+      "signature": "sys.hash(x)",
       "desc": "Returns the native hash value of x as an int.",
-      "examples": ["hash(\"hello\")"]
+      "examples": ["sys.hash(\"hello\")"]
     },
     "clone": {
-      "signature": "clone(obj)",
+      "signature": "sys.clone(obj)",
       "desc": "Returns a deep-copied, fully unfrozen clone of the object.",
-      "examples": ["clone(myDict)"]
+      "examples": ["sys.clone(myDict)"]
     },
     "copy": {
-      "signature": "copy(obj)",
+      "signature": "sys.copy(obj)",
       "desc": "Returns a deep-copied clone of the object, preserving its exact frozen/unfrozen state.",
-      "examples": ["copy(myDict)"]
+      "examples": ["sys.copy(myDict)"]
     },
     "val": {
-      "signature": "val(obj)",
+      "signature": "sys.val(obj)",
       "desc": "Returns a deep-copied, fully frozen snapshot of the object.",
-      "examples": ["val(myDict)"]
+      "examples": ["sys.val(myDict)"]
     },
     "symconfig": {
-      "signature": "symconfig([dict_or_default])",
+      "signature": "sys.symconfig([dict_or_default])",
       "desc": "Gets or sets CAS limits. Pass \"default\" to reset.",
-      "examples": ["symconfig(\"default\")"]
+      "examples": ["sys.symconfig(\"default\")"]
     },
     "setSymLimit": {
-      "signature": "setSymLimit(key, val)",
+      "signature": "sys.setSymLimit(key, val)",
       "desc": "Sets a specific CAS limit.",
-      "examples": ["setSymLimit(\"maxDepth\", 10)"]
+      "examples": ["sys.setSymLimit(\"maxDepth\", 10)"]
     },
     "isbool": {
       "signature": "isbool(x)",
@@ -5561,109 +5519,109 @@
       "examples": ["isset(@{1})"]
     },
     "addE": {
-      "signature": "addE(A, B)",
+      "signature": "A.addE(B)",
       "desc": "Element-wise addition. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports string concatenation.",
-      "examples": ["addE([1, 2], 3)", "addE(\"ID_\", [1, 2])"]
+      "examples": ["[1, 2].addE(3)", "\"ID_\".addE([1, 2])"]
     },
     "subE": {
-      "signature": "subE(A, B)",
+      "signature": "A.subE(B)",
       "desc": "Element-wise subtraction. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
-      "examples": ["subE(1, [1, 2])"]
+      "examples": ["(1).subE([1, 2])"]
     },
     "mulE": {
-      "signature": "mulE(A, B)",
+      "signature": "A.mulE(B)",
       "desc": "Element-wise multiplication. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
-      "examples": ["mulE([1, 2], [3, 4])"]
+      "examples": ["[1, 2].mulE([3, 4])"]
     },
     "divE": {
-      "signature": "divE(A, B)",
+      "signature": "A.divE(B)",
       "desc": "Element-wise division. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
-      "examples": ["divE(1, [1, 2])"]
+      "examples": ["(1).divE([1, 2])"]
     },
     "idivE": {
-      "signature": "idivE(A, B)",
+      "signature": "A.idivE(B)",
       "desc": "Element-wise integer division (truncating towards zero). Supports broadcasting.",
-      "examples": ["idivE([10, 11], 3)"]
+      "examples": ["[10, 11].idivE(3)"]
     },
     "powE": {
-      "signature": "powE(A, B)",
+      "signature": "A.powE(B)",
       "desc": "Element-wise power. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
-      "examples": ["powE([1, 2], 2)"]
+      "examples": ["[1, 2].powE(2)"]
     },
     "modE": {
-      "signature": "modE(A, B)",
+      "signature": "A.modE(B)",
       "desc": "Element-wise modulo. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
-      "examples": ["modE([5, 6], 3)"]
+      "examples": ["[5, 6].modE(3)"]
     },
     "eqE": {
-      "signature": "eqE(A, B)",
+      "signature": "A.eqE(B)",
       "desc": "Element-wise equality comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["eqE([1, 2], 1)", "eqE([\"a\", \"b\"], \"a\")"]
+      "examples": ["[1, 2].eqE(1)", "[\"a\", \"b\"].eqE(\"a\")"]
     },
     "neqE": {
-      "signature": "neqE(A, B)",
+      "signature": "A.neqE(B)",
       "desc": "Element-wise inequality comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["neqE([1, 2], 1)", "neqE([\"a\", \"b\"], \"a\")"]
+      "examples": ["[1, 2].neqE(1)", "[\"a\", \"b\"].neqE(\"a\")"]
     },
     "ltE": {
-      "signature": "ltE(A, B)",
+      "signature": "A.ltE(B)",
       "desc": "Element-wise less-than comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["ltE([1, 2], 2)"]
+      "examples": ["[1, 2].ltE(2)"]
     },
     "leE": {
-      "signature": "leE(A, B)",
+      "signature": "A.leE(B)",
       "desc": "Element-wise less-than-or-equal comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["leE([1, 2], 2)"]
+      "examples": ["[1, 2].leE(2)"]
     },
     "gtE": {
-      "signature": "gtE(A, B)",
+      "signature": "A.gtE(B)",
       "desc": "Element-wise greater-than comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["gtE([1, 2], 1)"]
+      "examples": ["[1, 2].gtE(1)"]
     },
     "geE": {
-      "signature": "geE(A, B)",
+      "signature": "A.geE(B)",
       "desc": "Element-wise greater-than-or-equal comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["geE([1, 2], 1)"]
+      "examples": ["[1, 2].geE(1)"]
     },
     "maxE": {
-      "signature": "maxE(A, B)",
+      "signature": "A.maxE(B)",
       "desc": "Element-wise maximum. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["maxE([1, 5], [3, 2])"]
+      "examples": ["[1, 5].maxE([3, 2])"]
     },
     "minE": {
-      "signature": "minE(A, B)",
+      "signature": "A.minE(B)",
       "desc": "Element-wise minimum. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["minE([1, 5], [3, 2])"]
+      "examples": ["[1, 5].minE([3, 2])"]
     },
     "andE": {
-      "signature": "andE(A, B)",
+      "signature": "A.andE(B)",
       "desc": "Element-wise logical AND. Returns 1.0 if both are truthy, else 0.0.",
-      "examples": ["andE([1, 0], [1, 1])"]
+      "examples": ["[1, 0].andE([1, 1])"]
     },
     "orE": {
-      "signature": "orE(A, B)",
+      "signature": "A.orE(B)",
       "desc": "Element-wise logical OR. Returns 1.0 if either is truthy, else 0.0.",
-      "examples": ["orE([1, 0], [0, 0])"]
+      "examples": ["[1, 0].orE([0, 0])"]
     },
     "xorE": {
-      "signature": "xorE(A, B)",
+      "signature": "A.xorE(B)",
       "desc": "Element-wise logical XOR. Returns 1.0 if truthiness differs, else 0.0.",
-      "examples": ["xorE([1, 0], [1, 1])"]
+      "examples": ["[1, 0].xorE([1, 1])"]
     },
     "atan2E": {
-      "signature": "atan2E(Y, X)",
+      "signature": "Y.atan2E(X)",
       "desc": "Element-wise 2-argument arctangent.",
-      "examples": ["atan2E([0, 1], [1, 0])"]
+      "examples": ["[0, 1].atan2E([1, 0])"]
     },
     "hypotE": {
-      "signature": "hypotE(A, B)",
+      "signature": "A.hypotE(B)",
       "desc": "Element-wise hypotenuse (sqrt(A^2 + B^2)).",
-      "examples": ["hypotE([3, 5], [4, 12])"]
+      "examples": ["[3, 5].hypotE([4, 12])"]
     },
     "whereE": {
-      "signature": "whereE(mask, A, B)",
+      "signature": "mask.whereE(A, B)",
       "desc": "Element-wise ternary selection. Returns elements from A where mask is truthy, else from B. Supports broadcasting and strings.",
-      "examples": ["whereE([1, 0, 1], 99, [1, 2, 3])", "whereE([1, 0], \"Pass\", \"Fail\")"]
+      "examples": ["[1, 0, 1].whereE(99, [1, 2, 3])", "[1, 0].whereE(\"Pass\", \"Fail\")"]
     },
     "perm": {
       "signature": "A.perm()",
@@ -5761,14 +5719,14 @@
       "examples": ["[L, U, P] = A.lu()"]
     },
     "residual": {
-      "signature": "residual(A, x, b)",
+      "signature": "A.residual(x, b)",
       "desc": "Returns the residual vector r = b - A*x.",
-      "examples": ["residual(A, x, b)"]
+      "examples": ["A.residual(x, b)"]
     },
     "gcinfo": {
-      "signature": "gcinfo()",
+      "signature": "sys.gcinfo()",
       "desc": "Prints the current status of the Garbage Collector.",
-      "examples": ["gcinfo()"]
+      "examples": ["sys.gcinfo()"]
     },
     "bool": {
       "signature": "bool(x)",
@@ -5806,14 +5764,14 @@
       "examples": ["input(\"Name: \")"]
     },
     "clock": {
-      "signature": "clock()",
+      "signature": "sys.clock()",
       "desc": "Returns the high-resolution time in seconds since the epoch.",
-      "examples": ["clock()"]
+      "examples": ["sys.clock()"]
     },
     "sleep": {
-      "signature": "sleep(seconds)",
+      "signature": "sys.sleep(seconds)",
       "desc": "Pauses execution for the specified number of seconds.",
-      "examples": ["sleep(1.5)"]
+      "examples": ["sys.sleep(1.5)"]
     },
     "highlight": {
       "signature": "highlight(code)",
@@ -5836,23 +5794,23 @@
       "examples": ["d.removeKey(\"a\")"]
     },
     "apply": {
-      "signature": "args.apply(f) / apply(args, f) / apply(f)",
-      "desc": "Calls function f with arguments unpacked from a list or array. Supports currying.",
+      "signature": "args.apply(f)",
+      "desc": "Calls function f with arguments unpacked from a list or array.",
       "examples": ["[1, 2, 3].apply(print)"]
     },
     "any": {
-      "signature": "v.any(f) / any(v, f) / any(f)",
-      "desc": "Returns true if any element in v satisfies function f. Supports currying.",
+      "signature": "v.any(f)",
+      "desc": "Returns true if any element in v satisfies function f.",
       "examples": ["[-1, 1].any((x) => x > 0)"]
     },
     "all": {
-      "signature": "v.all(f) / all(v, f) / all(f)",
-      "desc": "Returns true if all elements in v satisfy function f. Supports currying.",
+      "signature": "v.all(f)",
+      "desc": "Returns true if all elements in v satisfy function f.",
       "examples": ["[1, 2].all((x) => x > 0)"]
     },
     "countIf": {
-      "signature": "v.countIf(f) / countIf(v, f) / countIf(f)",
-      "desc": "Counts the number of elements in v that satisfy function f. Supports currying.",
+      "signature": "v.countIf(f)",
+      "desc": "Counts the number of elements in v that satisfy function f.",
       "examples": ["[-1, 1, 2].countIf((x) => x > 0)"]
     },
     "solveE": {
@@ -6046,13 +6004,13 @@
       "examples": ["__del__() = print(\"Object destroyed\")"]
     },
     "gensym": {
-      "signature": "gensym([prefix])",
+      "signature": "sys.gensym([prefix])",
       "desc": [
         "Generates a globally unique AST Variable node.",
         "Used in macros to create hygienic variables that will never collide with user variables."
       ],
       "examples": [
-        "temp_var = gensym(\"temp\")"
+        "temp_var = sys.gensym(\"temp\")"
       ]
     }
   },

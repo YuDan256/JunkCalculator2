@@ -6071,11 +6071,11 @@ void BuiltinRegistry::registerCAS() {
         throw std::runtime_error("TypeError: " + funcName + "() expects a variable name (string or symbol).");
     };
 
-    reg("sym", { 1 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "sym", { 1 }, [getVarName](const std::vector<Value>& args) -> Value {
         return Value(SymExpr::makeVar(getVarName(args[0], "sym")));
         }, {"name"});
 
-    reg("RootOf", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "RootOf", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         SymExpr poly = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootOf");
         SymExpr k = args[2].asSymbolic();
@@ -6084,7 +6084,7 @@ void BuiltinRegistry::registerCAS() {
         })));
         }, {"poly", "var", "k"});
 
-    reg("RootSum", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "RootSum", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootSum");
         SymExpr poly = args[2].asSymbolic();
@@ -6093,23 +6093,51 @@ void BuiltinRegistry::registerCAS() {
         })));
         }, {"expr", "var", "poly"});
 
-    reg("expand", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "expand", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(expand(args[0].asSymbolic()));
         }, {"expr"});
 
-    reg("simplify", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "simplify", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(full_simplify(args[0].asSymbolic()));
         }, {"expr"});
 
-    reg("contract", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "contract", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(contract(args[0].asSymbolic()));
         }, {"expr"});
 
-    reg("trigsimp", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "trigsimp", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(trigsimp(args[0].asSymbolic()));
         }, {"expr"});
 
-    reg("subs", { 3 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
+    auto doEvalf = [fnsPtr, this](const SymExpr& inputExpr) -> Value {
+        SymExpr expr = evalFloat(inputExpr);
+        expr = collapseSymFuncs(expr, *fnsPtr, this->builtinArity);
+        if (isConstantExpr(expr)) {
+            try {
+                std::map<std::string, Value> emptyEnv;
+                auto arities = this->builtinArity;
+                SymbolicFuncResolver resolver = [fnsPtr, arities](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
+                    auto it = fnsPtr->find(name);
+                    if (it != fnsPtr->end()) {
+                        auto ait = arities.find(name);
+                        if (ait != arities.end() && !ait->second.empty()) {
+                            if (ait->second.find(static_cast<int>(fnArgs.size())) == ait->second.end()) {
+                                throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
+                            }
+                        }
+                        return it->second(fnArgs);
+                    }
+                    throw std::runtime_error("Function not found");
+                };
+                return evalUniversal(expr.ptr, emptyEnv, resolver);
+            } catch (const jc::EngineInterruptError&) {
+                throw;
+            } catch (...) {}
+        }
+        return Value(expr);
+    };
+
+    regModule(cas_ns, "subs", { 3 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr result = args[0].asSymbolic();
 
         std::vector<std::string> vars;
@@ -6186,7 +6214,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(result);
         }, {"expr", "var", "val"});
 
-    reg("toFunc", { 2 }, [this](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "toFunc", { 2 }, [this](const std::vector<Value>& args) -> Value {
         jc::SymExpr ast = args[0].asSymbolic();
         std::vector<std::string> varNames;
         if (args[1].isObjType(ObjType::LIST)) {
@@ -6266,37 +6294,11 @@ void BuiltinRegistry::registerCAS() {
         return jc::Value(cls);
         }, {"expr", "vars"});
 
-    reg("evalf", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
-        SymExpr expr = args[0].asSymbolic();
-        expr = evalFloat(expr);
-        expr = collapseSymFuncs(expr, *fnsPtr, this->builtinArity);
-
-        if (isConstantExpr(expr)) {
-            try {
-                std::map<std::string, Value> emptyEnv;
-                auto arities = this->builtinArity;
-                SymbolicFuncResolver resolver = [fnsPtr, arities](const std::string& name, const std::vector<Value>& fnArgs) -> Value {
-                    auto it = fnsPtr->find(name);
-                    if (it != fnsPtr->end()) {
-                        auto ait = arities.find(name);
-                        if (ait != arities.end() && !ait->second.empty()) {
-                            if (ait->second.find(static_cast<int>(fnArgs.size())) == ait->second.end()) {
-                                throw std::runtime_error("Runtime Error: Function '" + name + "' expects wrong number of arguments.");
-                            }
-                        }
-                        return it->second(fnArgs);
-                    }
-                    throw std::runtime_error("Function not found");
-                };
-                return evalUniversal(expr.ptr, emptyEnv, resolver);
-            } catch (const jc::EngineInterruptError&) {
-                throw;
-            } catch (...) {}
-        }
-        return Value(expr);
+    regModule(cas_ns, "evalf", { 1 }, [doEvalf](const std::vector<Value>& args) -> Value {
+        return doEvalf(args[0].asSymbolic());
         }, {"expr"});
 
-    reg("evalv", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "evalv", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         expr = evalValue(expr);
         expr = simplify(collapseSymFuncs(expr, *fnsPtr, this->builtinArity));
@@ -6326,14 +6328,14 @@ void BuiltinRegistry::registerCAS() {
         return Value(expr);
         }, {"expr"});
 
-    reg("replaceRule", { 3 }, [](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "replaceRule", { 3 }, [](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         SymExpr pattern = args[1].asSymbolic();
         SymExpr target = args[2].asSymbolic();
         return Value(jc::simplify(jc::applyRule(expr, pattern, target)));
     }, {"expr", "pat", "tgt"});
 
-    reg("solveEq", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "solveEq", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
         auto roots = jc::solveEq(args[0].asSymbolic(), getVarName(args[1], "solveEq"));
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
@@ -6365,7 +6367,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(L);
     }, {"expr", "var"});
 
-    reg("polyDiv", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "polyDiv", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         auto [q, r] = jc::polyDiv(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "polyDiv"));
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
@@ -6376,15 +6378,15 @@ void BuiltinRegistry::registerCAS() {
         return Value(L);
     }, {"A", "B", "var"});
 
-    reg("polyGCD", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "polyGCD", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         return Value(jc::polyGCD(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "polyGCD")));
     }, {"A", "B", "var"});
 
-    reg("resultant", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "resultant", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         return Value(jc::polyResultant(args[0].asSymbolic(), args[1].asSymbolic(), getVarName(args[2], "resultant")));
     }, {"A", "B", "var"});
 
-    reg("factor", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "factor", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value {
         if (args[0].isSymbolic()) {
             return Value(jc::factor(args[0].asSymbolic()));
         }
@@ -6400,17 +6402,17 @@ void BuiltinRegistry::registerCAS() {
         return Value(d);
         }, {"expr"});
 
-    reg("factorReal", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "factorReal", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(jc::factorReal(args[0].asSymbolic()));
         }, {"expr"});
 
-    reg("taylor", { 3, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "taylor", { 3, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
         int order = 5;
         if (args.size() == 4) order = static_cast<int>(std::round(args[3].asDouble()));
         return Value(jc::taylor(args[0].asSymbolic(), getVarName(args[1], "taylor"), args[2].asSymbolic(), order));
     }, {"expr", "var", "a", "order"});
 
-    reg("limit", { 2, 3, 4 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "limit", { 2, 3, 4 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
         bool isSymLimit = args[0].isSymbolic();
         if (!isSymLimit && args.size() >= 3) {
             if (args[1].isString() || (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR)) {
@@ -6474,7 +6476,7 @@ void BuiltinRegistry::registerCAS() {
         throw std::runtime_error("Math Error: Limit does not exist (left and right limits differ significantly or are undefined).");
     }, {"expr", "var", "val", "dir"});
 
-    reg("verifyInteg", { 2 }, [getVarName, this](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "verifyInteg", { 2 }, [getVarName, doEvalf](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         std::string var = getVarName(args[1], "verifyInteg");
         SymExpr integral = jc::integrate(expr, var);
@@ -6499,8 +6501,6 @@ void BuiltinRegistry::registerCAS() {
         int pass_count = 0;
         int valid_tests = 0;
 
-        auto evalfIt = builtins.find("evalf");
-
         for (const auto& tv : test_vals) {
             SymExpr subbed = diff_expr;
             for (const auto& v : vars) {
@@ -6510,7 +6510,7 @@ void BuiltinRegistry::registerCAS() {
             }
             
             try {
-                Value res = evalfIt->second({Value(subbed)});
+                Value res = doEvalf(subbed);
                 if (res.isSymbolic()) continue; // 如果 evalf 没能完全化简为数值，则跳过该测试点
                 valid_tests++;
                 double err = res.isComplex() ? res.asComplex().modulus() : std::abs(res.asDouble());
@@ -6524,7 +6524,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(false);
     }, {"expr", "var"});
 
-    reg("diff", { 2 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "diff", { 2 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
         bool isSymDiff = args[0].isSymbolic();
         if (!isSymDiff) {
             if (args[1].isString() || (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR)) {
@@ -6546,7 +6546,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(d);
         }, {"expr", "var"});
 
-    reg("integ", { 2, 3, 4 }, [evalFunc, getVarName, this](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "integ", { 2, 3, 4 }, [evalFunc, getVarName](const std::vector<Value>& args) -> Value {
         bool isSymInteg = args[0].isSymbolic();
         if (!isSymInteg && args.size() >= 2) {
             if (args[1].isString() || (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR)) {

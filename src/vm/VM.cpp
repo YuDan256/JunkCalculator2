@@ -1303,6 +1303,13 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         throw std::runtime_error("VM Error: Cannot invoke private method on this type.");
     }
 
+    BuiltinType objBt = BuiltinType::UNKNOWN;
+    if (obj.isObjType(ObjType::LIST)) objBt = BuiltinType::LIST;
+    else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
+    else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
+    else if (obj.isString()) objBt = BuiltinType::STRING;
+    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) objBt = BuiltinType::MATRIX;
+
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
@@ -1312,13 +1319,17 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 goto invoke_method;
             }
         }
+    } else if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
+        method = ic.cachedMethod;
+        owningClass = ic.cachedClass;
+        goto invoke_method;
     }
 
-    if (obj.isObjType(ObjType::LIST)) nativeProto = listProto;
-    else if (obj.isObjType(ObjType::DICT)) nativeProto = dictProto;
-    else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
-    else if (obj.isString()) nativeProto = stringProto;
-    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) nativeProto = matrixProto;
+    if (objBt == BuiltinType::LIST) nativeProto = listProto;
+    else if (objBt == BuiltinType::DICT) nativeProto = dictProto;
+    else if (objBt == BuiltinType::SET) nativeProto = setProto;
+    else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
+    else if (objBt == BuiltinType::MATRIX) nativeProto = matrixProto;
 
     if (nativeProto) {
         auto it = nativeProto->properties.find(methodName);
@@ -1327,6 +1338,9 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             if (fv.isFunctionClosure()) {
                 method = fv.asFunction();
                 owningClass = nativeProto;
+                ic.cachedBuiltinType = objBt;
+                ic.cachedMethod = method;
+                ic.cachedClass = owningClass;
             } else {
                 registers[currentFrame->registerBase + a] = fv;
                 execCall(a, b, kwArgc, a, isTailCall);
@@ -5674,7 +5688,44 @@ Value VM::run(int targetFrameDepth) {
                 bool found = false;
                 Value result;
                 
-                if (obj.isInstance()) {
+                BuiltinType objBt = BuiltinType::UNKNOWN;
+                if (obj.isObjType(ObjType::LIST)) objBt = BuiltinType::LIST;
+                else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
+                else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
+                else if (obj.isString()) objBt = BuiltinType::STRING;
+                else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) objBt = BuiltinType::MATRIX;
+
+                if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
+                    auto rawMethod = ic.cachedMethod;
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->paramNames = rawMethod->paramNames;
+                    bound->isRef = rawMethod->isRef;
+                    bound->defaultValues = rawMethod->defaultValues;
+                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
+                    if (rawMethod->paramTypesCount > 0) {
+                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                        bound->paramTypes = new Value[bound->paramTypesCount];
+                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                        }
+                    }
+                    bound->returnType = rawMethod->returnType;
+                    bound->nativeFn = rawMethod->nativeFn;
+                    bound->boundSelf = obj;
+                    bound->boundClass = Value(ic.cachedClass);
+                    result = Value(bound);
+                    found = true;
+                } else if (obj.isInstance()) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
                         auto rawMethod = ic.cachedMethod;
@@ -5760,19 +5811,22 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                     }
-                } else {
+                } else if (!found) {
                     ObjClass* nativeProto = nullptr;
-                    if (obj.isObjType(ObjType::LIST)) nativeProto = listProto;
-                    else if (obj.isObjType(ObjType::DICT)) nativeProto = dictProto;
-                    else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
-                    else if (obj.isString()) nativeProto = stringProto;
-                    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) nativeProto = matrixProto;
+                    if (objBt == BuiltinType::LIST) nativeProto = listProto;
+                    else if (objBt == BuiltinType::DICT) nativeProto = dictProto;
+                    else if (objBt == BuiltinType::SET) nativeProto = setProto;
+                    else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
+                    else if (objBt == BuiltinType::MATRIX) nativeProto = matrixProto;
 
                     if (nativeProto) {
                         auto it = nativeProto->properties.find(field);
                         if (it != nativeProto->properties.end() && !it->second.is_local) {
                             if (it->second.val.isFunctionClosure()) {
                                 auto rawMethod = it->second.val.asFunction();
+                                ic.cachedBuiltinType = objBt;
+                                ic.cachedMethod = rawMethod;
+                                ic.cachedClass = nativeProto;
                                 auto bound = GcHeap::get().allocate<ObjClosure>(
                                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
                                 );

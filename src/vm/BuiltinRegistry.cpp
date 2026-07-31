@@ -2423,9 +2423,9 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::none();
         }, {"key", "val"});
 
-    regModule(sys_ns, "__register_help", { 2 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "register_help", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString() || !args[1].isString()) {
-            throw std::runtime_error("System Error: __register_help expects two strings.");
+            throw std::runtime_error("System Error: register_help expects two strings.");
         }
         std::string topic = args[0].asString();
         std::string text = args[1].asString();

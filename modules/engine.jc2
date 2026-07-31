@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import image
 import window
+import sys
 
 class GameEngine {
     init(title: string = "JC2 Game", width: whole = 800, height: whole = 600, fps: whole = 60) = {
@@ -35,7 +36,7 @@ class GameEngine {
 
     // ─── Core Heartbeat ───
     run() = {
-        last_time = clock()
+        last_time = sys.clock()
         
         while (self.win.isOpen() && self.running) {
             while (true) {
@@ -50,7 +51,7 @@ class GameEngine {
                 if (ev.type == "close")     self.quit()
             }
 
-            current_time = clock()
+            current_time = sys.clock()
             dt = current_time - last_time
             last_time = current_time
 
@@ -61,10 +62,10 @@ class GameEngine {
             
             self.win.show(self.im)
 
-            work_time = clock() - current_time
+            work_time = sys.clock() - current_time
             sleep_time = self.frame_time - work_time
             if (sleep_time > 0) {
-                sleep(sleep_time)
+                sys.sleep(sleep_time)
             }
         }
     }
@@ -72,8 +73,8 @@ class GameEngine {
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 
-if (isfunction(__register_help)) {
-    __register_help("engine", r"DOC(
+try {
+    sys.register_help("engine", r"DOC(
 ═══ Game Engine Framework (Standard Library) ═══
 
   Requires: import engine
@@ -119,4 +120,4 @@ if (isfunction(__register_help)) {
     self.setBackground(color)  Sets the auto-clear background color.
     self.quit()                Safely terminates the game loop.
 )DOC")
-}
+} catch (_) {}

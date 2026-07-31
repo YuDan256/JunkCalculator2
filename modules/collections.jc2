@@ -273,8 +273,9 @@ class BST {
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 
-if (isfunction(__register_help)) {
-    __register_help("collections", r"DOC(
+import sys
+try {
+    sys.register_help("collections", r"DOC(
 ═══ Collections (Standard Library) ═══
 
   Requires: import collections
@@ -310,4 +311,4 @@ if (isfunction(__register_help)) {
     BST()                     Binary Search Tree. (Ignores duplicates).
                               Methods: insert(x), contains(x), size(), inorder()
 )DOC")
-}
+} catch (_) {}

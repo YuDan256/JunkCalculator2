@@ -658,8 +658,9 @@ printTruthTable(n: whole, fn: function) = {
 // │ 6. HELP TEXT REGISTRATION                              │
 // └────────────────────────────────────────────────────────┘
 
-if (isfunction(__register_help)) {
-    __register_help("discrete", r"DOC(
+import sys
+try {
+    sys.register_help("discrete", r"DOC(
 ═══ Discrete Mathematics Standard Library ═══
 
   Requires: import discrete
@@ -735,4 +736,4 @@ if (isfunction(__register_help)) {
     g.topSort()                Topological sort (DAG only)
     g.components()             Connected components (undirected only)
 )DOC")
-}
+} catch (_) {}

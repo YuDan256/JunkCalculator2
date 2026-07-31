@@ -1686,17 +1686,17 @@ invoke_method:
 namespace {
     struct SliceInfo { int start; int step; int count; };
 
-    SliceInfo computeSlice(int dimSize, int64_t s_start, int64_t s_end, int64_t s_step) {
-        int step = (s_step == ObjSlice::SLICE_NONE) ? 1 : static_cast<int>(s_step);
+    SliceInfo computeSlice(int dimSize, int s_start, int s_end, int s_step) {
+        int step = (s_step == ObjSlice::SLICE_NONE) ? 1 : s_step;
         if (step == 0) throw std::runtime_error("ValueError: slice step cannot be zero.");
 
         int start, end;
         if (step > 0) {
-            start = (s_start == ObjSlice::SLICE_NONE) ? 0 : static_cast<int>(s_start);
-            end = (s_end == ObjSlice::SLICE_NONE) ? dimSize : static_cast<int>(s_end);
+            start = (s_start == ObjSlice::SLICE_NONE) ? 0 : s_start;
+            end = (s_end == ObjSlice::SLICE_NONE) ? dimSize : s_end;
         } else {
-            start = (s_start == ObjSlice::SLICE_NONE) ? dimSize - 1 : static_cast<int>(s_start);
-            end = (s_end == ObjSlice::SLICE_NONE) ? -1 : static_cast<int>(s_end);
+            start = (s_start == ObjSlice::SLICE_NONE) ? dimSize - 1 : s_start;
+            end = (s_end == ObjSlice::SLICE_NONE) ? -1 : s_end;
         }
 
         if (start < 0) start += dimSize;
@@ -1739,41 +1739,6 @@ namespace {
             }
             return { false, i, {0,0,0} };
         }
-    }
-}
-
-void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall) {
-        int step = (s_step == ObjSlice::SLICE_NONE) ? 1 : static_cast<int>(s_step);
-        if (step == 0) throw std::runtime_error("ValueError: slice step cannot be zero.");
-
-        int start, end;
-        if (step > 0) {
-            start = (s_start == ObjSlice::SLICE_NONE) ? 0 : static_cast<int>(s_start);
-            end = (s_end == ObjSlice::SLICE_NONE) ? dimSize : static_cast<int>(s_end);
-        } else {
-            start = (s_start == ObjSlice::SLICE_NONE) ? dimSize - 1 : static_cast<int>(s_start);
-            end = (s_end == ObjSlice::SLICE_NONE) ? -1 : static_cast<int>(s_end);
-        }
-
-        if (start < 0) start += dimSize;
-        if (end < 0 && s_end != ObjSlice::SLICE_NONE) end += dimSize;
-
-        if (step > 0) {
-            start = std::max(0, std::min(dimSize, start));
-            end = std::max(0, std::min(dimSize, end));
-        } else {
-            start = std::max(-1, std::min(dimSize - 1, start));
-            end = std::max(-1, std::min(dimSize - 1, end));
-        }
-
-        int count = 0;
-        if (step > 0) {
-            if (end > start) count = (end - start + step - 1) / step;
-        } else {
-            if (end < start) count = (start - end - step - 1) / (-step);
-        }
-
-        return { start, step, count };
     }
 }
 
@@ -6655,12 +6620,12 @@ Value VM::run(int targetFrameDepth) {
                 ObjSlice* slice = GcHeap::get().allocate<ObjSlice>();
                 getReg(a) = Value(slice); // ★ 立即 Root 防止 GC 误杀
                 
-                auto readInt = [&](int idx) -> int64_t {
+                auto readInt = [&](int idx) -> int {
                     Value v = getReg(b + idx);
                     if (v.isNone()) return ObjSlice::SLICE_NONE;
                     if (v.isInt32()) return v.asInt32();
-                    if (v.isDouble()) return static_cast<int64_t>(std::round(v.asDoubleRaw()));
-                    return static_cast<int64_t>(std::round(v.asDouble()));
+                    if (v.isDouble()) return static_cast<int>(std::round(v.asDoubleRaw()));
+                    return static_cast<int>(std::round(v.asDouble()));
                 };
                 
                 slice->start = readInt(0);

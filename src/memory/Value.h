@@ -640,10 +640,10 @@ namespace jc {
     };
 
     struct ObjSlice : public Obj {
-        static constexpr int64_t SLICE_NONE = INT64_MIN;
-        int64_t start;
-        int64_t end;
-        int64_t step;
+        static constexpr int SLICE_NONE = INT32_MIN;
+        int start;
+        int end;
+        int step;
         ObjSlice() : start(SLICE_NONE), end(SLICE_NONE), step(SLICE_NONE) { type = ObjType::SLICE; }
     };
 
@@ -1607,7 +1607,7 @@ namespace jc {
             case ObjType::TYPE_DEF: return "<type '" + static_cast<ObjTypeDef*>(obj)->name() + "'>";
             case ObjType::SLICE: {
                 auto slice = static_cast<ObjSlice*>(obj);
-                auto fmt = [](int64_t v) { return v == ObjSlice::SLICE_NONE ? std::string("none()") : std::to_string(v); };
+                auto fmt = [](int v) { return v == ObjSlice::SLICE_NONE ? std::string("none()") : std::to_string(v); };
                 return "slice(" + fmt(slice->start) + ", " + fmt(slice->end) + ", " + fmt(slice->step) + ")";
             }
             case ObjType::LIST: {
@@ -2494,7 +2494,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         case ObjType::TYPE_DEF: os << "<type '" << static_cast<ObjTypeDef*>(obj)->name() << "'>"; break;
         case ObjType::SLICE: {
             auto slice = static_cast<ObjSlice*>(obj);
-            auto printArg = [&os](int64_t v) { if (v == ObjSlice::SLICE_NONE) os << "none"; else os << v; };
+            auto printArg = [&os](int v) { if (v == ObjSlice::SLICE_NONE) os << "none"; else os << v; };
             os << "slice(";
             printArg(slice->start); os << ", ";
             printArg(slice->end); os << ", ";

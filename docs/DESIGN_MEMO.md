@@ -66,5 +66,8 @@
 *   **内存模型与生命周期 (Memory Model & Lifecycle)**：`SymExpr` 是基于 DAG 的不可变 RC 对象。`ObjSymMatrix` 底层直接采用连续的 `std::vector<SymExpr>`（而非 `std::vector<Value>`）并继承 COW 机制。这从类型系统层面彻底杜绝了挂载常规 GC 对象（如 List/Dict）的可能性，完美摆脱了恶心的循环引用问题。当 RC 归零时瞬间析构，**绝对不参与** GC 的 Mark-and-Sweep 扫描，实现真正的零 GC 负担。
 *   **构建与类型提升网络 (Construction & Promotion Lattice)**：字面量 `[1, 2; 3, 4]` 绝对保留为 `realmatrix` 以维持极致性能。仅当混入符号变量时触发**按需懒提升 (Lazy Promotion)**。若矩阵构建中同时混入 `string` 和 `symbolic`，则触发**降级机制 (Degradation)** 退化为异构的 `list`，以保证矩阵代数运算的类型安全。复数在提升为符号节点时，会自动解构为 `Re(z) + Im(z) * i` 的 AST 树。
 *   **基础算术与表达式膨胀控制 (Arithmetic & Swell Control)**：在矩阵乘法 ($O(N^3)$) 的最内层循环中，必须强制调用轻量级的 `cas.simplify()` 或 `cas.contract()`，在合并同类项的同时压平 AST 树，防止表达式呈指数级爆炸。
-*   **高级线性代数 (Advanced Linear Algebra)**：彻底摒弃浮点 LU 分解。行列式计算对于大矩阵 ($N > 3$) 必须实现 **Bareiss 算法 (无分母高斯消元法)**，保证中间结果始终在多项式环内；求逆采用伴随矩阵法；特征值通过构造特征多项式 $\det(A - \lambda I) = 0$ 并联动 `cas.solveEq()` 求解。
+*   **高级线性代数 (Advanced Linear Algebra)**：彻底摒弃浮点 LU 分解。行列式计算对于大矩阵 ($N > 3$) 必须实现 **Bareiss 算法 (无分母高斯消元法)**，保证中间结果始终在多项式环内；求逆采用伴随矩阵法；特征值通过构造特征多项式 $\det(A - \lambda I) = 0$ 并联动 `cas.solveEq()` 求解。符号特征向量的计算（零空间求解）极易导致表达式膨胀，因此引入 `SymConfig::maxEigvecDim`（默认 4）进行维度限制，用户可通过 `sys.symconfig` 动态调节。
 *   **与 CAS 引擎的深度联动 (CAS Integration)**：微积分操作 (`diff`, `integ`) 自动在矩阵元素上广播。执行 `subs` 变量替换后，若矩阵内所有元素均退化为纯数值，引擎需将其**向下折叠 (Demotion)** 回 `realmatrix` 或 `complexmatrix`，恢复后续计算的极速性能。
+*   **致命的“隐藏零”判定 (Zero Equivalence Problem)**：在矩阵消元（如 Bareiss 算法）寻找非零主元时，坚决弃用不稳定的概率零测试。对于疑似零的符号表达式，强制执行最重型的 `cas.full_simplify()` 进行确定性零等价判定，确保多元复杂表达式在除法操作前的绝对正确性。
+*   **向量微积分扩展 (Vector Calculus)**：在 `cas` 命名空间中原生支持雅可比矩阵 (Jacobian)、海森矩阵 (Hessian)、梯度 (Gradient)、散度 (Divergence) 和旋度 (Curl)，直接返回 `SymMatrix` 结构，打通多变量微积分的最后一公里。
+*   **关系运算与显示控制 (Relational Ops & Display)**：符号矩阵的大小比较运算（如 `A > B`）与数值矩阵保持一致，直接抛出 `TypeError`。打印输出采用标准的二维对齐格式，不做任何特殊截断（若需防止刷屏，用户可自行开启 `/silent on` 模式）。

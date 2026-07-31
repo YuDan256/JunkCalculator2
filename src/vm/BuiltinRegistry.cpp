@@ -2331,6 +2331,7 @@ void BuiltinRegistry::registerSystemUtils() {
             setField("maxAstNodes", Value::fromInt32(SymConfig::maxAstNodes));
             setField("maxIterations", Value::fromInt32(SymConfig::maxIterations));
             setField("maxDepth", Value::fromInt32(SymConfig::maxDepth));
+            setField("maxEigvecDim", Value::fromInt32(SymConfig::maxEigvecDim));
             setField("debugIntegration", Value(SymConfig::debugIntegration));
             return Value(d);
         }
@@ -2339,6 +2340,7 @@ void BuiltinRegistry::registerSystemUtils() {
             SymConfig::maxAstNodes = 30000;
             SymConfig::maxIterations = 200;
             SymConfig::maxDepth = 6;
+            SymConfig::maxEigvecDim = 4;
             SymConfig::debugIntegration = false;
             return Value::none();
         }
@@ -2355,6 +2357,7 @@ void BuiltinRegistry::registerSystemUtils() {
         if (auto v = getField("maxAstNodes")) SymConfig::maxAstNodes = static_cast<int>(v->asDouble());
         if (auto v = getField("maxIterations")) SymConfig::maxIterations = static_cast<int>(v->asDouble());
         if (auto v = getField("maxDepth")) SymConfig::maxDepth = static_cast<int>(v->asDouble());
+        if (auto v = getField("maxEigvecDim")) SymConfig::maxEigvecDim = static_cast<int>(v->asDouble());
         if (auto v = getField("debugIntegration")) SymConfig::debugIntegration = v->truthy();
         return Value::none();
         }, {"dict_or_default"});
@@ -2370,6 +2373,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 SymConfig::maxAstNodes = 30000;
                 SymConfig::maxIterations = 200;
                 SymConfig::maxDepth = 6;
+                SymConfig::maxEigvecDim = 4;
                 SymConfig::debugIntegration = false;
                 return Value::none();
             }
@@ -2381,6 +2385,7 @@ void BuiltinRegistry::registerSystemUtils() {
             else if (key == "maxAstNodes") SymConfig::maxAstNodes = 50000;
             else if (key == "maxIterations") SymConfig::maxIterations = 1000;
             else if (key == "maxDepth") SymConfig::maxDepth = 20;
+            else if (key == "maxEigvecDim") SymConfig::maxEigvecDim = 4;
             else if (key == "debugIntegration") SymConfig::debugIntegration = false;
             else throw std::runtime_error("Runtime Error: Unknown SymConfig key '" + key + "'.");
             return Value::none();
@@ -2396,6 +2401,7 @@ void BuiltinRegistry::registerSystemUtils() {
         else if (key == "maxAstNodes") SymConfig::maxAstNodes = static_cast<int>(val);
         else if (key == "maxIterations") SymConfig::maxIterations = static_cast<int>(val);
         else if (key == "maxDepth") SymConfig::maxDepth = static_cast<int>(val);
+        else if (key == "maxEigvecDim") SymConfig::maxEigvecDim = static_cast<int>(val);
         else throw std::runtime_error("Runtime Error: Unknown SymConfig key '" + key + "'.");
         return Value::none();
         }, {"key", "val"});

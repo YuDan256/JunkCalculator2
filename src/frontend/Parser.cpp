@@ -80,8 +80,81 @@ namespace jc {
         auto expr = logicalOr();
         while (match({ TokenType::PIPE })) {
             Token op = previous();
-            auto right = logicalOr();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            while (match({ TokenType::NEWLINE })) {}
+            
+            if (match({ TokenType::DOT })) {
+                Token field(TokenType::ERROR, "");
+                if (match({ TokenType::DOLLAR })) {
+                    Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
+                    field = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
+                } else {
+                    Token t = peek();
+                    if (t.type == TokenType::IDENTIFIER || (t.type >= TokenType::IF && t.type <= TokenType::NONE_KW)) {
+                        field = advance();
+                        field.type = TokenType::IDENTIFIER;
+                    } else {
+                        throw std::runtime_error("Parser Error: Expect method name after '|> .'.");
+                    }
+                }
+
+                if (match({ TokenType::LPAREN })) {
+                    std::vector<std::unique_ptr<Expr>> args;
+                    while (match({ TokenType::NEWLINE })) {}
+                    if (!check(TokenType::RPAREN)) {
+                        bool hasKwArg = false;
+                        do {
+                            while (match({ TokenType::NEWLINE })) {}
+                            if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
+                                Token kwName = advance();
+                                advance(); // consume '='
+                                auto val = assignment();
+                                args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
+                                hasKwArg = true;
+                            } else {
+                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                args.push_back(assignment());
+                            }
+                            while (match({ TokenType::NEWLINE })) {}
+                        } while (match({ TokenType::COMMA }));
+                    }
+                    while (match({ TokenType::NEWLINE })) {}
+                    consume(TokenType::RPAREN, "Parser Error: Expect ')' after method arguments.");
+
+                    bool isPartial = false;
+                    std::vector<Token> phParams;
+                    std::vector<std::shared_ptr<Expr>> phDefaults;
+                    int phCount = 0;
+                    for (auto& arg : args) {
+                        if (auto* var = dynamic_cast<Variable*>(arg.get())) {
+                            if (var->name.lexeme == "_") {
+                                isPartial = true;
+                                Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
+                                phParams.push_back(phTok);
+                                phDefaults.push_back(nullptr);
+                                arg = std::make_unique<Variable>(phTok);
+                            }
+                        }
+                    }
+                    std::unique_ptr<Expr> methodNode = std::make_unique<MethodCallExpr>(std::move(expr), field, std::move(args));
+
+                    if (isPartial) {
+                        std::vector<bool> phIsRef(phParams.size(), false);
+                        std::vector<bool> phIsConst(phParams.size(), false);
+                        expr = std::make_unique<LambdaExpr>(
+                            "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
+                            std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr,
+                            "<partial_method>", std::shared_ptr<Expr>(methodNode.release())
+                        );
+                    } else {
+                        expr = std::move(methodNode);
+                    }
+                } else {
+                    expr = std::make_unique<DotAccess>(std::move(expr), field);
+                }
+            } else {
+                auto right = logicalOr();
+                expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            }
         }
         return expr;
     }

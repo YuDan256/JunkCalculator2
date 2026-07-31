@@ -62,9 +62,13 @@ namespace jc {
         void markValue(const Value& val);
         int collectGarbage();
         bool gc_locked_ = false;
+        bool isInitializing = false;
 
         template<typename T, typename... Args>
         T* allocate(Args&&... args) {
+            if (isInitializing) {
+                return allocateImmortal<T>(std::forward<Args>(args)...);
+            }
             if (shouldCollect()) {
                 collectGarbage();
             }

@@ -312,7 +312,7 @@ using namespace helpers;
 
 void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount) {
     if (!proto) return;
-    auto closure = GcHeap::get().allocateImmortal<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
     for (int i = 0; i < defaultCount; ++i) {
         closure->defaultValues.push_back(Value::uninit());
@@ -322,7 +322,7 @@ void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::v
 
 void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames) {
     if (!ns) return;
-    auto closure = GcHeap::get().allocateImmortal<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
     if (!paramNames.empty() && paramNames.back().substr(0, 3) == "...") {
         closure->hasRestParam = true;
@@ -347,11 +347,11 @@ void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::
 }
 
 void BuiltinRegistry::registerAll() {
-    sys_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); sys_ns->name = "sys";
-    io_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); io_ns->name = "io";
-    cas_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); cas_ns->name = "cas";
-    math_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); math_ns->name = "math";
-    random_ns = GcHeap::get().allocateImmortal<ObjNamespace>(); random_ns->name = "random";
+    sys_ns = GcHeap::get().allocate<ObjNamespace>(); sys_ns->name = "sys";
+    io_ns = GcHeap::get().allocate<ObjNamespace>(); io_ns->name = "io";
+    cas_ns = GcHeap::get().allocate<ObjNamespace>(); cas_ns->name = "cas";
+    math_ns = GcHeap::get().allocate<ObjNamespace>(); math_ns->name = "math";
+    random_ns = GcHeap::get().allocate<ObjNamespace>(); random_ns->name = "random";
 
     if (VM::activeVM) {
         VM::activeVM->injectModule("sys", Value(sys_ns));
@@ -391,6 +391,8 @@ void BuiltinRegistry::registerAll() {
     registerTypeChecks();
     registerSetFunctions();
     registerPredefinedClasses();
+    
+    GcHeap::get().isInitializing = false;
 }
 
 // =================================================================

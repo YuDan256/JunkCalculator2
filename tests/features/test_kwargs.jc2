@@ -16,7 +16,7 @@ test_kwargs_with_defaults() = {
 test_kwargs_with_defaults()
 
 test_kwargs_with_rest() = {
-    f(a, b=2, ...rest) = a + b + sum(rest)
+    f(a, b=2, ...rest) = a + b + rest.sum()
     assert(f(10, 20, 1, 2, 3) == 36, "Rest positional failed")
     assert(f(10, b=5) == 15, "Rest with kwarg failed")
     // Note: rest does not collect kwargs.

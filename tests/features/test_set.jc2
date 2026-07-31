@@ -21,18 +21,18 @@ test_set_predicates() = {
     a = @{1, 2}
     b = @{1, 2, 3}
     
-    assert(isSubset(a, b), "isSubset failed")
-    assert(isSuperset(b, a), "isSuperset failed")
-    assert(isDisjoint(a, @{99}), "isDisjoint failed")
+    assert(a.isSubset(b), "isSubset failed")
+    assert(b.isSuperset(a), "isSuperset failed")
+    assert(a.isDisjoint(@{99}), "isDisjoint failed")
 }
 test_set_predicates()
 
 test_set_mutation() = {
     s = @{1}
-    add(s, 2)
+    s.add(2)
     assert(2 in s, "Set add failed")
     
-    remove(s, 1)
+    s.remove(1)
     assert(!(1 in s), "Set remove failed")
 }
 test_set_mutation()

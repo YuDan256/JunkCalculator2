@@ -19,18 +19,18 @@ test_rstring()
 
 test_string_methods() = {
     s = "hello"
-    assert(upper(s) == "HELLO", "upper() failed")
-    assert(replace(s, "l", "w") == "hewwo", "replace() failed")
+    assert(s.upper() == "HELLO", "upper() failed")
+    assert(s.replace("l", "w") == "hewwo", "replace() failed")
     assert(s[::-1] == "olleh", "string reverse slice failed")
     assert(s[1:4] == "ell", "string slicing failed")
 }
 test_string_methods()
 
 test_string_split_join() = {
-    parts = split("a,b,c", ",")
+    parts = "a,b,c".split(",")
     assert(parts == @["a", "b", "c"], "split() failed")
     
-    joined = join(parts, "-")
+    joined = parts.join("-")
     assert(joined == "a-b-c", "join() failed")
 }
 test_string_split_join()

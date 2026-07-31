@@ -13,7 +13,7 @@ test_token_class()
 test_basic_syntax_macro() = {
     syntax concat_tokens(stream) = {
         // 提取所有 token 的 lexeme 并拼接
-        str_val = join(stream.tokens().map((t) => t.lexeme), "")
+        str_val = stream.tokens().map((t) => t.lexeme).join("")
         return ASTNode("Literal", 0, {value: str_val, isString: true})
     }
     

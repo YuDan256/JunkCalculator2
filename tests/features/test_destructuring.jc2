@@ -74,7 +74,7 @@ test_forin() = {
 
     row_sum = 0
     for ([r1, ...r_rest] in [1, 2, 3; 4, 5, 6]) {
-        row_sum += r1 + sum(r_rest)
+        row_sum += r1 + r_rest.sum()
     }
     assert(row_sum == 21, "For-In Matrix Rest Destructuring Failed")
 }
@@ -93,7 +93,7 @@ test_match() = {
     match_test(val) = {
         return match (val) {
             [a, b; c, d] => a + d,
-            [head, ...tail] if (head == 99) => sum(tail),
+            [head, ...tail] if (head == 99) => tail.sum(),
             {type: t, ...data} => t + str(data.id),
             _ => -1
         }

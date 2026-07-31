@@ -7,7 +7,7 @@ test_namespace_basic() = {
     
     assert(MathUtils.PI_APPROX == 3.14, "Namespace const access failed")
     assert(MathUtils.add(2, 3) == 5, "Namespace method call failed")
-    assert(!hasKey(MathUtils, "hidden"), "Namespace local hiding failed")
+    assert(!MathUtils.hasKey("hidden"), "Namespace local hiding failed")
 }
 test_namespace_basic()
 

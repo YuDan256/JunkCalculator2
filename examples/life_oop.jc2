@@ -30,8 +30,8 @@ class LifeGame extends engine.GameEngine {
     update_grid() = {
         next_grid = zeros(self.ROWS, self.COLS)
         R = self.ROWS; C = self.COLS; g = self.universe
-        for (i in range(R)) {
-            for (j in range(C)) {
+        for (i = 0; i < R; i += 1) {
+            for (j = 0; j < C; j += 1) {
                 // Torus Topology boundary wrapping
                 u = (i - 1 + R) % R; d = (i + 1) % R
                 l = (j - 1 + C) % C; r = (j + 1) % C
@@ -95,8 +95,8 @@ class LifeGame extends engine.GameEngine {
 
     // --- 🎨 Game Render Tick ---
     draw(im) = {
-        for (i in range(self.ROWS)) {
-            for (j in range(self.COLS)) {
+        for (i = 0; i < self.ROWS; i += 1) {
+            for (j = 0; j < self.COLS; j += 1) {
                 if (self.universe[i, j] == 1) {
                     im.fillRect(j * self.CELL_SIZE, i * self.CELL_SIZE, 
                                 self.CELL_SIZE - 1, self.CELL_SIZE - 1, self.color_alive)

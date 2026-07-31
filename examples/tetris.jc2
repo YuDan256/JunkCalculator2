@@ -10,7 +10,7 @@ class Tetris extends engine.GameEngine {
         super.init("JC2 Tetris - Advanced Edition", 660, 720, 60)
         
         // Tetromino shapes modeled perfectly as exact Matrices!
-        self.shapes = list(
+        self.shapes = @[
             [0,0,0,0; 1,1,1,1; 0,0,0,0; 0,0,0,0], // I
             [1,1; 1,1],                           // O
             [0,1,0; 1,1,1; 0,0,0],                // T
@@ -18,10 +18,10 @@ class Tetris extends engine.GameEngine {
             [1,1,0; 0,1,1; 0,0,0],                // Z
             [1,0,0; 1,1,1; 0,0,0],                // J
             [0,0,1; 1,1,1; 0,0,0]                 // L
-        )
+        ]
         
         // Cyberpunk styling: [0] = Empty, [1~7] = Block Colors
-        self.colors = list(
+        self.colors = @[
             "#111116",   // 0: Empty Background Grid
             "#00FFFF",   // 1: I (Cyan)
             "#FFFF00",   // 2: O (Yellow)
@@ -30,7 +30,7 @@ class Tetris extends engine.GameEngine {
             "#FF0055",   // 5: Z (Red)
             "#0055FF",   // 6: J (Blue)
             "#FF8800"    // 7: L (Orange)
-        )
+        ]
         
         self.COLS = 10
         self.ROWS = 20
@@ -79,14 +79,14 @@ class Tetris extends engine.GameEngine {
 
     // ─── Core Logic: Physical Collision Detection ───
     isValid(piece, br, bc) = {
-        local pr = piece.rows()
-        local pc = piece.cols()
+        pr = piece.rows()
+        pc = piece.cols()
         
-        for (local r = 0; r < pr; r += 1) {
-            for (local c = 0; c < pc; c += 1) {
+        for (r = 0; r < pr; r += 1) {
+            for (c = 0; c < pc; c += 1) {
                 if (piece[r, c] != 0.0) {
-                    local target_r = br + r
-                    local target_c = bc + c
+                    target_r = br + r
+                    target_c = bc + c
                     
                     // Out of bounds checking
                     if (target_c < 0 || target_c >= self.COLS || target_r >= self.ROWS) {
@@ -104,12 +104,12 @@ class Tetris extends engine.GameEngine {
 
     // Mathematical 90-degree Clockwise Matrix Rotation!
     rotatePiece(piece) = {
-        local pr = piece.rows()
-        local pc = piece.cols()
-        local res = zeros(pc, pr)
+        pr = piece.rows()
+        pc = piece.cols()
+        res = zeros(pc, pr)
         
-        for (local r = 0; r < pr; r += 1) {
-            for (local c = 0; c < pc; c += 1) {
+        for (r = 0; r < pr; r += 1) {
+            for (c = 0; c < pc; c += 1) {
                 res[c, pr - 1 - r] = piece[r, c]
             }
         }
@@ -117,15 +117,15 @@ class Tetris extends engine.GameEngine {
     }
 
     lockPiece() = {
-        local pr = self.curr_piece.rows()
-        local pc = self.curr_piece.cols()
+        pr = self.curr_piece.rows()
+        pc = self.curr_piece.cols()
         
         // Bake the falling piece into the background board matrix
-        for (local r = 0; r < pr; r += 1) {
-            for (local c = 0; c < pc; c += 1) {
+        for (r = 0; r < pr; r += 1) {
+            for (c = 0; c < pc; c += 1) {
                 if (self.curr_piece[r, c] != 0.0) {
-                    local br = self.curr_r + r
-                    local bc = self.curr_c + c
+                    br = self.curr_r + r
+                    bc = self.curr_c + c
                     if (br >= 0 && br < self.ROWS) {
                         self.board[br, bc] = double(self.curr_color)
                     }
@@ -137,24 +137,24 @@ class Tetris extends engine.GameEngine {
     }
 
     clearLines() = {
-        local cleared = 0
+        cleared = 0
         // Search rows from bottom to top
-        for (local r = self.ROWS - 1; r >= 0; r -= 1) {
-            local full = true
-            for (local c = 0; c < self.COLS; c += 1) {
+        for (r = self.ROWS - 1; r >= 0; r -= 1) {
+            full = true
+            for (c = 0; c < self.COLS; c += 1) {
                 if (self.board[r, c] == 0.0) { full = false; break }
             }
             
             if (full) {
                 cleared += 1
                 // Shift all rows above down by one
-                for (local y = r; y > 0; y -= 1) {
-                    for (local x = 0; x < self.COLS; x += 1) {
+                for (y = r; y > 0; y -= 1) {
+                    for (x = 0; x < self.COLS; x += 1) {
                         self.board[y, x] = self.board[y - 1, x]
                     }
                 }
                 // Clear the top-most row
-                for (local x = 0; x < self.COLS; x += 1) self.board[0, x] = 0.0
+                for (x = 0; x < self.COLS; x += 1) self.board[0, x] = 0.0
                 
                 // Re-evaluate current row because everything shifted down!
                 r += 1 
@@ -210,7 +210,7 @@ class Tetris extends engine.GameEngine {
             }
         }
         if (key == "UP" || key == "W" || key == "w") {
-            local rot = self.rotatePiece(self.curr_piece)
+            rot = self.rotatePiece(self.curr_piece)
             if (self.isValid(rot, self.curr_r, self.curr_c)) {
                 self.curr_piece = rot
             }
@@ -230,11 +230,11 @@ class Tetris extends engine.GameEngine {
         // -------------------------------------------------------------
         // 🎨 Left Box: MAIN BOARD RENDERER
         // -------------------------------------------------------------
-        for (local r = 0; r < self.ROWS; r += 1) {
-            for (local c = 0; c < self.COLS; c += 1) {
-                local val = int(self.board[r, c])
-                local x = self.ox + c * self.CELL
-                local y = self.oy + r * self.CELL
+        for (r = 0; r < self.ROWS; r += 1) {
+            for (c = 0; c < self.COLS; c += 1) {
+                val = int(self.board[r, c])
+                x = self.ox + c * self.CELL
+                y = self.oy + r * self.CELL
                 im.fillRect(x, y, self.CELL - 1, self.CELL - 1, self.colors[val])
             }
         }
@@ -244,25 +244,25 @@ class Tetris extends engine.GameEngine {
 
         // Draw Ghost/Shadow Piece
         if (!self.game_over) {
-            local ghost_r = self.curr_r
+            ghost_r = self.curr_r
             while (self.isValid(self.curr_piece, ghost_r + 1, self.curr_c)) ghost_r += 1
             
-            local pr = self.curr_piece.rows()
-            local pc = self.curr_piece.cols()
+            pr = self.curr_piece.rows()
+            pc = self.curr_piece.cols()
             
-            for (local r = 0; r < pr; r += 1) {
-                for (local c = 0; c < pc; c += 1) {
+            for (r = 0; r < pr; r += 1) {
+                for (c = 0; c < pc; c += 1) {
                     if (self.curr_piece[r, c] != 0.0) {
                         // Ghost footprint
                         if (ghost_r + r >= 0) {
-                            local gx = self.ox + (self.curr_c + c) * self.CELL
-                            local gy = self.oy + (ghost_r + r) * self.CELL
+                            gx = self.ox + (self.curr_c + c) * self.CELL
+                            gy = self.oy + (ghost_r + r) * self.CELL
                             im.rect(gx + 1, gy + 1, self.CELL - 3, self.CELL - 3, "#444455", 1.5)
                         }
                         // Actual falling block
                         if (self.curr_r + r >= 0) {
-                            local ax = self.ox + (self.curr_c + c) * self.CELL
-                            local ay = self.oy + (self.curr_r + r) * self.CELL
+                            ax = self.ox + (self.curr_c + c) * self.CELL
+                            ay = self.oy + (self.curr_r + r) * self.CELL
                             im.fillRect(ax, ay, self.CELL - 1, self.CELL - 1, self.colors[self.curr_color])
                         }
                     }
@@ -273,26 +273,26 @@ class Tetris extends engine.GameEngine {
         // -------------------------------------------------------------
         // 🖥️ Right Box: NATIVE UI DASHBOARD
         // -------------------------------------------------------------
-        local ui_x = self.ox + self.COLS * self.CELL + 50
+        ui_x = self.ox + self.COLS * self.CELL + 50
         
         im.text("JC2 TETRIS", ui_x, self.oy, "#00FFCC", 2.0)
         
         // ★ NEXT PIECE PREVIEW BOX
-        local next_y = self.oy + 50
+        next_y = self.oy + 50
         im.text("UPCOMING", ui_x, next_y, "#8888AA", 1.5)
         im.fillRect(ui_x, next_y + 30, 160, 120, "#191922")
         im.rect(ui_x, next_y + 30, 160, 120, "#333344", 2.0)
         
-        local next_p = self.shapes[self.next_idx]
-        local nr = next_p.rows()
-        local nc = next_p.cols()
+        next_p = self.shapes[self.next_idx]
+        nr = next_p.rows()
+        nc = next_p.cols()
         
         // Mathematically center the preview piece inside the 160x120 box!
-        local prev_ox = ui_x + int((160 - nc * self.CELL) / 2)
-        local prev_oy = next_y + 30 + int((120 - nr * self.CELL) / 2)
+        prev_ox = ui_x + int((160 - nc * self.CELL) / 2)
+        prev_oy = next_y + 30 + int((120 - nr * self.CELL) / 2)
         
-        for (local r = 0; r < nr; r += 1) {
-            for (local c = 0; c < nc; c += 1) {
+        for (r = 0; r < nr; r += 1) {
+            for (c = 0; c < nc; c += 1) {
                 if (next_p[r, c] != 0.0) {
                     im.fillRect(prev_ox + c * self.CELL, prev_oy + r * self.CELL, self.CELL - 1, self.CELL - 1, self.colors[self.next_idx + 1])
                 } 
@@ -300,18 +300,18 @@ class Tetris extends engine.GameEngine {
         }
         
         // ★ SCORE & STATS
-        local stat_y = next_y + 180
+        stat_y = next_y + 180
         im.text("SCORE", ui_x, stat_y, "#8888AA", 1.5)
         im.text(str(self.score), ui_x, stat_y + 25, "#FFFFFF", 2.5)
         
         im.text("LINES", ui_x, stat_y + 70, "#8888AA", 1.5)
         im.text(str(self.lines), ui_x, stat_y + 95, "#FFCC00", 2.0)
         
-        local spd = int((0.5 - self.fall_speed) * 1000)
+        spd = int((0.5 - self.fall_speed) * 1000)
         im.text(f"SPEED: +{(spd > 0) ? spd : 0}", ui_x, stat_y + 130, "#00FFCC", 1)
 
         // ★ CONTROLS LEGEND
-        local ctrl_y = stat_y + 200
+        ctrl_y = stat_y + 200
         im.text("CONTROLS", ui_x, ctrl_y, "#555566", 1.5)
         im.line(ui_x, ctrl_y + 20, ui_x + 160, ctrl_y + 20, "#333344", 2.0)
         im.text("[W /UP] Rotate", ui_x, ctrl_y + 35, "#8888AA", 1.0)

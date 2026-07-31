@@ -297,9 +297,9 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
         std::string kwName = kwNameVal.asString();
         
         bool found = false;
-        for (int j = dstIdx; j < totalExpected; ++j) {
+        for (int j = 0; j < totalExpected; ++j) {
             if (paramNames[j] == kwName) {
-                if (!alignedArgs[j].isUninit()) {
+                if (j < dstIdx || !alignedArgs[j].isUninit()) {
                     throw std::runtime_error("TypeError: Multiple values for argument '" + kwName + "'.");
                 }
                 alignedArgs[j] = kwVal;
@@ -539,15 +539,17 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (closure->paramNames.empty()) {
                     throw std::runtime_error("TypeError: Native function '" + closure->rawBody + "' does not support keyword arguments.");
                 }
-                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->hasRestParam);
+                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->hasRestParam, closure->isUFCS ? closure->boundSelf : Value::none());
                 
-                for (int i = 0; i < static_cast<int>(closure->minArgs()); ++i) {
+                int expected = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
+                for (int i = 0; i < expected; ++i) {
                     if (args[i].isUninit()) {
                         throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + "' requires at least " + std::to_string(closure->minArgs()) + " arguments.");
                     }
                 }
             } else {
-                args.reserve(argc);
+                args.reserve(argc + (closure->isUFCS ? 1 : 0));
+                if (closure->isUFCS) args.push_back(closure->boundSelf);
                 for (int i = 0; i < argc; ++i) {
                     args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
                 }
@@ -568,17 +570,19 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     std::string expected;
                     for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
                         if (aIt != ait->second.begin()) expected += " or ";
-                        expected += std::to_string(*aIt);
+                        expected += std::to_string(closure->isUFCS ? *aIt - 1 : *aIt);
                     }
                     throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
-                        "' expects " + expected + " arguments, got " + std::to_string(actualArgc) + ".");
+                        "' expects " + expected + " arguments, got " + std::to_string(closure->isUFCS ? actualArgc - 1 : actualArgc) + ".");
                 }
             } else if (static_cast<int>(closure->maxArgs()) > 0 && !closure->hasRestParam) {
-                if (totalArgc < static_cast<int>(closure->minArgs()) || totalArgc > static_cast<int>(closure->maxArgs())) {
+                int expectedMin = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
+                int expectedMax = closure->isUFCS ? closure->maxArgs() + 1 : closure->maxArgs();
+                if (totalArgc < expectedMin || totalArgc > expectedMax) {
                     throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
                         "' expects " + std::to_string(closure->minArgs()) + " to " + 
                         std::to_string(closure->maxArgs()) + " arguments, got " + 
-                        std::to_string(totalArgc) + ".");
+                        std::to_string(closure->isUFCS ? totalArgc - 1 : totalArgc) + ".");
                 }
             }
 
@@ -5905,21 +5909,10 @@ Value VM::run(int targetFrameDepth) {
                                         }
                                     }
                                     bound->returnType = targetFn->returnType;
-                                    bound->nativeFn = targetFn->nativeFn;
                                 } else {
-                                    bound->nativeFn = std::make_any<NativeCallable>(
-                                        [](const std::vector<Value>& args) -> Value {
-                                            Value capturedObj = helpers::nativeSelfStack.back();
-                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
-                                            std::vector<Value> fullArgs;
-                                            fullArgs.reserve(args.size() + 1);
-                                            fullArgs.push_back(capturedObj);
-                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                            return helpers::safeCallFunction(fn, fullArgs);
-                                        }
-                                    );
-                                    bound->boundClass = Value(targetFn);
+                                    bound->boundClass = targetFn->boundClass;
                                 }
+                                bound->nativeFn = targetFn->nativeFn;
                                 result = Value(bound);
                                 found = true;
                             }
@@ -5956,21 +5949,10 @@ Value VM::run(int targetFrameDepth) {
                                         }
                                     }
                                     bound->returnType = targetFn->returnType;
-                                    bound->nativeFn = targetFn->nativeFn;
                                 } else {
-                                    bound->nativeFn = std::make_any<NativeCallable>(
-                                        [](const std::vector<Value>& args) -> Value {
-                                            Value capturedObj = helpers::nativeSelfStack.back();
-                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
-                                            std::vector<Value> fullArgs;
-                                            fullArgs.reserve(args.size() + 1);
-                                            fullArgs.push_back(capturedObj);
-                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                            return helpers::safeCallFunction(fn, fullArgs);
-                                        }
-                                    );
-                                    bound->boundClass = Value(targetFn);
+                                    bound->boundClass = targetFn->boundClass;
                                 }
+                                bound->nativeFn = targetFn->nativeFn;
                                 result = Value(bound);
                                 found = true;
                             }
@@ -5998,28 +5980,9 @@ Value VM::run(int targetFrameDepth) {
                                 std::set<int> allowedArities;
                                 if (ait != builtinArity.end()) allowedArities = ait->second;
 
-                                bound->nativeFn = std::make_any<NativeCallable>(
-                                    [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
-                                        Value capturedObj = helpers::nativeSelfStack.back();
-                                        int totalArgs = static_cast<int>(args.size()) + 1;
-                                        if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
-                                            std::string expected;
-                                            for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
-                                                if (aIt != allowedArities.begin()) expected += " or ";
-                                                expected += std::to_string(*aIt - 1);
-                                            }
-                                            throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
-                                        }
-                                        std::vector<Value> fullArgs;
-                                        fullArgs.reserve(totalArgs);
-                                        fullArgs.push_back(capturedObj);
-                                        fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                        return nativeFn(fullArgs);
-                                    }
-                                );
-                                
                                 ic.cachedGlobalSlot = -4;
-                                ic.cachedNativeFn = bound->nativeFn;
+                                ic.cachedNativeFn = std::make_any<NativeCallable>(nativeFn);
+                                bound->nativeFn = ic.cachedNativeFn;
                                 
                                 result = Value(bound);
                                 found = true;

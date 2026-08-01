@@ -1008,6 +1008,9 @@ int main(int argc, char* argv[]) {
                 } else if (result.isObjType(jc::ObjType::STRING_MATRIX)) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_GREEN);
                     isTopLevelMatrix = true;
+                } else if (result.isObjType(jc::ObjType::SYM_MATRIX)) {
+                    typeColor = jc::col(jc::Ansi::WHITE);
+                    isTopLevelMatrix = true;
                 } else if (result.isObjType(jc::ObjType::BASENUM)) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_CYAN);
                 } else if (result.isObjType(jc::ObjType::CLOSURE) || result.isObjType(jc::ObjType::CLASS)) {

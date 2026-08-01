@@ -15,26 +15,51 @@ namespace jc {
     }
 
     bool Monomial::operator<(const Monomial& other) const {
-        std::vector<std::string> vars;
-        for (const auto& kv : powers) vars.push_back(kv.first);
-        for (const auto& kv : other.powers) {
-            if (std::find(vars.begin(), vars.end(), kv.first) == vars.end()) {
-                vars.push_back(kv.first);
+        // 零内存分配的字典序比较 (Lexicographic Order)
+        // 变量名大的优先级高 (例如 "x" > "_z")
+        // std::map 默认是升序排列，所以我们使用 rbegin() 逆向遍历
+        auto it1 = powers.rbegin();
+        auto it2 = other.powers.rbegin();
+        
+        while (it1 != powers.rend() && it2 != other.powers.rend()) {
+            if (it1->first > it2->first) {
+                // it1 有一个优先级更高的变量，而 it2 没有 (即 it2 的该变量指数为 0)
+                // 因为 it1 的指数 > 0，所以 p1 > p2，返回 false
+                return false;
+            } else if (it1->first < it2->first) {
+                // it2 有一个优先级更高的变量
+                // p1 (0) < p2 (> 0)，返回 true
+                return true;
+            } else {
+                // 变量相同，比较指数
+                if (it1->second != it2->second) {
+                    return it1->second < it2->second;
+                }
+                ++it1;
+                ++it2;
             }
         }
-        // 字典序：变量名大的优先级高 (例如 "x" > "_z")
-        std::sort(vars.begin(), vars.end(), std::greater<std::string>());
-
-        for (const auto& var : vars) {
-            int p1 = powers.count(var) ? powers.at(var) : 0;
-            int p2 = other.powers.count(var) ? other.powers.at(var) : 0;
-            if (p1 != p2) return p1 < p2;
+        
+        if (it1 != powers.rend()) {
+            // it1 还有剩余变量 (优先级较低)，it2 没有了
+            return false; // p1 > 0, p2 = 0
+        } else if (it2 != other.powers.rend()) {
+            // it2 还有剩余变量
+            return true; // p1 = 0, p2 > 0
         }
+        
         return false;
     }
 
     bool Monomial::operator==(const Monomial& other) const {
-        return !(*this < other) && !(other < *this);
+        if (powers.size() != other.powers.size()) return false;
+        auto it1 = powers.begin();
+        auto it2 = other.powers.begin();
+        while (it1 != powers.end()) {
+            if (it1->first != it2->first || it1->second != it2->second) return false;
+            ++it1; ++it2;
+        }
+        return true;
     }
 
     Monomial Monomial::multiply(const Monomial& other) const {

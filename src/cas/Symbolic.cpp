@@ -375,7 +375,9 @@ namespace jc {
     // 表达式排序比较器 (Higher power first, smaller lexicographical first)
     // ==========================================
     static int compareSymNodes(const std::shared_ptr<SymNode>& a, const std::shared_ptr<SymNode>& b) {
-        auto getCore = [](const std::shared_ptr<SymNode>& n) -> std::tuple<std::string, double, double> {
+        if (a == b) return 0;
+
+        auto getCore = [](const std::shared_ptr<SymNode>& n) -> std::tuple<std::shared_ptr<SymNode>, double, double> {
             std::shared_ptr<SymNode> core = n;
             if (n->getType() == SymType::MUL) {
                 auto mul = std::static_pointer_cast<SymMul>(n);
@@ -383,13 +385,11 @@ namespace jc {
                 for (auto& arg : mul->args) {
                     if (arg->getType() != SymType::NUM) vars.push_back(arg);
                 }
-                if (vars.empty()) return {"", 0.0, 0.0}; // 纯常数
+                if (vars.empty()) return {nullptr, 0.0, 0.0}; // 纯常数
                 if (vars.size() == 1) core = vars[0];
                 else {
-                    std::string s;
                     double totalExp = 0.0;
                     for (auto& v : vars) {
-                        s += v->toString() + "*";
                         if (v->getType() == SymType::POW) {
                             auto p = std::static_pointer_cast<SymPow>(v);
                             if (p->exp->getType() == SymType::NUM) {
@@ -399,10 +399,10 @@ namespace jc {
                             totalExp += 1.0;
                         }
                     }
-                    return {s, 1.0, totalExp};
+                    return {n, 1.0, totalExp};
                 }
             } else if (n->getType() == SymType::NUM) {
-                return {"", 0.0, 0.0};
+                return {nullptr, 0.0, 0.0};
             }
 
             if (core->getType() == SymType::POW) {
@@ -410,29 +410,29 @@ namespace jc {
                 if (p->exp->getType() == SymType::NUM) {
                     try {
                         double e = casValToValue(std::static_pointer_cast<SymNum>(p->exp)->value).asDouble();
-                        return {p->base->toString(), e, e};
+                        return {p->base, e, e};
                     } catch(...) {}
                 }
             }
-            return {core->toString(), 1.0, 1.0};
+            return {core, 1.0, 1.0};
         };
 
-        auto [baseA, expA, totA] = getCore(a);
-        auto [baseB, expB, totB] = getCore(b);
+        auto [coreA, expA, totA] = getCore(a);
+        auto [coreB, expB, totB] = getCore(b);
 
         // 纯常数排在最后
-        if (baseA.empty() && !baseB.empty()) return 1;
-        if (!baseA.empty() && baseB.empty()) return -1;
-        if (baseA.empty() && baseB.empty()) return 0;
+        if (!coreA && coreB) return 1;
+        if (coreA && !coreB) return -1;
+        if (!coreA && !coreB) return 0;
 
         // 总指数高的排在前面 (降幂排列)
         if (totA != totB) {
             return totA > totB ? -1 : 1;
         }
 
-        // 字典序比较
-        if (baseA != baseB) {
-            return baseA < baseB ? -1 : 1;
+        // 字典序比较 (使用缓存的 Signature 替代每次生成 String)
+        if (coreA != coreB) {
+            return coreA->getSignature() < coreB->getSignature() ? -1 : 1;
         }
 
         // 单变量同底数，指数高的排在前面
@@ -493,7 +493,7 @@ namespace jc {
         flattenAdd(b.ptr);
         CASVal sumConst = BigInt(0);
         struct TermData { CASVal coeff; std::shared_ptr<SymNode> baseNode; };
-        std::map<std::string, TermData> symTerms;
+        std::unordered_map<uintptr_t, TermData> symTerms;
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
                 sumConst = casAdd(sumConst, std::static_pointer_cast<SymNum>(node)->value);
@@ -515,29 +515,34 @@ namespace jc {
                     SymExpr rem = (symParts.size() == 1)
                         ? SymExpr(symParts[0])
                         : SymExpr(std::make_shared<SymMul>(symParts));
-                    std::string key = rem.ptr->getSignature();
-                    if (symTerms.count(key))
-                        symTerms[key].coeff = casAdd(symTerms[key].coeff, coeff);
+                    uintptr_t key = reinterpret_cast<uintptr_t>(rem.ptr.get());
+                    auto it = symTerms.find(key);
+                    if (it != symTerms.end())
+                        it->second.coeff = casAdd(it->second.coeff, coeff);
                     else
                         symTerms[key] = { coeff, rem.ptr };
                 }
             }
             else {
-                std::string key = node->getSignature();
-                if (symTerms.count(key))
-                    symTerms[key].coeff = casAdd(symTerms[key].coeff, BigInt(1));
+                SymExpr internedNode(node);
+                uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr.get());
+                auto it = symTerms.find(key);
+                if (it != symTerms.end())
+                    it->second.coeff = casAdd(it->second.coeff, BigInt(1));
                 else
-                    symTerms[key] = { BigInt(1), node };
+                    symTerms[key] = { BigInt(1), internedNode.ptr };
             }
         }
         // ★ 纯净输出：不做任何负号提取，直接组装 ADD 节点
-        std::vector<std::pair<std::string, TermData>> sortedTerms(symTerms.begin(), symTerms.end());
+        std::vector<TermData> sortedTerms;
+        sortedTerms.reserve(symTerms.size());
+        for (auto& kv : symTerms) sortedTerms.push_back(kv.second);
         std::sort(sortedTerms.begin(), sortedTerms.end(), [](const auto& lhs, const auto& rhs) {
-            return compareSymNodes(lhs.second.baseNode, rhs.second.baseNode) < 0;
+            return compareSymNodes(lhs.baseNode, rhs.baseNode) < 0;
         });
 
         std::vector<std::shared_ptr<SymNode>> newArgs;
-        for (auto& [key, data] : sortedTerms) {
+        for (auto& data : sortedTerms) {
             if (isCasZero(data.coeff)) continue;
             if (isCasOne(data.coeff)) {
                 newArgs.push_back(data.baseNode);
@@ -585,7 +590,7 @@ namespace jc {
         flattenMul(b.ptr);
         CASVal prodConst = BigInt(1);
         struct FactorData { CASVal exp; std::shared_ptr<SymNode> baseNode; };
-        std::map<std::string, FactorData> symFactors;
+        std::unordered_map<uintptr_t, FactorData> symFactors;
         // ★ 核心架构：ADD 基底首项负号正规化
         // 检测一个 ADD 节点的字典序最后一项（通常是最高次项）是否带负系数
         auto addLeadingNegative = [](const std::shared_ptr<SymNode>& node) -> bool {
@@ -624,11 +629,13 @@ namespace jc {
                     }
                 }
             }
-            std::string key = base->getSignature();
-            if (symFactors.count(key))
-                symFactors[key].exp = casAdd(symFactors[key].exp, expVal);
+            SymExpr internedBase(base);
+            uintptr_t key = reinterpret_cast<uintptr_t>(internedBase.ptr.get());
+            auto it = symFactors.find(key);
+            if (it != symFactors.end())
+                it->second.exp = casAdd(it->second.exp, expVal);
             else
-                symFactors[key] = { expVal, base };
+                symFactors[key] = { expVal, internedBase.ptr };
             };
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
@@ -697,13 +704,15 @@ namespace jc {
             }
         }
 
-        std::vector<std::pair<std::string, FactorData>> sortedFactors(symFactors.begin(), symFactors.end());
+        std::vector<FactorData> sortedFactors;
+        sortedFactors.reserve(symFactors.size());
+        for (auto& kv : symFactors) sortedFactors.push_back(kv.second);
         std::sort(sortedFactors.begin(), sortedFactors.end(), [](const auto& lhs, const auto& rhs) {
-            return compareSymNodes(lhs.second.baseNode, rhs.second.baseNode) < 0;
+            return compareSymNodes(lhs.baseNode, rhs.baseNode) < 0;
         });
 
         std::vector<std::shared_ptr<SymNode>> newArgs;
-        for (auto& [key, data] : sortedFactors) {
+        for (auto& data : sortedFactors) {
             if (isCasZero(data.exp)) continue;
             
             SymExpr term = SymExpr(data.baseNode) ^ SymExpr(data.exp);

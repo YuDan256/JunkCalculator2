@@ -110,9 +110,7 @@ namespace jc {
         SymExpr operator-() const;
 
         bool operator==(const SymExpr& other) const {
-            if (ptr == other.ptr) return true;
-            if (!ptr || !other.ptr) return false;
-            return ptr->getSignature() == other.ptr->getSignature();
+            return ptr == other.ptr;
         }
         bool operator!=(const SymExpr& other) const {
             return !(*this == other);

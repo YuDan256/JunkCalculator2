@@ -183,7 +183,8 @@ namespace jc {
                 if (curr->type == ObjType::LIST || curr->type == ObjType::DICT || 
                     curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
                     curr->type == ObjType::INSTANCE || curr->type == ObjType::NAMESPACE || 
-                    curr->type == ObjType::UPVALUE || curr->type == ObjType::TYPE_DEF) {
+                    curr->type == ObjType::UPVALUE || curr->type == ObjType::TYPE_DEF ||
+                    curr->type == ObjType::CLASS) {
                     curr->clearTotal();
                 }
                 curr = curr->next;
@@ -211,6 +212,24 @@ namespace jc {
         GcHeap() = default;
         ~GcHeap() {
             isSweeping_ = true; // 防止析构期间触发 freeObj 导致链表损坏
+            
+            auto clearList = [](Obj* list) {
+                Obj* curr = list;
+                while (curr != nullptr) {
+                    if (curr->type == ObjType::LIST || curr->type == ObjType::DICT || 
+                        curr->type == ObjType::SET || curr->type == ObjType::CLOSURE || 
+                        curr->type == ObjType::INSTANCE || curr->type == ObjType::NAMESPACE || 
+                        curr->type == ObjType::UPVALUE || curr->type == ObjType::TYPE_DEF ||
+                        curr->type == ObjType::CLASS) {
+                        curr->clearTotal();
+                    }
+                    curr = curr->next;
+                }
+            };
+            
+            clearList(objects_);
+            clearList(immortals_);
+
             Obj* curr = objects_;
             while (curr) {
                 Obj* next = curr->next;

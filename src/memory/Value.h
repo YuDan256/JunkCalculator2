@@ -515,6 +515,7 @@ namespace jc {
             classId = nextId++;
             type = ObjType::CLASS; 
         }
+        void clearTotal() override { properties.clear(); }
     };
 
     struct ObjTypeDef : public Obj {
@@ -1804,6 +1805,12 @@ namespace jc {
             boundClass = Value();
             defaultValues.clear();
             nativeFn.reset();
+            returnType = Value::none();
+            if (paramTypes) {
+                for (int i = 0; i < paramTypesCount; ++i) {
+                    paramTypes[i] = Value::none();
+                }
+            }
             // 注意：upvalues 数组的清理交给析构函数，这里不需要清空，GC 会处理 ObjUpVal
         }
 

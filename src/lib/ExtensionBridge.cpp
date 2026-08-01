@@ -705,6 +705,10 @@ static void host_set_class_allocator(JC2_VMContext, JC2_ValueHandle cls, JC2_Nat
 }
 
 static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle inst, const char* name) {
+    std::string keyStr(name);
+    if (keyStr == "<init>" || keyStr == "<finalize>" || keyStr.find("::") != std::string::npos) {
+        throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+    }
     Value i = from_handle(inst);
     if (i.isInstance()) {
         ObjInstance* obj = i.asInstance();
@@ -717,6 +721,10 @@ static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle in
 }
 
 static void host_instance_set_field(JC2_VMContext, JC2_ValueHandle inst, const char* name, JC2_ValueHandle val) {
+    std::string keyStr(name);
+    if (keyStr == "<init>" || keyStr == "<finalize>" || keyStr.find("::") != std::string::npos) {
+        throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+    }
     Value i = from_handle(inst);
     if (i.isInstance()) {
         ObjInstance* obj = i.asInstance();

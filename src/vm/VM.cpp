@@ -4963,6 +4963,7 @@ Value VM::run(int targetFrameDepth) {
                         if (destructFlag) {
                             for (const auto& [key, prop] : cls->properties) {
                                 if (prop.is_local || seen.count(key)) continue;
+                                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
                                 seen.insert(key);
                                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                                 pair->vec.push_back(Value(key));
@@ -4973,6 +4974,7 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             for (const auto& [key, prop] : cls->properties) {
                                 if (prop.is_local || seen.count(key)) continue;
+                                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
                                 seen.insert(key);
                                 elements->vec.push_back(Value(key));
                             }
@@ -4989,6 +4991,7 @@ Value VM::run(int targetFrameDepth) {
                     if (destructFlag) {
                         for (const auto& [key, prop] : inst->properties) {
                             if (prop.is_local) continue;
+                            if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
                             ObjList* pair = GcHeap::get().allocate<ObjList>();
                             pair->vec.push_back(Value(key));
                             pair->vec.push_back(prop.val);
@@ -4998,6 +5001,7 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         for (const auto& [key, prop] : inst->properties) {
                             if (prop.is_local) continue;
+                            if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
                             elements->vec.push_back(Value(key));
                         }
                     }
@@ -6379,6 +6383,7 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     for (const auto& [k, prop] : inst->properties) {
                         if (prop.is_local) continue;
+                        if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
                         if (excludeKeys.count(k)) continue;
                         restDict->set(Value(k), prop.val);
                     }
@@ -6393,6 +6398,7 @@ Value VM::run(int targetFrameDepth) {
                     while (cls) {
                         for (const auto& [k, prop] : cls->properties) {
                             if (prop.is_local) continue;
+                            if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
                             if (excludeKeys.count(k)) continue;
                             if (restDict->keyMap.find(Value(k)) == restDict->keyMap.end()) {
                                 restDict->set(Value(k), prop.val);

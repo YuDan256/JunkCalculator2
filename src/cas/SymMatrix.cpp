@@ -306,7 +306,7 @@ namespace jc {
         if (rows != cols) throw std::invalid_argument("SymMatrix Error: Determinant requires a square matrix.");
         if (rows == 0) return SymExpr(BigInt(1));
         if (rows == 1) return (*this)(0, 0);
-        if (rows == 2) return simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
+        if (rows == 2) return jc::simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
 
         SymMatrix M(*this);
         int n = rows;
@@ -342,7 +342,7 @@ namespace jc {
 
         SymExpr det = M(n - 1, n - 1);
         if (sign == -1) det = simplifyCore(-det);
-        return simplify(det);
+        return jc::simplify(det);
     }
 
     SymExpr SymMatrix::cofactor(int row, int col) const {
@@ -385,10 +385,10 @@ namespace jc {
             SymExpr det = simplifyCore(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
             if (isSymZero(det)) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
             SymMatrix res(2, 2);
-            res(0, 0) = simplify((*this)(1, 1) / det);
-            res(0, 1) = simplify(-(*this)(0, 1) / det);
-            res(1, 0) = simplify(-(*this)(1, 0) / det);
-            res(1, 1) = simplify((*this)(0, 0) / det);
+            res(0, 0) = jc::simplify((*this)(1, 1) / det);
+            res(0, 1) = jc::simplify(-(*this)(0, 1) / det);
+            res(1, 0) = jc::simplify(-(*this)(1, 0) / det);
+            res(1, 1) = jc::simplify((*this)(0, 0) / det);
             return res;
         }
 
@@ -435,7 +435,7 @@ namespace jc {
         SymMatrix res(n, n);
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
-                res(i, j) = simplify(aug(i, n + j) / det_equiv);
+                res(i, j) = jc::simplify(aug(i, n + j) / det_equiv);
             }
         }
         return res;
@@ -462,19 +462,19 @@ namespace jc {
         for (int i = 0; i < rows; ++i) {
             result = result + (*this)(i, i);
         }
-        return simplify(result);
+        return jc::simplify(result);
     }
 
     SymExpr SymMatrix::sum() const {
         SymExpr result(BigInt(0));
         for (const auto& val : data) result = result + val;
-        return simplify(result);
+        return jc::simplify(result);
     }
 
     SymExpr SymMatrix::product() const {
         SymExpr result(BigInt(1));
         for (const auto& val : data) result = result * val;
-        return simplify(result);
+        return jc::simplify(result);
     }
 
     SymMatrix SymMatrix::conjugateTranspose() const {

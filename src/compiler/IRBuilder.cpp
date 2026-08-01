@@ -361,7 +361,7 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
 
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment) {
     auto assignVar = [&](const std::string& name, IRNode* vNode, ResolvedSym sym, ScopeModifier mod, bool isConst) {
-        if (name == "<init>" || name == "<finalize>") error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
+        if (name == "<init>" || name == "<finalize>" || name.find("::") != std::string::npos) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
         bool isLocal = mod == ScopeModifier::Local;
         if (mod == ScopeModifier::State) {
             IRNode* getVal = readVariable(name, sym);
@@ -1607,7 +1607,7 @@ void IRBuilder::visitBinary(Binary* expr) {
 }
 
 void IRBuilder::visitVariable(Variable* expr) {
-    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>" || expr->name.lexeme.find("::") != std::string::npos) {
         error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     }
     graph->currentLine = expr->name.line;
@@ -1617,7 +1617,7 @@ void IRBuilder::visitVariable(Variable* expr) {
 }
 
 void IRBuilder::visitAssign(Assign* expr) {
-    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>" || expr->name.lexeme.find("::") != std::string::npos) {
         error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     }
     graph->currentLine = expr->name.line;
@@ -2527,7 +2527,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
 }
     
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
-    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>" || expr->name.lexeme.find("::") != std::string::npos) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
@@ -2541,7 +2541,7 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
-    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>" || expr->name.lexeme.find("::") != std::string::npos) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     if (expr->name.lexeme != "_") {
         auto it = exprSymbols->find(expr);
@@ -2565,7 +2565,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
-    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>" || expr->name.lexeme.find("::") != std::string::npos) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     
@@ -2592,7 +2592,7 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
 }
     
 void IRBuilder::visitConstDecl(ConstDecl* expr) {
-    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>" || expr->name.lexeme.find("::") != std::string::npos) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
@@ -3527,7 +3527,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     std::unordered_set<std::string> staticMembers;
     
     auto checkRedef = [&](const std::string& name, bool isStatic) {
-        if (name == "<init>" || name == "<finalize>") error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
+        if (name == "<init>" || name == "<finalize>" || name.find("::") != std::string::npos) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
         if (isStatic) {
             if (staticMembers.count(name)) error("Syntax Error: Static member '" + name + "' is redefined.");
             staticMembers.insert(name);
@@ -3862,7 +3862,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     
 void IRBuilder::visitDotAccess(DotAccess* expr) {
     graph->currentLine = expr->field.line;
-    if (expr->field.lexeme == "<init>" || expr->field.lexeme == "<finalize>") {
+    if (expr->field.lexeme == "<init>" || expr->field.lexeme == "<finalize>" || expr->field.lexeme.find("::") != std::string::npos) {
         error(expr->field.line, "Compile Error: Illegal use of reserved internal name '" + expr->field.lexeme + "'.");
     }
     std::string fieldName = expr->field.lexeme;
@@ -3924,7 +3924,7 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
 
 void IRBuilder::visitDotAssign(DotAssign* expr) {
     graph->currentLine = expr->field.line;
-    if (expr->field.lexeme == "<init>" || expr->field.lexeme == "<finalize>") {
+    if (expr->field.lexeme == "<init>" || expr->field.lexeme == "<finalize>" || expr->field.lexeme.find("::") != std::string::npos) {
         error(expr->field.line, "Compile Error: Illegal use of reserved internal name '" + expr->field.lexeme + "'.");
     }
     expr->object->accept(*this);
@@ -3962,7 +3962,7 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
 
 void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     graph->currentLine = expr->method.line;
-    if (expr->method.lexeme == "<init>" || expr->method.lexeme == "<finalize>") {
+    if (expr->method.lexeme == "<init>" || expr->method.lexeme == "<finalize>" || expr->method.lexeme.find("::") != std::string::npos) {
         error(expr->method.line, "Compile Error: Illegal use of reserved internal name '" + expr->method.lexeme + "'.");
     }
     std::string methodName = expr->method.lexeme;

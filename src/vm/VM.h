@@ -140,6 +140,15 @@ public:
     VM();
     ~VM();
 
+    void shutdown() {
+        clearGlobals();
+        builtinModules.clear();
+        loadedModules.clear();
+        builtinValues.clear();
+        compiledFunctions.clear();
+        pendingCallRefs.clear();
+    }
+
     void clearAllGlobalICs() {
         for (auto& fn : compiledFunctions) {
             for (auto& ic : fn->chunk.inlineCaches) {

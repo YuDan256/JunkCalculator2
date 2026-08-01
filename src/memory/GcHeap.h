@@ -210,6 +210,7 @@ namespace jc {
 
         GcHeap() = default;
         ~GcHeap() {
+            isSweeping_ = true; // 防止析构期间触发 freeObj 导致链表损坏
             Obj* curr = objects_;
             while (curr) {
                 Obj* next = curr->next;

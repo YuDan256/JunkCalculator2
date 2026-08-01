@@ -34,6 +34,8 @@ namespace jc {
 static std::atomic<int> g_sigintCount{ 0 };
 static auto g_lastSigintTime = std::chrono::steady_clock::now();
 
+extern jc::VM vm;
+
 void sigintHandler(int signum) {
     (void)signum;
     std::signal(SIGINT, sigintHandler); // 重新注册，防止某些平台恢复默认处理
@@ -41,6 +43,7 @@ void sigintHandler(int signum) {
     if (jc::g_isWaitingForInput.load(std::memory_order_relaxed)) {
         extern bool g_quiet;
         if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+        vm.shutdown();
         std::exit(0);
     }
 
@@ -55,6 +58,7 @@ void sigintHandler(int signum) {
 
     if (g_sigintCount >= 3) {
         std::cerr << "\n[Hard Kill] Multiple Ctrl+C detected. Exiting immediately.\n";
+        vm.shutdown();
         std::exit(1);
     }
 
@@ -630,14 +634,18 @@ int main(int argc, char* argv[]) {
             if (stripDebug) std::cout << "Debug information (line numbers, source paths) was stripped." << std::endl;
         } catch (const std::exception& ex) {
             std::cerr << "Compilation Error:\n" << ex.what() << std::endl;
+            vm.shutdown();
             return 1;
         }
+        vm.shutdown();
         return 0;
     }
 
     // 如果有 --test 参数，则执行测试套件并退出
     if (runTests) {
-        return runTestSuite(testPath, exeDir);
+        int res = runTestSuite(testPath, exeDir);
+        vm.shutdown();
+        return res;
     }
 
     // 如果有 --eval 参数，则直接执行并退出
@@ -651,9 +659,11 @@ int main(int argc, char* argv[]) {
         catch (const std::exception& e) {
             std::cerr << e.what() << std::endl;
             if (g_profile) vm.printProfileInfo();
+            vm.shutdown();
             return 1;
         }
         if (g_profile) vm.printProfileInfo();
+        vm.shutdown();
         return 0;
     }
 
@@ -661,6 +671,7 @@ int main(int argc, char* argv[]) {
     if (!scriptPath.empty()) {
         runScript(scriptPath);
         if (g_profile) vm.printProfileInfo();
+        vm.shutdown();
         return 0;
     }
 
@@ -697,6 +708,7 @@ int main(int argc, char* argv[]) {
             }
             if (isEof) {
                 if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+                vm.shutdown();
                 std::exit(1);
             }
 
@@ -803,6 +815,7 @@ int main(int argc, char* argv[]) {
         }
         if (inputAborted && isEof) {
             if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+            vm.shutdown();
             std::exit(1);
         }
         if (inputAborted) continue;
@@ -1040,5 +1053,6 @@ int main(int argc, char* argv[]) {
 
     if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
     if (g_profile) vm.printProfileInfo();
+    vm.shutdown();
     return 0;
 }

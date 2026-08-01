@@ -2600,7 +2600,7 @@ VM::VM() {
         if (obj->type != ObjType::INSTANCE) return false;
         ObjInstance* inst = static_cast<ObjInstance*>(obj);
         if (inst->is_finalized) return false;
-        auto [delMethod, owner] = findDunder(Value(inst), "__del__");
+        auto [delMethod, owner] = findDunder(Value(inst), "finalize");
         if (delMethod) {
             inst->is_finalized = true;
             return true;
@@ -2611,14 +2611,14 @@ VM::VM() {
     GcHeap::get().executeFinalizerCallback = [this](Obj* obj) {
         if (obj->type != ObjType::INSTANCE) return;
         ObjInstance* inst = static_cast<ObjInstance*>(obj);
-        auto [delMethod, owner] = findDunder(Value(inst), "__del__");
+        auto [delMethod, owner] = findDunder(Value(inst), "finalize");
         if (delMethod) {
             try {
                 callDunder(Value(inst), delMethod, owner, {});
             } catch (const std::exception& e) {
-                std::cerr << jc::col(jc::Ansi::RED) << "Exception ignored in __del__: " << e.what() << jc::col(jc::Ansi::RESET) << "\n";
+                std::cerr << jc::col(jc::Ansi::RED) << "Exception ignored in finalize: " << e.what() << jc::col(jc::Ansi::RESET) << "\n";
             } catch (...) {
-                std::cerr << jc::col(jc::Ansi::RED) << "Unknown exception ignored in __del__" << jc::col(jc::Ansi::RESET) << "\n";
+                std::cerr << jc::col(jc::Ansi::RED) << "Unknown exception ignored in finalize" << jc::col(jc::Ansi::RESET) << "\n";
             }
         }
     };

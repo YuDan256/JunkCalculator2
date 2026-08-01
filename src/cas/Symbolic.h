@@ -188,6 +188,7 @@ namespace jc {
     std::pair<SymExpr, SymExpr> getFraction(const SymExpr& expr);
     SymExpr rationalizeDenominator(const SymExpr& expr);
     SymExpr simplifyRational(const SymExpr& expr);
+    SymExpr bareissExactDiv(const SymExpr& dividend, const SymExpr& divisor);
 
     // ==========================================
     // 派生数学节点

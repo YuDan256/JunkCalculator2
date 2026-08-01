@@ -306,7 +306,7 @@ namespace jc {
         if (rows != cols) throw std::invalid_argument("SymMatrix Error: Determinant requires a square matrix.");
         if (rows == 0) return SymExpr(BigInt(1));
         if (rows == 1) return (*this)(0, 0);
-        if (rows == 2) return simplifyCore(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
+        if (rows == 2) return simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
 
         SymMatrix M(*this);
         int n = rows;
@@ -333,8 +333,8 @@ namespace jc {
                     SymExpr term1 = simplifyCore(expand_core(M(i, j) * pivot, SymConfig::maxExpandTerms));
                     SymExpr term2 = simplifyCore(expand_core(M(i, k) * M(k, j), SymConfig::maxExpandTerms));
                     SymExpr diff = simplifyCore(expand_core(term1 - term2, SymConfig::maxExpandTerms));
-                    // 这里的除法在多项式环内是精确整除，simplifyCore 会完美消去分母
-                    M(i, j) = simplifyCore(expand_core(diff / prev_pivot, SymConfig::maxExpandTerms));
+                    // 这里的除法在多项式环内是精确整除，使用 bareissExactDiv 完美消去分母
+                    M(i, j) = bareissExactDiv(diff, prev_pivot);
                 }
             }
             prev_pivot = pivot;
@@ -342,7 +342,7 @@ namespace jc {
 
         SymExpr det = M(n - 1, n - 1);
         if (sign == -1) det = simplifyCore(-det);
-        return det;
+        return simplify(det);
     }
 
     SymExpr SymMatrix::cofactor(int row, int col) const {
@@ -381,6 +381,16 @@ namespace jc {
             res(0, 0) = SymExpr(BigInt(1)) / (*this)(0, 0);
             return res;
         }
+        if (rows == 2) {
+            SymExpr det = simplifyCore(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
+            if (isSymZero(det)) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
+            SymMatrix res(2, 2);
+            res(0, 0) = simplify((*this)(1, 1) / det);
+            res(0, 1) = simplify(-(*this)(0, 1) / det);
+            res(1, 0) = simplify(-(*this)(1, 0) / det);
+            res(1, 1) = simplify((*this)(0, 0) / det);
+            return res;
+        }
 
         int n = rows;
         SymMatrix aug(n, 2 * n);
@@ -413,8 +423,8 @@ namespace jc {
                     SymExpr term1 = simplifyCore(expand_core(aug(i, j) * pivot, SymConfig::maxExpandTerms));
                     SymExpr term2 = simplifyCore(expand_core(aug(i, k) * aug(k, j), SymConfig::maxExpandTerms));
                     SymExpr diff = simplifyCore(expand_core(term1 - term2, SymConfig::maxExpandTerms));
-                    // 这里的除法在多项式环内是精确整除，simplifyCore 会完美消去分母
-                    aug(i, j) = simplifyCore(expand_core(diff / prev_pivot, SymConfig::maxExpandTerms));
+                    // 这里的除法在多项式环内是精确整除，使用 bareissExactDiv 完美消去分母
+                    aug(i, j) = bareissExactDiv(diff, prev_pivot);
                 }
             }
             prev_pivot = pivot;
@@ -425,7 +435,7 @@ namespace jc {
         SymMatrix res(n, n);
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
-                res(i, j) = simplifyCore(expand_core(aug(i, n + j) / det_equiv, SymConfig::maxExpandTerms));
+                res(i, j) = simplify(aug(i, n + j) / det_equiv);
             }
         }
         return res;
@@ -452,19 +462,19 @@ namespace jc {
         for (int i = 0; i < rows; ++i) {
             result = result + (*this)(i, i);
         }
-        return simplifyCore(result);
+        return simplify(result);
     }
 
     SymExpr SymMatrix::sum() const {
         SymExpr result(BigInt(0));
         for (const auto& val : data) result = result + val;
-        return simplifyCore(result);
+        return simplify(result);
     }
 
     SymExpr SymMatrix::product() const {
         SymExpr result(BigInt(1));
         for (const auto& val : data) result = result * val;
-        return simplifyCore(result);
+        return simplify(result);
     }
 
     SymMatrix SymMatrix::conjugateTranspose() const {

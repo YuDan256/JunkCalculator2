@@ -3290,48 +3290,7 @@ namespace jc {
         }
 
         SymExpr current(newNode);
-
-        // expand/contract 二路博弈（不含 factor）
-        SymExpr c_expand = current;
-        SymExpr c_contract = current;
-        SymExpr c_both = current;
-
-        try { c_expand = expand(current, 30); }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
-        try { c_contract = contract(current); }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
-        try {
-            if (c_expand.ptr != current.ptr)
-                c_both = contract(c_expand);
-        }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) {}
-
-        SymExpr best = current;
-        int minSize = getAstComplexity(current);
-        auto tryC = [&](const SymExpr& cand) {
-            int sz = getAstComplexity(cand);
-            if (sz < minSize) { minSize = sz; best = cand; }
-            };
-        tryC(c_expand);
-        tryC(c_contract);
-        tryC(c_both);
-
-            // 激进的代数数化简：尝试将 best 再次 expand，以强制合并隐藏的同类项（如展开后的根式乘积）
-            if (best.ptr->getType() == SymType::ADD || best.ptr->getType() == SymType::MUL) {
-                try {
-                    SymExpr ultra_expand = expand_core(best, 100);
-                    if (getAstNodeCount(ultra_expand) < minSize) {
-                        best = ultra_expand;
-                    }
-                } catch (const EngineInterruptError&) {
-                    throw;
-                } catch (...) {}
-            }
-
-            return best;
+        return current;
         };
 
         SymExpr result = compute();
@@ -3622,7 +3581,7 @@ namespace jc {
     }
 
     // 专为 Bareiss 算法设计的纯多项式环精确除法器 (Fraction-Free)
-    static SymExpr bareissExactDiv(const SymExpr& dividend, const SymExpr& divisor) {
+    SymExpr bareissExactDiv(const SymExpr& dividend, const SymExpr& divisor) {
         if (divisor.isOne()) return dividend;
         if (divisor.isZero()) throw std::runtime_error("Math Error: Bareiss exact division by zero.");
         
@@ -5743,8 +5702,8 @@ namespace jc {
         if (dir == "" || dir == "both") {
             SymExpr right, left;
             bool rightOk = false, leftOk = false;
-            try { right = limitCore(expr, var, val, "+", 0); rightOk = true; } catch (const EngineInterruptError&) { throw; } catch (...) {}
-            try { left = limitCore(expr, var, val, "-", 0); leftOk = true; } catch (const EngineInterruptError&) { throw; } catch (...) {}
+            try { right = simplify(limitCore(expr, var, val, "+", 0)); rightOk = true; } catch (const EngineInterruptError&) { throw; } catch (...) {}
+            try { left = simplify(limitCore(expr, var, val, "-", 0)); leftOk = true; } catch (const EngineInterruptError&) { throw; } catch (...) {}
             
             if (rightOk && leftOk) {
                 if (right == left) return right;
@@ -5753,7 +5712,7 @@ namespace jc {
             
             throw std::runtime_error("Math Error: Limit does not exist or is undefined.");
         }
-        return limitCore(expr, var, val, dir, 0);
+        return simplify(limitCore(expr, var, val, dir, 0));
     }
 
     // =================================================================

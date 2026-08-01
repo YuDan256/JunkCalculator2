@@ -374,17 +374,61 @@ namespace jc {
 
     SymMatrix SymMatrix::inverse() const {
         if (rows != cols) throw std::invalid_argument("SymMatrix Error: Inverse requires a square matrix.");
-        SymExpr det = determinant();
-        if (isSymZero(det)) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
-        
+        if (rows == 0) return SymMatrix();
         if (rows == 1) {
+            if (isSymZero((*this)(0, 0))) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
             SymMatrix res(1, 1);
             res(0, 0) = SymExpr(BigInt(1)) / (*this)(0, 0);
             return res;
         }
 
-        SymMatrix adj = adjugate();
-        return adj / det;
+        int n = rows;
+        SymMatrix aug(n, 2 * n);
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                aug(i, j) = (*this)(i, j);
+            }
+            aug(i, n + i) = SymExpr(BigInt(1));
+        }
+
+        SymExpr prev_pivot(BigInt(1));
+
+        // Bareiss 算法 (无分母高斯-若尔当消元法)
+        for (int k = 0; k < n; ++k) {
+            checkInterrupt();
+            int pivot_row = k;
+            while (pivot_row < n && isSymZero(aug(pivot_row, k))) {
+                pivot_row++;
+            }
+            if (pivot_row == n) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
+
+            if (pivot_row != k) {
+                aug.swapRows(k, pivot_row);
+            }
+
+            SymExpr pivot = aug(k, k);
+            for (int i = 0; i < n; ++i) {
+                if (i == k) continue;
+                for (int j = k + 1; j < 2 * n; ++j) {
+                    SymExpr term1 = simplifyCore(expand_core(aug(i, j) * pivot, SymConfig::maxExpandTerms));
+                    SymExpr term2 = simplifyCore(expand_core(aug(i, k) * aug(k, j), SymConfig::maxExpandTerms));
+                    SymExpr diff = simplifyCore(expand_core(term1 - term2, SymConfig::maxExpandTerms));
+                    // 这里的除法在多项式环内是精确整除，simplifyCore 会完美消去分母
+                    aug(i, j) = simplifyCore(expand_core(diff / prev_pivot, SymConfig::maxExpandTerms));
+                }
+            }
+            prev_pivot = pivot;
+        }
+
+        SymExpr det_equiv = aug(n - 1, n - 1);
+
+        SymMatrix res(n, n);
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                res(i, j) = simplifyCore(expand_core(aug(i, n + j) / det_equiv, SymConfig::maxExpandTerms));
+            }
+        }
+        return res;
     }
 
     SymMatrix SymMatrix::power(int n) const {

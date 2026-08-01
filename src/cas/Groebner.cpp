@@ -262,6 +262,41 @@ namespace jc {
         return res;
     }
 
+    MultiPoly MultiPoly::exactDivide(const MultiPoly& divisor) const {
+        if (divisor.isZero()) throw std::runtime_error("Math Error: Division by zero in MultiPoly.");
+        if (isZero()) return MultiPoly();
+        
+        if (divisor.terms.size() == 1 && divisor.terms[0].mono.isOne()) {
+            MultiPoly res = *this;
+            SymExpr c = divisor.terms[0].coeff;
+            for (auto& t : res.terms) t.coeff = simplifyCore(t.coeff / c);
+            res.cleanAndSort();
+            return res;
+        }
+
+        MultiPoly q;
+        MultiPoly r = *this;
+        Term leadD = divisor.leadingTerm();
+
+        int iter = 0;
+        while (!r.isZero()) {
+            if (++iter > 10000) return MultiPoly(bareissExactDiv(this->toSymExpr(), divisor.toSymExpr()));
+            Term leadR = r.leadingTerm();
+            
+            if (!leadD.mono.divides(leadR.mono)) {
+                return MultiPoly(bareissExactDiv(this->toSymExpr(), divisor.toSymExpr()));
+            }
+            
+            Monomial m = leadR.mono.divide(leadD.mono);
+            SymExpr c = simplifyCore(leadR.coeff / leadD.coeff);
+            Term termQ(c, m);
+            
+            q.terms.push_back(termQ);
+            r = r - (divisor * termQ);
+        }
+        return q;
+    }
+
     SymExpr MultiPoly::toSymExpr() const {
         if (isZero()) return SymExpr(BigInt(0));
         SymExpr res(BigInt(0));

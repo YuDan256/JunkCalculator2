@@ -1,4 +1,5 @@
 #include "SymMatrix.h"
+#include "Groebner.h"
 #include "../math/Matrix.h" // 借用 g_printMatrix2D 标志
 #include <sstream>
 #include <algorithm>
@@ -308,37 +309,42 @@ namespace jc {
         if (rows == 1) return (*this)(0, 0);
         if (rows == 2) return jc::simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
 
-        SymMatrix M(*this);
         int n = rows;
-        SymExpr prev_pivot(BigInt(1));
+        std::vector<std::vector<MultiPoly>> M(n, std::vector<MultiPoly>(n));
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                M[i][j] = MultiPoly((*this)(i, j));
+            }
+        }
+
+        MultiPoly prev_pivot(SymExpr(BigInt(1)));
         int sign = 1;
 
-        // Bareiss 算法 (无分母高斯消元法)
+        // Bareiss 算法 (无分母高斯消元法) - 纯多项式环极速版
         for (int k = 0; k < n - 1; ++k) {
             checkInterrupt();
             int pivot_row = k;
-            while (pivot_row < n && isSymZero(M(pivot_row, k))) {
+            while (pivot_row < n && M[pivot_row][k].isZero()) {
                 pivot_row++;
             }
             if (pivot_row == n) return SymExpr(BigInt(0));
 
             if (pivot_row != k) {
-                M.swapRows(k, pivot_row);
+                std::swap(M[k], M[pivot_row]);
                 sign = -sign;
             }
 
-            SymExpr pivot = M(k, k);
+            MultiPoly pivot = M[k][k];
             for (int i = k + 1; i < n; ++i) {
                 for (int j = k + 1; j < n; ++j) {
-                    SymExpr diff = simplifyCore(expand_core(M(i, j) * pivot - M(i, k) * M(k, j), SymConfig::maxExpandTerms));
-                    // 这里的除法在多项式环内是精确整除，使用 bareissExactDiv 完美消去分母
-                    M(i, j) = bareissExactDiv(diff, prev_pivot);
+                    MultiPoly diff = (M[i][j] * pivot) - (M[i][k] * M[k][j]);
+                    M[i][j] = diff.exactDivide(prev_pivot);
                 }
             }
             prev_pivot = pivot;
         }
 
-        SymExpr det = M(n - 1, n - 1);
+        SymExpr det = M[n - 1][n - 1].toSymExpr();
         if (sign == -1) det = simplifyCore(-det);
         return jc::simplify(det);
     }
@@ -391,47 +397,46 @@ namespace jc {
         }
 
         int n = rows;
-        SymMatrix aug(n, 2 * n);
+        std::vector<std::vector<MultiPoly>> aug(n, std::vector<MultiPoly>(2 * n));
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
-                aug(i, j) = (*this)(i, j);
+                aug[i][j] = MultiPoly((*this)(i, j));
             }
-            aug(i, n + i) = SymExpr(BigInt(1));
+            aug[i][n + i] = MultiPoly(SymExpr(BigInt(1)));
         }
 
-        SymExpr prev_pivot(BigInt(1));
+        MultiPoly prev_pivot(SymExpr(BigInt(1)));
 
-        // Bareiss 算法 (无分母高斯-若尔当消元法)
+        // Bareiss 算法 (无分母高斯-若尔当消元法) - 纯多项式环极速版
         for (int k = 0; k < n; ++k) {
             checkInterrupt();
             int pivot_row = k;
-            while (pivot_row < n && isSymZero(aug(pivot_row, k))) {
+            while (pivot_row < n && aug[pivot_row][k].isZero()) {
                 pivot_row++;
             }
             if (pivot_row == n) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
 
             if (pivot_row != k) {
-                aug.swapRows(k, pivot_row);
+                std::swap(aug[k], aug[pivot_row]);
             }
 
-            SymExpr pivot = aug(k, k);
+            MultiPoly pivot = aug[k][k];
             for (int i = 0; i < n; ++i) {
                 if (i == k) continue;
                 for (int j = k + 1; j < 2 * n; ++j) {
-                    SymExpr diff = simplifyCore(expand_core(aug(i, j) * pivot - aug(i, k) * aug(k, j), SymConfig::maxExpandTerms));
-                    // 这里的除法在多项式环内是精确整除，使用 bareissExactDiv 完美消去分母
-                    aug(i, j) = bareissExactDiv(diff, prev_pivot);
+                    MultiPoly diff = (aug[i][j] * pivot) - (aug[i][k] * aug[k][j]);
+                    aug[i][j] = diff.exactDivide(prev_pivot);
                 }
             }
             prev_pivot = pivot;
         }
 
-        SymExpr det_equiv = aug(n - 1, n - 1);
+        SymExpr det_equiv = aug[n - 1][n - 1].toSymExpr();
 
         SymMatrix res(n, n);
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
-                res(i, j) = jc::simplify(aug(i, n + j) / det_equiv);
+                res(i, j) = jc::simplify(aug[i][n + j].toSymExpr() / det_equiv);
             }
         }
         return res;

@@ -53,6 +53,7 @@ namespace jc {
         MultiPoly operator-(const MultiPoly& other) const;
         MultiPoly operator*(const Term& term) const;
         MultiPoly operator*(const MultiPoly& other) const;
+        MultiPoly exactDivide(const MultiPoly& divisor) const;
 
         SymExpr toSymExpr() const; // 转换回 AST
     };

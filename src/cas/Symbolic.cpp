@@ -648,11 +648,13 @@ namespace jc {
                     registerFactor(powNode->base, expVal);
                 }
                 else {
-                    std::string key = node->getSignature();
-                    if (symFactors.count(key))
-                        symFactors[key].exp = casAdd(symFactors[key].exp, BigInt(1));
+                    SymExpr internedNode(node);
+                    uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr.get());
+                    auto it = symFactors.find(key);
+                    if (it != symFactors.end())
+                        it->second.exp = casAdd(it->second.exp, BigInt(1));
                     else
-                        symFactors[key] = { BigInt(1), node };
+                        symFactors[key] = { BigInt(1), internedNode.ptr };
                 }
             }
             else {

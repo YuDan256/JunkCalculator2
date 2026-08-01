@@ -32,7 +32,7 @@ void registerPredefinedClasses() {
     rangeClass->name = "Range";
 
     // __init__(*args)
-    auto rangeInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"...args"}, std::vector<bool>{false}, "init", nullptr, true);
+    auto rangeInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"...args"}, std::vector<bool>{false}, "<init>", nullptr, true);
     GcObjGuard riGuard(rangeInit);
     rangeInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -68,7 +68,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    rangeClass->properties["init"] = {Value(rangeInit), false, false};
+    rangeClass->properties["<init>"] = {Value(rangeInit), false, false};
 
     // __len__()
     auto rangeLen = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__len__", nullptr);
@@ -169,7 +169,7 @@ void registerPredefinedClasses() {
     GcObjGuard astGuard(astNodeClass);
     astNodeClass->name = "ASTNode";
 
-    auto astInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "line", "props"}, std::vector<bool>{false, false, false}, "init", nullptr);
+    auto astInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "line", "props"}, std::vector<bool>{false, false, false}, "<init>", nullptr);
     astInit->defaultValues.push_back(Value("Unknown"));
     astInit->defaultValues.push_back(Value::fromInt32(0));
     astInit->defaultValues.push_back(Value::none());
@@ -191,14 +191,14 @@ void registerPredefinedClasses() {
         }
         return self;
     });
-    astNodeClass->properties["init"] = {Value(astInit), false, false};
+    astNodeClass->properties["<init>"] = {Value(astInit), false, false};
 
     // --- Token Class (For Syntax Macros) ---
     ObjClass* tokenClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard tokenGuard(tokenClass);
     tokenClass->name = "Token";
 
-    auto tokenInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "lexeme", "line", "position"}, std::vector<bool>{false, false, false, false}, "init", nullptr);
+    auto tokenInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "lexeme", "line", "position"}, std::vector<bool>{false, false, false, false}, "<init>", nullptr);
     tokenInit->defaultValues.push_back(Value::fromInt32(0)); // line
     tokenInit->defaultValues.push_back(Value::fromInt32(0)); // position
     GcObjGuard tokenInitGuard(tokenInit);
@@ -213,7 +213,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    tokenClass->properties["init"] = {Value(tokenInit), false, false};
+    tokenClass->properties["<init>"] = {Value(tokenInit), false, false};
 
     auto tokenRepr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repr__", nullptr);
     GcObjGuard tokenReprGuard(tokenRepr);
@@ -261,7 +261,7 @@ void registerPredefinedClasses() {
     GcObjGuard tsGuard(tokenStreamClass);
     tokenStreamClass->name = "TokenStream";
 
-    auto tsInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"tokens"}, std::vector<bool>{false}, "init", nullptr);
+    auto tsInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"tokens"}, std::vector<bool>{false}, "<init>", nullptr);
     GcObjGuard tsInitGuard(tsInit);
     tsInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -274,7 +274,7 @@ void registerPredefinedClasses() {
         inst->properties["cursor"] = {Value::fromInt32(0), false, false};
         return self;
     });
-    tokenStreamClass->properties["init"] = {Value(tsInit), false, false};
+    tokenStreamClass->properties["<init>"] = {Value(tsInit), false, false};
 
     auto tsTokens = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "tokens", nullptr);
     GcObjGuard tsTokensGuard(tsTokens);
@@ -595,7 +595,7 @@ void registerPredefinedClasses() {
     GcObjGuard excGuard(exceptionClass);
     exceptionClass->name = "Exception";
 
-    auto excInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "message"}, std::vector<bool>{false, false}, "init", nullptr);
+    auto excInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "message"}, std::vector<bool>{false, false}, "<init>", nullptr);
     excInit->defaultValues.push_back(Value::none());
     GcObjGuard excInitGuard(excInit);
     excInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
@@ -614,7 +614,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    exceptionClass->properties["init"] = {Value(excInit), false, false};
+    exceptionClass->properties["<init>"] = {Value(excInit), false, false};
 
     auto excRepl = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repr__", nullptr);
     GcObjGuard excReplGuard(excRepl);

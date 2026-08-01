@@ -4194,8 +4194,15 @@ namespace jc {
         SymExpr D_prime = replaceRadicals(D);
         if (tToMinPoly.empty()) return expr;
 
+        MultiPoly::clearRegistry();
         std::vector<MultiPoly> generators;
         SymExpr z_inv = SymExpr::makeVar("~z_inv");
+        // 提前构造 MultiPoly 以确保 ~z_inv 获得最小的 ID (最高优先级)
+        MultiPoly poly_z_inv(z_inv);
+        for (const auto& kv : tToMinPoly) {
+            MultiPoly poly_t(SymExpr::makeVar(kv.first));
+        }
+
         generators.push_back(MultiPoly(simplifyCore(expand_core(z_inv * D_prime - SymExpr(BigInt(1)), SymConfig::maxExpandTerms))));
 
         for (const auto& kv : tToMinPoly) {
@@ -4216,9 +4223,8 @@ namespace jc {
 
         for (const auto& poly : rgb) {
             if (poly.isZero()) continue;
-            Term lt = poly.leadingTerm();
-            if (lt.mono.powers.count("~z_inv") > 0) {
-                SymExpr polyExpr = poly.toSymExpr();
+            SymExpr polyExpr = poly.toSymExpr();
+            if (containsVar(polyExpr.ptr, "~z_inv")) {
                 auto coeffs = extractCoeffs(polyExpr, "~z_inv");
                 if (coeffs.size() == 2) {
                     SymExpr c = coeffs[1];

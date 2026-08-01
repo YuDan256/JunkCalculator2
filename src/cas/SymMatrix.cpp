@@ -309,6 +309,7 @@ namespace jc {
         if (rows == 1) return (*this)(0, 0);
         if (rows == 2) return jc::simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
 
+        MultiPoly::clearRegistry();
         int n = rows;
         std::vector<std::vector<MultiPoly>> M(n, std::vector<MultiPoly>(n));
         for (int i = 0; i < n; ++i) {
@@ -396,6 +397,7 @@ namespace jc {
             return res;
         }
 
+        MultiPoly::clearRegistry();
         int n = rows;
         std::vector<std::vector<MultiPoly>> aug(n, std::vector<MultiPoly>(2 * n));
         for (int i = 0; i < n; ++i) {

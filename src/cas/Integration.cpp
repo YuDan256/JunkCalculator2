@@ -96,6 +96,7 @@ namespace jc {
                 if (SymConfig::debugIntegration) std::cout << "   [RT] Processing irreducible factor Q_k(z): " << Q_k.toString() << std::endl;
                 
                 // 对每个重数 k 的因子 Q_k(z)，计算 D(x) 和 P(x, z) 模 Q_k(z) 的 GCD
+                MultiPoly::clearRegistry();
                 std::vector<MultiPoly> generators;
                 generators.push_back(MultiPoly(P));
                 generators.push_back(MultiPoly(D));
@@ -1004,8 +1005,10 @@ namespace jc {
                 
                 // 1. 分母有理化 (Rationalize Denominator)
                 // 使用 Gröbner 基求逆元，避免 polyEGCD 导致的有理函数系数指数级爆炸 (Coefficient Swell)
+                MultiPoly::clearRegistry();
                 std::vector<MultiPoly> generators;
                 SymExpr z_inv = SymExpr::makeVar("~z_inv");
+                MultiPoly poly_z_inv(z_inv); // 确保 ~z_inv 获得最高优先级
                 
                 // 清除 D 和 minPoly 的分母，转为纯多项式
                 SymExpr D_clear = getFraction(D).first;
@@ -1031,9 +1034,8 @@ namespace jc {
                 bool found_inv = false;
                 for (const auto& poly : rgb) {
                     if (poly.isZero()) continue;
-                    Term lt = poly.leadingTerm();
-                    if (lt.mono.powers.count("~z_inv") > 0) {
-                        SymExpr polyExpr = poly.toSymExpr();
+                    SymExpr polyExpr = poly.toSymExpr();
+                    if (containsVar(polyExpr.ptr, "~z_inv")) {
                         auto coeffs = extractCoeffs(polyExpr, "~z_inv");
                         if (coeffs.size() == 2) {
                             SymExpr c = coeffs[1];

@@ -56,6 +56,8 @@ namespace jc {
         MultiPoly exactDivide(const MultiPoly& divisor) const;
 
         SymExpr toSymExpr() const; // 转换回 AST
+
+        static void clearRegistry(); // 清理变量字典，防止内存泄漏
     };
 
     // =================================================================

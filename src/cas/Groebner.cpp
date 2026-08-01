@@ -23,8 +23,17 @@ namespace jc {
             SymExpr getExpr(uint32_t id) const {
                 return idToExpr[id];
             }
+
+            void clear() {
+                sigToId.clear();
+                idToExpr.clear();
+            }
         };
         thread_local VarRegistry g_varReg;
+    }
+
+    void MultiPoly::clearRegistry() {
+        g_varReg.clear();
     }
 
     // --- Monomial 实现 ---
@@ -473,8 +482,14 @@ namespace jc {
             Term ltI = G[i].leadingTerm();
             Term ltJ = G[j].leadingTerm();
             bool relativelyPrime = true;
-            for (const auto& kv : ltI.mono.powers) {
-                if (ltJ.mono.powers.count(kv.first) > 0) {
+            auto itI = ltI.mono.powers.begin();
+            auto itJ = ltJ.mono.powers.begin();
+            while (itI != ltI.mono.powers.end() && itJ != ltJ.mono.powers.end()) {
+                if (itI->first < itJ->first) {
+                    ++itI;
+                } else if (itI->first > itJ->first) {
+                    ++itJ;
+                } else {
                     relativelyPrime = false;
                     break;
                 }

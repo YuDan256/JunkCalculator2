@@ -2814,7 +2814,7 @@
       "",
       "  3. Array & Matrix Polymorphic Destructuring",
       "  ──────────────────────",
-      "    Matches lists, realmatrices, complexmatrices, and stringmatrices.",
+      "    Matches lists, realmatrices, complexmatrices, stringmatrices, and symmatrices.",
       "    Uses `,` for rows and `;` for columns to strictly match dimensions.",
       "      [x, y]       // Matches 1x2 row vector or List of length 2",
       "      [x; y]       // Matches 2x1 column vector",

@@ -25,7 +25,7 @@ struct WinEvent {
 
 class NativeWindow {
 private:
-    HWND hwnd = NULL;
+    std::atomic<HWND> hwnd{ NULL };
     HIMC defaultImc = NULL;
     std::atomic<bool> running{ true };
     std::atomic<bool> cursorVisible{ true };
@@ -96,6 +96,10 @@ private:
         }
         if (msg == WM_CLOSE) {
             pushEvent({ "close", 0, 0, 0, 0 });
+            DestroyWindow(hWnd);
+            return 0;
+        }
+        if (msg == WM_DESTROY) {
             PostQuitMessage(0);
             return 0;
         }

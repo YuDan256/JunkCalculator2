@@ -38,6 +38,8 @@ private:
     std::vector<ClassContext> classStack;
     bool isInitMethod = false;
     std::vector<ClassDefExpr::PropertyDef*>* instancePropertiesToInit = nullptr;
+    bool hasCalledSuperInit = false;
+    bool hasCalledSuperFinalize = false;
 
     void pushScope() {
         envStack.emplace_back();

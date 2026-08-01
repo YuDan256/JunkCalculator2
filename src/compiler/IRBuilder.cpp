@@ -3872,6 +3872,16 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
             if (!currentFunction || currentFunction->name != fieldName) {
                 error(expr->field.line, "Syntax Error: Cannot access super." + fieldName + " outside of a " + fieldName + " method.");
             }
+            if (!loopStack.empty()) {
+                error(expr->field.line, "Compile Error: super." + fieldName + " cannot be accessed inside a loop.");
+            }
+            if (fieldName == "init") {
+                if (hasCalledSuperInit) error(expr->field.line, "Compile Error: super.init can only be accessed once per constructor.");
+                hasCalledSuperInit = true;
+            } else {
+                if (hasCalledSuperFinalize) error(expr->field.line, "Compile Error: super.finalize can only be accessed once per finalizer.");
+                hasCalledSuperFinalize = true;
+            }
             fieldName = "<" + fieldName + ">";
         }
 
@@ -3962,6 +3972,16 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         if (methodName == "init" || methodName == "finalize") {
             if (!currentFunction || currentFunction->name != methodName) {
                 error(expr->method.line, "Syntax Error: Cannot call super." + methodName + "() outside of a " + methodName + " method.");
+            }
+            if (!loopStack.empty()) {
+                error(expr->method.line, "Compile Error: super." + methodName + "() cannot be called inside a loop.");
+            }
+            if (methodName == "init") {
+                if (hasCalledSuperInit) error(expr->method.line, "Compile Error: super.init() can only be called once per constructor.");
+                hasCalledSuperInit = true;
+            } else {
+                if (hasCalledSuperFinalize) error(expr->method.line, "Compile Error: super.finalize() can only be called once per finalizer.");
+                hasCalledSuperFinalize = true;
             }
             methodName = "<" + methodName + ">";
         }

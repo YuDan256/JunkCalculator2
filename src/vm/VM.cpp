@@ -623,7 +623,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         ObjClosure* initMethod = nullptr;
         auto c = cls;
         while (c) {
-            auto it = c->properties.find("init");
+            auto it = c->properties.find("<init>");
             if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
                 initMethod = it->second.val.asFunction();
                 break;
@@ -2600,7 +2600,7 @@ VM::VM() {
         if (obj->type != ObjType::INSTANCE) return false;
         ObjInstance* inst = static_cast<ObjInstance*>(obj);
         if (inst->is_finalized) return false;
-        auto [delMethod, owner] = findDunder(Value(inst), "finalize");
+        auto [delMethod, owner] = findDunder(Value(inst), "<finalize>");
         if (delMethod) {
             inst->is_finalized = true;
             return true;
@@ -2611,7 +2611,7 @@ VM::VM() {
     GcHeap::get().executeFinalizerCallback = [this](Obj* obj) {
         if (obj->type != ObjType::INSTANCE) return;
         ObjInstance* inst = static_cast<ObjInstance*>(obj);
-        auto [delMethod, owner] = findDunder(Value(inst), "finalize");
+        auto [delMethod, owner] = findDunder(Value(inst), "<finalize>");
         if (delMethod) {
             try {
                 callDunder(Value(inst), delMethod, owner, {});
@@ -4226,6 +4226,12 @@ Value VM::run(int targetFrameDepth) {
                     }
                     if (dims == 1 && args[0].isString()) {
                         std::string keyStr = args[0].asString();
+                        if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+                            if (noThrow) result = Value::uninit();
+                            else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                            getReg(a) = result;
+                            break;
+                        }
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         bool foundPrivate = false;
                         if (ctxOwner) {
@@ -4350,27 +4356,12 @@ Value VM::run(int targetFrameDepth) {
                             else throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         } else {
                             std::string key = idx.asString();
-                            auto isValidId = [](const std::string& s) {
-                                if (s.empty()) return false;
-                                unsigned char c = s[0];
-                                if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
-                                for (size_t i = 1; i < s.length(); ++i) {
-                                    c = s[i];
-                                    if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
-                                }
-                                return true;
-                            };
-                            if (!isValidId(key)) {
+                            auto it = ns->fields.find(key);
+                            if (it == ns->fields.end()) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Namespace keys must be valid identifiers.");
+                                else throw std::runtime_error("VM Error: Key not found in namespace.");
                             } else {
-                                auto it = ns->fields.find(key);
-                                if (it == ns->fields.end()) {
-                                    if (noThrow) result = Value::uninit();
-                                    else throw std::runtime_error("VM Error: Key not found in namespace.");
-                                } else {
-                                    result = *(it->second.upval->location);
-                                }
+                                result = *(it->second.upval->location);
                             }
                         }
                     } else if (obj.isClass()) {
@@ -4380,19 +4371,9 @@ Value VM::run(int targetFrameDepth) {
                             else throw std::runtime_error("VM Error: Class static field keys must be strings.");
                         } else {
                             std::string key = idx.asString();
-                            auto isValidId = [](const std::string& s) {
-                                if (s.empty()) return false;
-                                unsigned char c = s[0];
-                                if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
-                                for (size_t i = 1; i < s.length(); ++i) {
-                                    c = s[i];
-                                    if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
-                                }
-                                return true;
-                            };
-                            if (!isValidId(key)) {
+                            if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
+                                else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
                             } else {
                                 bool foundStatic = false;
                                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
@@ -4583,6 +4564,9 @@ Value VM::run(int targetFrameDepth) {
                     }
                     if (dims == 1 && args[0].isString()) {
                         std::string keyStr = args[0].asString();
+                        if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+                            throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                        }
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         bool foundPrivate = false;
                         if (ctxOwner) {
@@ -4767,33 +4751,14 @@ Value VM::run(int targetFrameDepth) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
                         if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         std::string key = idx.asString();
-                        auto isValidId = [](const std::string& s) {
-                            if (s.empty()) return false;
-                            unsigned char c = s[0];
-                            if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
-                            for (size_t i = 1; i < s.length(); ++i) {
-                                c = s[i];
-                                if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
-                            }
-                            return true;
-                        };
-                        if (!isValidId(key)) throw std::runtime_error("VM Error: Namespace keys must be valid identifiers.");
                         ns->setField(key, val);
                     } else if (obj.isClass()) {
                         auto cls = static_cast<ObjClass*>(obj.asObj());
                         if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
                         std::string key = idx.asString();
-                        auto isValidId = [](const std::string& s) {
-                            if (s.empty()) return false;
-                            unsigned char c = s[0];
-                            if (!(std::isalpha(c) || c == '_' || c >= 0x80)) return false;
-                            for (size_t i = 1; i < s.length(); ++i) {
-                                c = s[i];
-                                if (!(std::isalnum(c) || c == '_' || c >= 0x80)) return false;
-                            }
-                            return true;
-                        };
-                        if (!isValidId(key)) throw std::runtime_error("VM Error: Class static field keys must be valid identifiers.");
+                        if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
+                            throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                        }
                         
                         bool found = false;
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;

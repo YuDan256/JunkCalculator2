@@ -361,6 +361,7 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
 
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment) {
     auto assignVar = [&](const std::string& name, IRNode* vNode, ResolvedSym sym, ScopeModifier mod, bool isConst) {
+        if (name == "<init>" || name == "<finalize>") error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
         bool isLocal = mod == ScopeModifier::Local;
         if (mod == ScopeModifier::State) {
             IRNode* getVal = readVariable(name, sym);
@@ -1606,6 +1607,9 @@ void IRBuilder::visitBinary(Binary* expr) {
 }
 
 void IRBuilder::visitVariable(Variable* expr) {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") {
+        error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    }
     graph->currentLine = expr->name.line;
     auto it = exprSymbols->find(expr);
     ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
@@ -1613,6 +1617,9 @@ void IRBuilder::visitVariable(Variable* expr) {
 }
 
 void IRBuilder::visitAssign(Assign* expr) {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") {
+        error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    }
     graph->currentLine = expr->name.line;
     auto it = exprSymbols->find(expr);
     ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
@@ -2520,6 +2527,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
 }
     
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
@@ -2533,6 +2541,7 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     if (expr->name.lexeme != "_") {
         auto it = exprSymbols->find(expr);
@@ -2556,6 +2565,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     
@@ -2582,6 +2592,7 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
 }
     
 void IRBuilder::visitConstDecl(ConstDecl* expr) {
+    if (expr->name.lexeme == "<init>" || expr->name.lexeme == "<finalize>") error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
@@ -3516,6 +3527,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     std::unordered_set<std::string> staticMembers;
     
     auto checkRedef = [&](const std::string& name, bool isStatic) {
+        if (name == "<init>" || name == "<finalize>") error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
         if (isStatic) {
             if (staticMembers.count(name)) error("Syntax Error: Static member '" + name + "' is redefined.");
             staticMembers.insert(name);
@@ -3610,11 +3622,15 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             else if (p.isLocal) methodOp = IROp::MethodPrivate;
             else if (p.isConst) methodOp = IROp::MethodConst;
 
+            std::string emitName = p.name.lexeme;
+            if (emitName == "init") emitName = "<init>";
+            else if (emitName == "finalize") emitName = "<finalize>";
+
             IRNode* methodNode = graph->createNode(methodOp);
             methodNode->setControl(currentControl);
             methodNode->addData(classNode);
             methodNode->addData(closureNode);
-            methodNode->name = p.name.lexeme;
+            methodNode->name = emitName;
             currentControl = methodNode;
         }
     }
@@ -3628,11 +3644,15 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         else if (p.isLocal) propOp = IROp::DefinePrivate;
         else if (p.isConst) propOp = IROp::DefinePropConst;
 
+        std::string emitName = p.name.lexeme;
+        if (emitName == "init") emitName = "<init>";
+        else if (emitName == "finalize") emitName = "<finalize>";
+
         IRNode* setPropNode = graph->createValueNode(propOp);
         setPropNode->setControl(currentControl);
         setPropNode->addData(classNode);
         setPropNode->addData(valNode);
-        setPropNode->name = p.name.lexeme;
+        setPropNode->name = emitName;
         currentControl = setPropNode;
     }
         
@@ -3842,14 +3862,26 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     
 void IRBuilder::visitDotAccess(DotAccess* expr) {
     graph->currentLine = expr->field.line;
+    if (expr->field.lexeme == "<init>" || expr->field.lexeme == "<finalize>") {
+        error(expr->field.line, "Compile Error: Illegal use of reserved internal name '" + expr->field.lexeme + "'.");
+    }
+    std::string fieldName = expr->field.lexeme;
+
     if (dynamic_cast<SuperExpr*>(expr->object.get())) {
+        if (fieldName == "init" || fieldName == "finalize") {
+            if (!currentFunction || currentFunction->name != fieldName) {
+                error(expr->field.line, "Syntax Error: Cannot access super." + fieldName + " outside of a " + fieldName + " method.");
+            }
+            fieldName = "<" + fieldName + ">";
+        }
+
         IRNode* selfNode = graph->createValueNode(IROp::GetSelf);
         selfNode->setControl(currentControl);
         
         IRNode* node = graph->createValueNode(IROp::GetSuper);
         node->setControl(currentControl);
         node->addData(selfNode);
-        node->name = expr->field.lexeme;
+        node->name = fieldName;
         currentControl = node;
         lastValue = node;
         return;
@@ -3875,13 +3907,16 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
     IRNode* node = graph->createValueNode(op);
     node->setControl(currentControl);
     node->addData(objNode);
-    node->name = expr->field.lexeme;
+    node->name = fieldName;
     currentControl = node;
     lastValue = node;
 }
 
 void IRBuilder::visitDotAssign(DotAssign* expr) {
     graph->currentLine = expr->field.line;
+    if (expr->field.lexeme == "<init>" || expr->field.lexeme == "<finalize>") {
+        error(expr->field.line, "Compile Error: Illegal use of reserved internal name '" + expr->field.lexeme + "'.");
+    }
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
         
@@ -3917,8 +3952,21 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
 
 void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     graph->currentLine = expr->method.line;
+    if (expr->method.lexeme == "<init>" || expr->method.lexeme == "<finalize>") {
+        error(expr->method.line, "Compile Error: Illegal use of reserved internal name '" + expr->method.lexeme + "'.");
+    }
+    std::string methodName = expr->method.lexeme;
     bool isSuper = dynamic_cast<SuperExpr*>(expr->object.get()) != nullptr;
     
+    if (isSuper) {
+        if (methodName == "init" || methodName == "finalize") {
+            if (!currentFunction || currentFunction->name != methodName) {
+                error(expr->method.line, "Syntax Error: Cannot call super." + methodName + "() outside of a " + methodName + " method.");
+            }
+            methodName = "<" + methodName + ">";
+        }
+    }
+
     IRNode* objNode = nullptr;
     if (isSuper) {
         objNode = graph->createValueNode(IROp::GetSelf);
@@ -4001,7 +4049,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     IRNode* fallbackNode = nullptr;
     
     if (!isSuper) {
-        std::string name = expr->method.lexeme;
+        std::string name = methodName;
         if (refParams.count(name)) {
             hasFallback = true;
             ResolvedSym rs; rs.scope = VarScope::RefParam;
@@ -4045,7 +4093,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                 isClassVar = true;
             }
         }
-        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(expr->method.lexeme)) {
+        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(methodName)) {
             isPrivate = true;
         }
     }
@@ -4067,7 +4115,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     }
     invokeNode->payload1 = static_cast<uint32_t>(argNodes.size());
     invokeNode->payload2 = static_cast<uint32_t>(kwArgc);
-    invokeNode->name = expr->method.lexeme;
+    invokeNode->name = methodName;
         
     currentControl = invokeNode;
     lastValue = invokeNode;

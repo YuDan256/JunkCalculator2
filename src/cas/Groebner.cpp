@@ -1,8 +1,31 @@
 #include "Groebner.h"
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace jc {
+
+    namespace {
+        struct VarRegistry {
+            std::unordered_map<std::string, uint32_t> sigToId;
+            std::vector<SymExpr> idToExpr;
+
+            uint32_t getId(const SymExpr& expr) {
+                std::string sig = expr.ptr->getSignature();
+                auto it = sigToId.find(sig);
+                if (it != sigToId.end()) return it->second;
+                uint32_t id = static_cast<uint32_t>(idToExpr.size());
+                sigToId[sig] = id;
+                idToExpr.push_back(expr);
+                return id;
+            }
+
+            SymExpr getExpr(uint32_t id) const {
+                return idToExpr[id];
+            }
+        };
+        thread_local VarRegistry g_varReg;
+    }
 
     // --- Monomial 实现 ---
 
@@ -15,84 +38,95 @@ namespace jc {
     }
 
     bool Monomial::operator<(const Monomial& other) const {
-        // 零内存分配的字典序比较 (Lexicographic Order)
-        // 变量名大的优先级高 (例如 "x" > "_z")
-        // std::map 默认是升序排列，所以我们使用 rbegin() 逆向遍历
-        auto it1 = powers.rbegin();
-        auto it2 = other.powers.rbegin();
-        
-        while (it1 != powers.rend() && it2 != other.powers.rend()) {
-            if (it1->first > it2->first) {
-                // it1 有一个优先级更高的变量，而 it2 没有 (即 it2 的该变量指数为 0)
-                // 因为 it1 的指数 > 0，所以 p1 > p2，返回 false
-                return false;
-            } else if (it1->first < it2->first) {
-                // it2 有一个优先级更高的变量
-                // p1 (0) < p2 (> 0)，返回 true
-                return true;
-            } else {
-                // 变量相同，比较指数
-                if (it1->second != it2->second) {
-                    return it1->second < it2->second;
-                }
-                ++it1;
-                ++it2;
-            }
+        auto it1 = powers.begin();
+        auto it2 = other.powers.begin();
+        while (it1 != powers.end() && it2 != other.powers.end()) {
+            if (it1->first < it2->first) return false;
+            if (it1->first > it2->first) return true;
+            if (it1->second != it2->second) return it1->second < it2->second;
+            ++it1; ++it2;
         }
-        
-        if (it1 != powers.rend()) {
-            // it1 还有剩余变量 (优先级较低)，it2 没有了
-            return false; // p1 > 0, p2 = 0
-        } else if (it2 != other.powers.rend()) {
-            // it2 还有剩余变量
-            return true; // p1 = 0, p2 > 0
-        }
-        
-        return false;
+        return it1 == powers.end() && it2 != other.powers.end();
     }
 
     bool Monomial::operator==(const Monomial& other) const {
         if (powers.size() != other.powers.size()) return false;
-        auto it1 = powers.begin();
-        auto it2 = other.powers.begin();
-        while (it1 != powers.end()) {
-            if (it1->first != it2->first || it1->second != it2->second) return false;
-            ++it1; ++it2;
+        for (size_t i = 0; i < powers.size(); ++i) {
+            if (powers[i].first != other.powers[i].first || powers[i].second != other.powers[i].second) return false;
         }
         return true;
     }
 
     Monomial Monomial::multiply(const Monomial& other) const {
-        Monomial res = *this;
-        for (const auto& kv : other.powers) {
-            res.powers[kv.first] += kv.second;
-            if (res.powers[kv.first] == 0) res.powers.erase(kv.first);
+        Monomial res;
+        auto it1 = powers.begin();
+        auto it2 = other.powers.begin();
+        while (it1 != powers.end() && it2 != other.powers.end()) {
+            if (it1->first < it2->first) {
+                res.powers.push_back(*it1++);
+            } else if (it1->first > it2->first) {
+                res.powers.push_back(*it2++);
+            } else {
+                int sum = it1->second + it2->second;
+                if (sum != 0) res.powers.push_back({it1->first, sum});
+                ++it1; ++it2;
+            }
         }
+        while (it1 != powers.end()) res.powers.push_back(*it1++);
+        while (it2 != powers.end()) res.powers.push_back(*it2++);
         return res;
     }
 
     bool Monomial::divides(const Monomial& other) const {
-        for (const auto& kv : powers) {
-            auto it = other.powers.find(kv.first);
-            if (it == other.powers.end() || it->second < kv.second) return false;
+        auto it1 = powers.begin();
+        auto it2 = other.powers.begin();
+        while (it1 != powers.end() && it2 != other.powers.end()) {
+            if (it1->first < it2->first) return false;
+            if (it1->first > it2->first) {
+                ++it2;
+            } else {
+                if (it1->second > it2->second) return false;
+                ++it1; ++it2;
+            }
         }
-        return true;
+        return it1 == powers.end();
     }
 
     Monomial Monomial::divide(const Monomial& other) const {
-        Monomial res = *this;
-        for (const auto& kv : other.powers) {
-            res.powers[kv.first] -= kv.second;
-            if (res.powers[kv.first] == 0) res.powers.erase(kv.first);
+        Monomial res;
+        auto it1 = powers.begin();
+        auto it2 = other.powers.begin();
+        while (it1 != powers.end() && it2 != other.powers.end()) {
+            if (it1->first < it2->first) {
+                res.powers.push_back(*it1++);
+            } else if (it1->first > it2->first) {
+                ++it2;
+            } else {
+                int diff = it1->second - it2->second;
+                if (diff > 0) res.powers.push_back({it1->first, diff});
+                ++it1; ++it2;
+            }
         }
+        while (it1 != powers.end()) res.powers.push_back(*it1++);
         return res;
     }
 
     Monomial Monomial::lcm(const Monomial& other) const {
-        Monomial res = *this;
-        for (const auto& kv : other.powers) {
-            res.powers[kv.first] = std::max(res.powers[kv.first], kv.second);
+        Monomial res;
+        auto it1 = powers.begin();
+        auto it2 = other.powers.begin();
+        while (it1 != powers.end() && it2 != other.powers.end()) {
+            if (it1->first < it2->first) {
+                res.powers.push_back(*it1++);
+            } else if (it1->first > it2->first) {
+                res.powers.push_back(*it2++);
+            } else {
+                res.powers.push_back({it1->first, std::max(it1->second, it2->second)});
+                ++it1; ++it2;
+            }
         }
+        while (it1 != powers.end()) res.powers.push_back(*it1++);
+        while (it2 != powers.end()) res.powers.push_back(*it2++);
         return res;
     }
 
@@ -103,14 +137,25 @@ namespace jc {
         switch (expr.ptr->getType()) {
             case SymType::NUM: {
                 if (!expr.isZero()) {
-                    terms.emplace_back(expr, Monomial());
+                    auto num = std::static_pointer_cast<SymNum>(expr.ptr);
+                    Fraction f(0);
+                    if (std::holds_alternative<int32_t>(num->value)) f = Fraction(std::get<int32_t>(num->value));
+                    else if (std::holds_alternative<BigInt>(num->value)) f = Fraction(std::get<BigInt>(num->value));
+                    else if (std::holds_alternative<Fraction>(num->value)) f = std::get<Fraction>(num->value);
+                    else {
+                        Monomial m;
+                        m.powers.push_back({g_varReg.getId(expr), 1});
+                        terms.emplace_back(Fraction(1), m);
+                        break;
+                    }
+                    terms.emplace_back(f, Monomial());
                 }
                 break;
             }
             case SymType::VAR: {
                 Monomial m;
-                m.powers[std::static_pointer_cast<SymVar>(expr.ptr)->name] = 1;
-                terms.emplace_back(SymExpr(BigInt(1)), m);
+                m.powers.push_back({g_varReg.getId(expr), 1});
+                terms.emplace_back(Fraction(1), m);
                 break;
             }
             case SymType::ADD: {
@@ -141,17 +186,15 @@ namespace jc {
                         break;
                     }
                 }
-                // 非多项式幂次，视为新变量
                 Monomial m;
-                m.powers[expr.toString()] = 1;
-                terms.emplace_back(SymExpr(BigInt(1)), m);
+                m.powers.push_back({g_varReg.getId(expr), 1});
+                terms.emplace_back(Fraction(1), m);
                 break;
             }
             default: {
-                // 函数等其他节点，视为新变量
                 Monomial m;
-                m.powers[expr.toString()] = 1;
-                terms.emplace_back(SymExpr(BigInt(1)), m);
+                m.powers.push_back({g_varReg.getId(expr), 1});
+                terms.emplace_back(Fraction(1), m);
                 break;
             }
         }
@@ -173,10 +216,10 @@ namespace jc {
         std::vector<Term> cleaned;
         for (const auto& t : terms) {
             if (cleaned.empty() || !(cleaned.back().mono == t.mono)) {
-                if (!t.coeff.isZero()) cleaned.push_back(t);
+                if (!(t.coeff == Fraction(0))) cleaned.push_back(t);
             } else {
-                cleaned.back().coeff = simplifyCore(cleaned.back().coeff + t.coeff);
-                if (cleaned.back().coeff.isZero()) cleaned.pop_back();
+                cleaned.back().coeff = cleaned.back().coeff + t.coeff;
+                if (cleaned.back().coeff == Fraction(0)) cleaned.pop_back();
             }
         }
         terms = std::move(cleaned);
@@ -186,67 +229,32 @@ namespace jc {
         if (isZero()) return;
         
         BigInt lcm_den(1);
-        bool all_rational = true;
-        
         for (const auto& t : terms) {
-            if (t.coeff.ptr->getType() == SymType::NUM) {
-                auto num = std::static_pointer_cast<SymNum>(t.coeff.ptr);
-                if (std::holds_alternative<Fraction>(num->value)) {
-                    lcm_den = BigInt::lcm(lcm_den, std::get<Fraction>(num->value).getDen());
-                } else if (!std::holds_alternative<BigInt>(num->value)) {
-                    all_rational = false;
-                    break;
-                }
-            } else {
-                all_rational = false;
-                break;
-            }
+            lcm_den = BigInt::lcm(lcm_den, t.coeff.getDen());
         }
         
-        if (!all_rational) return;
-        
         if (lcm_den > BigInt(1)) {
-            SymExpr lcm_expr(lcm_den);
             for (auto& t : terms) {
-                t.coeff = simplifyCore(t.coeff * lcm_expr);
+                t.coeff = t.coeff * Fraction(lcm_den);
             }
         }
         
         BigInt gcd_num(0);
         bool first = true;
         for (const auto& t : terms) {
-            if (t.coeff.ptr->getType() == SymType::NUM) {
-                auto num = std::static_pointer_cast<SymNum>(t.coeff.ptr);
-                BigInt v(0);
-                if (std::holds_alternative<BigInt>(num->value)) {
-                    v = std::get<BigInt>(num->value);
-                } else if (std::holds_alternative<Fraction>(num->value)) {
-                    v = std::get<Fraction>(num->value).getNum();
-                }
-                if (v.isNegative()) v = -v;
-                if (first) { gcd_num = v; first = false; }
-                else gcd_num = BigInt::gcd(gcd_num, v);
-            }
+            BigInt v = t.coeff.getNum().abs();
+            if (first) { gcd_num = v; first = false; }
+            else gcd_num = BigInt::gcd(gcd_num, v);
         }
         
         if (!gcd_num.isZero() && gcd_num > BigInt(1)) {
-            SymExpr gcd_expr(gcd_num);
             for (auto& t : terms) {
-                t.coeff = simplifyCore(t.coeff / gcd_expr);
+                t.coeff = t.coeff / Fraction(gcd_num);
             }
         }
         
-        if (!terms.empty()) {
-            if (terms[0].coeff.ptr->getType() == SymType::NUM) {
-                auto num = std::static_pointer_cast<SymNum>(terms[0].coeff.ptr);
-                bool is_neg = false;
-                if (std::holds_alternative<BigInt>(num->value)) is_neg = std::get<BigInt>(num->value).isNegative();
-                else if (std::holds_alternative<Fraction>(num->value)) is_neg = std::get<Fraction>(num->value).getNum().isNegative();
-                
-                if (is_neg) {
-                    for (auto& t : terms) t.coeff = simplifyCore(-t.coeff);
-                }
-            }
+        if (!terms.empty() && terms[0].coeff.getNum().isNegative()) {
+            for (auto& t : terms) t.coeff = Fraction(0) - t.coeff;
         }
     }
 
@@ -262,7 +270,7 @@ namespace jc {
         MultiPoly res;
         res.terms = terms;
         for (const auto& t : other.terms) {
-            res.terms.emplace_back(simplifyCore(-t.coeff), t.mono);
+            res.terms.emplace_back(Fraction(0) - t.coeff, t.mono);
         }
         res.cleanAndSort();
         return res;
@@ -271,7 +279,7 @@ namespace jc {
     MultiPoly MultiPoly::operator*(const Term& term) const {
         MultiPoly res;
         for (const auto& t : terms) {
-            res.terms.emplace_back(simplifyCore(t.coeff * term.coeff), t.mono.multiply(term.mono));
+            res.terms.emplace_back(t.coeff * term.coeff, t.mono.multiply(term.mono));
         }
         res.cleanAndSort();
         return res;
@@ -293,8 +301,8 @@ namespace jc {
         
         if (divisor.terms.size() == 1 && divisor.terms[0].mono.isOne()) {
             MultiPoly res = *this;
-            SymExpr c = divisor.terms[0].coeff;
-            for (auto& t : res.terms) t.coeff = simplifyCore(t.coeff / c);
+            Fraction c = divisor.terms[0].coeff;
+            for (auto& t : res.terms) t.coeff = t.coeff / c;
             res.cleanAndSort();
             return res;
         }
@@ -313,7 +321,7 @@ namespace jc {
             }
             
             Monomial m = leadR.mono.divide(leadD.mono);
-            SymExpr c = simplifyCore(leadR.coeff / leadD.coeff);
+            Fraction c = leadR.coeff / leadD.coeff;
             Term termQ(c, m);
             
             q.terms.push_back(termQ);
@@ -326,9 +334,9 @@ namespace jc {
         if (isZero()) return SymExpr(BigInt(0));
         SymExpr res(BigInt(0));
         for (const auto& t : terms) {
-            SymExpr termExpr = t.coeff;
+            SymExpr termExpr(t.coeff);
             for (const auto& kv : t.mono.powers) {
-                SymExpr varExpr = SymExpr::makeVar(kv.first);
+                SymExpr varExpr = g_varReg.getExpr(kv.first);
                 if (kv.second > 1) {
                     termExpr = termExpr * (varExpr ^ SymExpr(BigInt(kv.second)));
                 } else if (kv.second == 1) {
@@ -379,27 +387,22 @@ namespace jc {
                     auto updateGcd = [&](const MultiPoly& poly) {
                         for (const auto& t : poly.terms) {
                             if (gcd_val == BigInt(1)) return;
-                            if (t.coeff.ptr->getType() == SymType::NUM) {
-                                auto num = std::static_pointer_cast<SymNum>(t.coeff.ptr);
-                                BigInt v(0);
-                                if (std::holds_alternative<BigInt>(num->value)) v = std::get<BigInt>(num->value);
-                                else if (std::holds_alternative<Fraction>(num->value)) v = std::get<Fraction>(num->value).getNum();
-                                if (v.isNegative()) v = -v;
-                                if (gcd_val.isZero()) gcd_val = v;
-                                else gcd_val = BigInt::gcd(gcd_val, v);
-                            } else {
+                            BigInt v = t.coeff.getNum().abs();
+                            if (t.coeff.getDen() > BigInt(1)) {
                                 gcd_val = BigInt(1);
                                 return;
                             }
+                            if (gcd_val.isZero()) gcd_val = v;
+                            else gcd_val = BigInt::gcd(gcd_val, v);
                         }
                     };
                     updateGcd(p);
                     updateGcd(r);
                     
                     if (gcd_val > BigInt(1)) {
-                        SymExpr gcd_expr(gcd_val);
-                        for (auto& t : p.terms) t.coeff = simplifyCore(t.coeff / gcd_expr);
-                        for (auto& t : r.terms) t.coeff = simplifyCore(t.coeff / gcd_expr);
+                        Fraction gcd_frac(gcd_val);
+                        for (auto& t : p.terms) t.coeff = t.coeff / gcd_frac;
+                        for (auto& t : r.terms) t.coeff = t.coeff / gcd_frac;
                     }
                     
                     divisionOccurred = true;

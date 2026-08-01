@@ -4,7 +4,7 @@
 #include "Symbolic.h"
 #include <vector>
 #include <string>
-#include <map>
+#include <cstdint>
 
 namespace jc {
 
@@ -12,9 +12,9 @@ namespace jc {
     // 多元多项式底层表示 (用于 Gröbner 基计算)
     // =================================================================
 
-    // 单项式：变量名 -> 指数 (例如 x^2 * z^3)
+    // 单项式：变量 ID -> 指数 (例如 x^2 * z^3)
     struct Monomial {
-        std::map<std::string, int> powers;
+        std::vector<std::pair<uint32_t, int>> powers;
 
         bool isOne() const;
         int getDegree() const;
@@ -31,9 +31,9 @@ namespace jc {
 
     // 多项式的一项：系数 * 单项式
     struct Term {
-        SymExpr coeff;
+        Fraction coeff;
         Monomial mono;
-        Term(SymExpr c, Monomial m) : coeff(std::move(c)), mono(std::move(m)) {}
+        Term(Fraction c, Monomial m) : coeff(std::move(c)), mono(std::move(m)) {}
     };
 
     // 多元多项式

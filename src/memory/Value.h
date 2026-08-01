@@ -32,6 +32,7 @@
 #include "../lib/prob/Probability.h"
 #include "GcHeap.h"
 #include "../cas/Symbolic.h" 
+#include "../cas/SymMatrix.h"
 #include "SipHash.h"
 
 namespace jc {
@@ -79,6 +80,7 @@ namespace jc {
     struct ObjRealMatrix;
     struct ObjComplexMatrix;
     struct ObjStringMatrix;
+    struct ObjSymMatrix;
     struct ObjList;
     struct ObjDict;
     struct ObjSet;
@@ -150,6 +152,10 @@ namespace jc {
     struct ObjStringMatrix : public Obj {
         StringMatrix mat;
         ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
+    };
+    struct ObjSymMatrix : public Obj {
+        SymMatrix mat;
+        ObjSymMatrix(SymMatrix m) : mat(std::move(m)) { type = ObjType::SYM_MATRIX; }
     };
 
     template<typename> struct always_false : std::false_type {};
@@ -343,6 +349,10 @@ namespace jc {
             if (val.getRows() * val.getCols() == 0) val = StringMatrix(0, 0);
             *this = fromObj(GcHeap::get().allocate<ObjStringMatrix>(std::move(val)));
         }
+        Value(SymMatrix val) : as_bits(QNAN | TAG_NONE) {
+            if (val.getRows() * val.getCols() == 0) val = SymMatrix(0, 0);
+            *this = fromObj(GcHeap::get().allocate<ObjSymMatrix>(std::move(val)));
+        }
         
         Value(SymExpr val);
 
@@ -440,6 +450,33 @@ namespace jc {
                     }
                 }
                 return ComplexMatrix(m.getRows(), m.getCols(), flat);
+            }
+            throw std::runtime_error("Type Error: Expected a matrix.");
+        }
+
+        bool isSymMatrix() const { return isObjType(ObjType::SYM_MATRIX); }
+
+        SymMatrix asSymMatrix() const {
+            if (isObjType(ObjType::SYM_MATRIX)) return static_cast<ObjSymMatrix*>(asObj())->mat;
+            if (isObjType(ObjType::REAL_MATRIX)) {
+                const RealMatrix& m = static_cast<ObjRealMatrix*>(asObj())->mat;
+                std::vector<SymExpr> flat(m.getRows() * m.getCols());
+                for (int r = 0; r < m.getRows(); ++r) {
+                    for (int c = 0; c < m.getCols(); ++c) {
+                        flat[r * m.getCols() + c] = SymExpr(m(r, c));
+                    }
+                }
+                return SymMatrix(m.getRows(), m.getCols(), flat);
+            }
+            if (isObjType(ObjType::COMPLEX_MATRIX)) {
+                const ComplexMatrix& m = static_cast<ObjComplexMatrix*>(asObj())->mat;
+                std::vector<SymExpr> flat(m.getRows() * m.getCols());
+                for (int r = 0; r < m.getRows(); ++r) {
+                    for (int c = 0; c < m.getCols(); ++c) {
+                        flat[r * m.getCols() + c] = SymExpr(m(r, c));
+                    }
+                }
+                return SymMatrix(m.getRows(), m.getCols(), flat);
             }
             throw std::runtime_error("Type Error: Expected a matrix.");
         }
@@ -559,6 +596,7 @@ namespace jc {
                         case BuiltinType::REALMAT: res += "realmatrix"; break;
                         case BuiltinType::COMPLEXMAT: res += "complexmatrix"; break;
                         case BuiltinType::STRINGMAT: res += "stringmatrix"; break;
+                        case BuiltinType::SYMMAT: res += "symmatrix"; break;
                         case BuiltinType::MATRIX: res += "matrix"; break;
                         case BuiltinType::FUNC: res += "function"; break;
                         case BuiltinType::CLASS: res += "class_type"; break;
@@ -734,6 +772,7 @@ namespace jc {
         if (isObjType(ObjType::BIGINT)) return SymExpr(static_cast<ObjBigInt*>(asObj())->num);
         if (isObjType(ObjType::FRACTION)) return SymExpr(static_cast<ObjFraction*>(asObj())->frac);
         if (isObjType(ObjType::COMPLEX)) return SymExpr(static_cast<ObjComplex*>(asObj())->comp);
+        if (isObjType(ObjType::SYM_MATRIX)) throw std::runtime_error("TypeError: Cannot convert a symbolic matrix to a scalar symbolic expression.");
         throw std::runtime_error("TypeError: Expected a symbolic expression or exact number.");
     }
 
@@ -1054,6 +1093,18 @@ namespace jc {
         }
         if (lhs.isNumber() && rhs.isNumber()) return Value(lhs.asNumber() * rhs.asNumber());
         
+        if (lhs.isObjType(ObjType::SYM_MATRIX) || rhs.isObjType(ObjType::SYM_MATRIX)) {
+            bool lhsIsMat = lhs.isObjType(ObjType::REAL_MATRIX) || lhs.isObjType(ObjType::COMPLEX_MATRIX) || lhs.isObjType(ObjType::SYM_MATRIX);
+            bool rhsIsMat = rhs.isObjType(ObjType::REAL_MATRIX) || rhs.isObjType(ObjType::COMPLEX_MATRIX) || rhs.isObjType(ObjType::SYM_MATRIX);
+            if (lhsIsMat && rhsIsMat) return Value(lhs.asSymMatrix() * rhs.asSymMatrix());
+            
+            bool lhsIsScalar = lhs.isNumber() || lhs.isBigInt() || lhs.isObjType(ObjType::FRACTION) || lhs.isComplex() || lhs.isSymbolic();
+            bool rhsIsScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex() || rhs.isSymbolic();
+            
+            if (lhsIsMat && rhsIsScalar) return Value(lhs.asSymMatrix() * rhs.asSymbolic());
+            if (lhsIsScalar && rhsIsMat) return Value(lhs.asSymbolic() * rhs.asSymMatrix());
+        }
+
         if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat * static_cast<ObjRealMatrix*>(rhs.asObj())->mat);
             if (lhs.isObjType(ObjType::COMPLEX_MATRIX) && rhs.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(lhs.asObj())->mat * static_cast<ObjComplexMatrix*>(rhs.asObj())->mat);
             if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::COMPLEX_MATRIX)) return Value(lhs.asComplexMatrix() * rhs.asComplexMatrix());
@@ -1150,6 +1201,14 @@ namespace jc {
             return Value(lhs.asNumber() / b);
         }
         
+        if (rhs.isObjType(ObjType::SYM_MATRIX)) {
+                return lhs * Value(rhs.asSymMatrix().inverse());
+            }
+            if (lhs.isObjType(ObjType::SYM_MATRIX)) {
+                bool rhsIsScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex() || rhs.isSymbolic();
+                if (rhsIsScalar) return Value(lhs.asSymMatrix() / rhs.asSymbolic());
+            }
+
         if (rhs.isObjType(ObjType::REAL_MATRIX)) {
                 return lhs * Value(rhs.asRealMatrix().inverse());
             }
@@ -1210,6 +1269,18 @@ namespace jc {
         if (lhs.isSymbolic() || rhs.isSymbolic()) return Value(lhs.asSymbolic() ^ rhs.asSymbolic());
         
         if (lhs.isObjType(ObjType::COMPLEX) || rhs.isObjType(ObjType::COMPLEX)) return Value(lhs.asComplex() ^ rhs.asComplex());
+
+            if (lhs.isObjType(ObjType::SYM_MATRIX)) {
+                bool rhsIsScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex() || rhs.isSymbolic();
+                if (rhsIsScalar) {
+                    int n = 0;
+                    if (rhs.isInt32()) n = rhs.asInt32();
+                    else if (rhs.isDouble() && std::floor(rhs.asDouble()) == rhs.asDouble()) n = static_cast<int>(rhs.asDouble());
+                    else if (rhs.isBigInt()) n = static_cast<int>(rhs.asBigInt().toInt64());
+                    else throw std::runtime_error("SymMatrix Error: Matrix power requires an integer exponent.");
+                    return Value(lhs.asSymMatrix().power(n));
+                }
+            }
 
             if (lhs.isObjType(ObjType::REAL_MATRIX) || lhs.isObjType(ObjType::COMPLEX_MATRIX)) {
                 bool rhsIsScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex();
@@ -1662,6 +1733,15 @@ namespace jc {
                         res += ", \"" + mat(i, j) + "\"";
                 return res + ")";
             }
+            case ObjType::SYM_MATRIX: {
+                const auto& mat = static_cast<ObjSymMatrix*>(obj)->mat;
+                if (mat.getRows() * mat.getCols() == 0) return "[]";
+                std::string res = "symmatrix(" + std::to_string(mat.getRows()) + ", " + std::to_string(mat.getCols());
+                for (int i = 0; i < mat.getRows(); ++i)
+                    for (int j = 0; j < mat.getCols(); ++j)
+                        res += ", " + Value(mat(i, j)).toJC2Expression();
+                return res + ")";
+            }
             case ObjType::CLOSURE: return "\"<function>\"";
             case ObjType::CLASS: {
                 std::string n = static_cast<ObjClass*>(obj)->name;
@@ -1735,6 +1815,9 @@ namespace jc {
     }
 
     inline Value ldivide(const Value& lhs, const Value& rhs) {
+        if (lhs.isObjType(ObjType::SYM_MATRIX)) {
+            return Value(lhs.asSymMatrix().inverse()) * rhs;
+        }
         if (lhs.isObjType(ObjType::REAL_MATRIX)) {
             return Value(lhs.asRealMatrix().inverse()) * rhs;
         }
@@ -1852,6 +1935,7 @@ namespace jc {
             case ObjType::REAL_MATRIX:
             case ObjType::COMPLEX_MATRIX:
             case ObjType::STRING_MATRIX:
+            case ObjType::SYM_MATRIX:
             case ObjType::CLASS:
             case ObjType::SYMBOLIC:
             case ObjType::CLOSURE:
@@ -1946,6 +2030,7 @@ namespace jc {
             case ObjType::DICT: return !static_cast<ObjDict*>(obj)->elements.empty();
             case ObjType::SET: return !static_cast<ObjSet*>(obj)->elements.empty();
             case ObjType::SYMBOLIC: return !static_cast<ObjSym*>(obj)->sym.isZero();
+            case ObjType::SYM_MATRIX: return static_cast<ObjSymMatrix*>(obj)->mat.getRows() * static_cast<ObjSymMatrix*>(obj)->mat.getCols() > 0;
             case ObjType::NAMESPACE: return true;
             case ObjType::SLICE: return true;
             case ObjType::INSTANCE: {
@@ -2028,6 +2113,15 @@ namespace jc {
                 case ObjType::STRING_MATRIX: {
                     const auto& a = static_cast<ObjStringMatrix*>(lobj)->mat;
                     const auto& b = static_cast<ObjStringMatrix*>(robj)->mat;
+                    if (a.getRows() != b.getRows() || a.getCols() != b.getCols()) return false;
+                    for (int i = 0; i < a.getRows(); ++i)
+                        for (int j = 0; j < a.getCols(); ++j)
+                            if (a(i, j) != b(i, j)) return false;
+                    return true;
+                }
+                case ObjType::SYM_MATRIX: {
+                    const auto& a = static_cast<ObjSymMatrix*>(lobj)->mat;
+                    const auto& b = static_cast<ObjSymMatrix*>(robj)->mat;
                     if (a.getRows() != b.getRows() || a.getCols() != b.getCols()) return false;
                     for (int i = 0; i < a.getRows(); ++i)
                         for (int j = 0; j < a.getCols(); ++j)
@@ -2139,6 +2233,18 @@ namespace jc {
             }
             catch (...) { return false; }
         }
+        if ((lhs.isObjType(ObjType::SYM_MATRIX) && (rhs.isObjType(ObjType::REAL_MATRIX) || rhs.isObjType(ObjType::COMPLEX_MATRIX))) ||
+            (rhs.isObjType(ObjType::SYM_MATRIX) && (lhs.isObjType(ObjType::REAL_MATRIX) || lhs.isObjType(ObjType::COMPLEX_MATRIX)))) {
+            try {
+                SymMatrix a = lhs.asSymMatrix(), b = rhs.asSymMatrix();
+                if (a.getRows() != b.getRows() || a.getCols() != b.getCols()) return false;
+                for (int i = 0; i < a.getRows(); ++i)
+                    for (int j = 0; j < a.getCols(); ++j)
+                        if (a(i, j) != b(i, j)) return false;
+                return true;
+            }
+            catch (...) { return false; }
+        }
 
         if (lhs.isInstance()) {
             auto [found, res] = invokeDunder(lhs.asInstance(), "__eq__", {rhs});
@@ -2230,6 +2336,7 @@ namespace jc {
             case ObjType::REAL_MATRIX: return "realmatrix";
             case ObjType::COMPLEX_MATRIX: return "complexmatrix";
             case ObjType::STRING_MATRIX: return "stringmatrix";
+            case ObjType::SYM_MATRIX: return "symmatrix";
             case ObjType::LIST: return "list";
             case ObjType::DICT: return "dict";
             case ObjType::SET: return "set";
@@ -2278,6 +2385,7 @@ namespace jc {
                 case ObjType::BASENUM: return Value(-static_cast<ObjBaseNum*>(obj)->base);
                 case ObjType::REAL_MATRIX: return Value(-static_cast<ObjRealMatrix*>(obj)->mat);
                 case ObjType::COMPLEX_MATRIX: return Value(-static_cast<ObjComplexMatrix*>(obj)->mat);
+                case ObjType::SYM_MATRIX: return Value(-static_cast<ObjSymMatrix*>(obj)->mat);
                 case ObjType::SYMBOLIC: return Value(-static_cast<ObjSym*>(obj)->sym);
                 default: break;
             }
@@ -2321,6 +2429,18 @@ namespace jc {
             return Value(res);
         }
         
+        if (lhs.isObjType(ObjType::SYM_MATRIX) || rhs.isObjType(ObjType::SYM_MATRIX)) {
+            bool lhsIsMat = lhs.isObjType(ObjType::REAL_MATRIX) || lhs.isObjType(ObjType::COMPLEX_MATRIX) || lhs.isObjType(ObjType::SYM_MATRIX);
+            bool rhsIsMat = rhs.isObjType(ObjType::REAL_MATRIX) || rhs.isObjType(ObjType::COMPLEX_MATRIX) || rhs.isObjType(ObjType::SYM_MATRIX);
+            if (lhsIsMat && rhsIsMat) return Value(lhs.asSymMatrix() + rhs.asSymMatrix());
+            
+            bool lhsIsScalar = lhs.isNumber() || lhs.isBigInt() || lhs.isObjType(ObjType::FRACTION) || lhs.isComplex() || lhs.isSymbolic();
+            bool rhsIsScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex() || rhs.isSymbolic();
+            
+            if (lhsIsMat && rhsIsScalar) return Value(lhs.asSymMatrix() + rhs.asSymbolic());
+            if (lhsIsScalar && rhsIsMat) return Value(lhs.asSymbolic() + rhs.asSymMatrix());
+        }
+
         if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat + static_cast<ObjRealMatrix*>(rhs.asObj())->mat);
             if (lhs.isObjType(ObjType::COMPLEX_MATRIX) && rhs.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(lhs.asObj())->mat + static_cast<ObjComplexMatrix*>(rhs.asObj())->mat);
             if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::COMPLEX_MATRIX)) return Value(lhs.asComplexMatrix() + rhs.asComplexMatrix());
@@ -2429,6 +2549,18 @@ namespace jc {
                 return Value(res);
             }
             throw std::runtime_error("Type Error: Dict subtraction requires a Set, List, or Dict on the right side.");
+        }
+
+        if (lhs.isObjType(ObjType::SYM_MATRIX) || rhs.isObjType(ObjType::SYM_MATRIX)) {
+            bool lhsIsMat = lhs.isObjType(ObjType::REAL_MATRIX) || lhs.isObjType(ObjType::COMPLEX_MATRIX) || lhs.isObjType(ObjType::SYM_MATRIX);
+            bool rhsIsMat = rhs.isObjType(ObjType::REAL_MATRIX) || rhs.isObjType(ObjType::COMPLEX_MATRIX) || rhs.isObjType(ObjType::SYM_MATRIX);
+            if (lhsIsMat && rhsIsMat) return Value(lhs.asSymMatrix() - rhs.asSymMatrix());
+            
+            bool lhsIsScalar = lhs.isNumber() || lhs.isBigInt() || lhs.isObjType(ObjType::FRACTION) || lhs.isComplex() || lhs.isSymbolic();
+            bool rhsIsScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex() || rhs.isSymbolic();
+            
+            if (lhsIsMat && rhsIsScalar) return Value(lhs.asSymMatrix() - rhs.asSymbolic());
+            if (lhsIsScalar && rhsIsMat) return Value(lhs.asSymbolic() - rhs.asSymMatrix());
         }
 
         if (lhs.isObjType(ObjType::REAL_MATRIX) && rhs.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat - static_cast<ObjRealMatrix*>(rhs.asObj())->mat);
@@ -2562,6 +2694,12 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         }
         case ObjType::STRING_MATRIX: {
             const auto& m = static_cast<ObjStringMatrix*>(obj)->mat;
+            if (m.getRows() * m.getCols() == 0) os << "[]";
+            else os << m;
+            break;
+        }
+        case ObjType::SYM_MATRIX: {
+            const auto& m = static_cast<ObjSymMatrix*>(obj)->mat;
             if (m.getRows() * m.getCols() == 0) os << "[]";
             else os << m;
             break;
@@ -2803,6 +2941,17 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x8B3E5A2F1D7C4068ULL;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
                 size_t h = sipHash24String(raw[idx]) + 0x9e3779b9 + idx;
+                seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            }
+            return seed;
+        }
+        case ObjType::SYM_MATRIX: {
+            const auto& m = static_cast<ObjSymMatrix*>(obj)->mat;
+            const auto& raw = m.rawData();
+            size_t sz = raw.size();
+            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x9A2B3C4D5E6F7081ULL;
+            for (size_t idx = 0; idx < raw.size(); ++idx) {
+                size_t h = sipHash24String(raw[idx].toString()) + 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;

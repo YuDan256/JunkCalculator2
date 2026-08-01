@@ -1321,7 +1321,7 @@
       "    Supported Exact & Union Types: ",
       "      int, whole, double, real, number, exact, string, bool, binary, none_type,",
       "      list, dict, set, fraction, complex, basenum, symbolic,",
-      "      realmatrix, complexmatrix, stringmatrix, matrix, function, class_type, instance, namespace_type, any_type",
+      "      realmatrix, complexmatrix, stringmatrix, symmatrix, matrix, function, class_type, instance, namespace_type, any_type",
       "",
       "    Duck Types / Interfaces (Behavioral Contracts):",
       "      iterable    → Matches lists, dicts, sets, strings, matrices, or instances with __iter__/__next__",
@@ -1365,10 +1365,11 @@
       "",
       "  Container & Duck Type Checks",
       "  ──────────────────────",
-      "    ismatrix(x)         Any matrix? (real, complex, or string)",
+      "    ismatrix(x)         Any matrix? (real, complex, string, or symbolic)",
       "    isrealmatrix(x)     realmatrix specifically?",
       "    iscomplexmatrix(x)  complexmatrix specifically?",
       "    isstringmatrix(x)   stringmatrix specifically?",
+      "    issymmatrix(x)      symmatrix specifically?",
       "    isvector(x)         Row vector (1×N) or column vector (N×1)?",
       "    issquare(x)         Square matrix (N×N)?",
       "    islist(x)           list type?",
@@ -3814,6 +3815,13 @@
         "matrix(2, 2, 1, 2, 3, 4)"
       ]
     },
+    "symmatrix": {
+      "signature": "symmatrix(rows, cols, [elements...])",
+      "desc": "Constructs a symbolic matrix with the specified dimensions and elements.",
+      "examples": [
+        "symmatrix(2, 2, 1, 2, 3, 4)"
+      ]
+    },
     "det": {
       "signature": "A.det()",
       "desc": "Returns the determinant of a square matrix.",
@@ -5374,6 +5382,11 @@
       "signature": "isstringmatrix(x)",
       "desc": "Returns true if x is specifically a stringmatrix.",
       "examples": ["isstringmatrix([\"a\", \"b\"])"]
+    },
+    "issymmatrix": {
+      "signature": "issymmatrix(x)",
+      "desc": "Returns true if x is specifically a symmatrix.",
+      "examples": ["issymmatrix(symmatrix(2, 2))"]
     },
     "isvector": {
       "signature": "isvector(x)",

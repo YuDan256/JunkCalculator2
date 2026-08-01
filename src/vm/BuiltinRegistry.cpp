@@ -598,6 +598,31 @@ void BuiltinRegistry::registerMath() {
         return Value(RealMatrix(r, c, flat));
         }, {"rows", "cols", "...elements"});
 
+    reg("symmatrix", {}, [](const std::vector<Value>& args) -> Value {
+        if (args.size() < 2)
+            throw std::runtime_error("Runtime Error: symmatrix(rows, cols [, ...]) expects at least 2 args.");
+        int r = static_cast<int>(std::round(args[0].asDouble()));
+        int c = static_cast<int>(std::round(args[1].asDouble()));
+        if (r <= 0 || c <= 0)
+            throw std::runtime_error("Runtime Error: symmatrix() dimensions must be positive.");
+
+        if (static_cast<int>(args.size()) == 2)
+            return Value(SymMatrix(r, c));
+
+        int total = r * c;
+        if (static_cast<int>(args.size()) - 2 != total)
+            throw std::runtime_error("Runtime Error: symmatrix() element count mismatch: "
+                "expected " + std::to_string(total) + ", got " +
+                std::to_string(args.size() - 2) + ".");
+
+        std::vector<SymExpr> flat;
+        flat.reserve(total);
+        for (int i = 0; i < total; ++i) {
+            flat.push_back(args[i + 2].asSymbolic());
+        }
+        return Value(SymMatrix(r, c, flat));
+        }, {"rows", "cols", "...elements"});
+
     regMath("sin", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSin());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matSin());
@@ -1001,13 +1026,14 @@ void BuiltinRegistry::registerMatrixOps() {
     auto matrixDispatch1 = [](const Value& arg, auto func) -> Value {
         if (arg.isObjType(ObjType::REAL_MATRIX)) return Value(func(static_cast<ObjRealMatrix*>(arg.asObj())->mat));
         if (arg.isObjType(ObjType::COMPLEX_MATRIX)) return Value(func(static_cast<ObjComplexMatrix*>(arg.asObj())->mat));
+        if (arg.isObjType(ObjType::SYM_MATRIX)) return Value(func(static_cast<ObjSymMatrix*>(arg.asObj())->mat));
         throw std::runtime_error("Type Error: Expected a matrix.");
     };
 
     // --- 逐元素运算 (Element-wise) ---
     auto elementWiseOp = [](const Value& a, const Value& b, const std::string& opName, auto scalarOp) -> Value {
-        bool aMat = a.isObjType(ObjType::REAL_MATRIX) || a.isObjType(ObjType::COMPLEX_MATRIX) || a.isObjType(ObjType::STRING_MATRIX);
-        bool bMat = b.isObjType(ObjType::REAL_MATRIX) || b.isObjType(ObjType::COMPLEX_MATRIX) || b.isObjType(ObjType::STRING_MATRIX);
+        bool aMat = a.isObjType(ObjType::REAL_MATRIX) || a.isObjType(ObjType::COMPLEX_MATRIX) || a.isObjType(ObjType::STRING_MATRIX) || a.isObjType(ObjType::SYM_MATRIX);
+        bool bMat = b.isObjType(ObjType::REAL_MATRIX) || b.isObjType(ObjType::COMPLEX_MATRIX) || b.isObjType(ObjType::STRING_MATRIX) || b.isObjType(ObjType::SYM_MATRIX);
 
         if (!aMat && !bMat) return scalarOp(a, b);
 
@@ -1016,6 +1042,7 @@ void BuiltinRegistry::registerMatrixOps() {
             if (v.isObjType(ObjType::REAL_MATRIX)) { r = static_cast<ObjRealMatrix*>(v.asObj())->mat.getRows(); c = static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols(); }
             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { r = static_cast<ObjComplexMatrix*>(v.asObj())->mat.getRows(); c = static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols(); }
             else if (v.isObjType(ObjType::STRING_MATRIX)) { r = static_cast<ObjStringMatrix*>(v.asObj())->mat.getRows(); c = static_cast<ObjStringMatrix*>(v.asObj())->mat.getCols(); }
+            else if (v.isObjType(ObjType::SYM_MATRIX)) { r = static_cast<ObjSymMatrix*>(v.asObj())->mat.getRows(); c = static_cast<ObjSymMatrix*>(v.asObj())->mat.getCols(); }
         };
         getDims(a, r1, c1); getDims(b, r2, c2);
 
@@ -1028,32 +1055,40 @@ void BuiltinRegistry::registerMatrixOps() {
             if (v.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData()[idx]);
             if (v.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData()[idx]);
             if (v.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(v.asObj())->mat.rawData()[idx]);
+            if (v.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(v.asObj())->mat.rawData()[idx]);
             return v;
         };
 
         Value firstRes = scalarOp(getElem(a, 0), getElem(b, 0));
         bool isStr = firstRes.isString();
         bool isComp = firstRes.isComplex();
+        bool isSym = firstRes.isSymbolic();
 
         if (isStr) {
-            std::vector<std::string> flat(r * c);
+            std::vector<std::string> flatStr(r * c);
             for (int i = 0; i < r * c; ++i) {
                 Value res = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0));
-                flat[i] = res.isString() ? res.asString() : res.toString();
+                flatStr[i] = res.isString() ? res.asString() : res.toString();
             }
-            return Value(StringMatrix(r, c, flat));
+            return Value(StringMatrix(r, c, flatStr));
+        } else if (isSym) {
+            std::vector<SymExpr> flatSym(r * c);
+            for (int i = 0; i < r * c; ++i) {
+                flatSym[i] = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0)).asSymbolic();
+            }
+            return Value(SymMatrix(r, c, flatSym));
         } else if (isComp) {
-            std::vector<Complex> flat(r * c);
+            std::vector<Complex> flatComp(r * c);
             for (int i = 0; i < r * c; ++i) {
-                flat[i] = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0)).asComplex();
+                flatComp[i] = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0)).asComplex();
             }
-            return Value(ComplexMatrix(r, c, flat));
+            return Value(ComplexMatrix(r, c, flatComp));
         } else {
-            std::vector<double> flat(r * c);
+            std::vector<double> flatReal(r * c);
             for (int i = 0; i < r * c; ++i) {
-                flat[i] = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0)).asDouble();
+                flatReal[i] = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0)).asDouble();
             }
-            return Value(RealMatrix(r, c, flat));
+            return Value(RealMatrix(r, c, flatReal));
         }
     };
 
@@ -1111,9 +1146,9 @@ void BuiltinRegistry::registerMatrixOps() {
     regMethod(VM::activeVM->matrixProto, "hypotE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asDouble(), b.asDouble())); }); });
     regMethod(VM::activeVM->matrixProto, "whereE", {"A", "B"}, [](const std::vector<Value>& args) -> Value {
         const Value& mask = helpers::nativeSelfStack.back(); const Value& a = args[0]; const Value& b = args[1];
-        bool mMat = mask.isObjType(ObjType::REAL_MATRIX) || mask.isObjType(ObjType::COMPLEX_MATRIX) || mask.isObjType(ObjType::STRING_MATRIX);
-        bool aMat = a.isObjType(ObjType::REAL_MATRIX) || a.isObjType(ObjType::COMPLEX_MATRIX) || a.isObjType(ObjType::STRING_MATRIX);
-        bool bMat = b.isObjType(ObjType::REAL_MATRIX) || b.isObjType(ObjType::COMPLEX_MATRIX) || b.isObjType(ObjType::STRING_MATRIX);
+        bool mMat = mask.isObjType(ObjType::REAL_MATRIX) || mask.isObjType(ObjType::COMPLEX_MATRIX) || mask.isObjType(ObjType::STRING_MATRIX) || mask.isObjType(ObjType::SYM_MATRIX);
+        bool aMat = a.isObjType(ObjType::REAL_MATRIX) || a.isObjType(ObjType::COMPLEX_MATRIX) || a.isObjType(ObjType::STRING_MATRIX) || a.isObjType(ObjType::SYM_MATRIX);
+        bool bMat = b.isObjType(ObjType::REAL_MATRIX) || b.isObjType(ObjType::COMPLEX_MATRIX) || b.isObjType(ObjType::STRING_MATRIX) || b.isObjType(ObjType::SYM_MATRIX);
 
         if (!mMat && !aMat && !bMat) return mask.truthy() ? a : b;
 
@@ -1122,6 +1157,7 @@ void BuiltinRegistry::registerMatrixOps() {
             if (v.isObjType(ObjType::REAL_MATRIX)) { r = std::max(r, static_cast<ObjRealMatrix*>(v.asObj())->mat.getRows()); c = std::max(c, static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols()); }
             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { r = std::max(r, static_cast<ObjComplexMatrix*>(v.asObj())->mat.getRows()); c = std::max(c, static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols()); }
             else if (v.isObjType(ObjType::STRING_MATRIX)) { r = std::max(r, static_cast<ObjStringMatrix*>(v.asObj())->mat.getRows()); c = std::max(c, static_cast<ObjStringMatrix*>(v.asObj())->mat.getCols()); }
+            else if (v.isObjType(ObjType::SYM_MATRIX)) { r = std::max(r, static_cast<ObjSymMatrix*>(v.asObj())->mat.getRows()); c = std::max(c, static_cast<ObjSymMatrix*>(v.asObj())->mat.getCols()); }
         };
         updateDims(mask); updateDims(a); updateDims(b);
 
@@ -1129,6 +1165,7 @@ void BuiltinRegistry::registerMatrixOps() {
             if (v.isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols() != c) throw std::runtime_error("Math Error: Dimension mismatch in whereE() for " + name + "."); }
             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols() != c) throw std::runtime_error("Math Error: Dimension mismatch in whereE() for " + name + "."); }
             else if (v.isObjType(ObjType::STRING_MATRIX)) { if (static_cast<ObjStringMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjStringMatrix*>(v.asObj())->mat.getCols() != c) throw std::runtime_error("Math Error: Dimension mismatch in whereE() for " + name + "."); }
+            else if (v.isObjType(ObjType::SYM_MATRIX)) { if (static_cast<ObjSymMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjSymMatrix*>(v.asObj())->mat.getCols() != c) throw std::runtime_error("Math Error: Dimension mismatch in whereE() for " + name + "."); }
         };
         checkDims(mask, "mask"); checkDims(a, "true_val"); checkDims(b, "false_val");
 
@@ -1136,32 +1173,42 @@ void BuiltinRegistry::registerMatrixOps() {
             if (v.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData()[idx]);
             if (v.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData()[idx]);
             if (v.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(v.asObj())->mat.rawData()[idx]);
+            if (v.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(v.asObj())->mat.rawData()[idx]);
             return v;
         };
 
-        bool isStr = false, isComp = false;
+        bool isStr = false, isComp = false, isSym = false;
         if (a.isObjType(ObjType::STRING_MATRIX) || b.isObjType(ObjType::STRING_MATRIX)) isStr = true;
         else if (!aMat && a.isString()) isStr = true;
         else if (!bMat && b.isString()) isStr = true;
+        else if (a.isObjType(ObjType::SYM_MATRIX) || b.isObjType(ObjType::SYM_MATRIX)) isSym = true;
+        else if (!aMat && a.isSymbolic()) isSym = true;
+        else if (!bMat && b.isSymbolic()) isSym = true;
         else if (a.isObjType(ObjType::COMPLEX_MATRIX) || b.isObjType(ObjType::COMPLEX_MATRIX)) isComp = true;
         else if (!aMat && a.isComplex()) isComp = true;
         else if (!bMat && b.isComplex()) isComp = true;
 
         if (isStr) {
-            std::vector<std::string> flat(r * c);
+            std::vector<std::string> flatStr(r * c);
             for (int i = 0; i < r * c; ++i) {
                 Value res = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0) : getElem(b, bMat ? i : 0);
-                flat[i] = res.isString() ? res.asString() : res.toString();
+                flatStr[i] = res.isString() ? res.asString() : res.toString();
             }
-            return Value(StringMatrix(r, c, flat));
+            return Value(StringMatrix(r, c, flatStr));
+        } else if (isSym) {
+            std::vector<SymExpr> flatSym(r * c);
+            for (int i = 0; i < r * c; ++i) {
+                flatSym[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asSymbolic() : getElem(b, bMat ? i : 0).asSymbolic();
+            }
+            return Value(SymMatrix(r, c, flatSym));
         } else if (isComp) {
-            std::vector<Complex> flat(r * c);
-            for (int i = 0; i < r * c; ++i) flat[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asComplex() : getElem(b, bMat ? i : 0).asComplex();
-            return Value(ComplexMatrix(r, c, flat));
+            std::vector<Complex> flatComp(r * c);
+            for (int i = 0; i < r * c; ++i) flatComp[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asComplex() : getElem(b, bMat ? i : 0).asComplex();
+            return Value(ComplexMatrix(r, c, flatComp));
         } else {
-            std::vector<double> flat(r * c);
-            for (int i = 0; i < r * c; ++i) flat[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asDouble() : getElem(b, bMat ? i : 0).asDouble();
-            return Value(RealMatrix(r, c, flat));
+            std::vector<double> flatReal(r * c);
+            for (int i = 0; i < r * c; ++i) flatReal[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asDouble() : getElem(b, bMat ? i : 0).asDouble();
+            return Value(RealMatrix(r, c, flatReal));
         }
     });
 
@@ -1170,6 +1217,7 @@ void BuiltinRegistry::registerMatrixOps() {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.determinant());
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.determinant());
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.determinant());
         throw std::runtime_error("Type Error: det() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "det", {}, detFn);
@@ -1178,6 +1226,7 @@ void BuiltinRegistry::registerMatrixOps() {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.inverse());
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.inverse());
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.inverse());
         throw std::runtime_error("Type Error: inv() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "inv", {}, invFn);
@@ -1187,6 +1236,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.transpose());
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.transpose());
         if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.transpose());
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.transpose());
         throw std::runtime_error("Type Error: trans() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "trans", {}, transFn);
@@ -1202,13 +1252,18 @@ void BuiltinRegistry::registerMatrixOps() {
     auto matrixDispatchProto = [](const Value& arg, auto func) -> Value {
         if (arg.isObjType(ObjType::REAL_MATRIX)) return Value(func(static_cast<ObjRealMatrix*>(arg.asObj())->mat));
         if (arg.isObjType(ObjType::COMPLEX_MATRIX)) return Value(func(static_cast<ObjComplexMatrix*>(arg.asObj())->mat));
+        if (arg.isObjType(ObjType::SYM_MATRIX)) return Value(func(static_cast<ObjSymMatrix*>(arg.asObj())->mat));
         throw std::runtime_error("Type Error: Expected a matrix.");
     };
 
     auto rankFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return Value::fromInt32(m.rank()); }); };
     regMethod(VM::activeVM->matrixProto, "rank", {}, rankFn);
 
-    auto trFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.trace(); }); };
+    auto trFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { 
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.trace());
+        return matrixDispatchProto(self, [](const auto& m) { return m.trace(); }); 
+    };
     regMethod(VM::activeVM->matrixProto, "tr", {}, trFn);
 
     auto normFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.norm(); }); };
@@ -1217,7 +1272,11 @@ void BuiltinRegistry::registerMatrixOps() {
     auto condFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.condition(); }); };
     regMethod(VM::activeVM->matrixProto, "cond", {}, condFn);
 
-    auto adjFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.adjugate(); }); };
+    auto adjFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { 
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.adjugate());
+        return matrixDispatchProto(self, [](const auto& m) { return m.adjugate(); }); 
+    };
     regMethod(VM::activeVM->matrixProto, "adj", {}, adjFn);
 
     auto permFn = [matrixDispatchProto](const std::vector<Value>&) -> Value { return matrixDispatchProto(helpers::nativeSelfStack.back(), [](const auto& m) { return m.permanent(); }); };
@@ -1290,7 +1349,12 @@ void BuiltinRegistry::registerMatrixOps() {
     auto ctransFn = [matrixDispatch1](const std::vector<Value>&) -> Value { return matrixDispatch1(helpers::nativeSelfStack.back(), [](const auto& m) { return m.conjugateTranspose(); }); };
     regMethod(VM::activeVM->matrixProto, "ctrans", {}, ctransFn);
 
-    auto mpowFn = [matrixDispatch1](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asDouble())); return matrixDispatch1(helpers::nativeSelfStack.back(), [n](const auto& m) { return m.power(n); }); };
+    auto mpowFn = [matrixDispatch1](const std::vector<Value>& args) -> Value { 
+        int n = static_cast<int>(std::round(args[0].asDouble())); 
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.power(n));
+        return matrixDispatch1(self, [n](const auto& m) { return m.power(n); }); 
+    };
     regMethod(VM::activeVM->matrixProto, "mpow", {"n"}, mpowFn);
 
     // --- 维度 ---
@@ -1299,6 +1363,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(self.asObj())->mat.getRows());
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(self.asObj())->mat.getRows());
         if (self.isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(self.asObj())->mat.getRows());
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value::fromInt32(static_cast<ObjSymMatrix*>(self.asObj())->mat.getRows());
         throw std::runtime_error("Type Error: row() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "row", {}, rowFn);
@@ -1309,6 +1374,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value::fromInt32(static_cast<ObjRealMatrix*>(self.asObj())->mat.getCols());
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value::fromInt32(static_cast<ObjComplexMatrix*>(self.asObj())->mat.getCols());
         if (self.isObjType(ObjType::STRING_MATRIX)) return Value::fromInt32(static_cast<ObjStringMatrix*>(self.asObj())->mat.getCols());
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value::fromInt32(static_cast<ObjSymMatrix*>(self.asObj())->mat.getCols());
         throw std::runtime_error("Type Error: col() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "col", {}, colFn);
@@ -1321,6 +1387,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat(r, c));
         if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat(r, c));
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat(r, c));
         throw std::runtime_error("Type Error: getElement() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "getElement", {"r", "c"}, getElementFn);
@@ -1331,6 +1398,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix res = static_cast<ObjRealMatrix*>(self.asObj())->mat; res(r, c) = args[2].asDouble(); return Value(res); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix res = static_cast<ObjComplexMatrix*>(self.asObj())->mat; res(r, c) = args[2].asComplex(); return Value(res); }
         if (self.isObjType(ObjType::STRING_MATRIX)) { StringMatrix res = static_cast<ObjStringMatrix*>(self.asObj())->mat; if (args[2].isString()) res(r, c) = args[2].asString(); else { std::ostringstream oss; oss << args[2]; res(r, c) = oss.str(); } return Value(res); }
+        if (self.isObjType(ObjType::SYM_MATRIX)) { SymMatrix res = static_cast<ObjSymMatrix*>(self.asObj())->mat; res(r, c) = args[2].asSymbolic(); return Value(res); }
         throw std::runtime_error("Type Error: setElement() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "setElement", {"r", "c", "val"}, setElementFn);
@@ -1343,6 +1411,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.BODY); \
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.BODY); \
         if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.BODY); \
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.BODY); \
         throw std::runtime_error("Type Error: requires a matrix."); \
     }; \
     regMethod(VM::activeVM->matrixProto, #NAME, {"idx"}, NAME##Fn)
@@ -1359,6 +1428,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
         if (self.isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
+        if (self.isObjType(ObjType::SYM_MATRIX)) { SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
         throw std::runtime_error("Type Error: requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "swapR", {"r1", "r2"}, swapRFn);
@@ -1369,6 +1439,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
         if (self.isObjType(ObjType::STRING_MATRIX)) { StringMatrix m = static_cast<ObjStringMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
+        if (self.isObjType(ObjType::SYM_MATRIX)) { SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
         throw std::runtime_error("Type Error: requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "swapC", {"c1", "c2"}, swapCFn);
@@ -1416,6 +1487,7 @@ void BuiltinRegistry::registerMatrixOps() {
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.reshape(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.reshape(r, c));
         if (self.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.reshape(r, c));
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.reshape(r, c));
         throw std::runtime_error("Type Error: reshape() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "reshape", {"r", "c"}, reshapeFn);
@@ -1425,6 +1497,7 @@ void BuiltinRegistry::registerMatrixOps() {
         int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.subMatrix(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.subMatrix(r, c));
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.subMatrix(r, c));
         throw std::runtime_error("Type Error: requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "sub", {"r", "c"}, subFn);
@@ -1434,6 +1507,7 @@ void BuiltinRegistry::registerMatrixOps() {
         int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.cofactor(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.cofactor(r, c));
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.cofactor(r, c));
         throw std::runtime_error("Type Error: requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "cof", {"r", "c"}, cofFn);
@@ -1443,6 +1517,7 @@ void BuiltinRegistry::registerMatrixOps() {
         int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
         throw std::runtime_error("Type Error: requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "Acof", {"r", "c"}, AcofFn);
@@ -1452,6 +1527,8 @@ void BuiltinRegistry::registerMatrixOps() {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.integR(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
         if (self.isObjType(ObjType::STRING_MATRIX) && args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.integR(static_cast<ObjStringMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::SYM_MATRIX) && args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.integR(static_cast<ObjSymMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::SYM_MATRIX) || args[0].isObjType(ObjType::SYM_MATRIX)) return Value(self.asSymMatrix().integR(args[0].asSymMatrix()));
         return Value(self.asComplexMatrix().integR(args[0].asComplexMatrix()));
     };
     regMethod(VM::activeVM->matrixProto, "hcat", {"B"}, integRFn);
@@ -1460,6 +1537,8 @@ void BuiltinRegistry::registerMatrixOps() {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.integC(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
         if (self.isObjType(ObjType::STRING_MATRIX) && args[0].isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(self.asObj())->mat.integC(static_cast<ObjStringMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::SYM_MATRIX) && args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.integC(static_cast<ObjSymMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::SYM_MATRIX) || args[0].isObjType(ObjType::SYM_MATRIX)) return Value(self.asSymMatrix().integC(args[0].asSymMatrix()));
         return Value(self.asComplexMatrix().integC(args[0].asComplexMatrix()));
     };
     regMethod(VM::activeVM->matrixProto, "vcat", {"B"}, integCFn);
@@ -1467,6 +1546,8 @@ void BuiltinRegistry::registerMatrixOps() {
     auto integDFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.integD(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::SYM_MATRIX) && args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.integD(static_cast<ObjSymMatrix*>(args[0].asObj())->mat));
+        if (self.isObjType(ObjType::SYM_MATRIX) || args[0].isObjType(ObjType::SYM_MATRIX)) return Value(self.asSymMatrix().integD(args[0].asSymMatrix()));
         return Value(self.asComplexMatrix().integD(args[0].asComplexMatrix()));
     };
     regMethod(VM::activeVM->matrixProto, "blkdiag", {"B"}, integDFn);
@@ -3460,6 +3541,15 @@ void BuiltinRegistry::registerArrayFunctions() {
                 v[i] = res.asComplex();
             }
             return Value(ComplexMatrix(m.getRows(), m.getCols(), v));
+        } else if (val.isObjType(ObjType::SYM_MATRIX)) {
+            auto& m = static_cast<ObjSymMatrix*>(val.asObj())->mat;
+            auto v = m.rawData();
+            if (v.empty()) return Value(SymMatrix(m.getRows(), m.getCols(), v));
+            for (size_t i = 1; i < v.size(); ++i) {
+                Value res = opBody(Value(v[i - 1]), Value(v[i]));
+                v[i] = res.asSymbolic();
+            }
+            return Value(SymMatrix(m.getRows(), m.getCols(), v));
         }
         throw std::runtime_error("Type Error: cumsum/cumprod expects a numeric vector or list.");
         };
@@ -3501,6 +3591,13 @@ void BuiltinRegistry::registerArrayFunctions() {
             std::vector<Complex> d(v.size() - 1);
             for (size_t i = 0; i < d.size(); ++i) d[i] = v[i + 1] - v[i];
             return Value(ComplexMatrix(1, static_cast<int>(d.size()), d));
+        } else if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto& m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
+            auto v = m.rawData();
+            if (v.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
+            std::vector<SymExpr> d(v.size() - 1);
+            for (size_t i = 0; i < d.size(); ++i) d[i] = jc::simplifyCore(v[i + 1] - v[i]);
+            return Value(SymMatrix(1, static_cast<int>(d.size()), d));
         }
         throw std::runtime_error("Type Error: diffs() expects a numeric vector or list.");
     };
@@ -3533,6 +3630,14 @@ void BuiltinRegistry::registerArrayFunctions() {
                 for (int j=0; j<m.getCols(); ++j)
                     if (m(i,j) == t) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)}));
             return Value::fromInt32(-1);
+        } else if (self.isObjType(ObjType::SYM_MATRIX)) {
+            const auto& m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
+            if (!target.isSymbolic() && !target.isNumber() && !target.isBigInt() && !target.isObjType(ObjType::FRACTION) && !target.isComplex()) return Value::fromInt32(-1);
+            SymExpr t = target.asSymbolic();
+            for (int i=0; i<m.getRows(); ++i)
+                for (int j=0; j<m.getCols(); ++j)
+                    if (m(i,j) == t) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)}));
+            return Value::fromInt32(-1);
         }
         throw std::runtime_error("Type Error: find() expects a matrix.");
     };
@@ -3551,7 +3656,7 @@ void BuiltinRegistry::registerStringMatrix() {
     reg("strvec", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(static_cast<int>(flat.size()),1,flat)); }, {"...elements"});
     reg("strrow", {}, [](const std::vector<Value>& args) -> Value { std::vector<std::string> flat; for (const auto& a:args) { if (a.isString()) flat.push_back(a.asString()); else { std::ostringstream oss; oss<<a; flat.push_back(oss.str()); } } return Value(StringMatrix(1,static_cast<int>(flat.size()),flat)); }, {"...elements"});
     reg("strfill", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: strfill() expects a string and count."); int n=static_cast<int>(std::round(args[1].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: strfill() count must be non-negative."); return Value(StringMatrix(1,n,std::vector<std::string>(n,args[0].asString()))); }, {"str", "n"});
-    reg("toStrMat", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::STRING_MATRIX)) return args[0]; if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m=static_cast<ObjRealMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m=static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; std::vector<std::string> flat; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flat.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flat)); } throw std::runtime_error("Type Error: toStrMat() expects a matrix."); }, {"A"});
+    reg("toStrMat", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isObjType(ObjType::STRING_MATRIX)) return args[0]; if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m=static_cast<ObjRealMatrix*>(args[0].asObj())->mat; std::vector<std::string> flatR; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flatR.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flatR)); } if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m=static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; std::vector<std::string> flatC; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flatC.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flatC)); } if (args[0].isObjType(ObjType::SYM_MATRIX)) { const auto& m=static_cast<ObjSymMatrix*>(args[0].asObj())->mat; std::vector<std::string> flatS; for (int i=0;i<m.getRows();++i) for (int j=0;j<m.getCols();++j) { std::ostringstream oss; oss<<Value(m(i,j)); flatS.push_back(oss.str()); } return Value(StringMatrix(m.getRows(),m.getCols(),flatS)); } throw std::runtime_error("Type Error: toStrMat() expects a matrix."); }, {"A"});
 }
 
 // =================================================================
@@ -3860,6 +3965,23 @@ void BuiltinRegistry::registerListConversion() {
             }
             return Value(rows);
         }
+        if (arg.isObjType(ObjType::SYM_MATRIX)) {
+            const auto& m = static_cast<ObjSymMatrix*>(arg.asObj())->mat;
+            if (m.getRows() == 1 || m.getCols() == 1) {
+                ObjList* L = GcHeap::get().allocate<ObjList>();
+                for (const auto& s : m.rawData()) L->vec.push_back(Value(s));
+                return Value(L);
+            }
+            ObjList* rows = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(rows);
+            for (int i = 0; i < m.getRows(); ++i) {
+                ObjList* row = GcHeap::get().allocate<ObjList>();
+                for (int j = 0; j < m.getCols(); ++j) row->vec.push_back(Value(m(i, j)));
+                row->is_frozen = true;
+                rows->vec.push_back(Value(row));
+            }
+            return Value(rows);
+        }
         if (arg.isString()) {
             ObjList* L = GcHeap::get().allocate<ObjList>();
             ObjString* objStr = arg.asObjString();
@@ -3902,7 +4024,13 @@ void BuiltinRegistry::registerListConversion() {
             return Value(StringMatrix(static_cast<int>(listFlat.size()), 1, listFlat));
         }
         if (arg.isObjType(ObjType::STRING_MATRIX)) return arg;
-        throw std::runtime_error("Type Error: toStrVec() expects a List, StringMatrix, or Iterable.");
+        if (arg.isObjType(ObjType::SYM_MATRIX)) {
+            const auto& m = static_cast<ObjSymMatrix*>(arg.asObj())->mat;
+            std::vector<std::string> symFlat;
+            for (const auto& s : m.rawData()) { std::ostringstream oss; oss << Value(s); symFlat.push_back(oss.str()); }
+            return Value(StringMatrix(static_cast<int>(symFlat.size()), 1, symFlat));
+        }
+        throw std::runtime_error("Type Error: toStrVec() expects a List, StringMatrix, SymMatrix, or Iterable.");
         }, {"v"});
 
     reg("toArray", { 1 }, [this](const std::vector<Value>& args) -> Value {
@@ -3922,7 +4050,7 @@ void BuiltinRegistry::registerListConversion() {
         }, {"v"});
 
     reg("toMatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::REAL_MATRIX) || args[0].isObjType(ObjType::COMPLEX_MATRIX) || args[0].isObjType(ObjType::STRING_MATRIX)) return args[0];
+        if (args[0].isObjType(ObjType::REAL_MATRIX) || args[0].isObjType(ObjType::COMPLEX_MATRIX) || args[0].isObjType(ObjType::STRING_MATRIX) || args[0].isObjType(ObjType::SYM_MATRIX)) return args[0];
         if (!args[0].isObjType(ObjType::LIST)) throw std::runtime_error("Type Error: expects a List or matrix.");
         const auto& L = static_cast<ObjList*>(args[0].asObj())->vec;
         if (L.empty()) return Value(RealMatrix(0, 0));
@@ -3931,32 +4059,35 @@ void BuiltinRegistry::registerListConversion() {
         auto isReal = [](const Value& v) { return v.isNumber() || v.isBigInt() || v.isObjType(ObjType::FRACTION); };
         auto isNumeric = [](const Value& v) { return v.isNumber() || v.isBigInt() || v.isObjType(ObjType::FRACTION) || v.isComplex(); };
         auto isStr = [](const Value& v) { return v.isString(); };
+        auto isSym = [](const Value& v) { return v.isSymbolic(); };
         auto valToStr = [](const Value& v) -> std::string { if (v.isString()) return v.asString(); std::ostringstream oss; oss << v; return oss.str(); };
 
         if (!isNested) {
-            int n = static_cast<int>(L.size()); bool allReal = true, allNum = true, allStr = true;
-            for (const auto& v : L) { if (!isReal(v)) allReal = false; if (!isNumeric(v)) allNum = false; if (!isStr(v)) allStr = false; }
-            if (allStr) { std::vector<std::string> flat; for (const auto& v : L) flat.push_back(v.asString()); return Value(StringMatrix(1, n, flat)); }
-            if (allReal) { std::vector<double> flat; for (const auto& v : L) flat.push_back(v.asDouble()); return Value(RealMatrix(1, n, flat)); }
-            if (allNum) { std::vector<Complex> flat; for (const auto& v : L) flat.push_back(v.asComplex()); return Value(ComplexMatrix(1, n, flat)); }
-            std::vector<std::string> flat; for (const auto& v : L) flat.push_back(valToStr(v)); return Value(StringMatrix(1, n, flat));
+            int n = static_cast<int>(L.size()); bool allReal = true, allNum = true, allStr = true, allSym = true;
+            for (const auto& v : L) { if (!isReal(v)) allReal = false; if (!isNumeric(v)) allNum = false; if (!isStr(v)) allStr = false; if (!isSym(v) && !isNumeric(v)) allSym = false; }
+            if (allStr) { std::vector<std::string> flatStr; for (const auto& v : L) flatStr.push_back(v.asString()); return Value(StringMatrix(1, n, flatStr)); }
+            if (allReal) { std::vector<double> flatReal; for (const auto& v : L) flatReal.push_back(v.asDouble()); return Value(RealMatrix(1, n, flatReal)); }
+            if (allNum) { std::vector<Complex> flatComp; for (const auto& v : L) flatComp.push_back(v.asComplex()); return Value(ComplexMatrix(1, n, flatComp)); }
+            if (allSym) { std::vector<SymExpr> flatSym; for (const auto& v : L) flatSym.push_back(v.asSymbolic()); return Value(SymMatrix(1, n, flatSym)); }
+            std::vector<std::string> flatDef; for (const auto& v : L) flatDef.push_back(valToStr(v)); return Value(StringMatrix(1, n, flatDef));
         }
 
-        int rows = static_cast<int>(L.size()), cols = -1; bool allReal = true, allNum = true, allStr = true;
+        int rows = static_cast<int>(L.size()), cols = -1; bool allReal = true, allNum = true, allStr = true, allSym = true;
         std::vector<std::vector<Value>> grid;
         for (const auto& rowVal : L) {
             if (!rowVal.isObjType(ObjType::LIST)) throw std::runtime_error("Type Error: expects uniform List of Lists.");
             const auto& rowList = static_cast<ObjList*>(rowVal.asObj())->vec;
             if (cols == -1) cols = static_cast<int>(rowList.size()); else if (static_cast<int>(rowList.size()) != cols) throw std::runtime_error("Type Error: rows must have equal length.");
             std::vector<Value> rowVec;
-            for (const auto& v : rowList) { if (!isReal(v)) allReal = false; if (!isNumeric(v)) allNum = false; if (!isStr(v)) allStr = false; rowVec.push_back(v); }
+            for (const auto& v : rowList) { if (!isReal(v)) allReal = false; if (!isNumeric(v)) allNum = false; if (!isStr(v)) allStr = false; if (!isSym(v) && !isNumeric(v)) allSym = false; rowVec.push_back(v); }
             grid.push_back(std::move(rowVec));
         }
         if (cols <= 0) return Value(RealMatrix(0, 0));
-        if (allStr) { std::vector<std::string> flat; for (const auto& row : grid) for (const auto& v : row) flat.push_back(v.asString()); return Value(StringMatrix(rows, cols, flat)); }
-        if (allReal) { std::vector<double> flat; for (const auto& row : grid) for (const auto& v : row) flat.push_back(v.asDouble()); return Value(RealMatrix(rows, cols, flat)); }
-        if (allNum) { std::vector<Complex> flat; for (const auto& row : grid) for (const auto& v : row) flat.push_back(v.asComplex()); return Value(ComplexMatrix(rows, cols, flat)); }
-        std::vector<std::string> flat; for (const auto& row : grid) for (const auto& v : row) flat.push_back(valToStr(v)); return Value(StringMatrix(rows, cols, flat));
+        if (allStr) { std::vector<std::string> flatStr; for (const auto& row : grid) for (const auto& v : row) flatStr.push_back(v.asString()); return Value(StringMatrix(rows, cols, flatStr)); }
+        if (allReal) { std::vector<double> flatReal; for (const auto& row : grid) for (const auto& v : row) flatReal.push_back(v.asDouble()); return Value(RealMatrix(rows, cols, flatReal)); }
+        if (allNum) { std::vector<Complex> flatComp; for (const auto& row : grid) for (const auto& v : row) flatComp.push_back(v.asComplex()); return Value(ComplexMatrix(rows, cols, flatComp)); }
+        if (allSym) { std::vector<SymExpr> flatSym; for (const auto& row : grid) for (const auto& v : row) flatSym.push_back(v.asSymbolic()); return Value(SymMatrix(rows, cols, flatSym)); }
+        std::vector<std::string> flatDef; for (const auto& row : grid) for (const auto& v : row) flatDef.push_back(valToStr(v)); return Value(StringMatrix(rows, cols, flatDef));
         }, {"v"});
 
     reg("zip", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -3967,6 +4098,7 @@ void BuiltinRegistry::registerListConversion() {
                 if (v.isObjType(ObjType::REAL_MATRIX)) { for (double d : static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData()) L.push_back(Value(d)); }
                 else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { for (const auto& c : static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData()) L.push_back(Value(c)); }
                 else if (v.isObjType(ObjType::STRING_MATRIX)) { for (const auto& s : static_cast<ObjStringMatrix*>(v.asObj())->mat.rawData()) L.push_back(Value(s)); }
+                else if (v.isObjType(ObjType::SYM_MATRIX)) { for (const auto& s : static_cast<ObjSymMatrix*>(v.asObj())->mat.rawData()) L.push_back(Value(s)); }
                 else L.push_back(v);
                 return L;
                 };
@@ -3983,16 +4115,23 @@ void BuiltinRegistry::registerListConversion() {
         }
 
         bool hasString = args[0].isObjType(ObjType::STRING_MATRIX) || args[1].isObjType(ObjType::STRING_MATRIX);
+        bool hasSym = args[0].isObjType(ObjType::SYM_MATRIX) || args[1].isObjType(ObjType::SYM_MATRIX);
         bool hasComplex = args[0].isObjType(ObjType::COMPLEX_MATRIX) || args[1].isObjType(ObjType::COMPLEX_MATRIX);
 
-        auto getLenAndFetch = [](const Value& v, int i, bool toString, bool toComplex) -> Value {
+        auto getLenAndFetch = [](const Value& v, int i, bool toString, bool toComplex, bool toSym) -> Value {
             if (v.isObjType(ObjType::STRING_MATRIX)) return Value(static_cast<ObjStringMatrix*>(v.asObj())->mat.rawData()[i]);
+            if (v.isObjType(ObjType::SYM_MATRIX)) {
+                if (toString) { std::ostringstream oss; oss << Value(static_cast<ObjSymMatrix*>(v.asObj())->mat.rawData()[i]); return Value(oss.str()); }
+                return Value(static_cast<ObjSymMatrix*>(v.asObj())->mat.rawData()[i]);
+            }
             if (v.isObjType(ObjType::COMPLEX_MATRIX)) {
                 if (toString) { std::ostringstream oss; oss << Value(static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData()[i]); return Value(oss.str()); }
+                if (toSym) return Value(SymExpr(static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData()[i]));
                 return Value(static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData()[i]);
             }
             if (v.isObjType(ObjType::REAL_MATRIX)) {
                 if (toString) { std::ostringstream oss; oss << Value(static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData()[i]); return Value(oss.str()); }
+                if (toSym) return Value(SymExpr(static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData()[i]));
                 if (toComplex) return Value(Complex(static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData()[i]));
                 return Value(static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData()[i]);
             }
@@ -4001,6 +4140,7 @@ void BuiltinRegistry::registerListConversion() {
 
         auto getLen = [](const Value& v) {
             if (v.isObjType(ObjType::STRING_MATRIX)) return static_cast<ObjStringMatrix*>(v.asObj())->mat.rawData().size();
+            if (v.isObjType(ObjType::SYM_MATRIX)) return static_cast<ObjSymMatrix*>(v.asObj())->mat.rawData().size();
             if (v.isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData().size();
             if (v.isObjType(ObjType::REAL_MATRIX)) return static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData().size();
             return size_t(1);
@@ -4011,18 +4151,23 @@ void BuiltinRegistry::registerListConversion() {
         int n = nA;
 
         if (hasString) {
-            std::vector<std::string> flat(n * 2);
-            for (int i = 0; i < n; ++i) { flat[i * 2] = getLenAndFetch(args[0], i, true, false).asString(); flat[i * 2 + 1] = getLenAndFetch(args[1], i, true, false).asString(); }
-            return Value(StringMatrix(n, 2, flat));
+            std::vector<std::string> flatStr(n * 2);
+            for (int i = 0; i < n; ++i) { flatStr[i * 2] = getLenAndFetch(args[0], i, true, false, false).asString(); flatStr[i * 2 + 1] = getLenAndFetch(args[1], i, true, false, false).asString(); }
+            return Value(StringMatrix(n, 2, flatStr));
+        }
+        if (hasSym) {
+            std::vector<SymExpr> flatSym(n * 2);
+            for (int i = 0; i < n; ++i) { flatSym[i * 2] = getLenAndFetch(args[0], i, false, false, true).asSymbolic(); flatSym[i * 2 + 1] = getLenAndFetch(args[1], i, false, false, true).asSymbolic(); }
+            return Value(SymMatrix(n, 2, flatSym));
         }
         if (hasComplex) {
-            std::vector<Complex> flat(n * 2);
-            for (int i = 0; i < n; ++i) { flat[i * 2] = getLenAndFetch(args[0], i, false, true).asComplex(); flat[i * 2 + 1] = getLenAndFetch(args[1], i, false, true).asComplex(); }
-            return Value(ComplexMatrix(n, 2, flat));
+            std::vector<Complex> flatComp(n * 2);
+            for (int i = 0; i < n; ++i) { flatComp[i * 2] = getLenAndFetch(args[0], i, false, true, false).asComplex(); flatComp[i * 2 + 1] = getLenAndFetch(args[1], i, false, true, false).asComplex(); }
+            return Value(ComplexMatrix(n, 2, flatComp));
         }
-        std::vector<double> flat(n * 2);
-        for (int i = 0; i < n; ++i) { flat[i * 2] = getLenAndFetch(args[0], i, false, false).asDouble(); flat[i * 2 + 1] = getLenAndFetch(args[1], i, false, false).asDouble(); }
-        return Value(RealMatrix(n, 2, flat));
+        std::vector<double> flatReal(n * 2);
+        for (int i = 0; i < n; ++i) { flatReal[i * 2] = getLenAndFetch(args[0], i, false, false, false).asDouble(); flatReal[i * 2 + 1] = getLenAndFetch(args[1], i, false, false, false).asDouble(); }
+        return Value(RealMatrix(n, 2, flatReal));
         }, {"a", "b"});
 
     auto regMethod = [](ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0) {
@@ -4166,10 +4311,11 @@ void BuiltinRegistry::registerListConversion() {
 
     reg("cat", {}, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) throw std::runtime_error("Runtime Error: cat() expects at least 1 argument.");
-        bool hasList = false, hasStringMat = false, hasComplexMat = false;
+        bool hasList = false, hasStringMat = false, hasComplexMat = false, hasSymMat = false;
         for (const auto& a : args) {
             if (a.isObjType(ObjType::LIST)) hasList = true;
             else if (a.isObjType(ObjType::STRING_MATRIX) || a.isString()) hasStringMat = true;
+            else if (a.isObjType(ObjType::SYM_MATRIX) || a.isSymbolic()) hasSymMat = true;
             else if (a.isObjType(ObjType::COMPLEX_MATRIX) || a.isComplex()) hasComplexMat = true;
             else if (!a.isObjType(ObjType::REAL_MATRIX) && !a.isNumber() && !a.isBigInt() && !a.isObjType(ObjType::FRACTION)) {
                 hasList = true;
@@ -4185,30 +4331,41 @@ void BuiltinRegistry::registerListConversion() {
             return Value(result);
         }
         if (hasStringMat) {
-            std::vector<std::string> flat;
+            std::vector<std::string> flatStr;
             for (const auto& a : args) {
-                if (a.isObjType(ObjType::STRING_MATRIX)) { auto d = static_cast<ObjStringMatrix*>(a.asObj())->mat.rawData(); flat.insert(flat.end(), d.begin(), d.end()); }
-                else if (a.isObjType(ObjType::REAL_MATRIX)) { for (auto d : static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData()) { std::ostringstream oss; oss << Value(d); flat.push_back(oss.str()); } }
-                else if (a.isObjType(ObjType::COMPLEX_MATRIX)) { for (auto d : static_cast<ObjComplexMatrix*>(a.asObj())->mat.rawData()) { std::ostringstream oss; oss << Value(d); flat.push_back(oss.str()); } }
-                else { std::ostringstream oss; oss << a; flat.push_back(oss.str()); }
+                if (a.isObjType(ObjType::STRING_MATRIX)) { auto d = static_cast<ObjStringMatrix*>(a.asObj())->mat.rawData(); flatStr.insert(flatStr.end(), d.begin(), d.end()); }
+                else if (a.isObjType(ObjType::SYM_MATRIX)) { for (auto d : static_cast<ObjSymMatrix*>(a.asObj())->mat.rawData()) { std::ostringstream oss; oss << Value(d); flatStr.push_back(oss.str()); } }
+                else if (a.isObjType(ObjType::REAL_MATRIX)) { for (auto d : static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData()) { std::ostringstream oss; oss << Value(d); flatStr.push_back(oss.str()); } }
+                else if (a.isObjType(ObjType::COMPLEX_MATRIX)) { for (auto d : static_cast<ObjComplexMatrix*>(a.asObj())->mat.rawData()) { std::ostringstream oss; oss << Value(d); flatStr.push_back(oss.str()); } }
+                else { std::ostringstream oss; oss << a; flatStr.push_back(oss.str()); }
             }
-            return Value(StringMatrix(1, static_cast<int>(flat.size()), flat));
+            return Value(StringMatrix(1, static_cast<int>(flatStr.size()), flatStr));
+        }
+        if (hasSymMat) {
+            std::vector<SymExpr> flatSym;
+            for (const auto& a : args) {
+                if (a.isObjType(ObjType::SYM_MATRIX)) { auto d = static_cast<ObjSymMatrix*>(a.asObj())->mat.rawData(); flatSym.insert(flatSym.end(), d.begin(), d.end()); }
+                else if (a.isObjType(ObjType::COMPLEX_MATRIX)) { for (auto d : static_cast<ObjComplexMatrix*>(a.asObj())->mat.rawData()) flatSym.push_back(SymExpr(d)); }
+                else if (a.isObjType(ObjType::REAL_MATRIX)) { for (auto d : static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData()) flatSym.push_back(SymExpr(d)); }
+                else { flatSym.push_back(a.asSymbolic()); }
+            }
+            return Value(SymMatrix(1, static_cast<int>(flatSym.size()), flatSym));
         }
         if (hasComplexMat) {
-            std::vector<Complex> flat;
+            std::vector<Complex> flatComp;
             for (const auto& a : args) {
-                if (a.isObjType(ObjType::COMPLEX_MATRIX)) { auto d = static_cast<ObjComplexMatrix*>(a.asObj())->mat.rawData(); flat.insert(flat.end(), d.begin(), d.end()); }
-                else if (a.isObjType(ObjType::REAL_MATRIX)) { for (auto d : static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData()) flat.push_back(Complex(d)); }
-                else { flat.push_back(a.asComplex()); }
+                if (a.isObjType(ObjType::COMPLEX_MATRIX)) { auto d = static_cast<ObjComplexMatrix*>(a.asObj())->mat.rawData(); flatComp.insert(flatComp.end(), d.begin(), d.end()); }
+                else if (a.isObjType(ObjType::REAL_MATRIX)) { for (auto d : static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData()) flatComp.push_back(Complex(d)); }
+                else { flatComp.push_back(a.asComplex()); }
             }
-            return Value(ComplexMatrix(1, static_cast<int>(flat.size()), flat));
+            return Value(ComplexMatrix(1, static_cast<int>(flatComp.size()), flatComp));
         }
-        std::vector<double> flat;
+        std::vector<double> flatReal;
         for (const auto& a : args) {
-            if (a.isObjType(ObjType::REAL_MATRIX)) { auto d = static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData(); flat.insert(flat.end(), d.begin(), d.end()); }
-            else { flat.push_back(a.asDouble()); }
+            if (a.isObjType(ObjType::REAL_MATRIX)) { auto d = static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData(); flatReal.insert(flatReal.end(), d.begin(), d.end()); }
+            else { flatReal.push_back(a.asDouble()); }
         }
-        return Value(RealMatrix(1, static_cast<int>(flat.size()), flat));
+        return Value(RealMatrix(1, static_cast<int>(flatReal.size()), flatReal));
         }, {"...args"});
 }
 
@@ -4288,6 +4445,7 @@ void BuiltinRegistry::registerFormatType() {
             else if (v.isObjType(ObjType::REAL_MATRIX)) bt = BuiltinType::REALMAT;
             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) bt = BuiltinType::COMPLEXMAT;
             else if (v.isObjType(ObjType::STRING_MATRIX)) bt = BuiltinType::STRINGMAT;
+            else if (v.isObjType(ObjType::SYM_MATRIX)) bt = BuiltinType::SYMMAT;
             else if (v.isFunctionClosure()) bt = BuiltinType::FUNC;
             else if (v.isObjType(ObjType::NAMESPACE)) bt = BuiltinType::NAMESPACE;
             td->types.push_back(bt);
@@ -5035,6 +5193,7 @@ void BuiltinRegistry::registerFileIO() {
         if (args[1].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << Value(m(i, j)); } file << "\n"; } }
         else if (args[1].isObjType(ObjType::STRING_MATRIX)) { const auto& m = static_cast<ObjStringMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << m(i, j); } file << "\n"; } }
         else if (args[1].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << m(i, j); } file << "\n"; } }
+        else if (args[1].isObjType(ObjType::SYM_MATRIX)) { const auto& m = static_cast<ObjSymMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << m(i, j).toString(); } file << "\n"; } }
         else if (args[1].isObjType(ObjType::LIST)) { for (const auto& e : static_cast<ObjList*>(args[1].asObj())->vec) { file << e << "\n"; } }
         else throw std::runtime_error("Type Error: writeCSV() expects a matrix or list.");
         file.close(); return Value::none();
@@ -5167,6 +5326,7 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("realmatrix", VM::activeVM->getBuiltinValue("realmatrix"));
             VM::activeVM->setGlobal("complexmatrix", VM::activeVM->getBuiltinValue("complexmatrix"));
             VM::activeVM->setGlobal("stringmatrix", VM::activeVM->getBuiltinValue("stringmatrix"));
+            VM::activeVM->setGlobal("symmatrix", VM::activeVM->getBuiltinValue("symmatrix"));
             VM::activeVM->setGlobal("matrix", VM::activeVM->getBuiltinValue("matrix"));
             VM::activeVM->setGlobal("function", VM::activeVM->getBuiltinValue("function"));
             VM::activeVM->setGlobal("class_type", VM::activeVM->getBuiltinValue("class_type"));
@@ -5539,7 +5699,8 @@ void BuiltinRegistry::registerTypeChecks() {
     reg("ismatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::REAL_MATRIX) ||
             args[0].isObjType(ObjType::COMPLEX_MATRIX) ||
-            args[0].isObjType(ObjType::STRING_MATRIX));
+            args[0].isObjType(ObjType::STRING_MATRIX) ||
+            args[0].isObjType(ObjType::SYM_MATRIX));
         }, {"x"});
 
     reg("isrealmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
@@ -5552,6 +5713,10 @@ void BuiltinRegistry::registerTypeChecks() {
 
     reg("isstringmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].isObjType(ObjType::STRING_MATRIX));
+        }, {"x"});
+
+    reg("issymmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
+        return Value(args[0].isObjType(ObjType::SYM_MATRIX));
         }, {"x"});
 
     reg("isvector", { 1 }, [](const std::vector<Value>& args) -> Value {
@@ -5567,6 +5732,10 @@ void BuiltinRegistry::registerTypeChecks() {
             const auto& m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat;
             return Value(m.getRows() == 1 || m.getCols() == 1);
         }
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) {
+            const auto& m = static_cast<ObjSymMatrix*>(args[0].asObj())->mat;
+            return Value(m.getRows() == 1 || m.getCols() == 1);
+        }
         return Value(false);
         }, {"x"});
 
@@ -5577,6 +5746,8 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows() == static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getCols());
         if (args[0].isObjType(ObjType::STRING_MATRIX))
             return Value(static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getRows() == static_cast<ObjStringMatrix*>(args[0].asObj())->mat.getCols());
+        if (args[0].isObjType(ObjType::SYM_MATRIX))
+            return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.getRows() == static_cast<ObjSymMatrix*>(args[0].asObj())->mat.getCols());
         return Value(false);
         }, {"x"});
 
@@ -5592,7 +5763,7 @@ void BuiltinRegistry::registerTypeChecks() {
         const Value& val = args[0];
         if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
             val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-            val.isObjType(ObjType::STRING_MATRIX)) return Value(true);
+            val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) return Value(true);
         if (val.isInstance()) {
             auto inst = val.asInstance();
             return Value(invokeDunder(inst, DUNDER_ITER).first || invokeDunder(inst, DUNDER_NEXT).first);
@@ -5611,7 +5782,7 @@ void BuiltinRegistry::registerTypeChecks() {
         const Value& val = args[0];
         if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
             val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-            val.isObjType(ObjType::STRING_MATRIX)) return Value(true);
+            val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) return Value(true);
         if (val.isInstance()) return Value(invokeDunder(val.asInstance(), DUNDER_GETITEM).first);
         return Value(false);
         }, {"x"});
@@ -5691,6 +5862,10 @@ void BuiltinRegistry::registerTypeChecks() {
         }
         if (args[0].isObjType(ObjType::STRING_MATRIX)) {
             const auto& m = static_cast<ObjStringMatrix*>(args[0].asObj())->mat;
+            return Value(m.getRows() == 0 || m.getCols() == 0);
+        }
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) {
+            const auto& m = static_cast<ObjSymMatrix*>(args[0].asObj())->mat;
             return Value(m.getRows() == 0 || m.getCols() == 0);
         }
         if (args[0].isObjType(ObjType::SET))
@@ -6138,10 +6313,12 @@ void BuiltinRegistry::registerCAS() {
         }, {"expr", "var", "poly"});
 
     regModule(cas_ns, "expand", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.expand());
         return Value(expand(args[0].asSymbolic()));
         }, {"expr"});
 
     regModule(cas_ns, "simplify", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.simplify());
         return Value(full_simplify(args[0].asSymbolic()));
         }, {"expr"});
 
@@ -6182,7 +6359,11 @@ void BuiltinRegistry::registerCAS() {
     };
 
     regModule(cas_ns, "subs", { 3 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
-        SymExpr result = args[0].asSymbolic();
+        SymExpr result;
+        SymMatrix matResult;
+        bool isMat = args[0].isObjType(ObjType::SYM_MATRIX);
+        if (isMat) matResult = static_cast<ObjSymMatrix*>(args[0].asObj())->mat;
+        else result = args[0].asSymbolic();
 
         std::vector<std::string> vars;
         std::vector<SymExpr> vals;
@@ -6246,16 +6427,22 @@ void BuiltinRegistry::registerCAS() {
             throw std::runtime_error("TypeError: subs() variable count (" + std::to_string(vars.size()) +
                 ") and value count (" + std::to_string(vals.size()) + ") must match.");
 
-        for (size_t i = 0; i < vars.size(); ++i)
-            result = subs(result, vars[i], vals[i]);
+        if (isMat) {
+            for (size_t i = 0; i < vars.size(); ++i)
+                matResult = matResult.subs(vars[i], vals[i]);
+            return Value(matResult);
+        } else {
+            for (size_t i = 0; i < vars.size(); ++i)
+                result = subs(result, vars[i], vals[i]);
 
-        result = simplify(collapseSymFuncs(result, *fnsPtr, this->builtinArity));
+            result = simplify(collapseSymFuncs(result, *fnsPtr, this->builtinArity));
 
-        if (result.ptr->getType() == SymType::NUM) {
-            auto num = std::static_pointer_cast<SymNum>(result.ptr);
-            return casValToValue(num->value);
+            if (result.ptr->getType() == SymType::NUM) {
+                auto num = std::static_pointer_cast<SymNum>(result.ptr);
+                return casValToValue(num->value);
+            }
+            return Value(result);
         }
-        return Value(result);
         }, {"expr", "var", "val"});
 
     regModule(cas_ns, "toFunc", { 2 }, [this](const std::vector<Value>& args) -> Value {
@@ -6339,10 +6526,12 @@ void BuiltinRegistry::registerCAS() {
         }, {"expr", "vars"});
 
     regModule(cas_ns, "evalf", { 1 }, [doEvalf](const std::vector<Value>& args) -> Value {
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.evalFloat());
         return doEvalf(args[0].asSymbolic());
         }, {"expr"});
 
     regModule(cas_ns, "evalv", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.evalValue());
         SymExpr expr = args[0].asSymbolic();
         expr = evalValue(expr);
         expr = simplify(collapseSymFuncs(expr, *fnsPtr, this->builtinArity));
@@ -6453,6 +6642,10 @@ void BuiltinRegistry::registerCAS() {
         SymExpr valExpr;
         if (args[2].isString()) valExpr = SymExpr::makeVar(args[2].asString());
         else valExpr = args[2].asSymbolic();
+        
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) {
+            return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.limit(getVarName(args[1], "limit"), valExpr, dir).simplify());
+        }
         return Value(jc::limit(args[0].asSymbolic(), getVarName(args[1], "limit"), valExpr, dir));
     }, {"expr", "var", "val", "dir"});
 
@@ -6505,12 +6698,26 @@ void BuiltinRegistry::registerCAS() {
     }, {"expr", "var"});
 
     regModule(cas_ns, "diff", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) {
+            std::string var = getVarName(args[1], "diff");
+            return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.diff(var).simplify());
+        }
         SymExpr expr = args[0].asSymbolic();
         std::string var = getVarName(args[1], "diff");
         return Value(simplify(jc::diff(expr, var)));
         }, {"expr", "var"});
 
     regModule(cas_ns, "integ", { 2, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) {
+            std::string var = getVarName(args[1], "integ");
+            if (args.size() == 4) {
+                SymExpr a = args[2].asSymbolic();
+                SymExpr b = args[3].asSymbolic();
+                SymMatrix res = static_cast<ObjSymMatrix*>(args[0].asObj())->mat.integ(var);
+                return Value((res.subs(var, b) - res.subs(var, a)).simplify());
+            }
+            return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.integ(var).simplify());
+        }
         SymExpr expr = args[0].asSymbolic();
         std::string var = getVarName(args[1], "integ");
         

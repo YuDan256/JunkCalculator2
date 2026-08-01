@@ -47,7 +47,7 @@ set(JC2_HEADERS
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h"
     "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/BytecodeSerializer.h" "src/vm/BuiltinRegistry.h" "src/vm/PredefinedClasses.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
-    "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h"
+    "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h" "src/cas/SymMatrix.h"
     "src/compiler/Resolver.h" "src/compiler/IR.h" "src/compiler/IRBuilder.h" "src/compiler/IROptimizer.h" "src/compiler/RegisterAllocator.h" "src/compiler/Emitter.h"
     "src/lib/ExtensionBridge.h"
     "src/lib/jc2_extension_api.h"
@@ -65,7 +65,7 @@ set(JC2_SOURCES
     "src/vm/VM.cpp"
     "src/vm/BytecodeSerializer.cpp"
     "src/vm/BuiltinRegistry.cpp" "src/vm/PredefinedClasses.cpp" "src/main.cpp"
-    "src/cas/Symbolic.cpp" "src/cas/Integration.cpp" "src/cas/Factorization.cpp" "src/cas/Groebner.cpp"
+    "src/cas/Symbolic.cpp" "src/cas/Integration.cpp" "src/cas/Factorization.cpp" "src/cas/Groebner.cpp" "src/cas/SymMatrix.cpp"
     "src/resource.rc"
 )
 

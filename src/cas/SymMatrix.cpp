@@ -37,9 +37,9 @@ namespace jc {
         if (!expr.ptr) return true;
         if (expr.isZero()) return true;
         
-        // 浅层探测失败，动用重型武器进行确定性零等价判定
+        // 浅层探测失败，使用轻量级展开化简进行零等价判定，避免调用极度耗时的 full_simplify
         try {
-            SymExpr simplified = full_simplify(expr);
+            SymExpr simplified = simplifyCore(expand_core(expr, SymConfig::maxExpandTerms));
             return simplified.isZero();
         } catch (...) {
             // 如果化简过程抛出异常（如超时或中断），保守返回 false

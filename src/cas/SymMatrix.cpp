@@ -330,9 +330,7 @@ namespace jc {
             SymExpr pivot = M(k, k);
             for (int i = k + 1; i < n; ++i) {
                 for (int j = k + 1; j < n; ++j) {
-                    SymExpr term1 = simplifyCore(expand_core(M(i, j) * pivot, SymConfig::maxExpandTerms));
-                    SymExpr term2 = simplifyCore(expand_core(M(i, k) * M(k, j), SymConfig::maxExpandTerms));
-                    SymExpr diff = simplifyCore(expand_core(term1 - term2, SymConfig::maxExpandTerms));
+                    SymExpr diff = simplifyCore(expand_core(M(i, j) * pivot - M(i, k) * M(k, j), SymConfig::maxExpandTerms));
                     // 这里的除法在多项式环内是精确整除，使用 bareissExactDiv 完美消去分母
                     M(i, j) = bareissExactDiv(diff, prev_pivot);
                 }
@@ -420,9 +418,7 @@ namespace jc {
             for (int i = 0; i < n; ++i) {
                 if (i == k) continue;
                 for (int j = k + 1; j < 2 * n; ++j) {
-                    SymExpr term1 = simplifyCore(expand_core(aug(i, j) * pivot, SymConfig::maxExpandTerms));
-                    SymExpr term2 = simplifyCore(expand_core(aug(i, k) * aug(k, j), SymConfig::maxExpandTerms));
-                    SymExpr diff = simplifyCore(expand_core(term1 - term2, SymConfig::maxExpandTerms));
+                    SymExpr diff = simplifyCore(expand_core(aug(i, j) * pivot - aug(i, k) * aug(k, j), SymConfig::maxExpandTerms));
                     // 这里的除法在多项式环内是精确整除，使用 bareissExactDiv 完美消去分母
                     aug(i, j) = bareissExactDiv(diff, prev_pivot);
                 }

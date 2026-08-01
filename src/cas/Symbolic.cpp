@@ -3585,15 +3585,28 @@ namespace jc {
         if (divisor.isOne()) return dividend;
         if (divisor.isZero()) throw std::runtime_error("Math Error: Bareiss exact division by zero.");
         
-        std::set<std::string> vars;
-        collectAllVars(dividend.ptr, vars);
-        collectAllVars(divisor.ptr, vars);
+        std::set<std::string> varsDivisor;
+        collectAllVars(divisor.ptr, varsDivisor);
         
-        if (vars.empty()) {
+        if (varsDivisor.empty()) {
             return simplifyCore(expand_core(dividend / divisor, SymConfig::maxExpandTerms));
         }
         
-        std::string var = *vars.begin();
+        std::set<std::string> varsDividend;
+        collectAllVars(dividend.ptr, varsDividend);
+        
+        std::string var = "";
+        for (const auto& v : varsDivisor) {
+            if (varsDividend.count(v)) {
+                var = v;
+                break;
+            }
+        }
+        
+        if (var.empty()) {
+            return simplifyCore(expand_core(dividend / divisor, SymConfig::maxExpandTerms));
+        }
+        
         auto coeffsA = extractCoeffs(dividend, var);
         auto coeffsB = extractCoeffs(divisor, var);
         

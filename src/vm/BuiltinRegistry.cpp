@@ -6294,6 +6294,19 @@ void BuiltinRegistry::registerCAS() {
         return Value(SymExpr::makeVar(name));
         }, {"name"});
 
+    reg("symbolics", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString()) throw std::runtime_error("Type Error: symbolics() expects a string.");
+        std::string s = args[0].asString();
+        std::vector<SymExpr> syms;
+        std::istringstream iss(s);
+        std::string token;
+        while (iss >> token) {
+            syms.push_back(SymExpr::makeVar(token));
+        }
+        if (syms.empty()) return Value(SymMatrix(1, 0));
+        return Value(SymMatrix(1, static_cast<int>(syms.size()), syms));
+        }, {"names"});
+
     regModule(cas_ns, "RootOf", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         SymExpr poly = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootOf");

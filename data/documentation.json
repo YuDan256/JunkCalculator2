@@ -950,7 +950,8 @@
       "",
       "  Symbolic Variables & Expressions",
       "  ──────────────────────",
-      "    x = sym(\"x\")                 Create a symbolic variable",
+      "    x = sym(\"x\")                 Create a single symbolic variable",
+      "    [x, y, z] = symbolics(\"x y z\") Create multiple symbolic variables at once",
       "    expr = x^2 + 2*x + 1         Build exact symbolic expressions",
       "    cas.subs(expr, x, 5)         Substitute x with 5 → 36 (Strings like \"x\" also work!)",
       "    cas.subs(x + y, [x, y], [1, 2]) Multiple substitution",
@@ -4702,6 +4703,13 @@
       "desc": "Creates a symbolic variable for CAS operations. The name must be a valid identifier.",
       "examples": [
         "x = sym(\"x\")"
+      ]
+    },
+    "symbolics": {
+      "signature": "symbolics(names)",
+      "desc": "Creates multiple symbolic variables from a space-separated string and returns them as a symbolic row vector.",
+      "examples": [
+        "[x, y, z] = symbolics(\"x y z\")"
       ]
     },
     "diff": {

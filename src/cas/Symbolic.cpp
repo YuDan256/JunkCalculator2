@@ -4748,6 +4748,64 @@ namespace jc {
             auto coeffs = extractCoeffs(f, var);
             if (coeffs.empty()) {
                 if (containsVar(f.ptr, var)) {
+                    if (f.ptr->getType() == SymType::ADD) {
+                        auto add = std::static_pointer_cast<SymAdd>(f.ptr);
+                        if (add->args.size() == 2) {
+                            SymExpr term1(add->args[0]);
+                            SymExpr term2(add->args[1]);
+                            
+                            auto checkExpEq = [&](SymExpr t1, SymExpr t2) {
+                                if (!containsVar(t2.ptr, var)) {
+                                    if (t1.ptr->getType() == SymType::POW) {
+                                        auto p = std::static_pointer_cast<SymPow>(t1.ptr);
+                                        if (!containsVar(p->base, var) && p->exp->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(p->exp)->name == var) {
+                                            SymExpr a = SymExpr(p->base);
+                                            SymExpr b = simplifyCore(-t2);
+                                            SymExpr log_b(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{b.ptr}));
+                                            SymExpr log_a(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{a.ptr}));
+                                            roots.push_back(simplifyCore(log_b / log_a));
+                                            return true;
+                                        }
+                                    } else if (t1.ptr->getType() == SymType::MUL) {
+                                        auto mul = std::static_pointer_cast<SymMul>(t1.ptr);
+                                        if (mul->args.size() == 2) {
+                                            SymExpr c(mul->args[0]);
+                                            SymExpr p(mul->args[1]);
+                                            if (containsVar(c.ptr, var)) std::swap(c, p);
+                                            if (!containsVar(c.ptr, var) && p.ptr->getType() == SymType::POW) {
+                                                auto powNode = std::static_pointer_cast<SymPow>(p.ptr);
+                                                if (!containsVar(powNode->base, var) && powNode->exp->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(powNode->exp)->name == var) {
+                                                    SymExpr a = SymExpr(powNode->base);
+                                                    SymExpr b = simplifyCore(-t2 / c);
+                                                    SymExpr log_b(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{b.ptr}));
+                                                    SymExpr log_a(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{a.ptr}));
+                                                    roots.push_back(simplifyCore(log_b / log_a));
+                                                    return true;
+                                                }
+                                            }
+                                        }
+                                    } else if (t1.ptr->getType() == SymType::FUNC) {
+                                        auto func = std::static_pointer_cast<SymFunc>(t1.ptr);
+                                        if (func->name == "exp" && func->args.size() == 1 && func->args[0]->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(func->args[0])->name == var) {
+                                            SymExpr b = simplifyCore(-t2);
+                                            SymExpr log_b(std::make_shared<SymFunc>("log", std::vector<std::shared_ptr<SymNode>>{b.ptr}));
+                                            roots.push_back(log_b);
+                                            return true;
+                                        } else if (func->name == "log" && func->args.size() == 1 && func->args[0]->getType() == SymType::VAR && std::static_pointer_cast<SymVar>(func->args[0])->name == var) {
+                                            SymExpr b = simplifyCore(-t2);
+                                            SymExpr exp_b(std::make_shared<SymFunc>("exp", std::vector<std::shared_ptr<SymNode>>{b.ptr}));
+                                            roots.push_back(exp_b);
+                                            return true;
+                                        }
+                                    }
+                                }
+                                return false;
+                            };
+                            
+                            if (checkExpEq(term1, term2)) return;
+                            if (checkExpEq(term2, term1)) return;
+                        }
+                    }
                     throw std::runtime_error("Solver Error: Transcendental or non-polynomial equation is not supported yet.");
                 }
                 return;

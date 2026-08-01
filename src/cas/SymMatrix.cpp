@@ -485,27 +485,197 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::nullSpace() const {
-        throw std::runtime_error("SymMatrix Error: nullSpace() is not implemented for symbolic matrices.");
+        if (rows == 0 || cols == 0) return SymMatrix(cols, 0);
+        
+        int n = rows;
+        int m = cols;
+        MultiPoly::clearRegistry();
+        std::vector<std::vector<MultiPoly>> M(n, std::vector<MultiPoly>(m));
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < m; ++j) {
+                M[i][j] = MultiPoly((*this)(i, j));
+            }
+        }
+
+        MultiPoly prev_pivot(SymExpr(BigInt(1)));
+        int r = 0;
+        std::vector<int> pivot_cols;
+
+        for (int k = 0; k < m && r < n; ++k) {
+            checkInterrupt();
+            int pivot_row = r;
+            while (pivot_row < n && M[pivot_row][k].isZero()) {
+                pivot_row++;
+            }
+            if (pivot_row == n) continue;
+
+            if (pivot_row != r) {
+                std::swap(M[r], M[pivot_row]);
+            }
+
+            pivot_cols.push_back(k);
+            MultiPoly pivot = M[r][k];
+            
+            for (int i = 0; i < n; ++i) {
+                if (i == r) continue;
+                if (M[i][k].isZero()) {
+                    for (int j = k + 1; j < m; ++j) {
+                        MultiPoly diff = M[i][j] * pivot;
+                        M[i][j] = diff.exactDivide(prev_pivot);
+                    }
+                } else {
+                    for (int j = k + 1; j < m; ++j) {
+                        MultiPoly diff = (M[i][j] * pivot) - (M[i][k] * M[r][j]);
+                        M[i][j] = diff.exactDivide(prev_pivot);
+                    }
+                }
+                M[i][k] = MultiPoly();
+            }
+            prev_pivot = pivot;
+            r++;
+        }
+
+        int nullity = m - r;
+        if (nullity == 0) return SymMatrix(m, 0);
+
+        SymMatrix ns(m, nullity);
+        int free_var_idx = 0;
+        
+        for (int j = 0; j < m; ++j) {
+            auto it = std::find(pivot_cols.begin(), pivot_cols.end(), j);
+            if (it == pivot_cols.end()) {
+                ns(j, free_var_idx) = SymExpr(BigInt(1));
+                for (int i = 0; i < r; ++i) {
+                    int p_col = pivot_cols[i];
+                    SymExpr num = simplifyCore(-M[i][j].toSymExpr());
+                    SymExpr den = M[i][p_col].toSymExpr();
+                    ns(p_col, free_var_idx) = simplifyCore(num / den);
+                }
+                free_var_idx++;
+            }
+        }
+        return ns;
     }
 
     SymMatrix SymMatrix::orthogonalize() const {
-        throw std::runtime_error("SymMatrix Error: orthogonalize() is not implemented for symbolic matrices.");
+        if (rows == 0 || cols == 0) return *this;
+        SymMatrix res(rows, cols);
+        for (int j = 0; j < cols; ++j) {
+            checkInterrupt();
+            SymMatrix v = getCol(j);
+            SymMatrix u = v;
+            for (int k = 0; k < j; ++k) {
+                SymMatrix uk = res.getCol(k);
+                SymExpr num = simplifyCore(expand_core((v.transpose() * uk)(0, 0), SymConfig::maxExpandTerms));
+                SymExpr den = simplifyCore(expand_core((uk.transpose() * uk)(0, 0), SymConfig::maxExpandTerms));
+                if (!isSymZero(den)) {
+                    u = u - uk * simplifyCore(num / den);
+                }
+            }
+            for (int i = 0; i < rows; ++i) {
+                res(i, j) = simplifyCore(u(i, 0));
+            }
+        }
+        return res;
     }
 
     int SymMatrix::rank() const {
-        throw std::runtime_error("SymMatrix Error: rank() is not implemented for symbolic matrices.");
+        if (rows == 0 || cols == 0) return 0;
+        
+        int n = rows;
+        int m = cols;
+        MultiPoly::clearRegistry();
+        std::vector<std::vector<MultiPoly>> M(n, std::vector<MultiPoly>(m));
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < m; ++j) {
+                M[i][j] = MultiPoly((*this)(i, j));
+            }
+        }
+
+        MultiPoly prev_pivot(SymExpr(BigInt(1)));
+        int r = 0;
+
+        for (int k = 0; k < m && r < n; ++k) {
+            checkInterrupt();
+            int pivot_row = r;
+            while (pivot_row < n && M[pivot_row][k].isZero()) {
+                pivot_row++;
+            }
+            if (pivot_row == n) continue;
+
+            if (pivot_row != r) {
+                std::swap(M[r], M[pivot_row]);
+            }
+
+            MultiPoly pivot = M[r][k];
+            for (int i = r + 1; i < n; ++i) {
+                if (M[i][k].isZero()) {
+                    for (int j = k + 1; j < m; ++j) {
+                        MultiPoly diff = M[i][j] * pivot;
+                        M[i][j] = diff.exactDivide(prev_pivot);
+                    }
+                } else {
+                    for (int j = k + 1; j < m; ++j) {
+                        MultiPoly diff = (M[i][j] * pivot) - (M[i][k] * M[r][j]);
+                        M[i][j] = diff.exactDivide(prev_pivot);
+                    }
+                }
+                M[i][k] = MultiPoly();
+            }
+            prev_pivot = pivot;
+            r++;
+        }
+
+        return r;
     }
 
     SymExpr SymMatrix::norm() const {
-        throw std::runtime_error("SymMatrix Error: norm() is not implemented for symbolic matrices.");
+        SymExpr sum(BigInt(0));
+        for (const auto& val : data) {
+            sum = sum + val * val;
+        }
+        return simplifyCore(sum ^ SymExpr(Fraction(1, 2)));
     }
 
     SymExpr SymMatrix::condition() const {
-        throw std::runtime_error("SymMatrix Error: condition() is not implemented for symbolic matrices.");
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Condition number requires a square matrix.");
+        SymMatrix inv = inverse();
+        return simplifyCore(norm() * inv.norm());
     }
 
     SymExpr SymMatrix::permanent() const {
-        throw std::runtime_error("SymMatrix Error: permanent() is not implemented for symbolic matrices.");
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Permanent requires a square matrix.");
+        int n = rows;
+        if (n == 0) return SymExpr(BigInt(1));
+        if (n == 1) return (*this)(0, 0);
+        
+        SymExpr perm(BigInt(0));
+        int num_subsets = 1 << n;
+        for (int s = 1; s < num_subsets; ++s) {
+            checkInterrupt();
+            int set_size = 0;
+            for (int j = 0; j < n; ++j) {
+                if (s & (1 << j)) set_size++;
+            }
+            
+            SymExpr prod(BigInt(1));
+            for (int i = 0; i < n; ++i) {
+                SymExpr row_sum(BigInt(0));
+                for (int j = 0; j < n; ++j) {
+                    if (s & (1 << j)) {
+                        row_sum = row_sum + (*this)(i, j);
+                    }
+                }
+                prod = simplifyCore(expand_core(prod * row_sum, SymConfig::maxExpandTerms));
+            }
+            
+            if ((n - set_size) % 2 != 0) {
+                perm = simplifyCore(expand_core(perm - prod, SymConfig::maxExpandTerms));
+            } else {
+                perm = simplifyCore(expand_core(perm + prod, SymConfig::maxExpandTerms));
+            }
+        }
+        return perm;
     }
 
     // ==========================================

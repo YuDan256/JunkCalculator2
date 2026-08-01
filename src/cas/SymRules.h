@@ -87,6 +87,12 @@ namespace jc {
             { ((x ^ SymExpr(2)) + SymExpr(1)) ^ SymExpr(Fraction(1, 2)), 
               (x * (((x ^ SymExpr(2)) + SymExpr(1)) ^ SymExpr(Fraction(1, 2))) / SymExpr(2)) + 
               (SymExpr(1) / SymExpr(2)) * func("log", x + (((x ^ SymExpr(2)) + SymExpr(1)) ^ SymExpr(Fraction(1, 2)))) },
+            { ((x ^ SymExpr(2)) - SymExpr(1)) ^ SymExpr(Fraction(1, 2)), 
+              (x * (((x ^ SymExpr(2)) - SymExpr(1)) ^ SymExpr(Fraction(1, 2))) / SymExpr(2)) - 
+              (SymExpr(1) / SymExpr(2)) * func("log", x + (((x ^ SymExpr(2)) - SymExpr(1)) ^ SymExpr(Fraction(1, 2)))) },
+            { (SymExpr(1) - (x ^ SymExpr(2))) ^ SymExpr(Fraction(1, 2)), 
+              (x * ((SymExpr(1) - (x ^ SymExpr(2))) ^ SymExpr(Fraction(1, 2))) / SymExpr(2)) + 
+              (SymExpr(1) / SymExpr(2)) * func("asin", x) },
 
             // 椭圆积分 (Elliptic Integrals)
             { SymExpr(1) / (((SymExpr(1) - (x ^ SymExpr(2))) * (SymExpr(1) - _a * (x ^ SymExpr(2)))) ^ SymExpr(Fraction(1, 2))), func2("EllipticF", x, _a) },

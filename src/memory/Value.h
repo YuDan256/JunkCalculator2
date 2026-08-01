@@ -2669,16 +2669,13 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
                 bool first = true;
                 std::map<std::string, PropertyDescriptor> sorted_props(inst->properties.begin(), inst->properties.end());
                 for (const auto& [k, prop] : sorted_props) {
+                    if (prop.is_local) continue;
+                    if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+
                     if (!first) os << ", ";
-                    if (prop.is_local) os << "local ";
                     if (prop.is_const) os << "const ";
                     
-                    // Demangle private names for display
-                    std::string dispName = k;
-                    size_t pos = dispName.find("::");
-                    if (pos != std::string::npos) dispName = dispName.substr(pos + 2);
-                    
-                    os << dispName << ": ";
+                    os << k << ": ";
                     try { printNested(prop.val); } catch (...) { os << "?"; }
                     first = false;
                 }

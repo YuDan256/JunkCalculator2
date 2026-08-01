@@ -4255,12 +4255,16 @@ namespace jc {
             bool reduced = false;
             
             for (const std::string& var : vars) {
-                if (getDegree(currentNum, var) >= 0 && getDegree(currentDen, var) >= 0) {
+                if (getDegree(currentNum, var) >= 1 && getDegree(currentDen, var) >= 1) {
                     SymExpr g = polyGCD(currentNum, currentDen, var);
-                    if (!g.isOne() && !g.isZero()) {
-                        currentNum = polyDiv(currentNum, g, var).first;
-                        currentDen = polyDiv(currentDen, g, var).first;
-                        reduced = true;
+                    if (getDegree(g, var) >= 1) {
+                        auto [qNum, rNum] = polyDiv(currentNum, g, var);
+                        auto [qDen, rDen] = polyDiv(currentDen, g, var);
+                        if (rNum.isZero() && rDen.isZero()) {
+                            currentNum = qNum;
+                            currentDen = qDen;
+                            reduced = true;
+                        }
                     }
                 }
             }
@@ -4433,12 +4437,16 @@ namespace jc {
                         }
 
                         for (const std::string& var : vars) {
-                            if (getDegree(currentNum, var) >= 0 && getDegree(currentDen, var) >= 0) {
+                            if (getDegree(currentNum, var) >= 1 && getDegree(currentDen, var) >= 1) {
                                 SymExpr g = polyGCD(currentNum, currentDen, var);
-                                if (!g.isOne() && !g.isZero()) {
-                                    currentNum = polyDiv(currentNum, g, var).first;
-                                    currentDen = polyDiv(currentDen, g, var).first;
-                                    reduced = true;
+                                if (getDegree(g, var) >= 1) {
+                                    auto [qNum, rNum] = polyDiv(currentNum, g, var);
+                                    auto [qDen, rDen] = polyDiv(currentDen, g, var);
+                                    if (rNum.isZero() && rDen.isZero()) {
+                                        currentNum = qNum;
+                                        currentDen = qDen;
+                                        reduced = true;
+                                    }
                                 }
                             }
                         }
@@ -4595,19 +4603,19 @@ namespace jc {
         int deg = static_cast<int>(coeffs.size()) - 1;
         std::vector<SymExpr> roots;
         if (deg == 1) {
-            roots.push_back(simplify(-coeffs[0] / coeffs[1]));
+            roots.push_back(simplifyCore(-coeffs[0] / coeffs[1]));
         } else if (deg == 2) {
             SymExpr a = coeffs[2], b = coeffs[1], c = coeffs[0];
-            SymExpr delta = simplify(b * b - SymExpr(BigInt(4)) * a * c);
+            SymExpr delta = simplifyCore(b * b - SymExpr(BigInt(4)) * a * c);
             SymExpr sqrt_delta = delta ^ SymExpr(Fraction(1, 2));
             SymExpr twoA = SymExpr(BigInt(2)) * a;
-            roots.push_back(simplify((-b + sqrt_delta) / twoA));
-            roots.push_back(simplify((-b - sqrt_delta) / twoA));
+            roots.push_back(simplifyCore((-b + sqrt_delta) / twoA));
+            roots.push_back(simplifyCore((-b - sqrt_delta) / twoA));
         } else if (deg == 3) {
             SymExpr a = coeffs[3], b = coeffs[2], c = coeffs[1], d = coeffs[0];
-            SymExpr p = simplify((SymExpr(3) * a * c - b * b) / (SymExpr(3) * a * a));
-            SymExpr q = simplify((SymExpr(2) * b * b * b - SymExpr(9) * a * b * c + SymExpr(27) * a * a * d) / (SymExpr(27) * a * a * a));
-            SymExpr delta = simplify(((q / SymExpr(2)) ^ SymExpr(2)) + ((p / SymExpr(3)) ^ SymExpr(3)));
+            SymExpr p = simplifyCore((SymExpr(3) * a * c - b * b) / (SymExpr(3) * a * a));
+            SymExpr q = simplifyCore((SymExpr(2) * b * b * b - SymExpr(9) * a * b * c + SymExpr(27) * a * a * d) / (SymExpr(27) * a * a * a));
+            SymExpr delta = simplifyCore(((q / SymExpr(2)) ^ SymExpr(2)) + ((p / SymExpr(3)) ^ SymExpr(3)));
             SymExpr sqrt_delta = delta ^ SymExpr(Fraction(1, 2));
             
             SymExpr u, v_val;
@@ -4625,14 +4633,14 @@ namespace jc {
             SymExpr omega2 = (SymExpr(-1) - I * sqrt3) / SymExpr(2);
             
             SymExpr shift = b / (SymExpr(3) * a);
-            roots.push_back(simplify(u + v_val - shift));
-            roots.push_back(simplify(omega * u + omega2 * v_val - shift));
-            roots.push_back(simplify(omega2 * u + omega * v_val - shift));
+            roots.push_back(simplifyCore(u + v_val - shift));
+            roots.push_back(simplifyCore(omega * u + omega2 * v_val - shift));
+            roots.push_back(simplifyCore(omega2 * u + omega * v_val - shift));
         } else if (deg == 4) {
             SymExpr a = coeffs[4], b = coeffs[3], c = coeffs[2], d = coeffs[1], e = coeffs[0];
-            SymExpr p = simplify((SymExpr(8) * a * c - SymExpr(3) * b * b) / (SymExpr(8) * a * a));
-            SymExpr q = simplify((SymExpr(8) * a * a * d - SymExpr(4) * a * b * c + b * b * b) / (SymExpr(8) * a * a * a));
-            SymExpr r_val = simplify((SymExpr(256) * a * a * a * e - SymExpr(64) * a * a * b * d + SymExpr(16) * a * b * b * c - SymExpr(3) * b * b * b * b) / (SymExpr(256) * a * a * a * a));
+            SymExpr p = simplifyCore((SymExpr(8) * a * c - SymExpr(3) * b * b) / (SymExpr(8) * a * a));
+            SymExpr q = simplifyCore((SymExpr(8) * a * a * d - SymExpr(4) * a * b * c + b * b * b) / (SymExpr(8) * a * a * a));
+            SymExpr r_val = simplifyCore((SymExpr(256) * a * a * a * e - SymExpr(64) * a * a * b * d + SymExpr(16) * a * b * b * c - SymExpr(3) * b * b * b * b) / (SymExpr(256) * a * a * a * a));
             
             SymExpr shift = b / (SymExpr(4) * a);
             if (q.isZero()) {
@@ -4641,19 +4649,19 @@ namespace jc {
                 SymExpr y2 = -y1;
                 SymExpr y3 = ((-p - sqrt_delta_bq) / SymExpr(2)) ^ SymExpr(Fraction(1, 2));
                 SymExpr y4 = -y3;
-                roots.push_back(simplify(y1 - shift));
-                roots.push_back(simplify(y2 - shift));
-                roots.push_back(simplify(y3 - shift));
-                roots.push_back(simplify(y4 - shift));
+                roots.push_back(simplifyCore(y1 - shift));
+                roots.push_back(simplifyCore(y2 - shift));
+                roots.push_back(simplifyCore(y3 - shift));
+                roots.push_back(simplifyCore(y4 - shift));
             } else {
                 SymExpr A3 = SymExpr(1);
                 SymExpr B3 = p;
                 SymExpr C3 = p * p / SymExpr(4) - r_val;
                 SymExpr D3 = -q * q / SymExpr(8);
                 
-                SymExpr p3 = simplify((SymExpr(3) * A3 * C3 - B3 * B3) / (SymExpr(3) * A3 * A3));
-                SymExpr q3 = simplify((SymExpr(2) * B3 * B3 * B3 - SymExpr(9) * A3 * B3 * C3 + SymExpr(27) * A3 * A3 * D3) / (SymExpr(27) * A3 * A3 * A3));
-                SymExpr delta3 = simplify(((q3 / SymExpr(2)) ^ SymExpr(2)) + ((p3 / SymExpr(3)) ^ SymExpr(3)));
+                SymExpr p3 = simplifyCore((SymExpr(3) * A3 * C3 - B3 * B3) / (SymExpr(3) * A3 * A3));
+                SymExpr q3 = simplifyCore((SymExpr(2) * B3 * B3 * B3 - SymExpr(9) * A3 * B3 * C3 + SymExpr(27) * A3 * A3 * D3) / (SymExpr(27) * A3 * A3 * A3));
+                SymExpr delta3 = simplifyCore(((q3 / SymExpr(2)) ^ SymExpr(2)) + ((p3 / SymExpr(3)) ^ SymExpr(3)));
                 SymExpr sqrt_delta3 = delta3 ^ SymExpr(Fraction(1, 2));
                 
                 SymExpr u3, v3;
@@ -4664,7 +4672,7 @@ namespace jc {
                     u3 = (-q3 / SymExpr(2) + sqrt_delta3) ^ SymExpr(Fraction(1, 3));
                     v3 = -p3 / (SymExpr(3) * u3);
                 }
-                SymExpr m = simplify(u3 + v3 - B3 / (SymExpr(3) * A3));
+                SymExpr m = simplifyCore(u3 + v3 - B3 / (SymExpr(3) * A3));
                 
                 SymExpr sqrt_2m = (SymExpr(2) * m) ^ SymExpr(Fraction(1, 2));
                 SymExpr term1 = -(SymExpr(2) * p + SymExpr(2) * m + SymExpr(2) * q / sqrt_2m);
@@ -4673,10 +4681,10 @@ namespace jc {
                 SymExpr sqrt_term1 = term1 ^ SymExpr(Fraction(1, 2));
                 SymExpr sqrt_term2 = term2 ^ SymExpr(Fraction(1, 2));
                 
-                roots.push_back(simplify((sqrt_2m + sqrt_term1) / SymExpr(2) - shift));
-                roots.push_back(simplify((sqrt_2m - sqrt_term1) / SymExpr(2) - shift));
-                roots.push_back(simplify((-sqrt_2m + sqrt_term2) / SymExpr(2) - shift));
-                roots.push_back(simplify((-sqrt_2m - sqrt_term2) / SymExpr(2) - shift));
+                roots.push_back(simplifyCore((sqrt_2m + sqrt_term1) / SymExpr(2) - shift));
+                roots.push_back(simplifyCore((sqrt_2m - sqrt_term1) / SymExpr(2) - shift));
+                roots.push_back(simplifyCore((-sqrt_2m + sqrt_term2) / SymExpr(2) - shift));
+                roots.push_back(simplifyCore((-sqrt_2m - sqrt_term2) / SymExpr(2) - shift));
             }
         }
         return roots;
@@ -4721,7 +4729,7 @@ namespace jc {
                 SymExpr a = coeffs[1];
                 SymExpr b = coeffs[0];
                 if (!a.isZero()) {
-                    roots.push_back(simplify(-b / a));
+                    roots.push_back(simplifyCore(-b / a));
                 }
             } else if (degree == 2) {
                 // ax^2 + bx + c = 0
@@ -4729,7 +4737,7 @@ namespace jc {
                 SymExpr b = coeffs[1];
                 SymExpr c = coeffs[0];
                 if (!a.isZero()) {
-                    SymExpr delta = simplify(b * b - SymExpr(BigInt(4)) * a * c);
+                    SymExpr delta = simplifyCore(b * b - SymExpr(BigInt(4)) * a * c);
                     SymExpr twoA = SymExpr(BigInt(2)) * a;
                     auto [ok, sqrtDelta] = trySquareRoot(delta, true);
                     if (!ok) {
@@ -4746,16 +4754,16 @@ namespace jc {
                             SymExpr I = SymExpr::makeVar("i");
                             auto [ok2, sqrtPosDelta] = trySquareRoot(-delta, true);
                             if (ok2) {
-                                sqrtDelta = simplify(I * sqrtPosDelta);
+                                sqrtDelta = simplifyCore(I * sqrtPosDelta);
                             } else {
-                                sqrtDelta = simplify(I * ((-delta) ^ SymExpr(Fraction(1, 2))));
+                                sqrtDelta = simplifyCore(I * ((-delta) ^ SymExpr(Fraction(1, 2))));
                             }
                         } else {
                             sqrtDelta = delta ^ SymExpr(Fraction(1, 2));
                         }
                     }
-                    roots.push_back(simplify((-b + sqrtDelta) / twoA));
-                    roots.push_back(simplify((-b - sqrtDelta) / twoA));
+                    roots.push_back(simplifyCore((-b + sqrtDelta) / twoA));
+                    roots.push_back(simplifyCore((-b - sqrtDelta) / twoA));
                 }
             } else if (degree >= 3) {
                 // 引入代数数节点 RootOf
@@ -4771,8 +4779,8 @@ namespace jc {
                     SymExpr a = coeffs[degree];
                     SymExpr b = coeffs[0];
                     if (!a.isZero()) {
-                        SymExpr rhs = simplify(-b / a);
-                        SymExpr principal = simplify(rhs ^ SymExpr(Fraction(1, degree)));
+                        SymExpr rhs = simplifyCore(-b / a);
+                        SymExpr principal = simplifyCore(rhs ^ SymExpr(Fraction(1, degree)));
                         for (int k = 0; k < degree; ++k) {
                             if (k == 0) {
                                 roots.push_back(principal);
@@ -4782,7 +4790,7 @@ namespace jc {
                                 SymExpr I = SymExpr::makeVar("i");
                                 SymExpr exponent = SymExpr(Fraction(BigInt(2 * k), BigInt(degree))) * PI * I;
                                 SymExpr unity = E ^ exponent;
-                                roots.push_back(simplify(principal * unity));
+                                roots.push_back(simplifyCore(principal * unity));
                             }
                         }
                     }

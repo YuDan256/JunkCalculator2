@@ -65,7 +65,11 @@ namespace jc {
                 SymExpr delta = B * B - SymExpr(BigInt(4)) * A * C;
                 // 让化简引擎算出判别式的多项式，然后扔给 factor
                 SymExpr simpDelta = simplifyCore(delta);
-                SymExpr factoredDelta = factor(simpDelta, depth + 1);
+                
+                SymExpr factoredDelta = simpDelta;
+                if (getAstNodeCount(simpDelta) < 150) {
+                    factoredDelta = factor(simpDelta, depth + 1);
+                }
 
                 auto [sqrtOk, sqrtDelta] = trySquareRoot(factoredDelta);
                 if (!sqrtOk) continue;
@@ -682,7 +686,7 @@ namespace jc {
                         SymExpr C = coeffs[0];
                         SymExpr B = coeffs[1];
                         SymExpr A = coeffs[2];
-                        SymExpr delta = simplify(B * B - SymExpr(BigInt(4)) * A * C);
+                        SymExpr delta = simplifyCore(expand_core(B * B - SymExpr(BigInt(4)) * A * C, SymConfig::maxExpandTerms));
 
                         bool isNeg = false;
                         if (delta.ptr->getType() == SymType::NUM) {
@@ -701,8 +705,8 @@ namespace jc {
                             else sqrtDelta = delta ^ SymExpr(Fraction(1, 2));
 
                             SymExpr twoA = SymExpr(BigInt(2)) * A;
-                            SymExpr r1 = simplify((-B + sqrtDelta) / twoA);
-                            SymExpr r2 = simplify((-B - sqrtDelta) / twoA);
+                            SymExpr r1 = simplifyCore((-B + sqrtDelta) / twoA);
+                            SymExpr r2 = simplifyCore((-B - sqrtDelta) / twoA);
 
                             if (A.isOne()) return (X - r1) * (X - r2);
                             return A * (X - r1) * (X - r2);
@@ -715,7 +719,7 @@ namespace jc {
                         SymExpr A = coeffs[4];
                         SymExpr B = coeffs[2];
                         SymExpr C = coeffs[0];
-                        SymExpr delta = simplify(B * B - SymExpr(BigInt(4)) * A * C);
+                        SymExpr delta = simplifyCore(expand_core(B * B - SymExpr(BigInt(4)) * A * C, SymConfig::maxExpandTerms));
                         
                         bool isNeg = false;
                         if (delta.ptr->getType() == SymType::NUM) {
@@ -734,8 +738,8 @@ namespace jc {
                             else sqrtDelta = delta ^ SymExpr(Fraction(1, 2));
 
                             SymExpr twoA = SymExpr(BigInt(2)) * A;
-                            SymExpr u1 = simplify((-B + sqrtDelta) / twoA);
-                            SymExpr u2 = simplify((-B - sqrtDelta) / twoA);
+                            SymExpr u1 = simplifyCore((-B + sqrtDelta) / twoA);
+                            SymExpr u2 = simplifyCore((-B - sqrtDelta) / twoA);
                             
                             SymExpr f1 = X * X - u1;
                             SymExpr f2 = X * X - u2;
@@ -744,11 +748,11 @@ namespace jc {
                             return A * process(f1) * process(f2);
                         } else {
                             // delta < 0, 必定有 A 和 C 同号，可配方为平方差
-                            SymExpr CA = simplify(C / A);
+                            SymExpr CA = simplifyCore(C / A);
                             auto [ok, sqrtCA] = trySquareRoot(CA, true);
                             SymExpr rootCA = ok ? sqrtCA : (CA ^ SymExpr(Fraction(1, 2)));
                             
-                            SymExpr middle = simplify(SymExpr(BigInt(2)) * rootCA - B / A);
+                            SymExpr middle = simplifyCore(SymExpr(BigInt(2)) * rootCA - B / A);
                             auto [ok2, sqrtMiddle] = trySquareRoot(middle, true);
                             SymExpr rootMiddle = ok2 ? sqrtMiddle : (middle ^ SymExpr(Fraction(1, 2)));
                             
@@ -772,7 +776,7 @@ namespace jc {
                     if (isBinomial && degree > 2 && !coeffs[0].isZero()) {
                         SymExpr A = coeffs[degree];
                         SymExpr B = coeffs[0];
-                        SymExpr BA = simplify(B / A);
+                        SymExpr BA = simplifyCore(B / A);
                         
                         bool isPos = false;
                         bool isNeg = false;
@@ -791,8 +795,8 @@ namespace jc {
                             isPos = true;
                         }
 
-                        SymExpr absBA = isNeg ? simplify(-BA) : BA;
-                        SymExpr R = simplify(absBA ^ SymExpr(Fraction(1, degree)));
+                        SymExpr absBA = isNeg ? simplifyCore(-BA) : BA;
+                        SymExpr R = simplifyCore(absBA ^ SymExpr(Fraction(1, degree)));
                         SymExpr res = A;
                         int n = degree;
 
@@ -843,8 +847,8 @@ namespace jc {
                                 if (m == 11) return -(sqrt6 + sqrt2) / SymExpr(BigInt(4));
                             }
                             
-                            SymExpr theta = simplify(SymExpr(Fraction(m, n_val)) * SymExpr::makeVar("PI"));
-                            return simplify(SymExpr(std::make_shared<SymFunc>("cos", std::vector<std::shared_ptr<SymNode>>{theta.ptr})));
+                            SymExpr theta = simplifyCore(SymExpr(Fraction(m, n_val)) * SymExpr::makeVar("PI"));
+                            return simplifyCore(SymExpr(std::make_shared<SymFunc>("cos", std::vector<std::shared_ptr<SymNode>>{theta.ptr})));
                         };
 
                         if (isPos) {

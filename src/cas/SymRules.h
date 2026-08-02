@@ -19,10 +19,10 @@ namespace jc {
             SymExpr _a = SymExpr::makeVar("_a");
 
             auto func = [](const std::string& name, const SymExpr& arg) {
-                return SymExpr(new SymFunc(name, std::vector<SymNode*>{arg.ptr}));
+                return SymExpr::makeFunc(name, std::vector<SymNode*>{arg.ptr});
             };
             auto func2 = [](const std::string& name, const SymExpr& arg1, const SymExpr& arg2) {
-                return SymExpr(new SymFunc(name, std::vector<SymNode*>{arg1.ptr, arg2.ptr}));
+                return SymExpr::makeFunc(name, std::vector<SymNode*>{arg1.ptr, arg2.ptr});
             };
 
             rules = {
@@ -123,7 +123,7 @@ namespace jc {
             SymExpr _c = SymExpr::makeVar("_c");
 
             auto func = [](const std::string& name, const SymExpr& arg) {
-                return SymExpr(new SymFunc(name, std::vector<SymNode*>{arg.ptr}));
+                return SymExpr::makeFunc(name, std::vector<SymNode*>{arg.ptr});
             };
 
             SymExpr sin_x = func("sin", _x);

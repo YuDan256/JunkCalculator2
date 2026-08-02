@@ -302,7 +302,7 @@ namespace jc {
             // 无法求值，保留为符号函数节点
             std::vector<SymNode*> ptrs;
             for (auto& a : newArgs) ptrs.push_back(a.ptr);
-            return SymExpr(new SymFunc(func->name, std::move(ptrs)));
+            return SymExpr::makeFunc(func->name, std::move(ptrs));
         }
         default:
             return expr;
@@ -434,7 +434,7 @@ void BuiltinRegistry::registerMath() {
                 if (name == "rootD" && symArgs.size() == 2) {
                     return Value(SymExpr(symArgs[0]) ^ (SymExpr(1.0) / SymExpr(symArgs[1])));
                 }
-                return Value(SymExpr(new SymFunc(name, std::move(symArgs))));
+                return Value(SymExpr::makeFunc(name, std::move(symArgs)));
             }
             // 否则正常执行数值计算
             return fn(args);
@@ -6312,18 +6312,18 @@ void BuiltinRegistry::registerCAS() {
         SymExpr poly = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootOf");
         SymExpr k = args[2].asSymbolic();
-        return Value(SymExpr(new SymFunc("RootOf", std::vector<SymNode*>{
+        return Value(SymExpr::makeFunc("RootOf", std::vector<SymNode*>{
             poly.ptr, SymExpr::makeVar(var).ptr, k.ptr
-        })));
+        }));
         }, {"poly", "var", "k"});
 
     regModule(cas_ns, "RootSum", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         SymExpr expr = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootSum");
         SymExpr poly = args[2].asSymbolic();
-        return Value(SymExpr(new SymFunc("RootSum", std::vector<SymNode*>{
+        return Value(SymExpr::makeFunc("RootSum", std::vector<SymNode*>{
             expr.ptr, SymExpr::makeVar(var).ptr, poly.ptr
-        })));
+        }));
         }, {"expr", "var", "poly"});
 
     regModule(cas_ns, "expand", { 1 }, [](const std::vector<Value>& args) -> Value {

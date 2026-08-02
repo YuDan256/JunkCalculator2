@@ -555,28 +555,128 @@ namespace jc {
     // ==========================================
     // SymExpr 构造
     // ==========================================
-    SymExpr::SymExpr() : ptr(intern(new SymNum(BigInt(0)))) {}
-    SymExpr::SymExpr(double v) : ptr(intern(new SymNum(v))) {}
-    SymExpr::SymExpr(const BigInt& v) : ptr(intern(new SymNum(v))) {}
-    SymExpr::SymExpr(const Fraction& v) : ptr(intern(new SymNum(v))) {}
+    SymExpr::SymExpr() : ptr(makeNum(BigInt(0)).ptr) {}
+    SymExpr::SymExpr(double v) : ptr(makeNum(v).ptr) {}
+    SymExpr::SymExpr(const BigInt& v) : ptr(makeNum(v).ptr) {}
+    SymExpr::SymExpr(const Fraction& v) : ptr(makeNum(v).ptr) {}
     SymExpr::SymExpr(const Complex& v) {
         if (v.imag == 0.0) {
-            ptr = intern(new SymNum(v.real));
+            ptr = makeNum(v.real).ptr;
         } else if (v.real == 0.0) {
             SymExpr imagPart(v.imag);
             SymExpr iVar = SymExpr::makeVar("i");
-            ptr = intern((imagPart * iVar).ptr);
+            ptr = makeMul({imagPart.ptr, iVar.ptr}).ptr;
         } else {
             SymExpr realPart(v.real);
             SymExpr imagPart(v.imag);
             SymExpr iVar = SymExpr::makeVar("i");
-            ptr = intern((realPart + imagPart * iVar).ptr);
+            ptr = makeAdd({realPart.ptr, makeMul({imagPart.ptr, iVar.ptr}).ptr}).ptr;
         }
     }
-    SymExpr::SymExpr(const CASVal& v) : ptr(intern(new SymNum(v))) {}
+    SymExpr::SymExpr(const CASVal& v) : ptr(makeNum(v).ptr) {}
+
+    SymExpr SymExpr::makeNum(CASVal v) {
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::NUM), hashCASVal(v));
+        auto& bucket = g_symPool[h];
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == SymType::NUM && static_cast<SymNum*>(existing)->value == v) {
+                return SymExpr::fromInterned(existing);
+            }
+        }
+        SymNode* newNode = new SymNum(std::move(v));
+        bucket.push_back(newNode);
+        return SymExpr::fromInterned(newNode);
+    }
 
     SymExpr SymExpr::makeVar(const std::string& name) {
-        return SymExpr(new SymVar(name));
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(name));
+        auto& bucket = g_symPool[h];
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == SymType::VAR && static_cast<SymVar*>(existing)->name == name) {
+                return SymExpr::fromInterned(existing);
+            }
+        }
+        SymNode* newNode = new SymVar(name);
+        bucket.push_back(newNode);
+        return SymExpr::fromInterned(newNode);
+    }
+
+    SymExpr SymExpr::makeAdd(std::vector<SymNode*> args) {
+        uint64_t h = static_cast<uint64_t>(SymType::ADD);
+        for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
+        auto& bucket = g_symPool[h];
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == SymType::ADD) {
+                auto* o = static_cast<SymAdd*>(existing);
+                if (o->args.size() == args.size()) {
+                    bool eq = true;
+                    for (size_t i = 0; i < args.size(); ++i) {
+                        if (o->args[i] != args[i]) { eq = false; break; }
+                    }
+                    if (eq) return SymExpr::fromInterned(existing);
+                }
+            }
+        }
+        SymNode* newNode = new SymAdd(std::move(args));
+        bucket.push_back(newNode);
+        return SymExpr::fromInterned(newNode);
+    }
+
+    SymExpr SymExpr::makeMul(std::vector<SymNode*> args) {
+        uint64_t h = static_cast<uint64_t>(SymType::MUL);
+        for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
+        auto& bucket = g_symPool[h];
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == SymType::MUL) {
+                auto* o = static_cast<SymMul*>(existing);
+                if (o->args.size() == args.size()) {
+                    bool eq = true;
+                    for (size_t i = 0; i < args.size(); ++i) {
+                        if (o->args[i] != args[i]) { eq = false; break; }
+                    }
+                    if (eq) return SymExpr::fromInterned(existing);
+                }
+            }
+        }
+        SymNode* newNode = new SymMul(std::move(args));
+        bucket.push_back(newNode);
+        return SymExpr::fromInterned(newNode);
+    }
+
+    SymExpr SymExpr::makePow(SymNode* base, SymNode* exp) {
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::POW), hashCombine(base->hashValue, exp->hashValue));
+        auto& bucket = g_symPool[h];
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == SymType::POW) {
+                auto* o = static_cast<SymPow*>(existing);
+                if (o->base == base && o->exp == exp) return SymExpr::fromInterned(existing);
+            }
+        }
+        SymNode* newNode = new SymPow(base, exp);
+        bucket.push_back(newNode);
+        return SymExpr::fromInterned(newNode);
+    }
+
+    SymExpr SymExpr::makeFunc(std::string name, std::vector<SymNode*> args) {
+        std::string n = (name == "ln") ? "log" : std::move(name);
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::FUNC), hashString(n));
+        for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
+        auto& bucket = g_symPool[h];
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == SymType::FUNC) {
+                auto* o = static_cast<SymFunc*>(existing);
+                if (o->name == n && o->args.size() == args.size()) {
+                    bool eq = true;
+                    for (size_t i = 0; i < args.size(); ++i) {
+                        if (o->args[i] != args[i]) { eq = false; break; }
+                    }
+                    if (eq) return SymExpr::fromInterned(existing);
+                }
+            }
+        }
+        SymNode* newNode = new SymFunc(n, std::move(args));
+        bucket.push_back(newNode);
+        return SymExpr::fromInterned(newNode);
     }
     std::string SymExpr::toString() const { return ptr ? ptr->toString() : "null"; }
     bool SymExpr::isZero() const { return ptr && ptr->isZero(); }
@@ -623,7 +723,7 @@ namespace jc {
                 else {
                     SymExpr rem = (symParts.size() == 1)
                         ? SymExpr(symParts[0])
-                        : SymExpr(new SymMul(symParts));
+                        : SymExpr::makeMul(symParts);
                     SymNode* key = rem.ptr;
                     auto it = symTerms.find(key);
                     if (it != symTerms.end())
@@ -666,7 +766,7 @@ namespace jc {
                 else {
                     mArgs.push_back(data.baseNode);
                 }
-                newArgs.push_back(SymExpr(new SymMul(mArgs)).ptr);
+                newArgs.push_back(SymExpr::makeMul(mArgs).ptr);
             }
         }
         if (!isCasZero(sumConst))
@@ -674,7 +774,7 @@ namespace jc {
 
         if (newArgs.empty()) return SymExpr(BigInt(0));
         if (newArgs.size() == 1) return SymExpr(newArgs[0]);
-        return SymExpr(new SymAdd(std::move(newArgs)));
+        return SymExpr::makeAdd(std::move(newArgs));
     }
     // ==========================================
     // operator*（乘法与同底数指数合并：带 ADD 基底正规化）
@@ -847,7 +947,7 @@ namespace jc {
             newArgs.insert(newArgs.begin(), SymExpr(prodConst).ptr);
         }
         if (newArgs.size() == 1) return SymExpr(newArgs[0]);
-        return SymExpr(new SymMul(std::move(newArgs)));
+        return SymExpr::makeMul(std::move(newArgs));
     }
 
     // ==========================================
@@ -872,7 +972,7 @@ namespace jc {
             auto numNode = static_cast<SymNum*>(b.ptr);
             try {
                 Value reciprocal = Value(BigInt(1)) / casValToValue(numNode->value);
-                return a * SymExpr(new SymNum(valueToCasVal(reciprocal)));
+                return a * SymExpr::makeNum(valueToCasVal(reciprocal));
             }
             catch (...) {}
         }
@@ -987,7 +1087,7 @@ namespace jc {
                             if (!q.isZero()) {
                                 SymExpr term = SymExpr(p) ^ SymExpr(q);
                                 if (outside.isOne()) outside = term;
-                                else outside = SymExpr(new SymMul(std::vector<SymNode*>{outside.ptr, term.ptr}));
+                                else outside = SymExpr::makeMul(std::vector<SymNode*>{outside.ptr, term.ptr});
                             }
                             if (!r.isZero()) {
                                 BigInt pr(1);
@@ -1003,7 +1103,7 @@ namespace jc {
                         SymExpr fracSym(Fraction(BigInt(1), n_den));
                         SymExpr powPart(new SymPow(insideSym.ptr, fracSym.ptr));
                         if (res.isOne()) res = powPart;
-                        else res = SymExpr(new SymMul(std::vector<SymNode*>{res.ptr, powPart.ptr}));
+                        else res = SymExpr::makeMul(std::vector<SymNode*>{res.ptr, powPart.ptr});
                     }
                     
                     if (isNeg) {
@@ -1016,7 +1116,7 @@ namespace jc {
                         
                         auto multiplyRes = [&](SymExpr factor) {
                             if (res.isOne()) res = factor;
-                            else res = SymExpr(new SymMul(std::vector<SymNode*>{factor.ptr, res.ptr}));
+                            else res = SymExpr::makeMul(std::vector<SymNode*>{factor.ptr, res.ptr});
                         };
 
                         if (!(q_neg % BigInt(2)).isZero()) {
@@ -1108,7 +1208,7 @@ namespace jc {
                     if (!q.isZero() && !r.isZero()) {
                         SymExpr part1 = a ^ SymExpr(q);
                         SymExpr part2 = a ^ SymExpr(Fraction(r, n_den));
-                        return SymExpr(new SymMul(std::vector<SymNode*>{part1.ptr, part2.ptr}));
+                        return SymExpr::makeMul(std::vector<SymNode*>{part1.ptr, part2.ptr});
                     }
                 }
             }
@@ -1130,7 +1230,7 @@ namespace jc {
             return result;
         }
 
-        return SymExpr(new SymPow(a.ptr, b.ptr));
+        return SymExpr::makePow(a.ptr, b.ptr);
     }
 
     
@@ -1526,7 +1626,7 @@ namespace jc {
                 auto func = static_cast<SymFunc*>(target.ptr);
                 std::vector<SymNode*> newArgs;
                 for (auto& arg : func->args) newArgs.push_back(substituteCaptures(SymExpr(arg), captures).ptr);
-                return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+                return SymExpr::makeFunc(func->name, std::move(newArgs));
             }
         }
         return target;
@@ -1590,7 +1690,7 @@ namespace jc {
                     if (newArg.ptr != arg) childChanged = true;
                 }
                 if (childChanged) {
-                    current = SymExpr(new SymFunc(func->name, std::move(newArgs)));
+                    current = SymExpr::makeFunc(func->name, std::move(newArgs));
                 }
                 break;
             }
@@ -1888,7 +1988,7 @@ namespace jc {
                                 return a->hashValue > b->hashValue;
                             });
                             if (finalTerms.size() == 1) return SymExpr(finalTerms[0]);
-                            return SymExpr(new SymAdd(std::move(finalTerms)));
+                            return SymExpr::makeAdd(std::move(finalTerms));
                         }
                     }
 
@@ -1930,7 +2030,7 @@ namespace jc {
                     auto add = static_cast<SymAdd*>(inner.ptr);
                     SymExpr A(add->args[0]);
                     std::vector<SymNode*> restArgs(add->args.begin() + 1, add->args.end());
-                    SymExpr B = (restArgs.size() == 1) ? SymExpr(restArgs[0]) : SymExpr(new SymAdd(restArgs));
+                    SymExpr B = (restArgs.size() == 1) ? SymExpr(restArgs[0]) : SymExpr::makeAdd(restArgs);
                     
                     SymExpr sinA(new SymFunc("sin", std::vector<SymNode*>{A.ptr}));
                     SymExpr cosA(new SymFunc("cos", std::vector<SymNode*>{A.ptr}));
@@ -1949,8 +2049,8 @@ namespace jc {
                         if (isInt) {
                             if (n < 0) {
                                 SymExpr posInner = inner / SymExpr(BigInt(-1));
-                                if (func->name == "sin") return expand_internal(-SymExpr(new SymFunc("sin", std::vector<SymNode*>{posInner.ptr})), maxPowTerms, distributeNonIntPow);
-                                if (func->name == "cos") return expand_internal(SymExpr(new SymFunc("cos", std::vector<SymNode*>{posInner.ptr})), maxPowTerms, distributeNonIntPow);
+                                if (func->name == "sin") return expand_internal(-SymExpr::makeFunc("sin", std::vector<SymNode*>{posInner.ptr}), maxPowTerms, distributeNonIntPow);
+                                if (func->name == "cos") return expand_internal(SymExpr::makeFunc("cos", std::vector<SymNode*>{posInner.ptr}), maxPowTerms, distributeNonIntPow);
                             }
                             else if (n > 1) {
                                 SymExpr X = inner / SymExpr(BigInt(n));
@@ -1989,7 +2089,7 @@ namespace jc {
                     return expand_internal(SymExpr(powN->exp) * logA, maxPowTerms, distributeNonIntPow); // 传递
                 }
             }
-                return SymExpr(new SymFunc(func->name, std::move(expArgs)));
+                return SymExpr::makeFunc(func->name, std::move(expArgs));
             }
             default:
                 return expr;
@@ -2149,12 +2249,12 @@ namespace jc {
                 } else {
                     newArgs.push_back(func->args[2]);
                 }
-                return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+                return SymExpr::makeFunc(func->name, std::move(newArgs));
             }
             std::vector<SymNode*> newArgs;
             for (auto& arg : func->args)
                 newArgs.push_back(subs(SymExpr(arg), var, val).ptr);
-            return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+            return SymExpr::makeFunc(func->name, std::move(newArgs));
         }
         default:
             return expr;
@@ -2380,7 +2480,7 @@ namespace jc {
             std::vector<SymNode*> newArgs;
             for (auto& arg : func->args)
                 newArgs.push_back(evalFloat(SymExpr(arg)).ptr);
-            return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+            return SymExpr::makeFunc(func->name, std::move(newArgs));
         }
         default:
             return expr;
@@ -2519,7 +2619,7 @@ namespace jc {
             std::vector<SymNode*> newArgs;
             for (auto& arg : func->args)
                 newArgs.push_back(evalValue(SymExpr(arg)).ptr);
-            return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+            return SymExpr::makeFunc(func->name, std::move(newArgs));
         }
         default:
             return expr;
@@ -2745,9 +2845,9 @@ namespace jc {
                         
                         if (inner_diff.isZero()) return SymExpr(BigInt(0));
                         
-                        return SymExpr(new SymFunc("RootSum", std::vector<SymNode*>{
+                        return SymExpr::makeFunc("RootSum", std::vector<SymNode*>{
                             inner_diff.ptr, func->args[1], P.ptr
-                        }));
+                        });
                     }
                 }
             }
@@ -2961,7 +3061,7 @@ namespace jc {
             std::vector<SymNode*> nArgs;
             for (auto& a : f->args)
                 nArgs.push_back(contract(SymExpr(a)).ptr);
-            return SymExpr(new SymFunc(f->name, std::move(nArgs)));
+            return SymExpr::makeFunc(f->name, std::move(nArgs));
         }
 
             default: break;
@@ -3270,9 +3370,9 @@ namespace jc {
                     if (isNegativeArg(inner)) {
                         SymExpr posInner = simplifyCore(-inner);
                         if (func->name == "sin" || func->name == "tan") {
-                            return simplifyCore(-SymExpr(new SymFunc(func->name, std::vector<SymNode*>{posInner.ptr})));
+                            return simplifyCore(-SymExpr::makeFunc(func->name, std::vector<SymNode*>{posInner.ptr}));
                         } else if (func->name == "cos") {
-                            return simplifyCore(SymExpr(new SymFunc(func->name, std::vector<SymNode*>{posInner.ptr})));
+                            return simplifyCore(SymExpr::makeFunc(func->name, std::vector<SymNode*>{posInner.ptr}));
                         }
                     }
                     
@@ -3377,9 +3477,9 @@ namespace jc {
                     if (isNegativeArg(inner)) {
                         SymExpr posInner = simplifyCore(-inner);
                         if (func->name == "sinh" || func->name == "tanh") {
-                            return simplifyCore(-SymExpr(new SymFunc(func->name, std::vector<SymNode*>{posInner.ptr})));
+                            return simplifyCore(-SymExpr::makeFunc(func->name, std::vector<SymNode*>{posInner.ptr}));
                         } else if (func->name == "cosh") {
-                            return simplifyCore(SymExpr(new SymFunc(func->name, std::vector<SymNode*>{posInner.ptr})));
+                            return simplifyCore(SymExpr::makeFunc(func->name, std::vector<SymNode*>{posInner.ptr}));
                         }
                     }
                 }
@@ -3412,9 +3512,9 @@ namespace jc {
                             if (E.ptr->getType() == SymType::ADD) {
                                 SymExpr res(BigInt(0));
                                 for (auto& arg : static_cast<SymAdd*>(E.ptr)->args) {
-                                    res = res + SymExpr(new SymFunc("RootSum", std::vector<SymNode*>{
+                                    res = res + SymExpr::makeFunc("RootSum", std::vector<SymNode*>{
                                         arg, nArgs[1], nArgs[2]
-                                    }));
+                                    });
                                 }
                                 return simplifyCore(res);
                             }
@@ -3458,7 +3558,7 @@ namespace jc {
                 }
             }
             
-            newNode = SymExpr(new SymFunc(func->name, std::move(nArgs))).ptr;
+            newNode = SymExpr::makeFunc(func->name, std::move(nArgs)).ptr;
             break;
         }
         default: break;
@@ -4236,7 +4336,7 @@ namespace jc {
                             }
                         }
                         if (s_args.size() == 1) s = SymExpr(s_args[0]);
-                        else if (s_args.size() > 1) s = SymExpr(new SymMul(s_args));
+                        else if (s_args.size() > 1) s = SymExpr::makeMul(s_args);
                     } else {
                         s = d;
                     }
@@ -4372,7 +4472,7 @@ namespace jc {
                     }
                     std::vector<SymNode*> nArgs;
                     for (auto& arg : f->args) nArgs.push_back(replaceRadicals(SymExpr(arg)).ptr);
-                    return SymExpr(new SymFunc(f->name, std::move(nArgs)));
+                    return SymExpr::makeFunc(f->name, std::move(nArgs));
                 }
                 default: return e;
             }
@@ -4554,7 +4654,7 @@ namespace jc {
                     auto f = static_cast<SymFunc*>(expr.ptr);
                     std::vector<SymNode*> nArgs;
                     for (auto& arg : f->args) nArgs.push_back(simplify(SymExpr(arg)).ptr);
-                    current = SymExpr(new SymFunc(f->name, std::move(nArgs)));
+                    current = SymExpr::makeFunc(f->name, std::move(nArgs));
                     break;
                 }
                 default: break;
@@ -4754,7 +4854,7 @@ namespace jc {
                     auto f = static_cast<SymFunc*>(expr.ptr);
                     std::vector<SymNode*> nArgs;
                     for (auto& arg : f->args) nArgs.push_back(full_simplify(SymExpr(arg)).ptr);
-                    current = SymExpr(new SymFunc(f->name, std::move(nArgs)));
+                    current = SymExpr::makeFunc(f->name, std::move(nArgs));
                     break;
                 }
                 default: break;
@@ -5083,9 +5183,9 @@ namespace jc {
                         f_monic = simplifyCore(expand_core(f / coeffs[degree], SymConfig::maxExpandTerms));
                     }
                     for (int k = 1; k <= degree; ++k) {
-                        roots.push_back(SymExpr(new SymFunc("RootOf", std::vector<SymNode*>{
+                        roots.push_back(SymExpr::makeFunc("RootOf", std::vector<SymNode*>{
                             f_monic.ptr, SymExpr::makeVar(var).ptr, SymExpr(BigInt(k)).ptr
-                        })));
+                        }));
                     }
                 }
             }
@@ -5198,7 +5298,7 @@ namespace jc {
                 } else {
                     newArgs.push_back(func->args[2]);
                 }
-                return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+                return SymExpr::makeFunc(func->name, std::move(newArgs));
             }
             std::vector<SymNode*> newArgs;
             for (auto& arg : func->args) {
@@ -5206,7 +5306,7 @@ namespace jc {
                 if (!subArg) return std::nullopt;
                 newArgs.push_back(subArg->ptr);
             }
-            return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+            return SymExpr::makeFunc(func->name, std::move(newArgs));
         }
         default:
             return expr;
@@ -5474,7 +5574,7 @@ namespace jc {
                     
                     if (!c0.isZero()) {
                         AsympSeries expC0(order);
-                        expC0.addTerm(Fraction(0), simplifyCore(SymExpr(new SymFunc("exp", std::vector<SymNode*>{c0.ptr}))));
+                        expC0.addTerm(Fraction(0), simplifyCore(SymExpr::makeFunc("exp", std::vector<SymNode*>{c0.ptr})));
                         res = res * expC0;
                     }
                     return res;
@@ -5639,7 +5739,7 @@ namespace jc {
                 SymExpr exp = rewritePowToExp(SymExpr(p->exp), var);
                 if (containsVar(exp.ptr, var)) {
                     SymExpr log_base(new SymFunc("log", std::vector<SymNode*>{base.ptr}));
-                    return SymExpr(new SymFunc("exp", std::vector<SymNode*>{(exp * log_base).ptr}));
+                    return SymExpr::makeFunc("exp", std::vector<SymNode*>{(exp * log_base).ptr});
                 }
                 return base ^ exp;
             }
@@ -5647,7 +5747,7 @@ namespace jc {
                 auto f = static_cast<SymFunc*>(expr.ptr);
                 std::vector<SymNode*> newArgs;
                 for (auto& arg : f->args) newArgs.push_back(rewritePowToExp(SymExpr(arg), var).ptr);
-                return SymExpr(new SymFunc(f->name, std::move(newArgs)));
+                return SymExpr::makeFunc(f->name, std::move(newArgs));
             }
             default: return expr;
         }
@@ -5807,7 +5907,7 @@ namespace jc {
                 auto f = static_cast<SymFunc*>(expr.ptr);
                 std::vector<SymNode*> newArgs;
                 for (auto& arg : f->args) newArgs.push_back(rewriteMRV(SymExpr(arg), omega, var, w_var, g, depth).ptr);
-                return SymExpr(new SymFunc(f->name, std::move(newArgs)));
+                return SymExpr::makeFunc(f->name, std::move(newArgs));
             }
             default: return expr;
         }
@@ -5877,7 +5977,7 @@ namespace jc {
                     
                     SymExpr leadCoeff = lead.second;
                     SymExpr log_t(new SymFunc("log", std::vector<SymNode*>{t.ptr}));
-                    leadCoeff = simplifyCore(applyRule(leadCoeff, log_t, -SymExpr(new SymFunc("log", std::vector<SymNode*>{SymExpr::makeVar(var).ptr}))));
+                    leadCoeff = simplifyCore(applyRule(leadCoeff, log_t, -SymExpr::makeFunc("log", std::vector<SymNode*>{SymExpr::makeVar(var).ptr})));
                     
                     if (lead.first > Fraction(0)) return SymExpr(BigInt(0));
                     if (lead.first < Fraction(0)) return getInfSign(leadCoeff);
@@ -6084,7 +6184,7 @@ namespace jc {
             Fraction q(num_val, den_val);
             if (rest.empty()) return {q, SymExpr(BigInt(1))};
             if (rest.size() == 1) return {q, SymExpr(rest[0])};
-            return {q, SymExpr(new SymMul(rest))};
+            return {q, SymExpr::makeMul(rest)};
         }
         return {Fraction(BigInt(1), BigInt(1)), expr};
     }
@@ -6116,31 +6216,31 @@ namespace jc {
                     if (inner.ptr->getType() == SymType::MUL) {
                         SymExpr res(BigInt(0));
                         for (auto& arg : static_cast<SymMul*>(inner.ptr)->args) {
-                            res = res + flattenLogExp(SymExpr(new SymFunc("log", std::vector<SymNode*>{arg})));
+                            res = res + flattenLogExp(SymExpr::makeFunc("log", std::vector<SymNode*>{arg}));
                         }
                         return res;
                     }
                     if (inner.ptr->getType() == SymType::POW) {
                         auto powNode = static_cast<SymPow*>(inner.ptr);
-                        SymExpr baseLog = flattenLogExp(SymExpr(new SymFunc("log", std::vector<SymNode*>{powNode->base})));
+                        SymExpr baseLog = flattenLogExp(SymExpr::makeFunc("log", std::vector<SymNode*>{powNode->base}));
                         return SymExpr(powNode->exp) * baseLog;
                     }
-                    return SymExpr(new SymFunc("log", std::vector<SymNode*>{inner.ptr}));
+                    return SymExpr::makeFunc("log", std::vector<SymNode*>{inner.ptr});
                 }
                 if (func->name == "exp" && func->args.size() == 1) {
                     SymExpr inner = flattenLogExp(SymExpr(func->args[0]));
                     if (inner.ptr->getType() == SymType::ADD) {
                         SymExpr res(BigInt(1));
                         for (auto& arg : static_cast<SymAdd*>(inner.ptr)->args) {
-                            res = res * flattenLogExp(SymExpr(new SymFunc("exp", std::vector<SymNode*>{arg})));
+                            res = res * flattenLogExp(SymExpr::makeFunc("exp", std::vector<SymNode*>{arg}));
                         }
                         return res;
                     }
-                    return SymExpr(new SymFunc("exp", std::vector<SymNode*>{inner.ptr}));
+                    return SymExpr::makeFunc("exp", std::vector<SymNode*>{inner.ptr});
                 }
                 std::vector<SymNode*> newArgs;
                 for (auto& arg : func->args) newArgs.push_back(flattenLogExp(SymExpr(arg)).ptr);
-                return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+                return SymExpr::makeFunc(func->name, std::move(newArgs));
             }
             default: return expr;
         }
@@ -6201,11 +6301,11 @@ namespace jc {
                             return baseExp ^ SymExpr(power);
                         }
                     }
-                    return SymExpr(new SymFunc("exp", std::vector<SymNode*>{inner.ptr}));
+                    return SymExpr::makeFunc("exp", std::vector<SymNode*>{inner.ptr});
                 }
                 std::vector<SymNode*> newArgs;
                 for (auto& arg : func->args) newArgs.push_back(replaceExps(SymExpr(arg)).ptr);
-                return SymExpr(new SymFunc(func->name, std::move(newArgs)));
+                return SymExpr::makeFunc(func->name, std::move(newArgs));
             } else if (e.ptr->getType() == SymType::ADD) {
                 SymExpr res(BigInt(0));
                 for (auto& arg : static_cast<SymAdd*>(e.ptr)->args) res = res + replaceExps(SymExpr(arg));

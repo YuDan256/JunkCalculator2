@@ -81,6 +81,19 @@ namespace jc {
         static SymNode* intern(SymNode* node);
         static void cleanupPool(); // 清理全局池中失效的弱引用
 
+    private:
+        struct InternedTag {};
+        SymExpr(SymNode* p, InternedTag) : ptr(p) {}
+    public:
+        static SymExpr fromInterned(SymNode* p) { return SymExpr(p, InternedTag{}); }
+
+        static SymExpr makeNum(CASVal v);
+        static SymExpr makeVar(const std::string& name);
+        static SymExpr makeAdd(std::vector<SymNode*> args);
+        static SymExpr makeMul(std::vector<SymNode*> args);
+        static SymExpr makePow(SymNode* base, SymNode* exp);
+        static SymExpr makeFunc(std::string name, std::vector<SymNode*> args);
+
         SymExpr();
         explicit SymExpr(SymNode* p) : ptr(intern(p)) {}
 
@@ -92,8 +105,6 @@ namespace jc {
         SymExpr(const Fraction& v);
         SymExpr(const Complex& v);
         SymExpr(const CASVal& v);
-
-        static SymExpr makeVar(const std::string& name);
 
         std::string toString() const;
         bool isZero() const;

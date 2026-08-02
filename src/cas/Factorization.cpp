@@ -524,7 +524,7 @@ namespace jc {
             auto f = static_cast<SymFunc*>(expr.ptr);
             std::vector<SymNode*> nArgs;
             for (auto& arg : f->args) nArgs.push_back(factor(SymExpr(arg)).ptr);
-            return SymExpr(new SymFunc(f->name, std::move(nArgs)));
+            return SymExpr::makeFunc(f->name, std::move(nArgs));
         }
 
         // ══════════════════════════════════════════
@@ -848,7 +848,7 @@ namespace jc {
                             }
                             
                             SymExpr theta = simplifyCore(SymExpr(Fraction(m, n_val)) * SymExpr::makeVar("PI"));
-                            return simplifyCore(SymExpr(new SymFunc("cos", std::vector<SymNode*>{theta.ptr})));
+                            return simplifyCore(SymExpr::makeFunc("cos", std::vector<SymNode*>{theta.ptr}));
                         };
 
                         if (isPos) {

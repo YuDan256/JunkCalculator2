@@ -146,7 +146,7 @@ namespace jc {
         switch (expr.ptr->getType()) {
             case SymType::NUM: {
                 if (!expr.isZero()) {
-                    auto num = std::static_pointer_cast<SymNum>(expr.ptr);
+                    auto num = static_cast<SymNum*>(expr.ptr);
                     Fraction f(0);
                     if (std::holds_alternative<int32_t>(num->value)) f = Fraction(std::get<int32_t>(num->value));
                     else if (std::holds_alternative<BigInt>(num->value)) f = Fraction(std::get<BigInt>(num->value));
@@ -168,14 +168,14 @@ namespace jc {
                 break;
             }
             case SymType::ADD: {
-                auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
+                auto add = static_cast<SymAdd*>(expr.ptr);
                 for (const auto& arg : add->args) {
                     *this = *this + MultiPoly(SymExpr(arg));
                 }
                 break;
             }
             case SymType::MUL: {
-                auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
+                auto mul = static_cast<SymMul*>(expr.ptr);
                 MultiPoly res(SymExpr(BigInt(1)));
                 for (const auto& arg : mul->args) {
                     res = res * MultiPoly(SymExpr(arg));
@@ -184,9 +184,9 @@ namespace jc {
                 break;
             }
             case SymType::POW: {
-                auto powNode = std::static_pointer_cast<SymPow>(expr.ptr);
+                auto powNode = static_cast<SymPow*>(expr.ptr);
                 if (powNode->exp->getType() == SymType::NUM) {
-                    auto [isInt, n] = extractExactInt(std::static_pointer_cast<SymNum>(powNode->exp)->value);
+                    auto [isInt, n] = extractExactInt(static_cast<SymNum*>(powNode->exp)->value);
                     if (isInt && n >= 0) {
                         MultiPoly base(SymExpr(powNode->base));
                         MultiPoly res(SymExpr(BigInt(1)));

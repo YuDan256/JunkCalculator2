@@ -188,23 +188,23 @@ namespace jc {
         switch (expr.ptr->getType()) {
             case SymType::NUM: return true;
             case SymType::VAR: {
-                auto name = std::static_pointer_cast<SymVar>(expr.ptr)->name;
+                auto name = static_cast<SymVar*>(expr.ptr)->name;
                 return name == "PI" || name == "E" || name == "i" || name == "I";
             }
             case SymType::ADD:
-                for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args)
+                for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args)
                     if (!isConstantExpr(SymExpr(arg))) return false;
                 return true;
             case SymType::MUL:
-                for (auto& arg : std::static_pointer_cast<SymMul>(expr.ptr)->args)
+                for (auto& arg : static_cast<SymMul*>(expr.ptr)->args)
                     if (!isConstantExpr(SymExpr(arg))) return false;
                 return true;
             case SymType::POW: {
-                auto p = std::static_pointer_cast<SymPow>(expr.ptr);
+                auto p = static_cast<SymPow*>(expr.ptr);
                 return isConstantExpr(SymExpr(p->base)) && isConstantExpr(SymExpr(p->exp));
             }
             case SymType::FUNC:
-                for (auto& arg : std::static_pointer_cast<SymFunc>(expr.ptr)->args)
+                for (auto& arg : static_cast<SymFunc*>(expr.ptr)->args)
                     if (!isConstantExpr(SymExpr(arg))) return false;
                 return true;
         }
@@ -222,7 +222,7 @@ namespace jc {
             return expr;
 
         case SymType::ADD: {
-            auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
+            auto add = static_cast<SymAdd*>(expr.ptr);
             SymExpr result(BigInt(0));
             for (auto& arg : add->args)
                 result = result + collapseSymFuncs(SymExpr(arg), fns, arities);
@@ -230,7 +230,7 @@ namespace jc {
         }
 
         case SymType::MUL: {
-            auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
+            auto mul = static_cast<SymMul*>(expr.ptr);
             SymExpr result(BigInt(1));
             for (auto& arg : mul->args)
                 result = result * collapseSymFuncs(SymExpr(arg), fns, arities);
@@ -238,13 +238,13 @@ namespace jc {
         }
 
         case SymType::POW: {
-            auto pow = std::static_pointer_cast<SymPow>(expr.ptr);
+            auto pow = static_cast<SymPow*>(expr.ptr);
             return collapseSymFuncs(SymExpr(pow->base), fns, arities) ^
                 collapseSymFuncs(SymExpr(pow->exp), fns, arities);
         }
 
         case SymType::FUNC: {
-            auto func = std::static_pointer_cast<SymFunc>(expr.ptr);
+            auto func = static_cast<SymFunc*>(expr.ptr);
             std::vector<SymExpr> newArgs;
             std::vector<Value> vals;
             bool allNumeric = true;
@@ -300,9 +300,9 @@ namespace jc {
             }
 
             // 无法求值，保留为符号函数节点
-            std::vector<std::shared_ptr<SymNode>> ptrs;
+            std::vector<SymNode*> ptrs;
             for (auto& a : newArgs) ptrs.push_back(a.ptr);
-            return SymExpr(std::make_shared<SymFunc>(func->name, std::move(ptrs)));
+            return SymExpr(new SymFunc(func->name, std::move(ptrs)));
         }
         }
         return expr;
@@ -409,7 +409,7 @@ void BuiltinRegistry::registerMath() {
             }
             // 如果有，将所有参数统一提升为 SymExpr，打包成 SymFunc 节点
             if (hasSymbolic) {
-                std::vector<std::shared_ptr<SymNode>> symArgs;
+                std::vector<SymNode*> symArgs;
                 symArgs.reserve(args.size());
                 for (const auto& a : args) {
                     symArgs.push_back(a.asSymbolic().ptr);
@@ -433,7 +433,7 @@ void BuiltinRegistry::registerMath() {
                 if (name == "rootD" && symArgs.size() == 2) {
                     return Value(SymExpr(symArgs[0]) ^ (SymExpr(1.0) / SymExpr(symArgs[1])));
                 }
-                return Value(SymExpr(std::make_shared<SymFunc>(name, std::move(symArgs))));
+                return Value(SymExpr(new SymFunc(name, std::move(symArgs))));
             }
             // 否则正常执行数值计算
             return fn(args);
@@ -6283,7 +6283,7 @@ void BuiltinRegistry::registerCAS() {
 
     auto getVarName = [](const Value& v, const std::string& funcName) -> std::string {
         if (v.isString()) return v.asString();
-        if (v.isSymbolic() && v.asSymbolic().ptr->getType() == SymType::VAR) return std::static_pointer_cast<SymVar>(v.asSymbolic().ptr)->name;
+        if (v.isSymbolic() && v.asSymbolic().ptr->getType() == SymType::VAR) return static_cast<SymVar*>(v.asSymbolic().ptr)->name;
         throw std::runtime_error("TypeError: " + funcName + "() expects a variable name (string or symbol).");
     };
 
@@ -6311,7 +6311,7 @@ void BuiltinRegistry::registerCAS() {
         SymExpr poly = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootOf");
         SymExpr k = args[2].asSymbolic();
-        return Value(SymExpr(std::make_shared<SymFunc>("RootOf", std::vector<std::shared_ptr<SymNode>>{
+        return Value(SymExpr(new SymFunc("RootOf", std::vector<SymNode*>{
             poly.ptr, SymExpr::makeVar(var).ptr, k.ptr
         })));
         }, {"poly", "var", "k"});
@@ -6320,7 +6320,7 @@ void BuiltinRegistry::registerCAS() {
         SymExpr expr = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootSum");
         SymExpr poly = args[2].asSymbolic();
-        return Value(SymExpr(std::make_shared<SymFunc>("RootSum", std::vector<std::shared_ptr<SymNode>>{
+        return Value(SymExpr(new SymFunc("RootSum", std::vector<SymNode*>{
             expr.ptr, SymExpr::makeVar(var).ptr, poly.ptr
         })));
         }, {"expr", "var", "poly"});
@@ -6385,7 +6385,7 @@ void BuiltinRegistry::registerCAS() {
             vars.push_back(args[1].asString());
         }
         else if (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR) {
-            vars.push_back(std::static_pointer_cast<SymVar>(args[1].asSymbolic().ptr)->name);
+            vars.push_back(static_cast<SymVar*>(args[1].asSymbolic().ptr)->name);
         }
         else if (args[1].isObjType(ObjType::STRING_MATRIX)) {
             const auto& sm = static_cast<ObjStringMatrix*>(args[1].asObj())->mat;
@@ -6400,7 +6400,7 @@ void BuiltinRegistry::registerCAS() {
                 if (v.isString()) {
                     vars.push_back(v.asString());
                 } else if (v.isSymbolic() && v.asSymbolic().ptr->getType() == SymType::VAR) {
-                    vars.push_back(std::static_pointer_cast<SymVar>(v.asSymbolic().ptr)->name);
+                    vars.push_back(static_cast<SymVar*>(v.asSymbolic().ptr)->name);
                 } else {
                     throw std::runtime_error("TypeError: subs() variable list must contain strings or symbols.");
                 }
@@ -6451,7 +6451,7 @@ void BuiltinRegistry::registerCAS() {
             result = simplify(collapseSymFuncs(result, *fnsPtr, this->builtinArity));
 
             if (result.ptr->getType() == SymType::NUM) {
-                auto num = std::static_pointer_cast<SymNum>(result.ptr);
+                auto num = static_cast<SymNum*>(result.ptr);
                 return casValToValue(num->value);
             }
             return Value(result);
@@ -6466,7 +6466,7 @@ void BuiltinRegistry::registerCAS() {
                 if (v.isString()) {
                     varNames.push_back(v.asString());
                 } else if (v.isSymbolic() && v.asSymbolic().ptr->getType() == SymType::VAR) {
-                    varNames.push_back(std::static_pointer_cast<SymVar>(v.asSymbolic().ptr)->name);
+                    varNames.push_back(static_cast<SymVar*>(v.asSymbolic().ptr)->name);
                 } else {
                     throw std::runtime_error("toFunc: Variable names must be strings or symbols.");
                 }
@@ -6481,7 +6481,7 @@ void BuiltinRegistry::registerCAS() {
             varNames.push_back(args[1].asString());
         }
         else if (args[1].isSymbolic() && args[1].asSymbolic().ptr->getType() == SymType::VAR) {
-            varNames.push_back(std::static_pointer_cast<SymVar>(args[1].asSymbolic().ptr)->name);
+            varNames.push_back(static_cast<SymVar*>(args[1].asSymbolic().ptr)->name);
         }
         else {
             throw std::runtime_error("toFunc(): 2nd argument must be a string, symbol, List, or StringMatrix of variable names.");
@@ -6587,13 +6587,13 @@ void BuiltinRegistry::registerCAS() {
         GcObjGuard guard(L);
         for (const auto& r : roots) {
             if (r.ptr->getType() == SymType::FUNC) {
-                auto func = std::static_pointer_cast<SymFunc>(r.ptr);
+                auto func = static_cast<SymFunc*>(r.ptr);
                 if (func->name == "RootOf" && func->args.size() == 3) {
                     SymExpr P(func->args[0]);
-                    std::string dummy = std::static_pointer_cast<SymVar>(func->args[1])->name;
+                    std::string dummy = static_cast<SymVar*>(func->args[1])->name;
                     int k = 1;
                     if (func->args[2]->getType() == SymType::NUM) {
-                        auto [isInt, val] = jc::extractExactInt(std::static_pointer_cast<SymNum>(func->args[2])->value);
+                        auto [isInt, val] = jc::extractExactInt(static_cast<SymNum*>(func->args[2])->value);
                         if (isInt) k = static_cast<int>(val);
                     }
                     

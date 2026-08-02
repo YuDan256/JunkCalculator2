@@ -743,7 +743,7 @@ namespace jc {
 
     inline Value::Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {
         if (val.ptr && val.ptr->getType() == SymType::NUM) {
-            auto numNode = std::static_pointer_cast<SymNum>(val.ptr);
+            auto numNode = static_cast<SymNum*>(val.ptr);
             std::visit([this](auto&& arg) {
                 using T = std::decay_t<decltype(arg)>;
                 if constexpr (std::is_same_v<T, int32_t>) {

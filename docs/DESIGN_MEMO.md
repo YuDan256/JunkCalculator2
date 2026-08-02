@@ -78,7 +78,7 @@
 ### 第一步：重塑底层基石（内存与哈希）
 1. ~~**废弃字符串签名，引入 64 位结构化哈希**：在 `SymNode` 中彻底删除 `cachedSig` 和 `computeSignature()`。引入 `uint64_t hashValue`，在节点构造时利用子节点的哈希值和节点类型直接计算出 64 位整型哈希。~~ (已完成)
 2. ~~**替换全局驻留池 (Interning Pool)**：将 `g_symPool` 的 Key 从 `std::string` 替换为 `uint64_t`。这会将所有表达式比较和查表的复杂度从 $O(L)$（字符串长度）降至 $O(1)$。~~ (已完成)
-3. **引入 Arena 内存池**：剥离 `std::shared_ptr`，改用线程局部的内存池（Arena Allocator）和裸指针 `SymNode*`。彻底消灭数以百万计的原子锁（引用计数）开销。
+3. ~~**引入 Arena 内存池**：剥离 `std::shared_ptr`，改用线程局部的内存池（Arena Allocator）和裸指针 `SymNode*`。彻底消灭数以百万计的原子锁（引用计数）开销。~~ (已完成)
 
 ### 第二步：重写核心算术引擎（加法与乘法）
 1. **$O(N)$ 级别的同类项合并**：在 `operator+` 和 `operator*` 中，废弃极其沉重的 `std::sort` 和 `compareSymNodes`。直接使用 `std::unordered_map<uint64_t, TermData>`（以节点的 64 位哈希为 Key）来聚合底数相同的项或同类项。

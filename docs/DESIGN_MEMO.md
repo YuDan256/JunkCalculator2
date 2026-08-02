@@ -71,3 +71,19 @@
 *   **致命的“隐藏零”判定 (Zero Equivalence Problem)**：在矩阵消元（如 Bareiss 算法）寻找非零主元时，实现了 `isSymZero` 探测器。对于疑似零的符号表达式，强制执行最重型的 `full_simplify()` 进行确定性零等价判定，确保多元复杂表达式在除法操作前的绝对正确性。
 *   **VM 泛型接口适配 (VM Generic API Integration)**：`SymMatrix` 已全面接入 VM 的泛型矩阵操作，包括逐元素运算 (`addE`, `subE`, `whereE` 等)、结构操作 (`reshape`, `sub`, `hcat`, `vcat` 等)、行列操作 (`swapR`, `delC` 等) 以及高阶函数 (`map`, `filter`, `reduce`, `zip` 等)，与 `RealMatrix` 和 `ComplexMatrix` 享有同等的一等公民地位。
 *   **关系运算与显示控制 (Relational Ops & Display)**：符号矩阵的大小比较运算（如 `A > B`）与数值矩阵保持一致，直接抛出 `TypeError`。打印输出 (`operator<<`) 采用标准的二维对齐格式，并受全局 `g_printMatrix2D` 标志控制。
+
+## 11. CAS 模块性能瓶颈与优化路线 (CAS Performance Bottlenecks & Optimization Roadmap)
+*   **内存与节点管理 (Memory & DAG Interning)**：
+    *   **指针级缓存键**：化简缓存 (`simplifyCore`, `expand_internal` 等) 的 Key 应直接使用 `SymNode*`（指针地址）而非 `hashValue`，彻底杜绝哈希碰撞并将查表速度提升至 $O(1)$。
+    *   **工厂模式查表**：为 `SymAdd`、`SymMul` 等引入静态工厂方法，先计算哈希并查表，未命中时才向 Arena 申请内存，消除“先分配后回收”的开销。
+*   **多项式与 Gröbner 基引擎 (Polynomial & Gröbner Basis)**：
+    *   **双指针归并加法**：重写 `MultiPoly::operator+` 和 `operator-`，利用字典序特性使用双指针归并同类项，将复杂度从 $O((N+M)\log(N+M))$ 降为 $O(N+M)$。
+    *   **Buchberger 第二准则**：在 Gröbner 基计算中引入 LCM 准则，跳过冗余的 S-多项式计算，大幅提升基计算效率。
+*   **结式与多项式除法 (Resultant & Division)**：
+    *   **子结式伪余式序列 (Subresultant PRS)**：废弃基于矩阵行列式的 Bareiss 算法求结式，改用 Subresultant PRS 算法，降低 $O((N+M)^3)$ 复杂度并严格控制系数膨胀，加速 Rothstein-Trager 积分。
+*   **有限域因式分解 (Cantor-Zassenhaus Algorithm)**：
+    *   **机器字长快速通道**：引入 `PolyZp64`，在素数 $p < 2^{63}$ 时走原生 64 位整数运算通道，避免堆分配的 `BigInt` 带来的高频取模开销。
+*   **模式匹配与代数路由 (Pattern Matching & Routing)**：
+    *   **扁平化上下文**：将通配符（如 `_x`, `_a`）映射为固定 ID，使用定长 `std::vector<SymExpr>` 或原生数组替代 `std::map<std::string, SymExpr>` 传递捕获上下文，实现零分配的 DFS 回溯匹配。
+*   **表达式展开与合并 (Expand & Collect)**：
+    *   **小数组内联优化**：对于参数较少（如 < 8 个）的加法和乘法，直接使用栈上小数组进行 $O(N^2)$ 遍历合并，避免触发 `std::unordered_map` 的堆分配和哈希计算。

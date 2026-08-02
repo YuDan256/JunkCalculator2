@@ -7,11 +7,11 @@ namespace jc {
 
     namespace {
         struct VarRegistry {
-            std::unordered_map<uint64_t, uint32_t> sigToId;
+            std::unordered_map<SymNode*, uint32_t> sigToId;
             std::vector<SymExpr> idToExpr;
 
             uint32_t getId(const SymExpr& expr) {
-                uint64_t sig = expr.ptr->hashValue;
+                SymNode* sig = expr.ptr;
                 auto it = sigToId.find(sig);
                 if (it != sigToId.end()) return it->second;
                 uint32_t id = static_cast<uint32_t>(idToExpr.size());

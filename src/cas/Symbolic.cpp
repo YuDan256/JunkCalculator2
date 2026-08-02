@@ -602,7 +602,7 @@ namespace jc {
         }
         CASVal sumConst = BigInt(0);
         struct TermData { CASVal coeff; SymNode* baseNode = nullptr; };
-        std::unordered_map<uint64_t, TermData> symTerms;
+        std::unordered_map<SymNode*, TermData> symTerms;
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
                 sumConst = casAdd(sumConst, static_cast<SymNum*>(node)->value);
@@ -624,7 +624,7 @@ namespace jc {
                     SymExpr rem = (symParts.size() == 1)
                         ? SymExpr(symParts[0])
                         : SymExpr(new SymMul(symParts));
-                    uint64_t key = rem.ptr->hashValue;
+                    SymNode* key = rem.ptr;
                     auto it = symTerms.find(key);
                     if (it != symTerms.end())
                         it->second.coeff = casAdd(it->second.coeff, coeff);
@@ -634,7 +634,7 @@ namespace jc {
             }
             else {
                 SymExpr internedNode(node);
-                uint64_t key = internedNode.ptr->hashValue;
+                SymNode* key = internedNode.ptr;
                 auto it = symTerms.find(key);
                 if (it != symTerms.end())
                     it->second.coeff = casAdd(it->second.coeff, BigInt(1));
@@ -699,7 +699,7 @@ namespace jc {
         }
         CASVal prodConst = BigInt(1);
         struct FactorData { CASVal exp; SymNode* baseNode = nullptr; };
-        std::unordered_map<uint64_t, FactorData> symFactors;
+        std::unordered_map<SymNode*, FactorData> symFactors;
         // ★ 核心架构：ADD 基底首项负号正规化
         // 检测一个 ADD 节点的字典序最后一项（通常是最高次项）是否带负系数
         auto addLeadingNegative = [](SymNode* node) -> bool {
@@ -739,7 +739,7 @@ namespace jc {
                 }
             }
             SymExpr internedBase(base);
-            uint64_t key = internedBase.ptr->hashValue;
+            SymNode* key = internedBase.ptr;
             auto it = symFactors.find(key);
             if (it != symFactors.end())
                 it->second.exp = casAdd(it->second.exp, expVal);
@@ -758,7 +758,7 @@ namespace jc {
                 }
                 else {
                     SymExpr internedNode(node);
-                    uint64_t key = internedNode.ptr->hashValue;
+                    SymNode* key = internedNode.ptr;
                     auto it = symFactors.find(key);
                     if (it != symFactors.end())
                         it->second.exp = casAdd(it->second.exp, BigInt(1));
@@ -1692,10 +1692,24 @@ namespace jc {
         if (!expr.ptr) return expr;
         if (maxPowTerms <= 0) maxPowTerms = SymConfig::maxExpandTerms;
 
-        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
+        struct ExpandKey {
+            SymNode* ptr;
+            int64_t maxPowTerms;
+            bool distributeNonIntPow;
+            bool operator==(const ExpandKey& o) const {
+                return ptr == o.ptr && maxPowTerms == o.maxPowTerms && distributeNonIntPow == o.distributeNonIntPow;
+            }
+        };
+        struct ExpandKeyHash {
+            size_t operator()(const ExpandKey& k) const {
+                return hashCombine(reinterpret_cast<uint64_t>(k.ptr), hashCombine(static_cast<uint64_t>(k.maxPowTerms), k.distributeNonIntPow ? 1 : 0));
+            }
+        };
+
+        static thread_local std::unordered_map<ExpandKey, SymExpr, ExpandKeyHash> cache;
         static thread_local int depth = 0;
 
-        uint64_t sig = hashCombine(expr.ptr->hashValue, hashCombine(static_cast<uint64_t>(maxPowTerms), distributeNonIntPow ? 1 : 0));
+        ExpandKey sig = {expr.ptr, maxPowTerms, distributeNonIntPow};
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -2795,10 +2809,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
+        static thread_local std::unordered_map<SymNode*, SymExpr> cache;
         static thread_local int depth = 0;
 
-        uint64_t sig = expr.ptr->hashValue;
+        SymNode* sig = expr.ptr;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -3055,10 +3069,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
+        static thread_local std::unordered_map<SymNode*, SymExpr> cache;
         static thread_local int depth = 0;
 
-        uint64_t sig = expr.ptr->hashValue;
+        SymNode* sig = expr.ptr;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -4302,7 +4316,7 @@ namespace jc {
         auto [A, D] = getFraction(expr);
         if (D.isOne()) return expr;
 
-        std::map<uint64_t, std::string> exprToT;
+        std::map<SymNode*, std::string> exprToT;
         std::map<std::string, std::pair<SymExpr, SymExpr>> tToMinPoly;
         int t_counter = 0;
 
@@ -4328,7 +4342,7 @@ namespace jc {
                             Fraction frac = std::get<Fraction>(numVal);
                             if (frac.getDen() > BigInt(1)) {
                                 SymExpr newPow = base ^ SymExpr(frac);
-                                uint64_t sig = newPow.ptr->hashValue;
+                                SymNode* sig = newPow.ptr;
                                 if (exprToT.count(sig)) return SymExpr::makeVar(exprToT[sig]);
                                 // 使用 ~ 前缀确保在 Gröbner 基的字典序中优先级最高 (ASCII '~' > 'z' > 'x')
                                 std::string t_name = "~t_rad_" + std::to_string(++t_counter);
@@ -4347,7 +4361,7 @@ namespace jc {
                     if (f->name == "RootOf" && f->args.size() == 3) {
                         SymExpr poly = replaceRadicals(SymExpr(f->args[0]));
                         SymExpr dummy(f->args[1]);
-                        uint64_t sig = e.ptr->hashValue;
+                        SymNode* sig = e.ptr;
                         if (exprToT.count(sig)) return SymExpr::makeVar(exprToT[sig]);
                         std::string t_name = "~t_rad_" + std::to_string(++t_counter);
                         exprToT[sig] = t_name;
@@ -4498,10 +4512,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
+        static thread_local std::unordered_map<SymNode*, SymExpr> cache;
         static thread_local int depth = 0;
 
-        uint64_t sig = expr.ptr->hashValue;
+        SymNode* sig = expr.ptr;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -4698,10 +4712,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
+        static thread_local std::unordered_map<SymNode*, SymExpr> cache;
         static thread_local int depth = 0;
 
-        uint64_t sig = expr.ptr->hashValue;
+        SymNode* sig = expr.ptr;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -6157,12 +6171,12 @@ namespace jc {
         };
         collectExps(flat);
 
-        std::map<uint64_t, std::pair<SymExpr, Fraction>> expGroups;
+        std::map<SymNode*, std::pair<SymExpr, Fraction>> expGroups;
         for (const auto& expNode : allExps) {
             auto func = static_cast<SymFunc*>(expNode.ptr);
             SymExpr inner(func->args[0]);
             auto [q, prim] = extractRationalCoeff(inner);
-            uint64_t sig = prim.ptr->hashValue;
+            SymNode* sig = prim.ptr;
             if (expGroups.count(sig)) {
                 expGroups[sig].second = gcdFraction(expGroups[sig].second, q);
             } else {
@@ -6177,7 +6191,7 @@ namespace jc {
                 if (func->name == "exp" && func->args.size() == 1) {
                     SymExpr inner = replaceExps(SymExpr(func->args[0]));
                     auto [q, prim] = extractRationalCoeff(inner);
-                    uint64_t sig = prim.ptr->hashValue;
+                    SymNode* sig = prim.ptr;
                     if (expGroups.count(sig)) {
                         Fraction g = expGroups[sig].second;
                         if (g.getNum() > BigInt(0)) {

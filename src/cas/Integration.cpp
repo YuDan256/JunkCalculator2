@@ -1413,8 +1413,8 @@ namespace jc {
         // 从规则库获取静态积分规则
         const auto& rules = getStaticIntegRules();
 
-        std::unordered_map<uint64_t, std::optional<SymExpr>> integCache;
-        std::unordered_set<uint64_t> computing;
+        std::unordered_map<SymNode*, std::optional<SymExpr>> integCache;
+        std::unordered_set<SymNode*> computing;
         std::function<std::optional<SymExpr>(const SymExpr&, int)> doInteg;
 
         int baseVarDepth = getVarDepth(expr, var);
@@ -2971,7 +2971,7 @@ namespace jc {
                 auto simplifyComplex = [](const SymExpr& e) -> SymExpr {
                     int trig_counter = 0;
                     std::map<std::string, SymExpr> trig_map;
-                    std::map<uint64_t, std::string> sig_to_name;
+                    std::map<SymNode*, std::string> sig_to_name;
                     
                     std::function<SymExpr(const SymExpr&)> protectTrig = [&](const SymExpr& node) -> SymExpr {
                         if (!node.ptr) return node;
@@ -2979,7 +2979,7 @@ namespace jc {
                             auto func = static_cast<SymFunc*>(node.ptr);
                             if (func->name == "sin" || func->name == "cos" || func->name == "tan" ||
                                 func->name == "sinh" || func->name == "cosh" || func->name == "tanh") {
-                                uint64_t sig = node.ptr->hashValue;
+                                SymNode* sig = node.ptr;
                                 if (sig_to_name.count(sig)) {
                                     return SymExpr::makeVar(sig_to_name[sig]);
                                 }
@@ -3029,10 +3029,10 @@ namespace jc {
                     
                     auto simplifyTerms = [&](const SymExpr& expr_node) -> SymExpr {
                         if (expr_node.ptr->getType() == SymType::ADD) {
-                            std::map<uint64_t, SymExpr> groups;
+                            std::map<SymNode*, SymExpr> groups;
                             for (auto& arg : static_cast<SymAdd*>(expr_node.ptr)->args) {
                                 auto [n, d] = getFraction(SymExpr(arg));
-                                uint64_t d_sig = d.ptr->hashValue;
+                                SymNode* d_sig = d.ptr;
                                 if (groups.count(d_sig)) groups[d_sig] = groups[d_sig] + SymExpr(arg);
                                 else groups[d_sig] = SymExpr(arg);
                             }
@@ -3538,7 +3538,7 @@ namespace jc {
 
         doInteg = [&](const SymExpr& e, int current_depth) -> std::optional<SymExpr> {
             if (!e.ptr) return std::nullopt;
-            uint64_t sig = e.ptr->hashValue;
+            SymNode* sig = e.ptr;
             auto it = integCache.find(sig);
             if (it != integCache.end()) return it->second;
             
@@ -3548,8 +3548,8 @@ namespace jc {
             }
             
             struct ComputeGuard {
-                std::unordered_set<uint64_t>& comp;
-                uint64_t s;
+                std::unordered_set<SymNode*>& comp;
+                SymNode* s;
                 ~ComputeGuard() { comp.erase(s); }
             } guard{computing, sig};
             

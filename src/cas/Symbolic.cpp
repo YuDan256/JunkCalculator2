@@ -561,11 +561,11 @@ namespace jc {
         if (!b.ptr) return a;
         if (a.isZero()) return b;
         if (b.isZero()) return a;
-        std::vector<std::shared_ptr<SymNode>> flatArgs;
-        std::function<void(const std::shared_ptr<SymNode>&)> flattenAdd =
-            [&](const std::shared_ptr<SymNode>& node) {
+        std::vector<SymNode*> flatArgs;
+        std::function<void(SymNode*)> flattenAdd =
+            [&](SymNode* node) {
             if (node->getType() == SymType::ADD) {
-                for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args)
+                for (auto& arg : static_cast<SymAdd*>(node)->args)
                     flattenAdd(arg);
             }
             else {
@@ -575,19 +575,19 @@ namespace jc {
         flattenAdd(a.ptr);
         flattenAdd(b.ptr);
         CASVal sumConst = BigInt(0);
-        struct TermData { CASVal coeff; std::shared_ptr<SymNode> baseNode; };
+        struct TermData { CASVal coeff; SymNode* baseNode; };
         std::unordered_map<uintptr_t, TermData> symTerms;
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
-                sumConst = casAdd(sumConst, std::static_pointer_cast<SymNum>(node)->value);
+                sumConst = casAdd(sumConst, static_cast<SymNum*>(node)->value);
             }
             else if (node->getType() == SymType::MUL) {
-                auto mul = std::static_pointer_cast<SymMul>(node);
+                auto mul = static_cast<SymMul*>(node);
                 CASVal coeff = BigInt(1);
-                std::vector<std::shared_ptr<SymNode>> symParts;
+                std::vector<SymNode*> symParts;
                 for (auto& m_arg : mul->args) {
                     if (m_arg->getType() == SymType::NUM)
-                        coeff = casMul(coeff, std::static_pointer_cast<SymNum>(m_arg)->value);
+                        coeff = casMul(coeff, static_cast<SymNum*>(m_arg)->value);
                     else
                         symParts.push_back(m_arg);
                 }
@@ -597,8 +597,8 @@ namespace jc {
                 else {
                     SymExpr rem = (symParts.size() == 1)
                         ? SymExpr(symParts[0])
-                        : SymExpr(std::make_shared<SymMul>(symParts));
-                    uintptr_t key = reinterpret_cast<uintptr_t>(rem.ptr.get());
+                        : SymExpr(new SymMul(symParts));
+                    uintptr_t key = reinterpret_cast<uintptr_t>(rem.ptr);
                     auto it = symTerms.find(key);
                     if (it != symTerms.end())
                         it->second.coeff = casAdd(it->second.coeff, coeff);
@@ -608,7 +608,7 @@ namespace jc {
             }
             else {
                 SymExpr internedNode(node);
-                uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr.get());
+                uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr);
                 auto it = symTerms.find(key);
                 if (it != symTerms.end())
                     it->second.coeff = casAdd(it->second.coeff, BigInt(1));
@@ -624,23 +624,23 @@ namespace jc {
             return compareSymNodes(lhs.baseNode, rhs.baseNode) < 0;
         });
 
-        std::vector<std::shared_ptr<SymNode>> newArgs;
+        std::vector<SymNode*> newArgs;
         for (auto& data : sortedTerms) {
             if (isCasZero(data.coeff)) continue;
             if (isCasOne(data.coeff)) {
                 newArgs.push_back(data.baseNode);
             }
             else {
-                std::vector<std::shared_ptr<SymNode>> mArgs;
+                std::vector<SymNode*> mArgs;
                 mArgs.push_back(SymExpr(data.coeff).ptr);
                 if (data.baseNode->getType() == SymType::MUL) {
-                    auto inner = std::static_pointer_cast<SymMul>(data.baseNode);
+                    auto inner = static_cast<SymMul*>(data.baseNode);
                     mArgs.insert(mArgs.end(), inner->args.begin(), inner->args.end());
                 }
                 else {
                     mArgs.push_back(data.baseNode);
                 }
-                newArgs.push_back(SymExpr(std::make_shared<SymMul>(mArgs)).ptr);
+                newArgs.push_back(SymExpr(new SymMul(mArgs)).ptr);
             }
         }
         if (!isCasZero(sumConst))
@@ -648,7 +648,7 @@ namespace jc {
 
         if (newArgs.empty()) return SymExpr(BigInt(0));
         if (newArgs.size() == 1) return SymExpr(newArgs[0]);
-        return SymExpr(std::make_shared<SymAdd>(std::move(newArgs)));
+        return SymExpr(new SymAdd(std::move(newArgs)));
     }
     // ==========================================
     // operator*（乘法与同底数指数合并：带 ADD 基底正规化）
@@ -658,11 +658,11 @@ namespace jc {
         if (a.isZero() || b.isZero()) return SymExpr(0);
         if (a.isOne()) return b;
         if (b.isOne()) return a;
-        std::vector<std::shared_ptr<SymNode>> flatArgs;
-        std::function<void(const std::shared_ptr<SymNode>&)> flattenMul =
-            [&](const std::shared_ptr<SymNode>& node) {
+        std::vector<SymNode*> flatArgs;
+        std::function<void(SymNode*)> flattenMul =
+            [&](SymNode* node) {
             if (node->getType() == SymType::MUL) {
-                for (auto& arg : std::static_pointer_cast<SymMul>(node)->args)
+                for (auto& arg : static_cast<SymMul*>(node)->args)
                     flattenMul(arg);
             }
             else {
@@ -672,27 +672,27 @@ namespace jc {
         flattenMul(a.ptr);
         flattenMul(b.ptr);
         CASVal prodConst = BigInt(1);
-        struct FactorData { CASVal exp; std::shared_ptr<SymNode> baseNode; };
+        struct FactorData { CASVal exp; SymNode* baseNode; };
         std::unordered_map<uintptr_t, FactorData> symFactors;
         // ★ 核心架构：ADD 基底首项负号正规化
         // 检测一个 ADD 节点的字典序最后一项（通常是最高次项）是否带负系数
-        auto addLeadingNegative = [](const std::shared_ptr<SymNode>& node) -> bool {
+        auto addLeadingNegative = [](SymNode* node) -> bool {
             if (node->getType() != SymType::ADD) return false;
-            auto add = std::static_pointer_cast<SymAdd>(node);
+            auto add = static_cast<SymAdd*>(node);
             if (add->args.empty()) return false;
             auto lastArg = add->args.back();
             if (lastArg->getType() == SymType::NUM) return false;
             if (lastArg->getType() == SymType::MUL) {
-                auto mul = std::static_pointer_cast<SymMul>(lastArg);
+                auto mul = static_cast<SymMul*>(lastArg);
                 if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
-                    return isCasNegative(std::static_pointer_cast<SymNum>(mul->args[0])->value);
+                    return isCasNegative(static_cast<SymNum*>(mul->args[0])->value);
                 }
             }
             return false; // VAR, POW 等隐含系数 +1
             };
         // 对 ADD 节点取反：(-y + z) → (y - z)
-        auto negateAdd = [](const std::shared_ptr<SymNode>& node) -> std::shared_ptr<SymNode> {
-            auto add = std::static_pointer_cast<SymAdd>(node);
+        auto negateAdd = [](SymNode* node) -> SymNode* {
+            auto add = static_cast<SymAdd*>(node);
             SymExpr result(BigInt(0));
             for (auto& arg : add->args) {
                 result = result + (SymExpr(BigInt(-1)) * SymExpr(arg));
@@ -700,7 +700,7 @@ namespace jc {
             return result.ptr;
             };
         // 将一个因子（base^exp）登记到 symFactors，同时正规化 ADD 基底
-        auto registerFactor = [&](std::shared_ptr<SymNode> base, CASVal expVal) {
+        auto registerFactor = [&](SymNode* base, CASVal expVal) {
             // ★ 如果 base 是 ADD 且首项为负，翻转基底，吸收符号到 prodConst
             if (addLeadingNegative(base)) {
                 auto [isInt, n] = extractExactInt(expVal);
@@ -713,7 +713,7 @@ namespace jc {
                 }
             }
             SymExpr internedBase(base);
-            uintptr_t key = reinterpret_cast<uintptr_t>(internedBase.ptr.get());
+            uintptr_t key = reinterpret_cast<uintptr_t>(internedBase.ptr);
             auto it = symFactors.find(key);
             if (it != symFactors.end())
                 it->second.exp = casAdd(it->second.exp, expVal);
@@ -722,17 +722,17 @@ namespace jc {
             };
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
-                prodConst = casMul(prodConst, std::static_pointer_cast<SymNum>(node)->value);
+                prodConst = casMul(prodConst, static_cast<SymNum*>(node)->value);
             }
             else if (node->getType() == SymType::POW) {
-                auto powNode = std::static_pointer_cast<SymPow>(node);
+                auto powNode = static_cast<SymPow*>(node);
                 if (powNode->exp->getType() == SymType::NUM) {
-                    CASVal expVal = std::static_pointer_cast<SymNum>(powNode->exp)->value;
+                    CASVal expVal = static_cast<SymNum*>(powNode->exp)->value;
                     registerFactor(powNode->base, expVal);
                 }
                 else {
                     SymExpr internedNode(node);
-                    uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr.get());
+                    uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr);
                     auto it = symFactors.find(key);
                     if (it != symFactors.end())
                         it->second.exp = casAdd(it->second.exp, BigInt(1));
@@ -751,7 +751,7 @@ namespace jc {
         if (!isCasOne(prodConst)) {
             for (auto& [key, data] : symFactors) {
                 if (data.baseNode->getType() == SymType::NUM) {
-                    CASVal bVal = std::static_pointer_cast<SymNum>(data.baseNode)->value;
+                    CASVal bVal = static_cast<SymNum*>(data.baseNode)->value;
                     auto [isBInt, bInt] = extractExactInt(bVal);
                     if (isBInt && bInt != 0 && bInt != 1 && bInt != -1) {
                         while (true) {
@@ -796,18 +796,18 @@ namespace jc {
             return compareSymNodes(lhs.baseNode, rhs.baseNode) < 0;
         });
 
-        std::vector<std::shared_ptr<SymNode>> newArgs;
+        std::vector<SymNode*> newArgs;
         for (auto& data : sortedFactors) {
             if (isCasZero(data.exp)) continue;
             
             SymExpr term = SymExpr(data.baseNode) ^ SymExpr(data.exp);
             if (term.ptr->getType() == SymType::NUM) {
-                prodConst = casMul(prodConst, std::static_pointer_cast<SymNum>(term.ptr)->value);
+                prodConst = casMul(prodConst, static_cast<SymNum*>(term.ptr)->value);
             } else if (term.ptr->getType() == SymType::MUL) {
-                auto innerMul = std::static_pointer_cast<SymMul>(term.ptr);
+                auto innerMul = static_cast<SymMul*>(term.ptr);
                 for (auto& arg : innerMul->args) {
                     if (arg->getType() == SymType::NUM) {
-                        prodConst = casMul(prodConst, std::static_pointer_cast<SymNum>(arg)->value);
+                        prodConst = casMul(prodConst, static_cast<SymNum*>(arg)->value);
                     } else {
                         newArgs.push_back(arg);
                     }
@@ -821,7 +821,7 @@ namespace jc {
             newArgs.insert(newArgs.begin(), SymExpr(prodConst).ptr);
         }
         if (newArgs.size() == 1) return SymExpr(newArgs[0]);
-        return SymExpr(std::make_shared<SymMul>(std::move(newArgs)));
+        return SymExpr(new SymMul(std::move(newArgs)));
     }
 
     // ==========================================
@@ -843,10 +843,10 @@ namespace jc {
         if (bOk && !bVal.truthy()) throw std::runtime_error("CAS Error: Division by zero.");
 
         if (b.ptr->getType() == SymType::NUM) {
-            auto numNode = std::static_pointer_cast<SymNum>(b.ptr);
+            auto numNode = static_cast<SymNum*>(b.ptr);
             try {
                 Value reciprocal = Value(BigInt(1)) / casValToValue(numNode->value);
-                return a * SymExpr(std::make_shared<SymNum>(valueToCasVal(reciprocal)));
+                return a * SymExpr(new SymNum(valueToCasVal(reciprocal)));
             }
             catch (...) {}
         }
@@ -872,7 +872,7 @@ namespace jc {
             if (bOk) {
                 try { bIsNeg = bVal.asDouble() < 0.0; } catch(...) {}
             } else if (b.ptr->getType() == SymType::NUM) {
-                bIsNeg = isCasNegative(std::static_pointer_cast<SymNum>(b.ptr)->value);
+                bIsNeg = isCasNegative(static_cast<SymNum*>(b.ptr)->value);
             }
             if (bIsNeg) throw std::runtime_error("CAS Error: Division by zero.");
             return SymExpr(0);
@@ -883,8 +883,8 @@ namespace jc {
         // 常数折叠: 尝试对可求值的常数进行折叠 (如 i^-1 -> -i)
         if (aOk && bOk) {
             // 仅当底数和指数都是精确类型 (非浮点) 时，才进行折叠，以防 PI^2 变成浮点数
-            bool aExact = a.ptr->getType() == SymType::NUM ? !std::holds_alternative<double>(std::static_pointer_cast<SymNum>(a.ptr)->value) : true;
-            bool bExact = b.ptr->getType() == SymType::NUM ? !std::holds_alternative<double>(std::static_pointer_cast<SymNum>(b.ptr)->value) : true;
+            bool aExact = a.ptr->getType() == SymType::NUM ? !std::holds_alternative<double>(static_cast<SymNum*>(a.ptr)->value) : true;
+            bool bExact = b.ptr->getType() == SymType::NUM ? !std::holds_alternative<double>(static_cast<SymNum*>(b.ptr)->value) : true;
             
             if (aExact && bExact) {
                 // 避免无限递归：如果 a 和 b 都是 NUM，说明我们已经在处理最底层的常数了，
@@ -916,8 +916,8 @@ namespace jc {
 
         // 常数折叠: NUM^NUM → 委托 Value（Value 内部会自动决定精确/符号/浮点）
         if (a.ptr->getType() == SymType::NUM && b.ptr->getType() == SymType::NUM) {
-            auto baseNum = std::static_pointer_cast<SymNum>(a.ptr);
-            auto expNum = std::static_pointer_cast<SymNum>(b.ptr);
+            auto baseNum = static_cast<SymNum*>(a.ptr);
+            auto expNum = static_cast<SymNum*>(b.ptr);
             auto [isInt, n] = casToInt(expNum->value);
             if (isInt) {
                 try {
@@ -961,7 +961,7 @@ namespace jc {
                             if (!q.isZero()) {
                                 SymExpr term = SymExpr(p) ^ SymExpr(q);
                                 if (outside.isOne()) outside = term;
-                                else outside = SymExpr(std::make_shared<SymMul>(std::vector<std::shared_ptr<SymNode>>{outside.ptr, term.ptr}));
+                                else outside = SymExpr(new SymMul(std::vector<SymNode*>{outside.ptr, term.ptr}));
                             }
                             if (!r.isZero()) {
                                 BigInt pr(1);
@@ -975,9 +975,9 @@ namespace jc {
                     if (insideInt > BigInt(1)) {
                         SymExpr insideSym(insideInt);
                         SymExpr fracSym(Fraction(BigInt(1), n_den));
-                        SymExpr powPart(std::make_shared<SymPow>(insideSym.ptr, fracSym.ptr));
+                        SymExpr powPart(new SymPow(insideSym.ptr, fracSym.ptr));
                         if (res.isOne()) res = powPart;
-                        else res = SymExpr(std::make_shared<SymMul>(std::vector<std::shared_ptr<SymNode>>{res.ptr, powPart.ptr}));
+                        else res = SymExpr(new SymMul(std::vector<SymNode*>{res.ptr, powPart.ptr}));
                     }
                     
                     if (isNeg) {
@@ -990,7 +990,7 @@ namespace jc {
                         
                         auto multiplyRes = [&](SymExpr factor) {
                             if (res.isOne()) res = factor;
-                            else res = SymExpr(std::make_shared<SymMul>(std::vector<std::shared_ptr<SymNode>>{factor.ptr, res.ptr}));
+                            else res = SymExpr(new SymMul(std::vector<SymNode*>{factor.ptr, res.ptr}));
                         };
 
                         if (!(q_neg % BigInt(2)).isZero()) {
@@ -1007,7 +1007,7 @@ namespace jc {
                             } else {
                                 SymExpr minusOne(BigInt(-1));
                                 SymExpr fracSym(Fraction(r_neg, n_den));
-                                SymExpr powPart(std::make_shared<SymPow>(minusOne.ptr, fracSym.ptr));
+                                SymExpr powPart(new SymPow(minusOne.ptr, fracSym.ptr));
                                 multiplyRes(powPart);
                             }
                         }
@@ -1067,7 +1067,7 @@ namespace jc {
 
         // 假分数指数拆分: x^(3/2) -> x * x^(1/2)
         if (b.ptr->getType() == SymType::NUM) {
-            auto expNum = std::static_pointer_cast<SymNum>(b.ptr);
+            auto expNum = static_cast<SymNum*>(b.ptr);
             if (std::holds_alternative<Fraction>(expNum->value)) {
                 Fraction expF = std::get<Fraction>(expNum->value);
                 BigInt m = expF.getNum();
@@ -1082,7 +1082,7 @@ namespace jc {
                     if (!q.isZero() && !r.isZero()) {
                         SymExpr part1 = a ^ SymExpr(q);
                         SymExpr part2 = a ^ SymExpr(Fraction(r, n_den));
-                        return SymExpr(std::make_shared<SymMul>(std::vector<std::shared_ptr<SymNode>>{part1.ptr, part2.ptr}));
+                        return SymExpr(new SymMul(std::vector<SymNode*>{part1.ptr, part2.ptr}));
                     }
                 }
             }
@@ -1090,46 +1090,46 @@ namespace jc {
 
         // 幂的幂法则: (a^m)^n = a^(m*n)
         if (a.ptr->getType() == SymType::POW) {
-            auto powNode = std::static_pointer_cast<SymPow>(a.ptr);
+            auto powNode = static_cast<SymPow*>(a.ptr);
             SymExpr newExp = SymExpr(powNode->exp) * b;
             return SymExpr(powNode->base) ^ newExp;
         }
 
         // 乘积分配律: (a*b*c)^n = a^n * b^n * c^n
         if (a.ptr->getType() == SymType::MUL && b.ptr->getType() == SymType::NUM) {
-            auto mulNode = std::static_pointer_cast<SymMul>(a.ptr);
+            auto mulNode = static_cast<SymMul*>(a.ptr);
             SymExpr result(BigInt(1));
             for (auto& factor : mulNode->args)
                 result = result * (SymExpr(factor) ^ b);
             return result;
         }
 
-        return SymExpr(std::make_shared<SymPow>(a.ptr, b.ptr));
+        return SymExpr(new SymPow(a.ptr, b.ptr));
     }
 
     
     // =================================================================
     // AST 体积计算器
     // =================================================================
-    static int countNodes(const std::shared_ptr<SymNode>& node, std::unordered_set<const SymNode*>& visited) {
+    static int countNodes(SymNode* node, std::unordered_set<const SymNode*>& visited) {
         if (!node) return 0;
-        if (!visited.insert(node.get()).second) return 0;
+        if (!visited.insert(node).second) return 0;
         int count = 1;
         switch (node->getType()) {
         case SymType::ADD:
-            for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args)
+            for (auto& arg : static_cast<SymAdd*>(node)->args)
                 count += countNodes(arg, visited);
             break;
         case SymType::MUL:
-            for (auto& arg : std::static_pointer_cast<SymMul>(node)->args)
+            for (auto& arg : static_cast<SymMul*>(node)->args)
                 count += countNodes(arg, visited);
             break;
         case SymType::POW:
-            count += countNodes(std::static_pointer_cast<SymPow>(node)->base, visited);
-            count += countNodes(std::static_pointer_cast<SymPow>(node)->exp, visited);
+            count += countNodes(static_cast<SymPow*>(node)->base, visited);
+            count += countNodes(static_cast<SymPow*>(node)->exp, visited);
             break;
         case SymType::FUNC:
-            for (auto& arg : std::static_pointer_cast<SymFunc>(node)->args)
+            for (auto& arg : static_cast<SymFunc*>(node)->args)
                 count += countNodes(arg, visited);
             break;
         default: break;
@@ -1145,13 +1145,13 @@ namespace jc {
     // =================================================================
     // AST 复杂度计算器 (用于多重宇宙最优解选择)
     // =================================================================
-    static int computeComplexity(const std::shared_ptr<SymNode>& node, std::unordered_set<const SymNode*>& visited) {
+    static int computeComplexity(SymNode* node, std::unordered_set<const SymNode*>& visited) {
         if (!node) return 0;
-        if (!visited.insert(node.get()).second) return 0;
+        if (!visited.insert(node).second) return 0;
         int score = 10; // 基础分放大，便于微调
         switch (node->getType()) {
         case SymType::NUM: {
-            auto num = std::static_pointer_cast<SymNum>(node);
+            auto num = static_cast<SymNum*>(node);
             if (std::holds_alternative<Fraction>(num->value)) score += 15; 
             else if (std::holds_alternative<double>(num->value)) score += 20; 
             break;
@@ -1160,21 +1160,21 @@ namespace jc {
             break;
         case SymType::ADD:
             score += 5; 
-            for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args)
+            for (auto& arg : static_cast<SymAdd*>(node)->args)
                 score += computeComplexity(arg, visited);
             break;
         case SymType::MUL:
             score += 2;
-            for (auto& arg : std::static_pointer_cast<SymMul>(node)->args)
+            for (auto& arg : static_cast<SymMul*>(node)->args)
                 score += computeComplexity(arg, visited);
             break;
         case SymType::POW: {
             score += 10; 
-            auto powNode = std::static_pointer_cast<SymPow>(node);
+            auto powNode = static_cast<SymPow*>(node);
             score += computeComplexity(powNode->base, visited);
             score += computeComplexity(powNode->exp, visited);
             if (powNode->exp->getType() == SymType::NUM) {
-                auto numVal = std::static_pointer_cast<SymNum>(powNode->exp)->value;
+                auto numVal = static_cast<SymNum*>(powNode->exp)->value;
                 if (isCasNegative(numVal)) score += 15; // 负指数（分母）惩罚
                 if (std::holds_alternative<Fraction>(numVal)) score += 20; // 根式惩罚
             } else if (powNode->exp->getType() != SymType::VAR) {
@@ -1184,7 +1184,7 @@ namespace jc {
         }
         case SymType::FUNC:
             score += 25; 
-            for (auto& arg : std::static_pointer_cast<SymFunc>(node)->args)
+            for (auto& arg : static_cast<SymFunc*>(node)->args)
                 score += computeComplexity(arg, visited);
             break;
         default: break;
@@ -1200,34 +1200,34 @@ namespace jc {
     // =================================================================
     // 变量深度探测器 (Variable Submergence Check)
     // =================================================================
-    static int calcVarDepth(const std::shared_ptr<SymNode>& node, const std::string& var, int currentDepth) {
+    static int calcVarDepth(SymNode* node, const std::string& var, int currentDepth) {
         if (!node) return -1;
         switch (node->getType()) {
             case SymType::NUM: return -1;
             case SymType::VAR: 
-                if (std::static_pointer_cast<SymVar>(node)->name == var) return currentDepth;
+                if (static_cast<SymVar*>(node)->name == var) return currentDepth;
                 return -1;
             case SymType::ADD: {
                 int maxD = -1;
-                for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args) {
+                for (auto& arg : static_cast<SymAdd*>(node)->args) {
                     maxD = std::max(maxD, calcVarDepth(arg, var, currentDepth + 1));
                 }
                 return maxD;
             }
             case SymType::MUL: {
                 int maxD = -1;
-                for (auto& arg : std::static_pointer_cast<SymMul>(node)->args) {
+                for (auto& arg : static_cast<SymMul*>(node)->args) {
                     maxD = std::max(maxD, calcVarDepth(arg, var, currentDepth + 1));
                 }
                 return maxD;
             }
             case SymType::POW: {
-                auto p = std::static_pointer_cast<SymPow>(node);
+                auto p = static_cast<SymPow*>(node);
                 return std::max(calcVarDepth(p->base, var, currentDepth + 1), calcVarDepth(p->exp, var, currentDepth + 1));
             }
             case SymType::FUNC: {
                 int maxD = -1;
-                for (auto& arg : std::static_pointer_cast<SymFunc>(node)->args) {
+                for (auto& arg : static_cast<SymFunc*>(node)->args) {
                     maxD = std::max(maxD, calcVarDepth(arg, var, currentDepth + 1));
                 }
                 return maxD;
@@ -1243,7 +1243,7 @@ namespace jc {
     // =================================================================
     // 超越函数嵌套权重 (Transcendental Extension Penalty)
     // =================================================================
-    static int calcTransWeight(const std::shared_ptr<SymNode>& node, const std::string& var, int currentNesting) {
+    static int calcTransWeight(SymNode* node, const std::string& var, int currentNesting) {
         if (!node) return 0;
         if (!containsVar(node, var)) return 0;
 
@@ -1253,16 +1253,16 @@ namespace jc {
                 return 0;
             case SymType::ADD: {
                 int w = 0;
-                for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args) w += calcTransWeight(arg, var, currentNesting);
+                for (auto& arg : static_cast<SymAdd*>(node)->args) w += calcTransWeight(arg, var, currentNesting);
                 return w;
             }
             case SymType::MUL: {
                 int w = 0;
-                for (auto& arg : std::static_pointer_cast<SymMul>(node)->args) w += calcTransWeight(arg, var, currentNesting);
+                for (auto& arg : static_cast<SymMul*>(node)->args) w += calcTransWeight(arg, var, currentNesting);
                 return w;
             }
             case SymType::POW: {
-                auto p = std::static_pointer_cast<SymPow>(node);
+                auto p = static_cast<SymPow*>(node);
                 int w = 0;
                 if (containsVar(p->exp, var)) {
                     w += (currentNesting + 1) * 2;
@@ -1275,7 +1275,7 @@ namespace jc {
                 return w;
             }
             case SymType::FUNC: {
-                auto f = std::static_pointer_cast<SymFunc>(node);
+                auto f = static_cast<SymFunc*>(node);
                 int w = (currentNesting + 1) * 2;
                 for (auto& arg : f->args) {
                     w += calcTransWeight(arg, var, currentNesting + 1);
@@ -1295,9 +1295,9 @@ namespace jc {
     // =================================================================
     
     // 检查节点是否为万能通配符
-    static bool isWildcard(const std::shared_ptr<SymNode>& node, std::string& outName) {
+    static bool isWildcard(SymNode* node, std::string& outName) {
         if (node && node->getType() == SymType::VAR) {
-            std::string name = std::static_pointer_cast<SymVar>(node)->name;
+            std::string name = static_cast<SymVar*>(node)->name;
             if (!name.empty() && name[0] == '_') {
                 outName = name;
                 return true;
@@ -1307,23 +1307,23 @@ namespace jc {
     }
 
     // 检查节点子树中是否包含万能通配符
-    static bool hasWildcard(const std::shared_ptr<SymNode>& node) {
+    static bool hasWildcard(SymNode* node) {
         if (!node) return false;
         if (node->getType() == SymType::VAR) {
-            std::string name = std::static_pointer_cast<SymVar>(node)->name;
+            std::string name = static_cast<SymVar*>(node)->name;
             return !name.empty() && name[0] == '_';
         }
         switch (node->getType()) {
             case SymType::ADD:
-                for (auto& a : std::static_pointer_cast<SymAdd>(node)->args) if (hasWildcard(a)) return true;
+                for (auto& a : static_cast<SymAdd*>(node)->args) if (hasWildcard(a)) return true;
                 break;
             case SymType::MUL:
-                for (auto& a : std::static_pointer_cast<SymMul>(node)->args) if (hasWildcard(a)) return true;
+                for (auto& a : static_cast<SymMul*>(node)->args) if (hasWildcard(a)) return true;
                 break;
             case SymType::POW:
-                return hasWildcard(std::static_pointer_cast<SymPow>(node)->base) || hasWildcard(std::static_pointer_cast<SymPow>(node)->exp);
+                return hasWildcard(static_cast<SymPow*>(node)->base) || hasWildcard(static_cast<SymPow*>(node)->exp);
             case SymType::FUNC:
-                for (auto& a : std::static_pointer_cast<SymFunc>(node)->args) if (hasWildcard(a)) return true;
+                for (auto& a : static_cast<SymFunc*>(node)->args) if (hasWildcard(a)) return true;
                 break;
             default: break;
         }
@@ -1331,7 +1331,7 @@ namespace jc {
     }
 
     // 精确匹配 AST 并记录捕获变量 (支持 ADD/MUL 的全排列交换律检测)
-    bool matchAST(const std::shared_ptr<SymNode>& node, const std::shared_ptr<SymNode>& pat, std::map<std::string, SymExpr>& captures) {
+    bool matchAST(SymNode* node, SymNode* pat, std::map<std::string, SymExpr>& captures) {
         checkInterrupt();
         if (!node || !pat) return false;
         
@@ -1355,10 +1355,10 @@ namespace jc {
             case SymType::NUM:
                 return node->toString() == pat->toString();
             case SymType::VAR:
-                return std::static_pointer_cast<SymVar>(node)->name == std::static_pointer_cast<SymVar>(pat)->name;
+                return static_cast<SymVar*>(node)->name == static_cast<SymVar*>(pat)->name;
             case SymType::POW: {
-                auto pNode = std::static_pointer_cast<SymPow>(node);
-                auto pPat = std::static_pointer_cast<SymPow>(pat);
+                auto pNode = static_cast<SymPow*>(node);
+                auto pPat = static_cast<SymPow*>(pat);
                 
                 // 严格限制：如果模板的指数是常数，目标表达式的指数必须完全一致
                 if (pPat->exp->getType() == SymType::NUM) {
@@ -1374,8 +1374,8 @@ namespace jc {
                 return false;
             }
             case SymType::FUNC: {
-                auto fNode = std::static_pointer_cast<SymFunc>(node);
-                auto fPat = std::static_pointer_cast<SymFunc>(pat);
+                auto fNode = static_cast<SymFunc*>(node);
+                auto fPat = static_cast<SymFunc*>(pat);
                 if (fNode->name != fPat->name || fNode->args.size() != fPat->args.size()) return false;
                 std::map<std::string, SymExpr> tempCaptures = captures;
                 for (size_t i = 0; i < fNode->args.size(); ++i) {
@@ -1386,8 +1386,8 @@ namespace jc {
             }
             case SymType::ADD:
             case SymType::MUL: {
-                const auto& nArgs = (node->getType() == SymType::ADD) ? std::static_pointer_cast<SymAdd>(node)->args : std::static_pointer_cast<SymMul>(node)->args;
-                const auto& pArgs = (pat->getType() == SymType::ADD) ? std::static_pointer_cast<SymAdd>(pat)->args : std::static_pointer_cast<SymMul>(pat)->args;
+                const auto& nArgs = (node->getType() == SymType::ADD) ? static_cast<SymAdd*>(node)->args : static_cast<SymMul*>(node)->args;
+                const auto& pArgs = (pat->getType() == SymType::ADD) ? static_cast<SymAdd*>(pat)->args : static_cast<SymMul*>(pat)->args;
                 
                 if (nArgs.size() != pArgs.size()) return false;
                 
@@ -1412,7 +1412,7 @@ namespace jc {
                 if (matchCount == nArgs.size()) return true;
 
                 // 提取剩余的待匹配项
-                std::vector<std::shared_ptr<SymNode>> remN, remP;
+                std::vector<SymNode*> remN, remP;
                 for (size_t i = 0; i < nArgs.size(); ++i) if (!nUsed[i]) remN.push_back(nArgs[i]);
                 for (size_t j = 0; j < pArgs.size(); ++j) if (!pUsed[j]) remP.push_back(pArgs[j]);
 

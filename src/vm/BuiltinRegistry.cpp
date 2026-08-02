@@ -304,8 +304,9 @@ namespace jc {
             for (auto& a : newArgs) ptrs.push_back(a.ptr);
             return SymExpr(new SymFunc(func->name, std::move(ptrs)));
         }
+        default:
+            return expr;
         }
-        return expr;
     }
 
 using namespace helpers;

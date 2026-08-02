@@ -57,7 +57,7 @@ namespace jc {
     struct SymArena {
         struct Block {
             static constexpr size_t SIZE = 256 * 1024;
-            char data[SIZE];
+            char data[SIZE] = {0};
             size_t offset = 0;
             Block* next = nullptr;
         };
@@ -101,7 +101,9 @@ namespace jc {
         auto& bucket = g_symPool[h];
         for (SymNode* existing : bucket) {
             if (existing->getType() == node->getType() && existing->equals(node)) {
-                delete node; // 触发 deallocate_last，完美回收内存
+                if (existing != node) {
+                    delete node; // 触发 deallocate_last，完美回收内存
+                }
                 return existing;
             }
         }
@@ -575,7 +577,7 @@ namespace jc {
         flattenAdd(a.ptr);
         flattenAdd(b.ptr);
         CASVal sumConst = BigInt(0);
-        struct TermData { CASVal coeff; SymNode* baseNode; };
+        struct TermData { CASVal coeff; SymNode* baseNode = nullptr; };
         std::unordered_map<uintptr_t, TermData> symTerms;
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
@@ -672,7 +674,7 @@ namespace jc {
         flattenMul(a.ptr);
         flattenMul(b.ptr);
         CASVal prodConst = BigInt(1);
-        struct FactorData { CASVal exp; SymNode* baseNode; };
+        struct FactorData { CASVal exp; SymNode* baseNode = nullptr; };
         std::unordered_map<uintptr_t, FactorData> symFactors;
         // ★ 核心架构：ADD 基底首项负号正规化
         // 检测一个 ADD 节点的字典序最后一项（通常是最高次项）是否带负系数
@@ -1921,8 +1923,9 @@ namespace jc {
             }
                 return SymExpr(new SymFunc(func->name, std::move(expArgs)));
             }
+            default:
+                return expr;
             }
-            return expr;
         };
 
         SymExpr result = compute();
@@ -2086,8 +2089,9 @@ namespace jc {
                 newArgs.push_back(subs(SymExpr(arg), var, val).ptr);
             return SymExpr(new SymFunc(func->name, std::move(newArgs)));
         }
+        default:
+            return expr;
         }
-        return expr;
     }
 
     // ==========================================
@@ -2311,8 +2315,9 @@ namespace jc {
                 newArgs.push_back(evalFloat(SymExpr(arg)).ptr);
             return SymExpr(new SymFunc(func->name, std::move(newArgs)));
         }
+        default:
+            return expr;
         }
-        return expr;
     }
 
     // ==========================================
@@ -2449,8 +2454,9 @@ namespace jc {
                 newArgs.push_back(evalValue(SymExpr(arg)).ptr);
             return SymExpr(new SymFunc(func->name, std::move(newArgs)));
         }
+        default:
+            return expr;
         }
-        return expr;
     }
 
     // =================================================================
@@ -2721,8 +2727,9 @@ namespace jc {
 
             throw std::runtime_error("Calculus Error: Derivative of function '" + name + "' with " + std::to_string(arity) + " argument(s) is not implemented yet.");
         }
+        default:
+            return SymExpr(BigInt(0));
         }
-        return SymExpr(BigInt(0));
     }
 
     // =================================================================
@@ -5098,8 +5105,9 @@ namespace jc {
             }
             return SymExpr(new SymFunc(func->name, std::move(newArgs)));
         }
+        default:
+            return expr;
         }
-        return expr;
     }
 
     // =================================================================

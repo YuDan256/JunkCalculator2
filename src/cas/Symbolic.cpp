@@ -4161,58 +4161,53 @@ namespace jc {
         if (degA == 0) return simplifyFrac(coeffsA[0] ^ SymExpr(BigInt(degB)));
         if (degB == 0) return simplifyFrac(coeffsB[0] ^ SymExpr(BigInt(degA)));
 
-        int n = degA + degB;
-        std::vector<std::vector<SymExpr>> M(n, std::vector<SymExpr>(n, SymExpr(BigInt(0))));
-
-        for (int i = 0; i < degB; ++i) {
-            for (int j = 0; j <= degA; ++j) {
-                M[i][i + j] = coeffsA[degA - j];
-            }
-        }
-        for (int i = 0; i < degA; ++i) {
-            for (int j = 0; j <= degB; ++j) {
-                M[i + degB][i + j] = coeffsB[degB - j];
-            }
-        }
-
-        SymExpr prev_pivot(BigInt(1));
         int sign = 1;
-
-        for (int k = 0; k < n - 1; ++k) {
-            checkInterrupt();
-            int pivot_row = k;
-            while (pivot_row < n && M[pivot_row][k].isZero()) {
-                pivot_row++;
-            }
-            if (pivot_row == n) return SymExpr(BigInt(0));
-
-            if (pivot_row != k) {
-                std::swap(M[k], M[pivot_row]);
-                sign = -sign;
-            }
-
-            SymExpr pivot = M[k][k];
-            for (int i = k + 1; i < n; ++i) {
-                if (M[i][k].isZero()) {
-                    for (int j = k + 1; j < n; ++j) {
-                        SymExpr term = simplifyCore(expand_core(M[i][j] * pivot, SymConfig::maxExpandTerms));
-                        M[i][j] = bareissExactDiv(term, prev_pivot);
-                    }
-                } else {
-                    for (int j = k + 1; j < n; ++j) {
-                        SymExpr term1 = simplifyCore(expand_core(M[i][j] * pivot, SymConfig::maxExpandTerms));
-                        SymExpr term2 = simplifyCore(expand_core(M[i][k] * M[k][j], SymConfig::maxExpandTerms));
-                        SymExpr diff = simplifyCore(expand_core(term1 - term2, SymConfig::maxExpandTerms));
-                        M[i][j] = bareissExactDiv(diff, prev_pivot);
-                    }
-                }
-            }
-            prev_pivot = pivot;
+        if (degA < degB) {
+            std::swap(coeffsA, coeffsB);
+            std::swap(degA, degB);
+            if ((degA % 2 != 0) && (degB % 2 != 0)) sign = -1;
         }
 
-        SymExpr det = M[n - 1][n - 1];
-        if (sign == -1) det = simplifyCore(-det);
-        return det;
+        SymExpr g(BigInt(1));
+        SymExpr h(BigInt(1));
+
+        while (degB > 0) {
+            checkInterrupt();
+            int d = degA - degB;
+            if ((degA % 2 != 0) && (degB % 2 != 0)) sign = -sign;
+
+            auto coeffsR = polyPseudoRemCoeffs(coeffsA, coeffsB);
+            if (coeffsR.empty()) return SymExpr(BigInt(0));
+
+            int degR = static_cast<int>(coeffsR.size()) - 1;
+            if (degR == 0) {
+                SymExpr r = coeffsR[0];
+                SymExpr h_pow = simplifyFrac(h ^ SymExpr(BigInt(degB - 1)));
+                SymExpr g_pow = simplifyFrac(g ^ SymExpr(BigInt(degB - 1)));
+                SymExpr num = simplifyFrac(r ^ SymExpr(BigInt(degB)));
+                SymExpr den = simplifyFrac(g_pow * h_pow);
+                SymExpr res = exactDiv(num, den);
+                if (sign == -1) res = simplifyCore(-res);
+                return res;
+            }
+
+            SymExpr divisor = simplifyFrac(g * (h ^ SymExpr(BigInt(d))));
+            for (auto& c : coeffsR) c = simplifyFrac(c / divisor);
+            trimCoeffs(coeffsR);
+
+            coeffsA = coeffsB;
+            coeffsB = coeffsR;
+            degA = static_cast<int>(coeffsA.size()) - 1;
+            degB = static_cast<int>(coeffsB.size()) - 1;
+
+            g = coeffsA.back();
+            if (d > 0) {
+                SymExpr h_pow = simplifyFrac(h ^ SymExpr(BigInt(d - 1)));
+                h = exactDiv(simplifyFrac(g ^ SymExpr(BigInt(d))), h_pow);
+            }
+        }
+
+        return SymExpr(BigInt(0));
     }
 
     // =================================================================

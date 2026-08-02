@@ -1458,26 +1458,26 @@ namespace jc {
             case SymType::VAR:
                 return target;
             case SymType::ADD: {
-                auto add = std::static_pointer_cast<SymAdd>(target.ptr);
+                auto add = static_cast<SymAdd*>(target.ptr);
                 SymExpr res(BigInt(0));
                 for (auto& arg : add->args) res = res + substituteCaptures(SymExpr(arg), captures);
                 return res;
             }
             case SymType::MUL: {
-                auto mul = std::static_pointer_cast<SymMul>(target.ptr);
+                auto mul = static_cast<SymMul*>(target.ptr);
                 SymExpr res(BigInt(1));
                 for (auto& arg : mul->args) res = res * substituteCaptures(SymExpr(arg), captures);
                 return res;
             }
             case SymType::POW: {
-                auto pow = std::static_pointer_cast<SymPow>(target.ptr);
+                auto pow = static_cast<SymPow*>(target.ptr);
                 return substituteCaptures(SymExpr(pow->base), captures) ^ substituteCaptures(SymExpr(pow->exp), captures);
             }
             case SymType::FUNC: {
-                auto func = std::static_pointer_cast<SymFunc>(target.ptr);
-                std::vector<std::shared_ptr<SymNode>> newArgs;
+                auto func = static_cast<SymFunc*>(target.ptr);
+                std::vector<SymNode*> newArgs;
                 for (auto& arg : func->args) newArgs.push_back(substituteCaptures(SymExpr(arg), captures).ptr);
-                return SymExpr(std::make_shared<SymFunc>(func->name, std::move(newArgs)));
+                return SymExpr(new SymFunc(func->name, std::move(newArgs)));
             }
         }
         return target;
@@ -1494,8 +1494,8 @@ namespace jc {
         
         switch (expr.ptr->getType()) {
             case SymType::ADD: {
-                auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
-                std::vector<std::shared_ptr<SymNode>> newArgs;
+                auto add = static_cast<SymAdd*>(expr.ptr);
+                std::vector<SymNode*> newArgs;
                 for (auto& arg : add->args) {
                     SymExpr newArg = applyRule(SymExpr(arg), pattern, target);
                     newArgs.push_back(newArg.ptr);
@@ -1509,8 +1509,8 @@ namespace jc {
                 break;
             }
             case SymType::MUL: {
-                auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
-                std::vector<std::shared_ptr<SymNode>> newArgs;
+                auto mul = static_cast<SymMul*>(expr.ptr);
+                std::vector<SymNode*> newArgs;
                 for (auto& arg : mul->args) {
                     SymExpr newArg = applyRule(SymExpr(arg), pattern, target);
                     newArgs.push_back(newArg.ptr);
@@ -1524,7 +1524,7 @@ namespace jc {
                 break;
             }
             case SymType::POW: {
-                auto pow = std::static_pointer_cast<SymPow>(expr.ptr);
+                auto pow = static_cast<SymPow*>(expr.ptr);
                 SymExpr newBase = applyRule(SymExpr(pow->base), pattern, target);
                 SymExpr newExp = applyRule(SymExpr(pow->exp), pattern, target);
                 if (newBase.ptr != pow->base || newExp.ptr != pow->exp) {
@@ -1533,15 +1533,15 @@ namespace jc {
                 break;
             }
             case SymType::FUNC: {
-                auto func = std::static_pointer_cast<SymFunc>(expr.ptr);
-                std::vector<std::shared_ptr<SymNode>> newArgs;
+                auto func = static_cast<SymFunc*>(expr.ptr);
+                std::vector<SymNode*> newArgs;
                 for (auto& arg : func->args) {
                     SymExpr newArg = applyRule(SymExpr(arg), pattern, target);
                     newArgs.push_back(newArg.ptr);
                     if (newArg.ptr != arg) childChanged = true;
                 }
                 if (childChanged) {
-                    current = SymExpr(std::make_shared<SymFunc>(func->name, std::move(newArgs)));
+                    current = SymExpr(new SymFunc(func->name, std::move(newArgs)));
                 }
                 break;
             }
@@ -1559,8 +1559,8 @@ namespace jc {
             ((current.ptr->getType() == SymType::ADD && pattern.ptr->getType() == SymType::ADD) ||
              (current.ptr->getType() == SymType::MUL && pattern.ptr->getType() == SymType::MUL))) {
             
-            const auto& cArgs = (current.ptr->getType() == SymType::ADD) ? std::static_pointer_cast<SymAdd>(current.ptr)->args : std::static_pointer_cast<SymMul>(current.ptr)->args;
-            const auto& pArgs = (pattern.ptr->getType() == SymType::ADD) ? std::static_pointer_cast<SymAdd>(pattern.ptr)->args : std::static_pointer_cast<SymMul>(pattern.ptr)->args;
+            const auto& cArgs = (current.ptr->getType() == SymType::ADD) ? static_cast<SymAdd*>(current.ptr)->args : static_cast<SymMul*>(current.ptr)->args;
+            const auto& pArgs = (pattern.ptr->getType() == SymType::ADD) ? static_cast<SymAdd*>(pattern.ptr)->args : static_cast<SymMul*>(pattern.ptr)->args;
             
             size_t N = cArgs.size();
             size_t K = pArgs.size();
@@ -1582,7 +1582,7 @@ namespace jc {
                     }
                 }
 
-                std::vector<std::shared_ptr<SymNode>> remP;
+                std::vector<SymNode*> remP;
                 for (size_t j = 0; j < K; ++j) if (!pUsed[j]) remP.push_back(pArgs[j]);
 
                 std::map<std::string, SymExpr> finalCaptures;
@@ -1612,7 +1612,7 @@ namespace jc {
                 std::map<std::string, SymExpr> initialCaps;
                 if (dfsSubset(0, initialCaps, cUsed)) {
                     SymExpr replaced = substituteCaptures(target, finalCaptures);
-                    std::vector<std::shared_ptr<SymNode>> remaining;
+                    std::vector<SymNode*> remaining;
                     for (size_t i = 0; i < N; ++i) {
                         if (!finalCUsed[i]) remaining.push_back(cArgs[i]);
                     }
@@ -1662,29 +1662,29 @@ namespace jc {
         case SymType::ADD: {
             SymExpr result(BigInt(0));
             // 向下传递 maxPowTerms
-            for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args) {
+            for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args) {
                 result = result + expand_internal(SymExpr(arg), maxPowTerms, distributeNonIntPow);
             }
             return result;
         }
 
         case SymType::MUL: {
-            auto mulNode = std::static_pointer_cast<SymMul>(expr.ptr);
+            auto mulNode = static_cast<SymMul*>(expr.ptr);
             SymExpr result(BigInt(1));
             
             for (auto& arg : mulNode->args) {
                 SymExpr factor = expand_internal(SymExpr(arg), maxPowTerms, distributeNonIntPow);
                 
-                std::vector<std::shared_ptr<SymNode>> leftTerms;
+                std::vector<SymNode*> leftTerms;
                 if (result.ptr->getType() == SymType::ADD) {
-                    for (auto& a : std::static_pointer_cast<SymAdd>(result.ptr)->args) leftTerms.push_back(a);
+                    for (auto& a : static_cast<SymAdd*>(result.ptr)->args) leftTerms.push_back(a);
                 } else if (!result.isZero()) {
                     leftTerms.push_back(result.ptr);
                 }
                 
-                std::vector<std::shared_ptr<SymNode>> rightTerms;
+                std::vector<SymNode*> rightTerms;
                 if (factor.ptr->getType() == SymType::ADD) {
-                    for (auto& a : std::static_pointer_cast<SymAdd>(factor.ptr)->args) rightTerms.push_back(a);
+                    for (auto& a : static_cast<SymAdd*>(factor.ptr)->args) rightTerms.push_back(a);
                 } else if (!factor.isZero()) {
                     rightTerms.push_back(factor.ptr);
                 }
@@ -1694,7 +1694,7 @@ namespace jc {
                     continue;
                 }
                 
-                std::vector<std::shared_ptr<SymNode>> nextTerms;
+                std::vector<SymNode*> nextTerms;
                 nextTerms.reserve(leftTerms.size() * rightTerms.size());
                 for (auto& l : leftTerms) {
                     for (auto& r : rightTerms) {
@@ -1707,7 +1707,7 @@ namespace jc {
                 }
                 
                 // 过滤零项并利用 operator+ 的展平与合并机制，一次性合并所有项！
-                std::vector<std::shared_ptr<SymNode>> nonZeroTerms;
+                std::vector<SymNode*> nonZeroTerms;
                 nonZeroTerms.reserve(nextTerms.size());
                 for (auto& t : nextTerms) {
                     if (!SymExpr(t).isZero()) nonZeroTerms.push_back(t);
@@ -1720,7 +1720,7 @@ namespace jc {
                 } else {
                     SymExpr firstTerm(nonZeroTerms[0]);
                     nonZeroTerms.erase(nonZeroTerms.begin());
-                    SymExpr restAdd(std::make_shared<SymAdd>(std::move(nonZeroTerms)));
+                    SymExpr restAdd(new SymAdd(std::move(nonZeroTerms)));
                     // 强制触发 operator+ 的 O(N) 同类项合并
                     result = firstTerm + restAdd;
                 }
@@ -1731,17 +1731,17 @@ namespace jc {
         // 幂次展开：多项式定理极限优化版 (去除一切多余冗余)
         // ─────────────────────────────────────────────
         case SymType::POW: {
-            auto powNode = std::static_pointer_cast<SymPow>(expr.ptr);
+            auto powNode = static_cast<SymPow*>(expr.ptr);
             SymExpr baseExp = expand_internal(SymExpr(powNode->base), maxPowTerms, distributeNonIntPow);
             SymExpr expExp = expand_internal(SymExpr(powNode->exp), maxPowTerms, distributeNonIntPow);
 
             if (expExp.ptr->getType() == SymType::NUM) {
-                auto numNode = std::static_pointer_cast<SymNum>(expExp.ptr);
+                auto numNode = static_cast<SymNum*>(expExp.ptr);
                 auto [isInt, n] = extractExactInt(numNode->value);
 
                 if (isInt && n >= 0 && n <= 1000) {
                     if (baseExp.ptr->getType() == SymType::ADD) {
-                        auto addNode = std::static_pointer_cast<SymAdd>(baseExp.ptr);
+                        auto addNode = static_cast<SymAdd*>(baseExp.ptr);
                         int m = static_cast<int>(addNode->args.size());
 
                         BigInt T(1);
@@ -1751,7 +1751,7 @@ namespace jc {
 
                         if (T <= BigInt(maxPowTerms)) {
                             // ★ 优化 1：使用容器集中暂存节点，彻底避开 operator+ 的 O(N^2) 合并风暴
-                            std::vector<std::shared_ptr<SymNode>> finalTerms;
+                            std::vector<SymNode*> finalTerms;
                             finalTerms.reserve(static_cast<size_t>(T.toDouble()));
 
                             // ★ 优化 2：针对二项式的光速直通车 (m = 2)，0 次大数阶乘运算
@@ -1818,13 +1818,13 @@ namespace jc {
                                 return compareSymNodes(a, b) < 0;
                             });
                             if (finalTerms.size() == 1) return SymExpr(finalTerms[0]);
-                            return SymExpr(std::make_shared<SymAdd>(std::move(finalTerms)));
+                            return SymExpr(new SymAdd(std::move(finalTerms)));
                         }
                     }
 
                     if (baseExp.ptr->getType() == SymType::MUL) {
                         if (isInt) {
-                            auto mulNode = std::static_pointer_cast<SymMul>(baseExp.ptr);
+                            auto mulNode = static_cast<SymMul*>(baseExp.ptr);
                             SymExpr result(BigInt(1));
                             for (auto& arg : mulNode->args) {
                                 result = result * expand_internal(SymExpr(arg) ^ expExp, maxPowTerms, distributeNonIntPow);
@@ -1835,7 +1835,7 @@ namespace jc {
                 }
             }
             if (distributeNonIntPow && baseExp.ptr->getType() == SymType::MUL) {
-                auto mulNode = std::static_pointer_cast<SymMul>(baseExp.ptr);
+                auto mulNode = static_cast<SymMul*>(baseExp.ptr);
                 SymExpr result(BigInt(1));
                 for (auto& arg : mulNode->args) {
                     result = result * expand_internal(SymExpr(arg) ^ expExp, maxPowTerms, distributeNonIntPow);
@@ -1846,8 +1846,8 @@ namespace jc {
         }
 
         case SymType::FUNC: {
-            auto func = std::static_pointer_cast<SymFunc>(expr.ptr);
-            std::vector<std::shared_ptr<SymNode>> expArgs;
+            auto func = static_cast<SymFunc*>(expr.ptr);
+            std::vector<SymNode*> expArgs;
             for (auto& arg : func->args) {
                 expArgs.push_back(expand_internal(SymExpr(arg), maxPowTerms, distributeNonIntPow).ptr); // 传递
             }
@@ -1857,15 +1857,15 @@ namespace jc {
                 
                 // 1. 和差公式展开: sin(A + B) = sin(A)cos(B) + cos(A)sin(B)
                 if (inner.ptr->getType() == SymType::ADD) {
-                    auto add = std::static_pointer_cast<SymAdd>(inner.ptr);
+                    auto add = static_cast<SymAdd*>(inner.ptr);
                     SymExpr A(add->args[0]);
-                    std::vector<std::shared_ptr<SymNode>> restArgs(add->args.begin() + 1, add->args.end());
-                    SymExpr B = (restArgs.size() == 1) ? SymExpr(restArgs[0]) : SymExpr(std::make_shared<SymAdd>(restArgs));
+                    std::vector<SymNode*> restArgs(add->args.begin() + 1, add->args.end());
+                    SymExpr B = (restArgs.size() == 1) ? SymExpr(restArgs[0]) : SymExpr(new SymAdd(restArgs));
                     
-                    SymExpr sinA(std::make_shared<SymFunc>("sin", std::vector<std::shared_ptr<SymNode>>{A.ptr}));
-                    SymExpr cosA(std::make_shared<SymFunc>("cos", std::vector<std::shared_ptr<SymNode>>{A.ptr}));
-                    SymExpr sinB(std::make_shared<SymFunc>("sin", std::vector<std::shared_ptr<SymNode>>{B.ptr}));
-                    SymExpr cosB(std::make_shared<SymFunc>("cos", std::vector<std::shared_ptr<SymNode>>{B.ptr}));
+                    SymExpr sinA(new SymFunc("sin", std::vector<SymNode*>{A.ptr}));
+                    SymExpr cosA(new SymFunc("cos", std::vector<SymNode*>{A.ptr}));
+                    SymExpr sinB(new SymFunc("sin", std::vector<SymNode*>{B.ptr}));
+                    SymExpr cosB(new SymFunc("cos", std::vector<SymNode*>{B.ptr}));
                     
                     if (func->name == "sin") return expand_internal(sinA * cosB + cosA * sinB, maxPowTerms, distributeNonIntPow);
                     if (func->name == "cos") return expand_internal(cosA * cosB - sinA * sinB, maxPowTerms, distributeNonIntPow);
@@ -1873,24 +1873,24 @@ namespace jc {
                 
                 // 2. 倍角公式展开: sin(n*x)
                 if (inner.ptr->getType() == SymType::MUL) {
-                    auto mul = std::static_pointer_cast<SymMul>(inner.ptr);
+                    auto mul = static_cast<SymMul*>(inner.ptr);
                     if (mul->args[0]->getType() == SymType::NUM) {
-                        auto [isInt, n] = extractExactInt(std::static_pointer_cast<SymNum>(mul->args[0])->value);
+                        auto [isInt, n] = extractExactInt(static_cast<SymNum*>(mul->args[0])->value);
                         if (isInt) {
                             if (n < 0) {
                                 SymExpr posInner = inner / SymExpr(BigInt(-1));
-                                if (func->name == "sin") return expand_internal(-SymExpr(std::make_shared<SymFunc>("sin", std::vector<std::shared_ptr<SymNode>>{posInner.ptr})), maxPowTerms, distributeNonIntPow);
-                                if (func->name == "cos") return expand_internal(SymExpr(std::make_shared<SymFunc>("cos", std::vector<std::shared_ptr<SymNode>>{posInner.ptr})), maxPowTerms, distributeNonIntPow);
+                                if (func->name == "sin") return expand_internal(-SymExpr(new SymFunc("sin", std::vector<SymNode*>{posInner.ptr})), maxPowTerms, distributeNonIntPow);
+                                if (func->name == "cos") return expand_internal(SymExpr(new SymFunc("cos", std::vector<SymNode*>{posInner.ptr})), maxPowTerms, distributeNonIntPow);
                             }
                             else if (n > 1) {
                                 SymExpr X = inner / SymExpr(BigInt(n));
                                 SymExpr A = SymExpr(BigInt(n - 1)) * X;
                                 SymExpr B = X;
                                 
-                                SymExpr sinA(std::make_shared<SymFunc>("sin", std::vector<std::shared_ptr<SymNode>>{A.ptr}));
-                                SymExpr cosA(std::make_shared<SymFunc>("cos", std::vector<std::shared_ptr<SymNode>>{A.ptr}));
-                                SymExpr sinB(std::make_shared<SymFunc>("sin", std::vector<std::shared_ptr<SymNode>>{B.ptr}));
-                                SymExpr cosB(std::make_shared<SymFunc>("cos", std::vector<std::shared_ptr<SymNode>>{B.ptr}));
+                                SymExpr sinA(new SymFunc("sin", std::vector<SymNode*>{A.ptr}));
+                                SymExpr cosA(new SymFunc("cos", std::vector<SymNode*>{A.ptr}));
+                                SymExpr sinB(new SymFunc("sin", std::vector<SymNode*>{B.ptr}));
+                                SymExpr cosB(new SymFunc("cos", std::vector<SymNode*>{B.ptr}));
                                 
                                 if (func->name == "sin") return expand_internal(sinA * cosB + cosA * sinB, maxPowTerms, distributeNonIntPow);
                                 if (func->name == "cos") return expand_internal(cosA * cosB - sinA * sinB, maxPowTerms, distributeNonIntPow);
@@ -1904,22 +1904,22 @@ namespace jc {
                 SymExpr inner(expArgs[0]);
 
                 if (inner.ptr->getType() == SymType::MUL) {
-                    auto mul = std::static_pointer_cast<SymMul>(inner.ptr);
+                    auto mul = static_cast<SymMul*>(inner.ptr);
                     SymExpr sum(BigInt(0));
                     for (auto& factor : mul->args) {
-                        SymExpr subLog(std::make_shared<SymFunc>(func->name, std::vector<std::shared_ptr<SymNode>>{ factor }));
+                        SymExpr subLog(new SymFunc(func->name, std::vector<SymNode*>{ factor }));
                         sum = sum + expand_internal(subLog, maxPowTerms, distributeNonIntPow); // 传递
                     }
                     return sum;
                 }
 
                 if (inner.ptr->getType() == SymType::POW) {
-                    auto powN = std::static_pointer_cast<SymPow>(inner.ptr);
-                    SymExpr logA(std::make_shared<SymFunc>(func->name, std::vector<std::shared_ptr<SymNode>>{ powN->base }));
+                    auto powN = static_cast<SymPow*>(inner.ptr);
+                    SymExpr logA(new SymFunc(func->name, std::vector<SymNode*>{ powN->base }));
                     return expand_internal(SymExpr(powN->exp) * logA, maxPowTerms, distributeNonIntPow); // 传递
                 }
             }
-                return SymExpr(std::make_shared<SymFunc>(func->name, std::move(expArgs)));
+                return SymExpr(new SymFunc(func->name, std::move(expArgs)));
             }
             }
             return expr;
@@ -1943,9 +1943,9 @@ namespace jc {
         if (!expr.ptr) return {false, Value()};
         switch (expr.ptr->getType()) {
             case SymType::NUM:
-                return {true, casValToValue(std::static_pointer_cast<SymNum>(expr.ptr)->value)};
+                return {true, casValToValue(static_cast<SymNum*>(expr.ptr)->value)};
             case SymType::VAR: {
-                auto name = std::static_pointer_cast<SymVar>(expr.ptr)->name;
+                auto name = static_cast<SymVar*>(expr.ptr)->name;
                 if (name == "PI") return {true, Value(3.14159265358979323846)};
                 if (name == "E") return {true, Value(2.71828182845904523536)};
                 if (name == "i" || name == "I") return {true, Value(Complex(0.0, 1.0))};
@@ -1953,7 +1953,7 @@ namespace jc {
             }
             case SymType::ADD: {
                 Value sum(0.0);
-                for (auto& arg : std::static_pointer_cast<SymAdd>(expr.ptr)->args) {
+                for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args) {
                     auto [ok, v] = tryEvalConst(SymExpr(arg));
                     if (!ok) return {false, Value()};
                     sum = sum + v;
@@ -1968,7 +1968,7 @@ namespace jc {
             }
             case SymType::MUL: {
                 Value prod(1.0);
-                for (auto& arg : std::static_pointer_cast<SymMul>(expr.ptr)->args) {
+                for (auto& arg : static_cast<SymMul*>(expr.ptr)->args) {
                     auto [ok, v] = tryEvalConst(SymExpr(arg));
                     if (!ok) return {false, Value()};
                     prod = prod * v;
@@ -1982,7 +1982,7 @@ namespace jc {
                 return {true, prod};
             }
             case SymType::POW: {
-                auto p = std::static_pointer_cast<SymPow>(expr.ptr);
+                auto p = static_cast<SymPow*>(expr.ptr);
                 auto [ok1, b] = tryEvalConst(SymExpr(p->base));
                 if (!ok1) return {false, Value()};
                 auto [ok2, e] = tryEvalConst(SymExpr(p->exp));
@@ -2039,12 +2039,12 @@ namespace jc {
             return expr;
 
         case SymType::VAR: {
-            auto v = std::static_pointer_cast<SymVar>(expr.ptr);
+            auto v = static_cast<SymVar*>(expr.ptr);
             return (v->name == var) ? val : expr;
         }
 
         case SymType::ADD: {
-            auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
+            auto add = static_cast<SymAdd*>(expr.ptr);
             SymExpr result(BigInt(0));
             for (auto& arg : add->args)
                 result = result + subs(SymExpr(arg), var, val);
@@ -2052,7 +2052,7 @@ namespace jc {
         }
 
         case SymType::MUL: {
-            auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
+            auto mul = static_cast<SymMul*>(expr.ptr);
             SymExpr result(BigInt(1));
             for (auto& arg : mul->args)
                 result = result * subs(SymExpr(arg), var, val);
@@ -2060,18 +2060,18 @@ namespace jc {
         }
 
         case SymType::POW: {
-            auto pow = std::static_pointer_cast<SymPow>(expr.ptr);
+            auto pow = static_cast<SymPow*>(expr.ptr);
             return subs(SymExpr(pow->base), var, val) ^ subs(SymExpr(pow->exp), var, val);
         }
 
         case SymType::FUNC: {
-            auto func = std::static_pointer_cast<SymFunc>(expr.ptr);
+            auto func = static_cast<SymFunc*>(expr.ptr);
             if ((func->name == "RootOf" || func->name == "RootSum") && func->args.size() == 3) {
                 if (func->args[1]->getType() == SymType::VAR) {
-                    std::string dummy = std::static_pointer_cast<SymVar>(func->args[1])->name;
+                    std::string dummy = static_cast<SymVar*>(func->args[1])->name;
                     if (var == dummy) return expr;
                 }
-                std::vector<std::shared_ptr<SymNode>> newArgs;
+                std::vector<SymNode*> newArgs;
                 newArgs.push_back(subs(SymExpr(func->args[0]), var, val).ptr);
                 newArgs.push_back(func->args[1]);
                 if (func->name == "RootSum") {
@@ -2079,12 +2079,12 @@ namespace jc {
                 } else {
                     newArgs.push_back(func->args[2]);
                 }
-                return SymExpr(std::make_shared<SymFunc>(func->name, std::move(newArgs)));
+                return SymExpr(new SymFunc(func->name, std::move(newArgs)));
             }
-            std::vector<std::shared_ptr<SymNode>> newArgs;
+            std::vector<SymNode*> newArgs;
             for (auto& arg : func->args)
                 newArgs.push_back(subs(SymExpr(arg), var, val).ptr);
-            return SymExpr(std::make_shared<SymFunc>(func->name, std::move(newArgs)));
+            return SymExpr(new SymFunc(func->name, std::move(newArgs)));
         }
         }
         return expr;
@@ -2136,10 +2136,10 @@ namespace jc {
         return roots;
     }
 
-    static Value evaluateRootNode(const std::shared_ptr<SymFunc>& func, std::function<Value(const SymExpr&)> evalCb) {
+    static Value evaluateRootNode(SymFunc* func, std::function<Value(const SymExpr&)> evalCb) {
         bool isRootOf = (func->name == "RootOf");
         SymExpr P = isRootOf ? SymExpr(func->args[0]) : SymExpr(func->args[2]);
-        std::string dummy = std::static_pointer_cast<SymVar>(func->args[1])->name;
+        std::string dummy = static_cast<SymVar*>(func->args[1])->name;
 
         auto coeffs = extractCoeffs(P, dummy);
         if (coeffs.empty()) throw std::runtime_error("Numerical Error: Polynomial extraction failed for Root node.");
@@ -2161,7 +2161,7 @@ namespace jc {
         if (isRootOf) {
             int k = 1;
             if (func->args[2]->getType() == SymType::NUM) {
-                auto [isInt, val] = extractExactInt(std::static_pointer_cast<SymNum>(func->args[2])->value);
+                auto [isInt, val] = extractExactInt(static_cast<SymNum*>(func->args[2])->value);
                 if (isInt) k = static_cast<int>(val);
             }
             if (k < 1 || k > n) throw std::runtime_error("Numerical Error: Root index out of bounds.");
@@ -2208,12 +2208,12 @@ namespace jc {
 
         switch (expr.ptr->getType()) {
         case SymType::NUM: {
-            auto num = std::static_pointer_cast<SymNum>(expr.ptr);
+            auto num = static_cast<SymNum*>(expr.ptr);
             return SymExpr(casValToValue(num->value).asDouble());
         }
 
         case SymType::VAR: {
-            auto v = std::static_pointer_cast<SymVar>(expr.ptr);
+            auto v = static_cast<SymVar*>(expr.ptr);
             if (v->name == "PI") return SymExpr(3.14159265358979323846);
             if (v->name == "E") return SymExpr(2.71828182845904523536);
             if (v->name == "i" || v->name == "I") return SymExpr(Complex(0.0, 1.0));
@@ -2221,7 +2221,7 @@ namespace jc {
         }
 
         case SymType::ADD: {
-            auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
+            auto add = static_cast<SymAdd*>(expr.ptr);
             SymExpr result(0.0);
             for (auto& arg : add->args)
                 result = result + evalFloat(SymExpr(arg));
@@ -2229,7 +2229,7 @@ namespace jc {
         }
 
         case SymType::MUL: {
-            auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
+            auto mul = static_cast<SymMul*>(expr.ptr);
             SymExpr result(1.0);
             for (auto& arg : mul->args)
                 result = result * evalFloat(SymExpr(arg));
@@ -2237,18 +2237,18 @@ namespace jc {
         }
 
         case SymType::POW: {
-            auto pow = std::static_pointer_cast<SymPow>(expr.ptr);
+            auto pow = static_cast<SymPow*>(expr.ptr);
             SymExpr base = evalFloat(SymExpr(pow->base));
             SymExpr expn = evalFloat(SymExpr(pow->exp));
             return base ^ expn;
         }
 
         case SymType::FUNC: {
-            auto func = std::static_pointer_cast<SymFunc>(expr.ptr);
+            auto func = static_cast<SymFunc*>(expr.ptr);
             if ((func->name == "RootOf" || func->name == "RootSum") && func->args.size() == 3) {
                 bool isRootOf = (func->name == "RootOf");
                 SymExpr P = isRootOf ? SymExpr(func->args[0]) : SymExpr(func->args[2]);
-                std::string dummy = std::static_pointer_cast<SymVar>(func->args[1])->name;
+                std::string dummy = static_cast<SymVar*>(func->args[1])->name;
                 auto coeffs = extractCoeffs(P, dummy);
                 
                 bool p_is_const = !coeffs.empty();
@@ -2273,7 +2273,7 @@ namespace jc {
                         if (isRootOf) {
                             int k = 1;
                             if (func->args[2]->getType() == SymType::NUM) {
-                                auto [isInt, k_val] = extractExactInt(std::static_pointer_cast<SymNum>(func->args[2])->value);
+                                auto [isInt, k_val] = extractExactInt(static_cast<SymNum*>(func->args[2])->value);
                                 if (isInt) k = static_cast<int>(k_val);
                             }
                             if (k >= 1 && k <= n) {
@@ -2306,10 +2306,10 @@ namespace jc {
             if (func->name == "root" && func->args.size() == 2) {
                 return evalFloat(SymExpr(func->args[0]) ^ (SymExpr(BigInt(1)) / SymExpr(func->args[1])));
             }
-            std::vector<std::shared_ptr<SymNode>> newArgs;
+            std::vector<SymNode*> newArgs;
             for (auto& arg : func->args)
                 newArgs.push_back(evalFloat(SymExpr(arg)).ptr);
-            return SymExpr(std::make_shared<SymFunc>(func->name, std::move(newArgs)));
+            return SymExpr(new SymFunc(func->name, std::move(newArgs)));
         }
         }
         return expr;
@@ -2334,7 +2334,7 @@ namespace jc {
             return expr;
 
         case SymType::ADD: {
-            auto add = std::static_pointer_cast<SymAdd>(expr.ptr);
+            auto add = static_cast<SymAdd*>(expr.ptr);
             SymExpr result(BigInt(0));
             for (auto& arg : add->args)
                 result = result + evalValue(SymExpr(arg));
@@ -2342,7 +2342,7 @@ namespace jc {
         }
 
         case SymType::MUL: {
-            auto mul = std::static_pointer_cast<SymMul>(expr.ptr);
+            auto mul = static_cast<SymMul*>(expr.ptr);
             SymExpr result(BigInt(1));
             for (auto& arg : mul->args)
                 result = result * evalValue(SymExpr(arg));
@@ -2350,18 +2350,18 @@ namespace jc {
         }
 
         case SymType::POW: {
-            auto pow = std::static_pointer_cast<SymPow>(expr.ptr);
+            auto pow = static_cast<SymPow*>(expr.ptr);
             SymExpr base = evalValue(SymExpr(pow->base));
             SymExpr expn = evalValue(SymExpr(pow->exp));
             return base ^ expn;
         }
 
         case SymType::FUNC: {
-            auto func = std::static_pointer_cast<SymFunc>(expr.ptr);
+            auto func = static_cast<SymFunc*>(expr.ptr);
             if ((func->name == "RootOf" || func->name == "RootSum") && func->args.size() == 3) {
                 bool isRootOf = (func->name == "RootOf");
                 SymExpr P = isRootOf ? SymExpr(func->args[0]) : SymExpr(func->args[2]);
-                std::string dummy = std::static_pointer_cast<SymVar>(func->args[1])->name;
+                std::string dummy = static_cast<SymVar*>(func->args[1])->name;
                 auto coeffs = extractCoeffs(P, dummy);
                 
                 int deg = static_cast<int>(coeffs.size()) - 1;
@@ -2371,7 +2371,7 @@ namespace jc {
                         if (isRootOf) {
                             int k = 1;
                             if (func->args[2]->getType() == SymType::NUM) {
-                                auto [isInt, k_val] = extractExactInt(std::static_pointer_cast<SymNum>(func->args[2])->value);
+                                auto [isInt, k_val] = extractExactInt(static_cast<SymNum*>(func->args[2])->value);
                                 if (isInt) k = static_cast<int>(k_val);
                             }
                             if (k >= 1 && k <= deg) {
@@ -2411,7 +2411,7 @@ namespace jc {
                         if (isRootOf) {
                             int k = 1;
                             if (func->args[2]->getType() == SymType::NUM) {
-                                auto [isInt, k_val] = extractExactInt(std::static_pointer_cast<SymNum>(func->args[2])->value);
+                                auto [isInt, k_val] = extractExactInt(static_cast<SymNum*>(func->args[2])->value);
                                 if (isInt) k = static_cast<int>(k_val);
                             }
                             if (k >= 1 && k <= n) {
@@ -2444,10 +2444,10 @@ namespace jc {
             if (func->name == "root" && func->args.size() == 2) {
                 return evalValue(SymExpr(func->args[0]) ^ (SymExpr(BigInt(1)) / SymExpr(func->args[1])));
             }
-            std::vector<std::shared_ptr<SymNode>> newArgs;
+            std::vector<SymNode*> newArgs;
             for (auto& arg : func->args)
                 newArgs.push_back(evalValue(SymExpr(arg)).ptr);
-            return SymExpr(std::make_shared<SymFunc>(func->name, std::move(newArgs)));
+            return SymExpr(new SymFunc(func->name, std::move(newArgs)));
         }
         }
         return expr;

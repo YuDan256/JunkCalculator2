@@ -1357,7 +1357,7 @@ namespace jc {
     }
 
     // 精确匹配 AST 并记录捕获变量 (支持 ADD/MUL 的全排列交换律检测)
-    bool matchAST(SymNode* node, SymNode* pat, std::map<std::string, SymExpr>& captures) {
+    static bool matchASTImpl(SymNode* node, SymNode* pat, std::map<std::string, SymExpr>& captures, std::vector<std::string>& addedKeys) {
         checkInterrupt();
         if (!node || !pat) return false;
         
@@ -1369,6 +1369,7 @@ namespace jc {
                 return it->second == SymExpr(node);
             } else {
                 captures[wcName] = SymExpr(node);
+                addedKeys.push_back(wcName);
                 return true;
             }
         }
@@ -1392,10 +1393,15 @@ namespace jc {
                     if (pNode->exp->toString() != pPat->exp->toString()) return false;
                 }
                 
-                std::map<std::string, SymExpr> tempCaptures = captures;
-                if (matchAST(pNode->base, pPat->base, tempCaptures) && matchAST(pNode->exp, pPat->exp, tempCaptures)) {
-                    captures = tempCaptures;
-                    return true;
+                size_t initialAdded = addedKeys.size();
+                if (matchASTImpl(pNode->base, pPat->base, captures, addedKeys)) {
+                    if (matchASTImpl(pNode->exp, pPat->exp, captures, addedKeys)) {
+                        return true;
+                    }
+                }
+                while (addedKeys.size() > initialAdded) {
+                    captures.erase(addedKeys.back());
+                    addedKeys.pop_back();
                 }
                 return false;
             }
@@ -1403,11 +1409,16 @@ namespace jc {
                 auto fNode = static_cast<SymFunc*>(node);
                 auto fPat = static_cast<SymFunc*>(pat);
                 if (fNode->name != fPat->name || fNode->args.size() != fPat->args.size()) return false;
-                std::map<std::string, SymExpr> tempCaptures = captures;
+                size_t initialAdded = addedKeys.size();
                 for (size_t i = 0; i < fNode->args.size(); ++i) {
-                    if (!matchAST(fNode->args[i], fPat->args[i], tempCaptures)) return false;
+                    if (!matchASTImpl(fNode->args[i], fPat->args[i], captures, addedKeys)) {
+                        while (addedKeys.size() > initialAdded) {
+                            captures.erase(addedKeys.back());
+                            addedKeys.pop_back();
+                        }
+                        return false;
+                    }
                 }
-                captures = tempCaptures;
                 return true;
             }
             case SymType::ADD:
@@ -1444,28 +1455,40 @@ namespace jc {
 
                 // DFS 回溯匹配剩余项 (带剪枝)
                 std::vector<bool> remNUsed(remN.size(), false);
-                std::function<bool(size_t, std::map<std::string, SymExpr>&)> dfs = [&](size_t pIdx, std::map<std::string, SymExpr>& curCaps) -> bool {
+                std::function<bool(size_t)> dfs = [&](size_t pIdx) -> bool {
                     if (pIdx == remP.size()) return true;
+                    size_t initialAdded = addedKeys.size();
                     for (size_t i = 0; i < remN.size(); ++i) {
                         if (!remNUsed[i]) {
-                            std::map<std::string, SymExpr> nextCaps = curCaps;
-                            if (matchAST(remN[i], remP[pIdx], nextCaps)) {
+                            if (matchASTImpl(remN[i], remP[pIdx], captures, addedKeys)) {
                                 remNUsed[i] = true;
-                                if (dfs(pIdx + 1, nextCaps)) {
-                                    curCaps = nextCaps;
+                                if (dfs(pIdx + 1)) {
                                     return true;
                                 }
                                 remNUsed[i] = false;
+                                while (addedKeys.size() > initialAdded) {
+                                    captures.erase(addedKeys.back());
+                                    addedKeys.pop_back();
+                                }
                             }
                         }
                     }
                     return false;
                 };
 
-                return dfs(0, captures);
+                return dfs(0);
             }
         }
         return false;
+    }
+
+    bool matchAST(SymNode* node, SymNode* pat, std::map<std::string, SymExpr>& captures) {
+        std::vector<std::string> addedKeys;
+        bool res = matchASTImpl(node, pat, captures, addedKeys);
+        if (!res) {
+            for (const auto& k : addedKeys) captures.erase(k);
+        }
+        return res;
     }
 
     // 将捕获的 AST 塞回目标模板中
@@ -1613,30 +1636,33 @@ namespace jc {
 
                 std::map<std::string, SymExpr> finalCaptures;
                 std::vector<bool> finalCUsed;
+                std::vector<std::string> addedKeys;
 
                 // DFS 回溯寻找子集匹配
-                std::function<bool(size_t, std::map<std::string, SymExpr>&, std::vector<bool>&)> dfsSubset = 
-                    [&](size_t pIdx, std::map<std::string, SymExpr>& curCaps, std::vector<bool>& curCUsed) -> bool {
+                std::function<bool(size_t, std::vector<bool>&)> dfsSubset = 
+                    [&](size_t pIdx, std::vector<bool>& curCUsed) -> bool {
                     if (pIdx == remP.size()) {
-                        finalCaptures = curCaps;
                         finalCUsed = curCUsed;
                         return true;
                     }
+                    size_t initialAdded = addedKeys.size();
                     for (size_t i = 0; i < N; ++i) {
                         if (!curCUsed[i]) {
-                            std::map<std::string, SymExpr> nextCaps = curCaps;
-                            if (matchAST(cArgs[i], remP[pIdx], nextCaps)) {
+                            if (matchASTImpl(cArgs[i], remP[pIdx], finalCaptures, addedKeys)) {
                                 curCUsed[i] = true;
-                                if (dfsSubset(pIdx + 1, nextCaps, curCUsed)) return true;
+                                if (dfsSubset(pIdx + 1, curCUsed)) return true;
                                 curCUsed[i] = false;
+                                while (addedKeys.size() > initialAdded) {
+                                    finalCaptures.erase(addedKeys.back());
+                                    addedKeys.pop_back();
+                                }
                             }
                         }
                     }
                     return false;
                 };
 
-                std::map<std::string, SymExpr> initialCaps;
-                if (dfsSubset(0, initialCaps, cUsed)) {
+                if (dfsSubset(0, cUsed)) {
                     SymExpr replaced = substituteCaptures(target, finalCaptures);
                     std::vector<SymNode*> remaining;
                     for (size_t i = 0; i < N; ++i) {

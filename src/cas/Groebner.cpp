@@ -38,29 +38,28 @@ namespace jc {
 
     // --- Monomial 实现 ---
 
-    bool Monomial::isOne() const { return powers.empty(); }
+    bool Monomial::isOne() const { return size == 0; }
 
     int Monomial::getDegree() const {
         int deg = 0;
-        for (const auto& kv : powers) deg += kv.second;
+        for (size_t i = 0; i < size; ++i) deg += powers[i].second;
         return deg;
     }
 
     bool Monomial::operator<(const Monomial& other) const {
-        auto it1 = powers.begin();
-        auto it2 = other.powers.begin();
-        while (it1 != powers.end() && it2 != other.powers.end()) {
-            if (it1->first < it2->first) return false;
-            if (it1->first > it2->first) return true;
-            if (it1->second != it2->second) return it1->second < it2->second;
-            ++it1; ++it2;
+        size_t i1 = 0, i2 = 0;
+        while (i1 < size && i2 < other.size) {
+            if (powers[i1].first < other.powers[i2].first) return false;
+            if (powers[i1].first > other.powers[i2].first) return true;
+            if (powers[i1].second != other.powers[i2].second) return powers[i1].second < other.powers[i2].second;
+            ++i1; ++i2;
         }
-        return it1 == powers.end() && it2 != other.powers.end();
+        return i1 == size && i2 < other.size;
     }
 
     bool Monomial::operator==(const Monomial& other) const {
-        if (powers.size() != other.powers.size()) return false;
-        for (size_t i = 0; i < powers.size(); ++i) {
+        if (size != other.size) return false;
+        for (size_t i = 0; i < size; ++i) {
             if (powers[i].first != other.powers[i].first || powers[i].second != other.powers[i].second) return false;
         }
         return true;
@@ -68,74 +67,88 @@ namespace jc {
 
     Monomial Monomial::multiply(const Monomial& other) const {
         Monomial res;
-        auto it1 = powers.begin();
-        auto it2 = other.powers.begin();
-        while (it1 != powers.end() && it2 != other.powers.end()) {
-            if (it1->first < it2->first) {
-                res.powers.push_back(*it1++);
-            } else if (it1->first > it2->first) {
-                res.powers.push_back(*it2++);
+        size_t i1 = 0, i2 = 0;
+        while (i1 < size && i2 < other.size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (powers[i1].first < other.powers[i2].first) {
+                res.powers[res.size++] = powers[i1++];
+            } else if (powers[i1].first > other.powers[i2].first) {
+                res.powers[res.size++] = other.powers[i2++];
             } else {
-                int sum = it1->second + it2->second;
-                if (sum != 0) res.powers.push_back({it1->first, sum});
-                ++it1; ++it2;
+                int sum = powers[i1].second + other.powers[i2].second;
+                if (sum != 0) res.powers[res.size++] = {powers[i1].first, sum};
+                ++i1; ++i2;
             }
         }
-        while (it1 != powers.end()) res.powers.push_back(*it1++);
-        while (it2 != powers.end()) res.powers.push_back(*it2++);
+        while (i1 < size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            res.powers[res.size++] = powers[i1++];
+        }
+        while (i2 < other.size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            res.powers[res.size++] = other.powers[i2++];
+        }
         return res;
     }
 
     bool Monomial::divides(const Monomial& other) const {
-        auto it1 = powers.begin();
-        auto it2 = other.powers.begin();
-        while (it1 != powers.end() && it2 != other.powers.end()) {
-            if (it1->first < it2->first) return false;
-            if (it1->first > it2->first) {
-                ++it2;
+        size_t i1 = 0, i2 = 0;
+        while (i1 < size && i2 < other.size) {
+            if (powers[i1].first < other.powers[i2].first) return false;
+            if (powers[i1].first > other.powers[i2].first) {
+                ++i2;
             } else {
-                if (it1->second > it2->second) return false;
-                ++it1; ++it2;
+                if (powers[i1].second > other.powers[i2].second) return false;
+                ++i1; ++i2;
             }
         }
-        return it1 == powers.end();
+        return i1 == size;
     }
 
     Monomial Monomial::divide(const Monomial& other) const {
         Monomial res;
-        auto it1 = powers.begin();
-        auto it2 = other.powers.begin();
-        while (it1 != powers.end() && it2 != other.powers.end()) {
-            if (it1->first < it2->first) {
-                res.powers.push_back(*it1++);
-            } else if (it1->first > it2->first) {
-                ++it2;
+        size_t i1 = 0, i2 = 0;
+        while (i1 < size && i2 < other.size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (powers[i1].first < other.powers[i2].first) {
+                res.powers[res.size++] = powers[i1++];
+            } else if (powers[i1].first > other.powers[i2].first) {
+                ++i2;
             } else {
-                int diff = it1->second - it2->second;
-                if (diff > 0) res.powers.push_back({it1->first, diff});
-                ++it1; ++it2;
+                int diff = powers[i1].second - other.powers[i2].second;
+                if (diff > 0) res.powers[res.size++] = {powers[i1].first, diff};
+                ++i1; ++i2;
             }
         }
-        while (it1 != powers.end()) res.powers.push_back(*it1++);
+        while (i1 < size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            res.powers[res.size++] = powers[i1++];
+        }
         return res;
     }
 
     Monomial Monomial::lcm(const Monomial& other) const {
         Monomial res;
-        auto it1 = powers.begin();
-        auto it2 = other.powers.begin();
-        while (it1 != powers.end() && it2 != other.powers.end()) {
-            if (it1->first < it2->first) {
-                res.powers.push_back(*it1++);
-            } else if (it1->first > it2->first) {
-                res.powers.push_back(*it2++);
+        size_t i1 = 0, i2 = 0;
+        while (i1 < size && i2 < other.size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (powers[i1].first < other.powers[i2].first) {
+                res.powers[res.size++] = powers[i1++];
+            } else if (powers[i1].first > other.powers[i2].first) {
+                res.powers[res.size++] = other.powers[i2++];
             } else {
-                res.powers.push_back({it1->first, std::max(it1->second, it2->second)});
-                ++it1; ++it2;
+                res.powers[res.size++] = {powers[i1].first, std::max(powers[i1].second, other.powers[i2].second)};
+                ++i1; ++i2;
             }
         }
-        while (it1 != powers.end()) res.powers.push_back(*it1++);
-        while (it2 != powers.end()) res.powers.push_back(*it2++);
+        while (i1 < size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            res.powers[res.size++] = powers[i1++];
+        }
+        while (i2 < other.size) {
+            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            res.powers[res.size++] = other.powers[i2++];
+        }
         return res;
     }
 
@@ -153,7 +166,7 @@ namespace jc {
                     else if (std::holds_alternative<Fraction>(num->value)) f = std::get<Fraction>(num->value);
                     else {
                         Monomial m;
-                        m.powers.push_back({g_varReg.getId(expr), 1});
+                        m.powers[m.size++] = {g_varReg.getId(expr), 1};
                         terms.emplace_back(Fraction(1), m);
                         break;
                     }
@@ -163,7 +176,7 @@ namespace jc {
             }
             case SymType::VAR: {
                 Monomial m;
-                m.powers.push_back({g_varReg.getId(expr), 1});
+                m.powers[m.size++] = {g_varReg.getId(expr), 1};
                 terms.emplace_back(Fraction(1), m);
                 break;
             }
@@ -196,13 +209,13 @@ namespace jc {
                     }
                 }
                 Monomial m;
-                m.powers.push_back({g_varReg.getId(expr), 1});
+                m.powers[m.size++] = {g_varReg.getId(expr), 1};
                 terms.emplace_back(Fraction(1), m);
                 break;
             }
             default: {
                 Monomial m;
-                m.powers.push_back({g_varReg.getId(expr), 1});
+                m.powers[m.size++] = {g_varReg.getId(expr), 1};
                 terms.emplace_back(Fraction(1), m);
                 break;
             }
@@ -344,7 +357,8 @@ namespace jc {
         SymExpr res(BigInt(0));
         for (const auto& t : terms) {
             SymExpr termExpr(t.coeff);
-            for (const auto& kv : t.mono.powers) {
+            for (size_t i = 0; i < t.mono.size; ++i) {
+                const auto& kv = t.mono.powers[i];
                 SymExpr varExpr = g_varReg.getExpr(kv.first);
                 if (kv.second > 1) {
                     termExpr = termExpr * (varExpr ^ SymExpr(BigInt(kv.second)));
@@ -482,13 +496,14 @@ namespace jc {
             Term ltI = G[i].leadingTerm();
             Term ltJ = G[j].leadingTerm();
             bool relativelyPrime = true;
-            auto itI = ltI.mono.powers.begin();
-            auto itJ = ltJ.mono.powers.begin();
-            while (itI != ltI.mono.powers.end() && itJ != ltJ.mono.powers.end()) {
-                if (itI->first < itJ->first) {
-                    ++itI;
-                } else if (itI->first > itJ->first) {
-                    ++itJ;
+            auto itI = ltI.mono.powers;
+            auto itJ = ltJ.mono.powers;
+            size_t idxI = 0, idxJ = 0;
+            while (idxI < ltI.mono.size && idxJ < ltJ.mono.size) {
+                if (itI[idxI].first < itJ[idxJ].first) {
+                    ++idxI;
+                } else if (itI[idxI].first > itJ[idxJ].first) {
+                    ++idxJ;
                 } else {
                     relativelyPrime = false;
                     break;

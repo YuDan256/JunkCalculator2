@@ -111,6 +111,8 @@ namespace jc {
         if (cols != other.rows) throw std::invalid_argument("SymMatrix Error: Cols must equal rows (*).");
 
         SymMatrix result(rows, other.cols);
+        std::vector<std::vector<SymNode*>> cellTerms(rows * other.cols);
+        
         for (int i = 0; i < rows; ++i) {
             checkInterrupt();
             for (int k = 0; k < cols; ++k) {
@@ -118,11 +120,26 @@ namespace jc {
                 if (isSymZero(r)) continue; // 稀疏跳跃
                 
                 for (int j = 0; j < other.cols; ++j) {
-                    SymExpr term = r * other(k, j);
-                    if (!isSymZero(term)) {
-                        // ★ 核心防膨胀：在累加时强制化简，防止 AST 树指数级爆炸
-                        result(i, j) = simplifyCore(expand_core(result(i, j) + term, SymConfig::maxExpandTerms));
+                    SymExpr c = other(k, j);
+                    if (isSymZero(c)) continue;
+                    SymExpr term = r * c;
+                    if (!term.isZero()) {
+                        cellTerms[i * other.cols + j].push_back(term.ptr);
                     }
+                }
+            }
+        }
+        
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < other.cols; ++j) {
+                auto& terms = cellTerms[i * other.cols + j];
+                if (terms.empty()) {
+                    result(i, j) = SymExpr(BigInt(0));
+                } else if (terms.size() == 1) {
+                    result(i, j) = simplifyCore(expand_core(SymExpr(terms[0]), SymConfig::maxExpandTerms));
+                } else {
+                    SymExpr sumExpr(new SymAdd(std::move(terms)));
+                    result(i, j) = simplifyCore(expand_core(sumExpr, SymConfig::maxExpandTerms));
                 }
             }
         }

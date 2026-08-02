@@ -14,7 +14,9 @@ namespace jc {
 
     // 单项式：变量 ID -> 指数 (例如 x^2 * z^3)
     struct Monomial {
-        std::vector<std::pair<uint32_t, int>> powers;
+        static constexpr size_t MAX_VARS = 8;
+        std::pair<uint32_t, int> powers[MAX_VARS];
+        size_t size = 0;
 
         bool isOne() const;
         int getDegree() const;

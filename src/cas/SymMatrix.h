@@ -89,6 +89,11 @@ namespace jc {
         SymExpr condition() const;
         SymExpr permanent() const;
         
+        SymExpr charPoly(const std::string& var) const;
+        std::vector<SymExpr> eigenvalues() const;
+        std::vector<std::pair<SymExpr, SymMatrix>> eigenvectors() const;
+        SymMatrix solve(const SymMatrix& b) const;
+
         // --- CAS 深度联动 (将在后续步骤实现) ---
         SymMatrix diff(const std::string& var) const;
         SymMatrix integ(const std::string& var) const;

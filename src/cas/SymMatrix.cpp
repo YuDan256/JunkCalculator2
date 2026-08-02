@@ -696,6 +696,53 @@ namespace jc {
         return perm;
     }
 
+    SymExpr SymMatrix::charPoly(const std::string& var) const {
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Characteristic polynomial requires a square matrix.");
+        SymMatrix A_minus_lambdaI = *this;
+        SymExpr lambda = SymExpr::makeVar(var);
+        for (int i = 0; i < rows; ++i) {
+            A_minus_lambdaI(i, i) = A_minus_lambdaI(i, i) - lambda;
+        }
+        return A_minus_lambdaI.determinant();
+    }
+
+    std::vector<SymExpr> SymMatrix::eigenvalues() const {
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Eigenvalues require a square matrix.");
+        std::string lambda_var = "_lambda";
+        SymExpr cp = charPoly(lambda_var);
+        return solveEq(cp, lambda_var);
+    }
+
+    std::vector<std::pair<SymExpr, SymMatrix>> SymMatrix::eigenvectors() const {
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Eigenvectors require a square matrix.");
+        std::vector<SymExpr> evals = eigenvalues();
+        std::vector<std::pair<SymExpr, SymMatrix>> evecs;
+        
+        for (const auto& lambda : evals) {
+            SymMatrix A_minus_lambdaI = *this;
+            for (int i = 0; i < rows; ++i) {
+                A_minus_lambdaI(i, i) = simplifyCore(A_minus_lambdaI(i, i) - lambda);
+            }
+            SymMatrix ns = A_minus_lambdaI.nullSpace();
+            if (ns.getCols() > 0) {
+                evecs.push_back({lambda, ns});
+            }
+        }
+        return evecs;
+    }
+
+    SymMatrix SymMatrix::solve(const SymMatrix& b) const {
+        if (rows != b.getRows()) throw std::invalid_argument("SymMatrix Error: Dimension mismatch in solve.");
+        if (rows == cols) {
+            try {
+                return inverse() * b;
+            } catch (...) {
+                throw std::runtime_error("SymMatrix Error: Matrix is singular in solve.");
+            }
+        }
+        throw std::runtime_error("SymMatrix Error: solve for non-square matrices is not implemented yet.");
+    }
+
     // ==========================================
     // CAS 深度联动
     // ==========================================

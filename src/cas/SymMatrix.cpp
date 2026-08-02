@@ -1,5 +1,6 @@
 #include "SymMatrix.h"
 #include "Groebner.h"
+#include "Integration.h"
 #include "../math/Matrix.h" // 借用 g_printMatrix2D 标志
 #include <sstream>
 #include <algorithm>
@@ -706,8 +707,12 @@ namespace jc {
         return result;
     }
 
-    SymMatrix SymMatrix::integ(const std::string& /*var*/) const {
-        throw std::runtime_error("SymMatrix Error: Symbolic integration is not fully implemented yet.");
+    SymMatrix SymMatrix::integ(const std::string& var) const {
+        SymMatrix result(rows, cols);
+        for (size_t i = 0; i < data.size(); ++i) {
+            result.data[i] = jc::integrate(data[i], var);
+        }
+        return result;
     }
 
     SymMatrix SymMatrix::limit(const std::string& var, const SymExpr& val, const std::string& dir) const {

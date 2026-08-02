@@ -645,6 +645,7 @@ void BuiltinRegistry::registerMath() {
     regMath("exp", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matExp());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matExp());
+        if (args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.exp());
         if (args[0].isComplex()) return Value(exp(args[0].asComplex()));
         return Value(std::exp(args[0].asDouble()));
     });
@@ -1573,6 +1574,9 @@ void BuiltinRegistry::registerDecompositions() {
         } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto [Q, R] = static_cast<ObjComplexMatrix*>(self.asObj())->mat.qrDecomposition();
             L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
+        } else if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto [Q, R] = static_cast<ObjSymMatrix*>(self.asObj())->mat.qr();
+            L->vec.push_back(Value(Q)); L->vec.push_back(Value(R));
         } else throw std::runtime_error("Type Error: requires a matrix.");
         L->is_frozen = true; return Value(L);
     };
@@ -1588,6 +1592,9 @@ void BuiltinRegistry::registerDecompositions() {
         } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto res = static_cast<ObjComplexMatrix*>(self.asObj())->mat.luDecomposition();
             L->vec.push_back(Value(res.L)); L->vec.push_back(Value(res.U)); L->vec.push_back(Value(res.P));
+        } else if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto [L_mat, U_mat] = static_cast<ObjSymMatrix*>(self.asObj())->mat.lu();
+            L->vec.push_back(Value(L_mat)); L->vec.push_back(Value(U_mat));
         } else throw std::runtime_error("Type Error: requires a matrix.");
         L->is_frozen = true; return Value(L);
     };
@@ -1595,6 +1602,10 @@ void BuiltinRegistry::registerDecompositions() {
 
     auto eigFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto vals = static_cast<ObjSymMatrix*>(self.asObj())->mat.eigenvalues();
+            return Value(SymMatrix(static_cast<int>(vals.size()), 1, vals));
+        }
         std::vector<Complex> vals; 
         if (self.isObjType(ObjType::REAL_MATRIX)) vals = computeEigenvalues(static_cast<ObjRealMatrix*>(self.asObj())->mat); 
         else if (self.isObjType(ObjType::COMPLEX_MATRIX)) vals = computeEigenvalues(static_cast<ObjComplexMatrix*>(self.asObj())->mat); 
@@ -1605,6 +1616,15 @@ void BuiltinRegistry::registerDecompositions() {
 
     auto eigvecFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto evecs = static_cast<ObjSymMatrix*>(self.asObj())->mat.eigenvectors();
+            if (evecs.empty()) return Value(SymMatrix(self.asSymMatrix().getRows(), 0));
+            SymMatrix res = evecs[0].second;
+            for (size_t i = 1; i < evecs.size(); ++i) {
+                res = res.integR(evecs[i].second);
+            }
+            return Value(res);
+        }
         ComplexMatrix A = self.isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(self.asObj())->mat.toComplexMatrix() : self.asComplexMatrix(); 
         auto vals = computeEigenvalues(A); 
         return Value(computeEigenvectors(A, vals)); 
@@ -1613,11 +1633,16 @@ void BuiltinRegistry::registerDecompositions() {
 
     auto diagFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        ComplexMatrix A = self.isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(self.asObj())->mat.toComplexMatrix() : self.asComplexMatrix();
-        auto [P, D] = diagonalize(A);
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
-        L->vec.push_back(Value(P)); L->vec.push_back(Value(D));
+        if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto [P, D] = static_cast<ObjSymMatrix*>(self.asObj())->mat.diagonalize();
+            L->vec.push_back(Value(P)); L->vec.push_back(Value(D));
+        } else {
+            ComplexMatrix A = self.isObjType(ObjType::REAL_MATRIX) ? static_cast<ObjRealMatrix*>(self.asObj())->mat.toComplexMatrix() : self.asComplexMatrix();
+            auto [P, D] = diagonalize(A);
+            L->vec.push_back(Value(P)); L->vec.push_back(Value(D));
+        }
         L->is_frozen = true; return Value(L);
     };
     regMethod(VM::activeVM->matrixProto, "diag", {}, diagFn);
@@ -1629,12 +1654,6 @@ void BuiltinRegistry::registerDecompositions() {
 void BuiltinRegistry::registerLinearSolvers() {
     auto lsolveFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        ComplexMatrix A = self.asComplexMatrix(), b = args[0].asComplexMatrix();
-        if (A.getRows() != b.getRows()) throw std::runtime_error("Math Error: Row count mismatch.");
-        if (b.getCols() != 1) throw std::runtime_error("Math Error: b must be Nx1.");
-        int n = A.getCols();
-        ComplexMatrix aug = A.integR(b);
-        int rankA = A.rank(), rankAug = aug.rank();
         
         ObjDict* d = GcHeap::get().allocate<ObjDict>();
         GcObjGuard guard(d);
@@ -1643,6 +1662,27 @@ void BuiltinRegistry::registerLinearSolvers() {
             d->keyMap[key] = d->elements.size();
             d->elements.push_back({key, v});
         };
+
+        if (self.isObjType(ObjType::SYM_MATRIX) || args[0].isObjType(ObjType::SYM_MATRIX)) {
+            SymMatrix A = self.asSymMatrix();
+            SymMatrix b = args[0].asSymMatrix();
+            try {
+                SymMatrix x = A.solve(b);
+                setField("status", Value("unique"));
+                setField("solution", Value(x));
+            } catch (const std::exception& e) {
+                setField("status", Value("error"));
+                setField("message", Value(std::string(e.what())));
+            }
+            return Value(d);
+        }
+
+        ComplexMatrix A = self.asComplexMatrix(), b = args[0].asComplexMatrix();
+        if (A.getRows() != b.getRows()) throw std::runtime_error("Math Error: Row count mismatch.");
+        if (b.getCols() != 1) throw std::runtime_error("Math Error: b must be Nx1.");
+        int n = A.getCols();
+        ComplexMatrix aug = A.integR(b);
+        int rankA = A.rank(), rankAug = aug.rank();
 
         if (rankA != rankAug) { 
             ComplexMatrix AH = A.conjugateTranspose(); 
@@ -3647,6 +3687,56 @@ void BuiltinRegistry::registerArrayFunctions() {
     // fill, linspace
     reg("fill", { 2 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); if (n < 0) throw std::runtime_error("Runtime Error: count must be non-negative."); return Value(RealMatrix(1, n, std::vector<double>(n, args[0].asDouble()))); }, {"val", "n"});
     reg("linspace", { 3 }, [](const std::vector<Value>& args) -> Value { double a = args[0].asDouble(), b = args[1].asDouble(); int n = static_cast<int>(std::round(args[2].asDouble())); if (n < 1) throw std::runtime_error("Runtime Error: requires n >= 1."); std::vector<double> v(n); if (n == 1) v[0] = a; else { for (int i = 0; i < n; ++i) v[i] = a + (b - a) * i / (n - 1); } return Value(RealMatrix(1, n, v)); }, {"a", "b", "n"});
+
+    auto charPolyFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        std::string var = args.size() > 0 ? (args[0].isString() ? args[0].asString() : args[0].toString()) : "_lambda";
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.charPoly(var));
+        return Value(self.asSymMatrix().charPoly(var));
+    };
+    regMethod(VM::activeVM->matrixProto, "charPoly", {"var"}, charPolyFn, 1);
+
+    auto kronFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return Value(self.asSymMatrix().kroneckerProduct(args[0].asSymMatrix()));
+    };
+    regMethod(VM::activeVM->matrixProto, "kron", {"B"}, kronFn);
+
+    auto jacobianFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        std::vector<std::string> vars;
+        if (args[0].isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(args[0].asObj())->vec) {
+                vars.push_back(v.isString() ? v.asString() : v.toString());
+            }
+        } else if (args[0].isObjType(ObjType::STRING_MATRIX)) {
+            for (const auto& s : static_cast<ObjStringMatrix*>(args[0].asObj())->mat.rawData()) {
+                vars.push_back(s);
+            }
+        } else {
+            throw std::runtime_error("Type Error: jacobian() expects a list or stringmatrix of variables.");
+        }
+        return Value(self.asSymMatrix().jacobian(vars));
+    };
+    regMethod(VM::activeVM->matrixProto, "jacobian", {"vars"}, jacobianFn);
+
+    auto hessianFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        std::vector<std::string> vars;
+        if (args[0].isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(args[0].asObj())->vec) {
+                vars.push_back(v.isString() ? v.asString() : v.toString());
+            }
+        } else if (args[0].isObjType(ObjType::STRING_MATRIX)) {
+            for (const auto& s : static_cast<ObjStringMatrix*>(args[0].asObj())->mat.rawData()) {
+                vars.push_back(s);
+            }
+        } else {
+            throw std::runtime_error("Type Error: hessian() expects a list or stringmatrix of variables.");
+        }
+        return Value(self.asSymMatrix().hessian(vars));
+    };
+    regMethod(VM::activeVM->matrixProto, "hessian", {"vars"}, hessianFn);
 }
 
 // =================================================================

@@ -743,6 +743,92 @@ namespace jc {
         throw std::runtime_error("SymMatrix Error: solve for non-square matrices is not implemented yet.");
     }
 
+    std::pair<SymMatrix, SymMatrix> SymMatrix::lu() const {
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: LU decomposition requires a square matrix.");
+        int n = rows;
+        SymMatrix L = identity(n);
+        SymMatrix U = *this;
+        for (int i = 0; i < n; ++i) {
+            checkInterrupt();
+            if (isSymZero(U(i, i))) throw std::runtime_error("SymMatrix Error: LU decomposition failed due to zero pivot.");
+            for (int j = i + 1; j < n; ++j) {
+                SymExpr factor = simplifyCore(U(j, i) / U(i, i));
+                L(j, i) = factor;
+                for (int k = i; k < n; ++k) {
+                    U(j, k) = simplifyCore(U(j, k) - factor * U(i, k));
+                }
+            }
+        }
+        return {L, U};
+    }
+
+    std::pair<SymMatrix, SymMatrix> SymMatrix::qr() const {
+        if (rows == 0 || cols == 0) return {*this, *this};
+        SymMatrix Q(rows, cols);
+        SymMatrix R = zeros(cols, cols);
+        
+        std::vector<SymMatrix> e_vecs;
+        for (int j = 0; j < cols; ++j) {
+            checkInterrupt();
+            SymMatrix v = getCol(j);
+            SymMatrix u = v;
+            for (int k = 0; k < j; ++k) {
+                SymMatrix ek = e_vecs[k];
+                SymExpr r_kj = simplifyCore((ek.transpose() * v)(0, 0));
+                R(k, j) = r_kj;
+                u = u - ek * r_kj;
+            }
+            SymExpr norm_u = u.norm();
+            if (isSymZero(norm_u)) {
+                e_vecs.push_back(u);
+                R(j, j) = SymExpr(BigInt(0));
+            } else {
+                SymMatrix ej = u / norm_u;
+                for(int r = 0; r < rows; ++r) ej(r, 0) = simplifyCore(ej(r, 0));
+                e_vecs.push_back(ej);
+                R(j, j) = norm_u;
+            }
+        }
+        for (int j = 0; j < cols; ++j) {
+            for (int i = 0; i < rows; ++i) {
+                Q(i, j) = e_vecs[j](i, 0);
+            }
+        }
+        return {Q, R};
+    }
+
+    std::pair<SymMatrix, SymMatrix> SymMatrix::diagonalize() const {
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Diagonalize requires a square matrix.");
+        std::vector<std::pair<SymExpr, SymMatrix>> evecs = eigenvectors();
+        
+        int total_evecs = 0;
+        for (const auto& pair : evecs) {
+            total_evecs += pair.second.getCols();
+        }
+        
+        if (total_evecs < rows) {
+            throw std::runtime_error("SymMatrix Error: Matrix is not diagonalizable (not enough linearly independent eigenvectors).");
+        }
+        
+        SymMatrix P(rows, rows);
+        SymMatrix D = zeros(rows, rows);
+        
+        int col_idx = 0;
+        for (const auto& pair : evecs) {
+            SymExpr lambda = pair.first;
+            SymMatrix vecs = pair.second;
+            for (int j = 0; j < vecs.getCols(); ++j) {
+                for (int i = 0; i < rows; ++i) {
+                    P(i, col_idx) = vecs(i, j);
+                }
+                D(col_idx, col_idx) = lambda;
+                col_idx++;
+            }
+        }
+        
+        return {P, D};
+    }
+
     // ==========================================
     // CAS 深度联动
     // ==========================================

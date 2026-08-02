@@ -93,6 +93,10 @@ namespace jc {
         std::vector<SymExpr> eigenvalues() const;
         std::vector<std::pair<SymExpr, SymMatrix>> eigenvectors() const;
         SymMatrix solve(const SymMatrix& b) const;
+        
+        std::pair<SymMatrix, SymMatrix> lu() const;
+        std::pair<SymMatrix, SymMatrix> qr() const;
+        std::pair<SymMatrix, SymMatrix> diagonalize() const;
 
         // --- CAS 深度联动 (将在后续步骤实现) ---
         SymMatrix diff(const std::string& var) const;

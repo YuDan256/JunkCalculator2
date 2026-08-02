@@ -97,6 +97,10 @@ namespace jc {
         std::pair<SymMatrix, SymMatrix> lu() const;
         std::pair<SymMatrix, SymMatrix> qr() const;
         std::pair<SymMatrix, SymMatrix> diagonalize() const;
+        
+        SymMatrix jacobian(const std::vector<std::string>& vars) const;
+        SymMatrix hessian(const std::vector<std::string>& vars) const;
+        SymMatrix kroneckerProduct(const SymMatrix& other) const;
 
         // --- CAS 深度联动 (将在后续步骤实现) ---
         SymMatrix diff(const std::string& var) const;

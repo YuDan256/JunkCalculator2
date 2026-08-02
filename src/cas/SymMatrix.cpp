@@ -829,6 +829,53 @@ namespace jc {
         return {P, D};
     }
 
+    SymMatrix SymMatrix::jacobian(const std::vector<std::string>& vars) const {
+        int m = rows * cols;
+        int n = static_cast<int>(vars.size());
+        SymMatrix J(m, n);
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                J(i, j) = jc::diff(data[i], vars[j]);
+            }
+        }
+        return J;
+    }
+
+    SymMatrix SymMatrix::hessian(const std::vector<std::string>& vars) const {
+        if (!isScalar()) throw std::invalid_argument("SymMatrix Error: Hessian requires a scalar (1x1 matrix).");
+        int n = static_cast<int>(vars.size());
+        SymMatrix H(n, n);
+        SymExpr f = data[0];
+        std::vector<SymExpr> first_derivs(n);
+        for (int i = 0; i < n; ++i) {
+            first_derivs[i] = jc::diff(f, vars[i]);
+        }
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j <= i; ++j) {
+                SymExpr second_deriv = jc::diff(first_derivs[i], vars[j]);
+                H(i, j) = second_deriv;
+                if (i != j) H(j, i) = second_deriv; // 海森矩阵是对称的
+            }
+        }
+        return H;
+    }
+
+    SymMatrix SymMatrix::kroneckerProduct(const SymMatrix& other) const {
+        SymMatrix res(rows * other.rows, cols * other.cols);
+        for (int i = 0; i < rows; ++i) {
+            for (int j = 0; j < cols; ++j) {
+                SymExpr a_ij = (*this)(i, j);
+                if (isSymZero(a_ij)) continue; // 稀疏优化
+                for (int k = 0; k < other.rows; ++k) {
+                    for (int l = 0; l < other.cols; ++l) {
+                        res(i * other.rows + k, j * other.cols + l) = jc::simplifyCore(a_ij * other(k, l));
+                    }
+                }
+            }
+        }
+        return res;
+    }
+
     // ==========================================
     // CAS 深度联动
     // ==========================================

@@ -245,8 +245,15 @@ namespace jc {
             if (coreA && !coreB) return -1;
         }
         if (!coreA && !coreB) {
-            // 都是常数，按哈希排
-            return a->hashValue < b->hashValue ? -1 : 1;
+            // 都是常数，按数值大小排
+            if (a->getType() == SymType::NUM && b->getType() == SymType::NUM) {
+                try {
+                    double valA = casValToValue(static_cast<SymNum*>(a)->value).asDouble();
+                    double valB = casValToValue(static_cast<SymNum*>(b)->value).asDouble();
+                    if (valA != valB) return valA < valB ? -1 : 1;
+                } catch(...) {}
+            }
+            return a->toString() < b->toString() ? -1 : 1;
         }
 
         // 总指数高的排在前面 (降幂排列)
@@ -254,12 +261,13 @@ namespace jc {
             return totA > totB ? -1 : 1;
         }
 
-        // 结构化哈希比较 (使用 64 位哈希替代字符串签名，极速且稳定)
+        // 核心不同时，按字典序排 (人类可读)
         if (coreA != coreB) {
-            if (coreA->hashValue != coreB->hashValue) {
-                return coreA->hashValue < coreB->hashValue ? -1 : 1;
+            std::string strA = coreA->toString();
+            std::string strB = coreB->toString();
+            if (strA != strB) {
+                return strA < strB ? -1 : 1;
             }
-            // 极低概率的哈希碰撞兜底 (直接比较指针，防止 toString 递归)
             return coreA < coreB ? -1 : 1;
         }
 

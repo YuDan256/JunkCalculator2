@@ -588,18 +588,18 @@ namespace jc {
         if (a.isZero()) return b;
         if (b.isZero()) return a;
         std::vector<SymNode*> flatArgs;
-        std::function<void(SymNode*)> flattenAdd =
-            [&](SymNode* node) {
-            if (node->getType() == SymType::ADD) {
-                for (auto& arg : static_cast<SymAdd*>(node)->args)
-                    flattenAdd(arg);
-            }
-            else {
-                flatArgs.push_back(node);
-            }
-            };
-        flattenAdd(a.ptr);
-        flattenAdd(b.ptr);
+        if (a.ptr->getType() == SymType::ADD) {
+            auto addA = static_cast<SymAdd*>(a.ptr);
+            flatArgs.insert(flatArgs.end(), addA->args.begin(), addA->args.end());
+        } else {
+            flatArgs.push_back(a.ptr);
+        }
+        if (b.ptr->getType() == SymType::ADD) {
+            auto addB = static_cast<SymAdd*>(b.ptr);
+            flatArgs.insert(flatArgs.end(), addB->args.begin(), addB->args.end());
+        } else {
+            flatArgs.push_back(b.ptr);
+        }
         CASVal sumConst = BigInt(0);
         struct TermData { CASVal coeff; SymNode* baseNode = nullptr; };
         std::unordered_map<uint64_t, TermData> symTerms;
@@ -685,18 +685,18 @@ namespace jc {
         if (a.isOne()) return b;
         if (b.isOne()) return a;
         std::vector<SymNode*> flatArgs;
-        std::function<void(SymNode*)> flattenMul =
-            [&](SymNode* node) {
-            if (node->getType() == SymType::MUL) {
-                for (auto& arg : static_cast<SymMul*>(node)->args)
-                    flattenMul(arg);
-            }
-            else {
-                flatArgs.push_back(node);
-            }
-            };
-        flattenMul(a.ptr);
-        flattenMul(b.ptr);
+        if (a.ptr->getType() == SymType::MUL) {
+            auto mulA = static_cast<SymMul*>(a.ptr);
+            flatArgs.insert(flatArgs.end(), mulA->args.begin(), mulA->args.end());
+        } else {
+            flatArgs.push_back(a.ptr);
+        }
+        if (b.ptr->getType() == SymType::MUL) {
+            auto mulB = static_cast<SymMul*>(b.ptr);
+            flatArgs.insert(flatArgs.end(), mulB->args.begin(), mulB->args.end());
+        } else {
+            flatArgs.push_back(b.ptr);
+        }
         CASVal prodConst = BigInt(1);
         struct FactorData { CASVal exp; SymNode* baseNode = nullptr; };
         std::unordered_map<uint64_t, FactorData> symFactors;

@@ -81,8 +81,8 @@
 3. ~~**引入 Arena 内存池**：剥离 `std::shared_ptr`，改用线程局部的内存池（Arena Allocator）和裸指针 `SymNode*`。彻底消灭数以百万计的原子锁（引用计数）开销。~~ (已完成)
 
 ### 第二步：重写核心算术引擎（加法与乘法）
-1. **$O(N)$ 级别的同类项合并**：在 `operator+` 和 `operator*` 中，废弃极其沉重的 `std::sort` 和 `compareSymNodes`。直接使用 `std::unordered_map<uint64_t, TermData>`（以节点的 64 位哈希为 Key）来聚合底数相同的项或同类项。
-2. **消除无意义的递归展平**：优化 `flattenAdd` 和 `flattenMul`，在构造节点时就保证其扁平化，避免每次运算都重新遍历树。
+1. ~~**$O(N)$ 级别的同类项合并**：在 `operator+` 和 `operator*` 中，废弃极其沉重的 `std::sort` 和 `compareSymNodes`。直接使用 `std::unordered_map<uint64_t, TermData>`（以节点的 64 位哈希为 Key）来聚合底数相同的项或同类项。~~ (已完成)
+2. ~~**消除无意义的递归展平**：优化 `flattenAdd` 和 `flattenMul`，在构造节点时就保证其扁平化，避免每次运算都重新遍历树。~~ (已完成)
 
 ### 第三步：引入独立的多项式代数引擎
 1. **阻断 AST 与多项式的混用**：废弃依赖 `expand_core` 的 `extractCoeffs`，引入专用的内部数据结构（如 `SparsePoly`，基于 `std::map<int, SymExpr>` 或哈希表）。

@@ -25,17 +25,43 @@ namespace jc {
     std::atomic<bool> g_interruptRequested{false};
 
     // ==========================================
-    // 全局表达式内存池 (DAG Interning Pool)
+    // 哈希工具与全局表达式内存池 (DAG Interning Pool)
     // ==========================================
-    static std::unordered_map<std::string, std::weak_ptr<SymNode>> g_symPool;
+    static uint64_t hashCombine(uint64_t h1, uint64_t h2) {
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+    }
+
+    static uint64_t hashString(const std::string& s) {
+        uint64_t h = 0xcbf29ce484222325ULL;
+        for (char c : s) {
+            h ^= static_cast<uint64_t>(c);
+            h *= 0x100000001b3ULL;
+        }
+        return h;
+    }
+
+    static uint64_t hashCASVal(const CASVal& v) {
+        return std::visit([](auto&& arg) -> uint64_t {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, int32_t>) return hashCombine(1, std::hash<int32_t>{}(arg));
+            else if constexpr (std::is_same_v<T, double>) return hashCombine(2, std::hash<double>{}(arg));
+            else if constexpr (std::is_same_v<T, BigInt>) return hashCombine(3, hashString(arg.toString()));
+            else if constexpr (std::is_same_v<T, Fraction>) return hashCombine(4, hashCombine(hashString(arg.getNum().toString()), hashString(arg.getDen().toString())));
+            return 0;
+        }, v);
+    }
+
+    static std::unordered_map<uint64_t, std::vector<std::weak_ptr<SymNode>>> g_symPool;
 
     void SymExpr::cleanupPool() {
         for (auto it = g_symPool.begin(); it != g_symPool.end(); ) {
-            if (it->second.expired()) {
-                it = g_symPool.erase(it);
-            } else {
-                ++it;
+            auto& bucket = it->second;
+            for (auto bit = bucket.begin(); bit != bucket.end(); ) {
+                if (bit->expired()) bit = bucket.erase(bit);
+                else ++bit;
             }
+            if (bucket.empty()) it = g_symPool.erase(it);
+            else ++it;
         }
     }
 
@@ -49,12 +75,19 @@ namespace jc {
             cleanupPool();
         }
 
-        std::string key = node->getSignature();
-        auto& weakRef = g_symPool[key];
-        if (auto shared = weakRef.lock()) {
-            return shared;
+        uint64_t h = node->hashValue;
+        auto& bucket = g_symPool[h];
+        for (auto it = bucket.begin(); it != bucket.end(); ) {
+            if (auto shared = it->lock()) {
+                if (shared->getType() == node->getType() && shared->equals(node.get())) {
+                    return shared;
+                }
+                ++it;
+            } else {
+                it = bucket.erase(it);
+            }
         }
-        weakRef = node;
+        bucket.push_back(node);
         return node;
     }
 
@@ -284,43 +317,71 @@ namespace jc {
         return res + ")";
     }
 
-    std::string SymAdd::computeSignature() const {
-        std::vector<uintptr_t> ptrs;
-        ptrs.reserve(args.size());
-        for (auto& arg : args) ptrs.push_back(reinterpret_cast<uintptr_t>(arg.get()));
-        std::sort(ptrs.begin(), ptrs.end());
-        std::string res = "A:[";
-        for (size_t i = 0; i < ptrs.size(); ++i) {
-            if (i > 0) res += ",";
-            res += std::to_string(ptrs[i]);
-        }
-        return res + "]";
+    // ==========================================
+    // 节点构造与哈希计算
+    // ==========================================
+    SymNum::SymNum(CASVal v) : value(std::move(v)) {
+        hashValue = hashCombine(static_cast<uint64_t>(SymType::NUM), hashCASVal(value));
+    }
+    bool SymNum::equals(const SymNode* other) const {
+        return value == static_cast<const SymNum*>(other)->value;
     }
 
-    std::string SymMul::computeSignature() const {
-        std::vector<uintptr_t> ptrs;
-        ptrs.reserve(args.size());
-        for (auto& arg : args) ptrs.push_back(reinterpret_cast<uintptr_t>(arg.get()));
-        std::sort(ptrs.begin(), ptrs.end());
-        std::string res = "M:[";
-        for (size_t i = 0; i < ptrs.size(); ++i) {
-            if (i > 0) res += ",";
-            res += std::to_string(ptrs[i]);
-        }
-        return res + "]";
+    SymVar::SymVar(std::string n) : name(std::move(n)) {
+        hashValue = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(name));
+    }
+    bool SymVar::equals(const SymNode* other) const {
+        return name == static_cast<const SymVar*>(other)->name;
     }
 
-    std::string SymPow::computeSignature() const {
-        return "P:(" + std::to_string(reinterpret_cast<uintptr_t>(base.get())) + "," + std::to_string(reinterpret_cast<uintptr_t>(exp.get())) + ")";
+    SymAdd::SymAdd(std::vector<std::shared_ptr<SymNode>> a) : args(std::move(a)) {
+        uint64_t h = static_cast<uint64_t>(SymType::ADD);
+        for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
+        hashValue = h;
     }
-
-    std::string SymFunc::computeSignature() const {
-        std::string res = "F:" + name + "(";
+    bool SymAdd::equals(const SymNode* other) const {
+        const auto* o = static_cast<const SymAdd*>(other);
+        if (args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) res += ",";
-            res += std::to_string(reinterpret_cast<uintptr_t>(args[i].get()));
+            if (args[i].get() != o->args[i].get()) return false;
         }
-        return res + ")";
+        return true;
+    }
+
+    SymMul::SymMul(std::vector<std::shared_ptr<SymNode>> a) : args(std::move(a)) {
+        uint64_t h = static_cast<uint64_t>(SymType::MUL);
+        for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
+        hashValue = h;
+    }
+    bool SymMul::equals(const SymNode* other) const {
+        const auto* o = static_cast<const SymMul*>(other);
+        if (args.size() != o->args.size()) return false;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (args[i].get() != o->args[i].get()) return false;
+        }
+        return true;
+    }
+
+    SymPow::SymPow(std::shared_ptr<SymNode> b, std::shared_ptr<SymNode> e) : base(std::move(b)), exp(std::move(e)) {
+        hashValue = hashCombine(static_cast<uint64_t>(SymType::POW), hashCombine(base->hashValue, exp->hashValue));
+    }
+    bool SymPow::equals(const SymNode* other) const {
+        const auto* o = static_cast<const SymPow*>(other);
+        return base.get() == o->base.get() && exp.get() == o->exp.get();
+    }
+
+    SymFunc::SymFunc(std::string n, std::vector<std::shared_ptr<SymNode>> a) : name(n == "ln" ? "log" : std::move(n)), args(std::move(a)) {
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::FUNC), hashString(name));
+        for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
+        hashValue = h;
+    }
+    bool SymFunc::equals(const SymNode* other) const {
+        const auto* o = static_cast<const SymFunc*>(other);
+        if (name != o->name || args.size() != o->args.size()) return false;
+        for (size_t i = 0; i < args.size(); ++i) {
+            if (args[i].get() != o->args[i].get()) return false;
+        }
+        return true;
     }
 
     // =================================================================
@@ -430,9 +491,13 @@ namespace jc {
             return totA > totB ? -1 : 1;
         }
 
-        // 字典序比较 (使用缓存的 Signature 替代每次生成 String)
+        // 结构化哈希比较 (使用 64 位哈希替代字符串签名，极速且稳定)
         if (coreA != coreB) {
-            return coreA->getSignature() < coreB->getSignature() ? -1 : 1;
+            if (coreA->hashValue != coreB->hashValue) {
+                return coreA->hashValue < coreB->hashValue ? -1 : 1;
+            }
+            // 极低概率的哈希碰撞兜底
+            return coreA->toString() < coreB->toString() ? -1 : 1;
         }
 
         // 单变量同底数，指数高的排在前面
@@ -1557,10 +1622,10 @@ namespace jc {
         if (!expr.ptr) return expr;
         if (maxPowTerms <= 0) maxPowTerms = SymConfig::maxExpandTerms;
 
-        static thread_local std::unordered_map<std::string, SymExpr> cache;
+        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
         static thread_local int depth = 0;
 
-        std::string sig = expr.ptr->getSignature() + "_" + std::to_string(maxPowTerms) + "_" + std::to_string(distributeNonIntPow);
+        uint64_t sig = hashCombine(expr.ptr->hashValue, hashCombine(static_cast<uint64_t>(maxPowTerms), distributeNonIntPow ? 1 : 0));
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -2652,10 +2717,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<std::string, SymExpr> cache;
+        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
         static thread_local int depth = 0;
 
-        std::string sig = expr.ptr->getSignature();
+        uint64_t sig = expr.ptr->hashValue;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -2909,10 +2974,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<std::string, SymExpr> cache;
+        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
         static thread_local int depth = 0;
 
-        std::string sig = expr.ptr->getSignature();
+        uint64_t sig = expr.ptr->hashValue;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -4129,7 +4194,7 @@ namespace jc {
         auto [A, D] = getFraction(expr);
         if (D.isOne()) return expr;
 
-        std::map<std::string, std::string> exprToT;
+        std::map<uint64_t, std::string> exprToT;
         std::map<std::string, std::pair<SymExpr, SymExpr>> tToMinPoly;
         int t_counter = 0;
 
@@ -4155,7 +4220,7 @@ namespace jc {
                             Fraction frac = std::get<Fraction>(numVal);
                             if (frac.getDen() > BigInt(1)) {
                                 SymExpr newPow = base ^ SymExpr(frac);
-                                std::string sig = newPow.ptr->getSignature();
+                                uint64_t sig = newPow.ptr->hashValue;
                                 if (exprToT.count(sig)) return SymExpr::makeVar(exprToT[sig]);
                                 // 使用 ~ 前缀确保在 Gröbner 基的字典序中优先级最高 (ASCII '~' > 'z' > 'x')
                                 std::string t_name = "~t_rad_" + std::to_string(++t_counter);
@@ -4174,7 +4239,7 @@ namespace jc {
                     if (f->name == "RootOf" && f->args.size() == 3) {
                         SymExpr poly = replaceRadicals(SymExpr(f->args[0]));
                         SymExpr dummy(f->args[1]);
-                        std::string sig = e.ptr->getSignature();
+                        uint64_t sig = e.ptr->hashValue;
                         if (exprToT.count(sig)) return SymExpr::makeVar(exprToT[sig]);
                         std::string t_name = "~t_rad_" + std::to_string(++t_counter);
                         exprToT[sig] = t_name;
@@ -4325,10 +4390,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<std::string, SymExpr> cache;
+        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
         static thread_local int depth = 0;
 
-        std::string sig = expr.ptr->getSignature();
+        uint64_t sig = expr.ptr->hashValue;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -4522,10 +4587,10 @@ namespace jc {
         checkInterrupt();
         if (!expr.ptr) return expr;
 
-        static thread_local std::unordered_map<std::string, SymExpr> cache;
+        static thread_local std::unordered_map<uint64_t, SymExpr> cache;
         static thread_local int depth = 0;
 
-        std::string sig = expr.ptr->getSignature();
+        uint64_t sig = expr.ptr->hashValue;
         if (depth > 0) {
             auto it = cache.find(sig);
             if (it != cache.end()) return it->second;
@@ -5977,12 +6042,12 @@ namespace jc {
         };
         collectExps(flat);
 
-        std::map<std::string, std::pair<SymExpr, Fraction>> expGroups;
+        std::map<uint64_t, std::pair<SymExpr, Fraction>> expGroups;
         for (const auto& expNode : allExps) {
             auto func = std::static_pointer_cast<SymFunc>(expNode.ptr);
             SymExpr inner(func->args[0]);
             auto [q, prim] = extractRationalCoeff(inner);
-            std::string sig = prim.ptr->getSignature();
+            uint64_t sig = prim.ptr->hashValue;
             if (expGroups.count(sig)) {
                 expGroups[sig].second = gcdFraction(expGroups[sig].second, q);
             } else {
@@ -5997,7 +6062,7 @@ namespace jc {
                 if (func->name == "exp" && func->args.size() == 1) {
                     SymExpr inner = replaceExps(SymExpr(func->args[0]));
                     auto [q, prim] = extractRationalCoeff(inner);
-                    std::string sig = prim.ptr->getSignature();
+                    uint64_t sig = prim.ptr->hashValue;
                     if (expGroups.count(sig)) {
                         Fraction g = expGroups[sig].second;
                         if (g.getNum() > BigInt(0)) {

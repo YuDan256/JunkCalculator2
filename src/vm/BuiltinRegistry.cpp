@@ -156,7 +156,7 @@ namespace jc {
         }
         else if (v.isSymbolic()) {
             auto sym = static_cast<ObjSym*>(v.asObj());
-            if (sym->sym.ptr) oss << sym->sym.ptr->getSignature();
+            if (sym->sym.ptr) oss << sym->sym.ptr->hashValue;
             else oss << "null";
         }
         else if (v.isObjType(ObjType::NAMESPACE)) {

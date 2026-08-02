@@ -50,8 +50,9 @@ namespace jc {
     class SymNode {
     protected:
         mutable std::string cachedStr;
-        mutable std::string cachedSig;
     public:
+        uint64_t hashValue = 0;
+
         virtual ~SymNode() = default;
         virtual SymType getType() const = 0;
         
@@ -61,11 +62,7 @@ namespace jc {
         }
         virtual std::string computeString() const = 0;
 
-        std::string getSignature() const {
-            if (cachedSig.empty()) cachedSig = computeSignature();
-            return cachedSig;
-        }
-        virtual std::string computeSignature() const = 0;
+        virtual bool equals(const SymNode* other) const = 0;
 
         virtual bool isZero() const { return false; }
         virtual bool isOne() const { return false; }
@@ -195,61 +192,59 @@ namespace jc {
     class SymNum : public SymNode {
     public:
         CASVal value;
-        explicit SymNum(CASVal v) : value(std::move(v)) {}
+        explicit SymNum(CASVal v);
         SymType getType() const override { return SymType::NUM; }
         std::string computeString() const override { return casToString(value); }
-        std::string computeSignature() const override { return "N:" + casToString(value); }
         bool isZero() const override { return isCasZero(value); }
         bool isOne() const override { return isCasOne(value); }
+        bool equals(const SymNode* other) const override;
     };
 
     class SymVar : public SymNode {
     public:
         std::string name;
-        explicit SymVar(std::string n) : name(std::move(n)) {}
+        explicit SymVar(std::string n);
         SymType getType() const override { return SymType::VAR; }
         std::string computeString() const override { return name; }
-        std::string computeSignature() const override { return "V:" + name; }
+        bool equals(const SymNode* other) const override;
     };
 
     class SymAdd : public SymNode {
     public:
         std::vector<std::shared_ptr<SymNode>> args;
-        explicit SymAdd(std::vector<std::shared_ptr<SymNode>> a) : args(std::move(a)) {}
+        explicit SymAdd(std::vector<std::shared_ptr<SymNode>> a);
         SymType getType() const override { return SymType::ADD; }
         std::string computeString() const override;
-        std::string computeSignature() const override;
+        bool equals(const SymNode* other) const override;
     };
 
     class SymMul : public SymNode {
     public:
         std::vector<std::shared_ptr<SymNode>> args;
-        explicit SymMul(std::vector<std::shared_ptr<SymNode>> a) : args(std::move(a)) {}
+        explicit SymMul(std::vector<std::shared_ptr<SymNode>> a);
         SymType getType() const override { return SymType::MUL; }
         std::string computeString() const override;
-        std::string computeSignature() const override;
+        bool equals(const SymNode* other) const override;
     };
 
     class SymPow : public SymNode {
     public:
         std::shared_ptr<SymNode> base;
         std::shared_ptr<SymNode> exp;
-        SymPow(std::shared_ptr<SymNode> b, std::shared_ptr<SymNode> e) : base(std::move(b)), exp(std::move(e)) {}
+        SymPow(std::shared_ptr<SymNode> b, std::shared_ptr<SymNode> e);
         SymType getType() const override { return SymType::POW; }
         std::string computeString() const override;
-        std::string computeSignature() const override;
+        bool equals(const SymNode* other) const override;
     };
 
     class SymFunc : public SymNode {
     public:
         std::string name;
         std::vector<std::shared_ptr<SymNode>> args;
-        SymFunc(std::string n, std::vector<std::shared_ptr<SymNode>> a)
-            : name(n == "ln" ? "log" : std::move(n)), args(std::move(a)) {
-        }
+        SymFunc(std::string n, std::vector<std::shared_ptr<SymNode>> a);
         SymType getType() const override { return SymType::FUNC; }
         std::string computeString() const override;
-        std::string computeSignature() const override;
+        bool equals(const SymNode* other) const override;
     };
 
     // 模板构造函数实现 (必须在 SymNum 完整定义之后)

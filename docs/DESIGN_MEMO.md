@@ -71,3 +71,25 @@
 *   **致命的“隐藏零”判定 (Zero Equivalence Problem)**：在矩阵消元（如 Bareiss 算法）寻找非零主元时，实现了 `isSymZero` 探测器。对于疑似零的符号表达式，强制执行最重型的 `full_simplify()` 进行确定性零等价判定，确保多元复杂表达式在除法操作前的绝对正确性。
 *   **VM 泛型接口适配 (VM Generic API Integration)**：`SymMatrix` 已全面接入 VM 的泛型矩阵操作，包括逐元素运算 (`addE`, `subE`, `whereE` 等)、结构操作 (`reshape`, `sub`, `hcat`, `vcat` 等)、行列操作 (`swapR`, `delC` 等) 以及高阶函数 (`map`, `filter`, `reduce`, `zip` 等)，与 `RealMatrix` 和 `ComplexMatrix` 享有同等的一等公民地位。
 *   **关系运算与显示控制 (Relational Ops & Display)**：符号矩阵的大小比较运算（如 `A > B`）与数值矩阵保持一致，直接抛出 `TypeError`。打印输出 (`operator<<`) 采用标准的二维对齐格式，并受全局 `g_printMatrix2D` 标志控制。
+
+## 11. [规划中] CAS 模块终极性能重构方案 (CAS Ultimate Performance Refactoring Plan)
+为解决 CAS 模块在复杂代数运算中的性能瓶颈（如字符串哈希开销、原子锁竞争、AST 展开爆炸等），制定以下自底向上的四步重构计划：
+
+### 第一步：重塑底层基石（内存与哈希）
+1. ~~**废弃字符串签名，引入 64 位结构化哈希**：在 `SymNode` 中彻底删除 `cachedSig` 和 `computeSignature()`。引入 `uint64_t hashValue`，在节点构造时利用子节点的哈希值和节点类型直接计算出 64 位整型哈希。~~ (已完成)
+2. ~~**替换全局驻留池 (Interning Pool)**：将 `g_symPool` 的 Key 从 `std::string` 替换为 `uint64_t`。这会将所有表达式比较和查表的复杂度从 $O(L)$（字符串长度）降至 $O(1)$。~~ (已完成)
+3. **引入 Arena 内存池**：剥离 `std::shared_ptr`，改用线程局部的内存池（Arena Allocator）和裸指针 `SymNode*`。彻底消灭数以百万计的原子锁（引用计数）开销。
+
+### 第二步：重写核心算术引擎（加法与乘法）
+1. **$O(N)$ 级别的同类项合并**：在 `operator+` 和 `operator*` 中，废弃极其沉重的 `std::sort` 和 `compareSymNodes`。直接使用 `std::unordered_map<uint64_t, TermData>`（以节点的 64 位哈希为 Key）来聚合底数相同的项或同类项。
+2. **消除无意义的递归展平**：优化 `flattenAdd` 和 `flattenMul`，在构造节点时就保证其扁平化，避免每次运算都重新遍历树。
+
+### 第三步：引入独立的多项式代数引擎
+1. **阻断 AST 与多项式的混用**：废弃依赖 `expand_core` 的 `extractCoeffs`，引入专用的内部数据结构（如 `SparsePoly`，基于 `std::map<int, SymExpr>` 或哈希表）。
+2. **自底向上的多项式转换器**：实现 `toPolynomial(AST, var)` 函数。遇到加法就多项式相加，遇到乘法就多项式相乘，遇到幂次就多项式快速幂。**绝不展开无关变量**。
+3. **重构底层数学库**：将 `polyDiv`、`polyGCD`、`polyResultant` 等函数的内部实现全部切换为使用 `SparsePoly` 结构，仅在算法结束时转换回 AST 节点。
+
+### 第四步：高层算法的局部极致优化
+1. **矩阵乘法防爆**：修改 `SymMatrix::operator*`。在最内层循环中只做纯粹的 AST 节点拼接（构建一棵巨大的 `SymAdd` 树），在计算完一个单元格的所有项后，**只调用一次** `simplifyCore`。
+2. **模式匹配零拷贝**：修改 `matchAST`。将 `std::map<std::string, SymExpr> captures` 的按值拷贝替换为引用传递。在 DFS 深入时记录状态，回溯时手动 `erase`，实现零拷贝的模式匹配。
+3. **Gröbner 基栈分配**：将 `Monomial` 结构体中的 `std::vector` 替换为 `boost::small_vector` 或固定大小的 `std::array`，消除 Buchberger 算法中海量的堆内存分配。

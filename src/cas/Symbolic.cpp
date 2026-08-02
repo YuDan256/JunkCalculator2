@@ -702,7 +702,30 @@ namespace jc {
         }
         CASVal sumConst = BigInt(0);
         struct TermData { CASVal coeff; SymNode* baseNode = nullptr; };
-        std::unordered_map<SymNode*, TermData> symTerms;
+        
+        constexpr int SMALL_CAP = 8;
+        TermData smallTerms[SMALL_CAP];
+        int smallCount = 0;
+        std::unique_ptr<std::unordered_map<SymNode*, TermData>> symTerms;
+        bool useMap = flatArgs.size() > SMALL_CAP;
+        if (useMap) symTerms = std::make_unique<std::unordered_map<SymNode*, TermData>>();
+
+        auto addTerm = [&](SymNode* key, const CASVal& coeff) {
+            if (useMap) {
+                auto it = symTerms->find(key);
+                if (it != symTerms->end()) it->second.coeff = casAdd(it->second.coeff, coeff);
+                else (*symTerms)[key] = {coeff, key};
+            } else {
+                for (int i = 0; i < smallCount; ++i) {
+                    if (smallTerms[i].baseNode == key) {
+                        smallTerms[i].coeff = casAdd(smallTerms[i].coeff, coeff);
+                        return;
+                    }
+                }
+                smallTerms[smallCount++] = {coeff, key};
+            }
+        };
+
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
                 sumConst = casAdd(sumConst, static_cast<SymNum*>(node)->value);
@@ -722,30 +745,24 @@ namespace jc {
                 }
                 else {
                     SymExpr rem = (symParts.size() == 1)
-                        ? SymExpr(symParts[0])
+                        ? SymExpr::fromInterned(symParts[0])
                         : SymExpr::makeMul(symParts);
-                    SymNode* key = rem.ptr;
-                    auto it = symTerms.find(key);
-                    if (it != symTerms.end())
-                        it->second.coeff = casAdd(it->second.coeff, coeff);
-                    else
-                        symTerms[key] = { coeff, rem.ptr };
+                    addTerm(rem.ptr, coeff);
                 }
             }
             else {
-                SymExpr internedNode(node);
-                SymNode* key = internedNode.ptr;
-                auto it = symTerms.find(key);
-                if (it != symTerms.end())
-                    it->second.coeff = casAdd(it->second.coeff, BigInt(1));
-                else
-                    symTerms[key] = { BigInt(1), internedNode.ptr };
+                addTerm(node, BigInt(1));
             }
         }
         // ★ 纯净输出：不做任何负号提取，直接组装 ADD 节点
         std::vector<TermData> sortedTerms;
-        sortedTerms.reserve(symTerms.size());
-        for (auto& kv : symTerms) sortedTerms.push_back(kv.second);
+        if (useMap) {
+            sortedTerms.reserve(symTerms->size());
+            for (auto& kv : *symTerms) sortedTerms.push_back(kv.second);
+        } else {
+            sortedTerms.reserve(smallCount);
+            for (int i = 0; i < smallCount; ++i) sortedTerms.push_back(smallTerms[i]);
+        }
         std::sort(sortedTerms.begin(), sortedTerms.end(), [](const auto& lhs, const auto& rhs) {
             return lhs.baseNode->hashValue > rhs.baseNode->hashValue;
         });
@@ -799,7 +816,14 @@ namespace jc {
         }
         CASVal prodConst = BigInt(1);
         struct FactorData { CASVal exp; SymNode* baseNode = nullptr; };
-        std::unordered_map<SymNode*, FactorData> symFactors;
+        
+        constexpr int SMALL_CAP = 8;
+        FactorData smallFactors[SMALL_CAP];
+        int smallCount = 0;
+        std::unique_ptr<std::unordered_map<SymNode*, FactorData>> symFactors;
+        bool useMap = flatArgs.size() > SMALL_CAP;
+        if (useMap) symFactors = std::make_unique<std::unordered_map<SymNode*, FactorData>>();
+
         // ★ 核心架构：ADD 基底首项负号正规化
         // 检测一个 ADD 节点的字典序最后一项（通常是最高次项）是否带负系数
         auto addLeadingNegative = [](SymNode* node) -> bool {
@@ -825,6 +849,23 @@ namespace jc {
             }
             return result.ptr;
             };
+            
+        auto addFactor = [&](SymNode* key, const CASVal& expVal) {
+            if (useMap) {
+                auto it = symFactors->find(key);
+                if (it != symFactors->end()) it->second.exp = casAdd(it->second.exp, expVal);
+                else (*symFactors)[key] = {expVal, key};
+            } else {
+                for (int i = 0; i < smallCount; ++i) {
+                    if (smallFactors[i].baseNode == key) {
+                        smallFactors[i].exp = casAdd(smallFactors[i].exp, expVal);
+                        return;
+                    }
+                }
+                smallFactors[smallCount++] = {expVal, key};
+            }
+        };
+
         // 将一个因子（base^exp）登记到 symFactors，同时正规化 ADD 基底
         auto registerFactor = [&](SymNode* base, CASVal expVal) {
             // ★ 如果 base 是 ADD 且首项为负，翻转基底，吸收符号到 prodConst
@@ -839,13 +880,9 @@ namespace jc {
                 }
             }
             SymExpr internedBase(base);
-            SymNode* key = internedBase.ptr;
-            auto it = symFactors.find(key);
-            if (it != symFactors.end())
-                it->second.exp = casAdd(it->second.exp, expVal);
-            else
-                symFactors[key] = { expVal, internedBase.ptr };
+            addFactor(internedBase.ptr, expVal);
             };
+            
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
                 prodConst = casMul(prodConst, static_cast<SymNum*>(node)->value);
@@ -857,13 +894,7 @@ namespace jc {
                     registerFactor(powNode->base, expVal);
                 }
                 else {
-                    SymExpr internedNode(node);
-                    SymNode* key = internedNode.ptr;
-                    auto it = symFactors.find(key);
-                    if (it != symFactors.end())
-                        it->second.exp = casAdd(it->second.exp, BigInt(1));
-                    else
-                        symFactors[key] = { BigInt(1), internedNode.ptr };
+                    addFactor(node, BigInt(1));
                 }
             }
             else {
@@ -875,7 +906,7 @@ namespace jc {
 
         // ★ 尝试将 prodConst 与 symFactors 中的 NUM base 合并 (例如 2 * 2^(-1/2) -> 2^(1/2))
         if (!isCasOne(prodConst)) {
-            for (auto& [key, data] : symFactors) {
+            auto processMerge = [&](FactorData& data) {
                 if (data.baseNode->getType() == SymType::NUM) {
                     CASVal bVal = static_cast<SymNum*>(data.baseNode)->value;
                     auto [isBInt, bInt] = extractExactInt(bVal);
@@ -912,12 +943,23 @@ namespace jc {
                         }
                     }
                 }
+            };
+            
+            if (useMap) {
+                for (auto& [key, data] : *symFactors) processMerge(data);
+            } else {
+                for (int i = 0; i < smallCount; ++i) processMerge(smallFactors[i]);
             }
         }
 
         std::vector<FactorData> sortedFactors;
-        sortedFactors.reserve(symFactors.size());
-        for (auto& kv : symFactors) sortedFactors.push_back(kv.second);
+        if (useMap) {
+            sortedFactors.reserve(symFactors->size());
+            for (auto& kv : *symFactors) sortedFactors.push_back(kv.second);
+        } else {
+            sortedFactors.reserve(smallCount);
+            for (int i = 0; i < smallCount; ++i) sortedFactors.push_back(smallFactors[i]);
+        }
         std::sort(sortedFactors.begin(), sortedFactors.end(), [](const auto& lhs, const auto& rhs) {
             return lhs.baseNode->hashValue > rhs.baseNode->hashValue;
         });

@@ -83,7 +83,5 @@
     *   **子结式伪余式序列 (Subresultant PRS)**：废弃基于矩阵行列式的 Bareiss 算法求结式，改用 Subresultant PRS 算法，降低 $O((N+M)^3)$ 复杂度并严格控制系数膨胀，加速 Rothstein-Trager 积分。
 *   **有限域因式分解 (Cantor-Zassenhaus Algorithm)**：
     *   **机器字长快速通道**：引入 `PolyZp64`，在素数 $p < 2^{63}$ 时走原生 64 位整数运算通道，避免堆分配的 `BigInt` 带来的高频取模开销。
-*   **模式匹配与代数路由 (Pattern Matching & Routing)**：
-    *   **扁平化上下文**：将通配符（如 `_x`, `_a`）映射为固定 ID，使用定长 `std::vector<SymExpr>` 或原生数组替代 `std::map<std::string, SymExpr>` 传递捕获上下文，实现零分配的 DFS 回溯匹配。
 *   **表达式展开与合并 (Expand & Collect)**：
     *   **小数组内联优化**：对于参数较少（如 < 8 个）的加法和乘法，直接使用栈上小数组进行 $O(N^2)$ 遍历合并，避免触发 `std::unordered_map` 的堆分配和哈希计算。

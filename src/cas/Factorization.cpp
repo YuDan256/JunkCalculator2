@@ -289,6 +289,196 @@ namespace jc {
         return factors;
     }
 
+    // =================================================================
+    // 机器字长快速通道 (Fast Path for p < 2^31)
+    // =================================================================
+    using PolyZp64 = std::vector<int64_t>;
+
+    static int64_t invModP64(int64_t a, int64_t p) {
+        int64_t t = 0, newt = 1;
+        int64_t r = p, newr = a % p;
+        if (newr < 0) newr += p;
+        while (newr != 0) {
+            int64_t quotient = r / newr;
+            int64_t temp_t = t - quotient * newt;
+            t = newt; newt = temp_t;
+            int64_t temp_r = r - quotient * newr;
+            r = newr; newr = temp_r;
+        }
+        if (r > 1) throw std::runtime_error("Math Error: Not invertible in Zp");
+        if (t < 0) {
+            t = t % p;
+            if (t < 0) t += p;
+        }
+        return t;
+    }
+
+    static void trimP64(PolyZp64& a) {
+        while (!a.empty() && a.back() == 0) a.pop_back();
+    }
+
+    static PolyZp64 subP64(const PolyZp64& a, const PolyZp64& b, int64_t p) {
+        PolyZp64 res(std::max(a.size(), b.size()), 0);
+        for (size_t i = 0; i < res.size(); ++i) {
+            int64_t va = i < a.size() ? a[i] : 0;
+            int64_t vb = i < b.size() ? b[i] : 0;
+            int64_t diff = (va - vb) % p;
+            if (diff < 0) diff += p;
+            res[i] = diff;
+        }
+        trimP64(res);
+        return res;
+    }
+
+    static PolyZp64 mulP64(const PolyZp64& a, const PolyZp64& b, int64_t p) {
+        if (a.empty() || b.empty()) return {};
+        PolyZp64 res(a.size() + b.size() - 1, 0);
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (a[i] == 0) continue;
+            for (size_t j = 0; j < b.size(); ++j) {
+                int64_t term = (a[i] * b[j]) % p;
+                res[i+j] = (res[i+j] + term) % p;
+            }
+        }
+        for (auto& x : res) {
+            if (x < 0) x += p;
+        }
+        trimP64(res);
+        return res;
+    }
+
+    static std::pair<PolyZp64, PolyZp64> divP64(PolyZp64 a, const PolyZp64& b, int64_t p) {
+        if (b.empty()) throw std::runtime_error("Math Error: Division by zero poly in Zp");
+        trimP64(a);
+        if (a.size() < b.size()) return {{}, a};
+        PolyZp64 q(a.size() - b.size() + 1, 0);
+        int64_t invLead = invModP64(b.back(), p);
+        for (int i = (int)a.size() - (int)b.size(); i >= 0; --i) {
+            if (a[i + b.size() - 1] == 0) continue;
+            int64_t factor = (a[i + b.size() - 1] * invLead) % p;
+            if (factor < 0) factor += p;
+            q[i] = factor;
+            for (size_t j = 0; j < b.size(); ++j) {
+                int64_t term = (factor * b[j]) % p;
+                a[i+j] = (a[i+j] - term) % p;
+                if (a[i+j] < 0) a[i+j] += p;
+            }
+        }
+        trimP64(q);
+        trimP64(a);
+        return {q, a};
+    }
+
+    static PolyZp64 gcdP64(PolyZp64 a, PolyZp64 b, int64_t p) {
+        while (!b.empty()) {
+            auto [q, r] = divP64(a, b, p);
+            a = b;
+            b = r;
+        }
+        if (!a.empty()) {
+            int64_t invL = invModP64(a.back(), p);
+            for (auto& x : a) {
+                x = (x * invL) % p;
+                if (x < 0) x += p;
+            }
+        }
+        return a;
+    }
+
+    static PolyZp64 powModP64(PolyZp64 base, BigInt exp, const PolyZp64& modPoly, int64_t p) {
+        PolyZp64 res = {1};
+        base = divP64(base, modPoly, p).second;
+        while (!exp.isZero()) {
+            BigInt rem = exp % BigInt(2);
+            if (!rem.isZero()) {
+                res = divP64(mulP64(res, base, p), modPoly, p).second;
+            }
+            base = divP64(mulP64(base, base, p), modPoly, p).second;
+            exp = exp / BigInt(2);
+        }
+        return res;
+    }
+
+    static PolyZp64 derivP64(const PolyZp64& a, int64_t p) {
+        if (a.size() <= 1) return {};
+        PolyZp64 res(a.size() - 1, 0);
+        for (size_t i = 1; i < a.size(); ++i) {
+            res[i-1] = (a[i] * static_cast<int64_t>(i)) % p;
+            if (res[i-1] < 0) res[i-1] += p;
+        }
+        trimP64(res);
+        return res;
+    }
+
+    static std::vector<PolyZp64> czEDF64(const PolyZp64& f, int d, int64_t p) {
+        int n = static_cast<int>(f.size()) - 1;
+        if (n == d) return {f};
+        std::vector<PolyZp64> factors = {f};
+        
+        int seed = 1;
+        auto randPoly = [&](int deg) {
+            PolyZp64 r(deg, 0);
+            for (int i = 0; i < deg; ++i) {
+                seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+                r[i] = seed % p;
+            }
+            trimP64(r);
+            return r;
+        };
+
+        BigInt exp = BigInt(p);
+        for (int i = 1; i < d; ++i) exp = exp * BigInt(p);
+        exp = (exp - BigInt(1)) / BigInt(2);
+
+        while (factors.size() < (size_t)(n / d)) {
+            PolyZp64 a = randPoly(n);
+            PolyZp64 b = powModP64(a, exp, f, p);
+            b = subP64(b, {1}, p);
+            
+            std::vector<PolyZp64> nextFactors;
+            for (const auto& u : factors) {
+                if ((int)u.size() - 1 == d) {
+                    nextFactors.push_back(u);
+                    continue;
+                }
+                PolyZp64 g = gcdP64(b, u, p);
+                if (!g.empty() && g.size() > 1 && g.size() < u.size()) {
+                    nextFactors.push_back(g);
+                    nextFactors.push_back(divP64(u, g, p).first);
+                } else {
+                    nextFactors.push_back(u);
+                }
+            }
+            factors = nextFactors;
+        }
+        return factors;
+    }
+
+    static std::vector<PolyZp64> cantorZassenhaus64(const PolyZp64& f, int64_t p) {
+        std::vector<PolyZp64> factors;
+        PolyZp64 f_star = f;
+        PolyZp64 h = {0, 1}; // x
+        int d = 1;
+        
+        while ((int)f_star.size() - 1 >= 2 * d) {
+            h = powModP64(h, BigInt(p), f_star, p);
+            PolyZp64 h_minus_x = subP64(h, {0, 1}, p);
+            PolyZp64 g = gcdP64(h_minus_x, f_star, p);
+            
+            if (g.size() > 1) {
+                auto edfFactors = czEDF64(g, d, p);
+                for (auto& fact : edfFactors) factors.push_back(fact);
+                f_star = divP64(f_star, g, p).first;
+                h = divP64(h, f_star, p).second;
+            }
+            d++;
+        }
+        if (f_star.size() > 1) {
+            factors.push_back(f_star);
+        }
+        return factors;
+    }
+
     static SymExpr factorPolynomialCZ(const SymExpr& expr, int depth) {
         if (depth > SymConfig::maxDepth / 2) return expr;
         std::set<std::string> vars;
@@ -372,21 +562,48 @@ namespace jc {
             // 选取大素数 p > 2B
             BigInt p = (B * BigInt(2)).nextPrime();
             
-            PolyZp g_mod;
-            while (true) {
-                g_mod = g_coeffs;
-                for (auto& x : g_mod) {
-                    x = x % p;
-                    if (x.isNegative()) x = x + p;
-                }
-                trimP(g_mod);
-                PolyZp g_deriv = derivP(g_mod, p);
-                PolyZp gcd = gcdP(g_mod, g_deriv, p);
-                if (gcd.size() <= 1) break; // 确保在 Zp 上无平方
-                p = p.nextPrime();
-            }
+            std::vector<PolyZp> factorsZp;
             
-            std::vector<PolyZp> factorsZp = cantorZassenhaus(g_mod, p);
+            if (p < BigInt(2147483647)) {
+                int64_t p64 = p.toInt64();
+                PolyZp64 g_mod64;
+                while (true) {
+                    g_mod64.clear();
+                    for (const auto& x : g_coeffs) {
+                        int64_t val = (x % p).toInt64();
+                        if (val < 0) val += p64;
+                        g_mod64.push_back(val);
+                    }
+                    trimP64(g_mod64);
+                    PolyZp64 g_deriv64 = derivP64(g_mod64, p64);
+                    PolyZp64 gcd64 = gcdP64(g_mod64, g_deriv64, p64);
+                    if (gcd64.size() <= 1) break;
+                    p = p.nextPrime();
+                    p64 = p.toInt64();
+                }
+                
+                std::vector<PolyZp64> factorsZp64 = cantorZassenhaus64(g_mod64, p64);
+                for (const auto& f64 : factorsZp64) {
+                    PolyZp f_big;
+                    for (int64_t c : f64) f_big.push_back(BigInt(c));
+                    factorsZp.push_back(f_big);
+                }
+            } else {
+                PolyZp g_mod;
+                while (true) {
+                    g_mod = g_coeffs;
+                    for (auto& x : g_mod) {
+                        x = x % p;
+                        if (x.isNegative()) x = x + p;
+                    }
+                    trimP(g_mod);
+                    PolyZp g_deriv = derivP(g_mod, p);
+                    PolyZp gcd = gcdP(g_mod, g_deriv, p);
+                    if (gcd.size() <= 1) break; // 确保在 Zp 上无平方
+                    p = p.nextPrime();
+                }
+                factorsZp = cantorZassenhaus(g_mod, p);
+            }
             
             std::vector<std::vector<BigInt>> trueFactorsZ;
             std::vector<PolyZp> currentFactors = factorsZp;

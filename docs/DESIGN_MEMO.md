@@ -85,9 +85,9 @@
 2. ~~**消除无意义的递归展平**：优化 `flattenAdd` 和 `flattenMul`，在构造节点时就保证其扁平化，避免每次运算都重新遍历树。~~ (已完成)
 
 ### 第三步：引入独立的多项式代数引擎
-1. **阻断 AST 与多项式的混用**：废弃依赖 `expand_core` 的 `extractCoeffs`，引入专用的内部数据结构（如 `SparsePoly`，基于 `std::map<int, SymExpr>` 或哈希表）。
-2. **自底向上的多项式转换器**：实现 `toPolynomial(AST, var)` 函数。遇到加法就多项式相加，遇到乘法就多项式相乘，遇到幂次就多项式快速幂。**绝不展开无关变量**。
-3. **重构底层数学库**：将 `polyDiv`、`polyGCD`、`polyResultant` 等函数的内部实现全部切换为使用 `SparsePoly` 结构，仅在算法结束时转换回 AST 节点。
+1. ~~**阻断 AST 与多项式的混用**：废弃依赖 `expand_core` 的 `extractCoeffs`，引入专用的内部数据结构（如 `SparsePoly`，基于 `std::map<int, SymExpr>` 或哈希表）。~~ (已完成)
+2. ~~**自底向上的多项式转换器**：实现 `toPolynomial(AST, var)` 函数。遇到加法就多项式相加，遇到乘法就多项式相乘，遇到幂次就多项式快速幂。**绝不展开无关变量**。~~ (已完成)
+3. ~~**重构底层数学库**：将 `polyDiv`、`polyGCD`、`polyResultant` 等函数的内部实现全部切换为使用 `SparsePoly` 结构，仅在算法结束时转换回 AST 节点。~~ (已完成，底层算法保留稠密数组 `std::vector<SymExpr>` 以保证除法和 GCD 的极速随机访问，仅在提取阶段使用 `SparsePoly` 阻断 AST 展开)
 
 ### 第四步：高层算法的局部极致优化
 1. **矩阵乘法防爆**：修改 `SymMatrix::operator*`。在最内层循环中只做纯粹的 AST 节点拼接（构建一棵巨大的 `SymAdd` 树），在计算完一个单元格的所有项后，**只调用一次** `simplifyCore`。

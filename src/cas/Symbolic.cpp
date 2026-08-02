@@ -3482,114 +3482,138 @@ namespace jc {
     }
 
     // =================================================================
+    // 独立的多项式代数引擎 (SparsePoly)
+    // =================================================================
+    struct SparsePoly {
+        std::map<int, SymExpr> coeffs;
+
+        bool isZero() const {
+            for (const auto& kv : coeffs) {
+                if (!kv.second.isZero()) return false;
+            }
+            return true;
+        }
+
+        void clean() {
+            for (auto it = coeffs.begin(); it != coeffs.end(); ) {
+                if (it->second.isZero()) it = coeffs.erase(it);
+                else ++it;
+            }
+        }
+
+        SparsePoly operator+(const SparsePoly& other) const {
+            SparsePoly res = *this;
+            for (const auto& kv : other.coeffs) {
+                res.coeffs[kv.first] = simplifyCore(res.coeffs[kv.first] + kv.second);
+            }
+            res.clean();
+            return res;
+        }
+
+        SparsePoly operator*(const SparsePoly& other) const {
+            SparsePoly res;
+            for (const auto& kv1 : coeffs) {
+                if (kv1.second.isZero()) continue;
+                for (const auto& kv2 : other.coeffs) {
+                    if (kv2.second.isZero()) continue;
+                    int deg = kv1.first + kv2.first;
+                    res.coeffs[deg] = simplifyCore(res.coeffs[deg] + kv1.second * kv2.second);
+                }
+            }
+            res.clean();
+            return res;
+        }
+
+        SparsePoly pow(int n) const {
+            if (n == 0) {
+                SparsePoly res;
+                res.coeffs[0] = SymExpr(BigInt(1));
+                return res;
+            }
+            if (n == 1) return *this;
+            SparsePoly half = pow(n / 2);
+            SparsePoly res = half * half;
+            if (n % 2 != 0) res = res * (*this);
+            return res;
+        }
+    };
+
+    static std::optional<SparsePoly> toPolynomial(const SymExpr& expr, const std::string& var) {
+        checkInterrupt();
+        if (!expr.ptr) return std::nullopt;
+        if (!containsVar(expr.ptr, var)) {
+            SparsePoly p;
+            p.coeffs[0] = expr;
+            return p;
+        }
+        switch (expr.ptr->getType()) {
+            case SymType::VAR: {
+                if (static_cast<SymVar*>(expr.ptr)->name == var) {
+                    SparsePoly p;
+                    p.coeffs[1] = SymExpr(BigInt(1));
+                    return p;
+                }
+                SparsePoly p;
+                p.coeffs[0] = expr;
+                return p;
+            }
+            case SymType::ADD: {
+                SparsePoly res;
+                for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args) {
+                    auto p = toPolynomial(SymExpr(arg), var);
+                    if (!p) return std::nullopt;
+                    res = res + *p;
+                }
+                return res;
+            }
+            case SymType::MUL: {
+                SparsePoly res;
+                res.coeffs[0] = SymExpr(BigInt(1));
+                for (auto& arg : static_cast<SymMul*>(expr.ptr)->args) {
+                    auto p = toPolynomial(SymExpr(arg), var);
+                    if (!p) return std::nullopt;
+                    res = res * *p;
+                }
+                return res;
+            }
+            case SymType::POW: {
+                auto powNode = static_cast<SymPow*>(expr.ptr);
+                if (containsVar(powNode->exp, var)) return std::nullopt;
+                if (powNode->exp->getType() == SymType::NUM) {
+                    auto [isInt, n] = extractExactInt(static_cast<SymNum*>(powNode->exp)->value);
+                    if (isInt && n >= 0 && n <= 1000) {
+                        auto baseP = toPolynomial(SymExpr(powNode->base), var);
+                        if (!baseP) return std::nullopt;
+                        return baseP->pow(static_cast<int>(n));
+                    }
+                }
+                return std::nullopt;
+            }
+            default:
+                return std::nullopt;
+        }
+    }
+
+    // =================================================================
     // 动态多项式系数提取器：无限次 (消除 int64_t 转型警告修正版)
     // =================================================================
     std::vector<SymExpr> extractCoeffs(const SymExpr& expr, const std::string& var) {
-        // 探针拦截：如果根本不是多项式，直接拒绝进入昂贵的 expand 展开
         if (!isPolynomialIn(expr, var)) return {};
-
-        SymExpr expanded;
-        try { expanded = expand_core(expr, SymConfig::maxExpandTerms); }
-        catch (const EngineInterruptError&) { throw; }
-        catch (const std::runtime_error&) { return {}; }
-
-        std::map<int, SymExpr> degreeMap;
-
-        auto processTerm = [&](const SymExpr& term) -> bool {
-            // 如果该项完全不包含目标变量 (例如 y^2, sin(y), 或纯数字)，
-            // 则整体作为 0 次项系数 (常数项)
-            if (!containsVar(term.ptr, var)) {
-                degreeMap[0] = degreeMap.count(0) ? degreeMap[0] + term : term;
-                return true;
-            }
-            // 单变量情况：x
-            if (term.ptr->getType() == SymType::VAR && static_cast<SymVar*>(term.ptr)->name == var) {
-                degreeMap[1] = degreeMap.count(1) ? degreeMap[1] + SymExpr(BigInt(1)) : SymExpr(BigInt(1));
-                return true;
-            }
-            // 单变量带幂情况：x^n
-            if (term.ptr->getType() == SymType::POW) {
-                auto p = static_cast<SymPow*>(term.ptr);
-                if (p->base->getType() == SymType::VAR && static_cast<SymVar*>(p->base)->name == var && p->exp->getType() == SymType::NUM) {
-                    auto [isInt, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
-                    if (isInt && n >= 0 && n <= 1000) {
-                        int deg = static_cast<int>(n); // 安全转换
-                        degreeMap[deg] = degreeMap.count(deg) ? degreeMap[deg] + SymExpr(BigInt(1)) : SymExpr(BigInt(1));
-                        return true;
-                    }
-                }
-                return false;
-            }
-            // 乘积混合情况：A * B * x^n
-            if (term.ptr->getType() == SymType::MUL) {
-                auto mul = static_cast<SymMul*>(term.ptr);
-                int degree = 0;
-                SymExpr coeff(BigInt(1));
-                bool foundVarPart = false;
-
-                for (auto& f : mul->args) {
-                    // 如果该因子不包含 x (例如 y, z^2, sin(y))，视为系数乘入
-                    if (!containsVar(f, var)) {
-                        coeff = coeff * SymExpr(f);
-                    }
-                    // 如果该因子恰好等于 x
-                    else if (f->getType() == SymType::VAR && static_cast<SymVar*>(f)->name == var) {
-                        if (foundVarPart) return false;
-                        foundVarPart = true;
-                        degree = 1;
-                    }
-                    // 如果该因子等于 x^n
-                    else if (f->getType() == SymType::POW) {
-                        auto p = static_cast<SymPow*>(f);
-                        if (p->base->getType() == SymType::VAR && static_cast<SymVar*>(p->base)->name == var && p->exp->getType() == SymType::NUM) {
-                            if (foundVarPart) return false;
-                            foundVarPart = true;
-
-                            auto [isInt, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
-                            if (isInt && n >= 0 && n <= 1000) {
-                                degree = static_cast<int>(n); // 安全转换
-                            }
-                            else {
-                                return false; // 幂次超标或不是整数，不视作多项式
-                            }
-                        }
-                        else {
-                            return false;
-                        }
-                    }
-                    else {
-                        return false;
-                    }
-                }
-
-                degreeMap[degree] = degreeMap.count(degree) ? degreeMap[degree] + coeff : coeff;
-                return true;
-            }
-            return false;
-            };
-
-        if (expanded.ptr->getType() == SymType::ADD) {
-            for (auto& arg : static_cast<SymAdd*>(expanded.ptr)->args) {
-                if (!processTerm(SymExpr(arg))) return {};
-            }
-        }
-        else {
-            if (!processTerm(expanded)) return {};
-        }
-
+        auto polyOpt = toPolynomial(expr, var);
+        if (!polyOpt) return {};
+        
         int maxDeg = -1;
-        for (auto& kv : degreeMap) {
-            maxDeg = std::max(maxDeg, kv.first);
+        for (const auto& kv : polyOpt->coeffs) {
+            if (!kv.second.isZero()) {
+                maxDeg = std::max(maxDeg, kv.first);
+            }
         }
-
         if (maxDeg < 0) return {};
-
-        // 构造连续的系数数组，从 x^0 填到 x^MAX
+        
         std::vector<SymExpr> coeffs(static_cast<size_t>(maxDeg + 1), SymExpr(BigInt(0)));
-        for (auto& kv : degreeMap) {
-            coeffs[static_cast<size_t>(kv.first)] = simplifyCore(kv.second);
+        for (const auto& kv : polyOpt->coeffs) {
+            coeffs[static_cast<size_t>(kv.first)] = kv.second;
         }
-
         return coeffs;
     }
 

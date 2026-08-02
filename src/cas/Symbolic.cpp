@@ -1648,7 +1648,11 @@ namespace jc {
             cache.clear();
         }
 
-        depth++;
+        struct DepthGuard {
+            int& d;
+            DepthGuard(int& depth_ref) : d(depth_ref) { d++; }
+            ~DepthGuard() { d--; }
+        } guard(depth);
 
         auto compute = [&]() -> SymExpr {
             switch (expr.ptr->getType()) {
@@ -1924,7 +1928,6 @@ namespace jc {
         };
 
         SymExpr result = compute();
-        depth--;
         cache[sig] = result;
         return result;
     }
@@ -2748,7 +2751,11 @@ namespace jc {
             cache.clear();
         }
 
-        depth++;
+        struct DepthGuard {
+            int& d;
+            DepthGuard(int& depth_ref) : d(depth_ref) { d++; }
+            ~DepthGuard() { d--; }
+        } guard(depth);
 
         auto compute = [&]() -> SymExpr {
             switch (expr.ptr->getType()) {
@@ -2894,7 +2901,6 @@ namespace jc {
         };
 
         SymExpr result = compute();
-        depth--;
         cache[sig] = result;
         return result;
     }
@@ -3005,7 +3011,11 @@ namespace jc {
             cache.clear();
         }
 
-        depth++;
+        struct DepthGuard {
+            int& d;
+            DepthGuard(int& depth_ref) : d(depth_ref) { d++; }
+            ~DepthGuard() { d--; }
+        } guard(depth);
 
         auto compute = [&]() -> SymExpr {
             // 递归化简内层 + 身份吸收法则
@@ -3390,7 +3400,6 @@ namespace jc {
         };
 
         SymExpr result = compute();
-        depth--;
         cache[sig] = result;
         return result;
     }
@@ -4421,7 +4430,11 @@ namespace jc {
             cache.clear();
         }
 
-        depth++;
+        struct DepthGuard {
+            int& d;
+            DepthGuard(int& depth_ref) : d(depth_ref) { d++; }
+            ~DepthGuard() { d--; }
+        } guard(depth);
 
         auto compute = [&]() -> SymExpr {
             // 递归地对子节点调用 simplify (Bottom-up)
@@ -4595,7 +4608,6 @@ namespace jc {
         };
 
         SymExpr result = compute();
-        depth--;
         cache[sig] = result;
         return result;
     }
@@ -4618,7 +4630,11 @@ namespace jc {
             cache.clear();
         }
 
-        depth++;
+        struct DepthGuard {
+            int& d;
+            DepthGuard(int& depth_ref) : d(depth_ref) { d++; }
+            ~DepthGuard() { d--; }
+        } guard(depth);
 
         auto compute = [&]() -> SymExpr {
             // 递归地对子节点调用 full_simplify (Bottom-up)
@@ -4706,7 +4722,6 @@ namespace jc {
         };
 
         SymExpr result = compute();
-        depth--;
         cache[sig] = result;
         return result;
     }

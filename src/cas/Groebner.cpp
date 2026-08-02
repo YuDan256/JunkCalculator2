@@ -495,10 +495,18 @@ namespace jc {
         };
         
         std::vector<CriticalPair> B;
+        std::vector<std::vector<bool>> inB(G.size(), std::vector<bool>(G.size(), false));
+        
         auto addPairs = [&](size_t k) {
+            if (inB.size() <= k) {
+                inB.resize(k + 1);
+                for (size_t i = 0; i <= k; ++i) inB[i].resize(k + 1, false);
+            }
             for (size_t i = 0; i < k; ++i) {
                 Monomial lcmMono = G[i].leadingTerm().mono.lcm(G[k].leadingTerm().mono);
                 B.push_back({i, k, lcmMono.getDegree()});
+                inB[i][k] = true;
+                inB[k][i] = true;
             }
             // 法向选择策略 (Normal Selection Strategy)：优先处理 LCM 次数小的对
             std::sort(B.begin(), B.end());
@@ -508,6 +516,8 @@ namespace jc {
             for (size_t j = 0; j < i; ++j) {
                 Monomial lcmMono = G[j].leadingTerm().mono.lcm(G[i].leadingTerm().mono);
                 B.push_back({j, i, lcmMono.getDegree()});
+                inB[j][i] = true;
+                inB[i][j] = true;
             }
         }
         std::sort(B.begin(), B.end());
@@ -520,6 +530,8 @@ namespace jc {
             B.pop_back();
             size_t i = pair.i;
             size_t j = pair.j;
+            inB[i][j] = false;
+            inB[j][i] = false;
             
             // Buchberger 第一准则 (Buchberger's First Criterion): 
             // 如果首项互素，S-多项式必定约化为0，直接跳过
@@ -540,6 +552,21 @@ namespace jc {
                 }
             }
             if (relativelyPrime) continue;
+            
+            // Buchberger 第二准则 (Buchberger's Second Criterion / LCM Criterion):
+            // 如果存在 k 使得 LT(G_k) 整除 LCM(LT(G_i), LT(G_j))，且 (i,k) 和 (j,k) 都已被处理，则跳过
+            Monomial lcmIJ = ltI.mono.lcm(ltJ.mono);
+            bool skip = false;
+            for (size_t k = 0; k < G.size(); ++k) {
+                if (k == i || k == j) continue;
+                if (G[k].leadingTerm().mono.divides(lcmIJ)) {
+                    if (!inB[i][k] && !inB[j][k]) {
+                        skip = true;
+                        break;
+                    }
+                }
+            }
+            if (skip) continue;
             
             MultiPoly s = sPolynomial(G[i], G[j]);
             if (s.isZero()) continue;

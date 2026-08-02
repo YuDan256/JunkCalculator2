@@ -46,8 +46,7 @@ namespace jc {
             if constexpr (std::is_same_v<T, int32_t>) return hashCombine(1, std::hash<int32_t>{}(arg));
             else if constexpr (std::is_same_v<T, double>) return hashCombine(2, std::hash<double>{}(arg));
             else if constexpr (std::is_same_v<T, BigInt>) return hashCombine(3, hashString(arg.toString()));
-            else if constexpr (std::is_same_v<T, Fraction>) return hashCombine(4, hashCombine(hashString(arg.getNum().toString()), hashString(arg.getDen().toString())));
-            return 0;
+            else return hashCombine(4, hashCombine(hashString(arg.getNum().toString()), hashString(arg.getDen().toString())));
         }, v);
     }
 
@@ -147,8 +146,7 @@ namespace jc {
             if constexpr (std::is_same_v<T, BigInt>) return arg.isNegative();
             else if constexpr (std::is_same_v<T, Fraction>) return arg.getNum().isNegative() != arg.getDen().isNegative();
             else if constexpr (std::is_same_v<T, double>) return arg < 0.0;
-            else if constexpr (std::is_same_v<T, int32_t>) return arg < 0;
-            else return false;
+            else return arg < 0;
             }, v);
     }
 
@@ -437,16 +435,13 @@ namespace jc {
                 }
                 return { false, 0 };
             }
-            else if constexpr (std::is_same_v<T, double>) {
+            else {
                 if (std::isfinite(arg) && arg == std::round(arg)) {
                     // C++ 浮点转整防御，最多精准到 53 位 (±9e15)
                     if (std::abs(arg) < 9e15) {
                         return { true, static_cast<int64_t>(std::round(arg)) };
                     }
                 }
-                return { false, 0 };
-            }
-            else {
                 return { false, 0 };
             }
             }, cval);

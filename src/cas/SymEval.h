@@ -12,8 +12,8 @@
 namespace jc {
     using SymbolicFuncResolver = std::function<Value(const std::string&, const std::vector<Value>&)>;
 
-    double fastEval(const std::shared_ptr<SymNode>& node, const std::map<std::string, double>& env, const SymbolicFuncResolver& resolver = nullptr);
-    Value evalUniversal(const std::shared_ptr<SymNode>& node, const std::map<std::string, Value>& env, const SymbolicFuncResolver& resolver = nullptr);
+    double fastEval(SymNode* node, const std::map<std::string, double>& env, const SymbolicFuncResolver& resolver = nullptr);
+    Value evalUniversal(SymNode* node, const std::map<std::string, Value>& env, const SymbolicFuncResolver& resolver = nullptr);
 }
 
 #endif // JC2_SYMEVAL_H

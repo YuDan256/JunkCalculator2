@@ -6116,18 +6116,18 @@ namespace jc {
     // =================================================================
 // 快速数值求值 (C++ 原生 Double 极限狂飙 + 依赖注入解耦)
 // =================================================================
-    static std::complex<double> fastEvalComplex(const std::shared_ptr<SymNode>& node, const std::map<std::string, double>& env, const SymbolicFuncResolver& resolver) {
+    static std::complex<double> fastEvalComplex(SymNode* node, const std::map<std::string, double>& env, const SymbolicFuncResolver& resolver) {
         if (!node) return 0.0;
 
         switch (node->getType()) {
         case SymType::NUM: {
-            auto num = std::static_pointer_cast<SymNum>(node);
+            auto num = static_cast<SymNum*>(node);
             Value v = casValToValue(num->value);
             if (v.isComplex()) return std::complex<double>(v.asComplex().real, v.asComplex().imag);
             return v.asDouble();
         }
         case SymType::VAR: {
-            auto varName = std::static_pointer_cast<SymVar>(node)->name;
+            auto varName = static_cast<SymVar*>(node)->name;
             auto it = env.find(varName);
             if (it != env.end()) return it->second;
             if (varName == "PI") return 3.14159265358979323846;
@@ -6137,20 +6137,20 @@ namespace jc {
         }
         case SymType::ADD: {
             std::complex<double> sum = 0.0;
-            for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args) sum += fastEvalComplex(arg, env, resolver);
+            for (auto& arg : static_cast<SymAdd*>(node)->args) sum += fastEvalComplex(arg, env, resolver);
             return sum;
         }
         case SymType::MUL: {
             std::complex<double> prod = 1.0;
-            for (auto& arg : std::static_pointer_cast<SymMul>(node)->args) prod *= fastEvalComplex(arg, env, resolver);
+            for (auto& arg : static_cast<SymMul*>(node)->args) prod *= fastEvalComplex(arg, env, resolver);
             return prod;
         }
         case SymType::POW: {
-            auto p = std::static_pointer_cast<SymPow>(node);
+            auto p = static_cast<SymPow*>(node);
             return std::pow(fastEvalComplex(p->base, env, resolver), fastEvalComplex(p->exp, env, resolver));
         }
         case SymType::FUNC: {
-            auto f = std::static_pointer_cast<SymFunc>(node);
+            auto f = static_cast<SymFunc*>(node);
             if ((f->name == "RootOf" || f->name == "RootSum") && f->args.size() == 3) {
                 Value v = evaluateRootNode(f, [&](const SymExpr& e) {
                     std::complex<double> c = fastEvalComplex(e.ptr, env, resolver);
@@ -6203,7 +6203,7 @@ namespace jc {
         return 0.0;
     }
 
-    double fastEval(const std::shared_ptr<SymNode>& node, const std::map<std::string, double>& env, const SymbolicFuncResolver& resolver) {
+    double fastEval(SymNode* node, const std::map<std::string, double>& env, const SymbolicFuncResolver& resolver) {
         std::complex<double> res = fastEvalComplex(node, env, resolver);
         return res.real();
     }
@@ -6211,16 +6211,16 @@ namespace jc {
     // =================================================================
 // 万能多态求值 (高维张量/复平面支援 + 依赖注入解耦)
 // =================================================================
-    Value evalUniversal(const std::shared_ptr<SymNode>& node, const std::map<std::string, Value>& env, const SymbolicFuncResolver& resolver) {
+    Value evalUniversal(SymNode* node, const std::map<std::string, Value>& env, const SymbolicFuncResolver& resolver) {
         if (!node) return Value(0.0);
 
         switch (node->getType()) {
         case SymType::NUM: {
-            auto num = std::static_pointer_cast<SymNum>(node);
+            auto num = static_cast<SymNum*>(node);
             return casValToValue(num->value);
         }
         case SymType::VAR: {
-            auto varName = std::static_pointer_cast<SymVar>(node)->name;
+            auto varName = static_cast<SymVar*>(node)->name;
             auto it = env.find(varName);
             if (it != env.end()) return it->second;
             if (varName == "PI") return Value(3.14159265358979323846);
@@ -6230,16 +6230,16 @@ namespace jc {
         }
         case SymType::ADD: {
             Value sum(0.0);
-            for (auto& arg : std::static_pointer_cast<SymAdd>(node)->args) sum = sum + evalUniversal(arg, env, resolver);
+            for (auto& arg : static_cast<SymAdd*>(node)->args) sum = sum + evalUniversal(arg, env, resolver);
             return sum;
         }
         case SymType::MUL: {
             Value prod(1.0);
-            for (auto& arg : std::static_pointer_cast<SymMul>(node)->args) prod = prod * evalUniversal(arg, env, resolver);
+            for (auto& arg : static_cast<SymMul*>(node)->args) prod = prod * evalUniversal(arg, env, resolver);
             return prod;
         }
         case SymType::POW: {
-            auto p = std::static_pointer_cast<SymPow>(node);
+            auto p = static_cast<SymPow*>(node);
             Value b = evalUniversal(p->base, env, resolver);
             Value e = evalUniversal(p->exp, env, resolver);
             Value res = b ^ e;
@@ -6265,7 +6265,7 @@ namespace jc {
             return res;
         }
         case SymType::FUNC: {
-            auto f = std::static_pointer_cast<SymFunc>(node);
+            auto f = static_cast<SymFunc*>(node);
             if ((f->name == "RootOf" || f->name == "RootSum") && f->args.size() == 3) {
                 return evaluateRootNode(f, [&](const SymExpr& e) {
                     return evalUniversal(e.ptr, env, resolver);

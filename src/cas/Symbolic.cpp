@@ -185,6 +185,93 @@ namespace jc {
     // ==========================================
 
     // ==========================================
+    // 打印专用排序器 (人类可读排版)
+    // ==========================================
+    static int compareForPrint(SymNode* a, SymNode* b, bool isMul) {
+        if (a == b) return 0;
+
+        if (isMul) {
+            // 乘法：常数排在最前面
+            if (a->getType() == SymType::NUM && b->getType() != SymType::NUM) return -1;
+            if (a->getType() != SymType::NUM && b->getType() == SymType::NUM) return 1;
+        }
+
+        auto getCore = [](SymNode* n) -> std::tuple<SymNode*, double, double> {
+            SymNode* core = n;
+            if (n->getType() == SymType::MUL) {
+                auto mul = static_cast<SymMul*>(n);
+                std::vector<SymNode*> vars;
+                for (auto& arg : mul->args) {
+                    if (arg->getType() != SymType::NUM) vars.push_back(arg);
+                }
+                if (vars.empty()) return {nullptr, 0.0, 0.0}; // 纯常数
+                if (vars.size() == 1) core = vars[0];
+                else {
+                    double totalExp = 0.0;
+                    for (auto& v : vars) {
+                        if (v->getType() == SymType::POW) {
+                            auto p = static_cast<SymPow*>(v);
+                            if (p->exp->getType() == SymType::NUM) {
+                                try { totalExp += casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble(); } catch(...) { totalExp += 1.0; }
+                            } else totalExp += 1.0;
+                        } else {
+                            totalExp += 1.0;
+                        }
+                    }
+                    return {n, 1.0, totalExp};
+                }
+            } else if (n->getType() == SymType::NUM) {
+                return {nullptr, 0.0, 0.0};
+            }
+
+            if (core->getType() == SymType::POW) {
+                auto p = static_cast<SymPow*>(core);
+                if (p->exp->getType() == SymType::NUM) {
+                    try {
+                        double e = casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble();
+                        return {p->base, e, e};
+                    } catch(...) {}
+                }
+            }
+            return {core, 1.0, 1.0};
+        };
+
+        auto [coreA, expA, totA] = getCore(a);
+        auto [coreB, expB, totB] = getCore(b);
+
+        // 纯常数排在最后 (加法中)
+        if (!isMul) {
+            if (!coreA && coreB) return 1;
+            if (coreA && !coreB) return -1;
+        }
+        if (!coreA && !coreB) {
+            // 都是常数，按哈希排
+            return a->hashValue < b->hashValue ? -1 : 1;
+        }
+
+        // 总指数高的排在前面 (降幂排列)
+        if (totA != totB) {
+            return totA > totB ? -1 : 1;
+        }
+
+        // 结构化哈希比较 (使用 64 位哈希替代字符串签名，极速且稳定)
+        if (coreA != coreB) {
+            if (coreA->hashValue != coreB->hashValue) {
+                return coreA->hashValue < coreB->hashValue ? -1 : 1;
+            }
+            // 极低概率的哈希碰撞兜底 (直接比较指针，防止 toString 递归)
+            return coreA < coreB ? -1 : 1;
+        }
+
+        // 单变量同底数，指数高的排在前面
+        if (expA != expB) {
+            return expA > expB ? -1 : 1;
+        }
+
+        return 0;
+    }
+
+    // ==========================================
     // 加法节点排版：原教旨安全版 
     // a + (-b) 自动识别首个字符转为 a - b
     // ==========================================
@@ -192,8 +279,13 @@ namespace jc {
         if (args.empty()) return "0";
         std::string res = "";
 
-        for (size_t i = 0; i < args.size(); ++i) {
-            std::string termStr = args[i]->toString();
+        std::vector<SymNode*> sortedArgs = args;
+        std::sort(sortedArgs.begin(), sortedArgs.end(), [](SymNode* a, SymNode* b) {
+            return compareForPrint(a, b, false) < 0;
+        });
+
+        for (size_t i = 0; i < sortedArgs.size(); ++i) {
+            std::string termStr = sortedArgs[i]->toString();
 
             if (i > 0) {
                 // 只要该项字符串以 '-' 开头，说明它是个纯正的负项 (如 "-3 * x" 或是 "-x")
@@ -221,15 +313,20 @@ namespace jc {
         if (args.empty()) return "1";
         std::string res;
 
+        std::vector<SymNode*> sortedArgs = args;
+        std::sort(sortedArgs.begin(), sortedArgs.end(), [](SymNode* a, SymNode* b) {
+            return compareForPrint(a, b, true) < 0;
+        });
+
         size_t startIdx = 0;
 
         // 探查乘积的第一项是不是确凿的常数，且以 '-' 开头
-        if (args[0]->getType() == SymType::NUM) {
-            std::string firstStr = args[0]->toString();
+        if (sortedArgs[0]->getType() == SymType::NUM) {
+            std::string firstStr = sortedArgs[0]->toString();
             if (!firstStr.empty() && firstStr[0] == '-') {
                 startIdx = 1; // 跨过第一项独立排版
 
-                if (args.size() == 1) return firstStr; // 单独的 "-3"
+                if (sortedArgs.size() == 1) return firstStr; // 单独的 "-3"
 
                 if (firstStr == "-1") {
                     res += "-"; // -1 * x 简化为 -x
@@ -241,13 +338,13 @@ namespace jc {
         }
 
         // 把后面的乘积拼接上去
-        for (size_t i = startIdx; i < args.size(); ++i) {
+        for (size_t i = startIdx; i < sortedArgs.size(); ++i) {
             if (i > startIdx) res += " * ";
 
-            std::string termStr = args[i]->toString();
+            std::string termStr = sortedArgs[i]->toString();
 
             // 只有加法节点 (a+b) 在乘法中需要套括号保护！！其他由于 CAS 分配律必然无需多余括号！
-            if (args[i]->getType() == SymType::ADD) {
+            if (sortedArgs[i]->getType() == SymType::ADD) {
                 res += "(" + termStr + ")";
             }
             else {
@@ -448,82 +545,6 @@ namespace jc {
     }
 
     // ==========================================
-    // 表达式排序比较器 (Higher power first, smaller lexicographical first)
-    // ==========================================
-    static int compareSymNodes(SymNode* a, SymNode* b) {
-        if (a == b) return 0;
-
-        auto getCore = [](SymNode* n) -> std::tuple<SymNode*, double, double> {
-            SymNode* core = n;
-            if (n->getType() == SymType::MUL) {
-                auto mul = static_cast<SymMul*>(n);
-                std::vector<SymNode*> vars;
-                for (auto& arg : mul->args) {
-                    if (arg->getType() != SymType::NUM) vars.push_back(arg);
-                }
-                if (vars.empty()) return {nullptr, 0.0, 0.0}; // 纯常数
-                if (vars.size() == 1) core = vars[0];
-                else {
-                    double totalExp = 0.0;
-                    for (auto& v : vars) {
-                        if (v->getType() == SymType::POW) {
-                            auto p = static_cast<SymPow*>(v);
-                            if (p->exp->getType() == SymType::NUM) {
-                                try { totalExp += casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble(); } catch(...) { totalExp += 1.0; }
-                            } else totalExp += 1.0;
-                        } else {
-                            totalExp += 1.0;
-                        }
-                    }
-                    return {n, 1.0, totalExp};
-                }
-            } else if (n->getType() == SymType::NUM) {
-                return {nullptr, 0.0, 0.0};
-            }
-
-            if (core->getType() == SymType::POW) {
-                auto p = static_cast<SymPow*>(core);
-                if (p->exp->getType() == SymType::NUM) {
-                    try {
-                        double e = casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble();
-                        return {p->base, e, e};
-                    } catch(...) {}
-                }
-            }
-            return {core, 1.0, 1.0};
-        };
-
-        auto [coreA, expA, totA] = getCore(a);
-        auto [coreB, expB, totB] = getCore(b);
-
-        // 纯常数排在最后
-        if (!coreA && coreB) return 1;
-        if (coreA && !coreB) return -1;
-        if (!coreA && !coreB) return 0;
-
-        // 总指数高的排在前面 (降幂排列)
-        if (totA != totB) {
-            return totA > totB ? -1 : 1;
-        }
-
-        // 结构化哈希比较 (使用 64 位哈希替代字符串签名，极速且稳定)
-        if (coreA != coreB) {
-            if (coreA->hashValue != coreB->hashValue) {
-                return coreA->hashValue < coreB->hashValue ? -1 : 1;
-            }
-            // 极低概率的哈希碰撞兜底
-            return coreA->toString() < coreB->toString() ? -1 : 1;
-        }
-
-        // 单变量同底数，指数高的排在前面
-        if (expA != expB) {
-            return expA > expB ? -1 : 1;
-        }
-
-        return 0;
-    }
-
-    // ==========================================
     // SymExpr 构造
     // ==========================================
     SymExpr::SymExpr() : ptr(intern(new SymNum(BigInt(0)))) {}
@@ -573,7 +594,7 @@ namespace jc {
         flattenAdd(b.ptr);
         CASVal sumConst = BigInt(0);
         struct TermData { CASVal coeff; SymNode* baseNode = nullptr; };
-        std::unordered_map<uintptr_t, TermData> symTerms;
+        std::unordered_map<uint64_t, TermData> symTerms;
         for (auto& node : flatArgs) {
             if (node->getType() == SymType::NUM) {
                 sumConst = casAdd(sumConst, static_cast<SymNum*>(node)->value);
@@ -595,7 +616,7 @@ namespace jc {
                     SymExpr rem = (symParts.size() == 1)
                         ? SymExpr(symParts[0])
                         : SymExpr(new SymMul(symParts));
-                    uintptr_t key = reinterpret_cast<uintptr_t>(rem.ptr);
+                    uint64_t key = rem.ptr->hashValue;
                     auto it = symTerms.find(key);
                     if (it != symTerms.end())
                         it->second.coeff = casAdd(it->second.coeff, coeff);
@@ -605,7 +626,7 @@ namespace jc {
             }
             else {
                 SymExpr internedNode(node);
-                uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr);
+                uint64_t key = internedNode.ptr->hashValue;
                 auto it = symTerms.find(key);
                 if (it != symTerms.end())
                     it->second.coeff = casAdd(it->second.coeff, BigInt(1));
@@ -618,7 +639,7 @@ namespace jc {
         sortedTerms.reserve(symTerms.size());
         for (auto& kv : symTerms) sortedTerms.push_back(kv.second);
         std::sort(sortedTerms.begin(), sortedTerms.end(), [](const auto& lhs, const auto& rhs) {
-            return compareSymNodes(lhs.baseNode, rhs.baseNode) < 0;
+            return lhs.baseNode->hashValue > rhs.baseNode->hashValue;
         });
 
         std::vector<SymNode*> newArgs;
@@ -670,7 +691,7 @@ namespace jc {
         flattenMul(b.ptr);
         CASVal prodConst = BigInt(1);
         struct FactorData { CASVal exp; SymNode* baseNode = nullptr; };
-        std::unordered_map<uintptr_t, FactorData> symFactors;
+        std::unordered_map<uint64_t, FactorData> symFactors;
         // ★ 核心架构：ADD 基底首项负号正规化
         // 检测一个 ADD 节点的字典序最后一项（通常是最高次项）是否带负系数
         auto addLeadingNegative = [](SymNode* node) -> bool {
@@ -710,7 +731,7 @@ namespace jc {
                 }
             }
             SymExpr internedBase(base);
-            uintptr_t key = reinterpret_cast<uintptr_t>(internedBase.ptr);
+            uint64_t key = internedBase.ptr->hashValue;
             auto it = symFactors.find(key);
             if (it != symFactors.end())
                 it->second.exp = casAdd(it->second.exp, expVal);
@@ -729,7 +750,7 @@ namespace jc {
                 }
                 else {
                     SymExpr internedNode(node);
-                    uintptr_t key = reinterpret_cast<uintptr_t>(internedNode.ptr);
+                    uint64_t key = internedNode.ptr->hashValue;
                     auto it = symFactors.find(key);
                     if (it != symFactors.end())
                         it->second.exp = casAdd(it->second.exp, BigInt(1));
@@ -790,7 +811,7 @@ namespace jc {
         sortedFactors.reserve(symFactors.size());
         for (auto& kv : symFactors) sortedFactors.push_back(kv.second);
         std::sort(sortedFactors.begin(), sortedFactors.end(), [](const auto& lhs, const auto& rhs) {
-            return compareSymNodes(lhs.baseNode, rhs.baseNode) < 0;
+            return lhs.baseNode->hashValue > rhs.baseNode->hashValue;
         });
 
         std::vector<SymNode*> newArgs;
@@ -1816,7 +1837,7 @@ namespace jc {
 
                             // 极速组装：一口气将几十上百个节点封入一把加法树中，省去全部树并排开销！
                             std::sort(finalTerms.begin(), finalTerms.end(), [](const auto& a, const auto& b) {
-                                return compareSymNodes(a, b) < 0;
+                                return a->hashValue > b->hashValue;
                             });
                             if (finalTerms.size() == 1) return SymExpr(finalTerms[0]);
                             return SymExpr(new SymAdd(std::move(finalTerms)));

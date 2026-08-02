@@ -51,40 +51,58 @@ namespace jc {
         }, v);
     }
 
-    static std::unordered_map<uint64_t, std::vector<std::weak_ptr<SymNode>>> g_symPool;
+    // ==========================================
+    // Arena 内存池实现 (无锁极速分配)
+    // ==========================================
+    struct SymArena {
+        struct Block {
+            static constexpr size_t SIZE = 256 * 1024;
+            char data[SIZE];
+            size_t offset = 0;
+            Block* next = nullptr;
+        };
+        Block* head = nullptr;
+
+        void* allocate(size_t size) {
+            size = (size + 7) & ~7; // 8字节对齐
+            if (!head || head->offset + size > Block::SIZE) {
+                Block* newBlock = new Block();
+                newBlock->next = head;
+                head = newBlock;
+            }
+            void* ptr = head->data + head->offset;
+            head->offset += size;
+            return ptr;
+        }
+
+        void deallocate_last(void* ptr, size_t size) {
+            size = (size + 7) & ~7;
+            if (head && ptr == head->data + head->offset - size) {
+                head->offset -= size; // 极速回收刚刚分配的重复节点
+            }
+        }
+    };
+
+    static thread_local SymArena g_symArena;
+
+    void* SymNode::operator new(size_t size) { return g_symArena.allocate(size); }
+    void SymNode::operator delete(void* ptr, size_t size) { g_symArena.deallocate_last(ptr, size); }
+
+    static thread_local std::unordered_map<uint64_t, std::vector<SymNode*>> g_symPool;
 
     void SymExpr::cleanupPool() {
-        for (auto it = g_symPool.begin(); it != g_symPool.end(); ) {
-            auto& bucket = it->second;
-            for (auto bit = bucket.begin(); bit != bucket.end(); ) {
-                if (bit->expired()) bit = bucket.erase(bit);
-                else ++bit;
-            }
-            if (bucket.empty()) it = g_symPool.erase(it);
-            else ++it;
-        }
+        // Arena 模式下节点生命周期与线程绑定，无需逐个清理
     }
 
-    std::shared_ptr<SymNode> SymExpr::intern(const std::shared_ptr<SymNode>& node) {
+    SymNode* SymExpr::intern(SymNode* node) {
         if (!node) return nullptr;
         
-        // 启发式自动清理：每驻留 10000 个新节点，清理一次失效的弱引用
-        static int pruneCounter = 0;
-        if (++pruneCounter > 10000) {
-            pruneCounter = 0;
-            cleanupPool();
-        }
-
         uint64_t h = node->hashValue;
         auto& bucket = g_symPool[h];
-        for (auto it = bucket.begin(); it != bucket.end(); ) {
-            if (auto shared = it->lock()) {
-                if (shared->getType() == node->getType() && shared->equals(node.get())) {
-                    return shared;
-                }
-                ++it;
-            } else {
-                it = bucket.erase(it);
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == node->getType() && existing->equals(node)) {
+                delete node; // 触发 deallocate_last，完美回收内存
+                return existing;
             }
         }
         bucket.push_back(node);
@@ -334,7 +352,7 @@ namespace jc {
         return name == static_cast<const SymVar*>(other)->name;
     }
 
-    SymAdd::SymAdd(std::vector<std::shared_ptr<SymNode>> a) : args(std::move(a)) {
+    SymAdd::SymAdd(std::vector<SymNode*> a) : args(std::move(a)) {
         uint64_t h = static_cast<uint64_t>(SymType::ADD);
         for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
         hashValue = h;
@@ -343,12 +361,12 @@ namespace jc {
         const auto* o = static_cast<const SymAdd*>(other);
         if (args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
-            if (args[i].get() != o->args[i].get()) return false;
+            if (args[i] != o->args[i]) return false;
         }
         return true;
     }
 
-    SymMul::SymMul(std::vector<std::shared_ptr<SymNode>> a) : args(std::move(a)) {
+    SymMul::SymMul(std::vector<SymNode*> a) : args(std::move(a)) {
         uint64_t h = static_cast<uint64_t>(SymType::MUL);
         for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
         hashValue = h;
@@ -357,20 +375,20 @@ namespace jc {
         const auto* o = static_cast<const SymMul*>(other);
         if (args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
-            if (args[i].get() != o->args[i].get()) return false;
+            if (args[i] != o->args[i]) return false;
         }
         return true;
     }
 
-    SymPow::SymPow(std::shared_ptr<SymNode> b, std::shared_ptr<SymNode> e) : base(std::move(b)), exp(std::move(e)) {
+    SymPow::SymPow(SymNode* b, SymNode* e) : base(b), exp(e) {
         hashValue = hashCombine(static_cast<uint64_t>(SymType::POW), hashCombine(base->hashValue, exp->hashValue));
     }
     bool SymPow::equals(const SymNode* other) const {
         const auto* o = static_cast<const SymPow*>(other);
-        return base.get() == o->base.get() && exp.get() == o->exp.get();
+        return base == o->base && exp == o->exp;
     }
 
-    SymFunc::SymFunc(std::string n, std::vector<std::shared_ptr<SymNode>> a) : name(n == "ln" ? "log" : std::move(n)), args(std::move(a)) {
+    SymFunc::SymFunc(std::string n, std::vector<SymNode*> a) : name(n == "ln" ? "log" : std::move(n)), args(std::move(a)) {
         uint64_t h = hashCombine(static_cast<uint64_t>(SymType::FUNC), hashString(name));
         for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
         hashValue = h;
@@ -379,7 +397,7 @@ namespace jc {
         const auto* o = static_cast<const SymFunc*>(other);
         if (name != o->name || args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
-            if (args[i].get() != o->args[i].get()) return false;
+            if (args[i] != o->args[i]) return false;
         }
         return true;
     }
@@ -435,14 +453,14 @@ namespace jc {
     // ==========================================
     // 表达式排序比较器 (Higher power first, smaller lexicographical first)
     // ==========================================
-    static int compareSymNodes(const std::shared_ptr<SymNode>& a, const std::shared_ptr<SymNode>& b) {
+    static int compareSymNodes(SymNode* a, SymNode* b) {
         if (a == b) return 0;
 
-        auto getCore = [](const std::shared_ptr<SymNode>& n) -> std::tuple<std::shared_ptr<SymNode>, double, double> {
-            std::shared_ptr<SymNode> core = n;
+        auto getCore = [](SymNode* n) -> std::tuple<SymNode*, double, double> {
+            SymNode* core = n;
             if (n->getType() == SymType::MUL) {
-                auto mul = std::static_pointer_cast<SymMul>(n);
-                std::vector<std::shared_ptr<SymNode>> vars;
+                auto mul = static_cast<SymMul*>(n);
+                std::vector<SymNode*> vars;
                 for (auto& arg : mul->args) {
                     if (arg->getType() != SymType::NUM) vars.push_back(arg);
                 }
@@ -452,9 +470,9 @@ namespace jc {
                     double totalExp = 0.0;
                     for (auto& v : vars) {
                         if (v->getType() == SymType::POW) {
-                            auto p = std::static_pointer_cast<SymPow>(v);
+                            auto p = static_cast<SymPow*>(v);
                             if (p->exp->getType() == SymType::NUM) {
-                                try { totalExp += casValToValue(std::static_pointer_cast<SymNum>(p->exp)->value).asDouble(); } catch(...) { totalExp += 1.0; }
+                                try { totalExp += casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble(); } catch(...) { totalExp += 1.0; }
                             } else totalExp += 1.0;
                         } else {
                             totalExp += 1.0;
@@ -467,10 +485,10 @@ namespace jc {
             }
 
             if (core->getType() == SymType::POW) {
-                auto p = std::static_pointer_cast<SymPow>(core);
+                auto p = static_cast<SymPow*>(core);
                 if (p->exp->getType() == SymType::NUM) {
                     try {
-                        double e = casValToValue(std::static_pointer_cast<SymNum>(p->exp)->value).asDouble();
+                        double e = casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble();
                         return {p->base, e, e};
                     } catch(...) {}
                 }
@@ -511,13 +529,13 @@ namespace jc {
     // ==========================================
     // SymExpr 构造
     // ==========================================
-    SymExpr::SymExpr() : ptr(intern(std::make_shared<SymNum>(BigInt(0)))) {}
-    SymExpr::SymExpr(double v) : ptr(intern(std::make_shared<SymNum>(v))) {}
-    SymExpr::SymExpr(const BigInt& v) : ptr(intern(std::make_shared<SymNum>(v))) {}
-    SymExpr::SymExpr(const Fraction& v) : ptr(intern(std::make_shared<SymNum>(v))) {}
+    SymExpr::SymExpr() : ptr(intern(new SymNum(BigInt(0)))) {}
+    SymExpr::SymExpr(double v) : ptr(intern(new SymNum(v))) {}
+    SymExpr::SymExpr(const BigInt& v) : ptr(intern(new SymNum(v))) {}
+    SymExpr::SymExpr(const Fraction& v) : ptr(intern(new SymNum(v))) {}
     SymExpr::SymExpr(const Complex& v) {
         if (v.imag == 0.0) {
-            ptr = intern(std::make_shared<SymNum>(v.real));
+            ptr = intern(new SymNum(v.real));
         } else if (v.real == 0.0) {
             SymExpr imagPart(v.imag);
             SymExpr iVar = SymExpr::makeVar("i");
@@ -529,10 +547,10 @@ namespace jc {
             ptr = intern((realPart + imagPart * iVar).ptr);
         }
     }
-    SymExpr::SymExpr(const CASVal& v) : ptr(intern(std::make_shared<SymNum>(v))) {}
+    SymExpr::SymExpr(const CASVal& v) : ptr(intern(new SymNum(v))) {}
 
     SymExpr SymExpr::makeVar(const std::string& name) {
-        return SymExpr(std::make_shared<SymVar>(name));
+        return SymExpr(new SymVar(name));
     }
     std::string SymExpr::toString() const { return ptr ? ptr->toString() : "null"; }
     bool SymExpr::isZero() const { return ptr && ptr->isZero(); }

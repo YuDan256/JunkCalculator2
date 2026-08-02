@@ -53,6 +53,9 @@ namespace jc {
     public:
         uint64_t hashValue = 0;
 
+        void* operator new(size_t size);
+        void operator delete(void* ptr, size_t size);
+
         virtual ~SymNode() = default;
         virtual SymType getType() const = 0;
         
@@ -73,13 +76,13 @@ namespace jc {
     // ==========================================
     class SymExpr {
     public:
-        std::shared_ptr<SymNode> ptr;
+        SymNode* ptr;
 
-        static std::shared_ptr<SymNode> intern(const std::shared_ptr<SymNode>& node);
+        static SymNode* intern(SymNode* node);
         static void cleanupPool(); // 清理全局池中失效的弱引用
 
         SymExpr();
-        explicit SymExpr(std::shared_ptr<SymNode> p) : ptr(intern(std::move(p))) {}
+        explicit SymExpr(SymNode* p) : ptr(intern(p)) {}
 
         // 隐式升维构造
         SymExpr(double v);
@@ -172,11 +175,11 @@ namespace jc {
     // 内部工具暴露给 Integration 模块
     std::pair<bool, int64_t> extractExactInt(const CASVal& cval);
     bool isCasNegative(const CASVal& v);
-    void collectAllVars(const std::shared_ptr<SymNode>& node, std::set<std::string>& vars);
+    void collectAllVars(SymNode* node, std::set<std::string>& vars);
     std::pair<bool, SymExpr> trySquareRoot(const SymExpr& expr, bool allowPartial = false);
-    bool containsVar(const std::shared_ptr<SymNode>& node, const std::string& var);
+    bool containsVar(SymNode* node, const std::string& var);
     bool isPolynomialIn(const SymExpr& expr, const std::string& var);
-    bool matchAST(const std::shared_ptr<SymNode>& node, const std::shared_ptr<SymNode>& pat, std::map<std::string, SymExpr>& captures);
+    bool matchAST(SymNode* node, SymNode* pat, std::map<std::string, SymExpr>& captures);
     SymExpr substituteCaptures(const SymExpr& target, const std::map<std::string, SymExpr>& captures);
     SymExpr simplifyCore(const SymExpr& expr);
     std::vector<SymExpr> extractCoeffs(const SymExpr& expr, const std::string& var);
@@ -211,8 +214,8 @@ namespace jc {
 
     class SymAdd : public SymNode {
     public:
-        std::vector<std::shared_ptr<SymNode>> args;
-        explicit SymAdd(std::vector<std::shared_ptr<SymNode>> a);
+        std::vector<SymNode*> args;
+        explicit SymAdd(std::vector<SymNode*> a);
         SymType getType() const override { return SymType::ADD; }
         std::string computeString() const override;
         bool equals(const SymNode* other) const override;
@@ -220,8 +223,8 @@ namespace jc {
 
     class SymMul : public SymNode {
     public:
-        std::vector<std::shared_ptr<SymNode>> args;
-        explicit SymMul(std::vector<std::shared_ptr<SymNode>> a);
+        std::vector<SymNode*> args;
+        explicit SymMul(std::vector<SymNode*> a);
         SymType getType() const override { return SymType::MUL; }
         std::string computeString() const override;
         bool equals(const SymNode* other) const override;
@@ -229,9 +232,9 @@ namespace jc {
 
     class SymPow : public SymNode {
     public:
-        std::shared_ptr<SymNode> base;
-        std::shared_ptr<SymNode> exp;
-        SymPow(std::shared_ptr<SymNode> b, std::shared_ptr<SymNode> e);
+        SymNode* base;
+        SymNode* exp;
+        SymPow(SymNode* b, SymNode* e);
         SymType getType() const override { return SymType::POW; }
         std::string computeString() const override;
         bool equals(const SymNode* other) const override;
@@ -240,8 +243,8 @@ namespace jc {
     class SymFunc : public SymNode {
     public:
         std::string name;
-        std::vector<std::shared_ptr<SymNode>> args;
-        SymFunc(std::string n, std::vector<std::shared_ptr<SymNode>> a);
+        std::vector<SymNode*> args;
+        SymFunc(std::string n, std::vector<SymNode*> a);
         SymType getType() const override { return SymType::FUNC; }
         std::string computeString() const override;
         bool equals(const SymNode* other) const override;
@@ -252,9 +255,9 @@ namespace jc {
     SymExpr::SymExpr(T v) {
         int64_t val = static_cast<int64_t>(v);
         if (val >= -2147483648LL && val <= 2147483647LL) {
-            ptr = intern(std::make_shared<SymNum>(static_cast<int32_t>(val)));
+            ptr = intern(new SymNum(static_cast<int32_t>(val)));
         } else {
-            ptr = intern(std::make_shared<SymNum>(BigInt(val)));
+            ptr = intern(new SymNum(BigInt(val)));
         }
     }
 

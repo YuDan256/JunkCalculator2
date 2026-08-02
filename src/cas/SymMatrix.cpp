@@ -876,6 +876,43 @@ namespace jc {
         return res;
     }
 
+    SymMatrix SymMatrix::exp() const {
+        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Matrix exponential requires a square matrix.");
+        try {
+            auto [P, D] = diagonalize();
+            SymMatrix expD = zeros(rows, cols);
+            for (int i = 0; i < rows; ++i) {
+                expD(i, i) = SymExpr::makeFunc("exp", std::vector<SymNode*>{D(i, i).ptr});
+            }
+            return P * expD * P.inverse();
+        } catch (const std::exception& e) {
+            // 降级方案：对于不可对角化的矩阵，尝试使用泰勒展开（适用于幂零矩阵）
+            SymMatrix res = identity(rows);
+            SymMatrix term = identity(rows);
+            SymMatrix A = *this;
+            BigInt fact(1);
+            for (int i = 1; i <= rows; ++i) {
+                term = term * A;
+                fact = fact * BigInt(i);
+                SymMatrix term_div = term / SymExpr(fact);
+                res = res + term_div;
+                
+                bool all_zero = true;
+                for (int r = 0; r < rows; ++r) {
+                    for (int c = 0; c < cols; ++c) {
+                        if (!isSymZero(term(r, c))) {
+                            all_zero = false;
+                            break;
+                        }
+                    }
+                    if (!all_zero) break;
+                }
+                if (all_zero) return res;
+            }
+            throw std::runtime_error(std::string("SymMatrix Error: Matrix exponential failed (matrix may not be diagonalizable and is not nilpotent). Inner error: ") + e.what());
+        }
+    }
+
     // ==========================================
     // CAS 深度联动
     // ==========================================

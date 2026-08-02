@@ -101,6 +101,8 @@ namespace jc {
         SymMatrix jacobian(const std::vector<std::string>& vars) const;
         SymMatrix hessian(const std::vector<std::string>& vars) const;
         SymMatrix kroneckerProduct(const SymMatrix& other) const;
+        
+        SymMatrix exp() const;
 
         // --- CAS 深度联动 (将在后续步骤实现) ---
         SymMatrix diff(const std::string& var) const;

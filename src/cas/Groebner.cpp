@@ -282,19 +282,49 @@ namespace jc {
 
     MultiPoly MultiPoly::operator+(const MultiPoly& other) const {
         MultiPoly res;
-        res.terms = terms;
-        res.terms.insert(res.terms.end(), other.terms.begin(), other.terms.end());
-        res.cleanAndSort();
+        res.terms.reserve(terms.size() + other.terms.size());
+        size_t i = 0, j = 0;
+        while (i < terms.size() && j < other.terms.size()) {
+            if (terms[i].mono < other.terms[j].mono) {
+                res.terms.push_back(other.terms[j++]);
+            } else if (other.terms[j].mono < terms[i].mono) {
+                res.terms.push_back(terms[i++]);
+            } else {
+                Fraction sum = terms[i].coeff + other.terms[j].coeff;
+                if (!(sum == Fraction(0))) {
+                    res.terms.emplace_back(sum, terms[i].mono);
+                }
+                i++; j++;
+            }
+        }
+        while (i < terms.size()) res.terms.push_back(terms[i++]);
+        while (j < other.terms.size()) res.terms.push_back(other.terms[j++]);
         return res;
     }
 
     MultiPoly MultiPoly::operator-(const MultiPoly& other) const {
         MultiPoly res;
-        res.terms = terms;
-        for (const auto& t : other.terms) {
-            res.terms.emplace_back(Fraction(0) - t.coeff, t.mono);
+        res.terms.reserve(terms.size() + other.terms.size());
+        size_t i = 0, j = 0;
+        while (i < terms.size() && j < other.terms.size()) {
+            if (terms[i].mono < other.terms[j].mono) {
+                res.terms.emplace_back(Fraction(0) - other.terms[j].coeff, other.terms[j].mono);
+                j++;
+            } else if (other.terms[j].mono < terms[i].mono) {
+                res.terms.push_back(terms[i++]);
+            } else {
+                Fraction diff = terms[i].coeff - other.terms[j].coeff;
+                if (!(diff == Fraction(0))) {
+                    res.terms.emplace_back(diff, terms[i].mono);
+                }
+                i++; j++;
+            }
         }
-        res.cleanAndSort();
+        while (i < terms.size()) res.terms.push_back(terms[i++]);
+        while (j < other.terms.size()) {
+            res.terms.emplace_back(Fraction(0) - other.terms[j].coeff, other.terms[j].mono);
+            j++;
+        }
         return res;
     }
 

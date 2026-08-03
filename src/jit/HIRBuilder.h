@@ -357,9 +357,10 @@ public:
     }
 
     // --- 装箱与拆箱节点 ---
-    HIRNode* createUnboxInt32(HIRNode* value) {
+    HIRNode* createUnboxInt32(HIRNode* value, HIRNode* guard) {
         auto node = graph_->allocateNode<HIRNode>(HIROp::UnboxInt32, JITType::Int32);
-        node->addInput(value);
+        node->addInput(guard); // Control/Effect dependency
+        node->addInput(value); // Data dependency
         return node;
     }
 
@@ -369,8 +370,9 @@ public:
         return node;
     }
 
-    HIRNode* createUnboxDouble(HIRNode* value) {
+    HIRNode* createUnboxDouble(HIRNode* value, HIRNode* guard) {
         auto node = graph_->allocateNode<HIRNode>(HIROp::UnboxDouble, JITType::Double);
+        node->addInput(guard);
         node->addInput(value);
         return node;
     }
@@ -381,8 +383,9 @@ public:
         return node;
     }
 
-    HIRNode* createUnboxBool(HIRNode* value) {
+    HIRNode* createUnboxBool(HIRNode* value, HIRNode* guard) {
         auto node = graph_->allocateNode<HIRNode>(HIROp::UnboxBool, JITType::Bool);
+        node->addInput(guard);
         node->addInput(value);
         return node;
     }

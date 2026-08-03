@@ -130,9 +130,9 @@ public:
                     if (ISK(rk)) {
                         int idx = INDEXK(rk);
                         const Value& kst = chunk_.constants[idx];
-                        if (kst.isInt32()) return builder_.createInt32Constant(kst.asInt32());
-                        if (kst.isDouble()) return builder_.createDoubleConstant(kst.asDoubleRaw());
-                        if (kst.isBool()) return builder_.createBoolConstant(kst.asBool());
+                        if (kst.isInt32()) return builder_.createBoxInt32(builder_.createInt32Constant(kst.asInt32()));
+                        if (kst.isDouble()) return builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
+                        if (kst.isBool()) return builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
                         if (kst.isString()) return builder_.createStringConstant(kst.asString());
                         return builder_.createNoneConstant();
                     }
@@ -151,11 +151,11 @@ public:
                         const Value& kst = chunk_.constants[bx];
                         HIRNode* node = nullptr;
                         if (kst.isInt32()) {
-                            node = builder_.createInt32Constant(kst.asInt32());
+                            node = builder_.createBoxInt32(builder_.createInt32Constant(kst.asInt32()));
                         } else if (kst.isDouble()) {
-                            node = builder_.createDoubleConstant(kst.asDoubleRaw());
+                            node = builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
                         } else if (kst.isBool()) {
-                            node = builder_.createBoolConstant(kst.asBool());
+                            node = builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
                         } else if (kst.isString()) {
                             node = builder_.createStringConstant(kst.asString());
                         } else if (kst.isNone()) {
@@ -172,7 +172,7 @@ public:
                         break;
                     }
                     case OpCode::LOAD_BOOL: {
-                        builder_.setLocal(a, builder_.createBoolConstant(b != 0));
+                        builder_.setLocal(a, builder_.createBoxBool(builder_.createBoolConstant(b != 0)));
                         break;
                     }
                     case OpCode::GET_GLOBAL: {
@@ -204,8 +204,8 @@ public:
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsInt32(lhs, fs);
                             auto guardR = builder_.createGuardIsInt32(rhs, fs);
-                            auto unboxL = builder_.createUnboxInt32(guardL);
-                            auto unboxR = builder_.createUnboxInt32(guardR);
+                            auto unboxL = builder_.createUnboxInt32(lhs, guardL);
+                            auto unboxR = builder_.createUnboxInt32(rhs, guardR);
                             
                             HIRNode* opNode = nullptr;
                             if (op == OpCode::ADD) opNode = builder_.createAddI32(unboxL, unboxR);
@@ -221,8 +221,8 @@ public:
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsDouble(lhs, fs);
                             auto guardR = builder_.createGuardIsDouble(rhs, fs);
-                            auto unboxL = builder_.createUnboxDouble(guardL);
-                            auto unboxR = builder_.createUnboxDouble(guardR);
+                            auto unboxL = builder_.createUnboxDouble(lhs, guardL);
+                            auto unboxR = builder_.createUnboxDouble(rhs, guardR);
                             
                             HIRNode* opNode = nullptr;
                             if (op == OpCode::ADD) opNode = builder_.createAddF64(unboxL, unboxR);
@@ -249,8 +249,8 @@ public:
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsInt32(lhs, fs);
                             auto guardR = builder_.createGuardIsInt32(rhs, fs);
-                            auto unboxL = builder_.createUnboxInt32(guardL);
-                            auto unboxR = builder_.createUnboxInt32(guardR);
+                            auto unboxL = builder_.createUnboxInt32(lhs, guardL);
+                            auto unboxR = builder_.createUnboxInt32(rhs, guardR);
                             
                             HIRNode* opNode = nullptr;
                             if (op == OpCode::BAND) opNode = builder_.createBitAndI32(unboxL, unboxR);
@@ -277,8 +277,8 @@ public:
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsInt32(lhs, fs);
                             auto guardR = builder_.createGuardIsInt32(rhs, fs);
-                            auto unboxL = builder_.createUnboxInt32(guardL);
-                            auto unboxR = builder_.createUnboxInt32(guardR);
+                            auto unboxL = builder_.createUnboxInt32(lhs, guardL);
+                            auto unboxR = builder_.createUnboxInt32(rhs, guardR);
                             
                             HIRNode* opNode = nullptr;
                             if (op == OpCode::EQ) opNode = builder_.createCmpEqI32(unboxL, unboxR);
@@ -293,8 +293,8 @@ public:
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsDouble(lhs, fs);
                             auto guardR = builder_.createGuardIsDouble(rhs, fs);
-                            auto unboxL = builder_.createUnboxDouble(guardL);
-                            auto unboxR = builder_.createUnboxDouble(guardR);
+                            auto unboxL = builder_.createUnboxDouble(lhs, guardL);
+                            auto unboxR = builder_.createUnboxDouble(rhs, guardR);
                             
                             HIRNode* opNode = nullptr;
                             if (op == OpCode::EQ) opNode = builder_.createCmpEqF64(unboxL, unboxR);
@@ -318,7 +318,7 @@ public:
                         if (fb == 0x01) {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guard = builder_.createGuardIsInt32(val, fs);
-                            auto unbox = builder_.createUnboxInt32(guard);
+                            auto unbox = builder_.createUnboxInt32(val, guard);
                             
                             if (op == OpCode::UNM) {
                                 builder_.setLocal(a, builder_.createBoxInt32(builder_.createNegI32(unbox)));
@@ -334,12 +334,12 @@ public:
                         } else if (fb == 0x02 && op == OpCode::UNM) {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guard = builder_.createGuardIsDouble(val, fs);
-                            auto unbox = builder_.createUnboxDouble(guard);
+                            auto unbox = builder_.createUnboxDouble(val, guard);
                             builder_.setLocal(a, builder_.createBoxDouble(builder_.createNegF64(unbox)));
                         } else if (fb == 0x08 && (op == OpCode::NOT || op == OpCode::TO_BOOL)) {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guard = builder_.createGuardIsBool(val, fs);
-                            auto unbox = builder_.createUnboxBool(guard);
+                            auto unbox = builder_.createUnboxBool(val, guard);
                             if (op == OpCode::NOT) {
                                 auto falseNode = builder_.createBoolConstant(false);
                                 builder_.setLocal(a, builder_.createBoxBool(builder_.createCmpEqI32(unbox, falseNode)));

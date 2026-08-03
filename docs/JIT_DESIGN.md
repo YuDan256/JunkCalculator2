@@ -338,10 +338,10 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 35.5:** **[验证]** 编写单元测试：手动构造包含 `LOADK` 和 `ADD` 的 Chunk，并验证生成的 HIR 图。
 
 ### Phase 7: LIR 与指令选择 (LIR & Instruction Selection) (Steps 36-39)
-*   **Step 36:** 定义 `LIRInst`, `LIROperand` (Virtual/Physical/Stack) 和 `LIRBlock`。
-*   **Step 37:** 实现 `LIRBuilder` API，支持物理寄存器约束的声明。
-*   **Step 38:** 实现全局代码移动 (GCM) 算法，将无序的 HIR 节点调度到 LIR 基本块中。
-*   **Step 39:** 实现指令选择器，将 HIR 的 `AddI32` 降级为 LIR 的 `add` 指令。
+*   **[已完成] Step 36:** 定义 `LIRInst`, `LIROperand` (Virtual/Physical/Stack) 和 `LIRBlock`。
+*   **[已完成] Step 37:** 实现 `LIRBuilder` API，支持物理寄存器约束的声明。
+*   **[已完成] Step 38:** 实现全局代码移动 (GCM) 算法，将无序的 HIR 节点调度到 LIR 基本块中。
+*   **[已完成] Step 39:** 实现指令选择器，将 HIR 的 `AddI32` 降级为 LIR 的 `add` 指令。
 
 ### Phase 8: 寄存器分配 (Register Allocation) (Steps 40-42)
 *   **Step 40:** 实现活跃区间分析 (Liveness Analysis)，计算每个 VirtualReg 的生命周期。

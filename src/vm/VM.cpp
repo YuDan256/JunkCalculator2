@@ -905,6 +905,8 @@ static const std::string DUNDER_MUL = "__mul__";
 static const std::string DUNDER_RMUL = "__rmul__";
 static const std::string DUNDER_DIV = "__div__";
 static const std::string DUNDER_RDIV = "__rdiv__";
+static const std::string DUNDER_IDIV = "__idiv__";
+static const std::string DUNDER_RIDIV = "__ridiv__";
 static const std::string DUNDER_LDIV = "__ldiv__";
 static const std::string DUNDER_RLDIV = "__rldiv__";
 static const std::string DUNDER_MOD = "__mod__";
@@ -1139,7 +1141,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                     if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
                         val.isObjType(ObjType::COMPLEX) || val.isObjType(ObjType::BASENUM)) return true;
                     if (val.isInstance()) {
-                        if (findDunder(val, "__add__").first || findDunder(val, "__mul__").first || findDunder(val, "__sub__").first || findDunder(val, "__div__").first || findDunder(val, "__ldiv__").first) return true;
+                        if (findDunder(val, "__add__").first || findDunder(val, "__mul__").first || findDunder(val, "__sub__").first || findDunder(val, "__div__").first || findDunder(val, "__idiv__").first || findDunder(val, "__ldiv__").first) return true;
                     }
                     break;
                 }
@@ -3542,6 +3544,21 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_DIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb / vc;
+                break;
+            }
+            case OpCode::IDIV: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) {
+                    int32_t num = vb.asInt32();
+                    int32_t den = vc.asInt32();
+                    if (den == 0) throw std::runtime_error("Math Error: Division by zero.");
+                    if (num == -2147483648 && den == -1) { getReg(a) = Value(BigInt(2147483648LL)); break; }
+                    getReg(a) = Value::fromInt32(num / den); break;
+                }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_IDIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RIDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
+                getReg(a) = idivide(vb, vc);
                 break;
             }
             case OpCode::MOD: {

@@ -1579,6 +1579,7 @@ void IRBuilder::visitBinary(Binary* expr) {
         case TokenType::MINUS: op = IROp::Sub; break;
         case TokenType::STAR: op = IROp::Mul; break;
         case TokenType::SLASH: op = IROp::Div; break;
+        case TokenType::TILDE_SLASH: op = IROp::IDiv; break;
         case TokenType::PERCENT: op = IROp::Mod; break;
         case TokenType::CARET: op = IROp::Pow; break;
         case TokenType::BACKSLASH: op = IROp::LeftDivide; break;
@@ -2762,6 +2763,8 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         case TokenType::STAR_ASSIGN: op = IROp::Mul; break;
         case TokenType::SLASH:
         case TokenType::SLASH_ASSIGN: op = IROp::Div; break;
+        case TokenType::TILDE_SLASH:
+        case TokenType::TILDE_SLASH_ASSIGN: op = IROp::IDiv; break;
         case TokenType::PERCENT:
         case TokenType::PERCENT_ASSIGN: op = IROp::Mod; break;
         case TokenType::CARET:

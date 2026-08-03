@@ -24,6 +24,7 @@ namespace jc {
         MINUS_ASSIGN,        // ★ -=
         STAR_ASSIGN,         // ★ *=
         SLASH_ASSIGN,        // ★ /=
+        TILDE_SLASH_ASSIGN,  // ★ ~/=
         PERCENT_ASSIGN,      // ★ %=
         CARET_ASSIGN,        // ★ ^=
         BACKSLASH_ASSIGN,    // ★ \=
@@ -77,6 +78,7 @@ namespace jc {
         OR_OR,          // ||
         BANG,           // !  (单独的，不是 !=)
         TILDE,          // ~  (★ 新增)
+        TILDE_SLASH,    // ~/ (★ 新增)
         BIT_AND,        // &  (★ 新增)
         BIT_OR,         // |  (★ 新增)
         BIT_XOR,        // ^^ (★ 新增)
@@ -121,6 +123,7 @@ namespace jc {
         case TokenType::MINUS_ASSIGN:   return "MINUS_ASSIGN(-=)";
         case TokenType::STAR_ASSIGN:    return "STAR_ASSIGN(*=)";
         case TokenType::SLASH_ASSIGN:   return "SLASH_ASSIGN(/=)";
+        case TokenType::TILDE_SLASH_ASSIGN: return "TILDE_SLASH_ASSIGN(~/=)";
         case TokenType::PERCENT_ASSIGN: return "PERCENT_ASSIGN(%=)";
         case TokenType::CARET_ASSIGN:   return "CARET_ASSIGN(^=)";
         case TokenType::BACKSLASH_ASSIGN: return "BACKSLASH_ASSIGN(\\=)";
@@ -133,6 +136,7 @@ namespace jc {
         case TokenType::OR_OR:         return "OR_OR(||)";      // ★
         case TokenType::BANG:          return "BANG(!)";         // ★
         case TokenType::TILDE:         return "TILDE(~)";        // ★
+        case TokenType::TILDE_SLASH:   return "TILDE_SLASH(~/)"; // ★
         case TokenType::BIT_AND:       return "BIT_AND(&)";
         case TokenType::BIT_OR:        return "BIT_OR(|)";
         case TokenType::BIT_XOR:       return "BIT_XOR(^^)";
@@ -314,6 +318,7 @@ namespace jc {
         if (s == "-=") return TokenType::MINUS_ASSIGN;
         if (s == "*=") return TokenType::STAR_ASSIGN;
         if (s == "/=") return TokenType::SLASH_ASSIGN;
+        if (s == "~/=") return TokenType::TILDE_SLASH_ASSIGN;
         if (s == "%=") return TokenType::PERCENT_ASSIGN;
         if (s == "^=") return TokenType::CARET_ASSIGN;
         if (s == "\\=") return TokenType::BACKSLASH_ASSIGN;
@@ -326,6 +331,7 @@ namespace jc {
         if (s == "||") return TokenType::OR_OR;
         if (s == "!") return TokenType::BANG;
         if (s == "~") return TokenType::TILDE;
+        if (s == "~/") return TokenType::TILDE_SLASH;
         if (s == "&") return TokenType::BIT_AND;
         if (s == "|") return TokenType::BIT_OR;
         if (s == "^^") return TokenType::BIT_XOR;

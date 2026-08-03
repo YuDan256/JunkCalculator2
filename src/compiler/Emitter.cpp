@@ -167,6 +167,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::Sub: inst.words = buildBinary(OpCode::SUB); break;
                     case IROp::Mul: inst.words = buildBinary(OpCode::MUL); break;
                     case IROp::Div: inst.words = buildBinary(OpCode::DIV); break;
+                    case IROp::IDiv: inst.words = buildBinary(OpCode::IDIV); break;
                     case IROp::Mod: inst.words = buildBinary(OpCode::MOD); break;
                     case IROp::Pow: inst.words = buildBinary(OpCode::POW); break;
                     case IROp::LeftDivide: inst.words = buildBinary(OpCode::LDIV); break;

@@ -512,7 +512,7 @@ namespace jc {
 
         // 处理复合赋值 +=, -= 等...
         if (match({ TokenType::PLUS_ASSIGN, TokenType::MINUS_ASSIGN,
-                    TokenType::STAR_ASSIGN, TokenType::SLASH_ASSIGN,
+                    TokenType::STAR_ASSIGN, TokenType::SLASH_ASSIGN, TokenType::TILDE_SLASH_ASSIGN,
                     TokenType::PERCENT_ASSIGN, TokenType::CARET_ASSIGN,
                     TokenType::BACKSLASH_ASSIGN,
                     TokenType::BIT_AND_ASSIGN, TokenType::BIT_OR_ASSIGN, TokenType::BIT_XOR_ASSIGN,
@@ -529,6 +529,7 @@ namespace jc {
             case TokenType::MINUS_ASSIGN:   baseOp = TokenType::MINUS; break;
             case TokenType::STAR_ASSIGN:    baseOp = TokenType::STAR; break;
             case TokenType::SLASH_ASSIGN:   baseOp = TokenType::SLASH; break;
+            case TokenType::TILDE_SLASH_ASSIGN: baseOp = TokenType::TILDE_SLASH; break;
             case TokenType::PERCENT_ASSIGN: baseOp = TokenType::PERCENT; break;
             case TokenType::CARET_ASSIGN:   baseOp = TokenType::CARET; break;
             case TokenType::BACKSLASH_ASSIGN: baseOp = TokenType::BACKSLASH; break;
@@ -716,7 +717,7 @@ namespace jc {
 
     std::unique_ptr<Expr> Parser::multiplication() {
         auto expr = unary();
-        while (match({ TokenType::STAR, TokenType::SLASH, TokenType::PERCENT, TokenType::BACKSLASH })) {
+        while (match({ TokenType::STAR, TokenType::SLASH, TokenType::TILDE_SLASH, TokenType::PERCENT, TokenType::BACKSLASH })) {
             Token op = previous();
             auto right = unary();
             expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));

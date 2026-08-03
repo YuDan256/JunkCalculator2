@@ -266,9 +266,9 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **ABI 兼容：** 分配器必须知道哪些是调用者保存寄存器 (Caller-Saved，如 `RAX`, `RCX`, `RDX`)，哪些是被调用者保存寄存器 (Callee-Saved，如 `RBX`, `R12-R15`)。
 *   **跨调用存活：** 如果一个虚拟寄存器的活跃区间跨越了 C++ 函数调用 (Call 指令)，分配器应优先将其分配到 Callee-Saved 寄存器中。如果只能分配到 Caller-Saved 寄存器，分配器必须在 Call 指令前后自动插入 `push` 和 `pop` 进行现场保护。
 
-## 14. JIT 稳健开发路线图 (40-Step Implementation Roadmap)
+## 14. JIT 稳健开发路线图 (Expanded Industrial Roadmap)
 
-为了保证 JIT 编译器的绝对稳定，避免难以调试的机器码崩溃，整个开发过程被严格拆分为 40 个微小步骤。每一步都必须独立验证，绝不大步迈进。
+为了保证 JIT 编译器的绝对稳定，避免难以调试的机器码崩溃，整个开发过程被严格拆分为 47 个微小步骤。每一步都必须独立验证，绝不大步迈进。
 
 ### Phase 1: 基础设施与可执行内存 (Steps 1-5)
 *   **Step 1:** 定义 `ExecutableMemory` 类的基础结构（头文件设计）。
@@ -277,60 +277,65 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **Step 4:** 实现内存权限修改 (`VirtualProtect`/`mprotect`) 与指令缓存刷新 (`FlushInstructionCache`)。
 *   **Step 5:** **[验证]** 编写 C++ 单元测试：分配内存，手动写入 `0xC3` (x86 `ret` 指令)，转换为函数指针并成功调用。
 
-### Phase 2: 宏汇编器基础 (MacroAssembler Basics) (Steps 6-12)
-*   **Step 6:** 定义强类型的 `Register` 和 `XMMRegister` 类，预定义 `rax`, `rcx` 等常量。
-*   **Step 7:** 定义 `Operand` 类，支持 Base + Index * Scale + Disp 内存寻址模式。
-*   **Step 8:** 实现 `MacroAssembler` 的底层 Buffer 管理（动态扩容的字节数组）。
-*   **Step 9:** 实现 x86-64 的 REX 前缀发射逻辑 (`emitRex`)。
-*   **Step 10:** 实现 ModR/M 和 SIB 字节的计算与发射逻辑。
-*   **Step 11:** 实现基础 ALU 指令的发射 API（如 `mov`, `add`, `sub`, `ret`，仅限寄存器操作数）。
-*   **Step 12:** **[验证]** 编写单元测试：使用 API 发射 `add eax, ecx; ret`，传入参数并验证计算结果。
+### Phase 2: 宏汇编器核心指令集 (MacroAssembler Core) (Steps 6-16)
+*   **[已完成] Step 6:** 定义强类型的 `Register` 和 `XMMRegister` 类，预定义 `rax`, `xmm0` 等常量。
+*   **[已完成] Step 7:** 定义 `Operand` 类，支持 Base + Index * Scale + Disp 内存寻址模式。
+*   **[已完成] Step 8:** 实现 `MacroAssembler` 的底层 Buffer 管理（动态扩容的字节数组）。
+*   **[已完成] Step 9:** 实现 x86-64 的 REX 前缀发射逻辑 (`emitRex`)。
+*   **[已完成] Step 10:** 实现 ModR/M 和 SIB 字节的计算与发射逻辑。
+*   **[已完成] Step 11:** 实现基础 ALU 与逻辑指令 (`mov`, `add`, `sub`, `cmp`, `test`, `and`, `or`, `xor`)，支持寄存器与内存操作数。
+*   **[当前进度] Step 12:** 实现复杂 ALU 指令 (`imul`, `idiv`, `cdq`/`cqo`, `shl`, `shr`, `sar`) 及隐式寄存器约束处理。
+*   **Step 13:** 实现栈操作与 64 位立即数加载 (`push`, `pop`, `movabs`)。
+*   **Step 14:** 实现浮点标量指令 (SSE2: `movsd`, `addsd`, `subsd`, `mulsd`, `divsd`, `ucomisd`, `cvtsi2sd`, `cvttsd2si`)。
+*   **Step 15:** 实现 C++ ABI 辅助封装 (Prologue/Epilogue, 16字节栈对齐, Windows 32字节 Shadow Space 分配)。
+*   **Step 16:** **[验证]** 编写单元测试：发射包含浮点运算和 C++ 函数调用的机器码，验证 ABI 兼容性。
 
-### Phase 3: 控制流与标签回填 (Control Flow & Backpatching) (Steps 13-16)
-*   **Step 13:** 定义 `Label` 类，维护绑定状态和未决跳转链表。
-*   **Step 14:** 实现无条件跳转 `jmp` 和条件跳转 `jcc` 的发射逻辑（支持 32 位相对偏移）。
-*   **Step 15:** 实现 `bind(Label)` 逻辑，完成相对偏移量的计算与回填 (Patch)。
-*   **Step 16:** **[验证]** 编写单元测试：发射一段包含循环的汇编代码（如计算 1 到 10 的和），执行并验证结果。
+### Phase 3: 控制流与常量池 (Control Flow & Constant Pool) (Steps 17-21)
+*   **Step 17:** 定义 `Label` 类，维护绑定状态和未决跳转链表。
+*   **Step 18:** 实现无条件跳转 `jmp`、条件跳转 `jcc` 和函数调用 `call` 的发射逻辑（支持 32 位相对偏移）。
+*   **Step 19:** 实现 `bind(Label)` 逻辑，完成相对偏移量的计算与回填 (Patch)。
+*   **Step 20:** 实现常量池 (Constant Pool) 与 RIP 相对寻址 (用于高效加载 Double 常量和 64 位指针)。
+*   **Step 21:** **[验证]** 编写单元测试：发射一段包含循环、条件分支和常量池加载的汇编代码，执行并验证结果。
 
-### Phase 4: 解释器类型收集 (Tier 0 Profiling) (Steps 17-21)
-*   **Step 17:** 定义 `TypeFeedbackVector` 和 `FeedbackSlot` 数据结构。
-*   **Step 18:** 在 `CompiledFunction` 和 `Chunk` 中集成反馈向量的分配逻辑。
-*   **Step 19:** 在 `VM.cpp` 中添加轻量级的类型提取宏（利用 NaN-Boxing 快速判断 Int32/Double/Obj）。
-*   **Step 20:** 改造解释器的 `OpCode::ADD`，在执行前记录操作数的实际类型到 Feedback Slot。
-*   **Step 21:** **[验证]** 编写 JC2 测试脚本，运行后打印 Profiling 数据，确认类型收集准确无误。
+### Phase 4: 解释器类型收集 (Tier 0 Profiling) (Steps 22-26)
+*   **Step 22:** 定义 `TypeFeedbackVector` 和 `FeedbackSlot` 数据结构。
+*   **Step 23:** 在 `CompiledFunction` 和 `Chunk` 中集成反馈向量的分配逻辑。
+*   **Step 24:** 在 `VM.cpp` 中添加轻量级的类型提取宏（利用 NaN-Boxing 快速判断 Int32/Double/Obj）。
+*   **Step 25:** 改造解释器的 `OpCode::ADD` 等指令，在执行前记录操作数的实际类型到 Feedback Slot。
+*   **Step 26:** **[验证]** 编写 JC2 测试脚本，运行后打印 Profiling 数据，确认类型收集准确无误。
 
-### Phase 5: HIR 数据结构与构建器 (HIR Structures) (Steps 22-26)
-*   **Step 22:** 定义 `JITType` 枚举和 `HIRNode` 基类。
-*   **Step 23:** 实现 `HIRNode` 的 Use-Def 和 Def-Use 链管理（设为 private）。
-*   **Step 24:** 定义具体的 HIR 节点类（如 `Int32Constant`, `AddI32`, `GuardIsInt32`, `FrameState`）。
-*   **Step 25:** 实现 `HIRBuilder` API（如 `createAddI32`），封装节点创建和连边逻辑。
-*   **Step 26:** **[验证]** 编写单元测试：手动调用 Builder 构建一个微型图，并打印为 Graphviz DOT 格式。
+### Phase 5: HIR 数据结构与构建器 (HIR Structures) (Steps 27-31)
+*   **Step 27:** 定义 `JITType` 枚举和 `HIRNode` 基类。
+*   **Step 28:** 实现 `HIRNode` 的 Use-Def 和 Def-Use 链管理（设为 private）。
+*   **Step 29:** 定义具体的 HIR 节点类（如 `Int32Constant`, `AddI32`, `GuardIsInt32`, `FrameState`）。
+*   **Step 30:** 实现 `HIRBuilder` API（如 `createAddI32`），封装节点创建和连边逻辑。
+*   **Step 31:** **[验证]** 编写单元测试：手动调用 Builder 构建一个微型图，并打印为 Graphviz DOT 格式。
 
-### Phase 6: 字节码到 HIR 的转换 (Bytecode to HIR) (Steps 27-30)
-*   **Step 27:** 实现字节码的基本块 (Basic Block) 划分算法。
-*   **Step 28:** 实现抽象解释器的主循环，维护 256 个虚拟寄存器到 HIR 节点的映射表。
-*   **Step 29:** 实现线性字节码（如 `LOADK`, `MOVE`）到 HIR 的转换（复写传播）。
-*   **Step 30:** 结合 Profiling 数据，实现 `OpCode::ADD` 的类型特化（注入 `Guard` 和 `Unbox` 节点）。
+### Phase 6: 字节码到 HIR 的转换 (Bytecode to HIR) (Steps 32-35)
+*   **Step 32:** 实现字节码的基本块 (Basic Block) 划分算法。
+*   **Step 33:** 实现抽象解释器的主循环，维护 256 个虚拟寄存器到 HIR 节点的映射表。
+*   **Step 34:** 实现线性字节码（如 `LOADK`, `MOVE`）到 HIR 的转换（复写传播）。
+*   **Step 35:** 结合 Profiling 数据，实现 `OpCode::ADD` 的类型特化（注入 `Guard` 和 `Unbox` 节点）。
 
-### Phase 7: LIR 与指令选择 (LIR & Instruction Selection) (Steps 31-34)
-*   **Step 31:** 定义 `LIRInst`, `LIROperand` (Virtual/Physical/Stack) 和 `LIRBlock`。
-*   **Step 32:** 实现 `LIRBuilder` API，支持物理寄存器约束的声明。
-*   **Step 33:** 实现全局代码移动 (GCM) 算法，将无序的 HIR 节点调度到 LIR 基本块中。
-*   **Step 34:** 实现指令选择器，将 HIR 的 `AddI32` 降级为 LIR 的 `add` 指令。
+### Phase 7: LIR 与指令选择 (LIR & Instruction Selection) (Steps 36-39)
+*   **Step 36:** 定义 `LIRInst`, `LIROperand` (Virtual/Physical/Stack) 和 `LIRBlock`。
+*   **Step 37:** 实现 `LIRBuilder` API，支持物理寄存器约束的声明。
+*   **Step 38:** 实现全局代码移动 (GCM) 算法，将无序的 HIR 节点调度到 LIR 基本块中。
+*   **Step 39:** 实现指令选择器，将 HIR 的 `AddI32` 降级为 LIR 的 `add` 指令。
 
-### Phase 8: 寄存器分配 (Register Allocation) (Steps 35-37)
-*   **Step 35:** 实现活跃区间分析 (Liveness Analysis)，计算每个 VirtualReg 的生命周期。
-*   **Step 36:** 实现线性扫描寄存器分配器 (LSRA) 的核心分配与回收逻辑。
-*   **Step 37:** 在 LSRA 中处理 x86-64 的固定物理寄存器约束和栈溢出 (Spilling)。
+### Phase 8: 寄存器分配 (Register Allocation) (Steps 40-42)
+*   **Step 40:** 实现活跃区间分析 (Liveness Analysis)，计算每个 VirtualReg 的生命周期。
+*   **Step 41:** 实现线性扫描寄存器分配器 (LSRA) 的核心分配与回收逻辑。
+*   **Step 42:** 在 LSRA 中处理 x86-64 的固定物理寄存器约束和栈溢出 (Spilling)。
 
-### Phase 9: 代码生成与去优化 (Code Gen & Deoptimization) (Steps 38-40)
-*   **Step 38:** 遍历分配好寄存器的 LIR，调用 `MacroAssembler` 生成最终机器码。
-*   **Step 39:** 实现去优化跳板 (Deopt Trampoline) 的汇编代码，保存所有物理寄存器。
-*   **Step 40:** 实现 C++ `Deoptimize` 运行时函数，根据 Stack Map 重建解释器 `CallFrame` 并平滑回退。
+### Phase 9: 代码生成与去优化 (Code Gen & Deoptimization) (Steps 43-45)
+*   **Step 43:** 遍历分配好寄存器的 LIR，调用 `MacroAssembler` 生成最终机器码。
+*   **Step 44:** 实现去优化跳板 (Deopt Trampoline) 的汇编代码，保存所有物理寄存器。
+*   **Step 45:** 实现 C++ `Deoptimize` 运行时函数，根据 Stack Map 重建解释器 `CallFrame` 并平滑回退。
 
-### Phase 10: 栈上替换 (OSR) (Steps 41-42)
-*   **Step 41:** 在解释器的循环回边指令（如 `JMP` 往回跳时）增加 OSR 计数器。
-*   **Step 42:** 实现 OSR Entry 跳板，将解释器寄存器状态映射到 JIT 物理寄存器，并热切换入 JIT 循环体。
+### Phase 10: 栈上替换 (OSR) (Steps 46-47)
+*   **Step 46:** 在解释器的循环回边指令（如 `JMP` 往回跳时）增加 OSR 计数器。
+*   **Step 47:** 实现 OSR Entry 跳板，将解释器寄存器状态映射到 JIT 物理寄存器，并热切换入 JIT 循环体。
 
 ## 15. JIT 与类型系统及 GC 的交互 (JIT, Type System & GC Interaction)
 
@@ -393,3 +398,18 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   当 JIT 遇到对 `NativeCallable` 的调用时，它会生成一段特殊的汇编跳板。
 *   这段跳板会在机器栈上动态构造一个 `std::vector<Value>`，将 JIT 寄存器中的参数打包进去，然后调用 C++ 的 `std::any_cast<NativeCallable>` 包装器。
 *   这保证了 JIT 代码可以无缝、安全地与任何现有的 JC2 扩展库交互。
+
+## 17. 除法语义与整除操作符 (Division Semantics & `~/`)
+
+在 JC2 中，普通的除法 `/` 具有精确的数学语义：如果两个整数不能整除，会返回一个精确的 `Fraction` 对象。然而，x86-64 的硬件指令 `idiv` 只能执行截断除法。为了在 JIT 中高效且正确地处理除法，我们采用以下混合架构：
+
+### 17.1 输出类型 Profiling (Output Type Profiling)
+对于普通的 `/` 运算符，JIT 依赖 Tier 0 解释器收集的**输出类型反馈**：
+*   **乐观整除假设：** 如果 Profiler 显示某处的 `/` 100% 输出 `Int32`，JIT 会发射 `idiv` 指令，并紧跟一个**余数守卫 (Remainder Guard)**。它检查 `EDX` 寄存器，如果 `EDX != 0`，则触发去优化 (Deoptimization)，退回解释器生成 `Fraction`。
+*   **分数回退 (Fraction Fallback)：** 如果 Profiler 发现该除法曾经输出过 `Fraction`，JIT 将放弃内联汇编，直接生成一个 Callout，调用 C++ 运行时的除法函数。
+
+### 17.2 引入整除操作符 `~/`
+为了给性能敏感的场景提供极致的整数除法速度，我们在语言层面引入专用的整除操作符 `~/`（因为 `//` 已被用作注释）。
+*   **语义：** `~/` 强制执行向零截断的整数除法。
+*   **JIT 编译：** 当 JIT 遇到 `~/` 操作符，且操作数被推导为 `Int32` 时，JIT 直接发射 `idiv` 指令，并**直接丢弃 `EDX` 寄存器中的余数**，不需要任何 Guard 检查，实现零开销的机器码执行。
+*   **安全优势：** 相比于将 `idiv()` 函数作为 Intrinsic 内联，使用专用操作符避免了动态语言中函数名被用户重写（Shadowing）导致的语义破坏问题。

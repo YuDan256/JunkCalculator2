@@ -192,11 +192,11 @@ namespace jc {
 
                 // 运算符
             case TokenType::PLUS: case TokenType::MINUS: case TokenType::STAR:
-            case TokenType::SLASH: case TokenType::CARET: case TokenType::PERCENT:
+            case TokenType::SLASH: case TokenType::TILDE_SLASH: case TokenType::CARET: case TokenType::PERCENT:
             case TokenType::BACKSLASH: case TokenType::PIPE:
             case TokenType::ASSIGN: case TokenType::ARROW:
             case TokenType::PLUS_ASSIGN: case TokenType::MINUS_ASSIGN:
-            case TokenType::STAR_ASSIGN: case TokenType::SLASH_ASSIGN:
+            case TokenType::STAR_ASSIGN: case TokenType::SLASH_ASSIGN: case TokenType::TILDE_SLASH_ASSIGN:
             case TokenType::PERCENT_ASSIGN: case TokenType::CARET_ASSIGN:
             case TokenType::BACKSLASH_ASSIGN:
             case TokenType::BIT_AND_ASSIGN: case TokenType::BIT_OR_ASSIGN: // ★

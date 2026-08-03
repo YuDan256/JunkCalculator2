@@ -1827,6 +1827,40 @@ namespace jc {
         return rhs / lhs;
     }
 
+    inline Value idivide(const Value& lhs, const Value& rhs) {
+        bool lIsInt = lhs.isInt32() || lhs.isBool();
+        bool rIsInt = rhs.isInt32() || rhs.isBool();
+        if (lIsInt && rIsInt) {
+            int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
+            int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
+            if (b == 0) throw std::runtime_error("Math Error: Division by zero.");
+            if (a == -2147483648 && b == -1) return Value(BigInt(2147483648LL));
+            return Value::fromInt32(a / b);
+        }
+        if (lhs.isNumber() && rhs.isNumber()) {
+            double b = rhs.asNumber();
+            if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+            return Value(std::trunc(lhs.asNumber() / b));
+        }
+        
+        bool lhsIsExactInt = lhs.isBigInt() || lhs.isInt32();
+        bool rhsIsExactInt = rhs.isBigInt() || rhs.isInt32();
+        if (lhsIsExactInt && rhsIsExactInt) {
+            BigInt a = lhs.asBigInt();
+            BigInt b = rhs.asBigInt();
+            if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+            return Value(a / b);
+        }
+        
+        if (lhs.isDouble() || rhs.isDouble() || lhs.isObjType(ObjType::FRACTION) || rhs.isObjType(ObjType::FRACTION)) {
+            double b = rhs.asDouble();
+            if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+            return Value(std::trunc(lhs.asDouble() / b));
+        }
+        
+        throw std::runtime_error("Type Error: Cannot integer divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
+    }
+
     struct ObjClosure : public Obj {
         std::vector<std::string> paramNames;
         std::vector<bool> isRef;

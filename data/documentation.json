@@ -2678,12 +2678,12 @@
       "    Dunder methods are inherited through the class hierarchy.",
       "",
       "    Arithmetic:",
-      "      __add__ (+)  __sub__ (-)  __mul__ (*)  __div__ (/)  __mod__ (%)  __pow__ (^)",
+      "      __add__ (+)  __sub__ (-)  __mul__ (*)  __div__ (/)  __idiv__ (~/)  __mod__ (%)  __pow__ (^)",
       "      __lshift__ (<<)  __rshift__ (>>)",
       "      __bitand__ (&)  __bitor__ (|)  __bitxor__ (^^)",
       "",
       "    Reverse arithmetic (when left operand is NOT an instance):",
-      "      __radd__  __rsub__  __rmul__  __rdiv__  __rmod__  __rpow__",
+      "      __radd__  __rsub__  __rmul__  __rdiv__  __ridiv__  __rmod__  __rpow__",
       "      __rlshift__  __rrshift__",
       "      __rbitand__  __rbitor__  __rbitxor__",
       "      Example: 2 * vec  calls  vec.__rmul__(2)",
@@ -5886,6 +5886,11 @@
       "desc": "Dunder method: Overloads the division operator (/).",
       "examples": ["__div__(scalar) = Point(self.x / scalar, self.y / scalar)"]
     },
+    "__idiv__": {
+      "signature": "__idiv__(other)",
+      "desc": "Dunder method: Overloads the integer division operator (~/).",
+      "examples": ["__idiv__(scalar) = Point(idiv(self.x, scalar), idiv(self.y, scalar))"]
+    },
     "__mod__": {
       "signature": "__mod__(other)",
       "desc": "Dunder method: Overloads the modulo operator (%).",
@@ -5905,6 +5910,11 @@
       "signature": "__rmul__(other)",
       "desc": "Dunder method: Overloads reverse multiplication (other * self) when 'other' is not an instance.",
       "examples": ["__rmul__(o) = self.__mul__(o)"]
+    },
+    "__ridiv__": {
+      "signature": "__ridiv__(other)",
+      "desc": "Dunder method: Overloads reverse integer division (other ~/ self) when 'other' is not an instance.",
+      "examples": ["__ridiv__(o) = self.__idiv__(o)"]
     },
     "__neg__": {
       "signature": "__neg__()",

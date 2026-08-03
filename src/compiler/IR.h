@@ -38,7 +38,7 @@ enum class IROp {
     Throw,
 
     // 算术与逻辑运算
-    Add, Sub, Mul, Div, Mod, Pow, LeftDivide,
+    Add, Sub, Mul, Div, IDiv, Mod, Pow, LeftDivide,
     Eq, Neq, Lt, Le, Gt, Ge, Is,
     Not, Neg, ToBool,
     BitAnd, BitOr, BitXor, BitNot, Shl, Shr,
@@ -163,6 +163,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::Sub: return "Sub";
         case IROp::Mul: return "Mul";
         case IROp::Div: return "Div";
+        case IROp::IDiv: return "IDiv";
         case IROp::Mod: return "Mod";
         case IROp::Pow: return "Pow";
         case IROp::LeftDivide: return "LeftDivide";

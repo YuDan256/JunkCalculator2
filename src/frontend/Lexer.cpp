@@ -56,7 +56,7 @@ namespace jc {
             // 赋值
         case TokenType::ASSIGN:
         case TokenType::PLUS_ASSIGN: case TokenType::MINUS_ASSIGN:
-        case TokenType::STAR_ASSIGN: case TokenType::SLASH_ASSIGN:
+        case TokenType::STAR_ASSIGN: case TokenType::SLASH_ASSIGN: case TokenType::TILDE_SLASH_ASSIGN:
         case TokenType::PERCENT_ASSIGN: case TokenType::CARET_ASSIGN:
         case TokenType::BACKSLASH_ASSIGN:
         case TokenType::BIT_AND_ASSIGN: case TokenType::BIT_OR_ASSIGN: case TokenType::BIT_XOR_ASSIGN: // ★
@@ -69,7 +69,7 @@ namespace jc {
             // 逻辑
         case TokenType::AND_AND: case TokenType::OR_OR:
         case TokenType::BIT_AND: case TokenType::BIT_OR: case TokenType::BIT_XOR:
-        case TokenType::BANG: case TokenType::TILDE: // ★
+        case TokenType::BANG: case TokenType::TILDE: case TokenType::TILDE_SLASH: // ★
             // 管道与箭头
         case TokenType::PIPE: case TokenType::ARROW: case TokenType::RIGHT_ARROW:
             // 标点
@@ -127,7 +127,13 @@ namespace jc {
             break;
         case '{': addToken(TokenType::LBRACE); break;    // ★ 新增
         case '}': addToken(TokenType::RBRACE); break;    // ★ 新增
-        case '~': addToken(TokenType::TILDE); break;     // ★ 新增
+        case '~': 
+            if (match('/')) {
+                addToken(match('=') ? TokenType::TILDE_SLASH_ASSIGN : TokenType::TILDE_SLASH);
+            } else {
+                addToken(TokenType::TILDE);
+            }
+            break;
         case ',': addToken(TokenType::COMMA); break;
         case ';': addToken(TokenType::SEMICOLON); break;
         case '?': addToken(TokenType::QUESTION); break;    // ★

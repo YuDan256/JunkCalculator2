@@ -88,6 +88,12 @@ public:
         emitRex(w, Register(), Register(), b);
     }
 
+    // 发射 REX 前缀 (带有内存操作数)
+    template <typename RegR>
+    void emitRex(bool w, RegR r, const Operand& rm) {
+        emitRex(w, r, rm.index(), rm.base());
+    }
+
     // ========================================================================
     // x86-64 ModR/M 和 SIB 发射逻辑 (Step 10)
     // ========================================================================
@@ -171,38 +177,280 @@ public:
     }
 
     // ========================================================================
-    // x86-64 基础 ALU 指令发射 (Step 11)
+    // x86-64 基础 ALU 与逻辑指令发射 (Step 11)
     // ========================================================================
 
-    // mov r32, r32
+    // --- MOV ---
     void mov(Register dst, Register src) {
         emitRex(false, dst, src);
         emit8(0x8B);
         emitModRM(3, dst.id(), src.id());
     }
-
-    // mov r32, imm32
+    void mov(Register dst, const Operand& src) {
+        emitRex(false, dst, src);
+        emit8(0x8B);
+        emitOperand(dst, src);
+    }
+    void mov(const Operand& dst, Register src) {
+        emitRex(false, src, dst);
+        emit8(0x89);
+        emitOperand(src, dst);
+    }
     void mov(Register dst, int32_t imm) {
         emitRex(false, Register(), dst);
         emit8(static_cast<uint8_t>(0xB8 + (dst.id() & 7)));
         emit32(imm);
     }
-
-    // add r32, r32
-    void add(Register dst, Register src) {
-        emitRex(false, dst, src);
-        emit8(0x03);
-        emitModRM(3, dst.id(), src.id());
+    void mov(const Operand& dst, int32_t imm) {
+        emitRex(false, Register(), dst);
+        emit8(0xC7);
+        emitOperand(static_cast<uint8_t>(0), dst);
+        emit32(imm);
     }
 
-    // sub r32, r32
-    void sub(Register dst, Register src) {
+    // --- ALU Helper ---
+    void emitALU(uint8_t op_r_rm, Register dst, Register src) {
         emitRex(false, dst, src);
-        emit8(0x2B);
+        emit8(op_r_rm);
         emitModRM(3, dst.id(), src.id());
     }
+    void emitALU(uint8_t op_r_rm, Register dst, const Operand& src) {
+        emitRex(false, dst, src);
+        emit8(op_r_rm);
+        emitOperand(dst, src);
+    }
+    void emitALU_rm_r(uint8_t op_rm_r, const Operand& dst, Register src) {
+        emitRex(false, src, dst);
+        emit8(op_rm_r);
+        emitOperand(src, dst);
+    }
+    void emitALU_imm(uint8_t ext, Register dst, int32_t imm) {
+        emitRex(false, Register(), dst);
+        if (isInt8(imm)) {
+            emit8(0x83);
+            emitModRM(3, ext, dst.id());
+            emit8(static_cast<uint8_t>(imm));
+        } else {
+            emit8(0x81);
+            emitModRM(3, ext, dst.id());
+            emit32(imm);
+        }
+    }
+    void emitALU_imm(uint8_t ext, const Operand& dst, int32_t imm) {
+        emitRex(false, Register(), dst);
+        if (isInt8(imm)) {
+            emit8(0x83);
+            emitOperand(ext, dst);
+            emit8(static_cast<uint8_t>(imm));
+        } else {
+            emit8(0x81);
+            emitOperand(ext, dst);
+            emit32(imm);
+        }
+    }
 
-    // ret
+    // --- ADD (0x03, 0x01, ext 0) ---
+    void add(Register dst, Register src) { emitALU(0x03, dst, src); }
+    void add(Register dst, const Operand& src) { emitALU(0x03, dst, src); }
+    void add(const Operand& dst, Register src) { emitALU_rm_r(0x01, dst, src); }
+    void add(Register dst, int32_t imm) { emitALU_imm(0, dst, imm); }
+    void add(const Operand& dst, int32_t imm) { emitALU_imm(0, dst, imm); }
+
+    // --- SUB (0x2B, 0x29, ext 5) ---
+    void sub(Register dst, Register src) { emitALU(0x2B, dst, src); }
+    void sub(Register dst, const Operand& src) { emitALU(0x2B, dst, src); }
+    void sub(const Operand& dst, Register src) { emitALU_rm_r(0x29, dst, src); }
+    void sub(Register dst, int32_t imm) { emitALU_imm(5, dst, imm); }
+    void sub(const Operand& dst, int32_t imm) { emitALU_imm(5, dst, imm); }
+
+    // --- AND (0x23, 0x21, ext 4) ---
+    void and_(Register dst, Register src) { emitALU(0x23, dst, src); }
+    void and_(Register dst, const Operand& src) { emitALU(0x23, dst, src); }
+    void and_(const Operand& dst, Register src) { emitALU_rm_r(0x21, dst, src); }
+    void and_(Register dst, int32_t imm) { emitALU_imm(4, dst, imm); }
+    void and_(const Operand& dst, int32_t imm) { emitALU_imm(4, dst, imm); }
+
+    // --- OR (0x0B, 0x09, ext 1) ---
+    void or_(Register dst, Register src) { emitALU(0x0B, dst, src); }
+    void or_(Register dst, const Operand& src) { emitALU(0x0B, dst, src); }
+    void or_(const Operand& dst, Register src) { emitALU_rm_r(0x09, dst, src); }
+    void or_(Register dst, int32_t imm) { emitALU_imm(1, dst, imm); }
+    void or_(const Operand& dst, int32_t imm) { emitALU_imm(1, dst, imm); }
+
+    // --- XOR (0x33, 0x31, ext 6) ---
+    void xor_(Register dst, Register src) { emitALU(0x33, dst, src); }
+    void xor_(Register dst, const Operand& src) { emitALU(0x33, dst, src); }
+    void xor_(const Operand& dst, Register src) { emitALU_rm_r(0x31, dst, src); }
+    void xor_(Register dst, int32_t imm) { emitALU_imm(6, dst, imm); }
+    void xor_(const Operand& dst, int32_t imm) { emitALU_imm(6, dst, imm); }
+
+    // --- CMP (0x3B, 0x39, ext 7) ---
+    void cmp(Register dst, Register src) { emitALU(0x3B, dst, src); }
+    void cmp(Register dst, const Operand& src) { emitALU(0x3B, dst, src); }
+    void cmp(const Operand& dst, Register src) { emitALU_rm_r(0x39, dst, src); }
+    void cmp(Register dst, int32_t imm) { emitALU_imm(7, dst, imm); }
+    void cmp(const Operand& dst, int32_t imm) { emitALU_imm(7, dst, imm); }
+
+    // --- TEST (0x85, ext 0 for F7) ---
+    void test(Register dst, Register src) {
+        emitRex(false, src, dst);
+        emit8(0x85);
+        emitModRM(3, src.id(), dst.id());
+    }
+    void test(Register dst, const Operand& src) {
+        emitRex(false, dst, src);
+        emit8(0x85);
+        emitOperand(dst, src);
+    }
+    void test(const Operand& dst, Register src) {
+        emitRex(false, src, dst);
+        emit8(0x85);
+        emitOperand(src, dst);
+    }
+    void test(Register dst, int32_t imm) {
+        emitRex(false, Register(), dst);
+        emit8(0xF7);
+        emitModRM(3, 0, dst.id());
+        emit32(imm);
+    }
+    void test(const Operand& dst, int32_t imm) {
+        emitRex(false, Register(), dst);
+        emit8(0xF7);
+        emitOperand(static_cast<uint8_t>(0), dst);
+        emit32(imm);
+    }
+
+    // ========================================================================
+    // x86-64 复杂 ALU 与移位指令发射 (Step 12)
+    // ========================================================================
+
+    // --- IMUL ---
+    void imul(Register dst, Register src) {
+        emitRex(false, dst, src);
+        emit8(0x0F); emit8(0xAF);
+        emitModRM(3, dst.id(), src.id());
+    }
+    void imul(Register dst, const Operand& src) {
+        emitRex(false, dst, src);
+        emit8(0x0F); emit8(0xAF);
+        emitOperand(dst, src);
+    }
+    void imul(Register dst, Register src, int32_t imm) {
+        emitRex(false, dst, src);
+        if (isInt8(imm)) {
+            emit8(0x6B); emitModRM(3, dst.id(), src.id()); emit8(static_cast<uint8_t>(imm));
+        } else {
+            emit8(0x69); emitModRM(3, dst.id(), src.id()); emit32(imm);
+        }
+    }
+    void imul(Register dst, const Operand& src, int32_t imm) {
+        emitRex(false, dst, src);
+        if (isInt8(imm)) {
+            emit8(0x6B); emitOperand(dst, src); emit8(static_cast<uint8_t>(imm));
+        } else {
+            emit8(0x69); emitOperand(dst, src); emit32(imm);
+        }
+    }
+
+    // --- IDIV (隐式使用 EDX:EAX) ---
+    void idiv(Register src) {
+        emitRex(false, Register(), src);
+        emit8(0xF7);
+        emitModRM(3, 7, src.id());
+    }
+    void idiv(const Operand& src) {
+        emitRex(false, Register(), src);
+        emit8(0xF7);
+        emitOperand(static_cast<uint8_t>(7), src);
+    }
+
+    // --- CDQ / CQO (符号扩展 EAX->EDX:EAX 或 RAX->RDX:RAX) ---
+    void cdq() {
+        emit8(0x99);
+    }
+    void cqo() {
+        emitRex(true, Register(), Register(), Register());
+        emit8(0x99);
+    }
+
+    // --- SHIFT Helper ---
+    void emitShift(uint8_t ext, Register dst, int32_t imm) {
+        emitRex(false, Register(), dst);
+        if (imm == 1) {
+            emit8(0xD1); emitModRM(3, ext, dst.id());
+        } else {
+            emit8(0xC1); emitModRM(3, ext, dst.id()); emit8(static_cast<uint8_t>(imm));
+        }
+    }
+    void emitShift(uint8_t ext, const Operand& dst, int32_t imm) {
+        emitRex(false, Register(), dst);
+        if (imm == 1) {
+            emit8(0xD1); emitOperand(ext, dst);
+        } else {
+            emit8(0xC1); emitOperand(ext, dst); emit8(static_cast<uint8_t>(imm));
+        }
+    }
+    void emitShiftCL(uint8_t ext, Register dst) {
+        emitRex(false, Register(), dst);
+        emit8(0xD3); emitModRM(3, ext, dst.id());
+    }
+    void emitShiftCL(uint8_t ext, const Operand& dst) {
+        emitRex(false, Register(), dst);
+        emit8(0xD3); emitOperand(ext, dst);
+    }
+
+    // --- SHL (ext 4) ---
+    void shl(Register dst, int32_t imm) { emitShift(4, dst, imm); }
+    void shl(const Operand& dst, int32_t imm) { emitShift(4, dst, imm); }
+    void shl_cl(Register dst) { emitShiftCL(4, dst); }
+    void shl_cl(const Operand& dst) { emitShiftCL(4, dst); }
+
+    // --- SHR (ext 5) ---
+    void shr(Register dst, int32_t imm) { emitShift(5, dst, imm); }
+    void shr(const Operand& dst, int32_t imm) { emitShift(5, dst, imm); }
+    void shr_cl(Register dst) { emitShiftCL(5, dst); }
+    void shr_cl(const Operand& dst) { emitShiftCL(5, dst); }
+
+    // --- SAR (ext 7) ---
+    void sar(Register dst, int32_t imm) { emitShift(7, dst, imm); }
+    void sar(const Operand& dst, int32_t imm) { emitShift(7, dst, imm); }
+    void sar_cl(Register dst) { emitShiftCL(7, dst); }
+    void sar_cl(const Operand& dst) { emitShiftCL(7, dst); }
+
+    // ========================================================================
+    // x86-64 栈操作与 64 位立即数加载 (Step 13)
+    // ========================================================================
+
+    // --- PUSH ---
+    void push(Register src) {
+        emitRex(false, src);
+        emit8(static_cast<uint8_t>(0x50 + (src.id() & 7)));
+    }
+    void push(const Operand& src) {
+        emitRex(false, Register(), src);
+        emit8(0xFF);
+        emitOperand(static_cast<uint8_t>(6), src);
+    }
+
+    // --- POP ---
+    void pop(Register dst) {
+        emitRex(false, dst);
+        emit8(static_cast<uint8_t>(0x58 + (dst.id() & 7)));
+    }
+    void pop(const Operand& dst) {
+        emitRex(false, Register(), dst);
+        emit8(0x8F);
+        emitOperand(static_cast<uint8_t>(0), dst);
+    }
+
+    // --- MOVABS (Load 64-bit immediate) ---
+    void movabs(Register dst, uint64_t imm64) {
+        emitRex(true, Register(), dst); // W=1
+        emit8(static_cast<uint8_t>(0xB8 + (dst.id() & 7)));
+        emit64(imm64);
+    }
+
+    // --- RET ---
     void ret() {
         emit8(0xC3);
     }

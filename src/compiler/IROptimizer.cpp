@@ -127,7 +127,7 @@ bool IROptimizer::eliminateCommonSubexpressions(IRGraph* graph) {
     
     auto isPure = [](IROp op) {
         switch (op) {
-            case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div:
+            case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div: case IROp::IDiv:
             case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:
             case IROp::Eq: case IROp::Neq: case IROp::Lt: case IROp::Le:
             case IROp::Gt: case IROp::Ge: case IROp::Is: case IROp::Not: case IROp::Neg:
@@ -360,6 +360,7 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     else if (node->op == IROp::Sub) { node->constVal = left - right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Mul) { node->constVal = left * right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Div) { node->constVal = left / right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
+                    else if (node->op == IROp::IDiv) { node->constVal = idivide(left, right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Mod) { node->constVal = left % right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Pow) { node->constVal = left ^ right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::LeftDivide) { node->constVal = ldivide(left, right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }

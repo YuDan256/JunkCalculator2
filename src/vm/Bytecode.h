@@ -36,6 +36,7 @@ enum class OpCode : uint8_t {
     SUB,            // R(A) := RK(B) - RK(C)
     MUL,            // R(A) := RK(B) * RK(C)
     DIV,            // R(A) := RK(B) / RK(C)
+    IDIV,           // R(A) := RK(B) ~/ RK(C)
     MOD,            // R(A) := RK(B) % RK(C)
     POW,            // R(A) := RK(B) ^ RK(C)
     LDIV,           // R(A) := RK(B) \ RK(C)
@@ -171,6 +172,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::SUB: return "SUB";
         case OpCode::MUL: return "MUL";
         case OpCode::DIV: return "DIV";
+        case OpCode::IDIV: return "IDIV";
         case OpCode::MOD: return "MOD";
         case OpCode::POW: return "POW";
         case OpCode::LDIV: return "LDIV";
@@ -452,7 +454,7 @@ public:
         };
 
         switch (op) {
-            case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV:
+            case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::IDIV:
             case OpCode::MOD: case OpCode::POW: case OpCode::LDIV: case OpCode::BAND:
             case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL: case OpCode::SHR:
             case OpCode::EQ: case OpCode::NEQ: case OpCode::LT: case OpCode::LE:

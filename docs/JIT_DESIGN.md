@@ -324,11 +324,11 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 26:** **[验证]** 编写 JC2 测试脚本，运行后打印 `typeFeedback` 数据，确认类型收集准确无误且性能无损。
 
 ### Phase 5: HIR 数据结构与构建器 (HIR Structures) (Steps 27-31)
-*   **[当前进度] Step 27:** 定义 `JITType` 枚举和 `HIRNode` 基类。
-*   **Step 28:** 实现 `HIRNode` 的 Use-Def 和 Def-Use 链管理（设为 private）。
-*   **Step 29:** 定义具体的 HIR 节点类（如 `Int32Constant`, `AddI32`, `GuardIsInt32`, `FrameState`）。
-*   **Step 30:** 实现 `HIRBuilder` API（如 `createAddI32`），封装节点创建和连边逻辑。
-*   **Step 31:** **[验证]** 编写单元测试：手动调用 Builder 构建一个微型图，并打印为 Graphviz DOT 格式。
+*   **[已完成] Step 27:** 定义 `JITType` 枚举和 `HIRNode` 基类。
+*   **[已完成] Step 28:** 实现 `HIRNode` 的 Use-Def 和 Def-Use 链管理（设为 private）。
+*   **[已完成] Step 29:** 定义具体的 HIR 节点类（如 `Int32Constant`, `AddI32`, `GuardIsInt32`, `FrameState`）。
+*   **[已完成] Step 30:** 实现 `HIRBuilder` API（如 `createAddI32`），封装节点创建和连边逻辑。
+*   **[已完成] Step 31:** **[验证]** 编写单元测试：手动调用 Builder 构建一个微型图，并打印为 Graphviz DOT 格式。
 
 ### Phase 6: 字节码到 HIR 的转换 (Bytecode to HIR) (Steps 32-35)
 *   **Step 32:** 实现字节码的基本块 (Basic Block) 划分算法。

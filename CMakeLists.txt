@@ -43,7 +43,7 @@ endif()
 # ==============================================================================
 set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/ASTConverter.h"
-    "src/jit/ExecutableMemory.h" "src/jit/Registers.h"
+    "src/jit/ExecutableMemory.h" "src/jit/Registers.h" "src/jit/Operand.h" "src/jit/MacroAssembler.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h"
@@ -58,6 +58,7 @@ set(JC2_HEADERS
 set(JC2_SOURCES
     "src/lib/ExtensionBridge.cpp"
     "src/jit/ExecutableMemory.cpp"
+    "src/jit/MacroAssembler.cpp"
     "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/ASTConverter.cpp"
     "src/compiler/Resolver.cpp"
     "src/compiler/IRBuilder.cpp"
@@ -75,7 +76,7 @@ add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build JIT Memory Test Executable
-add_executable(test_memory "src/jit/test_memory.cpp" "src/jit/ExecutableMemory.cpp")
+add_executable(test_memory "src/jit/test_memory.cpp" "src/jit/ExecutableMemory.cpp" "src/jit/MacroAssembler.cpp")
 target_include_directories(test_memory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build Image Module as a standalone DLL

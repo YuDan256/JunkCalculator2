@@ -1,49 +1,53 @@
 #include "ExecutableMemory.h"
+#include "MacroAssembler.h"
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 using namespace jc::jit;
 
-// 定义一个简单的函数指针类型，返回 int
-typedef int (*SimpleJitFunc)();
+// 定义一个带参数的函数指针类型 (Windows x64 ABI: 第一个参数在 ecx)
+typedef int32_t (*JitAddFunc)(int32_t);
 
-void test_executable_memory() {
-    std::cout << "Running ExecutableMemory test..." << std::endl;
+void test_macro_assembler() {
+    std::cout << "Running MacroAssembler test..." << std::endl;
 
-    // 1. 分配一页内存 (通常是 4096 字节)
-    ExecutableMemory mem(4096);
+    MacroAssembler masm;
 
-    // 2. 写入 x86-64 机器码
-    // mov eax, 42  (B8 2A 00 00 00)
-    // ret          (C3)
-    uint8_t* code = mem.get();
-    code[0] = 0xB8;
-    code[1] = 0x2A;
-    code[2] = 0x00;
-    code[3] = 0x00;
-    code[4] = 0x00;
-    code[5] = 0xC3;
-
-    // 3. 修改内存权限为 RX 并刷新指令缓存
-    mem.finalize();
-
-    // 4. 转换为函数指针并调用
-    // 注意：在标准 C++ 中，将数据指针转换为函数指针是条件支持的 (Conditionally-supported)。
-    // 在 Windows (GetProcAddress) 和 POSIX (dlsym) 的 ABI 规范中，这是标准且唯一合法的做法。
-    SimpleJitFunc func = reinterpret_cast<SimpleJitFunc>(mem.get());
+    // 生成机器码:
+    // int func(int x) { return 42 + x; }
     
-    int result = func();
+    // 1. mov eax, 42
+    // 注意：我们的 API 默认发射 32 位指令，所以传入 rax 实际上会编码为 eax
+    masm.mov(rax, 42);
     
-    if (result == 42) {
-        std::cout << "ExecutableMemory test passed! Result: " << result << std::endl;
+    // 2. add eax, ecx
+    // Windows x64 ABI 中，第一个 32 位整数参数存放在 ecx 中
+    masm.add(rax, rcx);
+    
+    // 3. ret
+    masm.ret();
+
+    // 4. 写入可执行内存并修改权限
+    ExecutableMemory mem;
+    masm.finalize(mem);
+
+    // 5. 转换为函数指针并调用
+    JitAddFunc func = reinterpret_cast<JitAddFunc>(mem.get());
+    
+    int32_t arg = 10;
+    int32_t result = func(arg);
+    
+    if (result == 52) {
+        std::cout << "MacroAssembler test passed! Result: " << result << std::endl;
     } else {
-        throw std::runtime_error("ExecutableMemory test failed! Unexpected result.");
+        throw std::runtime_error("MacroAssembler test failed! Unexpected result: " + std::to_string(result));
     }
 }
 
 int main() {
     try {
-        test_executable_memory();
+        test_macro_assembler();
     } catch (const std::exception& e) {
         std::cerr << "Test failed with exception: " << e.what() << std::endl;
         return 1;

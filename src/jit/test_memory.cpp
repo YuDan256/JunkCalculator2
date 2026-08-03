@@ -109,10 +109,99 @@ void test_float_and_abi() {
     }
 }
 
+// ========================================================================
+// Step 21: 控制流与常量池验证测试
+// ========================================================================
+
+typedef double (*JitControlFlowFunc)(int32_t);
+
+void test_control_flow_and_constants() {
+    std::cout << "Running Control Flow and Constants test..." << std::endl;
+
+    MacroAssembler masm;
+
+    // 生成机器码:
+    // double func(int32_t n) {
+    //     double sum = 0.0;
+    //     for (int32_t i = 0; i < n; ++i) {
+    //         if (i % 2 == 0) sum += 1.5;
+    //         else sum += 2.5;
+    //     }
+    //     return sum;
+    // }
+
+    masm.prologue(0);
+
+    // xmm0 = 0.0 (sum)
+    masm.xor_(rax, rax);
+    masm.cvtsi2sd(xmm0, rax);
+
+    // rcx = n (参数)
+    // rdx = 0 (i)
+    masm.xor_(rdx, rdx);
+
+    // 注册常量到常量池
+    Label& c1_lbl = masm.addConstantDouble(1.5);
+    Label& c2_lbl = masm.addConstantDouble(2.5);
+
+    Label loop_start;
+    Label loop_end;
+    Label is_odd;
+    Label next_iter;
+
+    // loop_start:
+    masm.bind(loop_start);
+    masm.cmp(rdx, rcx);
+    masm.jcc(Condition::GreaterOrEqual, loop_end); // if (i >= n) goto loop_end
+
+    // i % 2 == 0 ?
+    masm.mov(rax, rdx);
+    masm.and_(rax, 1);
+    masm.test(rax, rax);
+    masm.jcc(Condition::NotZero, is_odd); // if (i % 2 != 0) goto is_odd
+
+    // even: sum += 1.5
+    masm.movsd(xmm1, c1_lbl); // RIP-relative load
+    masm.addsd(xmm0, xmm1);
+    masm.jmp(next_iter);
+
+    // odd: sum += 2.5
+    masm.bind(is_odd);
+    masm.movsd(xmm1, c2_lbl); // RIP-relative load
+    masm.addsd(xmm0, xmm1);
+
+    // next_iter:
+    masm.bind(next_iter);
+    masm.add(rdx, 1); // ++i
+    masm.jmp(loop_start);
+
+    // loop_end:
+    masm.bind(loop_end);
+    masm.epilogue();
+
+    // 发射常量池 (必须在函数返回后发射，避免被当成指令执行)
+    masm.emitConstantPool();
+
+    ExecutableMemory mem;
+    masm.finalize(mem);
+
+    JitControlFlowFunc func = reinterpret_cast<JitControlFlowFunc>(mem.get());
+    
+    double result1 = func(4); // 1.5 + 2.5 + 1.5 + 2.5 = 8.0
+    double result2 = func(5); // 8.0 + 1.5 = 9.5
+    
+    if (result1 == 8.0 && result2 == 9.5) {
+        std::cout << "Control Flow and Constants test passed! Results: " << result1 << ", " << result2 << std::endl;
+    } else {
+        throw std::runtime_error("Control Flow and Constants test failed! Unexpected results: " + std::to_string(result1) + ", " + std::to_string(result2));
+    }
+}
+
 int main() {
     try {
         test_macro_assembler();
         test_float_and_abi();
+        test_control_flow_and_constants();
     } catch (const std::exception& e) {
         std::cerr << "Test failed with exception: " << e.what() << std::endl;
         return 1;

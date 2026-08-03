@@ -2,6 +2,7 @@
 #define JC2_JIT_MACRO_ASSEMBLER_H
 
 #include <vector>
+#include <deque>
 #include <cstdint>
 #include <cstring>
 #include "ExecutableMemory.h"
@@ -10,6 +11,30 @@
 
 namespace jc {
 namespace jit {
+
+// ========================================================================
+// 条件码 (Condition Codes)
+// ========================================================================
+enum class Condition : uint8_t {
+    Overflow = 0x0,
+    NoOverflow = 0x1,
+    Below = 0x2,
+    AboveOrEqual = 0x3,
+    Equal = 0x4,
+    Zero = 0x4,
+    NotEqual = 0x5,
+    NotZero = 0x5,
+    BelowOrEqual = 0x6,
+    Above = 0x7,
+    Sign = 0x8,
+    NoSign = 0x9,
+    Parity = 0xA,
+    NoParity = 0xB,
+    Less = 0xC,
+    GreaterOrEqual = 0xD,
+    LessOrEqual = 0xE,
+    Greater = 0xF
+};
 
 // ========================================================================
 // 控制流标签 (Step 17)
@@ -491,6 +516,125 @@ public:
     }
 
     // ========================================================================
+    // 常量池与 RIP 相对寻址 (Step 20)
+    // ========================================================================
+
+    // --- RIP-Relative Helper ---
+    void emitRipRelative(uint8_t regCode, Label& L) {
+        emitModRM(0, regCode, 5); // mod=00, rm=101 (5) 表示 RIP 相对寻址
+        if (L.isBound()) {
+            int32_t offset_val = L.pos() - static_cast<int32_t>(offset()) - 4;
+            emit32(offset_val);
+        } else {
+            L.addUnresolvedJump(static_cast<int>(offset()));
+            emit32(0);
+        }
+    }
+
+    // --- LEA ---
+    void lea(Register dst, const Operand& src) {
+        emitRex(true, dst, src); // LEA 通常用于 64 位地址计算
+        emit8(0x8D);
+        emitOperand(dst, src);
+    }
+    void lea(Register dst, Label& L) {
+        emitRex(true, dst, Register());
+        emit8(0x8D);
+        emitRipRelative(dst.id(), L);
+    }
+
+    // --- MOVQ (RIP-relative) ---
+    void movq(Register dst, Label& L) {
+        emitRex(true, dst, Register());
+        emit8(0x8B);
+        emitRipRelative(dst.id(), L);
+    }
+
+    // --- Constant Pool API ---
+    Label& addConstant64(uint64_t val) {
+        constants_.emplace_back(Label(), val);
+        return constants_.back().first;
+    }
+    Label& addConstantDouble(double val) {
+        uint64_t bits;
+        std::memcpy(&bits, &val, sizeof(double));
+        return addConstant64(bits);
+    }
+    void emitConstantPool() {
+        for (auto& pair : constants_) {
+            bind(pair.first);
+            emit64(pair.second);
+        }
+        constants_.clear();
+    }
+
+    // ========================================================================
+    // 控制流与函数调用 (Step 18 & 19)
+    // ========================================================================
+
+    // --- BIND ---
+    void bind(Label& L) {
+        if (L.isBound()) {
+            throw std::runtime_error("JIT Error: Label is already bound.");
+        }
+        int current_pos = static_cast<int>(offset());
+        L.bindTo(current_pos);
+        
+        // 回填 (Backpatching) 所有未决的跳转指令
+        for (int jump_pos : L.unresolvedJumps()) {
+            int32_t offset_val = current_pos - jump_pos - 4;
+            std::memcpy(buffer_.data() + jump_pos, &offset_val, sizeof(int32_t));
+        }
+    }
+
+    // --- JMP ---
+    void jmp(Label& L) {
+        emit8(0xE9);
+        if (L.isBound()) {
+            int32_t offset_val = L.pos() - static_cast<int32_t>(offset()) - 4;
+            emit32(offset_val);
+        } else {
+            L.addUnresolvedJump(static_cast<int>(offset()));
+            emit32(0);
+        }
+    }
+    void jmp(Register reg) {
+        emitRex(false, Register(), reg);
+        emit8(0xFF);
+        emitModRM(3, 4, reg.id());
+    }
+
+    // --- JCC ---
+    void jcc(Condition cond, Label& L) {
+        emit8(0x0F);
+        emit8(0x80 + static_cast<uint8_t>(cond));
+        if (L.isBound()) {
+            int32_t offset_val = L.pos() - static_cast<int32_t>(offset()) - 4;
+            emit32(offset_val);
+        } else {
+            L.addUnresolvedJump(static_cast<int>(offset()));
+            emit32(0);
+        }
+    }
+
+    // --- CALL ---
+    void call(Label& L) {
+        emit8(0xE8);
+        if (L.isBound()) {
+            int32_t offset_val = L.pos() - static_cast<int32_t>(offset()) - 4;
+            emit32(offset_val);
+        } else {
+            L.addUnresolvedJump(static_cast<int>(offset()));
+            emit32(0);
+        }
+    }
+    void call(Register reg) {
+        emitRex(false, Register(), reg);
+        emit8(0xFF);
+        emitModRM(3, 2, reg.id());
+    }
+
+    // ========================================================================
     // x86-64 浮点标量指令 (SSE2) (Step 14)
     // ========================================================================
 
@@ -500,6 +644,9 @@ public:
     }
     void movsd(XMMRegister dst, const Operand& src) {
         emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(0x10); emitOperand(dst, src);
+    }
+    void movsd(XMMRegister dst, Label& L) {
+        emit8(0xF2); emitRex(false, dst, Register()); emit8(0x0F); emit8(0x10); emitRipRelative(dst.id(), L);
     }
     void movsd(const Operand& dst, XMMRegister src) {
         emit8(0xF2); emitRex(false, src, dst); emit8(0x0F); emit8(0x11); emitOperand(src, dst);
@@ -596,6 +743,7 @@ public:
 
 private:
     std::vector<uint8_t> buffer_;
+    std::deque<std::pair<Label, uint64_t>> constants_;
 
     // 安全获取寄存器 ID，如果无效则返回 255
     template <typename T>

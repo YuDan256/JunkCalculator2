@@ -292,13 +292,13 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 
 ### Phase 3: 控制流与常量池 (Control Flow & Constant Pool) (Steps 17-21)
 *   **[已完成] Step 17:** 定义 `Label` 类，维护绑定状态和未决跳转链表。
-*   **[当前进度] Step 18:** 实现无条件跳转 `jmp`、条件跳转 `jcc` 和函数调用 `call` 的发射逻辑（支持 32 位相对偏移）。
-*   **Step 19:** 实现 `bind(Label)` 逻辑，完成相对偏移量的计算与回填 (Patch)。
-*   **Step 20:** 实现常量池 (Constant Pool) 与 RIP 相对寻址 (用于高效加载 Double 常量和 64 位指针)。
-*   **Step 21:** **[验证]** 编写单元测试：发射一段包含循环、条件分支和常量池加载的汇编代码，执行并验证结果。
+*   **[已完成] Step 18:** 实现无条件跳转 `jmp`、条件跳转 `jcc` 和函数调用 `call` 的发射逻辑（支持 32 位相对偏移）。
+*   **[已完成] Step 19:** 实现 `bind(Label)` 逻辑，完成相对偏移量的计算与回填 (Patch)。
+*   **[已完成] Step 20:** 实现常量池 (Constant Pool) 与 RIP 相对寻址 (用于高效加载 Double 常量和 64 位指针)。
+*   **[已完成] Step 21:** **[验证]** 编写单元测试：发射一段包含循环、条件分支和常量池加载的汇编代码，执行并验证结果。
 
 ### Phase 4: 解释器类型收集 (Tier 0 Profiling) (Steps 22-26)
-*   **Step 22:** 定义 `TypeFeedbackVector` 和 `FeedbackSlot` 数据结构。
+*   **[当前进度] Step 22:** 定义 `TypeFeedbackVector` 和 `FeedbackSlot` 数据结构。
 *   **Step 23:** 在 `CompiledFunction` 和 `Chunk` 中集成反馈向量的分配逻辑。
 *   **Step 24:** 在 `VM.cpp` 中添加轻量级的类型提取宏（利用 NaN-Boxing 快速判断 Int32/Double/Obj）。
 *   **Step 25:** 改造解释器的 `OpCode::ADD` 等指令，在执行前记录操作数的实际类型到 Feedback Slot。

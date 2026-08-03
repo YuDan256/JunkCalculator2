@@ -369,6 +369,7 @@ struct CallSignature {
 class Chunk {
 public:
     std::vector<Instruction> code;
+    std::vector<uint8_t> typeFeedback; // ★ JIT Tier 0 Profiling
     std::vector<Value> constants;
     std::vector<int> lines;
     std::vector<InlineCache> inlineCaches;
@@ -378,6 +379,7 @@ public:
 
     void write(Instruction inst, int line) {
         code.push_back(inst);
+        typeFeedback.push_back(0); // 初始化为 0 (Uninitialized)
         lines.push_back(line);
     }
 
@@ -642,6 +644,7 @@ struct CompiledFunction {
     int maxArity = 0;
     int localCount = 0;
     bool hasRestParam = false;
+    uint32_t callCount = 0; // ★ JIT Warm-up Profiling Counter
     Chunk chunk;
 
     std::vector<int> paramTypeRegs;

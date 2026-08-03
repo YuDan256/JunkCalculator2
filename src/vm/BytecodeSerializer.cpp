@@ -307,6 +307,7 @@ void BytecodeSerializer::writeChunk(std::ostream& os, const Chunk& chunk, int st
 void BytecodeSerializer::readChunk(std::istream& is, Chunk& chunk, int baseIdx) {
     uint32_t codeSize = read32(is);
     chunk.code.resize(codeSize);
+    chunk.typeFeedback.assign(codeSize, 0); // ★ JIT Tier 0 Profiling: 初始化为 0
     for (uint32_t i = 0; i < codeSize; ++i) chunk.code[i] = read32(is);
 
     uint32_t linesSize = read32(is);

@@ -1,0 +1,38 @@
+// ============================================================================
+// JIT Tier 0 Profiling Test
+// ============================================================================
+
+test_add(a, b) = a + b
+
+println("Warming up function (1 to 50 calls)...")
+for (i in range(50)) {
+    test_add(1, 2) // Monomorphic Int32
+}
+
+// Call 50 triggers the reset (memset to 0)
+// Call 51: Int32 + Int32 -> sets 0x01
+test_add(10, 20)
+
+// Call 52: Double + Double -> sets 0x02
+test_add(1.5, 2.5)
+
+// Call 53: String + String -> sets 0x04
+test_add("hello", " world")
+
+// Now the ADD instruction in test_add should have feedback = 0x01 | 0x02 | 0x04 = 0x07
+feedback = __dbg_type_feedback(test_add)
+
+has_polymorphic = false
+for (fb in feedback) {
+    if (fb == 7) {
+        has_polymorphic = true
+        break
+    }
+}
+
+if (has_polymorphic) {
+    println("JIT Profiling Test Passed: Polymorphic state (0x07) detected correctly!")
+} else {
+    println("JIT Profiling Test Failed! Feedback array: ", feedback)
+    assert(false, "Profiling data incorrect")
+}

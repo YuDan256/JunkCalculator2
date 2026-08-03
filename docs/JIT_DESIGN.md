@@ -298,14 +298,33 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 21:** **[验证]** 编写单元测试：发射一段包含循环、条件分支和常量池加载的汇编代码，执行并验证结果。
 
 ### Phase 4: 解释器类型收集 (Tier 0 Profiling) (Steps 22-26)
-*   **[当前进度] Step 22:** 定义 `TypeFeedbackVector` 和 `FeedbackSlot` 数据结构。
-*   **Step 23:** 在 `CompiledFunction` 和 `Chunk` 中集成反馈向量的分配逻辑。
-*   **Step 24:** 在 `VM.cpp` 中添加轻量级的类型提取宏（利用 NaN-Boxing 快速判断 Int32/Double/Obj）。
-*   **Step 25:** 改造解释器的 `OpCode::ADD` 等指令，在执行前记录操作数的实际类型到 Feedback Slot。
-*   **Step 26:** **[验证]** 编写 JC2 测试脚本，运行后打印 Profiling 数据，确认类型收集准确无误。
+
+**【设计方案：零开销类型收集 (Zero-Overhead Profiling)】**
+为了绝对不拖慢现有的 Tier 0 解释器，我们采用以下极简设计：
+1.  **O(1) 映射的反馈向量**：在 `Chunk` 中新增 `std::vector<uint8_t> typeFeedback`，其大小与 `code`（字节码指令数组）完全一致。这样通过 `ip - 1` 即可 O(1) 直接访问当前指令的反馈槽，无需任何哈希查找，内存开销仅为 1 字节/指令。
+2.  **位掩码状态机 (Bitmask States)**：使用 8 个比特位记录类型突变：
+    *   `0x00`: 未执行 (Uninitialized)
+    *   `0x01`: 纯 Int32 (Monomorphic Int32)
+    *   `0x02`: 纯 Double (Monomorphic Double)
+    *   `0x04`: 纯 String (Monomorphic String)
+    *   `0x08`: 纯 Bool (Monomorphic Bool)
+    *   `0x10`: 结果溢出或类型突变 (Overflow / Fraction Output) - 工业级 JIT 必须记录输出类型的突变，例如 Int32 相加溢出，或 Int32 相除产生 Fraction。
+    *   `0x80`: 其他对象/复杂类型 (Megamorphic)
+    *   组合状态（如 `0x03` 表示既有 Int32 又有 Double，即 Polymorphic Number）。
+3.  **顺风车收集 (Piggybacking)**：绝不在解释器中新增专门的 `if` 类型判断分支。解释器的 `OpCode::ADD` 等指令原本就已经有 `if (vb.isInt32() && vc.isInt32())` 的快速通道。我们只需在这些现有的快速通道内部，追加一条极快的位或运算 `chunk->typeFeedback[ip - 1] |= 0x01;` 即可。
+4.  **热点计数器与延迟收集 (Warm-up Profiling)**：在 `CompiledFunction` 中增加 `uint32_t callCount`。
+    *   为了避免引入 `if (callCount > 50)` 导致解释器内层循环变慢，我们**无条件**在内层循环执行 `|=` 收集（因为位运算比分支判断更快）。
+    *   为了解决“早期类型污染”（前几次调用传入了非稳态类型），我们在函数入口处判断：当 `callCount == 50` 时，清空（`memset` 为 0）之前的 `typeFeedback`，重新开始收集稳态类型。
+    *   当 `callCount == 1000` 时，触发 JIT 编译。
+
+*   **[已完成] Step 22:** 在 `Chunk` 中定义 `typeFeedback` 数组，在 `CompiledFunction` 中定义 `callCount`。
+*   **[已完成] Step 23:** 在 `BytecodeSerializer` 中处理 `typeFeedback` 的序列化与反序列化（初始化为 0）。
+*   **[已完成] Step 24:** 改造解释器的所有核心算术、逻辑、比较和位运算指令，实现工业级的输入/输出类型收集。
+*   **[已完成] Step 25:** 在函数入口处实现 `callCount` 递增与 50 次调用时的类型洗牌逻辑。
+*   **[已完成] Step 26:** **[验证]** 编写 JC2 测试脚本，运行后打印 `typeFeedback` 数据，确认类型收集准确无误且性能无损。
 
 ### Phase 5: HIR 数据结构与构建器 (HIR Structures) (Steps 27-31)
-*   **Step 27:** 定义 `JITType` 枚举和 `HIRNode` 基类。
+*   **[当前进度] Step 27:** 定义 `JITType` 枚举和 `HIRNode` 基类。
 *   **Step 28:** 实现 `HIRNode` 的 Use-Def 和 Def-Use 链管理（设为 private）。
 *   **Step 29:** 定义具体的 HIR 节点类（如 `Int32Constant`, `AddI32`, `GuardIsInt32`, `FrameState`）。
 *   **Step 30:** 实现 `HIRBuilder` API（如 `createAddI32`），封装节点创建和连边逻辑。

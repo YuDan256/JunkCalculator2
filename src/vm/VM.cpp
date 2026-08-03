@@ -2458,6 +2458,17 @@ std::string VM::buildStackTrace() const {
 }
 
 void VM::profileFrameStart(CallFrame* frame) {
+    if (frame->function) {
+        CompiledFunction* fn = const_cast<CompiledFunction*>(frame->function);
+        fn->callCount++;
+        if (fn->callCount == 50) {
+            // 延迟收集 (Warm-up Profiling): 清除前 50 次的早期类型污染
+            std::memset(fn->chunk.typeFeedback.data(), 0, fn->chunk.typeFeedback.size());
+        } else if (fn->callCount == 1000) {
+            // TODO: 触发 JIT 编译 (Tier 2)
+        }
+    }
+
     if (!g_profile) return;
     frame->startTime = std::chrono::steady_clock::now();
     frame->childTimeMs = 0.0;
@@ -2690,6 +2701,19 @@ VM::VM() {
         throw std::runtime_error("Register out of bounds.");
     };
     builtinArity["__dbg_reg"] = {1};
+
+    nativeBuiltins["__dbg_type_feedback"] = [this](const std::vector<Value>& args) -> Value {
+        if (args.empty() || !args[0].isFunctionClosure()) throw std::runtime_error("Expected a function.");
+        ObjClosure* closure = args[0].asFunction();
+        if (!closure->isBytecode()) throw std::runtime_error("Expected a bytecode function.");
+        auto& fnDef = compiledFunctions[closure->compiledFnIndex];
+        ObjList* list = GcHeap::get().allocate<ObjList>();
+        for (uint8_t fb : fnDef->chunk.typeFeedback) {
+            list->vec.push_back(Value::fromInt32(fb));
+        }
+        return Value(list);
+    };
+    builtinArity["__dbg_type_feedback"] = {1};
 }
 
 VM::~VM() {
@@ -3095,6 +3119,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 if (g_profile) frame->instructionCount++;
+                int op_ip = ip; // ★ 记录当前指令的真实偏移量，用于 Profiling
                 Instruction instruction = code[ip++];
                 OpCode op = static_cast<OpCode>(instruction & 0xFF);
                 
@@ -3496,11 +3521,18 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
                     int64_t res = static_cast<int64_t>(vb.asInt32()) + vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
                 } else if (vb.isDouble() && vc.isDouble()) { 
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() + vc.asDoubleRaw()); break; 
+                } else if (vb.isString() && vc.isString()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04; // Monomorphic String
+                    getReg(a) = Value(vb.asString() + vc.asString()); break;
                 }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_ADD); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RADD); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb + vc;
@@ -3510,11 +3542,15 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
                     int64_t res = static_cast<int64_t>(vb.asInt32()) - vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
                 } else if (vb.isDouble() && vc.isDouble()) { 
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() - vc.asDoubleRaw()); break; 
                 }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_SUB); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RSUB); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb - vc;
@@ -3524,11 +3560,15 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
                     int64_t res = static_cast<int64_t>(vb.asInt32()) * vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
                 } else if (vb.isDouble() && vc.isDouble()) { 
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() * vc.asDoubleRaw()); break; 
                 }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_MUL); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RMUL); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb * vc;
@@ -3537,10 +3577,29 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::DIV: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isDouble() && vc.isDouble()) { 
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
+                    int32_t num = vb.asInt32();
+                    int32_t den = vc.asInt32();
+                    if (den == 0) throw std::runtime_error("Math Error: Division by zero.");
+                    if (num % den == 0) {
+                        if (num == -2147483648 && den == -1) {
+                            const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
+                            getReg(a) = Value(BigInt(2147483648LL));
+                        } else {
+                            getReg(a) = Value::fromInt32(num / den);
+                        }
+                    } else {
+                        const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Fraction Output
+                        getReg(a) = Value(Fraction(BigInt(num), BigInt(den)));
+                    }
+                    break;
+                } else if (vb.isDouble() && vc.isDouble()) { 
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
                     if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
                 }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_DIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb / vc;
@@ -3550,12 +3609,22 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
                     int32_t num = vb.asInt32();
                     int32_t den = vc.asInt32();
                     if (den == 0) throw std::runtime_error("Math Error: Division by zero.");
-                    if (num == -2147483648 && den == -1) { getReg(a) = Value(BigInt(2147483648LL)); break; }
+                    if (num == -2147483648 && den == -1) { 
+                        const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
+                        getReg(a) = Value(BigInt(2147483648LL)); 
+                        break; 
+                    }
                     getReg(a) = Value::fromInt32(num / den); break;
+                } else if (vb.isDouble() && vc.isDouble()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
+                    if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+                    getReg(a) = Value::fromDouble(std::trunc(vb.asDoubleRaw() / vc.asDoubleRaw())); break;
                 }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_IDIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RIDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = idivide(vb, vc);
@@ -3564,6 +3633,19 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::MOD: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
+                    int32_t num = vb.asInt32();
+                    int32_t den = vc.asInt32();
+                    if (den == 0) throw std::runtime_error("Math Error: Modulo by zero.");
+                    if (num == -2147483648 && den == -1) { getReg(a) = Value::fromInt32(0); break; }
+                    getReg(a) = Value::fromInt32(num % den); break;
+                } else if (vb.isDouble() && vc.isDouble()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
+                    if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
+                    getReg(a) = Value::fromDouble(std::fmod(vb.asDoubleRaw(), vc.asDoubleRaw())); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_MOD); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RMOD); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb % vc;
@@ -3572,6 +3654,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::POW: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_POW); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RPOW); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb ^ vc;
@@ -3580,6 +3663,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::LDIV: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LDIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RLDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = ldivide(vb, vc);
@@ -3588,6 +3672,11 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::BAND: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value::fromInt32(vb.asInt32() & vc.asInt32()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITAND); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITAND); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb & vc;
@@ -3596,6 +3685,11 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::BOR: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value::fromInt32(vb.asInt32() | vc.asInt32()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITOR); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITOR); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb | vc;
@@ -3604,6 +3698,11 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::BXOR: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value::fromInt32(vb.asInt32() ^ vc.asInt32()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITXOR); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITXOR); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = bitXor(vb, vc);
@@ -3612,6 +3711,19 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::SHL: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    int32_t v = vb.asInt32();
+                    int32_t shift = vc.asInt32();
+                    if (shift >= 0 && shift < 31) {
+                        int64_t res = static_cast<int64_t>(v) << shift;
+                        if (res >= INT32_MIN && res <= INT32_MAX) {
+                            getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break;
+                        }
+                    }
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LSHIFT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RLSHIFT); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb << vc;
@@ -3620,6 +3732,16 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::SHR: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    int32_t v = vb.asInt32();
+                    int32_t shift = vc.asInt32();
+                    if (shift >= 0) {
+                        if (shift < 31) { getReg(a) = Value::fromInt32(v >> shift); break; }
+                        else { getReg(a) = Value::fromInt32(v < 0 ? -1 : 0); break; }
+                    }
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_RSHIFT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RRSHIFT); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb >> vc;
@@ -3629,6 +3751,21 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value vb = getReg(b);
+                if (vb.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    int32_t v = vb.asInt32();
+                    if (v == -2147483648) {
+                        const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
+                        getReg(a) = Value(BigInt(2147483648LL));
+                    } else {
+                        getReg(a) = Value::fromInt32(-v);
+                    }
+                    break;
+                } else if (vb.isDouble()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                    getReg(a) = Value(-vb.asDoubleRaw()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEG); if (meth) { getReg(a) = callDunder(vb, meth, owner, {}); break; } }
                 getReg(a) = -vb;
                 break;
@@ -3638,10 +3775,10 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value& val = getReg(b);
                 bool cond;
-                if (val.isBool()) cond = val.asBool();
-                else if (val.isInt32()) cond = val.asInt32() != 0;
-                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
-                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
+                else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
+                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 getReg(a) = Value(!cond);
                 break;
             }
@@ -3649,6 +3786,11 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value vb = getReg(b);
+                if (vb.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value::fromInt32(~vb.asInt32()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITNOT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {}); break; } }
                 getReg(a) = ~vb;
                 break;
@@ -3658,16 +3800,21 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value& val = getReg(b);
                 bool cond;
-                if (val.isBool()) cond = val.asBool();
-                else if (val.isInt32()) cond = val.asInt32() != 0;
-                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
-                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
+                else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
+                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 getReg(a) = Value(cond);
                 break;
             }
             case OpCode::EQ: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                else if (vb.isDouble() && vc.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                else if (vb.isString() && vc.isString()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04;
+                else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
+                
                 if (vb.as_bits == vc.as_bits) {
                     getReg(a) = Value(!vb.isDouble() || !std::isnan(vb.asDoubleRaw()));
                     break;
@@ -3682,6 +3829,11 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::NEQ: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                else if (vb.isDouble() && vc.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                else if (vb.isString() && vc.isString()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04;
+                else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
+
                 if (vb.as_bits == vc.as_bits) {
                     getReg(a) = Value(vb.isDouble() && std::isnan(vb.asDoubleRaw()));
                     break;
@@ -3698,8 +3850,14 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::LT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break; }
-                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() < vc.asInt32()); break; }
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value(vb.asInt32() < vc.asInt32()); break;
+                } else if (vb.isDouble() && vc.isDouble()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                    getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_GT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
                 getReg(a) = Value(vb < vc);
@@ -3708,8 +3866,14 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::LE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break; }
-                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break; }
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break;
+                } else if (vb.isDouble() && vc.isDouble()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                    getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { 
                     auto [meth, owner] = findDunder(vb, DUNDER_LE);
                     if (meth) { 
@@ -3754,8 +3918,14 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::GT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break; }
-                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() > vc.asInt32()); break; }
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value(vb.asInt32() > vc.asInt32()); break;
+                } else if (vb.isDouble() && vc.isDouble()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                    getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { 
                     auto [meth, owner] = findDunder(vb, DUNDER_GT);
                     if (meth) { 
@@ -3800,8 +3970,14 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::GE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break; }
-                if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break; }
+                if (vb.isInt32() && vc.isInt32()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break;
+                } else if (vb.isDouble() && vc.isDouble()) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                    getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break;
+                }
+                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { 
                     auto [meth, owner] = findDunder(vb, DUNDER_GE);
                     if (meth) { 
@@ -3832,6 +4008,10 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::IS: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                else if (vb.isDouble() && vc.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                else if (vb.isString() && vc.isString()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04;
+                else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 getReg(a) = Value(vb.as_bits == vc.as_bits);
                 break;
             }
@@ -3843,10 +4023,10 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value& val = getReg(a);
                 bool cond;
-                if (val.isBool()) cond = val.asBool();
-                else if (val.isInt32()) cond = val.asInt32() != 0;
-                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
-                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
+                else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
+                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (cond) ip += sbx;
                 break;
             }
@@ -3854,10 +4034,10 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value& val = getReg(a);
                 bool cond;
-                if (val.isBool()) cond = val.asBool();
-                else if (val.isInt32()) cond = val.asInt32() != 0;
-                else if (val.isDouble()) cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw());
-                else cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy();
+                if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
+                else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
+                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (!cond) ip += sbx;
                 break;
             }

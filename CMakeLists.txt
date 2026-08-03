@@ -43,7 +43,7 @@ endif()
 # ==============================================================================
 set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/ASTConverter.h"
-    "src/jit/ExecutableMemory.h" "src/jit/Registers.h" "src/jit/Operand.h" "src/jit/MacroAssembler.h" "src/jit/HIR.h" "src/jit/HIRBuilder.h" "src/jit/BytecodeCFG.h" "src/jit/BytecodeToHIR.h" "src/jit/LIR.h" "src/jit/LIRBuilder.h" "src/jit/GCM.h" "src/jit/InstructionSelector.h"
+    "src/jit/ExecutableMemory.h" "src/jit/Registers.h" "src/jit/Operand.h" "src/jit/MacroAssembler.h" "src/jit/HIR.h" "src/jit/HIRBuilder.h" "src/jit/BytecodeCFG.h" "src/jit/BytecodeToHIR.h" "src/jit/LIR.h" "src/jit/LIRBuilder.h" "src/jit/GCM.h" "src/jit/InstructionSelector.h" "src/jit/LivenessAnalysis.h" "src/jit/LinearScan.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h"

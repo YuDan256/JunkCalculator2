@@ -115,6 +115,13 @@ public:
         return node;
     }
 
+    HIRNode* createMerge(const std::vector<HIRNode*>& controls) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::Merge, JITType::Control);
+        for (auto c : controls) node->addInput(c);
+        currentControl_ = node;
+        return node;
+    }
+
     HIRNode* createLoopBegin(const std::vector<HIRNode*>& controls) {
         auto node = graph_->allocateNode<HIRNode>(HIROp::LoopBegin, JITType::Control);
         for (auto c : controls) node->addInput(c);

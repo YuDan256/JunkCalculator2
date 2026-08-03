@@ -49,6 +49,7 @@ enum class HIROp : uint16_t {
     IfTrue,
     IfFalse,
     Jump,
+    Merge,
     LoopBegin,
     LoopEnd,
     Deoptimize, // 显式去优化节点
@@ -168,6 +169,7 @@ inline std::string to_string(HIROp op) {
         case HIROp::IfTrue: return "IfTrue";
         case HIROp::IfFalse: return "IfFalse";
         case HIROp::Jump: return "Jump";
+        case HIROp::Merge: return "Merge";
         case HIROp::LoopBegin: return "LoopBegin";
         case HIROp::LoopEnd: return "LoopEnd";
         case HIROp::Deoptimize: return "Deoptimize";

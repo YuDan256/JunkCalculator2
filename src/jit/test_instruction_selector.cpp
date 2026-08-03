@@ -1,6 +1,8 @@
 #include "HIRBuilder.h"
 #include "GCM.h"
 #include "InstructionSelector.h"
+#include "LivenessAnalysis.h"
+#include "LinearScan.h"
 #include <iostream>
 
 using namespace jc;
@@ -24,13 +26,19 @@ int main() {
     auto ifTrue = hirBuilder.createIfTrue(branch);
     hirBuilder.setCurrentControl(ifTrue);
     auto addRes = hirBuilder.createAddI32(a, b);
-    hirBuilder.createReturn(addRes);
+    auto jmpTrue = hirBuilder.createJump(nullptr);
 
     // Block 2: IfFalse
     auto ifFalse = hirBuilder.createIfFalse(branch);
     hirBuilder.setCurrentControl(ifFalse);
     auto subRes = hirBuilder.createSubI32(a, b);
-    hirBuilder.createReturn(subRes);
+    auto jmpFalse = hirBuilder.createJump(nullptr);
+
+    // Block 3: Merge & Phi
+    auto merge = hirBuilder.createMerge({jmpTrue, jmpFalse});
+    hirBuilder.setCurrentControl(merge);
+    auto phi = hirBuilder.createPhi(JITType::Int32, {addRes, subRes});
+    hirBuilder.createReturn(phi);
 
     // 2. 全局代码移动 (GCM) 调度
     LIRGraph lirGraph;
@@ -42,7 +50,15 @@ int main() {
     InstructionSelector selector(gcm, hirGraph, lirGraph, lirBuilder);
     selector.select();
 
-    // 4. 打印 LIR 序列
+    // 4. 活跃区间分析 (Liveness Analysis)
+    LivenessAnalyzer liveness(lirGraph);
+    liveness.analyze();
+
+    // 5. 线性扫描寄存器分配 (Linear Scan Register Allocation)
+    LinearScanAllocator allocator(lirGraph, liveness);
+    allocator.allocate();
+
+    // 6. 打印 LIR 序列
     std::cout << "\n--- LIR Output ---\n";
     for (LIRBlock* block : lirGraph.blocks()) {
         std::cout << "Block " << block->id() << ":\n";

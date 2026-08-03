@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <unordered_set>
 #include "Registers.h"
 #include "MacroAssembler.h" // For Condition
 
@@ -250,8 +251,13 @@ public:
     void setBailoutId(uint32_t id) { bailoutId_ = id; }
     uint32_t bailoutId() const { return bailoutId_; }
 
+    // 供寄存器分配器使用 (线性 ID)
+    void setLinearId(uint32_t id) { linearId_ = id; }
+    uint32_t linearId() const { return linearId_; }
+
 private:
     uint32_t id_;
+    uint32_t linearId_ = 0;
     LIROpcode opcode_;
     std::vector<LIROperand> defs_;
     std::vector<LIROperand> uses_;
@@ -283,10 +289,16 @@ public:
 
     const std::vector<LIRBlock*>& predecessors() const { return predecessors_; }
     const std::vector<LIRBlock*>& successors() const { return successors_; }
+    
+    std::vector<LIRInst*>& instructionsMut() { return instructions_; }
 
     // 供寄存器分配器使用 (循环嵌套深度)
     void setLoopDepth(int depth) { loopDepth_ = depth; }
     int loopDepth() const { return loopDepth_; }
+
+    // 供活跃区间分析使用
+    std::unordered_set<uint32_t> liveIn;
+    std::unordered_set<uint32_t> liveOut;
 
 private:
     uint32_t id_;

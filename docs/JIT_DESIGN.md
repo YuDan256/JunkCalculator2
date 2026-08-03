@@ -344,9 +344,9 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 39:** 实现指令选择器，将 HIR 的 `AddI32` 降级为 LIR 的 `add` 指令。
 
 ### Phase 8: 寄存器分配 (Register Allocation) (Steps 40-42)
-*   **Step 40:** 实现活跃区间分析 (Liveness Analysis)，计算每个 VirtualReg 的生命周期。
-*   **Step 41:** 实现线性扫描寄存器分配器 (LSRA) 的核心分配与回收逻辑。
-*   **Step 42:** 在 LSRA 中处理 x86-64 的固定物理寄存器约束和栈溢出 (Spilling)。
+*   **[已完成] Step 40:** 实现活跃区间分析 (Liveness Analysis)，计算每个 VirtualReg 的生命周期。
+*   **[已完成] Step 41:** 实现线性扫描寄存器分配器 (LSRA) 的核心分配与回收逻辑。
+*   **[已完成] Step 42:** 在 LSRA 中处理 x86-64 的固定物理寄存器约束和栈溢出 (Spilling)。
 
 ### Phase 9: 代码生成与去优化 (Code Gen & Deoptimization) (Steps 43-45)
 *   **Step 43:** 遍历分配好寄存器的 LIR，调用 `MacroAssembler` 生成最终机器码。

@@ -108,8 +108,8 @@ private:
             for (HIRNode* use : ctrl->uses()) {
                 if (isControlNode(use)) {
                     bool isControlEdge = false;
-                    if (use->opcode() == HIROp::LoopBegin) {
-                        // LoopBegin 的所有 inputs 都是流入它的控制边
+                    if (use->opcode() == HIROp::LoopBegin || use->opcode() == HIROp::Merge) {
+                        // LoopBegin 和 Merge 的所有 inputs 都是流入它的控制边
                         for (HIRNode* in : use->inputs()) {
                             if (in == ctrl) { isControlEdge = true; break; }
                         }

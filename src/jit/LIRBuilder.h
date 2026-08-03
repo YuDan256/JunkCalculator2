@@ -35,8 +35,20 @@ public:
 
     const std::vector<LIRBlock*>& blocks() const { return blocks_; }
 
+    void addVReg(uint32_t vreg, bool isFloat) {
+        if (vreg >= vregIsFloat_.size()) {
+            vregIsFloat_.resize(vreg + 1, false);
+        }
+        vregIsFloat_[vreg] = isFloat;
+    }
+
+    bool isVRegFloat(uint32_t vreg) const {
+        return vreg < vregIsFloat_.size() ? vregIsFloat_[vreg] : false;
+    }
+
 private:
     std::vector<LIRBlock*> blocks_;
+    std::vector<bool> vregIsFloat_;
 };
 
 // ============================================================================
@@ -58,8 +70,10 @@ public:
     }
 
     // --- 虚拟寄存器分配 ---
-    uint32_t allocateVirtualRegister() {
-        return nextVReg_++;
+    uint32_t allocateVirtualRegister(bool isFloat = false) {
+        uint32_t id = nextVReg_++;
+        graph_->addVReg(id, isFloat);
+        return id;
     }
 
     // --- 基础指令发射 ---

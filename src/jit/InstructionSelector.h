@@ -38,7 +38,8 @@ public:
                 node->type() != JITType::Effect && 
                 node->type() != JITType::FrameState &&
                 node->opcode() != HIROp::NoneConstant) {
-                nodeToOperand_[node] = LIROperand::createVirtual(builder_.allocateVirtualRegister());
+                bool isFloat = (node->type() == JITType::Double);
+                nodeToOperand_[node] = LIROperand::createVirtual(builder_.allocateVirtualRegister(isFloat));
             }
         }
 
@@ -66,6 +67,48 @@ public:
             } else if (block->successors().size() == 1) {
                 // 空块也需要跳转
                 builder_.emitJump(block->successors()[0]);
+            }
+        }
+
+        // 5. 降级 Phi 节点 (De-SSA)
+        // 将 Phi 节点转换为在其各个前驱基本块末尾的 Move 指令
+        for (LIRBlock* block : lir_.blocks()) {
+            auto& nodes = blockNodes[block];
+            for (HIRNode* node : nodes) {
+                if (node->opcode() == HIROp::Phi) {
+                    LIROperand out = getOperand(node);
+                    HIRNode* mergeNode = node->inputs()[0];
+                    
+                    // Phi 的 inputs[1..N] 对应 Merge 的 inputs[0..N-1]
+                    for (size_t i = 1; i < node->inputs().size(); ++i) {
+                        HIRNode* dataIn = node->inputs()[i];
+                        HIRNode* ctrlIn = mergeNode->inputs()[i - 1];
+                        LIRBlock* predBlock = gcm_.getBlockForNode(ctrlIn);
+                        
+                        if (predBlock && dataIn) {
+                            LIROperand inVal = getOperand(dataIn);
+                            if (!inVal.isInvalid() && !out.isInvalid()) {
+                                auto moveInst = new LIRInst(0, LIROpcode::Move);
+                                moveInst->addDef(out);
+                                moveInst->addUse(inVal);
+                                
+                                // 插入到前驱块的末尾，但在任何跳转指令 (Jmp/Jcc/Ret) 之前
+                                auto& insts = predBlock->instructionsMut();
+                                auto insertIt = insts.end();
+                                while (insertIt != insts.begin()) {
+                                    auto prev = std::prev(insertIt);
+                                    LIROpcode op = (*prev)->opcode();
+                                    if (op == LIROpcode::Jmp || op == LIROpcode::Jcc || op == LIROpcode::Ret || op == LIROpcode::Deoptimize) {
+                                        insertIt = prev;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                insts.insert(insertIt, moveInst);
+                            }
+                        }
+                    }
+                }
             }
         }
     }

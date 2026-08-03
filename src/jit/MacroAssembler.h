@@ -11,6 +11,41 @@
 namespace jc {
 namespace jit {
 
+// ========================================================================
+// 控制流标签 (Step 17)
+// ========================================================================
+class Label {
+public:
+    Label() : bound_(false), pos_(0) {}
+
+    // 是否已经绑定到具体的机器码偏移量
+    bool isBound() const { return bound_; }
+    
+    // 获取绑定的机器码偏移量
+    int pos() const { return pos_; }
+
+    // 绑定到指定的偏移量
+    void bindTo(int position) {
+        bound_ = true;
+        pos_ = position;
+    }
+
+    // 记录一个未决的跳转指令偏移量（等待回填）
+    void addUnresolvedJump(int jumpOffset) {
+        unresolvedJumps_.push_back(jumpOffset);
+    }
+
+    // 获取所有未决的跳转指令偏移量
+    const std::vector<int>& unresolvedJumps() const {
+        return unresolvedJumps_;
+    }
+
+private:
+    bool bound_;
+    int pos_;
+    std::vector<int> unresolvedJumps_;
+};
+
 class MacroAssembler {
 public:
     MacroAssembler() {
@@ -453,6 +488,110 @@ public:
     // --- RET ---
     void ret() {
         emit8(0xC3);
+    }
+
+    // ========================================================================
+    // x86-64 浮点标量指令 (SSE2) (Step 14)
+    // ========================================================================
+
+    // --- MOVSD ---
+    void movsd(XMMRegister dst, XMMRegister src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(0x10); emitModRM(3, dst.id(), src.id());
+    }
+    void movsd(XMMRegister dst, const Operand& src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(0x10); emitOperand(dst, src);
+    }
+    void movsd(const Operand& dst, XMMRegister src) {
+        emit8(0xF2); emitRex(false, src, dst); emit8(0x0F); emit8(0x11); emitOperand(src, dst);
+    }
+
+    // --- SSE2 Math Helper ---
+    void emitSSE2Math(uint8_t op, XMMRegister dst, XMMRegister src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(op); emitModRM(3, dst.id(), src.id());
+    }
+    void emitSSE2Math(uint8_t op, XMMRegister dst, const Operand& src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(op); emitOperand(dst, src);
+    }
+
+    // --- ADDSD, SUBSD, MULSD, DIVSD ---
+    void addsd(XMMRegister dst, XMMRegister src) { emitSSE2Math(0x58, dst, src); }
+    void addsd(XMMRegister dst, const Operand& src) { emitSSE2Math(0x58, dst, src); }
+    void subsd(XMMRegister dst, XMMRegister src) { emitSSE2Math(0x5C, dst, src); }
+    void subsd(XMMRegister dst, const Operand& src) { emitSSE2Math(0x5C, dst, src); }
+    void mulsd(XMMRegister dst, XMMRegister src) { emitSSE2Math(0x59, dst, src); }
+    void mulsd(XMMRegister dst, const Operand& src) { emitSSE2Math(0x59, dst, src); }
+    void divsd(XMMRegister dst, XMMRegister src) { emitSSE2Math(0x5E, dst, src); }
+    void divsd(XMMRegister dst, const Operand& src) { emitSSE2Math(0x5E, dst, src); }
+
+    // --- UCOMISD ---
+    void ucomisd(XMMRegister dst, XMMRegister src) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x2E); emitModRM(3, dst.id(), src.id());
+    }
+    void ucomisd(XMMRegister dst, const Operand& src) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x2E); emitOperand(dst, src);
+    }
+
+    // --- CVTSI2SD (r/m32 -> xmm) ---
+    void cvtsi2sd(XMMRegister dst, Register src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(0x2A); emitModRM(3, dst.id(), src.id());
+    }
+    void cvtsi2sd(XMMRegister dst, const Operand& src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(0x2A); emitOperand(dst, src);
+    }
+
+    // --- CVTTSD2SI (xmm/m64 -> r32) ---
+    void cvttsd2si(Register dst, XMMRegister src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(0x2C); emitModRM(3, dst.id(), src.id());
+    }
+    void cvttsd2si(Register dst, const Operand& src) {
+        emit8(0xF2); emitRex(false, dst, src); emit8(0x0F); emit8(0x2C); emitOperand(dst, src);
+    }
+
+    // ========================================================================
+    // C++ ABI 辅助封装 (Step 15)
+    // ========================================================================
+
+    // --- 64-bit Helpers for Pointers ---
+    void movq(Register dst, Register src) {
+        emitRex(true, dst, src);
+        emit8(0x8B);
+        emitModRM(3, dst.id(), src.id());
+    }
+    void subq(Register dst, int32_t imm) {
+        emitRex(true, Register(), dst);
+        if (isInt8(imm)) {
+            emit8(0x83);
+            emitModRM(3, 5, dst.id());
+            emit8(static_cast<uint8_t>(imm));
+        } else {
+            emit8(0x81);
+            emitModRM(3, 5, dst.id());
+            emit32(imm);
+        }
+    }
+
+    // --- Prologue ---
+    // stackSize: 需要分配的局部变量空间大小（不包含 Shadow Space）
+    // 会自动处理 16 字节对齐和 Windows 32 字节 Shadow Space
+    void prologue(int32_t stackSize = 0) {
+        push(rbp);
+        movq(rbp, rsp);
+        
+        // Windows x64 ABI 要求 32 字节的 Shadow Space
+        // 加上用户请求的 stackSize，然后向上对齐到 16 字节
+        int32_t totalStack = stackSize + 32;
+        totalStack = (totalStack + 15) & ~15;
+        
+        if (totalStack > 0) {
+            subq(rsp, totalStack);
+        }
+    }
+
+    // --- Epilogue ---
+    void epilogue() {
+        movq(rsp, rbp);
+        pop(rbp);
+        ret();
     }
 
 private:

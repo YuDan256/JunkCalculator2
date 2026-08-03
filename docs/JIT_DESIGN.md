@@ -284,15 +284,15 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 9:** 实现 x86-64 的 REX 前缀发射逻辑 (`emitRex`)。
 *   **[已完成] Step 10:** 实现 ModR/M 和 SIB 字节的计算与发射逻辑。
 *   **[已完成] Step 11:** 实现基础 ALU 与逻辑指令 (`mov`, `add`, `sub`, `cmp`, `test`, `and`, `or`, `xor`)，支持寄存器与内存操作数。
-*   **[当前进度] Step 12:** 实现复杂 ALU 指令 (`imul`, `idiv`, `cdq`/`cqo`, `shl`, `shr`, `sar`) 及隐式寄存器约束处理。
-*   **Step 13:** 实现栈操作与 64 位立即数加载 (`push`, `pop`, `movabs`)。
-*   **Step 14:** 实现浮点标量指令 (SSE2: `movsd`, `addsd`, `subsd`, `mulsd`, `divsd`, `ucomisd`, `cvtsi2sd`, `cvttsd2si`)。
-*   **Step 15:** 实现 C++ ABI 辅助封装 (Prologue/Epilogue, 16字节栈对齐, Windows 32字节 Shadow Space 分配)。
-*   **Step 16:** **[验证]** 编写单元测试：发射包含浮点运算和 C++ 函数调用的机器码，验证 ABI 兼容性。
+*   **[已完成] Step 12:** 实现复杂 ALU 指令 (`imul`, `idiv`, `cdq`/`cqo`, `shl`, `shr`, `sar`) 及隐式寄存器约束处理。
+*   **[已完成] Step 13:** 实现栈操作与 64 位立即数加载 (`push`, `pop`, `movabs`)。
+*   **[已完成] Step 14:** 实现浮点标量指令 (SSE2: `movsd`, `addsd`, `subsd`, `mulsd`, `divsd`, `ucomisd`, `cvtsi2sd`, `cvttsd2si`)。
+*   **[已完成] Step 15:** 实现 C++ ABI 辅助封装 (Prologue/Epilogue, 16字节栈对齐, Windows 32字节 Shadow Space 分配)。
+*   **[已完成] Step 16:** **[验证]** 编写单元测试：发射包含浮点运算和 C++ 函数调用的机器码，验证 ABI 兼容性。
 
 ### Phase 3: 控制流与常量池 (Control Flow & Constant Pool) (Steps 17-21)
-*   **Step 17:** 定义 `Label` 类，维护绑定状态和未决跳转链表。
-*   **Step 18:** 实现无条件跳转 `jmp`、条件跳转 `jcc` 和函数调用 `call` 的发射逻辑（支持 32 位相对偏移）。
+*   **[已完成] Step 17:** 定义 `Label` 类，维护绑定状态和未决跳转链表。
+*   **[当前进度] Step 18:** 实现无条件跳转 `jmp`、条件跳转 `jcc` 和函数调用 `call` 的发射逻辑（支持 32 位相对偏移）。
 *   **Step 19:** 实现 `bind(Label)` 逻辑，完成相对偏移量的计算与回填 (Patch)。
 *   **Step 20:** 实现常量池 (Constant Pool) 与 RIP 相对寻址 (用于高效加载 Double 常量和 64 位指针)。
 *   **Step 21:** **[验证]** 编写单元测试：发射一段包含循环、条件分支和常量池加载的汇编代码，执行并验证结果。

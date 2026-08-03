@@ -331,10 +331,11 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 31:** **[验证]** 编写单元测试：手动调用 Builder 构建一个微型图，并打印为 Graphviz DOT 格式。
 
 ### Phase 6: 字节码到 HIR 的转换 (Bytecode to HIR) (Steps 32-35)
-*   **Step 32:** 实现字节码的基本块 (Basic Block) 划分算法。
-*   **Step 33:** 实现抽象解释器的主循环，维护 256 个虚拟寄存器到 HIR 节点的映射表。
-*   **Step 34:** 实现线性字节码（如 `LOADK`, `MOVE`）到 HIR 的转换（复写传播）。
-*   **Step 35:** 结合 Profiling 数据，实现 `OpCode::ADD` 的类型特化（注入 `Guard` 和 `Unbox` 节点）。
+*   **[已完成] Step 32:** 实现字节码的基本块 (Basic Block) 划分算法。
+*   **[已完成] Step 33:** 实现抽象解释器的主循环，维护 256 个虚拟寄存器到 HIR 节点的映射表。
+*   **[已完成] Step 34:** 实现线性字节码（如 `LOADK`, `MOVE`）到 HIR 的转换（复写传播）。
+*   **[已完成] Step 35:** 结合 Profiling 数据，实现 `OpCode::ADD` 的类型特化（注入 `Guard` 和 `Unbox` 节点）。
+*   **[已完成] Step 35.5:** **[验证]** 编写单元测试：手动构造包含 `LOADK` 和 `ADD` 的 Chunk，并验证生成的 HIR 图。
 
 ### Phase 7: LIR 与指令选择 (LIR & Instruction Selection) (Steps 36-39)
 *   **Step 36:** 定义 `LIRInst`, `LIROperand` (Virtual/Physical/Stack) 和 `LIRBlock`。

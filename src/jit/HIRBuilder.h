@@ -177,6 +177,10 @@ public:
         return graph_->allocateNode<BinaryOpNode>(HIROp::DivI32, JITType::Int32, lhs, rhs);
     }
 
+    BinaryOpNode* createIDivI32(HIRNode* lhs, HIRNode* rhs) {
+        return graph_->allocateNode<BinaryOpNode>(HIROp::IDivI32, JITType::Int32, lhs, rhs);
+    }
+
     BinaryOpNode* createAddF64(HIRNode* lhs, HIRNode* rhs) {
         return graph_->allocateNode<BinaryOpNode>(HIROp::AddF64, JITType::Double, lhs, rhs);
     }
@@ -191,6 +195,10 @@ public:
 
     BinaryOpNode* createDivF64(HIRNode* lhs, HIRNode* rhs) {
         return graph_->allocateNode<BinaryOpNode>(HIROp::DivF64, JITType::Double, lhs, rhs);
+    }
+
+    BinaryOpNode* createIDivF64(HIRNode* lhs, HIRNode* rhs) {
+        return graph_->allocateNode<BinaryOpNode>(HIROp::IDivF64, JITType::Double, lhs, rhs);
     }
 
     BinaryOpNode* createModI32(HIRNode* lhs, HIRNode* rhs) {

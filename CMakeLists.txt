@@ -43,7 +43,7 @@ endif()
 # ==============================================================================
 set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/ASTConverter.h"
-    "src/jit/ExecutableMemory.h" "src/jit/Registers.h" "src/jit/Operand.h" "src/jit/MacroAssembler.h" "src/jit/HIR.h" "src/jit/HIRBuilder.h"
+    "src/jit/ExecutableMemory.h" "src/jit/Registers.h" "src/jit/Operand.h" "src/jit/MacroAssembler.h" "src/jit/HIR.h" "src/jit/HIRBuilder.h" "src/jit/BytecodeCFG.h" "src/jit/BytecodeToHIR.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h"
@@ -82,6 +82,10 @@ target_include_directories(test_memory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # ★ Build JIT HIR Test Executable
 add_executable(test_hir "src/jit/test_hir.cpp")
 target_include_directories(test_hir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# ★ Build JIT BytecodeToHIR Test Executable
+add_executable(test_bytecode_to_hir "src/jit/test_bytecode_to_hir.cpp")
+target_include_directories(test_bytecode_to_hir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build Image Module as a standalone DLL
 add_library(image SHARED "src/lib/image/image_module.cpp")
@@ -161,7 +165,7 @@ endforeach()
 # ==============================================================================
 if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
-    foreach(target JunkCalculator2 test_memory test_hir ${JC2_LIBS})
+    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir ${JC2_LIBS})
         target_compile_options(${target} PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     endforeach()
     
@@ -170,7 +174,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
 else()
-    foreach(target JunkCalculator2 test_memory test_hir ${JC2_LIBS})
+    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir ${JC2_LIBS})
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -O3 -march=native)
         # Force static linking for MinGW to ensure portability (Green version)
         if(MINGW OR CYGWIN)
@@ -182,7 +186,7 @@ else()
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported)
     if(ipo_supported)
-        set_target_properties(JunkCalculator2 test_memory test_hir ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        set_target_properties(JunkCalculator2 test_memory test_hir test_bytecode_to_hir ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 

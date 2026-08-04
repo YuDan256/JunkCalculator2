@@ -268,7 +268,7 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 
 ## 14. JIT 稳健开发路线图 (Expanded Industrial Roadmap)
 
-为了保证 JIT 编译器的绝对稳定，避免难以调试的机器码崩溃，整个开发过程被严格拆分为 47 个微小步骤。每一步都必须独立验证，绝不大步迈进。
+为了保证 JIT 编译器的绝对稳定，避免难以调试的机器码崩溃，整个开发过程被严格拆分为 45 个微小步骤。每一步都必须独立验证，绝不大步迈进。
 
 ### Phase 1: 基础设施与可执行内存 (Steps 1-5)
 *   **Step 1:** 定义 `ExecutableMemory` 类的基础结构（头文件设计）。
@@ -354,10 +354,6 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 45:** 实现 C++ `Deoptimize` 运行时函数，根据 Stack Map 重建解释器 `CallFrame` 并平滑回退。
 *   **[已完成] Step 45.5:** **[验证]** 编写端到端测试 (`test_jit_pipeline.cpp`)，成功验证包含控制流分支、Phi 节点汇聚、64位指针与 NaN-Boxing 数据的完整 JIT 编译管线。
 
-### Phase 10: 栈上替换 (OSR) (Steps 46-47)
-*   **Step 46:** 在解释器的循环回边指令（如 `JMP` 往回跳时）增加 OSR 计数器。
-*   **Step 47:** 实现 OSR Entry 跳板，将解释器寄存器状态映射到 JIT 物理寄存器，并热切换入 JIT 循环体。
-
 ## 15. JIT 与类型系统及 GC 的交互 (JIT, Type System & GC Interaction)
 
 JC2 的运行时具有两个显著特征：**64位 NaN-Boxing** 和 **Mark-and-Sweep + 引用计数 (Ref Count) 混合内存管理**。JIT 生成的机器码必须与这些机制完美契合，否则会导致严重的内存破坏。
@@ -440,12 +436,12 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 为了让 JIT 能够加速真实世界中复杂的 JC2 脚本，接下来的开发将围绕循环、内存访问、函数内联和 OSR 展开。以下是严格拆分的 6 个 Phase，共 36 个微小步骤：
 
 ### Phase 11: 中端优化 Pass (Mid-level Optimizations) (Steps 48-53)
-*   **Step 48:** 实现常量折叠 (Constant Folding) 基础框架，支持算术指令的预计算。
-*   **Step 49:** 实现死代码消除 (Dead Code Elimination, DCE)，基于 Use-Def 链反向标记存活节点。
-*   **Step 50:** 实现全局值编号 (Global Value Numbering, GVN) 核心哈希表，用于识别等价节点。
-*   **Step 51:** 在 GVN 中实现公共子表达式消除 (CSE)，合并相同的算术与逻辑节点。
-*   **Step 52:** 实现代数化简 (Algebraic Simplification)，如 `x * 1 -> x`, `x + 0 -> x`。
-*   **Step 53:** 将中端优化 Pass 集成到 `BytecodeToHIR` 之后、`GCM` 调度之前，并编写测试验证图的精简。
+*   **[已完成] Step 48:** 实现常量折叠 (Constant Folding) 基础框架，支持算术指令的预计算。
+*   **[已完成] Step 49:** 实现死代码消除 (Dead Code Elimination, DCE)，基于 Use-Def 链反向标记存活节点。
+*   **[已完成] Step 50:** 实现全局值编号 (Global Value Numbering, GVN) 核心哈希表，用于识别等价节点。
+*   **[已完成] Step 51:** 在 GVN 中实现公共子表达式消除 (CSE)，合并相同的算术与逻辑节点。
+*   **[已完成] Step 52:** 实现代数化简 (Algebraic Simplification)，如 `x * 1 -> x`, `x + 0 -> x`。
+*   **[已完成] Step 53:** 将中端优化 Pass 集成到 `BytecodeToHIR` 之后、`GCM` 调度之前，并编写测试验证图的精简。
 
 ### Phase 12: 循环与前向数据流 (Loops & Loop Phis) (Steps 54-59)
 *   **Step 54:** 扩展 `BytecodeCFG`，识别循环头 (Loop Header) 和循环回边 (Back-edge)。

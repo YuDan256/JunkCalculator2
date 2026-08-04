@@ -289,6 +289,16 @@ public:
         }
     }
 
+    // 清空所有输入节点，并自动维护 uses 链
+    void clearInputs() {
+        for (HIRNode* oldNode : inputs_) {
+            if (oldNode) {
+                oldNode->removeUse(this);
+            }
+        }
+        inputs_.clear();
+    }
+
     // 将所有依赖当前节点的节点，改为依赖 newNode (用于节点替换/优化)
     void replaceUsesWith(HIRNode* newNode) {
         if (this == newNode) return;

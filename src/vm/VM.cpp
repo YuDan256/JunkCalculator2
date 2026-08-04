@@ -14,6 +14,10 @@
 #include "BytecodeSerializer.h"
 #include "../jit/runtime/Deoptimization.h"
 #include "../jit/frontend/BytecodeToHIR.h"
+#include "../jit/pass/ConstantFolding.h"
+#include "../jit/pass/AlgebraicSimplification.h"
+#include "../jit/pass/CSE.h"
+#include "../jit/pass/DCE.h"
 #include "../jit/pass/GCM.h"
 #include "../jit/pass/InstructionSelector.h"
 #include "../jit/pass/LivenessAnalysis.h"
@@ -2508,6 +2512,12 @@ void VM::profileFrameStart(CallFrame* frame) {
                     jit::HIRBuilder hirBuilder(&hirGraph);
                     jit::BytecodeToHIR converter(fn->chunk, hirBuilder);
                     converter.build();
+
+                    // --- Mid-level Optimizations (Phase 11) ---
+                    jit::ConstantFolding(hirGraph, hirBuilder).run();
+                    jit::AlgebraicSimplification(hirGraph, hirBuilder).run();
+                    jit::CommonSubexpressionElimination(hirGraph, hirBuilder).run();
+                    jit::DeadCodeElimination(hirGraph, hirBuilder).run();
 
                     jit::LIRGraph lirGraph;
                     jit::LIRBuilder lirBuilder(&lirGraph);

@@ -43,7 +43,7 @@ endif()
 # ==============================================================================
 set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/ASTConverter.h"
-    "src/jit/backend/ExecutableMemory.h" "src/jit/backend/Registers.h" "src/jit/backend/Operand.h" "src/jit/backend/MacroAssembler.h" "src/jit/ir/HIR.h" "src/jit/ir/HIRBuilder.h" "src/jit/frontend/BytecodeCFG.h" "src/jit/frontend/BytecodeToHIR.h" "src/jit/ir/LIR.h" "src/jit/ir/LIRBuilder.h" "src/jit/pass/GCM.h" "src/jit/pass/InstructionSelector.h" "src/jit/pass/LivenessAnalysis.h" "src/jit/pass/LinearScan.h" "src/jit/backend/CodeEmitter.h" "src/jit/runtime/Deoptimization.h"
+    "src/jit/backend/ExecutableMemory.h" "src/jit/backend/Registers.h" "src/jit/backend/Operand.h" "src/jit/backend/MacroAssembler.h" "src/jit/ir/HIR.h" "src/jit/ir/HIRBuilder.h" "src/jit/frontend/BytecodeCFG.h" "src/jit/frontend/BytecodeToHIR.h" "src/jit/ir/LIR.h" "src/jit/ir/LIRBuilder.h" "src/jit/pass/GCM.h" "src/jit/pass/InstructionSelector.h" "src/jit/pass/LivenessAnalysis.h" "src/jit/pass/LinearScan.h" "src/jit/pass/ConstantFolding.h" "src/jit/pass/DCE.h" "src/jit/pass/GVN.h" "src/jit/pass/CSE.h" "src/jit/pass/AlgebraicSimplification.h" "src/jit/backend/CodeEmitter.h" "src/jit/runtime/Deoptimization.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h"
@@ -94,6 +94,10 @@ target_include_directories(test_instruction_selector PRIVATE ${CMAKE_CURRENT_SOU
 # ★ Build JIT End-to-End Pipeline Test Executable
 add_executable(test_jit_pipeline "src/jit/tests/test_jit_pipeline.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
 target_include_directories(test_jit_pipeline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# ★ Build JIT Mid-Level Optimizations Test Executable
+add_executable(test_mid_level_opt "src/jit/tests/test_mid_level_opt.cpp")
+target_include_directories(test_mid_level_opt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build Image Module as a standalone DLL
 add_library(image SHARED "src/lib/image/image_module.cpp")
@@ -173,7 +177,7 @@ endforeach()
 # ==============================================================================
 if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
-    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline ${JC2_LIBS})
+    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt ${JC2_LIBS})
         target_compile_options(${target} PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     endforeach()
     
@@ -182,7 +186,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
 else()
-    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline ${JC2_LIBS})
+    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt ${JC2_LIBS})
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -O3 -march=native)
         # Force static linking for MinGW to ensure portability (Green version)
         if(MINGW OR CYGWIN)
@@ -194,7 +198,7 @@ else()
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported)
     if(ipo_supported)
-        set_target_properties(JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        set_target_properties(JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 

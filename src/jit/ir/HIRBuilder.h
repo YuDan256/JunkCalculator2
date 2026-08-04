@@ -525,9 +525,7 @@ public:
 
     void killNode(HIRNode* node) {
         // 断开该节点对其输入节点的依赖，使其成为死节点
-        for (size_t i = 0; i < node->inputs().size(); ++i) {
-            node->replaceInput(i, nullptr);
-        }
+        node->clearInputs();
     }
 
 private:

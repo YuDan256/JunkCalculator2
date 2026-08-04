@@ -83,6 +83,7 @@ private:
             case HIROp::GuardIsBool:
             case HIROp::GuardIsString:
             case HIROp::GuardIsObject:
+            case HIROp::GuardIsClass:
             case HIROp::GuardTruthy:
                 return true;
             default:

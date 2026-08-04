@@ -452,12 +452,12 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 59:** 编写端到端测试，验证包含 `while` 和 `for` 循环的字节码能被正确编译为高效机器码。
 
 ### Phase 13: 内存访问与内联缓存特化 (Memory Access & IC Specialization) (Steps 60-65)
-*   **Step 60:** 在 HIR 中引入 `LoadGlobal` 和 `StoreGlobal` 节点，并在 LIR/MacroAssembler 中实现绝对地址寻址。
-*   **Step 61:** 修改 `BytecodeToHIR`，读取 `GET_GLOBAL` 的 IC 数据，命中时直接生成 `LoadGlobal` 节点。
-*   **Step 62:** 在 HIR 中引入 `GuardIsClass` 和 `LoadField`/`StoreField` 节点，支持对象属性的内存偏移访问。
-*   **Step 63:** 修改 `BytecodeToHIR`，读取 `GET_PROP` 的 IC 数据，命中时生成类守卫与直接内存读取。
-*   **Step 64:** 在 LIR 和寄存器分配器中处理内存访问指令的物理寄存器约束（如基址寄存器分配）。
-*   **Step 65:** 编写端到端测试，验证面向对象代码（类属性读写）在 JIT 下的极速执行。
+*   **[已完成] Step 60:** 在 HIR 中引入 `LoadGlobal` 和 `StoreGlobal` 节点，并在 LIR/MacroAssembler 中实现绝对地址寻址。
+*   **[已完成] Step 61:** 修改 `BytecodeToHIR`，读取 `GET_GLOBAL` 的 IC 数据，命中时直接生成 `LoadGlobal` 节点。
+*   **[已完成] Step 62:** 在 HIR 中引入 `GuardIsClass` 和 `LoadField`/`StoreField` 节点，支持对象属性的内存偏移访问。
+*   **[已完成] Step 63:** 修改 `BytecodeToHIR`，读取 `GET_PROP` 的 IC 数据，命中时生成类守卫与直接内存读取。
+*   **[已完成] Step 64:** 在 LIR 和寄存器分配器中处理内存访问指令的物理寄存器约束（如基址寄存器分配）。
+*   **[已完成] Step 65:** **[验证]** 编写端到端测试，验证面向对象代码（类属性读写）在 JIT 下的极速执行。
 
 ### Phase 14: 数学内联函数 (Math Intrinsics) (Steps 66-71)
 *   **Step 66:** 在 HIR 中引入专用的数学硬件节点（如 `SqrtF64`, `SinF64`, `CosF64`）。

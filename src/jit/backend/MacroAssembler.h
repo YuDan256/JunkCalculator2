@@ -434,16 +434,16 @@ public:
     }
 
     // --- SHIFT Helper ---
-    void emitShift(uint8_t ext, Register dst, int32_t imm) {
-        emitRex(false, Register(), dst);
+    void emitShift(uint8_t ext, Register dst, int32_t imm, bool is64 = false) {
+        emitRex(is64, Register(), dst);
         if (imm == 1) {
             emit8(0xD1); emitModRM(3, ext, dst.id());
         } else {
             emit8(0xC1); emitModRM(3, ext, dst.id()); emit8(static_cast<uint8_t>(imm));
         }
     }
-    void emitShift(uint8_t ext, const Operand& dst, int32_t imm) {
-        emitRex(false, Register(), dst);
+    void emitShift(uint8_t ext, const Operand& dst, int32_t imm, bool is64 = false) {
+        emitRex(is64, Register(), dst);
         if (imm == 1) {
             emit8(0xD1); emitOperand(ext, dst);
         } else {
@@ -462,12 +462,16 @@ public:
     // --- SHL (ext 4) ---
     void shl(Register dst, int32_t imm) { emitShift(4, dst, imm); }
     void shl(const Operand& dst, int32_t imm) { emitShift(4, dst, imm); }
+    void shlq(Register dst, int32_t imm) { emitShift(4, dst, imm, true); }
+    void shlq(const Operand& dst, int32_t imm) { emitShift(4, dst, imm, true); }
     void shl_cl(Register dst) { emitShiftCL(4, dst); }
     void shl_cl(const Operand& dst) { emitShiftCL(4, dst); }
 
     // --- SHR (ext 5) ---
     void shr(Register dst, int32_t imm) { emitShift(5, dst, imm); }
     void shr(const Operand& dst, int32_t imm) { emitShift(5, dst, imm); }
+    void shrq(Register dst, int32_t imm) { emitShift(5, dst, imm, true); }
+    void shrq(const Operand& dst, int32_t imm) { emitShift(5, dst, imm, true); }
     void shr_cl(Register dst) { emitShiftCL(5, dst); }
     void shr_cl(const Operand& dst) { emitShiftCL(5, dst); }
 

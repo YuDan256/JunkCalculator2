@@ -126,6 +126,7 @@ enum class HIROp : uint16_t {
     GuardIsBool,
     GuardIsString,
     GuardIsObject,
+    GuardIsClass,
     GuardTruthy,
 
     // ==========================================
@@ -220,6 +221,7 @@ inline std::string to_string(HIROp op) {
         case HIROp::GuardIsBool: return "GuardIsBool";
         case HIROp::GuardIsString: return "GuardIsString";
         case HIROp::GuardIsObject: return "GuardIsObject";
+        case HIROp::GuardIsClass: return "GuardIsClass";
         case HIROp::GuardTruthy: return "GuardTruthy";
         case HIROp::UnboxInt32: return "UnboxInt32";
         case HIROp::BoxInt32: return "BoxInt32";
@@ -412,6 +414,16 @@ public:
     HIRNode* effect() const { return inputs()[1]; }
     HIRNode* value() const { return inputs()[2]; }
     FrameStateNode* frameState() const { return static_cast<FrameStateNode*>(inputs()[3]); }
+};
+
+class GuardIsClassNode : public GuardNode {
+    uint64_t classId_;
+public:
+    GuardIsClassNode(uint32_t id, HIRNode* control, HIRNode* effect, HIRNode* value, FrameStateNode* frameState, uint64_t classId)
+        : GuardNode(id, HIROp::GuardIsClass, control, effect, value, frameState), classId_(classId) {}
+    
+    uint64_t classId() const { return classId_; }
+    std::string extraLabel() const override { return "classId:" + std::to_string(classId_); }
 };
 
 // --- 算术与逻辑节点 (双操作数) ---

@@ -214,6 +214,9 @@ public:
                         if (ic.cachedGlobalSlot >= 0) {
                             auto node = builder_.createLoadGlobal(ic.cachedGlobalSlot);
                             setLocalSync(a, node);
+                        } else {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            builder_.createDeoptimize(fs);
                         }
                         break;
                     }
@@ -221,6 +224,9 @@ public:
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[bx]);
                         if (ic.cachedGlobalSlot >= 0) {
                             builder_.createStoreGlobal(ic.cachedGlobalSlot, builder_.getLocal(a));
+                        } else {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            builder_.createDeoptimize(fs);
                         }
                         break;
                     }
@@ -391,32 +397,51 @@ public:
                         builder_.createReturn(getRKNode(a));
                         break;
                     }
+                    case OpCode::GET_PROP: {
+                        InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[c]);
+                        if (ic.cachedClassId != 0 && ic.cachedFieldIndex >= 0) {
+                            HIRNode* obj = getRKNode(b);
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            builder_.createGuardIsClass(obj, fs, ic.cachedClassId);
+                            auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
+                            auto loadField = builder_.createLoadField(obj, offset);
+                            setLocalSync(a, loadField);
+                        } else {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            builder_.createDeoptimize(fs);
+                        }
+                        break;
+                    }
                     default:
                         // 尚未实现的指令，暂时跳过
                         break;
                 }
+
+                if (!builder_.currentControl()) break; // 控制流已终止，跳过基本块剩余指令
             }
 
             // Step 56: 回边数据流绑定 (Back-edge Data Flow Binding)
-            for (int succId : block.successors) {
-                const auto& succBlock = cfg_.blocks[succId];
-                if (succBlock.isLoopHeader) {
-                    if (std::find(succBlock.backEdges.begin(), succBlock.backEdges.end(), block.id) != succBlock.backEdges.end()) {
-                        // 1. 绑定控制流回边
-                        if (loopHeaderControls_.count(succId)) {
-                            loopHeaderControls_[succId]->addInput(builder_.currentControl());
-                        }
-                        
-                        // 2. 绑定数据流回边
-                        if (loopHeaderPhis_.count(succId)) {
-                            auto& phis = loopHeaderPhis_[succId];
-                            for (size_t i = 0; i < 256; ++i) {
-                                if (phis[i]) {
-                                    HIRNode* backEdgeVal = builder_.getLocal(i);
-                                    if (backEdgeVal) {
-                                        phis[i]->addInput(backEdgeVal);
-                                    } else {
-                                        phis[i]->addInput(builder_.createNoneConstant());
+            if (builder_.currentControl()) {
+                for (int succId : block.successors) {
+                    const auto& succBlock = cfg_.blocks[succId];
+                    if (succBlock.isLoopHeader) {
+                        if (std::find(succBlock.backEdges.begin(), succBlock.backEdges.end(), block.id) != succBlock.backEdges.end()) {
+                            // 1. 绑定控制流回边
+                            if (loopHeaderControls_.count(succId)) {
+                                loopHeaderControls_[succId]->addInput(builder_.currentControl());
+                            }
+                            
+                            // 2. 绑定数据流回边
+                            if (loopHeaderPhis_.count(succId)) {
+                                auto& phis = loopHeaderPhis_[succId];
+                                for (size_t i = 0; i < 256; ++i) {
+                                    if (phis[i]) {
+                                        HIRNode* backEdgeVal = builder_.getLocal(i);
+                                        if (backEdgeVal) {
+                                            phis[i]->addInput(backEdgeVal);
+                                        } else {
+                                            phis[i]->addInput(builder_.createNoneConstant());
+                                        }
                                     }
                                 }
                             }

@@ -15,8 +15,8 @@ namespace jit {
 // ============================================================================
 class CodeEmitter {
 public:
-    CodeEmitter(const LIRGraph& lir, MacroAssembler& masm, void* deoptRuntimeFunc = nullptr)
-        : lir_(lir), masm_(masm), deoptRuntimeFunc_(deoptRuntimeFunc) {}
+    CodeEmitter(const LIRGraph& lir, MacroAssembler& masm, void* deoptRuntimeFunc = nullptr, void* globalsData = nullptr)
+        : lir_(lir), masm_(masm), deoptRuntimeFunc_(deoptRuntimeFunc), globalsData_(globalsData) {}
 
     void emit(int32_t stackSize) {
         // 0. 发射函数序言 (Prologue)
@@ -53,6 +53,7 @@ private:
     const LIRGraph& lir_;
     MacroAssembler& masm_;
     void* deoptRuntimeFunc_;
+    void* globalsData_;
     Label deoptTrampolineLabel_;
     bool needsDeoptTrampoline_ = false;
     std::unordered_map<LIRBlock*, Label> blockLabels_;
@@ -390,6 +391,78 @@ private:
                 // 将 BailoutId 存入 R10，供跳板使用
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                 masm_.jmp(deoptTrampolineLabel_);
+                break;
+            }
+            case LIROpcode::LoadGlobal: {
+                const LIROperand& dst = inst->defs()[0];
+                int32_t slot = inst->uses()[0].imm32();
+                if (!globalsData_) throw std::runtime_error("CodeEmitter: globalsData is null.");
+                uint64_t addr = reinterpret_cast<uint64_t>(globalsData_) + slot * sizeof(uint64_t);
+                masm_.movabs(r11, addr);
+                if (dst.isPhysicalGPR()) {
+                    masm_.movq(dst.pregGPR(), Operand(r11, 0));
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported LoadGlobal destination.");
+                }
+                break;
+            }
+            case LIROpcode::StoreGlobal: {
+                int32_t slot = inst->uses()[0].imm32();
+                const LIROperand& src = inst->uses()[1];
+                if (!globalsData_) throw std::runtime_error("CodeEmitter: globalsData is null.");
+                uint64_t addr = reinterpret_cast<uint64_t>(globalsData_) + slot * sizeof(uint64_t);
+                masm_.movabs(r11, addr);
+                if (src.isPhysicalGPR()) {
+                    masm_.movq(Operand(r11, 0), src.pregGPR());
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported StoreGlobal source.");
+                }
+                break;
+            }
+            case LIROpcode::LoadField: {
+                const LIROperand& dst = inst->defs()[0];
+                const LIROperand& base = inst->uses()[0];
+                const LIROperand& offset = inst->uses()[1];
+                
+                if (!base.isPhysicalGPR() || !dst.isPhysicalGPR()) {
+                    throw std::runtime_error("CodeEmitter: LoadField requires GPR for base and dst.");
+                }
+                
+                // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针
+                masm_.movq(r11, base.pregGPR());
+                masm_.shlq(r11, 16);
+                masm_.shrq(r11, 16);
+                
+                if (offset.isImm32()) {
+                    masm_.movq(dst.pregGPR(), Operand(r11, offset.imm32()));
+                } else if (offset.isPhysicalGPR()) {
+                    masm_.movq(dst.pregGPR(), Operand(r11, offset.pregGPR(), Scale::Times1, 0));
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported LoadField offset.");
+                }
+                break;
+            }
+            case LIROpcode::StoreField: {
+                const LIROperand& base = inst->uses()[0];
+                const LIROperand& offset = inst->uses()[1];
+                const LIROperand& val = inst->uses()[2];
+                
+                if (!base.isPhysicalGPR() || !val.isPhysicalGPR()) {
+                    throw std::runtime_error("CodeEmitter: StoreField requires GPR for base and val.");
+                }
+                
+                // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针
+                masm_.movq(r11, base.pregGPR());
+                masm_.shlq(r11, 16);
+                masm_.shrq(r11, 16);
+                
+                if (offset.isImm32()) {
+                    masm_.movq(Operand(r11, offset.imm32()), val.pregGPR());
+                } else if (offset.isPhysicalGPR()) {
+                    masm_.movq(Operand(r11, offset.pregGPR(), Scale::Times1, 0), val.pregGPR());
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported StoreField offset.");
+                }
                 break;
             }
             case LIROpcode::BoxInt32: {

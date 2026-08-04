@@ -2536,7 +2536,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                     allocator.allocate();
 
                     jit::MacroAssembler masm;
-                    jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize));
+                    jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), globals.data());
                     
                     emitter.emit(allocator.getStackSize());
                     masm.emitConstantPool();

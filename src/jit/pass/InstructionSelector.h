@@ -359,6 +359,7 @@ private:
             case HIROp::GuardIsBool:
             case HIROp::GuardIsString:
             case HIROp::GuardIsObject:
+            case HIROp::GuardIsClass:
             case HIROp::GuardTruthy:
                 // Guard 节点是控制流节点，不产生数据，在 LIR 阶段暂时忽略（后续会生成 cmp + jcc）
                 break;
@@ -374,6 +375,54 @@ private:
                 LIROperand val = getOperand(node->inputs()[2]);
                 LIROperand mem = LIROperand::createMemory(Operand(r14, n->regIndex() * sizeof(uint64_t)));
                 builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{val, LIRConstraint::anyReg()}});
+                break;
+            }
+            case HIROp::LoadGlobal: {
+                auto n = static_cast<GlobalAccessNode*>(node);
+                builder_.emitWithConstraints(LIROpcode::LoadGlobal, 
+                    {{out, LIRConstraint::anyReg()}}, 
+                    {{LIROperand::createImm32(n->slot()), LIRConstraint::none()}});
+                break;
+            }
+            case HIROp::StoreGlobal: {
+                auto n = static_cast<GlobalAccessNode*>(node);
+                LIROperand val = getOperand(node->inputs()[2]);
+                builder_.emitWithConstraints(LIROpcode::StoreGlobal, 
+                    {}, 
+                    {{LIROperand::createImm32(n->slot()), LIRConstraint::none()}, {val, LIRConstraint::anyReg()}});
+                break;
+            }
+            case HIROp::LoadField: {
+                LIROperand base = getOperand(node->inputs()[2]);
+                HIRNode* offsetNode = node->inputs()[3];
+                if (offsetNode->opcode() == HIROp::Int32Constant) {
+                    int32_t offsetVal = static_cast<Int32ConstantNode*>(offsetNode)->value();
+                    builder_.emitWithConstraints(LIROpcode::LoadField,
+                        {{out, LIRConstraint::anyReg()}},
+                        {{base, LIRConstraint::anyReg()}, {LIROperand::createImm32(offsetVal), LIRConstraint::none()}});
+                } else {
+                    LIROperand offset = getOperand(offsetNode);
+                    builder_.emitWithConstraints(LIROpcode::LoadField,
+                        {{out, LIRConstraint::anyReg()}},
+                        {{base, LIRConstraint::anyReg()}, {offset, LIRConstraint::anyReg()}});
+                }
+                break;
+            }
+            case HIROp::StoreField: {
+                LIROperand base = getOperand(node->inputs()[2]);
+                HIRNode* offsetNode = node->inputs()[3];
+                LIROperand val = getOperand(node->inputs()[4]);
+                if (offsetNode->opcode() == HIROp::Int32Constant) {
+                    int32_t offsetVal = static_cast<Int32ConstantNode*>(offsetNode)->value();
+                    builder_.emitWithConstraints(LIROpcode::StoreField,
+                        {},
+                        {{base, LIRConstraint::anyReg()}, {LIROperand::createImm32(offsetVal), LIRConstraint::none()}, {val, LIRConstraint::anyReg()}});
+                } else {
+                    LIROperand offset = getOperand(offsetNode);
+                    builder_.emitWithConstraints(LIROpcode::StoreField,
+                        {},
+                        {{base, LIRConstraint::anyReg()}, {offset, LIRConstraint::anyReg()}, {val, LIRConstraint::anyReg()}});
+                }
                 break;
             }
             case HIROp::UnboxInt32: {

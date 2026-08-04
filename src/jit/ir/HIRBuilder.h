@@ -356,6 +356,13 @@ public:
         return guard;
     }
 
+    GuardIsClassNode* createGuardIsClass(HIRNode* value, FrameStateNode* frameState, uint64_t classId) {
+        auto guard = graph_->allocateNode<GuardIsClassNode>(currentControl_, currentEffect_, value, frameState, classId);
+        currentControl_ = guard;
+        currentEffect_ = guard;
+        return guard;
+    }
+
     GuardNode* createGuardTruthy(HIRNode* value, FrameStateNode* frameState) {
         auto guard = graph_->allocateNode<GuardNode>(HIROp::GuardTruthy, currentControl_, currentEffect_, value, frameState);
         currentControl_ = guard;

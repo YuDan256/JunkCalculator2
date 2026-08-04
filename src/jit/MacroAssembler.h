@@ -704,6 +704,16 @@ public:
         emit8(0x8B);
         emitModRM(3, dst.id(), src.id());
     }
+    void movq(Register dst, const Operand& src) {
+        emitRex(true, dst, src);
+        emit8(0x8B);
+        emitOperand(dst, src);
+    }
+    void movq(const Operand& dst, Register src) {
+        emitRex(true, src, dst);
+        emit8(0x89);
+        emitOperand(src, dst);
+    }
     void subq(Register dst, int32_t imm) {
         emitRex(true, Register(), dst);
         if (isInt8(imm)) {
@@ -716,6 +726,160 @@ public:
             emit32(imm);
         }
     }
+    void addq(Register dst, Register src) {
+        emitRex(true, dst, src);
+        emit8(0x03);
+        emitModRM(3, dst.id(), src.id());
+    }
+    void addq(Register dst, int32_t imm) {
+        emitRex(true, Register(), dst);
+        if (isInt8(imm)) {
+            emit8(0x83);
+            emitModRM(3, 0, dst.id());
+            emit8(static_cast<uint8_t>(imm));
+        } else {
+            emit8(0x81);
+            emitModRM(3, 0, dst.id());
+            emit32(imm);
+        }
+    }
+    void andq(Register dst, int32_t imm) {
+        emitRex(true, Register(), dst);
+        if (isInt8(imm)) {
+            emit8(0x83);
+            emitModRM(3, 4, dst.id());
+            emit8(static_cast<uint8_t>(imm));
+        } else {
+            emit8(0x81);
+            emitModRM(3, 4, dst.id());
+            emit32(imm);
+        }
+    }
+    void orq(Register dst, Register src) {
+        emitRex(true, dst, src);
+        emit8(0x0B);
+        emitModRM(3, dst.id(), src.id());
+    }
+    void xorq(Register dst, Register src) {
+        emitRex(true, dst, src);
+        emit8(0x33);
+        emitModRM(3, dst.id(), src.id());
+    }
+    void cmpq(Register dst, Register src) {
+        emitRex(true, dst, src);
+        emit8(0x3B);
+        emitModRM(3, dst.id(), src.id());
+    }
+    void cmpq(Register dst, const Operand& src) {
+        emitRex(true, dst, src);
+        emit8(0x3B);
+        emitOperand(dst, src);
+    }
+    void testq(Register dst, Register src) {
+        emitRex(true, src, dst);
+        emit8(0x85);
+        emitModRM(3, src.id(), dst.id());
+    }
+
+    // --- Deoptimization Trampoline (Step 44) ---
+    void emitDeoptTrampoline(Label& trampolineLabel, void* deoptRuntimeFunc) {
+        bind(trampolineLabel);
+        
+        // 1. 保存所有通用寄存器 (GPRs)
+        // 逆序压栈，使得内存中的数组索引直接对应寄存器 ID (RAX=0, RCX=1...)
+        push(r15);
+        push(r14);
+        push(r13);
+        push(r12);
+        push(r11);
+        push(r10); // 包含 BailoutId
+        push(r9);
+        push(r8);
+        push(rdi);
+        push(rsi);
+        push(rbp);
+        subq(rsp, 8); // 占位 RSP (id = 4)
+        push(rbx);
+        push(rdx);
+        push(rcx);
+        push(rax);
+
+        // 2. 保存所有浮点寄存器 (XMM0 - XMM15)
+        // 仅保存低 64 位 (Double)
+        subq(rsp, 128);
+        movsd(Operand(rsp, 0), xmm0);
+        movsd(Operand(rsp, 8), xmm1);
+        movsd(Operand(rsp, 16), xmm2);
+        movsd(Operand(rsp, 24), xmm3);
+        movsd(Operand(rsp, 32), xmm4);
+        movsd(Operand(rsp, 40), xmm5);
+        movsd(Operand(rsp, 48), xmm6);
+        movsd(Operand(rsp, 56), xmm7);
+        movsd(Operand(rsp, 64), xmm8);
+        movsd(Operand(rsp, 72), xmm9);
+        movsd(Operand(rsp, 80), xmm10);
+        movsd(Operand(rsp, 88), xmm11);
+        movsd(Operand(rsp, 96), xmm12);
+        movsd(Operand(rsp, 104), xmm13);
+        movsd(Operand(rsp, 112), xmm14);
+        movsd(Operand(rsp, 120), xmm15);
+
+        // 3. 准备调用 C++ 运行时函数
+        movq(rcx, rsp); // arg1: savedRegs (指向栈顶的 256 字节结构体)
+        movq(rdx, r10); // arg2: bailoutId (之前存在 R10)
+
+        movq(r11, rsp); // 保存原始 RSP
+        andq(rsp, -16); // 16 字节对齐
+        subq(rsp, 32);  // Shadow Space
+
+        if (deoptRuntimeFunc) {
+            movabs(rax, reinterpret_cast<uint64_t>(deoptRuntimeFunc));
+            call(rax);
+        }
+
+        // 恢复原始 RSP
+        movq(rsp, r11);
+
+        // 4. 恢复所有浮点寄存器
+        movsd(xmm0, Operand(rsp, 0));
+        movsd(xmm1, Operand(rsp, 8));
+        movsd(xmm2, Operand(rsp, 16));
+        movsd(xmm3, Operand(rsp, 24));
+        movsd(xmm4, Operand(rsp, 32));
+        movsd(xmm5, Operand(rsp, 40));
+        movsd(xmm6, Operand(rsp, 48));
+        movsd(xmm7, Operand(rsp, 56));
+        movsd(xmm8, Operand(rsp, 64));
+        movsd(xmm9, Operand(rsp, 72));
+        movsd(xmm10, Operand(rsp, 80));
+        movsd(xmm11, Operand(rsp, 88));
+        movsd(xmm12, Operand(rsp, 96));
+        movsd(xmm13, Operand(rsp, 104));
+        movsd(xmm14, Operand(rsp, 112));
+        movsd(xmm15, Operand(rsp, 120));
+        addq(rsp, 128);
+
+        // 5. 恢复所有通用寄存器
+        pop(rax);
+        pop(rcx);
+        pop(rdx);
+        pop(rbx);
+        addq(rsp, 8); // 跳过占位的 RSP
+        pop(rbp);
+        pop(rsi);
+        pop(rdi);
+        pop(r8);
+        pop(r9);
+        pop(r10);
+        pop(r11);
+        pop(r12);
+        pop(r13);
+        pop(r14);
+        pop(r15);
+
+        // 6. 触发断点 (去优化通常不会返回到这里)
+        emit8(0xCC);
+    }
 
     // --- Prologue ---
     // stackSize: 需要分配的局部变量空间大小（不包含 Shadow Space）
@@ -724,19 +888,33 @@ public:
         push(rbp);
         movq(rbp, rsp);
         
-        // Windows x64 ABI 要求 32 字节的 Shadow Space
-        // 加上用户请求的 stackSize，然后向上对齐到 16 字节
-        int32_t totalStack = stackSize + 32;
-        totalStack = (totalStack + 15) & ~15;
+        // 保存 Callee-Saved 寄存器 (兼容 Windows x64 和 System V ABI)
+        push(rbx);
+        push(r12);
+        push(r13);
+        push(r14);
+        push(r15);
+        push(rdi);
+        push(rsi);
         
+        int32_t totalStack = stackSize + 32;
         if (totalStack > 0) {
             subq(rsp, totalStack);
         }
+        andq(rsp, -16); // 强制 16 字节对齐
     }
 
     // --- Epilogue ---
     void epilogue() {
-        movq(rsp, rbp);
+        // 恢复 RSP 到保存 Callee-Saved 寄存器后的位置 (7 个寄存器 * 8 字节 = 56)
+        lea(rsp, Operand(rbp, -56));
+        pop(rsi);
+        pop(rdi);
+        pop(r15);
+        pop(r14);
+        pop(r13);
+        pop(r12);
+        pop(rbx);
         pop(rbp);
         ret();
     }

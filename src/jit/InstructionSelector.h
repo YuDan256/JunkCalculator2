@@ -50,7 +50,21 @@ public:
             auto& nodes = blockNodes[block];
             std::vector<HIRNode*> sortedNodes = topologicalSort(nodes);
 
+            std::vector<HIRNode*> dataNodes;
+            std::vector<HIRNode*> ctrlNodes;
             for (HIRNode* node : sortedNodes) {
+                if (node->opcode() == HIROp::Branch || node->opcode() == HIROp::Jump || 
+                    node->opcode() == HIROp::Return || node->opcode() == HIROp::Deoptimize) {
+                    ctrlNodes.push_back(node);
+                } else {
+                    dataNodes.push_back(node);
+                }
+            }
+
+            for (HIRNode* node : dataNodes) {
+                lowerNode(node);
+            }
+            for (HIRNode* node : ctrlNodes) {
                 lowerNode(node);
             }
 
@@ -291,6 +305,17 @@ private:
                 inst->setCondition(cond);
                 break;
             }
+            case HIROp::CmpEqTagged:
+            case HIROp::CmpNeqTagged: {
+                LIROperand lhs = getOperand(node->inputs()[0]);
+                LIROperand rhs = getOperand(node->inputs()[1]);
+                builder_.emit(LIROpcode::Cmp64, {}, {lhs, rhs});
+                
+                Condition cond = (node->opcode() == HIROp::CmpEqTagged) ? Condition::Equal : Condition::NotEqual;
+                auto inst = builder_.emit(LIROpcode::Setcc, {out}, {});
+                inst->setCondition(cond);
+                break;
+            }
             case HIROp::Return: {
                 if (node->inputs().size() > 2 && node->inputs()[2]) {
                     LIROperand val = getOperand(node->inputs()[2]);
@@ -336,6 +361,20 @@ private:
             case HIROp::GuardTruthy:
                 // Guard 节点是控制流节点，不产生数据，在 LIR 阶段暂时忽略（后续会生成 cmp + jcc）
                 break;
+            case HIROp::LoadRegister: {
+                auto n = static_cast<RegisterAccessNode*>(node);
+                // R14 始终保存 frameRegs 指针 (由 CodeEmitter 在 Prologue 中设置)
+                LIROperand mem = LIROperand::createMemory(Operand(r14, n->regIndex() * sizeof(uint64_t)));
+                builder_.emitWithConstraints(LIROpcode::Move, {{out, LIRConstraint::anyReg()}}, {{mem, LIRConstraint::none()}});
+                break;
+            }
+            case HIROp::StoreRegister: {
+                auto n = static_cast<RegisterAccessNode*>(node);
+                LIROperand val = getOperand(node->inputs()[2]);
+                LIROperand mem = LIROperand::createMemory(Operand(r14, n->regIndex() * sizeof(uint64_t)));
+                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{val, LIRConstraint::anyReg()}});
+                break;
+            }
             case HIROp::UnboxInt32: {
                 LIROperand inVal = getOperand(node->inputs()[1]);
                 if (!inVal.isInvalid() && !out.isInvalid()) {

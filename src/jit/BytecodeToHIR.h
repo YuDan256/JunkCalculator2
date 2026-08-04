@@ -136,15 +136,30 @@ public:
                         if (kst.isString()) return builder_.createStringConstant(kst.asString());
                         return builder_.createNoneConstant();
                     }
-                    return builder_.getLocal(rk);
+                    HIRNode* node = builder_.getLocal(rk);
+                    if (!node) {
+                        node = builder_.createLoadRegister(rk);
+                        builder_.setLocal(rk, node);
+                    }
+                    return node;
+                };
+
+                // Eager Sync: 写入虚拟寄存器时，同步写回 VM::registers 以保证 GC 安全
+                auto setLocalSync = [&](int reg, HIRNode* node) {
+                    builder_.setLocal(reg, node);
+                    HIRNode* boxedNode = node;
+                    if (node->type() == JITType::Int32) boxedNode = builder_.createBoxInt32(node);
+                    else if (node->type() == JITType::Double) boxedNode = builder_.createBoxDouble(node);
+                    else if (node->type() == JITType::Bool) boxedNode = builder_.createBoxBool(node);
+                    builder_.createStoreRegister(reg, boxedNode);
                 };
 
                 // 抽象解释：根据操作码更新 HIRBuilder 的虚拟寄存器状态
                 switch (op) {
                     case OpCode::MOVE: {
                         // 复写传播 (Copy Propagation)：直接复用 HIR 节点指针，不生成新节点
-                        HIRNode* val = builder_.getLocal(b);
-                        builder_.setLocal(a, val);
+                        HIRNode* val = getRKNode(b);
+                        setLocalSync(a, val);
                         break;
                     }
                     case OpCode::LOADK: {
@@ -163,23 +178,23 @@ public:
                         }
                         // TODO: 其他复杂常量类型（如 BigInt, Matrix）的加载
                         if (node) {
-                            builder_.setLocal(a, node);
+                            setLocalSync(a, node);
                         }
                         break;
                     }
                     case OpCode::LOAD_NIL: {
-                        builder_.setLocal(a, builder_.createNoneConstant());
+                        setLocalSync(a, builder_.createNoneConstant());
                         break;
                     }
                     case OpCode::LOAD_BOOL: {
-                        builder_.setLocal(a, builder_.createBoxBool(builder_.createBoolConstant(b != 0)));
+                        setLocalSync(a, builder_.createBoxBool(builder_.createBoolConstant(b != 0)));
                         break;
                     }
                     case OpCode::GET_GLOBAL: {
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[bx]);
                         if (ic.cachedGlobalSlot >= 0) {
                             auto node = builder_.createLoadGlobal(ic.cachedGlobalSlot);
-                            builder_.setLocal(a, node);
+                            setLocalSync(a, node);
                         }
                         break;
                     }
@@ -215,7 +230,7 @@ public:
                             else if (op == OpCode::IDIV) opNode = builder_.createIDivI32(unboxL, unboxR);
                             else if (op == OpCode::MOD) opNode = builder_.createModI32(unboxL, unboxR);
                             
-                            builder_.setLocal(a, builder_.createBoxInt32(opNode));
+                            setLocalSync(a, builder_.createBoxInt32(opNode));
                             
                         } else if (fb == 0x02) { // Monomorphic Double (纯 64 位浮点数)
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
@@ -232,7 +247,7 @@ public:
                             else if (op == OpCode::IDIV) opNode = builder_.createIDivF64(unboxL, unboxR);
                             else if (op == OpCode::MOD) opNode = builder_.createModF64(unboxL, unboxR);
                             
-                            builder_.setLocal(a, builder_.createBoxDouble(opNode));
+                            setLocalSync(a, builder_.createBoxDouble(opNode));
                         }
                         break;
                     }
@@ -259,10 +274,11 @@ public:
                             else if (op == OpCode::SHL) opNode = builder_.createShlI32(unboxL, unboxR);
                             else if (op == OpCode::SHR) opNode = builder_.createShrI32(unboxL, unboxR);
                             
-                            builder_.setLocal(a, builder_.createBoxInt32(opNode));
+                            setLocalSync(a, builder_.createBoxInt32(opNode));
                         }
                         break;
                     }
+                    case OpCode::IS:
                     case OpCode::EQ:
                     case OpCode::NEQ:
                     case OpCode::LT:
@@ -281,14 +297,14 @@ public:
                             auto unboxR = builder_.createUnboxInt32(rhs, guardR);
                             
                             HIRNode* opNode = nullptr;
-                            if (op == OpCode::EQ) opNode = builder_.createCmpEqI32(unboxL, unboxR);
+                            if (op == OpCode::EQ || op == OpCode::IS) opNode = builder_.createCmpEqI32(unboxL, unboxR);
                             else if (op == OpCode::NEQ) opNode = builder_.createCmpNeqI32(unboxL, unboxR);
                             else if (op == OpCode::LT) opNode = builder_.createCmpLtI32(unboxL, unboxR);
                             else if (op == OpCode::LE) opNode = builder_.createCmpLeI32(unboxL, unboxR);
                             else if (op == OpCode::GT) opNode = builder_.createCmpGtI32(unboxL, unboxR);
                             else if (op == OpCode::GE) opNode = builder_.createCmpGeI32(unboxL, unboxR);
                             
-                            builder_.setLocal(a, builder_.createBoxBool(opNode));
+                            setLocalSync(a, builder_.createBoxBool(opNode));
                         } else if (fb == 0x02) {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsDouble(lhs, fs);
@@ -303,8 +319,11 @@ public:
                             else if (op == OpCode::LE) opNode = builder_.createCmpLeF64(unboxL, unboxR);
                             else if (op == OpCode::GT) opNode = builder_.createCmpGtF64(unboxL, unboxR);
                             else if (op == OpCode::GE) opNode = builder_.createCmpGeF64(unboxL, unboxR);
+                            else if (op == OpCode::IS) opNode = builder_.createCmpEqTagged(lhs, rhs); // IS is strict bitwise equality
                             
-                            builder_.setLocal(a, builder_.createBoxBool(opNode));
+                            setLocalSync(a, builder_.createBoxBool(opNode));
+                        } else if (op == OpCode::IS) {
+                            setLocalSync(a, builder_.createBoxBool(builder_.createCmpEqTagged(lhs, rhs)));
                         }
                         break;
                     }
@@ -321,36 +340,36 @@ public:
                             auto unbox = builder_.createUnboxInt32(val, guard);
                             
                             if (op == OpCode::UNM) {
-                                builder_.setLocal(a, builder_.createBoxInt32(builder_.createNegI32(unbox)));
+                                setLocalSync(a, builder_.createBoxInt32(builder_.createNegI32(unbox)));
                             } else if (op == OpCode::BNOT) {
-                                builder_.setLocal(a, builder_.createBoxInt32(builder_.createNotI32(unbox)));
+                                setLocalSync(a, builder_.createBoxInt32(builder_.createNotI32(unbox)));
                             } else if (op == OpCode::NOT) {
                                 auto zero = builder_.createInt32Constant(0);
-                                builder_.setLocal(a, builder_.createBoxBool(builder_.createCmpEqI32(unbox, zero)));
+                                setLocalSync(a, builder_.createBoxBool(builder_.createCmpEqI32(unbox, zero)));
                             } else if (op == OpCode::TO_BOOL) {
                                 auto zero = builder_.createInt32Constant(0);
-                                builder_.setLocal(a, builder_.createBoxBool(builder_.createCmpNeqI32(unbox, zero)));
+                                setLocalSync(a, builder_.createBoxBool(builder_.createCmpNeqI32(unbox, zero)));
                             }
                         } else if (fb == 0x02 && op == OpCode::UNM) {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guard = builder_.createGuardIsDouble(val, fs);
                             auto unbox = builder_.createUnboxDouble(val, guard);
-                            builder_.setLocal(a, builder_.createBoxDouble(builder_.createNegF64(unbox)));
+                            setLocalSync(a, builder_.createBoxDouble(builder_.createNegF64(unbox)));
                         } else if (fb == 0x08 && (op == OpCode::NOT || op == OpCode::TO_BOOL)) {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guard = builder_.createGuardIsBool(val, fs);
                             auto unbox = builder_.createUnboxBool(val, guard);
                             if (op == OpCode::NOT) {
                                 auto falseNode = builder_.createBoolConstant(false);
-                                builder_.setLocal(a, builder_.createBoxBool(builder_.createCmpEqI32(unbox, falseNode)));
+                                setLocalSync(a, builder_.createBoxBool(builder_.createCmpEqI32(unbox, falseNode)));
                             } else {
-                                builder_.setLocal(a, val);
+                                setLocalSync(a, val);
                             }
                         }
                         break;
                     }
                     case OpCode::RETURN: {
-                        builder_.createReturn(builder_.getLocal(a));
+                        builder_.createReturn(getRKNode(a));
                         break;
                     }
                     default:

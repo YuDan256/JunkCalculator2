@@ -404,6 +404,19 @@ public:
     }
 
     // --- 内存与对象操作 ---
+    RegisterAccessNode* createLoadRegister(int regIndex) {
+        auto node = graph_->allocateNode<RegisterAccessNode>(HIROp::LoadRegister, JITType::TaggedValue, currentControl_, currentEffect_, regIndex);
+        currentEffect_ = node;
+        return node;
+    }
+
+    RegisterAccessNode* createStoreRegister(int regIndex, HIRNode* value) {
+        auto node = graph_->allocateNode<RegisterAccessNode>(HIROp::StoreRegister, JITType::Effect, currentControl_, currentEffect_, regIndex);
+        node->addInput(value);
+        currentEffect_ = node;
+        return node;
+    }
+
     GlobalAccessNode* createLoadGlobal(int slot) {
         auto node = graph_->allocateNode<GlobalAccessNode>(HIROp::LoadGlobal, JITType::TaggedValue, currentControl_, currentEffect_, slot);
         currentEffect_ = node;

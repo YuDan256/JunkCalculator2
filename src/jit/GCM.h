@@ -278,8 +278,13 @@ private:
             if (!useBlock) continue;
 
             if (use->opcode() == HIROp::Phi) {
-                if (idom_.count(useBlock)) {
-                    useBlock = idom_[useBlock];
+                for (size_t i = 1; i < use->inputs().size(); ++i) {
+                    if (use->inputs()[i] == node) {
+                        HIRNode* mergeNode = use->inputs()[0];
+                        HIRNode* ctrlIn = mergeNode->inputs()[i - 1];
+                        useBlock = nodeToBlock_[ctrlIn];
+                        break;
+                    }
                 }
             }
 

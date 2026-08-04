@@ -18,6 +18,8 @@ public:
     LinearScanAllocator(LIRGraph& lir, LivenessAnalyzer& liveness)
         : lir_(lir), liveness_(liveness) {}
 
+    int32_t getStackSize() const { return nextStackSlot_; }
+
     void allocate() {
         std::vector<LiveInterval*> unhandled;
         for (auto& pair : liveness_.intervalsMut()) {
@@ -32,8 +34,8 @@ public:
         std::vector<LiveInterval*> activeGPR;
         std::vector<LiveInterval*> activeXMM;
 
-        // 初始化空闲物理寄存器池 (排除 RSP, RBP, 以及作为 Scratch 寄存器的 R10, R11)
-        std::vector<Register> freeGPRs = { r15, r14, r13, r12, r9, r8, rdi, rsi, rbx, rdx, rcx, rax };
+        // 初始化空闲物理寄存器池 (排除 RSP, RBP, R14(专用 frameRegs), 以及作为 Scratch 寄存器的 R10, R11)
+        std::vector<Register> freeGPRs = { r15, r13, r12, r9, r8, rdi, rsi, rbx, rdx, rcx, rax };
         std::vector<XMMRegister> freeXMMs = { xmm15, xmm14, xmm13, xmm12, xmm11, xmm10, xmm9, xmm8, xmm7, xmm6, xmm5, xmm4, xmm3, xmm2, xmm1, xmm0 };
 
         buildClobbers();

@@ -349,9 +349,10 @@ JIT 代码在执行过程中经常需要调用 C++ 运行时函数（如分配�
 *   **[已完成] Step 42:** 在 LSRA 中处理 x86-64 的固定物理寄存器约束和栈溢出 (Spilling)。
 
 ### Phase 9: 代码生成与去优化 (Code Gen & Deoptimization) (Steps 43-45)
-*   **Step 43:** 遍历分配好寄存器的 LIR，调用 `MacroAssembler` 生成最终机器码。
-*   **Step 44:** 实现去优化跳板 (Deopt Trampoline) 的汇编代码，保存所有物理寄存器。
-*   **Step 45:** 实现 C++ `Deoptimize` 运行时函数，根据 Stack Map 重建解释器 `CallFrame` 并平滑回退。
+*   **[已完成] Step 43:** 遍历分配好寄存器的 LIR，调用 `MacroAssembler` 生成最终机器码。
+*   **[已完成] Step 44:** 实现去优化跳板 (Deopt Trampoline) 的汇编代码，保存所有物理寄存器。
+*   **[已完成] Step 45:** 实现 C++ `Deoptimize` 运行时函数，根据 Stack Map 重建解释器 `CallFrame` 并平滑回退。
+*   **[已完成] Step 45.5:** **[验证]** 编写端到端测试 (`test_jit_pipeline.cpp`)，成功验证包含控制流分支、Phi 节点汇聚、64位指针与 NaN-Boxing 数据的完整 JIT 编译管线。
 
 ### Phase 10: 栈上替换 (OSR) (Steps 46-47)
 *   **Step 46:** 在解释器的循环回边指令（如 `JMP` 往回跳时）增加 OSR 计数器。

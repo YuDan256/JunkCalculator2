@@ -3,6 +3,8 @@
 #include "InstructionSelector.h"
 #include "LivenessAnalysis.h"
 #include "LinearScan.h"
+#include "CodeEmitter.h"
+#include "MacroAssembler.h"
 #include <iostream>
 
 using namespace jc;
@@ -58,7 +60,12 @@ int main() {
     LinearScanAllocator allocator(lirGraph, liveness);
     allocator.allocate();
 
-    // 6. 打印 LIR 序列
+    // 6. 机器码发射 (Code Emission)
+    MacroAssembler masm;
+    CodeEmitter emitter(lirGraph, masm);
+    emitter.emit(allocator.getStackSize());
+
+    // 7. 打印 LIR 序列
     std::cout << "\n--- LIR Output ---\n";
     for (LIRBlock* block : lirGraph.blocks()) {
         std::cout << "Block " << block->id() << ":\n";
@@ -96,6 +103,6 @@ int main() {
     }
     std::cout << "------------------\n";
 
-    std::cout << "InstructionSelector test passed!" << std::endl;
+    std::cout << "InstructionSelector and CodeEmitter test passed!" << std::endl;
     return 0;
 }

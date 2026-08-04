@@ -5,6 +5,7 @@
 #include "../memory/Value.h"
 #include "BuiltinRegistry.h"
 #include "../frontend/Token.h"
+#include "../jit/ExecutableMemory.h"
 #include <vector>
 #include <unordered_map>
 #include <memory>
@@ -60,6 +61,8 @@ private:
     std::unordered_set<std::string> importedModules;
 
     std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
+    std::unordered_map<int, std::shared_ptr<jit::ExecutableMemory>> jitCompiledCode;
+    std::unordered_map<int, void*> jitEntryPoints;
     std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
     std::vector<ObjClosure*> deferStack;
     void runDefersDownTo(int targetBase, Value* currentException = nullptr);
@@ -252,6 +255,9 @@ public:
 
     void triggerDebugger();
     CallFrame* currentDebuggerFrame = nullptr;
+
+    CallFrame* getCurrentFrame() { return frameCount > 0 ? &frames[frameCount - 1] : nullptr; }
+    Value* getRegisters() { return registers; }
     
     void printProfileInfo();
     void clearProfileData() { profileData.clear(); }

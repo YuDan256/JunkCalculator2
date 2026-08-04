@@ -147,6 +147,8 @@ enum class HIROp : uint16_t {
     StoreField,
     LoadElement,
     StoreElement,
+    LoadRegister,
+    StoreRegister,
 
     // ==========================================
     // 函数调用 (Calls)
@@ -231,6 +233,8 @@ inline std::string to_string(HIROp op) {
         case HIROp::StoreField: return "StoreField";
         case HIROp::LoadElement: return "LoadElement";
         case HIROp::StoreElement: return "StoreElement";
+        case HIROp::LoadRegister: return "LoadRegister";
+        case HIROp::StoreRegister: return "StoreRegister";
         case HIROp::Call: return "Call";
         case HIROp::CallNative: return "CallNative";
         case HIROp::CallBuiltin: return "CallBuiltin";
@@ -414,6 +418,20 @@ public:
 };
 
 // --- 内存访问节点 ---
+class RegisterAccessNode : public HIRNode {
+    int regIndex_;
+public:
+    RegisterAccessNode(uint32_t id, HIROp op, JITType type, HIRNode* control, HIRNode* effect, int regIndex)
+        : HIRNode(id, op, type), regIndex_(regIndex) {
+        addInput(control);
+        addInput(effect);
+    }
+    
+    int regIndex() const { return regIndex_; }
+    HIRNode* control() const { return inputs()[0]; }
+    HIRNode* effect() const { return inputs()[1]; }
+};
+
 class GlobalAccessNode : public HIRNode {
     int slot_;
 public:

@@ -12,6 +12,13 @@
 #include "../compiler/Emitter.h"
 #include "EngineInterrupt.h"
 #include "BytecodeSerializer.h"
+#include "../jit/Deoptimization.h"
+#include "../jit/BytecodeToHIR.h"
+#include "../jit/GCM.h"
+#include "../jit/InstructionSelector.h"
+#include "../jit/LivenessAnalysis.h"
+#include "../jit/LinearScan.h"
+#include "../jit/CodeEmitter.h"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -491,6 +498,34 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
 
             for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
                 registers[newBase + i] = Value::none();
+            }
+
+            if (jitEntryPoints.count(closure->compiledFnIndex) && jitEntryPoints[closure->compiledFnIndex] != nullptr) {
+                CallFrame newFrame;
+                newFrame.function = fnDef.get();
+                newFrame.chunk = &fnDef->chunk;
+                newFrame.ip = 0;
+                newFrame.registerBase = newBase;
+                newFrame.returnRegister = dstReg;
+                newFrame.deferBase = static_cast<int>(deferStack.size());
+                newFrame.closure = closure;
+                newFrame.selfContext = closure->boundSelf;
+                newFrame.classContext = closure->boundClass;
+                populateRefParams(newFrame, fnDef.get());
+                
+                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+                profileFrameStart(&newFrame);
+                frames[frameCount++] = newFrame;
+
+                typedef uint64_t (*JitFunc)(Value*);
+                JitFunc func = reinterpret_cast<JitFunc>(jitEntryPoints[closure->compiledFnIndex]);
+                
+                uint64_t retBits = func(&registers[newBase]);
+                
+                profileFrameEnd(&frames[frameCount - 1]);
+                frameCount--;
+                registers[currentFrame->registerBase + dstReg].as_bits = retBits;
+                return;
             }
 
             if (isTailCall) {
@@ -2464,8 +2499,46 @@ void VM::profileFrameStart(CallFrame* frame) {
         if (fn->callCount == 50) {
             // 延迟收集 (Warm-up Profiling): 清除前 50 次的早期类型污染
             std::memset(fn->chunk.typeFeedback.data(), 0, fn->chunk.typeFeedback.size());
-        } else if (fn->callCount == 1000) {
-            // TODO: 触发 JIT 编译 (Tier 2)
+        } else if (fn->callCount == 1000 && frame->closure) {
+            int fnIdx = frame->closure->compiledFnIndex;
+            // 触发 JIT 编译 (Tier 2)
+            if (jitEntryPoints.find(fnIdx) == jitEntryPoints.end()) {
+                try {
+                    jit::HIRGraph hirGraph;
+                    jit::HIRBuilder hirBuilder(&hirGraph);
+                    jit::BytecodeToHIR converter(fn->chunk, hirBuilder);
+                    converter.build();
+
+                    jit::LIRGraph lirGraph;
+                    jit::LIRBuilder lirBuilder(&lirGraph);
+                    jit::GCM gcm(hirGraph, lirGraph);
+                    gcm.schedule();
+
+                    jit::InstructionSelector selector(gcm, hirGraph, lirGraph, lirBuilder);
+                    selector.select();
+
+                    jit::LivenessAnalyzer liveness(lirGraph);
+                    liveness.analyze();
+
+                    jit::LinearScanAllocator allocator(lirGraph, liveness);
+                    allocator.allocate();
+
+                    jit::MacroAssembler masm;
+                    jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize));
+                    
+                    emitter.emit(allocator.getStackSize());
+                    masm.emitConstantPool();
+
+                    auto mem = std::make_shared<jit::ExecutableMemory>();
+                    masm.finalize(*mem);
+
+                    jitCompiledCode[fnIdx] = mem;
+                    jitEntryPoints[fnIdx] = mem->get();
+                } catch (const std::exception&) {
+                    // JIT 编译失败，回退到解释器，并标记不再尝试编译
+                    jitEntryPoints[fnIdx] = nullptr; 
+                }
+            }
         }
     }
 
@@ -2810,6 +2883,17 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     profileFrameStart(&newFrame);
     frames[frameCount++] = newFrame;
     
+    if (jitEntryPoints.count(fnIdx) && jitEntryPoints[fnIdx] != nullptr) {
+        typedef uint64_t (*JitFunc)(Value*);
+        JitFunc func = reinterpret_cast<JitFunc>(jitEntryPoints[fnIdx]);
+        uint64_t retBits = func(&registers[newBase]);
+        profileFrameEnd(&frames[frameCount - 1]);
+        frameCount--;
+        Value retVal;
+        retVal.as_bits = retBits;
+        return retVal;
+    }
+
     int targetDepth = frameCount - 1;
     try {
         return run(targetDepth);
@@ -7378,6 +7462,14 @@ Value VM::run(int targetFrameDepth) {
             }
         } catch (const EngineInterruptError&) {
             throw;
+        } catch (const jit::DeoptimizationException&) {
+            // 去优化：状态已由 jc2_jit_deoptimize 恢复，直接继续解释执行
+            frame = &frames[frameCount - 1];
+            chunk = frame->chunk;
+            code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
+            continue;
         } catch (const ValueException& ex) {
             frame->ip = ip;
             Value errVal = wrapException("Exception", ex.val);

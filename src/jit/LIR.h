@@ -145,7 +145,7 @@ enum class LIROpcode : uint16_t {
     NegI32, NotI32,
     AddF64, SubF64, MulF64, DivF64, IDivF64, ModF64,
     NegF64,
-    CmpI32, TestI32, CmpF64,
+    CmpI32, Cmp64, TestI32, CmpF64,
     Setcc,
     Jmp, Jcc,
     Call, CallRuntime, Ret,
@@ -153,7 +153,8 @@ enum class LIROpcode : uint16_t {
     Deoptimize,
     BoxInt32, BoxDouble, BoxBool,
     UnboxInt32, UnboxDouble, UnboxBool,
-    SpillStore, SpillLoad // 供寄存器分配器使用
+    SpillStore, SpillLoad, // 供寄存器分配器使用
+    LoadRegister, StoreRegister
 };
 
 inline std::string to_string(LIROpcode op) {
@@ -185,6 +186,7 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::ModF64: return "ModF64";
         case LIROpcode::NegF64: return "NegF64";
         case LIROpcode::CmpI32: return "CmpI32";
+        case LIROpcode::Cmp64: return "Cmp64";
         case LIROpcode::TestI32: return "TestI32";
         case LIROpcode::CmpF64: return "CmpF64";
         case LIROpcode::Setcc: return "Setcc";

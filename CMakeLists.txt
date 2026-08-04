@@ -99,6 +99,10 @@ target_include_directories(test_jit_pipeline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 add_executable(test_mid_level_opt "src/jit/tests/test_mid_level_opt.cpp")
 target_include_directories(test_mid_level_opt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+# ★ Build JIT Loop Test Executable
+add_executable(test_jit_loop "src/jit/tests/test_jit_loop.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
+target_include_directories(test_jit_loop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 # ★ Build Image Module as a standalone DLL
 add_library(image SHARED "src/lib/image/image_module.cpp")
 target_include_directories(image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -177,7 +181,7 @@ endforeach()
 # ==============================================================================
 if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
-    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt ${JC2_LIBS})
+    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt test_jit_loop ${JC2_LIBS})
         target_compile_options(${target} PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     endforeach()
     
@@ -186,7 +190,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
 else()
-    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt ${JC2_LIBS})
+    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt test_jit_loop ${JC2_LIBS})
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -O3 -march=native)
         # Force static linking for MinGW to ensure portability (Green version)
         if(MINGW OR CYGWIN)
@@ -198,7 +202,7 @@ else()
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported)
     if(ipo_supported)
-        set_target_properties(JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        set_target_properties(JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt test_jit_loop ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 

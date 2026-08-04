@@ -350,10 +350,15 @@ private:
             case LIROpcode::Setcc: {
                 const LIROperand& dst = inst->defs()[0];
                 if (dst.isPhysicalGPR()) {
-                    masm_.emitRex(false, Register(), dst.pregGPR());
+                    uint8_t id = dst.pregGPR().id();
+                    if (id >= 4 && id <= 7) {
+                        masm_.emit8(0x40); // Force REX to access SPL, BPL, SIL, DIL
+                    } else {
+                        masm_.emitRex(false, Register(), dst.pregGPR());
+                    }
                     masm_.emit8(0x0F);
                     masm_.emit8(0x90 + static_cast<uint8_t>(inst->condition()));
-                    masm_.emitModRM(3, 0, dst.pregGPR().id());
+                    masm_.emitModRM(3, 0, id);
                     masm_.and_(dst.pregGPR(), 1);
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported Setcc destination.");

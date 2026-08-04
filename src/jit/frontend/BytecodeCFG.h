@@ -20,6 +20,8 @@ struct BytecodeBlock {
     int endIp; // 独占边界 (Exclusive)
     std::vector<int> successors;
     std::vector<int> predecessors;
+    bool isLoopHeader = false;
+    std::vector<int> backEdges; // 记录哪些前驱块是通过回边跳过来的
 };
 
 // ============================================================================
@@ -213,18 +215,46 @@ public:
                 }
             }
         }
+
+        // 4. 识别循环头和回边 (DFS)
+        std::vector<int> state(blocks.size(), 0); // 0: 未访问, 1: 正在访问(在DFS栈中), 2: 已访问
+        
+        auto dfs = [&](auto& self, int u) -> void {
+            state[u] = 1;
+            for (int v : blocks[u].successors) {
+                if (state[v] == 0) {
+                    self(self, v);
+                } else if (state[v] == 1) {
+                    // 发现回边: u -> v
+                    blocks[v].isLoopHeader = true;
+                    blocks[v].backEdges.push_back(u);
+                }
+            }
+            state[u] = 2;
+        };
+        
+        if (!blocks.empty()) {
+            dfs(dfs, 0);
+        }
     }
 
     void print() const {
         std::cout << "=== Bytecode CFG ===" << std::endl;
         for (const auto& block : blocks) {
-            std::cout << "Block " << block.id << " [" << block.startIp << ", " << block.endIp << ")" << std::endl;
+            std::cout << "Block " << block.id << " [" << block.startIp << ", " << block.endIp << ")";
+            if (block.isLoopHeader) std::cout << " (Loop Header)";
+            std::cout << std::endl;
             std::cout << "  Predecessors: ";
             for (int p : block.predecessors) std::cout << p << " ";
             std::cout << std::endl;
             std::cout << "  Successors: ";
             for (int s : block.successors) std::cout << s << " ";
             std::cout << std::endl;
+            if (block.isLoopHeader) {
+                std::cout << "  BackEdges: ";
+                for (int b : block.backEdges) std::cout << b << " ";
+                std::cout << std::endl;
+            }
         }
         std::cout << "====================" << std::endl;
     }

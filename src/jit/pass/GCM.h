@@ -29,10 +29,13 @@ public:
         // 2. 计算支配树 (Dominator Tree)
         computeDominators();
         
-        // 3. 调度：Schedule Early
+        // 3. 计算循环深度 (Loop Depth) 用于 LICM
+        computeLoopDepth();
+        
+        // 4. 调度：Schedule Early
         scheduleEarly();
         
-        // 4. 调度：Schedule Late & Block Selection
+        // 5. 调度：Schedule Late & Block Selection
         scheduleLate();
     }
 
@@ -95,8 +98,10 @@ private:
                 if (ctrl->inputs().size() > 1 && ctrl->inputs()[1]) {
                     HIRNode* target = ctrl->inputs()[1];
                     LIRBlock* succBlock = getOrCreateBlock(target);
-                    block->addSuccessor(succBlock);
-                    succBlock->addPredecessor(block);
+                    if (std::find(block->successors().begin(), block->successors().end(), succBlock) == block->successors().end()) {
+                        block->addSuccessor(succBlock);
+                        succBlock->addPredecessor(block);
+                    }
                     
                     if (visited.find(target) == visited.end()) {
                         visited.insert(target);
@@ -120,8 +125,10 @@ private:
 
                     if (isControlEdge) {
                         LIRBlock* succBlock = getOrCreateBlock(use);
-                        block->addSuccessor(succBlock);
-                        succBlock->addPredecessor(block);
+                        if (std::find(block->successors().begin(), block->successors().end(), succBlock) == block->successors().end()) {
+                            block->addSuccessor(succBlock);
+                            succBlock->addPredecessor(block);
+                        }
 
                         if (visited.find(use) == visited.end()) {
                             visited.insert(use);
@@ -129,6 +136,63 @@ private:
                         }
                     }
                 }
+            }
+        }
+    }
+
+    void computeLoopDepth() {
+        std::unordered_map<LIRBlock*, std::vector<LIRBlock*>> loopHeaders;
+        
+        // 1. 寻找所有回边 (tail -> header)，条件是 header 支配 tail
+        for (LIRBlock* tail : blocks_) {
+            for (LIRBlock* header : tail->successors()) {
+                LIRBlock* curr = tail;
+                bool isBackEdge = false;
+                while (curr != nullptr) {
+                    if (curr == header) {
+                        isBackEdge = true;
+                        break;
+                    }
+                    if (idom_[curr] == curr) break; // 到达 entry
+                    curr = idom_[curr];
+                }
+                if (isBackEdge) {
+                    loopHeaders[header].push_back(tail);
+                }
+            }
+        }
+
+        // 2. 找出自然循环中的所有基本块，并增加循环深度
+        for (const auto& pair : loopHeaders) {
+            LIRBlock* header = pair.first;
+            const auto& tails = pair.second;
+            
+            std::unordered_set<LIRBlock*> loopBlocks;
+            loopBlocks.insert(header);
+            std::queue<LIRBlock*> worklist;
+            
+            for (LIRBlock* tail : tails) {
+                if (loopBlocks.find(tail) == loopBlocks.end()) {
+                    loopBlocks.insert(tail);
+                    worklist.push(tail);
+                }
+            }
+            
+            // 反向 BFS 遍历，直到遇到 header
+            while (!worklist.empty()) {
+                LIRBlock* b = worklist.front();
+                worklist.pop();
+                for (LIRBlock* p : b->predecessors()) {
+                    if (loopBlocks.find(p) == loopBlocks.end()) {
+                        loopBlocks.insert(p);
+                        worklist.push(p);
+                    }
+                }
+            }
+            
+            // 增加该循环内所有基本块的嵌套深度
+            for (LIRBlock* b : loopBlocks) {
+                b->setLoopDepth(b->loopDepth() + 1);
             }
         }
     }

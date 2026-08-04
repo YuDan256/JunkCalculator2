@@ -29,6 +29,25 @@ public:
         for (const auto& block : cfg_.blocks) {
             if (block.startIp >= static_cast<int>(chunk_.code.size())) continue;
 
+            // Step 55: 乐观 Phi 插入 (Optimistic Phi Insertion)
+            if (block.isLoopHeader) {
+                std::vector<HIRNode*> forwardControls = { builder_.currentControl() };
+                HIRNode* loopBegin = builder_.createLoopBegin(forwardControls);
+                loopHeaderControls_[block.id] = loopBegin;
+                
+                std::vector<HIRNode*> phis(256, nullptr);
+                for (size_t i = 0; i < 256; ++i) {
+                    HIRNode* val = builder_.getLocal(i);
+                    if (val) {
+                        // 预创建 Phi 节点，初始只包含前向边的数据
+                        HIRNode* phi = builder_.createPhi(val->type(), {val});
+                        builder_.setLocal(i, phi);
+                        phis[i] = phi;
+                    }
+                }
+                loopHeaderPhis_[block.id] = phis;
+            }
+
             int ip = block.startIp;
             while (ip < block.endIp) {
                 int currentIp = ip;
@@ -377,6 +396,34 @@ public:
                         break;
                 }
             }
+
+            // Step 56: 回边数据流绑定 (Back-edge Data Flow Binding)
+            for (int succId : block.successors) {
+                const auto& succBlock = cfg_.blocks[succId];
+                if (succBlock.isLoopHeader) {
+                    if (std::find(succBlock.backEdges.begin(), succBlock.backEdges.end(), block.id) != succBlock.backEdges.end()) {
+                        // 1. 绑定控制流回边
+                        if (loopHeaderControls_.count(succId)) {
+                            loopHeaderControls_[succId]->addInput(builder_.currentControl());
+                        }
+                        
+                        // 2. 绑定数据流回边
+                        if (loopHeaderPhis_.count(succId)) {
+                            auto& phis = loopHeaderPhis_[succId];
+                            for (size_t i = 0; i < 256; ++i) {
+                                if (phis[i]) {
+                                    HIRNode* backEdgeVal = builder_.getLocal(i);
+                                    if (backEdgeVal) {
+                                        phis[i]->addInput(backEdgeVal);
+                                    } else {
+                                        phis[i]->addInput(builder_.createNoneConstant());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -384,6 +431,8 @@ private:
     const Chunk& chunk_;
     HIRBuilder& builder_;
     BytecodeCFG cfg_;
+    std::map<int, std::vector<HIRNode*>> loopHeaderPhis_;
+    std::map<int, HIRNode*> loopHeaderControls_;
 };
 
 } // namespace jit

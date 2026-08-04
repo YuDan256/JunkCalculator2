@@ -325,7 +325,8 @@ private:
                 }
                 break;
             }
-            case HIROp::Jump: {
+            case HIROp::Jump:
+            case HIROp::LoopEnd: {
                 if (node->inputs().size() > 1 && node->inputs()[1]) {
                     LIRBlock* targetBlock = gcm_.getBlockForNode(node->inputs()[1]);
                     if (targetBlock) builder_.emitJump(targetBlock);

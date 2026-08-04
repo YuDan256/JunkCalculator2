@@ -444,12 +444,12 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 53:** 将中端优化 Pass 集成到 `BytecodeToHIR` 之后、`GCM` 调度之前，并编写测试验证图的精简。
 
 ### Phase 12: 循环与前向数据流 (Loops & Loop Phis) (Steps 54-59)
-*   **Step 54:** 扩展 `BytecodeCFG`，识别循环头 (Loop Header) 和循环回边 (Back-edge)。
-*   **Step 55:** 在 `BytecodeToHIR` 中实现“乐观 Phi 插入”，在遇到循环头时为所有活跃寄存器预创建 Phi 节点。
-*   **Step 56:** 实现循环体解析完毕后的回边数据流绑定，将回边变量接入预创建的 Phi 节点。
-*   **Step 57:** 实现死 Phi 节点消除 (Dead Phi Elimination)，清理循环中未被实际修改的冗余 Phi 节点。
-*   **Step 58:** 在 `GCM` 中完善对循环节点的调度支持，确保循环不变量外提 (LICM) 正常工作。
-*   **Step 59:** 编写端到端测试，验证包含 `while` 和 `for` 循环的字节码能被正确编译为高效机器码。
+*   **[已完成] Step 54:** 扩展 `BytecodeCFG`，识别循环头 (Loop Header) 和循环回边 (Back-edge)。
+*   **[已完成] Step 55:** 在 `BytecodeToHIR` 中实现“乐观 Phi 插入”，在遇到循环头时为所有活跃寄存器预创建 Phi 节点。
+*   **[已完成] Step 56:** 实现循环体解析完毕后的回边数据流绑定，将回边变量接入预创建的 Phi 节点。
+*   **[已完成] Step 57:** 实现死 Phi 节点消除 (Dead Phi Elimination)，清理循环中未被实际修改的冗余 Phi 节点。
+*   **[已完成] Step 58:** 在 `GCM` 中完善对循环节点的调度支持，确保循环不变量外提 (LICM) 正常工作。
+*   **[已完成] Step 59:** 编写端到端测试，验证包含 `while` 和 `for` 循环的字节码能被正确编译为高效机器码。
 
 ### Phase 13: 内存访问与内联缓存特化 (Memory Access & IC Specialization) (Steps 60-65)
 *   **Step 60:** 在 HIR 中引入 `LoadGlobal` 和 `StoreGlobal` 节点，并在 LIR/MacroAssembler 中实现绝对地址寻址。

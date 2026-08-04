@@ -176,10 +176,19 @@ private:
                     }
                 }
 
-                for (const auto& use : inst->uses()) {
+                for (size_t i = 0; i < inst->uses().size(); ++i) {
+                    const auto& use = inst->uses()[i];
                     if (use.isVirtual()) {
                         live.insert(use.vreg());
-                        getInterval(use.vreg()).addRange(blockStart, id);
+                        bool isSameAs = false;
+                        for (size_t j = 0; j < inst->defs().size(); ++j) {
+                            if (inst->defConstraints()[j].type == LIRConstraintType::SameAsInput && inst->defConstraints()[j].value == i) {
+                                isSameAs = true;
+                                break;
+                            }
+                        }
+                        uint32_t endPos = isSameAs ? id : (id + 1);
+                        getInterval(use.vreg()).addRange(blockStart, endPos);
                     }
                 }
             }

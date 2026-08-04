@@ -90,6 +90,14 @@ enum class HIROp : uint16_t {
     IDivF64,
     ModF64,
     NegF64,
+    SqrtF64,
+    SinF64,
+    CosF64,
+    AbsF64,
+    FloorF64,
+    CeilF64,
+    RoundF64,
+    TruncF64,
 
     // ==========================================
     // 比较运算 (Int32 Unboxed)
@@ -138,6 +146,7 @@ enum class HIROp : uint16_t {
     BoxDouble,
     UnboxBool,
     BoxBool,
+    Int32ToDouble,
 
     // ==========================================
     // 内存与对象操作 (Memory & Objects)
@@ -201,6 +210,14 @@ inline std::string to_string(HIROp op) {
         case HIROp::IDivF64: return "IDivF64";
         case HIROp::ModF64: return "ModF64";
         case HIROp::NegF64: return "NegF64";
+        case HIROp::SqrtF64: return "SqrtF64";
+        case HIROp::SinF64: return "SinF64";
+        case HIROp::CosF64: return "CosF64";
+        case HIROp::AbsF64: return "AbsF64";
+        case HIROp::FloorF64: return "FloorF64";
+        case HIROp::CeilF64: return "CeilF64";
+        case HIROp::RoundF64: return "RoundF64";
+        case HIROp::TruncF64: return "TruncF64";
         case HIROp::CmpEqI32: return "CmpEqI32";
         case HIROp::CmpNeqI32: return "CmpNeqI32";
         case HIROp::CmpLtI32: return "CmpLtI32";
@@ -229,6 +246,7 @@ inline std::string to_string(HIROp op) {
         case HIROp::BoxDouble: return "BoxDouble";
         case HIROp::UnboxBool: return "UnboxBool";
         case HIROp::BoxBool: return "BoxBool";
+        case HIROp::Int32ToDouble: return "Int32ToDouble";
         case HIROp::LoadGlobal: return "LoadGlobal";
         case HIROp::StoreGlobal: return "StoreGlobal";
         case HIROp::LoadField: return "LoadField";

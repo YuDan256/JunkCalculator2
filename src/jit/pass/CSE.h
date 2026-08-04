@@ -71,6 +71,14 @@ private:
             case HIROp::IDivF64:
             case HIROp::ModF64:
             case HIROp::NegF64:
+            case HIROp::SqrtF64:
+            case HIROp::SinF64:
+            case HIROp::CosF64:
+            case HIROp::AbsF64:
+            case HIROp::FloorF64:
+            case HIROp::CeilF64:
+            case HIROp::RoundF64:
+            case HIROp::TruncF64:
             // 比较运算
             case HIROp::CmpEqI32:
             case HIROp::CmpNeqI32:
@@ -95,6 +103,7 @@ private:
             case HIROp::UnboxInt32:
             case HIROp::UnboxDouble:
             case HIROp::UnboxBool:
+            case HIROp::Int32ToDouble:
                 return true;
             default:
                 return false;

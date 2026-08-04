@@ -254,6 +254,54 @@ public:
         return node;
     }
 
+    HIRNode* createSqrtF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::SqrtF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createSinF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::SinF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createCosF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::CosF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createAbsF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::AbsF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createFloorF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::FloorF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createCeilF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::CeilF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createRoundF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::RoundF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createTruncF64(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::TruncF64, JITType::Double);
+        node->addInput(value);
+        return node;
+    }
+
     // --- 比较节点 ---
     BinaryOpNode* createCmpEqI32(HIRNode* lhs, HIRNode* rhs) {
         return graph_->allocateNode<BinaryOpNode>(HIROp::CmpEqI32, JITType::Bool, lhs, rhs);
@@ -406,6 +454,12 @@ public:
 
     HIRNode* createBoxBool(HIRNode* value) {
         auto node = graph_->allocateNode<HIRNode>(HIROp::BoxBool, JITType::TaggedValue);
+        node->addInput(value);
+        return node;
+    }
+
+    HIRNode* createInt32ToDouble(HIRNode* value) {
+        auto node = graph_->allocateNode<HIRNode>(HIROp::Int32ToDouble, JITType::Double);
         node->addInput(value);
         return node;
     }

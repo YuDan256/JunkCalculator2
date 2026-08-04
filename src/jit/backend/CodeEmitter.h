@@ -60,8 +60,9 @@ private:
 
     Operand getStackOperand(int32_t slot) {
         // 假设栈槽从 rbp 向下分配，slot 是 0, 8, 16...
-        // 第一个槽位是 rbp - 8
-        return Operand(rbp, -slot - 8);
+        // 并且 prologue 压入了 7 个 callee-saved 寄存器 (56 字节)
+        // 第一个槽位是 rbp - 64
+        return Operand(rbp, -slot - 64);
     }
 
     void emitInstruction(LIRInst* inst) {
@@ -109,6 +110,13 @@ private:
                 const LIROperand& src = inst->uses()[0];
                 if (dst.isPhysicalGPR()) {
                     masm_.movabs(dst.pregGPR(), src.imm64());
+                } else if (dst.isPhysicalXMM()) {
+                    masm_.movabs(r11, src.imm64());
+                    masm_.emit8(0x66);
+                    masm_.emitRex(true, dst.pregXMM(), r11);
+                    masm_.emit8(0x0F);
+                    masm_.emit8(0x6E);
+                    masm_.emitModRM(3, dst.pregXMM().id(), r11.id());
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported LoadImm64 destination.");
                 }
@@ -295,7 +303,78 @@ private:
                 break;
             }
             case LIROpcode::NegF64: {
-                throw std::runtime_error("CodeEmitter: NegF64 not fully implemented.");
+                const LIROperand& dst = inst->defs()[0];
+                const LIROperand& src = inst->uses()[0];
+                if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
+                    if (dst.pregXMM() != src.pregXMM()) {
+                        masm_.movsd(dst.pregXMM(), src.pregXMM());
+                    }
+                    Label& maskLbl = masm_.addConstant64(0x8000000000000000ULL);
+                    masm_.xorpd(dst.pregXMM(), maskLbl);
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported NegF64 operands.");
+                }
+                break;
+            }
+            case LIROpcode::SqrtF64: {
+                const LIROperand& dst = inst->defs()[0];
+                const LIROperand& src = inst->uses()[0];
+                if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
+                    masm_.sqrtsd(dst.pregXMM(), src.pregXMM());
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported SqrtF64 operands.");
+                }
+                break;
+            }
+            case LIROpcode::AbsF64: {
+                const LIROperand& dst = inst->defs()[0];
+                const LIROperand& src = inst->uses()[0];
+                if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
+                    if (dst.pregXMM() != src.pregXMM()) {
+                        masm_.movsd(dst.pregXMM(), src.pregXMM());
+                    }
+                    Label& maskLbl = masm_.addConstant64(0x7FFFFFFFFFFFFFFFULL);
+                    masm_.andpd(dst.pregXMM(), maskLbl);
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported AbsF64 operands.");
+                }
+                break;
+            }
+            case LIROpcode::FloorF64:
+            case LIROpcode::CeilF64:
+            case LIROpcode::RoundF64:
+            case LIROpcode::TruncF64: {
+                const LIROperand& dst = inst->defs()[0];
+                const LIROperand& src = inst->uses()[0];
+                uint8_t mode = 0;
+                if (inst->opcode() == LIROpcode::FloorF64) mode = 1;
+                else if (inst->opcode() == LIROpcode::CeilF64) mode = 2;
+                else if (inst->opcode() == LIROpcode::TruncF64) mode = 3;
+                else mode = 0; // Round to nearest
+
+                if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
+                    masm_.roundsd(dst.pregXMM(), src.pregXMM(), mode);
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported Rounding operands.");
+                }
+                break;
+            }
+            case LIROpcode::SinF64:
+            case LIROpcode::CosF64: {
+                const LIROperand& dst = inst->defs()[0];
+                const LIROperand& src = inst->uses()[0];
+                if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
+                    masm_.subq(rsp, 8);
+                    masm_.movsd(Operand(rsp, 0), src.pregXMM());
+                    masm_.fld_d(Operand(rsp, 0));
+                    if (inst->opcode() == LIROpcode::SinF64) masm_.fsin();
+                    else masm_.fcos();
+                    masm_.fstp_d(Operand(rsp, 0));
+                    masm_.movsd(dst.pregXMM(), Operand(rsp, 0));
+                    masm_.addq(rsp, 8);
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported Sin/Cos operands.");
+                }
                 break;
             }
             case LIROpcode::CmpI32: {
@@ -538,7 +617,9 @@ private:
                 const LIROperand& src = inst->uses()[0];
                 if (dst.isPhysicalGPR() && src.isPhysicalXMM()) {
                     masm_.emit8(0x66);
-                    masm_.emitRex(true, dst.pregGPR(), src.pregXMM());
+                    // 修复：MOVD r/m64, xmm 指令中，xmm 是 reg 字段，GPR 是 rm 字段
+                    // 因此 REX.R 应该扩展 xmm，REX.B 应该扩展 GPR
+                    masm_.emitRex(true, src.pregXMM(), dst.pregGPR());
                     masm_.emit8(0x0F);
                     masm_.emit8(0x7E);
                     masm_.emitModRM(3, src.pregXMM().id(), dst.pregGPR().id());
@@ -587,6 +668,18 @@ private:
                     masm_.and_(dst.pregGPR(), 1);
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported UnboxBool operands.");
+                }
+                break;
+            }
+            case LIROpcode::Int32ToDouble: {
+                const LIROperand& dst = inst->defs()[0];
+                const LIROperand& src = inst->uses()[0];
+                if (dst.isPhysicalXMM() && src.isPhysicalGPR()) {
+                    masm_.cvtsi2sd(dst.pregXMM(), src.pregGPR());
+                } else if (dst.isPhysicalXMM() && src.isStackSlot()) {
+                    masm_.cvtsi2sd(dst.pregXMM(), getStackOperand(src.slot()));
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported Int32ToDouble operands.");
                 }
                 break;
             }

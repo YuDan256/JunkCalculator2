@@ -121,6 +121,14 @@ private:
                 }
                 break;
             }
+            case HIROp::Int32ToDouble: {
+                if (node->inputs().empty()) return nullptr;
+                auto val = dynamic_cast<Int32ConstantNode*>(node->inputs()[0]);
+                if (val) {
+                    return builder_.createDoubleConstant(static_cast<double>(val->value()));
+                }
+                break;
+            }
             case HIROp::AddF64:
             case HIROp::SubF64:
             case HIROp::MulF64:
@@ -144,11 +152,28 @@ private:
                 }
                 break;
             }
-            case HIROp::NegF64: {
+            case HIROp::NegF64:
+            case HIROp::SqrtF64:
+            case HIROp::SinF64:
+            case HIROp::CosF64:
+            case HIROp::AbsF64:
+            case HIROp::FloorF64:
+            case HIROp::CeilF64:
+            case HIROp::RoundF64:
+            case HIROp::TruncF64: {
                 if (node->inputs().empty()) return nullptr;
                 auto val = dynamic_cast<DoubleConstantNode*>(node->inputs()[0]);
                 if (val) {
-                    return builder_.createDoubleConstant(-val->value());
+                    double v = val->value();
+                    if (node->opcode() == HIROp::NegF64) return builder_.createDoubleConstant(-v);
+                    if (node->opcode() == HIROp::SqrtF64) return builder_.createDoubleConstant(std::sqrt(v));
+                    if (node->opcode() == HIROp::SinF64) return builder_.createDoubleConstant(std::sin(v));
+                    if (node->opcode() == HIROp::CosF64) return builder_.createDoubleConstant(std::cos(v));
+                    if (node->opcode() == HIROp::AbsF64) return builder_.createDoubleConstant(std::abs(v));
+                    if (node->opcode() == HIROp::FloorF64) return builder_.createDoubleConstant(std::floor(v));
+                    if (node->opcode() == HIROp::CeilF64) return builder_.createDoubleConstant(std::ceil(v));
+                    if (node->opcode() == HIROp::RoundF64) return builder_.createDoubleConstant(std::round(v));
+                    if (node->opcode() == HIROp::TruncF64) return builder_.createDoubleConstant(std::trunc(v));
                 }
                 break;
             }

@@ -7384,6 +7384,13 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
+                if (c > 0) {
+                    Value& arg1 = getReg(b + 1);
+                    if (arg1.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                    else if (arg1.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                    else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
+                }
+
                 bool isTailCall = (op == OpCode::TAIL_CALL);
                 frame->ip = ip; // 保存当前 IP
                 int prevIp = ip;

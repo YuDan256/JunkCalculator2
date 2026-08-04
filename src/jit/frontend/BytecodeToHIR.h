@@ -166,6 +166,7 @@ public:
                 // Eager Sync: 写入虚拟寄存器时，同步写回 VM::registers 以保证 GC 安全
                 auto setLocalSync = [&](int reg, HIRNode* node) {
                     builder_.setLocal(reg, node);
+                    regFuncName_.erase(reg); // 默认清空函数名追踪
                     HIRNode* boxedNode = node;
                     if (node->type() == JITType::Int32) boxedNode = builder_.createBoxInt32(node);
                     else if (node->type() == JITType::Double) boxedNode = builder_.createBoxDouble(node);
@@ -178,7 +179,9 @@ public:
                     case OpCode::MOVE: {
                         // 复写传播 (Copy Propagation)：直接复用 HIR 节点指针，不生成新节点
                         HIRNode* val = getRKNode(b);
+                        std::string trackedName = regFuncName_[b];
                         setLocalSync(a, val);
+                        if (!trackedName.empty()) regFuncName_[a] = trackedName;
                         break;
                     }
                     case OpCode::LOADK: {
@@ -198,6 +201,7 @@ public:
                         // TODO: 其他复杂常量类型（如 BigInt, Matrix）的加载
                         if (node) {
                             setLocalSync(a, node);
+                            if (kst.isString()) regFuncName_[a] = kst.asString();
                         }
                         break;
                     }
@@ -214,6 +218,7 @@ public:
                         if (ic.cachedGlobalSlot >= 0) {
                             auto node = builder_.createLoadGlobal(ic.cachedGlobalSlot);
                             setLocalSync(a, node);
+                            regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
                         } else {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             builder_.createDeoptimize(fs);
@@ -406,6 +411,7 @@ public:
                             auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
                             auto loadField = builder_.createLoadField(obj, offset);
                             setLocalSync(a, loadField);
+                            regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
                         } else {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             builder_.createDeoptimize(fs);
@@ -424,6 +430,79 @@ public:
                         } else {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             builder_.createDeoptimize(fs);
+                        }
+                        break;
+                    }
+                    case OpCode::CALL:
+                    case OpCode::TAIL_CALL: {
+                        HIRNode* callee = getRKNode(b);
+                        std::vector<HIRNode*> args;
+                        for (int i = 0; i < c; ++i) {
+                            args.push_back(getRKNode(b + 1 + i));
+                        }
+                        
+                        std::string funcName = regFuncName_[b];
+                        if (funcName.empty() && callee->opcode() == HIROp::StringConstant) {
+                            funcName = static_cast<StringConstantNode*>(callee)->value();
+                        }
+                        
+                        bool isMathIntrinsic = false;
+                        bool allowInt32Promotion = false;
+                        
+                        if (funcName == "sqrtD" || funcName == "sin" || funcName == "cos") {
+                            isMathIntrinsic = true;
+                            allowInt32Promotion = true; // 这些函数语义上保证返回 Double，允许 Int32 提升
+                        } else if (funcName == "sqrt" || funcName == "abs") {
+                            isMathIntrinsic = true;
+                            allowInt32Promotion = false; // 这些函数对 Int32 输入可能返回 SymExpr 或 BigInt，禁止提升
+                        }
+                        // 注意：floor, ceil, round, trunc 被移出内联名单。
+                        // 因为它们在 JC2 中保证返回精确的 Int32 或 BigInt，
+                        // 而 JIT 的硬件指令 (roundsd) 返回的是 Double，会导致类型突变。
+                        
+                        uint8_t fb = chunk_.typeFeedback[currentIp];
+
+                        // Step 68: 识别目标是否为已知的 math 内置函数
+                        // Step 69: 结合 Profiling 数据，如果参数为 Double，则将内置函数调用直接替换为对应的 HIR 数学节点。
+                        // Step 70: 仅对语义安全的函数（如 sqrtD, sin）实现 Int32 -> Double 的自动类型提升。
+                        if (isMathIntrinsic && c == 1 && (fb == 0x02 || (fb == 0x01 && allowInt32Promotion))) {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            HIRNode* unbox = nullptr;
+                            if (fb == 0x02) {
+                                auto guard = builder_.createGuardIsDouble(args[0], fs);
+                                unbox = builder_.createUnboxDouble(args[0], guard);
+                            } else {
+                                auto guard = builder_.createGuardIsInt32(args[0], fs);
+                                auto unboxInt = builder_.createUnboxInt32(args[0], guard);
+                                unbox = builder_.createInt32ToDouble(unboxInt);
+                            }
+                            
+                            HIRNode* mathNode = nullptr;
+                            if (funcName == "sqrt" || funcName == "sqrtD") mathNode = builder_.createSqrtF64(unbox);
+                            else if (funcName == "sin") mathNode = builder_.createSinF64(unbox);
+                            else if (funcName == "cos") mathNode = builder_.createCosF64(unbox);
+                            else if (funcName == "abs") mathNode = builder_.createAbsF64(unbox);
+                            
+                            auto boxedRes = builder_.createBoxDouble(mathNode);
+                            if (op == OpCode::CALL) {
+                                setLocalSync(a, boxedRes);
+                            } else {
+                                builder_.createReturn(boxedRes);
+                            }
+                        } else if (isMathIntrinsic) {
+                            auto callNode = builder_.createCallBuiltin(callee, c, args);
+                            if (op == OpCode::CALL) {
+                                setLocalSync(a, callNode);
+                            } else {
+                                builder_.createReturn(callNode);
+                            }
+                        } else {
+                            auto callNode = builder_.createCall(callee, c, args);
+                            if (op == OpCode::CALL) {
+                                setLocalSync(a, callNode);
+                            } else {
+                                builder_.createReturn(callNode);
+                            }
                         }
                         break;
                     }
@@ -473,6 +552,7 @@ private:
     BytecodeCFG cfg_;
     std::map<int, std::vector<HIRNode*>> loopHeaderPhis_;
     std::map<int, HIRNode*> loopHeaderControls_;
+    std::map<int, std::string> regFuncName_;
 };
 
 } // namespace jit

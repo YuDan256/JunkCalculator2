@@ -5,6 +5,7 @@
 #include <deque>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 #include "ExecutableMemory.h"
 #include "Registers.h"
 #include "Operand.h"
@@ -975,6 +976,24 @@ public:
     void sqrtsd(XMMRegister dst, const Operand& src) { emitSSE2Math(0x51, dst, src); }
 
     // --- SSE2 Logical ---
+    void andpd(XMMRegister dst, XMMRegister src) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x54); emitModRM(3, dst.id(), src.id());
+    }
+    void andpd(XMMRegister dst, const Operand& src) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x54); emitOperand(dst, src);
+    }
+    void andpd(XMMRegister dst, Label& L) {
+        emit8(0x66); emitRex(false, dst, Register()); emit8(0x0F); emit8(0x54); emitRipRelative(dst.id(), L);
+    }
+    void xorpd(XMMRegister dst, XMMRegister src) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x57); emitModRM(3, dst.id(), src.id());
+    }
+    void xorpd(XMMRegister dst, const Operand& src) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x57); emitOperand(dst, src);
+    }
+    void xorpd(XMMRegister dst, Label& L) {
+        emit8(0x66); emitRex(false, dst, Register()); emit8(0x0F); emit8(0x57); emitRipRelative(dst.id(), L);
+    }
     void pxor(XMMRegister dst, XMMRegister src) {
         emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0xEF); emitModRM(3, dst.id(), src.id());
     }
@@ -993,6 +1012,24 @@ public:
     void por(XMMRegister dst, const Operand& src) {
         emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0xEB); emitOperand(dst, src);
     }
+
+    // --- SSE4.1 ROUNDSD ---
+    void roundsd(XMMRegister dst, XMMRegister src, uint8_t imm8) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x3A); emit8(0x0B); emitModRM(3, dst.id(), src.id()); emit8(imm8);
+    }
+    void roundsd(XMMRegister dst, const Operand& src, uint8_t imm8) {
+        emit8(0x66); emitRex(false, dst, src); emit8(0x0F); emit8(0x3A); emit8(0x0B); emitOperand(dst, src); emit8(imm8);
+    }
+
+    // --- x87 FPU ---
+    void fld_d(const Operand& src) {
+        emitRex(false, Register(), src); emit8(0xDD); emitOperand(0, src);
+    }
+    void fstp_d(const Operand& dst) {
+        emitRex(false, Register(), dst); emit8(0xDD); emitOperand(3, dst);
+    }
+    void fsin() { emit8(0xD9); emit8(0xFE); }
+    void fcos() { emit8(0xD9); emit8(0xFF); }
 
     // --- UCOMISD ---
     void ucomisd(XMMRegister dst, XMMRegister src) {
@@ -1179,7 +1216,11 @@ private:
     // 安全获取寄存器 ID，如果无效则返回 255
     template <typename T>
     uint8_t safeId(T reg) const {
-        return reg.isValid() ? reg.id() : 255;
+        if constexpr (std::is_integral_v<T>) {
+            return static_cast<uint8_t>(reg);
+        } else {
+            return reg.isValid() ? reg.id() : 255;
+        }
     }
 };
 

@@ -252,14 +252,38 @@ private:
                 break;
             }
             case HIROp::NegI32:
-            case HIROp::NotI32:
-            case HIROp::NegF64: {
-                LIROpcode lop = (node->opcode() == HIROp::NegI32) ? LIROpcode::NegI32 : 
-                                (node->opcode() == HIROp::NotI32) ? LIROpcode::NotI32 : LIROpcode::NegF64;
+            case HIROp::NotI32: {
+                LIROpcode lop = (node->opcode() == HIROp::NegI32) ? LIROpcode::NegI32 : LIROpcode::NotI32;
                 LIROperand val = getOperand(node->inputs()[0]);
                 builder_.emitWithConstraints(lop, 
                     {{out, LIRConstraint::sameAsInput(0)}}, 
                     {{val, LIRConstraint::none()}});
+                break;
+            }
+            case HIROp::NegF64:
+            case HIROp::SqrtF64:
+            case HIROp::SinF64:
+            case HIROp::CosF64:
+            case HIROp::AbsF64:
+            case HIROp::FloorF64:
+            case HIROp::CeilF64:
+            case HIROp::RoundF64:
+            case HIROp::TruncF64: {
+                LIROpcode lop;
+                if (node->opcode() == HIROp::NegF64) lop = LIROpcode::NegF64;
+                else if (node->opcode() == HIROp::SqrtF64) lop = LIROpcode::SqrtF64;
+                else if (node->opcode() == HIROp::SinF64) lop = LIROpcode::SinF64;
+                else if (node->opcode() == HIROp::CosF64) lop = LIROpcode::CosF64;
+                else if (node->opcode() == HIROp::AbsF64) lop = LIROpcode::AbsF64;
+                else if (node->opcode() == HIROp::FloorF64) lop = LIROpcode::FloorF64;
+                else if (node->opcode() == HIROp::CeilF64) lop = LIROpcode::CeilF64;
+                else if (node->opcode() == HIROp::RoundF64) lop = LIROpcode::RoundF64;
+                else lop = LIROpcode::TruncF64;
+
+                LIROperand val = getOperand(node->inputs()[0]);
+                builder_.emitWithConstraints(lop, 
+                    {{out, LIRConstraint::anyReg()}}, 
+                    {{val, LIRConstraint::anyReg()}});
                 break;
             }
             case HIROp::CmpEqI32:
@@ -484,6 +508,13 @@ private:
                 LIROperand inVal = getOperand(node->inputs()[0]);
                 if (!inVal.isInvalid() && !out.isInvalid()) {
                     builder_.emitWithConstraints(LIROpcode::BoxBool, {{out, LIRConstraint::anyReg()}}, {{inVal, LIRConstraint::anyReg()}});
+                }
+                break;
+            }
+            case HIROp::Int32ToDouble: {
+                LIROperand inVal = getOperand(node->inputs()[0]);
+                if (!inVal.isInvalid() && !out.isInvalid()) {
+                    builder_.emitWithConstraints(LIROpcode::Int32ToDouble, {{out, LIRConstraint::anyReg()}}, {{inVal, LIRConstraint::anyReg()}});
                 }
                 break;
             }

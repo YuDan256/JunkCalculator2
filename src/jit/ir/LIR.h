@@ -145,6 +145,7 @@ enum class LIROpcode : uint16_t {
     NegI32, NotI32,
     AddF64, SubF64, MulF64, DivF64, IDivF64, ModF64,
     NegF64,
+    SqrtF64, SinF64, CosF64, AbsF64, FloorF64, CeilF64, RoundF64, TruncF64,
     CmpI32, Cmp64, TestI32, CmpF64,
     Setcc,
     Jmp, Jcc,
@@ -153,6 +154,7 @@ enum class LIROpcode : uint16_t {
     Deoptimize,
     BoxInt32, BoxDouble, BoxBool,
     UnboxInt32, UnboxDouble, UnboxBool,
+    Int32ToDouble,
     SpillStore, SpillLoad, // 供寄存器分配器使用
     LoadRegister, StoreRegister,
     LoadGlobal, StoreGlobal,
@@ -188,6 +190,14 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::IDivF64: return "IDivF64";
         case LIROpcode::ModF64: return "ModF64";
         case LIROpcode::NegF64: return "NegF64";
+        case LIROpcode::SqrtF64: return "SqrtF64";
+        case LIROpcode::SinF64: return "SinF64";
+        case LIROpcode::CosF64: return "CosF64";
+        case LIROpcode::AbsF64: return "AbsF64";
+        case LIROpcode::FloorF64: return "FloorF64";
+        case LIROpcode::CeilF64: return "CeilF64";
+        case LIROpcode::RoundF64: return "RoundF64";
+        case LIROpcode::TruncF64: return "TruncF64";
         case LIROpcode::CmpI32: return "CmpI32";
         case LIROpcode::Cmp64: return "Cmp64";
         case LIROpcode::TestI32: return "TestI32";
@@ -207,6 +217,7 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::UnboxInt32: return "UnboxInt32";
         case LIROpcode::UnboxDouble: return "UnboxDouble";
         case LIROpcode::UnboxBool: return "UnboxBool";
+        case LIROpcode::Int32ToDouble: return "Int32ToDouble";
         case LIROpcode::SpillStore: return "SpillStore";
         case LIROpcode::SpillLoad: return "SpillLoad";
         case LIROpcode::LoadGlobal: return "LoadGlobal";

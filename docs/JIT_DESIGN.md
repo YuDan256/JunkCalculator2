@@ -460,12 +460,12 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 65:** **[验证]** 编写端到端测试，验证面向对象代码（类属性读写）在 JIT 下的极速执行。
 
 ### Phase 14: 数学内联函数 (Math Intrinsics) (Steps 66-71)
-*   **Step 66:** 在 HIR 中引入专用的数学硬件节点（如 `SqrtF64`, `SinF64`, `CosF64`）。
-*   **Step 67:** 在 `MacroAssembler` 中实现对应的 x86-64 FPU/SSE2 硬件指令发射（如 `sqrtsd`）。
-*   **Step 68:** 修改 `BytecodeToHIR`，在解析 `CALL` 时识别目标是否为已知的 `math` 内置函数。
-*   **Step 69:** 结合 Profiling 数据，如果参数为 `Double`，则将内置函数调用直接替换为对应的 HIR 数学节点。
-*   **Step 70:** 实现对 Int32 参数的自动类型提升（Int32 -> Double），以扩大 Intrinsics 的适用范围。
-*   **Step 71:** 编写性能基准测试，验证数学密集型代码（如计算素数或几何距离）的性能飞跃。
+*   **[已完成] Step 66:** 在 HIR 中引入专用的数学硬件节点（如 `SqrtF64`, `SinF64`, `CosF64`, `AbsF64`, `FloorF64` 等）。
+*   **[已完成] Step 67:** 在 `MacroAssembler` 中实现对应的 x86-64 FPU/SSE2 硬件指令发射（如 `sqrtsd`, `roundsd`, `fsin`, `fcos` 等）。
+*   **[已完成] Step 68:** 修改 `BytecodeToHIR`，在解析 `CALL` 时识别目标是否为已知的 `math` 内置函数。
+*   **[已完成] Step 69:** 结合 Profiling 数据，如果参数为 `Double`，则将内置函数调用直接替换为对应的 HIR 数学节点。
+*   **[已完成] Step 70:** 实现对 Int32 参数的自动类型提升（Int32 -> Double），以扩大 Intrinsics 的适用范围。
+*   **[已完成] Step 71:** **[验证]** 编写性能基准测试，验证数学密集型代码（如计算素数或几何距离）的性能飞跃。
 
 ### Phase 15: 函数调用与内联 (Function Calls & Inlining) (Steps 72-77)
 *   **Step 72:** 在 HIR 中引入 `Callout` 节点，用于 JIT 代码安全地调用 C++ 运行时函数。

@@ -412,6 +412,21 @@ public:
                         }
                         break;
                     }
+                    case OpCode::SET_PROP: {
+                        InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[b]);
+                        if (ic.cachedClassId != 0 && ic.cachedFieldIndex >= 0) {
+                            HIRNode* obj = getRKNode(a);
+                            HIRNode* val = getRKNode(c);
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            builder_.createGuardIsClass(obj, fs, ic.cachedClassId);
+                            auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
+                            builder_.createStoreField(obj, offset, val);
+                        } else {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            builder_.createDeoptimize(fs);
+                        }
+                        break;
+                    }
                     default:
                         // 尚未实现的指令，暂时跳过
                         break;

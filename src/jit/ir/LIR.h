@@ -156,7 +156,8 @@ enum class LIROpcode : uint16_t {
     SpillStore, SpillLoad, // 供寄存器分配器使用
     LoadRegister, StoreRegister,
     LoadGlobal, StoreGlobal,
-    LoadField, StoreField
+    LoadField, StoreField,
+    GuardIsClass
 };
 
 inline std::string to_string(LIROpcode op) {
@@ -212,6 +213,7 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::StoreGlobal: return "StoreGlobal";
         case LIROpcode::LoadField: return "LoadField";
         case LIROpcode::StoreField: return "StoreField";
+        case LIROpcode::GuardIsClass: return "GuardIsClass";
         default: return "Unknown";
     }
 }

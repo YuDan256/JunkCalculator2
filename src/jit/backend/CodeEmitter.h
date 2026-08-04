@@ -231,9 +231,7 @@ private:
             case LIROpcode::NegI32: {
                 const LIROperand& dst = inst->defs()[0];
                 if (dst.isPhysicalGPR()) {
-                    masm_.emitRex(false, Register(), dst.pregGPR());
-                    masm_.emit8(0xF7);
-                    masm_.emitModRM(3, 3, dst.pregGPR().id());
+                    masm_.neg(dst.pregGPR());
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported NegI32 destination.");
                 }
@@ -242,9 +240,7 @@ private:
             case LIROpcode::NotI32: {
                 const LIROperand& dst = inst->defs()[0];
                 if (dst.isPhysicalGPR()) {
-                    masm_.emitRex(false, Register(), dst.pregGPR());
-                    masm_.emit8(0xF7);
-                    masm_.emitModRM(3, 2, dst.pregGPR().id());
+                    masm_.not_(dst.pregGPR());
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported NotI32 destination.");
                 }
@@ -351,15 +347,7 @@ private:
             case LIROpcode::Setcc: {
                 const LIROperand& dst = inst->defs()[0];
                 if (dst.isPhysicalGPR()) {
-                    uint8_t id = dst.pregGPR().id();
-                    if (id >= 4 && id <= 7) {
-                        masm_.emit8(0x40); // Force REX to access SPL, BPL, SIL, DIL
-                    } else {
-                        masm_.emitRex(false, Register(), dst.pregGPR());
-                    }
-                    masm_.emit8(0x0F);
-                    masm_.emit8(0x90 + static_cast<uint8_t>(inst->condition()));
-                    masm_.emitModRM(3, 0, id);
+                    masm_.setcc(inst->condition(), dst.pregGPR());
                     masm_.and_(dst.pregGPR(), 1);
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported Setcc destination.");
@@ -428,10 +416,10 @@ private:
                     throw std::runtime_error("CodeEmitter: LoadField requires GPR for base and dst.");
                 }
                 
-                // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针
+                // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针并符号扩展
                 masm_.movq(r11, base.pregGPR());
                 masm_.shlq(r11, 16);
-                masm_.shrq(r11, 16);
+                masm_.sarq(r11, 16);
                 
                 if (offset.isImm32()) {
                     masm_.movq(dst.pregGPR(), Operand(r11, offset.imm32()));
@@ -451,10 +439,10 @@ private:
                     throw std::runtime_error("CodeEmitter: StoreField requires GPR for base and val.");
                 }
                 
-                // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针
+                // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针并符号扩展
                 masm_.movq(r11, base.pregGPR());
                 masm_.shlq(r11, 16);
-                masm_.shrq(r11, 16);
+                masm_.sarq(r11, 16);
                 
                 if (offset.isImm32()) {
                     masm_.movq(Operand(r11, offset.imm32()), val.pregGPR());
@@ -463,6 +451,55 @@ private:
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported StoreField offset.");
                 }
+                break;
+            }
+            case LIROpcode::GuardIsClass: {
+                const LIROperand& obj = inst->uses()[0];
+                uint64_t expectedClassId = inst->uses()[1].imm64();
+                int32_t typeOffset = inst->uses()[2].imm32();
+                int32_t classDefOffset = inst->uses()[3].imm32();
+                int32_t classIdOffset = inst->uses()[4].imm32();
+                
+                if (!obj.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsClass requires GPR.");
+                
+                needsDeoptTrampoline_ = true;
+                
+                // 1. 检查是否为 Obj (带有 SIGN_BIT | QNAN)
+                masm_.movq(r11, obj.pregGPR());
+                masm_.movabs(r10, SIGN_BIT | QNAN);
+                masm_.andq(r11, r10);
+                masm_.cmpq(r11, r10);
+                Label isObj;
+                masm_.jcc(Condition::Equal, isObj);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isObj);
+                
+                // 2. 提取对象指针并符号扩展
+                masm_.movq(r11, obj.pregGPR());
+                masm_.shlq(r11, 16);
+                masm_.sarq(r11, 16);
+                
+                // 3. 检查 ObjType 是否为 INSTANCE (枚举值 14)
+                masm_.cmp(Operand(r11, typeOffset), 14);
+                Label isInst;
+                masm_.jcc(Condition::Equal, isInst);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isInst);
+                
+                // 4. 获取 classDef 指针
+                masm_.movq(r11, Operand(r11, classDefOffset));
+                
+                // 5. 检查 classId
+                masm_.movabs(r10, expectedClassId);
+                masm_.cmpq(Operand(r11, classIdOffset), r10);
+                Label isClassMatch;
+                masm_.jcc(Condition::Equal, isClassMatch);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isClassMatch);
+                
                 break;
             }
             case LIROpcode::BoxInt32: {

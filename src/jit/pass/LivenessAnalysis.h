@@ -23,7 +23,7 @@ struct LiveRange {
 // 虚拟寄存器的活跃区间 (Live Interval)
 // ============================================================================
 struct LiveInterval {
-    uint32_t vreg;
+    uint32_t vreg = 0;
     std::vector<LiveRange> ranges;
     Register allocatedGPR;
     XMMRegister allocatedXMM;

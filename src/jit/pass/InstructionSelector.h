@@ -4,6 +4,7 @@
 #include "../ir/HIR.h"
 #include "../ir/LIRBuilder.h"
 #include "GCM.h"
+#include "../../memory/Value.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -359,10 +360,29 @@ private:
             case HIROp::GuardIsBool:
             case HIROp::GuardIsString:
             case HIROp::GuardIsObject:
-            case HIROp::GuardIsClass:
             case HIROp::GuardTruthy:
                 // Guard 节点是控制流节点，不产生数据，在 LIR 阶段暂时忽略（后续会生成 cmp + jcc）
                 break;
+            case HIROp::GuardIsClass: {
+                auto n = static_cast<GuardIsClassNode*>(node);
+                LIROperand obj = getOperand(n->value());
+                auto inst = builder_.emitWithConstraints(LIROpcode::GuardIsClass, {}, {{obj, LIRConstraint::anyReg()}});
+                
+                // 动态计算 C++ 结构体的内存偏移量，保证跨平台和跨编译器的绝对安全
+                ObjInstance dummyInst;
+                ObjClass dummyClass;
+                int32_t typeOffset = static_cast<int32_t>(reinterpret_cast<char*>(&dummyInst.type) - reinterpret_cast<char*>(&dummyInst));
+                int32_t classDefOffset = static_cast<int32_t>(reinterpret_cast<char*>(&dummyInst.classDef) - reinterpret_cast<char*>(&dummyInst));
+                int32_t classIdOffset = static_cast<int32_t>(reinterpret_cast<char*>(&dummyClass.classId) - reinterpret_cast<char*>(&dummyClass));
+                
+                inst->addUse(LIROperand::createImm64(n->classId()));
+                inst->addUse(LIROperand::createImm32(typeOffset));
+                inst->addUse(LIROperand::createImm32(classDefOffset));
+                inst->addUse(LIROperand::createImm32(classIdOffset));
+                
+                inst->setBailoutId(n->frameState()->bailoutId());
+                break;
+            }
             case HIROp::LoadRegister: {
                 auto n = static_cast<RegisterAccessNode*>(node);
                 // R14 始终保存 frameRegs 指针 (由 CodeEmitter 在 Prologue 中设置)

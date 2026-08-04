@@ -13,7 +13,7 @@ using namespace jc;
 using namespace jc::jit;
 
 // 模拟一个具有平坦内存布局的对象（未来 Hidden Class / Shape 的内存模型）
-struct DummyObject : public Obj {
+struct DummyObject : public ObjInstance {
     Value x;
     Value y;
     DummyObject() { type = ObjType::INSTANCE; }
@@ -43,7 +43,12 @@ int main() {
     auto fs = hirBuilder.captureFrameState(0, 0);
     auto guard = hirBuilder.createGuardIsClass(obj, fs, 42);
     
+    ObjClass dummyClass;
+    dummyClass.classId = 42;
+    
     DummyObject dummy;
+    dummy.classDef = &dummyClass;
+    
     // 安全计算字段的内存偏移量
     int32_t offsetX = static_cast<int32_t>(reinterpret_cast<char*>(&dummy.x) - reinterpret_cast<char*>(&dummy));
     int32_t offsetY = static_cast<int32_t>(reinterpret_cast<char*>(&dummy.y) - reinterpret_cast<char*>(&dummy));

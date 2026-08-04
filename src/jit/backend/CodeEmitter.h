@@ -1,7 +1,7 @@
 #ifndef JC2_JIT_CODE_EMITTER_H
 #define JC2_JIT_CODE_EMITTER_H
 
-#include "LIR.h"
+#include "../ir/LIR.h"
 #include "MacroAssembler.h"
 #include <unordered_map>
 #include <stdexcept>

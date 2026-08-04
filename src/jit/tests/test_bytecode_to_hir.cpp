@@ -1,4 +1,4 @@
-#include "BytecodeToHIR.h"
+#include "../frontend/BytecodeToHIR.h"
 #include "../vm/Bytecode.h"
 #include <iostream>
 

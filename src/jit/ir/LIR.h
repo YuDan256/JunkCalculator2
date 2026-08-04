@@ -6,8 +6,8 @@
 #include <string>
 #include <stdexcept>
 #include <unordered_set>
-#include "Registers.h"
-#include "MacroAssembler.h" // For Condition
+#include "../backend/Registers.h"
+#include "../backend/MacroAssembler.h" // For Condition
 
 namespace jc {
 namespace jit {

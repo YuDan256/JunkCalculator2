@@ -1,7 +1,7 @@
 #ifndef JC2_JIT_LINEAR_SCAN_H
 #define JC2_JIT_LINEAR_SCAN_H
 
-#include "LIR.h"
+#include "../ir/LIR.h"
 #include "LivenessAnalysis.h"
 #include <vector>
 #include <algorithm>

@@ -434,3 +434,55 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **语义：** `~/` 强制执行向零截断的整数除法。
 *   **JIT 编译：** 当 JIT 遇到 `~/` 操作符，且操作数被推导为 `Int32` 时，JIT 直接发射 `idiv` 指令，并**直接丢弃 `EDX` 寄存器中的余数**，不需要任何 Guard 检查，实现零开销的机器码执行。
 *   **安全优势：** 相比于将 `idiv()` 函数作为 Intrinsic 内联，使用专用操作符避免了动态语言中函数名被用户重写（Shadowing）导致的语义破坏问题。
+
+## 18. JIT 进阶扩展路线图 (Advanced Expansion Roadmap)
+
+为了让 JIT 能够加速真实世界中复杂的 JC2 脚本，接下来的开发将围绕循环、内存访问、函数内联和 OSR 展开。以下是严格拆分的 6 个 Phase，共 36 个微小步骤：
+
+### Phase 11: 中端优化 Pass (Mid-level Optimizations) (Steps 48-53)
+*   **Step 48:** 实现常量折叠 (Constant Folding) 基础框架，支持算术指令的预计算。
+*   **Step 49:** 实现死代码消除 (Dead Code Elimination, DCE)，基于 Use-Def 链反向标记存活节点。
+*   **Step 50:** 实现全局值编号 (Global Value Numbering, GVN) 核心哈希表，用于识别等价节点。
+*   **Step 51:** 在 GVN 中实现公共子表达式消除 (CSE)，合并相同的算术与逻辑节点。
+*   **Step 52:** 实现代数化简 (Algebraic Simplification)，如 `x * 1 -> x`, `x + 0 -> x`。
+*   **Step 53:** 将中端优化 Pass 集成到 `BytecodeToHIR` 之后、`GCM` 调度之前，并编写测试验证图的精简。
+
+### Phase 12: 循环与前向数据流 (Loops & Loop Phis) (Steps 54-59)
+*   **Step 54:** 扩展 `BytecodeCFG`，识别循环头 (Loop Header) 和循环回边 (Back-edge)。
+*   **Step 55:** 在 `BytecodeToHIR` 中实现“乐观 Phi 插入”，在遇到循环头时为所有活跃寄存器预创建 Phi 节点。
+*   **Step 56:** 实现循环体解析完毕后的回边数据流绑定，将回边变量接入预创建的 Phi 节点。
+*   **Step 57:** 实现死 Phi 节点消除 (Dead Phi Elimination)，清理循环中未被实际修改的冗余 Phi 节点。
+*   **Step 58:** 在 `GCM` 中完善对循环节点的调度支持，确保循环不变量外提 (LICM) 正常工作。
+*   **Step 59:** 编写端到端测试，验证包含 `while` 和 `for` 循环的字节码能被正确编译为高效机器码。
+
+### Phase 13: 内存访问与内联缓存特化 (Memory Access & IC Specialization) (Steps 60-65)
+*   **Step 60:** 在 HIR 中引入 `LoadGlobal` 和 `StoreGlobal` 节点，并在 LIR/MacroAssembler 中实现绝对地址寻址。
+*   **Step 61:** 修改 `BytecodeToHIR`，读取 `GET_GLOBAL` 的 IC 数据，命中时直接生成 `LoadGlobal` 节点。
+*   **Step 62:** 在 HIR 中引入 `GuardIsClass` 和 `LoadField`/`StoreField` 节点，支持对象属性的内存偏移访问。
+*   **Step 63:** 修改 `BytecodeToHIR`，读取 `GET_PROP` 的 IC 数据，命中时生成类守卫与直接内存读取。
+*   **Step 64:** 在 LIR 和寄存器分配器中处理内存访问指令的物理寄存器约束（如基址寄存器分配）。
+*   **Step 65:** 编写端到端测试，验证面向对象代码（类属性读写）在 JIT 下的极速执行。
+
+### Phase 14: 数学内联函数 (Math Intrinsics) (Steps 66-71)
+*   **Step 66:** 在 HIR 中引入专用的数学硬件节点（如 `SqrtF64`, `SinF64`, `CosF64`）。
+*   **Step 67:** 在 `MacroAssembler` 中实现对应的 x86-64 FPU/SSE2 硬件指令发射（如 `sqrtsd`）。
+*   **Step 68:** 修改 `BytecodeToHIR`，在解析 `CALL` 时识别目标是否为已知的 `math` 内置函数。
+*   **Step 69:** 结合 Profiling 数据，如果参数为 `Double`，则将内置函数调用直接替换为对应的 HIR 数学节点。
+*   **Step 70:** 实现对 Int32 参数的自动类型提升（Int32 -> Double），以扩大 Intrinsics 的适用范围。
+*   **Step 71:** 编写性能基准测试，验证数学密集型代码（如计算素数或几何距离）的性能飞跃。
+
+### Phase 15: 函数调用与内联 (Function Calls & Inlining) (Steps 72-77)
+*   **Step 72:** 在 HIR 中引入 `Callout` 节点，用于 JIT 代码安全地调用 C++ 运行时函数。
+*   **Step 73:** 在 `MacroAssembler` 和 `LinearScan` 中实现 Caller-Saved 寄存器的自动溢出与恢复机制。
+*   **Step 74:** 实现 Eager Sync 机制，在 Callout 前将活跃的虚拟寄存器刷回 `VM::registers` 以保证 GC 安全。
+*   **Step 75:** 实现 JIT-to-JIT 直接调用，跳过解释器 `CallFrame` 创建，直接 `call` 目标机器码入口。
+*   **Step 76:** 在 `BytecodeToHIR` 中实现基础的函数内联 (Method Inlining) 启发式算法（基于函数大小和调用深度）。
+*   **Step 77:** 实现内联展开逻辑，将被调用函数的字节码直接并入当前 HIR 图中，并消除参数传递开销。
+
+### Phase 16: 栈上替换 (OSR - On-Stack Replacement) (Steps 78-83)
+*   **Step 78:** 在解释器的循环回边指令（如 `JMP` 往回跳时）增加独立的 OSR 热点计数器。
+*   **Step 79:** 当 OSR 计数器达标时，触发后台 JIT 编译，并标记该编译任务为 OSR 模式。
+*   **Step 80:** 在 OSR 模式的 HIR 构建中，生成特殊的 `OSREntry` 节点，代替常规的 `Start` 节点。
+*   **Step 81:** 在 `MacroAssembler` 中实现 OSR Prologue，负责从解释器栈中读取当前变量并装载到物理寄存器中。
+*   **Step 82:** 在解释器中实现热切换逻辑：发现 OSR 机器码就绪后，直接 `jmp` 跃入机器码的循环体。
+*   **Step 83:** 编写端到端测试，验证“单次调用但包含死循环”的函数能够被成功 OSR 加速。

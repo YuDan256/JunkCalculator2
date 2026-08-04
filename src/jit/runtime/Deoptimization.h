@@ -7,8 +7,8 @@
 #include <stdexcept>
 #include <cstring>
 #include <string>
-#include "LIR.h"
-#include "HIR.h"
+#include "../ir/LIR.h"
+#include "../ir/HIR.h"
 #include "../memory/Value.h"
 #include "../vm/VM.h"
 

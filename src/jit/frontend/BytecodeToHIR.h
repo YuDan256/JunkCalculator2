@@ -1,7 +1,7 @@
 #ifndef JC2_JIT_BYTECODE_TO_HIR_H
 #define JC2_JIT_BYTECODE_TO_HIR_H
 
-#include "HIRBuilder.h"
+#include "../ir/HIRBuilder.h"
 #include "BytecodeCFG.h"
 #include "../vm/Bytecode.h"
 #include <vector>

@@ -1,4 +1,4 @@
-#include "HIRBuilder.h"
+#include "../ir/HIRBuilder.h"
 #include <iostream>
 
 using namespace jc::jit;

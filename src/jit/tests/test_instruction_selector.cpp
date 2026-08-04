@@ -1,10 +1,10 @@
-#include "HIRBuilder.h"
-#include "GCM.h"
-#include "InstructionSelector.h"
-#include "LivenessAnalysis.h"
-#include "LinearScan.h"
-#include "CodeEmitter.h"
-#include "MacroAssembler.h"
+#include "../ir/HIRBuilder.h"
+#include "../pass/GCM.h"
+#include "../pass/InstructionSelector.h"
+#include "../pass/LivenessAnalysis.h"
+#include "../pass/LinearScan.h"
+#include "../backend/CodeEmitter.h"
+#include "../backend/MacroAssembler.h"
 #include <iostream>
 
 using namespace jc;

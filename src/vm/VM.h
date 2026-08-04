@@ -5,7 +5,7 @@
 #include "../memory/Value.h"
 #include "BuiltinRegistry.h"
 #include "../frontend/Token.h"
-#include "../jit/ExecutableMemory.h"
+#include "../jit/backend/ExecutableMemory.h"
 #include <vector>
 #include <unordered_map>
 #include <memory>

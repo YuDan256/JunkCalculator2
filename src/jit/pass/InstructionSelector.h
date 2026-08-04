@@ -1,8 +1,8 @@
 #ifndef JC2_JIT_INSTRUCTION_SELECTOR_H
 #define JC2_JIT_INSTRUCTION_SELECTOR_H
 
-#include "HIR.h"
-#include "LIRBuilder.h"
+#include "../ir/HIR.h"
+#include "../ir/LIRBuilder.h"
 #include "GCM.h"
 #include <unordered_map>
 #include <unordered_set>

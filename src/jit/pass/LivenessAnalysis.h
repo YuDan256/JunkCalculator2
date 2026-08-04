@@ -1,7 +1,7 @@
 #ifndef JC2_JIT_LIVENESS_ANALYSIS_H
 #define JC2_JIT_LIVENESS_ANALYSIS_H
 
-#include "LIR.h"
+#include "../ir/LIR.h"
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>

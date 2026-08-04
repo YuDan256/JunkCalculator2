@@ -43,7 +43,7 @@ endif()
 # ==============================================================================
 set(JC2_HEADERS
     "src/frontend/Token.h" "src/frontend/Lexer.h" "src/frontend/Expr.h" "src/frontend/Parser.h" "src/frontend/Highlight.h" "src/frontend/ASTConverter.h"
-    "src/jit/ExecutableMemory.h" "src/jit/Registers.h" "src/jit/Operand.h" "src/jit/MacroAssembler.h" "src/jit/HIR.h" "src/jit/HIRBuilder.h" "src/jit/BytecodeCFG.h" "src/jit/BytecodeToHIR.h" "src/jit/LIR.h" "src/jit/LIRBuilder.h" "src/jit/GCM.h" "src/jit/InstructionSelector.h" "src/jit/LivenessAnalysis.h" "src/jit/LinearScan.h" "src/jit/CodeEmitter.h" "src/jit/Deoptimization.h"
+    "src/jit/backend/ExecutableMemory.h" "src/jit/backend/Registers.h" "src/jit/backend/Operand.h" "src/jit/backend/MacroAssembler.h" "src/jit/ir/HIR.h" "src/jit/ir/HIRBuilder.h" "src/jit/frontend/BytecodeCFG.h" "src/jit/frontend/BytecodeToHIR.h" "src/jit/ir/LIR.h" "src/jit/ir/LIRBuilder.h" "src/jit/pass/GCM.h" "src/jit/pass/InstructionSelector.h" "src/jit/pass/LivenessAnalysis.h" "src/jit/pass/LinearScan.h" "src/jit/backend/CodeEmitter.h" "src/jit/runtime/Deoptimization.h"
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h"
@@ -57,8 +57,8 @@ set(JC2_HEADERS
 
 set(JC2_SOURCES
     "src/lib/ExtensionBridge.cpp"
-    "src/jit/ExecutableMemory.cpp"
-    "src/jit/MacroAssembler.cpp"
+    "src/jit/backend/ExecutableMemory.cpp"
+    "src/jit/backend/MacroAssembler.cpp"
     "src/frontend/Lexer.cpp" "src/frontend/Parser.cpp" "src/frontend/ASTConverter.cpp"
     "src/compiler/Resolver.cpp"
     "src/compiler/IRBuilder.cpp"
@@ -76,23 +76,23 @@ add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build JIT Memory Test Executable
-add_executable(test_memory "src/jit/test_memory.cpp" "src/jit/ExecutableMemory.cpp" "src/jit/MacroAssembler.cpp")
+add_executable(test_memory "src/jit/tests/test_memory.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
 target_include_directories(test_memory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build JIT HIR Test Executable
-add_executable(test_hir "src/jit/test_hir.cpp")
+add_executable(test_hir "src/jit/tests/test_hir.cpp")
 target_include_directories(test_hir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build JIT BytecodeToHIR Test Executable
-add_executable(test_bytecode_to_hir "src/jit/test_bytecode_to_hir.cpp")
+add_executable(test_bytecode_to_hir "src/jit/tests/test_bytecode_to_hir.cpp")
 target_include_directories(test_bytecode_to_hir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build JIT InstructionSelector Test Executable
-add_executable(test_instruction_selector "src/jit/test_instruction_selector.cpp")
+add_executable(test_instruction_selector "src/jit/tests/test_instruction_selector.cpp")
 target_include_directories(test_instruction_selector PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build JIT End-to-End Pipeline Test Executable
-add_executable(test_jit_pipeline "src/jit/test_jit_pipeline.cpp" "src/jit/ExecutableMemory.cpp" "src/jit/MacroAssembler.cpp")
+add_executable(test_jit_pipeline "src/jit/tests/test_jit_pipeline.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
 target_include_directories(test_jit_pipeline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ Build Image Module as a standalone DLL

@@ -6,7 +6,7 @@
 #include "../backend/CodeEmitter.h"
 #include "../backend/MacroAssembler.h"
 #include "../backend/ExecutableMemory.h"
-#include "../memory/Value.h"
+#include "../../memory/Value.h"
 #include <iostream>
 
 using namespace jc;

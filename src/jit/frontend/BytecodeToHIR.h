@@ -3,7 +3,7 @@
 
 #include "../ir/HIRBuilder.h"
 #include "BytecodeCFG.h"
-#include "../vm/Bytecode.h"
+#include "../../vm/Bytecode.h"
 #include <vector>
 #include <stdexcept>
 

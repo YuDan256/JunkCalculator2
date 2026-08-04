@@ -1,7 +1,7 @@
 #ifndef JC2_JIT_BYTECODE_CFG_H
 #define JC2_JIT_BYTECODE_CFG_H
 
-#include "../vm/Bytecode.h"
+#include "../../vm/Bytecode.h"
 #include <vector>
 #include <map>
 #include <set>

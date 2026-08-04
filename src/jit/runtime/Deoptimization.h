@@ -9,8 +9,8 @@
 #include <string>
 #include "../ir/LIR.h"
 #include "../ir/HIR.h"
-#include "../memory/Value.h"
-#include "../vm/VM.h"
+#include "../../memory/Value.h"
+#include "../../vm/VM.h"
 
 namespace jc {
 namespace jit {

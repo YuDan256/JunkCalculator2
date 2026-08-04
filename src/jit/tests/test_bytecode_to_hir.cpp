@@ -1,5 +1,5 @@
 #include "../frontend/BytecodeToHIR.h"
-#include "../vm/Bytecode.h"
+#include "../../vm/Bytecode.h"
 #include <iostream>
 
 using namespace jc;

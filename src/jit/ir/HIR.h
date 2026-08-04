@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <string>
+#include <cstdio>
 
 namespace jc {
 namespace jit {
@@ -166,6 +167,7 @@ enum class HIROp : uint16_t {
     Call,
     CallNative,
     CallBuiltin,
+    Callout,
 
     // ==========================================
     // SSA 节点
@@ -258,6 +260,7 @@ inline std::string to_string(HIROp op) {
         case HIROp::Call: return "Call";
         case HIROp::CallNative: return "CallNative";
         case HIROp::CallBuiltin: return "CallBuiltin";
+        case HIROp::Callout: return "Callout";
         case HIROp::Phi: return "Phi";
         default: return "UnknownOp";
     }
@@ -503,6 +506,32 @@ public:
     HIRNode* effect() const { return inputs()[1]; }
     HIRNode* callee() const { return inputs()[2]; }
     HIRNode* arg(uint32_t index) const { return inputs()[3 + index]; }
+};
+
+class CalloutNode : public HIRNode {
+    void* functionPtr_;
+    uint32_t argc_;
+public:
+    CalloutNode(uint32_t id, JITType type, HIRNode* control, HIRNode* effect, void* functionPtr, uint32_t argc, FrameStateNode* frameState)
+        : HIRNode(id, HIROp::Callout, type), functionPtr_(functionPtr), argc_(argc) {
+        addInput(control);
+        addInput(effect);
+        addInput(frameState);
+        // 后续的参数通过 addInput 追加
+    }
+    
+    void* functionPtr() const { return functionPtr_; }
+    uint32_t argc() const { return argc_; }
+    HIRNode* control() const { return inputs()[0]; }
+    HIRNode* effect() const { return inputs()[1]; }
+    FrameStateNode* frameState() const { return static_cast<FrameStateNode*>(inputs()[2]); }
+    HIRNode* arg(uint32_t index) const { return inputs()[3 + index]; }
+    
+    std::string extraLabel() const override {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%p", functionPtr_);
+        return std::string("fn:") + buf;
+    }
 };
 
 // --- 控制流节点 ---

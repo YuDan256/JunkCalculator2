@@ -392,11 +392,13 @@ JC2 的 GC 会扫描 `VM::registers` 数组作为根节点 (Roots)。
 JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流和运算。对于矩阵计算、大整数、字符串拼接以及 C++ 原生函数调用，JIT 绝不能试图将它们展开为内联汇编，而必须通过安全的边界调用交还给 C++ 运行时处理。
 
 ### 16.1 运行时辅助函数 (Runtime Callouts / Trampolines)
-当 Tier 0 Profiler 发现某个 `OpCode::ADD` 的操作数是 `RealMatrix` 时，JIT 不会生成矩阵加法的汇编代码，而是生成一个 **Callout（呼出）** 节点：
-1.  **类型守卫：** 检查操作数是否确实是 `RealMatrix`。
-2.  **调用 C++ 辅助函数：** JIT 发射一条 `call` 指令，跳转到预先编译好的 C++ 函数（如 `Value jc2_jit_matrix_add(Value a, Value b)`）。
-3.  **结果接收：** C++ 函数执行完毕后，将结果（新的矩阵对象的 `Value`）放在 `RAX` 寄存器中返回给 JIT。
-这种设计使得 JIT 代码极其紧凑，同时完全复用了 C++ 侧高度优化的矩阵和数学库。
+对于包含 `BUILD_MATRIX`、`CLASS`、`NAMESPACE` 等复杂指令的函数，JIT 采用“控制流内联 + 复杂操作呼出 (Callout)”的核心策略。
+当 Tier 0 Profiler 发现某个 `OpCode::ADD` 的操作数是 `RealMatrix`，或者遇到无法直接用简单机器码表达的复杂指令时，JIT 不会尝试生成内联汇编，而是生成一个 **Callout（呼出）** 节点：
+1.  **控制流与简单指令正常展开：** 内联时，目标函数内的基本控制流（如 `if`、`while`）和简单运算依然会被正常展开并织入当前的 HIR 图中，享受寄存器分配和常量折叠等优化。
+2.  **复杂指令降级为 Callout 节点：** 遇到复杂指令时，生成一个指向专门的 C++ 运行时辅助函数（例如 `jc2_jit_build_matrix`）的 Callout 节点，并将所需参数传递给它。
+3.  **强制状态同步 (Eager Sync) 保障 GC 安全：** 由于复杂指令通常涉及堆内存分配，极易触发垃圾回收 (GC)。生成的 CalloutNode 必须挂载当前的 `FrameState`。在执行 Callout 跃迁到 C++ 之前，JIT 会自动将所有活跃的物理寄存器装箱并刷回 `VM::registers`，确保 GC 扫描时内存状态绝对一致。
+4.  **结果接收：** C++ 辅助函数执行完毕后，将构建好的复杂对象（如 Matrix 或 Class）作为 `Value` 返回给 JIT（通常放在 `RAX` 寄存器中），JIT 代码继续向下执行。
+这种设计使得 JIT 代码极其紧凑，把函数的外壳拆掉，将其内部的复杂指令转化为对 C++ 运行时的安全调用，从而在保留 JIT 优化空间的同时，完全复用了 C++ 侧高度优化的复杂逻辑。
 
 ### 16.2 C++ ABI 兼容与现场保护 (ABI Compliance & Context Saving)
 在 JIT 机器码中调用 C++ 函数是极其危险的操作，必须严格遵守操作系统的 C ABI（Application Binary Interface）：
@@ -468,12 +470,12 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 71:** **[验证]** 编写性能基准测试，验证数学密集型代码（如计算素数或几何距离）的性能飞跃。
 
 ### Phase 15: 函数调用与内联 (Function Calls & Inlining) (Steps 72-77)
-*   **Step 72:** 在 HIR 中引入 `Callout` 节点，用于 JIT 代码安全地调用 C++ 运行时函数。
-*   **Step 73:** 在 `MacroAssembler` 和 `LinearScan` 中实现 Caller-Saved 寄存器的自动溢出与恢复机制。
-*   **Step 74:** 实现 Eager Sync 机制，在 Callout 前将活跃的虚拟寄存器刷回 `VM::registers` 以保证 GC 安全。
-*   **Step 75:** 实现 JIT-to-JIT 直接调用，跳过解释器 `CallFrame` 创建，直接 `call` 目标机器码入口。
-*   **Step 76:** 在 `BytecodeToHIR` 中实现基础的函数内联 (Method Inlining) 启发式算法（基于函数大小和调用深度）。
-*   **Step 77:** 实现内联展开逻辑，将被调用函数的字节码直接并入当前 HIR 图中，并消除参数传递开销。
+*   **[已完成] Step 72:** 在 HIR 中引入 `Callout` 节点，用于 JIT 代码安全地调用 C++ 运行时函数。
+*   **[已完成] Step 73:** 在 `MacroAssembler` 和 `LinearScan` 中实现 Caller-Saved 寄存器的自动溢出与恢复机制。
+*   **[已完成] Step 74:** 实现 Eager Sync 机制，在 Callout 前将活跃的虚拟寄存器刷回 `VM::registers` 以保证 GC 安全。
+*   **[已完成] Step 75:** 实现 JIT-to-JIT 直接调用，跳过解释器 `CallFrame` 创建，直接 `call` 目标机器码入口。
+*   **[已完成] Step 76:** 在 `BytecodeToHIR` 中实现基础的函数内联 (Method Inlining) 启发式算法（基于函数大小和调用深度）。
+*   **[已完成] Step 77:** 实现内联展开逻辑，将被调用函数的字节码直接并入当前 HIR 图中，并消除参数传递开销。
 
 ### Phase 16: 栈上替换 (OSR - On-Stack Replacement) (Steps 78-83)
 *   **Step 78:** 在解释器的循环回边指令（如 `JMP` 往回跳时）增加独立的 OSR 热点计数器。
@@ -482,3 +484,10 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **Step 81:** 在 `MacroAssembler` 中实现 OSR Prologue，负责从解释器栈中读取当前变量并装载到物理寄存器中。
 *   **Step 82:** 在解释器中实现热切换逻辑：发现 OSR 机器码就绪后，直接 `jmp` 跃入机器码的循环体。
 *   **Step 83:** 编写端到端测试，验证“单次调用但包含死循环”的函数能够被成功 OSR 加速。
+
+### Phase 17: 复杂指令的 Callout 降级与内联支持 (Steps 84-88)
+*   **Step 84:** 在 C++ 侧实现一系列 JIT 专用的运行时辅助函数（如 `jc2_jit_build_matrix`, `jc2_jit_build_class` 等）。
+*   **Step 85:** 扩展 `BytecodeToHIR`，在遇到 `BUILD_MATRIX`, `CLASS`, `NAMESPACE` 等复杂指令时，生成对应的 `Callout` 节点。
+*   **Step 86:** 确保 `Callout` 节点正确挂载 `FrameState`，并在 `InstructionSelector` 中完善 Eager Sync 机制，保证 GC 触发时的内存安全。
+*   **Step 87:** 调整内联启发式算法（Heuristics），允许包含复杂指令的函数被内联（仅展开其控制流和简单指令，复杂指令走 Callout）。
+*   **Step 88:** 编写端到端测试，验证包含矩阵构建和类定义的函数在被内联后，既能享受 JIT 加速，又不会发生 GC 崩溃。

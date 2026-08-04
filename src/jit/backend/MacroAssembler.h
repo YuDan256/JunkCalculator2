@@ -909,6 +909,23 @@ public:
         }
     }
 
+    // --- CALL C++ Function (ABI Compliant) ---
+    void callCFunction(void* funcPtr) {
+        // 1. 保存原始 RSP
+        movq(r11, rsp);
+        // 2. 16 字节对齐
+        andq(rsp, -16);
+        // 3. 分配 Shadow Space (Windows x64 需要 32 字节)
+#ifdef _WIN32
+        subq(rsp, 32);
+#endif
+        // 4. 调用目标函数
+        movabs(rax, reinterpret_cast<uint64_t>(funcPtr));
+        call(rax);
+        // 5. 恢复原始 RSP
+        movq(rsp, r11);
+    }
+
     // --- CALL ---
     void call(Label& L) {
         emit8(0xE8);

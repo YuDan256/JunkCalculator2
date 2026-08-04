@@ -47,6 +47,44 @@ extern bool g_profile;
 
 namespace jc {
 
+extern "C" uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
+    (void)current_regs;
+    Value callee; callee.as_bits = callee_bits;
+    std::vector<Value> args(argc);
+    for (uint32_t i = 0; i < argc; ++i) args[i].as_bits = arg_bits[i];
+    
+    if (callee.isFunctionClosure()) {
+        ObjClosure* cl = callee.asFunction();
+        if (cl->isBytecode()) {
+            int fnIdx = cl->compiledFnIndex;
+            void* entry = VM::activeVM->getJitEntryPoint(fnIdx);
+            if (entry != nullptr) {
+                // Step 75: JIT-to-JIT Fast Path
+                // 跳过解释器 CallFrame 创建，直接计算寄存器窗口并 call 目标机器码
+                auto& fnDef = VM::activeVM->getCompiledFunctions()[fnIdx];
+                CallFrame* currentFrame = VM::activeVM->getCurrentFrame();
+                int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
+                
+                Value* regs = VM::activeVM->getRegisters();
+                for (uint32_t i = 0; i < argc; ++i) regs[newBase + i] = args[i];
+                for (int i = static_cast<int>(argc); i < fnDef->maxArity; ++i) regs[newBase + i] = Value::uninit();
+                for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) regs[newBase + i] = Value::none();
+                
+                typedef uint64_t (*JitFunc)(Value*);
+                JitFunc func = reinterpret_cast<JitFunc>(entry);
+                return func(&regs[newBase]);
+            } else {
+                // Slow Path: 回退到解释器执行
+                return VM::activeVM->callVMFunction(fnIdx, args, cl).as_bits;
+            }
+        } else if (cl->isNative()) {
+            auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
+            return fn(args).as_bits;
+        }
+    }
+    throw std::runtime_error("JIT Error: Target is not callable.");
+}
+
 Value VM::makeTokenInstance(const Token& t) {
     Value tokenClassVal = getBuiltinValue("Token");
     if (!tokenClassVal.isClass()) return Value::none();
@@ -2536,7 +2574,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                     allocator.allocate();
 
                     jit::MacroAssembler masm;
-                    jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), globals.data());
+                    jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), globals.data(), reinterpret_cast<void*>(jc2_jit_call_helper));
                     
                     emitter.emit(allocator.getStackSize());
                     masm.emitConstantPool();

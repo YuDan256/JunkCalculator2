@@ -75,9 +75,10 @@ public:
 
     // --- 状态环境管理 ---
     void setLocal(size_t index, HIRNode* node) {
-        if (index < registers_.size()) {
-            registers_[index] = node;
+        if (index >= registers_.size()) {
+            registers_.resize(index + 256, nullptr);
         }
+        registers_[index] = node;
     }
 
     HIRNode* getLocal(size_t index) const {
@@ -550,6 +551,13 @@ public:
 
     CallNode* createCallBuiltin(HIRNode* callee, uint32_t argc, const std::vector<HIRNode*>& args) {
         auto node = graph_->allocateNode<CallNode>(HIROp::CallBuiltin, JITType::TaggedValue, currentControl_, currentEffect_, callee, argc);
+        for (auto arg : args) node->addInput(arg);
+        currentEffect_ = node;
+        return node;
+    }
+
+    CalloutNode* createCallout(void* functionPtr, JITType returnType, uint32_t argc, const std::vector<HIRNode*>& args, FrameStateNode* frameState) {
+        auto node = graph_->allocateNode<CalloutNode>(returnType, currentControl_, currentEffect_, functionPtr, argc, frameState);
         for (auto arg : args) node->addInput(arg);
         currentEffect_ = node;
         return node;

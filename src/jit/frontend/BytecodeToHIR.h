@@ -4,6 +4,7 @@
 #include "../ir/HIRBuilder.h"
 #include "BytecodeCFG.h"
 #include "../../vm/Bytecode.h"
+#include "../../vm/VM.h"
 #include <vector>
 #include <stdexcept>
 
@@ -15,15 +16,28 @@ namespace jit {
 // ============================================================================
 class BytecodeToHIR {
 public:
-    BytecodeToHIR(const Chunk& chunk, HIRBuilder& builder)
-        : chunk_(chunk), builder_(builder) {}
+    BytecodeToHIR(const Chunk& chunk, HIRBuilder& builder, int inlineDepth = 0, int registerOffset = 0)
+        : chunk_(chunk), builder_(builder), inlineDepth_(inlineDepth), registerOffset_(registerOffset) {}
+
+    HIRNode* buildInline(const std::vector<HIRNode*>& args) {
+        isInline_ = true;
+        inlineArgs_ = args;
+        build();
+        return inlineResult_;
+    }
 
     void build() {
         // 1. 构建字节码控制流图
         cfg_.build(chunk_);
 
         // 2. 初始化入口状态
-        builder_.createStart();
+        if (isInline_) {
+            for (size_t i = 0; i < inlineArgs_.size(); ++i) {
+                builder_.setLocal(registerOffset_ + i, inlineArgs_[i]);
+            }
+        } else {
+            builder_.createStart();
+        }
 
         // 3. 抽象解释主循环：遍历基本块
         for (const auto& block : cfg_.blocks) {
@@ -37,11 +51,11 @@ public:
                 
                 std::vector<HIRNode*> phis(256, nullptr);
                 for (size_t i = 0; i < 256; ++i) {
-                    HIRNode* val = builder_.getLocal(i);
+                    HIRNode* val = builder_.getLocal(registerOffset_ + i);
                     if (val) {
                         // 预创建 Phi 节点，初始只包含前向边的数据
                         HIRNode* phi = builder_.createPhi(val->type(), {val});
-                        builder_.setLocal(i, phi);
+                        builder_.setLocal(registerOffset_ + i, phi);
                         phis[i] = phi;
                     }
                 }
@@ -155,23 +169,23 @@ public:
                         if (kst.isString()) return builder_.createStringConstant(kst.asString());
                         return builder_.createNoneConstant();
                     }
-                    HIRNode* node = builder_.getLocal(rk);
+                    HIRNode* node = builder_.getLocal(registerOffset_ + rk);
                     if (!node) {
-                        node = builder_.createLoadRegister(rk);
-                        builder_.setLocal(rk, node);
+                        node = builder_.createLoadRegister(registerOffset_ + rk);
+                        builder_.setLocal(registerOffset_ + rk, node);
                     }
                     return node;
                 };
 
                 // Eager Sync: 写入虚拟寄存器时，同步写回 VM::registers 以保证 GC 安全
                 auto setLocalSync = [&](int reg, HIRNode* node) {
-                    builder_.setLocal(reg, node);
+                    builder_.setLocal(registerOffset_ + reg, node);
                     regFuncName_.erase(reg); // 默认清空函数名追踪
                     HIRNode* boxedNode = node;
                     if (node->type() == JITType::Int32) boxedNode = builder_.createBoxInt32(node);
                     else if (node->type() == JITType::Double) boxedNode = builder_.createBoxDouble(node);
                     else if (node->type() == JITType::Bool) boxedNode = builder_.createBoxBool(node);
-                    builder_.createStoreRegister(reg, boxedNode);
+                    builder_.createStoreRegister(registerOffset_ + reg, boxedNode);
                 };
 
                 // 抽象解释：根据操作码更新 HIRBuilder 的虚拟寄存器状态
@@ -228,7 +242,7 @@ public:
                     case OpCode::SET_GLOBAL: {
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[bx]);
                         if (ic.cachedGlobalSlot >= 0) {
-                            builder_.createStoreGlobal(ic.cachedGlobalSlot, builder_.getLocal(a));
+                            builder_.createStoreGlobal(ic.cachedGlobalSlot, builder_.getLocal(registerOffset_ + a));
                         } else {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             builder_.createDeoptimize(fs);
@@ -362,7 +376,7 @@ public:
                     case OpCode::NOT:
                     case OpCode::TO_BOOL: {
                         uint8_t fb = chunk_.typeFeedback[currentIp];
-                        HIRNode* val = builder_.getLocal(b);
+                        HIRNode* val = builder_.getLocal(registerOffset_ + b);
                         
                         if (fb == 0x01) {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
@@ -399,7 +413,13 @@ public:
                         break;
                     }
                     case OpCode::RETURN: {
-                        builder_.createReturn(getRKNode(a));
+                        if (isInline_) {
+                            returnValues_.push_back(getRKNode(a));
+                            returnControls_.push_back(builder_.currentControl());
+                            builder_.setCurrentControl(nullptr);
+                        } else {
+                            builder_.createReturn(getRKNode(a));
+                        }
                         break;
                     }
                     case OpCode::GET_PROP: {
@@ -462,6 +482,23 @@ public:
                         
                         uint8_t fb = chunk_.typeFeedback[currentIp];
 
+                        // Step 76: 尝试获取目标函数并判断是否内联
+                        CompiledFunction* targetFn = nullptr;
+                        if (!funcName.empty() && VM::activeVM) {
+                            Value globalVal = VM::activeVM->getGlobal(funcName);
+                            if (globalVal.isFunctionClosure()) {
+                                ObjClosure* closure = globalVal.asFunction();
+                                if (closure->isBytecode() && closure->compiledFnIndex >= 0) {
+                                    auto& fns = VM::activeVM->getCompiledFunctions();
+                                    if (closure->compiledFnIndex < static_cast<int>(fns.size())) {
+                                        targetFn = fns[closure->compiledFnIndex].get();
+                                    }
+                                }
+                            }
+                        }
+
+                        bool canInline = shouldInline(targetFn);
+
                         // Step 68: 识别目标是否为已知的 math 内置函数
                         // Step 69: 结合 Profiling 数据，如果参数为 Double，则将内置函数调用直接替换为对应的 HIR 数学节点。
                         // Step 70: 仅对语义安全的函数（如 sqrtD, sin）实现 Int32 -> Double 的自动类型提升。
@@ -495,6 +532,16 @@ public:
                                 setLocalSync(a, callNode);
                             } else {
                                 builder_.createReturn(callNode);
+                            }
+                        } else if (canInline) {
+                            // Step 77: 实现内联展开逻辑
+                            int newOffset = registerOffset_ + 256;
+                            BytecodeToHIR inliner(targetFn->chunk, builder_, inlineDepth_ + 1, newOffset);
+                            HIRNode* inlineRes = inliner.buildInline(args);
+                            if (op == OpCode::CALL) {
+                                setLocalSync(a, inlineRes);
+                            } else {
+                                builder_.createReturn(inlineRes);
                             }
                         } else {
                             auto callNode = builder_.createCall(callee, c, args);
@@ -530,7 +577,7 @@ public:
                                 auto& phis = loopHeaderPhis_[succId];
                                 for (size_t i = 0; i < 256; ++i) {
                                     if (phis[i]) {
-                                        HIRNode* backEdgeVal = builder_.getLocal(i);
+                                        HIRNode* backEdgeVal = builder_.getLocal(registerOffset_ + i);
                                         if (backEdgeVal) {
                                             phis[i]->addInput(backEdgeVal);
                                         } else {
@@ -544,15 +591,54 @@ public:
                 }
             }
         }
+
+        if (isInline_) {
+            if (returnControls_.empty()) {
+                inlineResult_ = builder_.createNoneConstant();
+            } else if (returnControls_.size() == 1) {
+                builder_.setCurrentControl(returnControls_[0]);
+                inlineResult_ = returnValues_[0];
+            } else {
+                HIRNode* merge = builder_.createMerge(returnControls_);
+                builder_.setCurrentControl(merge);
+                inlineResult_ = builder_.createPhi(JITType::TaggedValue, returnValues_);
+            }
+        }
     }
 
 private:
     const Chunk& chunk_;
     HIRBuilder& builder_;
+    int inlineDepth_;
+    static constexpr int MAX_INLINE_DEPTH = 3;
+    static constexpr size_t MAX_INLINE_INSTS = 50;
+
+    bool shouldInline(const CompiledFunction* fn) const {
+        if (inlineDepth_ >= MAX_INLINE_DEPTH) return false;
+        if (!fn) return false;
+        if (fn->chunk.code.size() > MAX_INLINE_INSTS) return false;
+        
+        // 拒绝内联包含复杂控制流或异常处理的函数
+        for (Instruction inst : fn->chunk.code) {
+            OpCode op = GET_OPCODE(inst);
+            if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::CLOSURE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     BytecodeCFG cfg_;
     std::map<int, std::vector<HIRNode*>> loopHeaderPhis_;
     std::map<int, HIRNode*> loopHeaderControls_;
     std::map<int, std::string> regFuncName_;
+
+    bool isInline_ = false;
+    std::vector<HIRNode*> inlineArgs_;
+    HIRNode* inlineResult_ = nullptr;
+    std::vector<HIRNode*> returnValues_;
+    std::vector<HIRNode*> returnControls_;
+    int registerOffset_ = 0;
 };
 
 } // namespace jit

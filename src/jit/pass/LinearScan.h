@@ -47,11 +47,20 @@ public:
             expireOldIntervals(interval, active, isFloat ? nullptr : &freeGPRs, isFloat ? &freeXMMs : nullptr);
 
             if (isFloat) {
-                if (freeXMMs.empty()) {
+                XMMRegister chosenReg;
+                bool found = false;
+                for (auto it = freeXMMs.begin(); it != freeXMMs.end(); ++it) {
+                    if (!isClobberedXMM(*it, interval)) {
+                        chosenReg = *it;
+                        freeXMMs.erase(it);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
                     spillAtInterval(interval, active, nullptr, &freeXMMs);
                 } else {
-                    interval->allocatedXMM = freeXMMs.back();
-                    freeXMMs.pop_back();
+                    interval->allocatedXMM = chosenReg;
                     active.push_back(interval);
                 }
             } else {
@@ -87,10 +96,39 @@ private:
     LivenessAnalyzer& liveness_;
     int32_t nextStackSlot_ = 0;
     std::vector<std::pair<uint32_t, Register>> clobberPoints_;
+    std::vector<std::pair<uint32_t, XMMRegister>> xmmClobberPoints_;
 
     void buildClobbers() {
         for (LIRBlock* block : lir_.blocks()) {
             for (LIRInst* inst : block->instructions()) {
+                if (inst->opcode() == LIROpcode::Call || inst->opcode() == LIROpcode::CallRuntime || inst->opcode() == LIROpcode::Callout) {
+                    // Caller-saved GPRs
+                    clobberPoints_.push_back({inst->linearId(), rax});
+                    clobberPoints_.push_back({inst->linearId(), rcx});
+                    clobberPoints_.push_back({inst->linearId(), rdx});
+                    clobberPoints_.push_back({inst->linearId(), r8});
+                    clobberPoints_.push_back({inst->linearId(), r9});
+                    clobberPoints_.push_back({inst->linearId(), r10});
+                    clobberPoints_.push_back({inst->linearId(), r11});
+                    
+                    // Caller-saved XMMs
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm0});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm1});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm2});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm3});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm4});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm5});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm6});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm7});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm8});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm9});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm10});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm11});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm12});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm13});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm14});
+                    xmmClobberPoints_.push_back({inst->linearId(), xmm15});
+                }
                 for (Register reg : inst->clobbers()) {
                     clobberPoints_.push_back({inst->linearId(), reg});
                 }
@@ -110,6 +148,19 @@ private:
 
     bool isClobbered(Register reg, LiveInterval* interval) {
         for (const auto& cp : clobberPoints_) {
+            if (cp.second == reg) {
+                for (const auto& range : interval->ranges) {
+                    if (cp.first >= range.start && cp.first < range.end) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    bool isClobberedXMM(XMMRegister reg, LiveInterval* interval) {
+        for (const auto& cp : xmmClobberPoints_) {
             if (cp.second == reg) {
                 for (const auto& range : interval->ranges) {
                     if (cp.first >= range.start && cp.first < range.end) {

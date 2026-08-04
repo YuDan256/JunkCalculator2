@@ -518,6 +518,96 @@ private:
                 }
                 break;
             }
+            case HIROp::Call: {
+                auto n = static_cast<CallNode*>(node);
+                std::vector<LIROperand> argOps;
+                for (uint32_t i = 0; i < n->argc(); ++i) {
+                    argOps.push_back(getOperand(n->arg(i)));
+                }
+                LIROperand calleeOp = getOperand(n->callee());
+                
+                std::vector<std::pair<LIROperand, LIRConstraint>> uses;
+                uses.push_back({calleeOp, LIRConstraint::anyReg()});
+                for (const auto& argOp : argOps) {
+                    uses.push_back({argOp, LIRConstraint::anyReg()});
+                }
+                
+                std::vector<std::pair<LIROperand, LIRConstraint>> defs;
+                if (!out.isInvalid()) {
+                    defs.push_back({out, LIRConstraint::fixedReg(rax.id())});
+                }
+                
+                auto inst = builder_.emitWithConstraints(LIROpcode::Call, defs, uses);
+                inst->setArgc(n->argc());
+                break;
+            }
+            case HIROp::Callout: {
+                auto n = static_cast<CalloutNode*>(node);
+                
+                // Step 74: Eager Sync 机制
+                // 在调用 C++ 运行时函数前，将 FrameState 中的所有存活变量刷回 VM::registers
+                FrameStateNode* fs = n->frameState();
+                if (fs) {
+                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
+                        HIRNode* val = fs->inputs()[i];
+                        if (val && val->opcode() != HIROp::NoneConstant) {
+                            LIROperand valOp = getOperand(val);
+                            if (!valOp.isInvalid()) {
+                                LIROperand boxedOp = valOp;
+                                if (val->type() == JITType::Int32) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (val->type() == JITType::Double) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (val->type() == JITType::Bool) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                }
+                                
+                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
+                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
+                            }
+                        }
+                    }
+                }
+
+                std::vector<std::pair<LIROperand, LIRConstraint>> uses;
+                
+                // 准备参数 (遵循 C ABI)
+                // Windows x64: RCX, RDX, R8, R9
+                // System V: RDI, RSI, RDX, RCX, R8, R9
+                // 这里为了简化，我们假设最多 4 个参数，并根据平台分配寄存器
+                std::vector<Register> argRegs;
+#ifdef _WIN32
+                argRegs = {rcx, rdx, r8, r9};
+#else
+                argRegs = {rdi, rsi, rdx, rcx, r8, r9};
+#endif
+                
+                for (uint32_t i = 0; i < n->argc(); ++i) {
+                    if (i < argRegs.size()) {
+                        LIROperand argOp = getOperand(n->arg(i));
+                        uses.push_back({argOp, LIRConstraint::fixedReg(argRegs[i].id())});
+                    } else {
+                        throw std::runtime_error("InstructionSelector: Callout with more than supported arguments.");
+                    }
+                }
+                
+                std::vector<std::pair<LIROperand, LIRConstraint>> defs;
+                if (!out.isInvalid()) {
+                    LIRConstraint retConstraint = LIRConstraint::fixedReg(rax.id());
+                    if (n->type() == JITType::Double) {
+                        retConstraint = LIRConstraint::fixedReg(xmm0.id());
+                    }
+                    defs.push_back({out, retConstraint});
+                }
+                
+                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, defs, uses);
+                inst->setFunctionPtr(n->functionPtr());
+                inst->setArgc(n->argc());
+                break;
+            }
             default:
                 break;
         }

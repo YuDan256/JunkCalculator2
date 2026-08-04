@@ -78,6 +78,7 @@ private:
             case HIROp::Call:
             case HIROp::CallNative:
             case HIROp::CallBuiltin:
+            case HIROp::Callout:
             case HIROp::GuardIsInt32:
             case HIROp::GuardIsDouble:
             case HIROp::GuardIsBool:

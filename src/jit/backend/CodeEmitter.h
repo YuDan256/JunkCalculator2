@@ -15,8 +15,8 @@ namespace jit {
 // ============================================================================
 class CodeEmitter {
 public:
-    CodeEmitter(const LIRGraph& lir, MacroAssembler& masm, void* deoptRuntimeFunc = nullptr, void* globalsData = nullptr)
-        : lir_(lir), masm_(masm), deoptRuntimeFunc_(deoptRuntimeFunc), globalsData_(globalsData) {}
+    CodeEmitter(const LIRGraph& lir, MacroAssembler& masm, void* deoptRuntimeFunc = nullptr, void* globalsData = nullptr, void* callRuntimeFunc = nullptr)
+        : lir_(lir), masm_(masm), deoptRuntimeFunc_(deoptRuntimeFunc), globalsData_(globalsData), callRuntimeFunc_(callRuntimeFunc) {}
 
     void emit(int32_t stackSize) {
         // 0. 发射函数序言 (Prologue)
@@ -54,6 +54,7 @@ private:
     MacroAssembler& masm_;
     void* deoptRuntimeFunc_;
     void* globalsData_;
+    void* callRuntimeFunc_;
     Label deoptTrampolineLabel_;
     bool needsDeoptTrampoline_ = false;
     std::unordered_map<LIRBlock*, Label> blockLabels_;
@@ -681,6 +682,59 @@ private:
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported Int32ToDouble operands.");
                 }
+                break;
+            }
+            case LIROpcode::Call: {
+                uint32_t argc = inst->argc();
+                const LIROperand& callee = inst->uses()[0];
+                
+                if (argc > 0) {
+                    uint32_t stackSpace = (argc * 8 + 15) & ~15;
+                    masm_.subq(rsp, stackSpace);
+                    
+                    for (uint32_t i = 0; i < argc; ++i) {
+                        const LIROperand& arg = inst->uses()[i + 1];
+                        if (arg.isPhysicalGPR()) {
+                            masm_.movq(Operand(rsp, i * 8), arg.pregGPR());
+                        } else if (arg.isStackSlot()) {
+                            masm_.movq(r11, getStackOperand(arg.slot()));
+                            masm_.movq(Operand(rsp, i * 8), r11);
+                        } else if (arg.isImm64()) {
+                            masm_.movabs(r11, arg.imm64());
+                            masm_.movq(Operand(rsp, i * 8), r11);
+                        } else {
+                            throw std::runtime_error("CodeEmitter: Unsupported Call argument type.");
+                        }
+                    }
+                }
+                
+#ifdef _WIN32
+                if (argc > 0) masm_.movq(r8, rsp); else masm_.movq(r8, 0);
+                if (callee.isPhysicalGPR()) masm_.movq(rcx, callee.pregGPR());
+                else if (callee.isStackSlot()) masm_.movq(rcx, getStackOperand(callee.slot()));
+                else throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
+                masm_.movq(rdx, r14);
+                masm_.mov(r9, static_cast<int32_t>(argc));
+#else
+                if (argc > 0) masm_.movq(rdx, rsp); else masm_.movq(rdx, 0);
+                if (callee.isPhysicalGPR()) masm_.movq(rdi, callee.pregGPR());
+                else if (callee.isStackSlot()) masm_.movq(rdi, getStackOperand(callee.slot()));
+                else throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
+                masm_.movq(rsi, r14);
+                masm_.mov(rcx, static_cast<int32_t>(argc));
+#endif
+                
+                if (!callRuntimeFunc_) throw std::runtime_error("CodeEmitter: callRuntimeFunc is null.");
+                masm_.callCFunction(callRuntimeFunc_);
+                
+                if (argc > 0) {
+                    uint32_t stackSpace = (argc * 8 + 15) & ~15;
+                    masm_.addq(rsp, stackSpace);
+                }
+                break;
+            }
+            case LIROpcode::Callout: {
+                masm_.callCFunction(inst->functionPtr());
                 break;
             }
             default:

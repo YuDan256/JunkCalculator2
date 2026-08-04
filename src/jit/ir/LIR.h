@@ -149,7 +149,7 @@ enum class LIROpcode : uint16_t {
     CmpI32, Cmp64, TestI32, CmpF64,
     Setcc,
     Jmp, Jcc,
-    Call, CallRuntime, Ret,
+    Call, CallRuntime, Callout, Ret,
     Push, Pop,
     Deoptimize,
     BoxInt32, BoxDouble, BoxBool,
@@ -207,6 +207,7 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::Jcc: return "Jcc";
         case LIROpcode::Call: return "Call";
         case LIROpcode::CallRuntime: return "CallRuntime";
+        case LIROpcode::Callout: return "Callout";
         case LIROpcode::Ret: return "Ret";
         case LIROpcode::Push: return "Push";
         case LIROpcode::Pop: return "Pop";
@@ -272,6 +273,12 @@ public:
     void setBailoutId(uint32_t id) { bailoutId_ = id; }
     uint32_t bailoutId() const { return bailoutId_; }
 
+    // 供 Callout 使用
+    void setFunctionPtr(void* ptr) { functionPtr_ = ptr; }
+    void* functionPtr() const { return functionPtr_; }
+    void setArgc(uint32_t argc) { argc_ = argc; }
+    uint32_t argc() const { return argc_; }
+
     // 供寄存器分配器使用 (线性 ID)
     void setLinearId(uint32_t id) { linearId_ = id; }
     uint32_t linearId() const { return linearId_; }
@@ -288,6 +295,8 @@ private:
     Condition cond_ = Condition::Equal;
     class LIRBlock* target_ = nullptr;
     uint32_t bailoutId_ = 0;
+    void* functionPtr_ = nullptr;
+    uint32_t argc_ = 0;
 };
 
 // ============================================================================

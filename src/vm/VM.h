@@ -231,6 +231,11 @@ public:
     const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
     const std::unordered_map<std::string, std::set<int>>& getBuiltinArity() const { return builtinArity; }
 
+    void* getJitEntryPoint(int fnIdx) const {
+        auto it = jitEntryPoints.find(fnIdx);
+        return it != jitEntryPoints.end() ? it->second : nullptr;
+    }
+
     void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
         compiledFunctions = fns;
     }

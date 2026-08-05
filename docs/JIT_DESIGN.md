@@ -491,3 +491,31 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 86:** 确保 `Callout` 节点正确挂载 `FrameState`，并在 `InstructionSelector` 中完善 Eager Sync 机制，保证 GC 触发时的内存安全。
 *   **[已完成] Step 87:** 调整内联启发式算法（Heuristics），允许包含复杂指令的函数被内联（仅展开其控制流和简单指令，复杂指令走 Callout）。
 *   **[已完成] Step 88:** 编写端到端测试，验证包含矩阵构建和类定义的函数在被内联后，既能享受 JIT 加速，又不会发生 GC 崩溃。
+
+### Phase 18: 算术与逻辑指令的超态回退 (Megamorphic Math Fallbacks) (Steps 89-93)
+*   **Step 89:** 在 C++ 侧实现超态算术运算的 JIT 辅助函数（涵盖 `ADD`, `SUB`, `MUL`, `DIV`, `IDIV`, `MOD`, `POW`, `LDIV`）。
+*   **Step 90:** 在 C++ 侧实现超态位运算与一元运算的 JIT 辅助函数（涵盖 `BAND`, `BOR`, `BXOR`, `SHL`, `SHR`, `UNM`, `BNOT`）。
+*   **Step 91:** 在 C++ 侧实现超态比较运算的 JIT 辅助函数（涵盖 `EQ`, `NEQ`, `LT`, `LE`, `GT`, `GE`）。
+*   **Step 92:** 修改 `BytecodeToHIR`，当算术/逻辑/比较指令的类型反馈为 `0x80` (超态) 或 `0x10` (溢出/突变) 时，不再忽略或去优化，而是生成对应的 `Callout` 节点。
+*   **Step 93:** 编写端到端测试，验证包含矩阵运算、字符串拼接和大整数计算的循环能够被 JIT 成功编译并极速执行，全程无去优化。
+
+### Phase 19: 动态属性与索引访问 (Dynamic Properties & Indexing) (Steps 94-98)
+*   **Step 94:** 在 C++ 侧实现动态属性访问的 JIT 辅助函数（涵盖 `GET_PROP`, `SET_PROP`, `TRY_GET_PROP`），用于处理 Inline Cache (IC) 未命中的情况。
+*   **Step 95:** 修改 `BytecodeToHIR`，将属性访问的 IC Miss 路径从生成 `Deoptimize` 节点改为生成 `Callout` 节点，彻底消除多态对象导致的去优化。
+*   **Step 96:** 在 C++ 侧实现 1D 和 2D 索引访问的 JIT 辅助函数（涵盖 `INDEX_GET`, `INDEX_SET`）。
+*   **Step 97:** 修改 `BytecodeToHIR`，全面支持 `INDEX_GET` 和 `INDEX_SET` 指令，将其降级为 `Callout` 节点。
+*   **Step 98:** 编写端到端测试，验证包含字典键值查找、矩阵切片读写和动态对象属性操作的函数在 JIT 下的正确性与 GC 安全性。
+
+### Phase 20: 迭代器与 For-In 循环 (Iterators & For-In Loops) (Steps 99-103)
+*   **Step 99:** 在 C++ 侧实现迭代器初始化的 JIT 辅助函数（对应 `ITER_INIT` 指令）。
+*   **Step 100:** 在 C++ 侧实现迭代器步进的 JIT 辅助函数（对应 `ITER_NEXT` 指令）。
+*   **Step 101:** 修改 `BytecodeToHIR`，支持将 `ITER_INIT` 和 `ITER_NEXT` 降级为 `Callout` 节点。
+*   **Step 102:** 调整 `BytecodeCFG` 和 `BytecodeToHIR` 的控制流分析逻辑，确保 `for-in` 循环产生的隐式分支和循环头能够被正确识别并生成 Phi 节点。
+*   **Step 103:** 编写端到端测试，验证遍历 List、Dict 和 Matrix 的 `for-in` 循环能够被 JIT 完美加速。
+
+### Phase 21: 模式匹配与高级类型检查 (Pattern Matching & Type Checks) (Steps 104-108)
+*   **Step 104:** 在 C++ 侧实现类型与形状匹配的 JIT 辅助函数（涵盖 `MATCH_TYPE`, `MATCH_SHAPE`, `MATCH_INIT`）。
+*   **Step 105:** 在 C++ 侧实现成员包含测试的 JIT 辅助函数（对应 `IN` 关键字）。
+*   **Step 106:** 修改 `BytecodeToHIR`，支持将 `MATCH_TYPE`, `MATCH_SHAPE`, `MATCH_INIT` 和 `IN` 降级为 `Callout` 节点。
+*   **Step 107:** 再次放宽 `BytecodeToHIR` 中的内联启发式算法，允许包含模式匹配和 `for-in` 循环的复杂函数被内联展开。
+*   **Step 108:** 编写终极综合测试，验证一个包含深度解构赋值、模式匹配和复杂类型检查的算法，在 JIT 编译管线中稳定、极速地运行。

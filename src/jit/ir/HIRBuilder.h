@@ -168,6 +168,10 @@ public:
         return graph_->allocateNode<Int32ConstantNode>(val);
     }
 
+    Int64ConstantNode* createInt64Constant(uint64_t val) {
+        return graph_->allocateNode<Int64ConstantNode>(val);
+    }
+
     DoubleConstantNode* createDoubleConstant(double val) {
         return graph_->allocateNode<DoubleConstantNode>(val);
     }
@@ -379,10 +383,19 @@ public:
     // --- 状态与守卫节点 ---
     FrameStateNode* captureFrameState(uint32_t bailoutId, uint32_t ip) {
         auto fs = graph_->allocateNode<FrameStateNode>(bailoutId, ip);
-        // 自动捕获当前所有虚拟寄存器的状态
-        for (HIRNode* reg : registers_) {
-            if (reg && reg->opcode() != HIROp::LoadRegister && reg->opcode() != HIROp::NoneConstant) {
-                fs->addInput(reg);
+        for (size_t i = 0; i < registers_.size(); ++i) {
+            HIRNode* reg = registers_[i];
+            if (reg) {
+                if (reg->opcode() == HIROp::LoadRegister) {
+                    auto loadReg = static_cast<RegisterAccessNode*>(reg);
+                    if (loadReg->regIndex() == static_cast<int>(i)) {
+                        fs->addInput(nullptr);
+                    } else {
+                        fs->addInput(reg);
+                    }
+                } else {
+                    fs->addInput(reg);
+                }
             } else {
                 fs->addInput(nullptr);
             }

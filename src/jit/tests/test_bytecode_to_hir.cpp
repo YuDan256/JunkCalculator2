@@ -5,6 +5,21 @@
 using namespace jc;
 using namespace jc::jit;
 
+// 为独立的单元测试提供 JIT 辅助函数的空实现，以满足链接器要求
+namespace jc {
+    uint64_t jc2_jit_build_list(uint32_t, uint32_t) { return 0; }
+    uint64_t jc2_jit_build_dict(uint32_t, uint32_t) { return 0; }
+    uint64_t jc2_jit_build_set(uint32_t, uint32_t) { return 0; }
+    uint64_t jc2_jit_build_matrix(uint32_t, uint32_t, const Chunk*) { return 0; }
+    uint64_t jc2_jit_build_slice(uint32_t) { return 0; }
+    uint64_t jc2_jit_build_class(uint32_t, const Chunk*) { return 0; }
+    uint64_t jc2_jit_build_namespace(uint32_t, uint32_t, uint32_t, const Chunk*, uint32_t) { return 0; }
+    uint64_t jc2_jit_concat_strings(uint32_t, uint32_t) { return 0; }
+    uint64_t jc2_jit_format_string(uint32_t, uint32_t, const Chunk*) { return 0; }
+    uint64_t jc2_jit_dict_rest(uint32_t, uint32_t) { return 0; }
+    uint64_t jc2_jit_closure(uint32_t, uint32_t) { return 0; }
+}
+
 int main() {
     std::cout << "Running BytecodeToHIR test..." << std::endl;
 

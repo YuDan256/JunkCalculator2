@@ -54,6 +54,9 @@ public:
                 case HIROp::Int32Constant:
                     hash_combine(seed, std::hash<int32_t>{}(static_cast<Int32ConstantNode*>(node)->value()));
                     break;
+                case HIROp::Int64Constant:
+                    hash_combine(seed, std::hash<uint64_t>{}(static_cast<Int64ConstantNode*>(node)->value()));
+                    break;
                 case HIROp::DoubleConstant:
                     hash_combine(seed, std::hash<double>{}(static_cast<DoubleConstantNode*>(node)->value()));
                     break;
@@ -96,6 +99,9 @@ public:
             switch (lhs->opcode()) {
                 case HIROp::Int32Constant:
                     if (static_cast<Int32ConstantNode*>(lhs)->value() != static_cast<Int32ConstantNode*>(rhs)->value()) return false;
+                    break;
+                case HIROp::Int64Constant:
+                    if (static_cast<Int64ConstantNode*>(lhs)->value() != static_cast<Int64ConstantNode*>(rhs)->value()) return false;
                     break;
                 case HIROp::DoubleConstant:
                     if (static_cast<DoubleConstantNode*>(lhs)->value() != static_cast<DoubleConstantNode*>(rhs)->value()) return false;

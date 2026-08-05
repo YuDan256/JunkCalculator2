@@ -336,7 +336,13 @@ public:
                 auto syncAllRegisters = [&]() {
                     for (int i = 0; i < maxRegs_; ++i) {
                         HIRNode* val = builder_.getLocal(registerOffset_ + i);
-                        if (val && val->opcode() != HIROp::NoneConstant && val->opcode() != HIROp::LoadRegister) {
+                        if (val) {
+                            if (val->opcode() == HIROp::LoadRegister) {
+                                auto loadReg = static_cast<RegisterAccessNode*>(val);
+                                if (loadReg->regIndex() == registerOffset_ + i) {
+                                    continue;
+                                }
+                            }
                             HIRNode* boxedNode = val;
                             if (val->type() == JITType::Int32) boxedNode = builder_.createBoxInt32(val);
                             else if (val->type() == JITType::Double) boxedNode = builder_.createBoxDouble(val);
@@ -633,6 +639,100 @@ public:
                     case OpCode::SET_KW_ARGC:
                         break;
 
+                    case OpCode::BUILD_LIST: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto countNode = builder_.createInt32Constant(c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_list), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::BUILD_DICT: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto countNode = builder_.createInt32Constant(c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_dict), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::BUILD_SET: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto countNode = builder_.createInt32Constant(c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_set), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::BUILD_MATRIX: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto shapeIdxNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_matrix), JITType::TaggedValue, 3, {startRegNode, shapeIdxNode, chunkNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::BUILD_SLICE: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_slice), JITType::TaggedValue, 1, {startRegNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::CLASS: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto nameIdxNode = builder_.createInt32Constant(bx);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_class), JITType::TaggedValue, 2, {nameIdxNode, chunkNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::BUILD_NAMESPACE: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto startRegNode = builder_.createInt32Constant(registerOffset_ + a + 1);
+                        auto countNode = builder_.createInt32Constant(c);
+                        auto nameIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto offsetNode = builder_.createInt32Constant(registerOffset_);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_namespace), JITType::TaggedValue, 5, {startRegNode, countNode, nameIdxNode, chunkNode, offsetNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::CONCAT_STRINGS: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto countNode = builder_.createInt32Constant(c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_concat_strings), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::FORMAT_STRING: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto valRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto specIdxNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_format_string), JITType::TaggedValue, 3, {valRegNode, specIdxNode, chunkNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::DICT_REST: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto excludeKeysRegNode = builder_.createInt32Constant(registerOffset_ + c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_rest), JITType::TaggedValue, 2, {objRegNode, excludeKeysRegNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::CLOSURE: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        int fnIdx = static_cast<int>(std::round(chunk_.constants[bx].asDouble()));
+                        auto fnIdxNode = builder_.createInt32Constant(fnIdx);
+                        auto offsetNode = builder_.createInt32Constant(registerOffset_);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_closure), JITType::TaggedValue, 2, {fnIdxNode, offsetNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+
                     case OpCode::CALL:
                     case OpCode::TAIL_CALL: {
                         HIRNode* callee = getBoxedRKNode(b);
@@ -825,10 +925,12 @@ private:
         if (!fn) return false;
         if (fn->chunk.code.size() > MAX_INLINE_INSTS) return false;
         
-        // 拒绝内联包含复杂控制流或异常处理的函数
+        // Step 87: 调整内联启发式算法
+        // 拒绝内联包含异常处理或延迟执行的函数 (TRY_BEGIN, DEFER)
+        // 复杂指令 (如 BUILD_MATRIX, CLASS, CLOSURE) 现在已通过 Callout 支持，允许内联！
         for (Instruction inst : fn->chunk.code) {
             OpCode op = GET_OPCODE(inst);
-            if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::CLOSURE) {
+            if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER) {
                 return false;
             }
         }

@@ -37,8 +37,7 @@ public:
         for (auto node : hir_.nodes()) {
             if (node->type() != JITType::Control && 
                 node->type() != JITType::Effect && 
-                node->type() != JITType::FrameState &&
-                node->opcode() != HIROp::NoneConstant) {
+                node->type() != JITType::FrameState) {
                 bool isFloat = (node->type() == JITType::Double);
                 nodeToOperand_[node] = LIROperand::createVirtual(builder_.allocateVirtualRegister(isFloat));
             }
@@ -176,6 +175,11 @@ private:
                 builder_.emit(LIROpcode::LoadImm32, {out}, {LIROperand::createImm32(n->value())});
                 break;
             }
+            case HIROp::Int64Constant: {
+                auto n = static_cast<Int64ConstantNode*>(node);
+                builder_.emit(LIROpcode::LoadImm64, {out}, {LIROperand::createImm64(n->value())});
+                break;
+            }
             case HIROp::DoubleConstant: {
                 auto n = static_cast<DoubleConstantNode*>(node);
                 uint64_t bits;
@@ -187,6 +191,11 @@ private:
             case HIROp::BoolConstant: {
                 auto n = static_cast<BoolConstantNode*>(node);
                 builder_.emit(LIROpcode::LoadImm32, {out}, {LIROperand::createImm32(n->value() ? 1 : 0)});
+                break;
+            }
+            case HIROp::NoneConstant: {
+                uint64_t noneBits = 0x7ffc000000000001ULL; // QNAN | TAG_NONE
+                builder_.emit(LIROpcode::LoadImm64, {out}, {LIROperand::createImm64(noneBits)});
                 break;
             }
             case HIROp::AddI32:
@@ -378,7 +387,7 @@ private:
                 if (fs) {
                     for (size_t i = 0; i < fs->inputs().size(); ++i) {
                         HIRNode* val = fs->inputs()[i];
-                        if (val && val->opcode() != HIROp::NoneConstant && val->opcode() != HIROp::LoadRegister) {
+                        if (val) {
                             LIROperand valOp = getOperand(val);
                             if (!valOp.isInvalid()) {
                                 LIROperand boxedOp = valOp;
@@ -574,7 +583,7 @@ private:
                 if (fs) {
                     for (size_t i = 0; i < fs->inputs().size(); ++i) {
                         HIRNode* val = fs->inputs()[i];
-                        if (val && val->opcode() != HIROp::NoneConstant) {
+                        if (val) {
                             LIROperand valOp = getOperand(val);
                             if (!valOp.isInvalid()) {
                                 LIROperand boxedOp = valOp;

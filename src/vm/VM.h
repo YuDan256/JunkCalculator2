@@ -293,11 +293,11 @@ uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count);
 uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk);
 uint64_t jc2_jit_build_slice(uint32_t startReg);
 uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk);
-uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset);
 uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count);
 uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk);
 uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg);
-uint64_t jc2_jit_closure(uint32_t fnIdx);
+uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset);
 
 } // namespace jc
 

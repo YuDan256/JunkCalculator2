@@ -45,6 +45,7 @@ private:
         switch (node->opcode()) {
             // 常量节点
             case HIROp::Int32Constant:
+            case HIROp::Int64Constant:
             case HIROp::DoubleConstant:
             case HIROp::BoolConstant:
             case HIROp::StringConstant:

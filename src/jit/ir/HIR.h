@@ -60,6 +60,7 @@ enum class HIROp : uint16_t {
     // 常量节点 (Constants)
     // ==========================================
     Int32Constant,
+    Int64Constant,
     DoubleConstant,
     BoolConstant,
     NoneConstant,
@@ -190,6 +191,7 @@ inline std::string to_string(HIROp op) {
         case HIROp::LoopEnd: return "LoopEnd";
         case HIROp::Deoptimize: return "Deoptimize";
         case HIROp::Int32Constant: return "Int32Constant";
+        case HIROp::Int64Constant: return "Int64Constant";
         case HIROp::DoubleConstant: return "DoubleConstant";
         case HIROp::BoolConstant: return "BoolConstant";
         case HIROp::NoneConstant: return "NoneConstant";
@@ -373,6 +375,15 @@ public:
     Int32ConstantNode(uint32_t id, int32_t val)
         : HIRNode(id, HIROp::Int32Constant, JITType::Int32), value_(val) {}
     int32_t value() const { return value_; }
+    std::string extraLabel() const override { return std::to_string(value_); }
+};
+
+class Int64ConstantNode : public HIRNode {
+    uint64_t value_;
+public:
+    Int64ConstantNode(uint32_t id, uint64_t val)
+        : HIRNode(id, HIROp::Int64Constant, JITType::Int32), value_(val) {}
+    uint64_t value() const { return value_; }
     std::string extraLabel() const override { return std::to_string(value_); }
 };
 

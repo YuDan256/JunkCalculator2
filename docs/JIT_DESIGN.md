@@ -486,8 +486,8 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 83:** **[验证]** 编写端到端测试，验证“单次调用但包含死循环”的函数能够被成功 OSR 加速。
 
 ### Phase 17: 复杂指令的 Callout 降级与内联支持 (Steps 84-88)
-*   **Step 84:** 在 C++ 侧实现一系列 JIT 专用的运行时辅助函数（如 `jc2_jit_build_matrix`, `jc2_jit_build_class` 等）。
-*   **Step 85:** 扩展 `BytecodeToHIR`，在遇到 `BUILD_MATRIX`, `CLASS`, `NAMESPACE` 等复杂指令时，生成对应的 `Callout` 节点。
-*   **Step 86:** 确保 `Callout` 节点正确挂载 `FrameState`，并在 `InstructionSelector` 中完善 Eager Sync 机制，保证 GC 触发时的内存安全。
-*   **Step 87:** 调整内联启发式算法（Heuristics），允许包含复杂指令的函数被内联（仅展开其控制流和简单指令，复杂指令走 Callout）。
-*   **Step 88:** 编写端到端测试，验证包含矩阵构建和类定义的函数在被内联后，既能享受 JIT 加速，又不会发生 GC 崩溃。
+*   **[已完成] Step 84:** 在 C++ 侧实现一系列 JIT 专用的运行时辅助函数（如 `jc2_jit_build_matrix`, `jc2_jit_build_class` 等）。
+*   **[已完成] Step 85:** 扩展 `BytecodeToHIR`，在遇到 `BUILD_MATRIX`, `CLASS`, `NAMESPACE` 等复杂指令时，生成对应的 `Callout` 节点。
+*   **[已完成] Step 86:** 确保 `Callout` 节点正确挂载 `FrameState`，并在 `InstructionSelector` 中完善 Eager Sync 机制，保证 GC 触发时的内存安全。
+*   **[已完成] Step 87:** 调整内联启发式算法（Heuristics），允许包含复杂指令的函数被内联（仅展开其控制流和简单指令，复杂指令走 Callout）。
+*   **[已完成] Step 88:** 编写端到端测试，验证包含矩阵构建和类定义的函数在被内联后，既能享受 JIT 加速，又不会发生 GC 崩溃。

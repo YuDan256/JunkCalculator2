@@ -81,6 +81,40 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
             return fn(args).as_bits;
         }
+    } else if (callee.isClass()) {
+        auto cls = static_cast<ObjClass*>(callee.asObj());
+        if (cls->native_allocator) {
+            return cls->native_allocator(args).as_bits;
+        }
+        auto instance = GcHeap::get().allocate<ObjInstance>();
+        Value res(instance);
+        GcValueGuard guard(res);
+        instance->classDef = cls;
+        
+        ObjClosure* initMethod = nullptr;
+        auto c = cls;
+        while (c) {
+            auto it = c->properties.find("<init>");
+            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                initMethod = it->second.val.asFunction();
+                break;
+            }
+            c = c->parent;
+        }
+        
+        if (initMethod) {
+            if (initMethod->isBytecode()) {
+                VM::activeVM->callVMFunction(initMethod->compiledFnIndex, args, initMethod, res, Value(cls));
+            } else if (initMethod->isNative()) {
+                helpers::nativeSelfStack.push_back(res);
+                helpers::nativeClassStack.push_back(Value(cls));
+                auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
+                fn(args);
+                helpers::nativeSelfStack.pop_back();
+                helpers::nativeClassStack.pop_back();
+            }
+        }
+        return res.as_bits;
     }
     throw std::runtime_error("JIT Error: Target is not callable.");
 }
@@ -2565,13 +2599,11 @@ std::string VM::buildStackTrace() const {
 void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
     auto& fnDef = compiledFunctions[fnIdx];
     try {
-        std::cout << "[OSR] Starting compilation for fnIdx " << fnIdx << " at IP " << loopHeaderIp << "\n";
         jit::HIRGraph hirGraph;
         jit::HIRBuilder hirBuilder(&hirGraph, fnDef->localCount + fnDef->refCount);
         jit::BytecodeToHIR converter(fnDef->chunk, hirBuilder, fnDef->localCount + fnDef->refCount);
         converter.setOSRMode(loopHeaderIp);
         converter.build();
-        std::cout << "[OSR] BytecodeToHIR done.\n";
         if (g_showIR) {
             std::cout << "--- OSR HIR Graph (Unoptimized) ---\n";
             hirGraph.printDOT(std::cout);
@@ -2579,15 +2611,10 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
 
         // --- Mid-level Optimizations (Phase 11 & 12) ---
         jit::DeadPhiElimination(hirGraph, hirBuilder).run();
-        std::cout << "[OSR] DeadPhiElimination done.\n";
         jit::ConstantFolding(hirGraph, hirBuilder).run();
-        std::cout << "[OSR] ConstantFolding done.\n";
         jit::AlgebraicSimplification(hirGraph, hirBuilder).run();
-        std::cout << "[OSR] AlgebraicSimplification done.\n";
         jit::CommonSubexpressionElimination(hirGraph, hirBuilder).run();
-        std::cout << "[OSR] CSE done.\n";
         jit::DeadCodeElimination(hirGraph, hirBuilder).run();
-        std::cout << "[OSR] DCE done.\n";
         
         if (g_showIR) {
             std::cout << "--- OSR HIR Graph (Optimized) ---\n";
@@ -2598,39 +2625,31 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
         jit::LIRBuilder lirBuilder(&lirGraph);
         jit::GCM gcm(hirGraph, lirGraph);
         gcm.schedule();
-        std::cout << "[OSR] GCM done.\n";
 
         jit::InstructionSelector selector(gcm, hirGraph, lirGraph, lirBuilder);
         selector.select();
-        std::cout << "[OSR] InstructionSelector done.\n";
 
         jit::LivenessAnalyzer liveness(lirGraph);
         liveness.analyze();
-        std::cout << "[OSR] LivenessAnalyzer done.\n";
 
         jit::LinearScanAllocator allocator(lirGraph, liveness);
         allocator.allocate();
-        std::cout << "[OSR] LinearScanAllocator done.\n";
 
         jit::MacroAssembler masm;
         jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), globals.data(), reinterpret_cast<void*>(jc2_jit_call_helper));
         
         emitter.emit(allocator.getStackSize(), true); // ★ Step 81: 触发 OSR Prologue
         masm.emitConstantPool();
-        std::cout << "[OSR] CodeEmitter done.\n";
 
         auto mem = std::make_shared<jit::ExecutableMemory>();
         masm.finalize(*mem);
 
         osrCompiledCode[fnIdx][loopHeaderIp] = mem;
         osrEntryPoints[fnIdx][loopHeaderIp] = mem->get();
-        std::cout << "[OSR] Compilation successful.\n";
-    } catch (const std::exception& e) {
-        std::cout << "[OSR] Compilation failed: " << e.what() << "\n";
+    } catch (const std::exception&) {
         // OSR 编译失败，回退到解释器，并标记不再尝试编译
         osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; 
     } catch (...) {
-        std::cout << "[OSR] Compilation failed with unknown exception.\n";
         osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; 
     }
 }
@@ -7784,12 +7803,13 @@ Value VM::run(int targetFrameDepth) {
 uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     ObjList* list = GcHeap::get().allocate<ObjList>();
     Value res(list);
     GcValueGuard guard(res);
     list->vec.reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
-        list->vec.push_back(regs[startReg + i]);
+        list->vec.push_back(regs[base + startReg + i]);
     }
     return res.as_bits;
 }
@@ -7797,13 +7817,14 @@ uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count) {
 uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     ObjDict* dict = GcHeap::get().allocate<ObjDict>();
     Value res(dict);
     GcValueGuard guard(res);
     dict->elements.reserve(count);
     dict->keyMap.reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
-        dict->set(regs[startReg + i * 2], regs[startReg + i * 2 + 1]);
+        dict->set(regs[base + startReg + i * 2], regs[base + startReg + i * 2 + 1]);
     }
     return res.as_bits;
 }
@@ -7811,13 +7832,14 @@ uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count) {
 uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     Value res(set);
     GcValueGuard guard(res);
     set->elements.reserve(count);
     set->keys.reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
-        set->add(regs[startReg + i]);
+        set->add(regs[base + startReg + i]);
     }
     return res.as_bits;
 }
@@ -7825,6 +7847,7 @@ uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count) {
 uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     const auto& shape = chunk->matrixShapes[shapeIdx];
     uint16_t rows = shape.rows;
     const std::vector<uint16_t>& rowCols = shape.rowCols;
@@ -7846,7 +7869,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
     };
 
     for (int ii = 0; ii < total; ++ii) {
-        const Value& v = regs[startReg + ii];
+        const Value& v = regs[base + startReg + ii];
         if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
         if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
         if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
@@ -7866,7 +7889,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
             ObjList* L = GcHeap::get().allocate<ObjList>();
             result = Value(L);
             GcValueGuard guard(result);
-            for (int ii = 0; ii < total; ++ii) L->vec.push_back(regs[startReg + ii]);
+            for (int ii = 0; ii < total; ++ii) L->vec.push_back(regs[base + startReg + ii]);
         } else {
             ObjList* outer = GcHeap::get().allocate<ObjList>();
             result = Value(outer);
@@ -7875,7 +7898,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
             for (int i = 0; i < rows; ++i) {
                 ObjList* inner = GcHeap::get().allocate<ObjList>();
                 int cols = rowCols[i];
-                for (int j = 0; j < cols; ++j) inner->vec.push_back(regs[startReg + idx++]);
+                for (int j = 0; j < cols; ++j) inner->vec.push_back(regs[base + startReg + idx++]);
                 inner->is_frozen = true;
                 outer->vec.push_back(Value(inner));
             }
@@ -7883,7 +7906,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
     } else {
         bool hasSubMatrix = false;
         for (int ii = 0; ii < total; ++ii) {
-            const Value& v = regs[startReg + ii];
+            const Value& v = regs[base + startReg + ii];
             if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
         }
 
@@ -7946,7 +7969,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
                     Value rowResult = Value::none();
                     int cols = rowCols[i];
                     for (int j = 0; j < cols; ++j) {
-                        Value cell = regs[startReg + idx++];
+                        Value cell = regs[base + startReg + idx++];
                         extractCell(cell);
                         if (rowResult.isNone()) {
                             rowResult = cell;
@@ -7981,22 +8004,22 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
             if (hasString) {
                 std::vector<std::string> flat(total);
                 for (int ii = 0; ii < total; ++ii) {
-                    const Value& v = regs[startReg + ii];
+                    const Value& v = regs[base + startReg + ii];
                     if (v.isString()) flat[ii] = v.asString();
                     else { std::ostringstream oss; if (v.isUninit()) oss << "Uninitialized"; else oss << v; flat[ii] = oss.str(); }
                 }
                 result = Value(StringMatrix(rows, expectedCols, flat));
             } else if (hasSymbolic) {
                 std::vector<SymExpr> flat(total);
-                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[startReg + ii].asSymbolic();
+                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[base + startReg + ii].asSymbolic();
                 result = Value(SymMatrix(rows, expectedCols, flat));
             } else if (hasComplex) {
                 std::vector<Complex> flat(total);
-                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[startReg + ii].asComplex();
+                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[base + startReg + ii].asComplex();
                 result = Value(ComplexMatrix(rows, expectedCols, flat));
             } else {
                 std::vector<double> flat(total);
-                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[startReg + ii].asDouble();
+                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[base + startReg + ii].asDouble();
                 result = Value(RealMatrix(rows, expectedCols, flat));
             }
         }
@@ -8007,12 +8030,13 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
 uint64_t jc2_jit_build_slice(uint32_t startReg) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     ObjSlice* slice = GcHeap::get().allocate<ObjSlice>();
     Value res(slice);
     GcValueGuard guard(res);
     
     auto readInt = [&](int idx) -> int {
-        Value v = regs[startReg + idx];
+        Value v = regs[base + startReg + idx];
         if (v.isNone()) return ObjSlice::SLICE_NONE;
         int64_t val64 = 0;
         if (v.isInt32()) {
@@ -8047,27 +8071,27 @@ uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk) {
     return Value(cls).as_bits;
 }
 
-uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk) {
+uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
+    CallFrame* frame = vm->getCurrentFrame();
+    int base = frame->registerBase;
     const std::string& nsName = chunk->constants[nameIdx].asString();
     ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
     Value res(ns);
     GcValueGuard guard(res);
     ns->name = nsName;
     
-    CallFrame* frame = vm->getCurrentFrame();
-    
     for (uint32_t i = 0; i < count; ++i) {
-        Value keyVal = regs[startReg + i * 3];
-        Value slotVal = regs[startReg + i * 3 + 1];
-        Value isConstVal = regs[startReg + i * 3 + 2];
+        Value keyVal = regs[base + startReg + i * 3];
+        Value slotVal = regs[base + startReg + i * 3 + 1];
+        Value isConstVal = regs[base + startReg + i * 3 + 2];
         
         std::string key = keyVal.asString();
         int slot = static_cast<int>(slotVal.asDouble());
         bool isConst = isConstVal.truthy();
         
-        ObjUpVal* upval = vm->captureUpvaluePublic(frame->registerBase + slot);
+        ObjUpVal* upval = vm->captureUpvaluePublic(base + registerOffset + slot);
         ns->fields[key] = { upval, isConst };
     }
     return res.as_bits;
@@ -8076,10 +8100,11 @@ uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nam
 uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     bool allStrings = true;
     size_t totalLen = 0;
     for (uint32_t i = 0; i < count; ++i) {
-        Value& v = regs[startReg + i];
+        Value& v = regs[base + startReg + i];
         if (v.isString()) {
             totalLen += v.asString().size();
         } else {
@@ -8092,11 +8117,11 @@ uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
     if (allStrings) {
         result.reserve(totalLen);
         for (uint32_t i = 0; i < count; ++i) {
-            result += regs[startReg + i].asString();
+            result += regs[base + startReg + i].asString();
         }
     } else {
         for (uint32_t i = 0; i < count; ++i) {
-            Value& v = regs[startReg + i];
+            Value& v = regs[base + startReg + i];
             if (v.isString()) {
                 result += v.asString();
             } else {
@@ -8112,7 +8137,8 @@ uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
 
 uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk) {
     VM* vm = VM::activeVM;
-    Value val = vm->getRegisters()[valReg];
+    int base = vm->getCurrentFrame()->registerBase;
+    Value val = vm->getRegisters()[base + valReg];
     const std::string& spec = chunk->constants[specIdx].asString();
 
     char align = '\0';
@@ -8157,8 +8183,9 @@ uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* c
 uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
-    Value obj = regs[objReg];
-    Value excludeKeysVal = regs[excludeKeysReg];
+    int base = vm->getCurrentFrame()->registerBase;
+    Value obj = regs[base + objReg];
+    Value excludeKeysVal = regs[base + excludeKeysReg];
     
     std::unordered_set<std::string> excludeKeys;
     if (excludeKeysVal.isObjType(ObjType::LIST)) {
@@ -8208,10 +8235,11 @@ uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
     return res.as_bits;
 }
 
-uint64_t jc2_jit_closure(uint32_t fnIdx) {
+uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
     
     if (fnIdx >= vm->getCompiledFunctions().size())
         throw std::runtime_error("JIT Error: Invalid function index.");
@@ -8235,7 +8263,7 @@ uint64_t jc2_jit_closure(uint32_t fnIdx) {
                     if (uv.isRefParam) {
                         closure->upvalues[i] = static_cast<ObjUpVal*>(regs[frame->refParamsBase + uv.index].asObj());
                     } else {
-                        closure->upvalues[i] = vm->captureUpvaluePublic(frame->registerBase + uv.index);
+                        closure->upvalues[i] = vm->captureUpvaluePublic(base + registerOffset + uv.index);
                     }
                 } else {
                     if (frame->closure && uv.index < frame->closure->upvalueCount)
@@ -8255,7 +8283,7 @@ uint64_t jc2_jit_closure(uint32_t fnIdx) {
                     if (uv.isRefParam) {
                         dummy->closed = *(static_cast<ObjUpVal*>(regs[frame->refParamsBase + uv.index].asObj())->location);
                     } else {
-                        dummy->closed = regs[frame->registerBase + uv.index];
+                        dummy->closed = regs[base + registerOffset + uv.index];
                     }
                 } else {
                     if (frame->closure && uv.index < frame->closure->upvalueCount) {
@@ -8296,11 +8324,11 @@ uint64_t jc2_jit_closure(uint32_t fnIdx) {
         closure->paramTypes = new Value[closure->paramTypesCount];
         for (int i = 0; i < closure->paramTypesCount; ++i) {
             int reg = fn->paramTypeRegs[i];
-            closure->paramTypes[i] = (reg != -1) ? regs[frame->registerBase + reg] : Value::none();
+            closure->paramTypes[i] = (reg != -1) ? regs[base + registerOffset + reg] : Value::none();
         }
     }
     if (fn->returnTypeReg != -1) {
-        closure->returnType = regs[frame->registerBase + fn->returnTypeReg];
+        closure->returnType = regs[base + registerOffset + fn->returnTypeReg];
     }
     
     return res.as_bits;

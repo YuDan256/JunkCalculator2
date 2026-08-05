@@ -8228,6 +8228,21 @@ uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
     return res.as_bits;
 }
 
+void jc2_jit_assign_value(uint32_t regIndex, uint64_t src_bits) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
+    Value src;
+    src.as_bits = src_bits;
+    regs[base + regIndex] = src;
+}
+
+void jc2_jit_assign_global(uint32_t slot, uint64_t src_bits) {
+    Value src;
+    src.as_bits = src_bits;
+    VM::activeVM->setGlobalSlot(slot, src);
+}
+
 uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();

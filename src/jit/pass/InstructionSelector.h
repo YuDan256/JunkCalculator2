@@ -5,6 +5,7 @@
 #include "../ir/LIRBuilder.h"
 #include "GCM.h"
 #include "../../memory/Value.h"
+#include "../../vm/VM.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -461,8 +462,23 @@ private:
             case HIROp::StoreRegister: {
                 auto n = static_cast<RegisterAccessNode*>(node);
                 LIROperand val = getOperand(node->inputs()[2]);
-                LIROperand mem = LIROperand::createMemory(Operand(r14, n->regIndex() * sizeof(uint64_t)));
-                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{val, LIRConstraint::anyReg()}});
+                
+                std::vector<Register> argRegs;
+#ifdef _WIN32
+                argRegs = {rcx, rdx, r8, r9};
+#else
+                argRegs = {rdi, rsi, rdx, rcx, r8, r9};
+#endif
+                
+                LIROperand regIdxOp = LIROperand::createImm32(n->regIndex());
+                
+                std::vector<std::pair<LIROperand, LIRConstraint>> uses;
+                uses.push_back({regIdxOp, LIRConstraint::fixedReg(argRegs[0].id())});
+                uses.push_back({val, LIRConstraint::fixedReg(argRegs[1].id())});
+                
+                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
+                inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_value));
+                inst->setArgc(2);
                 break;
             }
             case HIROp::LoadGlobal: {
@@ -475,9 +491,23 @@ private:
             case HIROp::StoreGlobal: {
                 auto n = static_cast<GlobalAccessNode*>(node);
                 LIROperand val = getOperand(node->inputs()[2]);
-                builder_.emitWithConstraints(LIROpcode::StoreGlobal, 
-                    {}, 
-                    {{LIROperand::createImm32(n->slot()), LIRConstraint::none()}, {val, LIRConstraint::anyReg()}});
+                
+                std::vector<Register> argRegs;
+#ifdef _WIN32
+                argRegs = {rcx, rdx, r8, r9};
+#else
+                argRegs = {rdi, rsi, rdx, rcx, r8, r9};
+#endif
+                
+                LIROperand slotOp = LIROperand::createImm32(n->slot());
+                
+                std::vector<std::pair<LIROperand, LIRConstraint>> uses;
+                uses.push_back({slotOp, LIRConstraint::fixedReg(argRegs[0].id())});
+                uses.push_back({val, LIRConstraint::fixedReg(argRegs[1].id())});
+                
+                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
+                inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_global));
+                inst->setArgc(2);
                 break;
             }
             case HIROp::LoadField: {
@@ -609,8 +639,20 @@ private:
                                     builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
                                 }
                                 
-                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
-                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
+                                std::vector<Register> syncArgRegs;
+#ifdef _WIN32
+                                syncArgRegs = {rcx, rdx, r8, r9};
+#else
+                                syncArgRegs = {rdi, rsi, rdx, rcx, r8, r9};
+#endif
+                                LIROperand regIdxOp = LIROperand::createImm32(static_cast<int32_t>(i));
+                                std::vector<std::pair<LIROperand, LIRConstraint>> syncUses;
+                                syncUses.push_back({regIdxOp, LIRConstraint::fixedReg(syncArgRegs[0].id())});
+                                syncUses.push_back({boxedOp, LIRConstraint::fixedReg(syncArgRegs[1].id())});
+                                
+                                auto syncInst = builder_.emitWithConstraints(LIROpcode::Callout, {}, syncUses);
+                                syncInst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_value));
+                                syncInst->setArgc(2);
                             }
                         }
                     }

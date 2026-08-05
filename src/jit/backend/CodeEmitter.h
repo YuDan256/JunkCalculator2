@@ -548,19 +548,6 @@ private:
                 }
                 break;
             }
-            case LIROpcode::StoreGlobal: {
-                int32_t slot = inst->uses()[0].imm32();
-                const LIROperand& src = inst->uses()[1];
-                if (!globalsData_) throw std::runtime_error("CodeEmitter: globalsData is null.");
-                uint64_t addr = reinterpret_cast<uint64_t>(globalsData_) + slot * sizeof(uint64_t);
-                masm_.movabs(r11, addr);
-                if (src.isPhysicalGPR()) {
-                    masm_.movq(Operand(r11, 0), src.pregGPR());
-                } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported StoreGlobal source.");
-                }
-                break;
-            }
             case LIROpcode::LoadField: {
                 const LIROperand& dst = inst->defs()[0];
                 const LIROperand& base = inst->uses()[0];

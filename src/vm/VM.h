@@ -34,6 +34,7 @@ struct CallFrame {
     int deferBase = 0;
     Value selfContext = Value::none();
     Value classContext = Value::none();
+    Value jitReturnSlot = Value::none(); // ★ JIT 返回值锚点，防止即时释放
     
     std::chrono::time_point<std::chrono::steady_clock> startTime;
     double childTimeMs = 0.0;

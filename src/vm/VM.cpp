@@ -60,15 +60,21 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             // Slow Path: 回退到解释器执行
             // 注意：为了保证去优化 (Deoptimization) 时 CallFrame 栈的正确性，
             // 必须走完整的 callVMFunction 压帧流程。
-            return VM::activeVM->callVMFunction(fnIdx, args, cl).as_bits;
+            Value res = VM::activeVM->callVMFunction(fnIdx, args, cl);
+            VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+            return res.as_bits;
         } else if (cl->isNative()) {
             auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
-            return fn(args).as_bits;
+            Value res = fn(args);
+            VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+            return res.as_bits;
         }
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
         if (cls->native_allocator) {
-            return cls->native_allocator(args).as_bits;
+            Value res = cls->native_allocator(args);
+            VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+            return res.as_bits;
         }
         auto instance = GcHeap::get().allocate<ObjInstance>();
         Value res(instance);
@@ -98,6 +104,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                 helpers::nativeClassStack.pop_back();
             }
         }
+        VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
         return res.as_bits;
     }
     throw std::runtime_error("JIT Error: Target is not callable.");
@@ -605,6 +612,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                             }
                             f->selfContext = Value::none();
                             f->classContext = Value::none();
+                            f->jitReturnSlot = Value::none();
                             f->closure = nullptr;
                             f->refParamsBase = -1;
                             frameCount--;
@@ -1197,6 +1205,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
                 }
                 f->selfContext = Value::none();
                 f->classContext = Value::none();
+                f->jitReturnSlot = Value::none();
                 f->closure = nullptr;
                 f->refParamsBase = -1;
                 frameCount--;
@@ -2259,6 +2268,7 @@ Value VM::execImport(const std::string& name) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -2380,6 +2390,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         nsVal = run(targetDepth);
         frames[frameCount].selfContext = Value::none();
         frames[frameCount].classContext = Value::none();
+        frames[frameCount].jitReturnSlot = Value::none();
         frames[frameCount].closure = nullptr;
         frames[frameCount].refParamsBase = -1;
     } catch (ValueException& ex) {
@@ -2398,6 +2409,7 @@ void VM::execCompileTimeImport(const std::string& name) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -2421,6 +2433,7 @@ void VM::execCompileTimeImport(const std::string& name) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -2443,6 +2456,7 @@ void VM::execCompileTimeImport(const std::string& name) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -2491,6 +2505,7 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -2762,6 +2777,7 @@ VM::VM() {
             CallFrame& f = frames[i];
             GcHeap::get().markValue(f.selfContext);
             GcHeap::get().markValue(f.classContext);
+            GcHeap::get().markValue(f.jitReturnSlot);
             if (f.closure) GcHeap::get().markObj(f.closure);
             if (f.chunk) {
                 for (auto& v : f.chunk->constants) GcHeap::get().markValue(v);
@@ -3074,6 +3090,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -3115,6 +3132,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
         Value res = run(targetDepth);
         frames[frameCount].selfContext = Value::none();
         frames[frameCount].classContext = Value::none();
+        frames[frameCount].jitReturnSlot = Value::none();
         frames[frameCount].closure = nullptr;
         frames[frameCount].refParamsBase = -1;
         return res;
@@ -3134,6 +3152,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -3155,6 +3174,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -3175,6 +3195,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             }
             f->selfContext = Value::none();
             f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
             f->closure = nullptr;
             f->refParamsBase = -1;
             frameCount--;
@@ -3239,6 +3260,7 @@ Value VM::run(int targetFrameDepth) {
                     for (int i = 0; i < clearCount; ++i) { \
                         registers[clearBase + i] = Value::none(); \
                     } \
+                    frame->jitReturnSlot = Value::none(); \
                     frameCount--; \
                     if (frameCount <= targetFrameDepth) return res; \
                     frame = &frames[frameCount - 1]; \
@@ -7438,6 +7460,7 @@ Value VM::run(int targetFrameDepth) {
                     for (int i = 0; i < clearCount; ++i) {
                         registers[clearBase + i] = Value::none();
                     }
+                    frame->jitReturnSlot = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -7485,6 +7508,7 @@ Value VM::run(int targetFrameDepth) {
                     for (int i = 0; i < clearCount; ++i) {
                         registers[clearBase + i] = Value::none();
                     }
+                    frame->jitReturnSlot = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -7592,6 +7616,7 @@ Value VM::run(int targetFrameDepth) {
                     for (int i = 0; i < clearCount; ++i) {
                         registers[clearBase + i] = Value::none();
                     }
+                    frame->jitReturnSlot = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -7657,6 +7682,7 @@ Value VM::run(int targetFrameDepth) {
                     for (int i = 0; i < clearCount; ++i) {
                         registers[clearBase + i] = Value::none();
                     }
+                    frame->jitReturnSlot = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -7700,6 +7726,7 @@ Value VM::run(int targetFrameDepth) {
                 for (int i = 0; i < clearCount; ++i) {
                     registers[clearBase + i] = Value::none();
                 }
+                frame->jitReturnSlot = Value::none();
 
                 frameCount--;
                 if (frameCount <= targetFrameDepth) {
@@ -7804,6 +7831,7 @@ uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count) {
     for (uint32_t i = 0; i < count; ++i) {
         list->vec.push_back(regs[base + startReg + i]);
     }
+    vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
 }
 
@@ -7819,6 +7847,7 @@ uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count) {
     for (uint32_t i = 0; i < count; ++i) {
         dict->set(regs[base + startReg + i * 2], regs[base + startReg + i * 2 + 1]);
     }
+    vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
 }
 
@@ -7834,6 +7863,7 @@ uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count) {
     for (uint32_t i = 0; i < count; ++i) {
         set->add(regs[base + startReg + i]);
     }
+    vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
 }
 
@@ -8017,6 +8047,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
             }
         }
     }
+    vm->getCurrentFrame()->jitReturnSlot = result;
     return result.as_bits;
 }
 
@@ -8054,6 +8085,7 @@ uint64_t jc2_jit_build_slice(uint32_t startReg) {
     slice->start = readInt(0);
     slice->end = readInt(1);
     slice->step = readInt(2);
+    vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
 }
 
@@ -8061,7 +8093,9 @@ uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk) {
     const std::string& name = chunk->constants[nameIdx].asString();
     auto cls = GcHeap::get().allocate<ObjClass>();
     cls->name = name;
-    return Value(cls).as_bits;
+    Value res(cls);
+    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
 }
 
 uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset) {
@@ -8087,6 +8121,7 @@ uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nam
         ObjUpVal* upval = vm->captureUpvaluePublic(base + registerOffset + slot);
         ns->fields[key] = { upval, isConst };
     }
+    frame->jitReturnSlot = res;
     return res.as_bits;
 }
 
@@ -8125,7 +8160,9 @@ uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
             }
         }
     }
-    return Value(result).as_bits;
+    Value res(result);
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
 }
 
 uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk) {
@@ -8170,7 +8207,9 @@ uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* c
         }
         else result = std::string(pad, ' ') + result;
     }
-    return Value(result).as_bits;
+    Value res(result);
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
 }
 
 uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
@@ -8225,6 +8264,7 @@ uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
             cls = cls->parent;
         }
     }
+    vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
 }
 
@@ -8339,6 +8379,7 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
         closure->returnType = regs[base + registerOffset + fn->returnTypeReg];
     }
     
+    frame->jitReturnSlot = res;
     return res.as_bits;
 }
 

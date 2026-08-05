@@ -91,6 +91,12 @@ private:
                         liveGen.insert(use.vreg());
                     }
                 }
+                for (const auto& fsUsePair : inst->fsUses()) {
+                    const auto& use = fsUsePair.first;
+                    if (use.isVirtual() && liveKill.find(use.vreg()) == liveKill.end()) {
+                        liveGen.insert(use.vreg());
+                    }
+                }
                 for (const auto& def : inst->defs()) {
                     if (def.isVirtual()) {
                         liveKill.insert(def.vreg());
@@ -189,6 +195,13 @@ private:
                         }
                         uint32_t endPos = isSameAs ? id : (id + 1);
                         getInterval(use.vreg()).addRange(blockStart, endPos);
+                    }
+                }
+                for (const auto& fsUsePair : inst->fsUses()) {
+                    const auto& use = fsUsePair.first;
+                    if (use.isVirtual()) {
+                        live.insert(use.vreg());
+                        getInterval(use.vreg()).addRange(blockStart, id + 1);
                     }
                 }
             }

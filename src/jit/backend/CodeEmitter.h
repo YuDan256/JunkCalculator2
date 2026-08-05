@@ -64,6 +64,20 @@ private:
     bool needsDeoptTrampoline_ = false;
     std::unordered_map<LIRBlock*, Label> blockLabels_;
 
+    void registerStackMap(LIRInst* inst) {
+        if (!inst->hasBailoutId()) return;
+        StackMap map;
+        map.bailoutId = inst->bailoutId();
+        map.bytecodeIp = inst->bailoutId();
+        for (const auto& fsUse : inst->fsUses()) {
+            StackMapSlot slot;
+            slot.location = fsUse.first;
+            slot.type = fsUse.second;
+            map.locals.push_back(slot);
+        }
+        DeoptRegistry::get().addStackMap(map);
+    }
+
     Operand getStackOperand(int32_t slot) {
         // 假设栈槽从 rbp 向下分配，slot 是 0, 8, 16...
         // 并且 prologue 压入了 7 个 callee-saved 寄存器 (56 字节)
@@ -146,10 +160,7 @@ private:
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(noOverflow);
                     
-                    StackMap map;
-                    map.bailoutId = inst->bailoutId();
-                    map.bytecodeIp = inst->bailoutId();
-                    DeoptRegistry::get().addStackMap(map);
+                    registerStackMap(inst);
                 }
                 break;
             }
@@ -171,10 +182,7 @@ private:
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(noOverflow);
                     
-                    StackMap map;
-                    map.bailoutId = inst->bailoutId();
-                    map.bytecodeIp = inst->bailoutId();
-                    DeoptRegistry::get().addStackMap(map);
+                    registerStackMap(inst);
                 }
                 break;
             }
@@ -196,10 +204,7 @@ private:
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(noOverflow);
                     
-                    StackMap map;
-                    map.bailoutId = inst->bailoutId();
-                    map.bytecodeIp = inst->bailoutId();
-                    DeoptRegistry::get().addStackMap(map);
+                    registerStackMap(inst);
                 }
                 break;
             }
@@ -222,10 +227,7 @@ private:
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(isZero);
                     
-                    StackMap map;
-                    map.bailoutId = inst->bailoutId();
-                    map.bytecodeIp = inst->bailoutId();
-                    DeoptRegistry::get().addStackMap(map);
+                    registerStackMap(inst);
                 }
                 break;
             }
@@ -530,18 +532,7 @@ private:
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                 masm_.jmp(deoptTrampolineLabel_);
                 
-                // 注册 StackMap
-                StackMap map;
-                map.bailoutId = inst->bailoutId();
-                map.bytecodeIp = inst->bailoutId(); // 简化：BailoutId 直接等于 IP
-                
-                // 遍历所有虚拟寄存器，记录它们的物理位置
-                for (uint32_t i = 0; i < 256; ++i) {
-                    // 简化：目前我们没有在 LIR 中保留完整的 FrameState 映射
-                    // 真正的工业级 JIT 需要在 InstructionSelector 中将 FrameState 转换为 LIR 操作数
-                    // 这里为了防止崩溃，我们先注册一个空的 StackMap
-                }
-                DeoptRegistry::get().addStackMap(map);
+                registerStackMap(inst);
                 break;
             }
             case LIROpcode::LoadGlobal: {
@@ -620,8 +611,7 @@ private:
                 const LIROperand& val = inst->uses()[0];
                 if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsInt32 requires GPR.");
                 needsDeoptTrampoline_ = true;
-                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
-                DeoptRegistry::get().addStackMap(map);
+                registerStackMap(inst);
                 
                 masm_.movq(r11, val.pregGPR());
                 masm_.movabs(r10, 0xFFFFFFFF00000000ULL);
@@ -639,8 +629,7 @@ private:
                 const LIROperand& val = inst->uses()[0];
                 if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsDouble requires GPR.");
                 needsDeoptTrampoline_ = true;
-                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
-                DeoptRegistry::get().addStackMap(map);
+                registerStackMap(inst);
                 
                 masm_.movq(r11, val.pregGPR());
                 masm_.movabs(r10, 0x7FFC000000000000ULL);
@@ -657,8 +646,7 @@ private:
                 const LIROperand& val = inst->uses()[0];
                 if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsBool requires GPR.");
                 needsDeoptTrampoline_ = true;
-                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
-                DeoptRegistry::get().addStackMap(map);
+                registerStackMap(inst);
                 
                 masm_.movq(r11, val.pregGPR());
                 masm_.movabs(r10, 0xFFFFFFFFFFFFFFFEULL);
@@ -676,8 +664,7 @@ private:
                 const LIROperand& val = inst->uses()[0];
                 if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsString requires GPR.");
                 needsDeoptTrampoline_ = true;
-                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
-                DeoptRegistry::get().addStackMap(map);
+                registerStackMap(inst);
                 
                 // 1. Check if Obj
                 masm_.movq(r11, val.pregGPR());
@@ -708,8 +695,7 @@ private:
                 const LIROperand& val = inst->uses()[0];
                 if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsObject requires GPR.");
                 needsDeoptTrampoline_ = true;
-                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
-                DeoptRegistry::get().addStackMap(map);
+                registerStackMap(inst);
                 
                 masm_.movq(r11, val.pregGPR());
                 masm_.movabs(r10, 0xFFFC000000000000ULL);
@@ -736,10 +722,7 @@ private:
                 if (!obj.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsClass requires GPR.");
                 
                 needsDeoptTrampoline_ = true;
-                StackMap map;
-                map.bailoutId = inst->bailoutId();
-                map.bytecodeIp = inst->bailoutId();
-                DeoptRegistry::get().addStackMap(map);
+                registerStackMap(inst);
                 
                 // 1. 检查是否为 Obj (带有 SIGN_BIT | QNAN)
                 masm_.movq(r11, obj.pregGPR());

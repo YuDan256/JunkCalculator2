@@ -82,6 +82,8 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
     // 1. 恢复虚拟寄存器状态
     for (size_t i = 0; i < map->locals.size(); ++i) {
         const StackMapSlot& slot = map->locals[i];
+        if (slot.location.isInvalid()) continue;
+        
         Value reconstructed;
 
         if (slot.location.isPhysicalGPR()) {

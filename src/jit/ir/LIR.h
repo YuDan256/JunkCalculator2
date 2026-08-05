@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include "../backend/Registers.h"
 #include "../backend/MacroAssembler.h" // For Condition
+#include "HIR.h" // For JITType
 
 namespace jc {
 namespace jit {
@@ -281,6 +282,10 @@ public:
     uint32_t bailoutId() const { return bailoutId_; }
     bool hasBailoutId() const { return hasBailoutId_; }
 
+    void addFsUse(const LIROperand& op, JITType type) { fsUses_.push_back({op, type}); }
+    std::vector<std::pair<LIROperand, JITType>>& fsUsesMut() { return fsUses_; }
+    const std::vector<std::pair<LIROperand, JITType>>& fsUses() const { return fsUses_; }
+
     // 供 Callout 使用
     void setFunctionPtr(void* ptr) { functionPtr_ = ptr; }
     void* functionPtr() const { return functionPtr_; }
@@ -300,6 +305,7 @@ private:
     std::vector<LIRConstraint> defConstraints_;
     std::vector<LIRConstraint> useConstraints_;
     std::vector<Register> clobbers_;
+    std::vector<std::pair<LIROperand, JITType>> fsUses_;
     Condition cond_ = Condition::Equal;
     class LIRBlock* target_ = nullptr;
     uint32_t bailoutId_ = 0;

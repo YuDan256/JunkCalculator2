@@ -234,6 +234,21 @@ private:
                     return scratchXMMs[scratchXMMIdx++];
                 };
 
+                // Resolve fsUses
+                for (auto& fsUsePair : inst->fsUsesMut()) {
+                    LIROperand& use = fsUsePair.first;
+                    if (use.isVirtual()) {
+                        LiveInterval& interval = liveness_.intervalsMut().at(use.vreg());
+                        if (interval.allocatedSlot != -1) {
+                            use = LIROperand::createStackSlot(interval.allocatedSlot);
+                        } else if (lir_.isVRegFloat(use.vreg())) {
+                            use = LIROperand::createPhysicalXMM(interval.allocatedXMM);
+                        } else {
+                            use = LIROperand::createPhysicalGPR(interval.allocatedGPR);
+                        }
+                    }
+                }
+
                 // Resolve uses
                 for (size_t i = 0; i < inst->uses().size(); ++i) {
                     LIROperand& use = inst->usesMut()[i];

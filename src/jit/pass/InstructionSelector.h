@@ -134,6 +134,19 @@ private:
     LIRBuilder& builder_;
     std::unordered_map<HIRNode*, LIROperand> nodeToOperand_;
 
+    void attachFrameState(LIRInst* inst, FrameStateNode* fs) {
+        if (!fs) return;
+        inst->setBailoutId(fs->bailoutId());
+        for (size_t i = 0; i < fs->inputs().size(); ++i) {
+            HIRNode* val = fs->inputs()[i];
+            if (val) {
+                inst->addFsUse(getOperand(val), val->type());
+            } else {
+                inst->addFsUse(LIROperand(), JITType::Unknown);
+            }
+        }
+    }
+
     LIROperand getOperand(HIRNode* node) {
         if (!node) return LIROperand();
         auto it = nodeToOperand_.find(node);
@@ -228,7 +241,7 @@ private:
                     {{lhs, LIRConstraint::none()}, {rhs, LIRConstraint::none()}});
                 
                 if (node->inputs().size() > 2 && node->inputs()[2]) {
-                    inst->setBailoutId(static_cast<FrameStateNode*>(node->inputs()[2])->bailoutId());
+                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[2]));
                 }
                 break;
             }
@@ -255,7 +268,7 @@ private:
                 inst->addClobber(rdx);
                 
                 if (node->inputs().size() > 2 && node->inputs()[2]) {
-                    inst->setBailoutId(static_cast<FrameStateNode*>(node->inputs()[2])->bailoutId());
+                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[2]));
                 }
                 break;
             }
@@ -393,32 +406,8 @@ private:
             }
             case HIROp::Deoptimize: {
                 auto fs = static_cast<FrameStateNode*>(node->inputs()[2]);
-                if (fs) {
-                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
-                        HIRNode* val = fs->inputs()[i];
-                        if (val) {
-                            LIROperand valOp = getOperand(val);
-                            if (!valOp.isInvalid()) {
-                                LIROperand boxedOp = valOp;
-                                if (val->type() == JITType::Int32) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (val->type() == JITType::Double) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (val->type() == JITType::Bool) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                }
-                                
-                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
-                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
-                            }
-                        }
-                    }
-                }
                 auto inst = builder_.emit(LIROpcode::Deoptimize);
-                if (fs) inst->setBailoutId(fs->bailoutId());
+                if (fs) attachFrameState(inst, fs);
                 break;
             }
             case HIROp::GuardIsInt32:
@@ -437,68 +426,13 @@ private:
                 else if (node->opcode() == HIROp::GuardIsObject) lop = LIROpcode::GuardIsObject;
                 else lop = LIROpcode::GuardTruthy;
                 
-                // Step 74: Eager Sync for Guards
-                // Guards can deoptimize, so we MUST sync all live registers to the interpreter frame
-                // BEFORE the guard instruction, just like we do for Deoptimize and Callout.
-                FrameStateNode* fs = n->frameState();
-                if (fs) {
-                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
-                        HIRNode* fsVal = fs->inputs()[i];
-                        if (fsVal) {
-                            LIROperand valOp = getOperand(fsVal);
-                            if (!valOp.isInvalid()) {
-                                LIROperand boxedOp = valOp;
-                                if (fsVal->type() == JITType::Int32) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (fsVal->type() == JITType::Double) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (fsVal->type() == JITType::Bool) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                }
-                                
-                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
-                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
-                            }
-                        }
-                    }
-                }
-                
                 auto inst = builder_.emitWithConstraints(lop, {}, {{val, LIRConstraint::anyReg()}});
-                if (fs) inst->setBailoutId(fs->bailoutId());
+                if (n->frameState()) attachFrameState(inst, n->frameState());
                 break;
             }
             case HIROp::GuardIsClass: {
                 auto n = static_cast<GuardIsClassNode*>(node);
                 LIROperand obj = getOperand(n->value());
-                
-                FrameStateNode* fs = n->frameState();
-                if (fs) {
-                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
-                        HIRNode* fsVal = fs->inputs()[i];
-                        if (fsVal) {
-                            LIROperand valOp = getOperand(fsVal);
-                            if (!valOp.isInvalid()) {
-                                LIROperand boxedOp = valOp;
-                                if (fsVal->type() == JITType::Int32) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (fsVal->type() == JITType::Double) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (fsVal->type() == JITType::Bool) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                }
-                                
-                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
-                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
-                            }
-                        }
-                    }
-                }
                 
                 auto inst = builder_.emitWithConstraints(LIROpcode::GuardIsClass, {}, {{obj, LIRConstraint::anyReg()}});
                 
@@ -514,7 +448,7 @@ private:
                 inst->addUse(LIROperand::createImm32(classDefOffset));
                 inst->addUse(LIROperand::createImm32(classIdOffset));
                 
-                inst->setBailoutId(n->frameState()->bailoutId());
+                attachFrameState(inst, n->frameState());
                 break;
             }
             case HIROp::LoadRegister: {

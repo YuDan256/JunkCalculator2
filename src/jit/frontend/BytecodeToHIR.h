@@ -243,9 +243,7 @@ public:
                             auto guard = builder_.createGuardIsBool(val, fs);
                             condNode = builder_.createUnboxBool(val, guard);
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
-                            builder_.createDeoptimize(fs);
-                            break;
+                            throw std::runtime_error("JIT Error: Unsupported type feedback for branch.");
                         }
                         
                         auto branch = builder_.createBranch(condNode);
@@ -398,8 +396,7 @@ public:
                             setLocalSync(a, node);
                             regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
-                            builder_.createDeoptimize(fs);
+                            throw std::runtime_error("JIT Error: Unresolved global variable.");
                         }
                         break;
                     }
@@ -414,8 +411,7 @@ public:
                             }
                             builder_.createStoreGlobal(ic.cachedGlobalSlot, val);
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
-                            builder_.createDeoptimize(fs);
+                            throw std::runtime_error("JIT Error: Unresolved global variable.");
                         }
                         break;
                     }
@@ -462,6 +458,8 @@ public:
                             else if (op == OpCode::MOD) opNode = builder_.createModF64(unboxL, unboxR);
                             
                             setLocalSync(a, builder_.createBoxDouble(opNode));
+                        } else {
+                            throw std::runtime_error("JIT Error: Unsupported type feedback for arithmetic op.");
                         }
                         break;
                     }
@@ -489,6 +487,8 @@ public:
                             else if (op == OpCode::SHR) opNode = builder_.createShrI32(unboxL, unboxR);
                             
                             setLocalSync(a, builder_.createBoxInt32(opNode));
+                        } else {
+                            throw std::runtime_error("JIT Error: Unsupported type feedback for bitwise op.");
                         }
                         break;
                     }
@@ -538,6 +538,8 @@ public:
                             setLocalSync(a, builder_.createBoxBool(opNode));
                         } else if (op == OpCode::IS) {
                             setLocalSync(a, builder_.createBoxBool(builder_.createCmpEqTagged(lhs, rhs)));
+                        } else {
+                            throw std::runtime_error("JIT Error: Unsupported type feedback for comparison op.");
                         }
                         break;
                     }
@@ -579,6 +581,8 @@ public:
                             } else {
                                 setLocalSync(a, val);
                             }
+                        } else {
+                            throw std::runtime_error("JIT Error: Unsupported type feedback for unary op.");
                         }
                         break;
                     }
@@ -610,8 +614,7 @@ public:
                             setLocalSync(a, loadField);
                             regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
-                            builder_.createDeoptimize(fs);
+                            throw std::runtime_error("JIT Error: Unresolved property access.");
                         }
                         break;
                     }
@@ -625,8 +628,7 @@ public:
                             auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
                             builder_.createStoreField(obj, offset, val);
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
-                            builder_.createDeoptimize(fs);
+                            throw std::runtime_error("JIT Error: Unresolved property access.");
                         }
                         break;
                     }

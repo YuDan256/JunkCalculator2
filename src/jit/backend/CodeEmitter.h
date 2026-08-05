@@ -551,6 +551,116 @@ private:
                 }
                 break;
             }
+            case LIROpcode::GuardIsInt32: {
+                const LIROperand& val = inst->uses()[0];
+                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsInt32 requires GPR.");
+                needsDeoptTrampoline_ = true;
+                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
+                DeoptRegistry::get().addStackMap(map);
+                
+                masm_.movq(r11, val.pregGPR());
+                masm_.movabs(r10, 0xFFFFFFFF00000000ULL);
+                masm_.andq(r11, r10);
+                masm_.movabs(r10, 0x7FFC000100000000ULL);
+                masm_.cmpq(r11, r10);
+                Label isInt32;
+                masm_.jcc(Condition::Equal, isInt32);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isInt32);
+                break;
+            }
+            case LIROpcode::GuardIsDouble: {
+                const LIROperand& val = inst->uses()[0];
+                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsDouble requires GPR.");
+                needsDeoptTrampoline_ = true;
+                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
+                DeoptRegistry::get().addStackMap(map);
+                
+                masm_.movq(r11, val.pregGPR());
+                masm_.movabs(r10, 0x7FFC000000000000ULL);
+                masm_.andq(r11, r10);
+                masm_.cmpq(r11, r10);
+                Label isDouble;
+                masm_.jcc(Condition::NotEqual, isDouble);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isDouble);
+                break;
+            }
+            case LIROpcode::GuardIsBool: {
+                const LIROperand& val = inst->uses()[0];
+                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsBool requires GPR.");
+                needsDeoptTrampoline_ = true;
+                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
+                DeoptRegistry::get().addStackMap(map);
+                
+                masm_.movq(r11, val.pregGPR());
+                masm_.movabs(r10, 0xFFFFFFFFFFFFFFFEULL);
+                masm_.andq(r11, r10);
+                masm_.movabs(r10, 0x7FFC000000000002ULL);
+                masm_.cmpq(r11, r10);
+                Label isBool;
+                masm_.jcc(Condition::Equal, isBool);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isBool);
+                break;
+            }
+            case LIROpcode::GuardIsString: {
+                const LIROperand& val = inst->uses()[0];
+                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsString requires GPR.");
+                needsDeoptTrampoline_ = true;
+                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
+                DeoptRegistry::get().addStackMap(map);
+                
+                // 1. Check if Obj
+                masm_.movq(r11, val.pregGPR());
+                masm_.movabs(r10, 0xFFFC000000000000ULL);
+                masm_.andq(r11, r10);
+                masm_.cmpq(r11, r10);
+                Label isObj;
+                masm_.jcc(Condition::Equal, isObj);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isObj);
+                
+                // 2. Extract pointer
+                masm_.movq(r11, val.pregGPR());
+                masm_.shlq(r11, 16);
+                masm_.sarq(r11, 16);
+                
+                // 3. Check ObjType == STRING (1)
+                masm_.cmp(Operand(r11, 4), 1);
+                Label isString;
+                masm_.jcc(Condition::Equal, isString);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isString);
+                break;
+            }
+            case LIROpcode::GuardIsObject: {
+                const LIROperand& val = inst->uses()[0];
+                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsObject requires GPR.");
+                needsDeoptTrampoline_ = true;
+                StackMap map; map.bailoutId = inst->bailoutId(); map.bytecodeIp = inst->bailoutId();
+                DeoptRegistry::get().addStackMap(map);
+                
+                masm_.movq(r11, val.pregGPR());
+                masm_.movabs(r10, 0xFFFC000000000000ULL);
+                masm_.andq(r11, r10);
+                masm_.cmpq(r11, r10);
+                Label isObj;
+                masm_.jcc(Condition::Equal, isObj);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isObj);
+                break;
+            }
+            case LIROpcode::GuardTruthy: {
+                throw std::runtime_error("CodeEmitter: GuardTruthy not implemented.");
+                break;
+            }
             case LIROpcode::GuardIsClass: {
                 const LIROperand& obj = inst->uses()[0];
                 uint64_t expectedClassId = inst->uses()[1].imm64();
@@ -568,7 +678,7 @@ private:
                 
                 // 1. 检查是否为 Obj (带有 SIGN_BIT | QNAN)
                 masm_.movq(r11, obj.pregGPR());
-                masm_.movabs(r10, SIGN_BIT | QNAN);
+                masm_.movabs(r10, 0xFFFC000000000000ULL);
                 masm_.andq(r11, r10);
                 masm_.cmpq(r11, r10);
                 Label isObj;

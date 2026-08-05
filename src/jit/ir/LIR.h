@@ -159,6 +159,7 @@ enum class LIROpcode : uint16_t {
     LoadRegister, StoreRegister,
     LoadGlobal, StoreGlobal,
     LoadField, StoreField,
+    GuardIsInt32, GuardIsDouble, GuardIsBool, GuardIsString, GuardIsObject, GuardTruthy,
     GuardIsClass
 };
 
@@ -225,6 +226,12 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::StoreGlobal: return "StoreGlobal";
         case LIROpcode::LoadField: return "LoadField";
         case LIROpcode::StoreField: return "StoreField";
+        case LIROpcode::GuardIsInt32: return "GuardIsInt32";
+        case LIROpcode::GuardIsDouble: return "GuardIsDouble";
+        case LIROpcode::GuardIsBool: return "GuardIsBool";
+        case LIROpcode::GuardIsString: return "GuardIsString";
+        case LIROpcode::GuardIsObject: return "GuardIsObject";
+        case LIROpcode::GuardTruthy: return "GuardTruthy";
         case LIROpcode::GuardIsClass: return "GuardIsClass";
         default: return "Unknown";
     }

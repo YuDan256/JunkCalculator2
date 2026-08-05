@@ -417,12 +417,80 @@ private:
             case HIROp::GuardIsBool:
             case HIROp::GuardIsString:
             case HIROp::GuardIsObject:
-            case HIROp::GuardTruthy:
-                // Guard 节点是控制流节点，不产生数据，在 LIR 阶段暂时忽略（后续会生成 cmp + jcc）
+            case HIROp::GuardTruthy: {
+                auto n = static_cast<GuardNode*>(node);
+                LIROperand val = getOperand(n->value());
+                LIROpcode lop;
+                if (node->opcode() == HIROp::GuardIsInt32) lop = LIROpcode::GuardIsInt32;
+                else if (node->opcode() == HIROp::GuardIsDouble) lop = LIROpcode::GuardIsDouble;
+                else if (node->opcode() == HIROp::GuardIsBool) lop = LIROpcode::GuardIsBool;
+                else if (node->opcode() == HIROp::GuardIsString) lop = LIROpcode::GuardIsString;
+                else if (node->opcode() == HIROp::GuardIsObject) lop = LIROpcode::GuardIsObject;
+                else lop = LIROpcode::GuardTruthy;
+                
+                // Step 74: Eager Sync for Guards
+                // Guards can deoptimize, so we MUST sync all live registers to the interpreter frame
+                // BEFORE the guard instruction, just like we do for Deoptimize and Callout.
+                FrameStateNode* fs = n->frameState();
+                if (fs) {
+                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
+                        HIRNode* fsVal = fs->inputs()[i];
+                        if (fsVal) {
+                            LIROperand valOp = getOperand(fsVal);
+                            if (!valOp.isInvalid()) {
+                                LIROperand boxedOp = valOp;
+                                if (fsVal->type() == JITType::Int32) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (fsVal->type() == JITType::Double) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (fsVal->type() == JITType::Bool) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                }
+                                
+                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
+                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
+                            }
+                        }
+                    }
+                }
+                
+                auto inst = builder_.emitWithConstraints(lop, {}, {{val, LIRConstraint::anyReg()}});
+                if (fs) inst->setBailoutId(fs->bailoutId());
                 break;
+            }
             case HIROp::GuardIsClass: {
                 auto n = static_cast<GuardIsClassNode*>(node);
                 LIROperand obj = getOperand(n->value());
+                
+                FrameStateNode* fs = n->frameState();
+                if (fs) {
+                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
+                        HIRNode* fsVal = fs->inputs()[i];
+                        if (fsVal) {
+                            LIROperand valOp = getOperand(fsVal);
+                            if (!valOp.isInvalid()) {
+                                LIROperand boxedOp = valOp;
+                                if (fsVal->type() == JITType::Int32) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (fsVal->type() == JITType::Double) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (fsVal->type() == JITType::Bool) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                }
+                                
+                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
+                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
+                            }
+                        }
+                    }
+                }
+                
                 auto inst = builder_.emitWithConstraints(LIROpcode::GuardIsClass, {}, {{obj, LIRConstraint::anyReg()}});
                 
                 // 动态计算 C++ 结构体的内存偏移量，保证跨平台和跨编译器的绝对安全

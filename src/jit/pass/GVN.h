@@ -71,8 +71,8 @@ public:
             }
 
             // 2. 处理输入节点的哈希
-            if (isCommutative(node->opcode()) && node->inputs().size() == 2) {
-                // 对于满足交换律的二元操作，对输入节点的 ID 进行排序后再哈希，保证 a+b 和 b+a 哈希值一致
+            if (isCommutative(node->opcode()) && node->inputs().size() >= 2) {
+                // 对于满足交换律的二元操作，对前两个输入节点的 ID 进行排序后再哈希，保证 a+b 和 b+a 哈希值一致
                 HIRNode* in1 = node->inputs()[0];
                 HIRNode* in2 = node->inputs()[1];
                 uint32_t id1 = in1 ? in1->id() : 0;
@@ -80,6 +80,11 @@ public:
                 if (id1 > id2) std::swap(id1, id2);
                 hash_combine(seed, id1);
                 hash_combine(seed, id2);
+                // 哈希剩余的输入节点 (如 FrameState)
+                for (size_t i = 2; i < node->inputs().size(); ++i) {
+                    HIRNode* in = node->inputs()[i];
+                    hash_combine(seed, in ? in->id() : 0);
+                }
             } else {
                 // 严格按照顺序哈希输入节点
                 for (HIRNode* in : node->inputs()) {
@@ -117,13 +122,19 @@ public:
             }
 
             // 2. 处理输入节点的比较
-            if (isCommutative(lhs->opcode()) && lhs->inputs().size() == 2 && rhs->inputs().size() == 2) {
+            if (isCommutative(lhs->opcode()) && lhs->inputs().size() >= 2 && rhs->inputs().size() >= 2) {
+                if (lhs->inputs().size() != rhs->inputs().size()) return false;
                 // 交换律比较：(L1==R1 && L2==R2) 或者 (L1==R2 && L2==R1)
                 HIRNode* l1 = lhs->inputs()[0];
                 HIRNode* l2 = lhs->inputs()[1];
                 HIRNode* r1 = rhs->inputs()[0];
                 HIRNode* r2 = rhs->inputs()[1];
-                return (l1 == r1 && l2 == r2) || (l1 == r2 && l2 == r1);
+                if (!((l1 == r1 && l2 == r2) || (l1 == r2 && l2 == r1))) return false;
+                // 比较剩余的输入节点
+                for (size_t i = 2; i < lhs->inputs().size(); ++i) {
+                    if (lhs->inputs()[i] != rhs->inputs()[i]) return false;
+                }
+                return true;
             } else {
                 // 严格顺序比较
                 if (lhs->inputs().size() != rhs->inputs().size()) return false;

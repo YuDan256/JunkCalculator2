@@ -223,9 +223,13 @@ private:
                 LIROperand lhs = getOperand(node->inputs()[0]);
                 LIROperand rhs = getOperand(node->inputs()[1]);
                 // x86-64 双操作数指令约束：输出必须与第一个输入共享物理寄存器
-                builder_.emitWithConstraints(lop, 
+                auto inst = builder_.emitWithConstraints(lop, 
                     {{out, LIRConstraint::sameAsInput(0)}}, 
                     {{lhs, LIRConstraint::none()}, {rhs, LIRConstraint::none()}});
+                
+                if (node->inputs().size() > 2 && node->inputs()[2]) {
+                    inst->setBailoutId(static_cast<FrameStateNode*>(node->inputs()[2])->bailoutId());
+                }
                 break;
             }
             case HIROp::ShlI32:

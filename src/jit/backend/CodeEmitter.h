@@ -138,6 +138,19 @@ private:
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported AddI32 operands.");
                 }
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    Label noOverflow;
+                    masm_.jcc(Condition::NoOverflow, noOverflow);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(noOverflow);
+                    
+                    StackMap map;
+                    map.bailoutId = inst->bailoutId();
+                    map.bytecodeIp = inst->bailoutId();
+                    DeoptRegistry::get().addStackMap(map);
+                }
                 break;
             }
             case LIROpcode::SubI32: {
@@ -150,6 +163,19 @@ private:
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported SubI32 operands.");
                 }
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    Label noOverflow;
+                    masm_.jcc(Condition::NoOverflow, noOverflow);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(noOverflow);
+                    
+                    StackMap map;
+                    map.bailoutId = inst->bailoutId();
+                    map.bytecodeIp = inst->bailoutId();
+                    DeoptRegistry::get().addStackMap(map);
+                }
                 break;
             }
             case LIROpcode::MulI32: {
@@ -161,6 +187,19 @@ private:
                     masm_.imul(dst.pregGPR(), getStackOperand(src.slot()));
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported MulI32 operands.");
+                }
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    Label noOverflow;
+                    masm_.jcc(Condition::NoOverflow, noOverflow);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(noOverflow);
+                    
+                    StackMap map;
+                    map.bailoutId = inst->bailoutId();
+                    map.bytecodeIp = inst->bailoutId();
+                    DeoptRegistry::get().addStackMap(map);
                 }
                 break;
             }

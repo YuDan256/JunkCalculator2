@@ -463,14 +463,16 @@ public:
 // --- 算术与逻辑节点 (双操作数) ---
 class BinaryOpNode : public HIRNode {
 public:
-    BinaryOpNode(uint32_t id, HIROp op, JITType type, HIRNode* lhs, HIRNode* rhs)
+    BinaryOpNode(uint32_t id, HIROp op, JITType type, HIRNode* lhs, HIRNode* rhs, FrameStateNode* fs = nullptr)
         : HIRNode(id, op, type) {
         addInput(lhs);
         addInput(rhs);
+        if (fs) addInput(fs);
     }
     
     HIRNode* lhs() const { return inputs()[0]; }
     HIRNode* rhs() const { return inputs()[1]; }
+    FrameStateNode* frameState() const { return inputs().size() > 2 ? static_cast<FrameStateNode*>(inputs()[2]) : nullptr; }
 };
 
 // --- 内存访问节点 ---

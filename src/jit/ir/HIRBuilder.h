@@ -189,16 +189,16 @@ public:
     }
 
     // --- 算术与逻辑节点 ---
-    BinaryOpNode* createAddI32(HIRNode* lhs, HIRNode* rhs) {
-        return graph_->allocateNode<BinaryOpNode>(HIROp::AddI32, JITType::Int32, lhs, rhs);
+    BinaryOpNode* createAddI32(HIRNode* lhs, HIRNode* rhs, FrameStateNode* fs = nullptr) {
+        return graph_->allocateNode<BinaryOpNode>(HIROp::AddI32, JITType::Int32, lhs, rhs, fs);
     }
 
-    BinaryOpNode* createSubI32(HIRNode* lhs, HIRNode* rhs) {
-        return graph_->allocateNode<BinaryOpNode>(HIROp::SubI32, JITType::Int32, lhs, rhs);
+    BinaryOpNode* createSubI32(HIRNode* lhs, HIRNode* rhs, FrameStateNode* fs = nullptr) {
+        return graph_->allocateNode<BinaryOpNode>(HIROp::SubI32, JITType::Int32, lhs, rhs, fs);
     }
 
-    BinaryOpNode* createMulI32(HIRNode* lhs, HIRNode* rhs) {
-        return graph_->allocateNode<BinaryOpNode>(HIROp::MulI32, JITType::Int32, lhs, rhs);
+    BinaryOpNode* createMulI32(HIRNode* lhs, HIRNode* rhs, FrameStateNode* fs = nullptr) {
+        return graph_->allocateNode<BinaryOpNode>(HIROp::MulI32, JITType::Int32, lhs, rhs, fs);
     }
 
     BinaryOpNode* createDivI32(HIRNode* lhs, HIRNode* rhs) {

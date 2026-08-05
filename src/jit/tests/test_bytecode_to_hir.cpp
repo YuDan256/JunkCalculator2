@@ -30,8 +30,8 @@ int main() {
 
     // 构建 HIR 图
     HIRGraph graph;
-    HIRBuilder builder(&graph);
-    BytecodeToHIR converter(chunk, builder);
+    HIRBuilder builder(&graph, 256);
+    BytecodeToHIR converter(chunk, builder, 256);
 
     converter.build();
 

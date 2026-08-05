@@ -31,7 +31,7 @@ int main() {
     // return sum
 
     HIRGraph hirGraph;
-    HIRBuilder hirBuilder(&hirGraph);
+    HIRBuilder hirBuilder(&hirGraph, 256);
 
     // Block 0: Entry
     hirBuilder.createStart();
@@ -104,7 +104,7 @@ int main() {
     dummy.x = Value::fromInt32(100);
     dummy.y = Value::fromInt32(200);
     
-    Value registers[1];
+    Value registers[256];
     registers[0] = Value(&dummy); // 传入 NaN-Boxed 指针
     
     JitFunc func = reinterpret_cast<JitFunc>(mem.get());

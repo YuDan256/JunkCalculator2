@@ -32,7 +32,7 @@ int main() {
     // return sum;
 
     HIRGraph hirGraph;
-    HIRBuilder hirBuilder(&hirGraph);
+    HIRBuilder hirBuilder(&hirGraph, 256);
 
     // Block 0: Entry
     auto start = hirBuilder.createStart();

@@ -15,7 +15,7 @@ int main() {
 
     // 1. 手动构建带有控制流的 HIR 图
     HIRGraph hirGraph;
-    HIRBuilder hirBuilder(&hirGraph);
+    HIRBuilder hirBuilder(&hirGraph, 256);
 
     // Block 0: Entry
     hirBuilder.createStart();

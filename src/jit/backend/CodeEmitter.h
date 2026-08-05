@@ -3,6 +3,7 @@
 
 #include "../ir/LIR.h"
 #include "MacroAssembler.h"
+#include "../runtime/Deoptimization.h"
 #include <unordered_map>
 #include <stdexcept>
 

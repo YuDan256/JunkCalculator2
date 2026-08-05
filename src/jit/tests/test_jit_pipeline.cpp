@@ -57,7 +57,7 @@ int main() {
     // return res
     
     HIRGraph hirGraph;
-    HIRBuilder hirBuilder(&hirGraph);
+    HIRBuilder hirBuilder(&hirGraph, 256);
 
     // Block 0: Entry
     hirBuilder.createStart();
@@ -120,7 +120,7 @@ int main() {
     ExecutableMemory mem;
     masm.finalize(mem);
 
-    Value registers[3];
+    Value registers[256];
     JitFunc func = reinterpret_cast<JitFunc>(mem.get());
     
     std::cout << "\n=== Executing JIT Code ===\n";

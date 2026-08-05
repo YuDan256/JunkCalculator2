@@ -12,7 +12,7 @@ int main() {
     std::cout << "Running Mid-Level Optimizations test..." << std::endl;
 
     HIRGraph graph;
-    HIRBuilder builder(&graph);
+    HIRBuilder builder(&graph, 256);
 
     // 模拟构建一个未优化的 HIR 图
     builder.createStart();

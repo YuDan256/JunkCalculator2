@@ -7777,4 +7777,533 @@ Value VM::run(int targetFrameDepth) {
     #undef getReg
 }
 
+// ============================================================================
+// JIT Runtime Helpers (Step 84)
+// ============================================================================
+
+uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    ObjList* list = GcHeap::get().allocate<ObjList>();
+    Value res(list);
+    GcValueGuard guard(res);
+    list->vec.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        list->vec.push_back(regs[startReg + i]);
+    }
+    return res.as_bits;
+}
+
+uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    ObjDict* dict = GcHeap::get().allocate<ObjDict>();
+    Value res(dict);
+    GcValueGuard guard(res);
+    dict->elements.reserve(count);
+    dict->keyMap.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        dict->set(regs[startReg + i * 2], regs[startReg + i * 2 + 1]);
+    }
+    return res.as_bits;
+}
+
+uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    ObjSet* set = GcHeap::get().allocate<ObjSet>();
+    Value res(set);
+    GcValueGuard guard(res);
+    set->elements.reserve(count);
+    set->keys.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        set->add(regs[startReg + i]);
+    }
+    return res.as_bits;
+}
+
+uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    const auto& shape = chunk->matrixShapes[shapeIdx];
+    uint16_t rows = shape.rows;
+    const std::vector<uint16_t>& rowCols = shape.rowCols;
+
+    int total = 0;
+    for (uint16_t cols : rowCols) total += cols;
+
+    bool hasComplex = false;
+    bool hasString = false;
+    bool hasSymbolic = false;
+    bool hasOther = false;
+
+    auto canBeMatrixElement = [](const Value& v) -> bool {
+        return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
+            v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
+            v.isObjType(ObjType::SYMBOLIC) ||
+            v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
+            v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX);
+    };
+
+    for (int ii = 0; ii < total; ++ii) {
+        const Value& v = regs[startReg + ii];
+        if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
+        if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
+        if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
+        if (!canBeMatrixElement(v)) {
+            hasOther = true;
+        } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) || v.isObjType(ObjType::BASENUM)) {
+            try { v.asDouble(); } catch (...) { 
+                if (!hasSymbolic) hasOther = true; 
+            }
+        }
+    }
+
+    Value result;
+
+    if (hasOther) {
+        if (rows == 1) {
+            ObjList* L = GcHeap::get().allocate<ObjList>();
+            result = Value(L);
+            GcValueGuard guard(result);
+            for (int ii = 0; ii < total; ++ii) L->vec.push_back(regs[startReg + ii]);
+        } else {
+            ObjList* outer = GcHeap::get().allocate<ObjList>();
+            result = Value(outer);
+            GcValueGuard guard(result);
+            int idx = 0;
+            for (int i = 0; i < rows; ++i) {
+                ObjList* inner = GcHeap::get().allocate<ObjList>();
+                int cols = rowCols[i];
+                for (int j = 0; j < cols; ++j) inner->vec.push_back(regs[startReg + idx++]);
+                inner->is_frozen = true;
+                outer->vec.push_back(Value(inner));
+            }
+        }
+    } else {
+        bool hasSubMatrix = false;
+        for (int ii = 0; ii < total; ++ii) {
+            const Value& v = regs[startReg + ii];
+            if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
+        }
+
+        if (hasSubMatrix) {
+            auto extractCell = [&](Value& cell) {
+                if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::STRING_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
+                    if (hasString) {
+                        std::ostringstream oss; oss << cell;
+                        cell = Value(StringMatrix(1, 1, { oss.str() }));
+                    } else if (hasSymbolic) {
+                        cell = Value(SymMatrix(1, 1, { cell.asSymbolic() }));
+                    } else if (hasComplex) {
+                        cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
+                    } else {
+                        cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
+                    }
+                }
+                if (hasString) {
+                    if (cell.isObjType(ObjType::REAL_MATRIX)) {
+                        const auto& m = static_cast<ObjRealMatrix*>(cell.asObj())->mat;
+                        std::vector<std::string> flat;
+                        for (int i = 0; i < m.getRows(); ++i)
+                            for (int j = 0; j < m.getCols(); ++j) {
+                                std::ostringstream oss; oss << Value(m(i, j));
+                                flat.push_back(oss.str());
+                            }
+                        cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
+                    } else if (cell.isObjType(ObjType::COMPLEX_MATRIX)) {
+                        const auto& m = static_cast<ObjComplexMatrix*>(cell.asObj())->mat;
+                        std::vector<std::string> flat;
+                        for (int i = 0; i < m.getRows(); ++i)
+                            for (int j = 0; j < m.getCols(); ++j) {
+                                std::ostringstream oss; oss << Value(m(i, j));
+                                flat.push_back(oss.str());
+                            }
+                        cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
+                    } else if (cell.isObjType(ObjType::SYM_MATRIX)) {
+                        const auto& m = static_cast<ObjSymMatrix*>(cell.asObj())->mat;
+                        std::vector<std::string> flat;
+                        for (int i = 0; i < m.getRows(); ++i)
+                            for (int j = 0; j < m.getCols(); ++j) {
+                                std::ostringstream oss; oss << Value(m(i, j));
+                                flat.push_back(oss.str());
+                            }
+                        cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
+                    }
+                } else if (hasSymbolic) {
+                    if (cell.isObjType(ObjType::REAL_MATRIX) || cell.isObjType(ObjType::COMPLEX_MATRIX)) {
+                        cell = Value(cell.asSymMatrix());
+                    }
+                } else if (hasComplex && cell.isObjType(ObjType::REAL_MATRIX)) {
+                    cell = Value(cell.asComplexMatrix());
+                }
+            };
+
+            try {
+                int idx = 0;
+                Value matResult = Value::none();
+                for (int i = 0; i < rows; ++i) {
+                    Value rowResult = Value::none();
+                    int cols = rowCols[i];
+                    for (int j = 0; j < cols; ++j) {
+                        Value cell = regs[startReg + idx++];
+                        extractCell(cell);
+                        if (rowResult.isNone()) {
+                            rowResult = cell;
+                        } else {
+                            if (hasString) rowResult = Value(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjStringMatrix*>(cell.asObj())->mat));
+                            else if (hasSymbolic) rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
+                            else if (hasComplex) rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
+                            else rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
+                        }
+                    }
+                    if (matResult.isNone()) {
+                        matResult = rowResult;
+                    } else {
+                        if (hasString) matResult = Value(static_cast<ObjStringMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat));
+                        else if (hasSymbolic) matResult = Value(static_cast<ObjSymMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat));
+                        else if (hasComplex) matResult = Value(static_cast<ObjComplexMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat));
+                        else matResult = Value(static_cast<ObjRealMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat));
+                    }
+                }
+                result = matResult;
+            } catch (...) {
+                throw std::runtime_error("VM Error: Dimension mismatch during block matrix concatenation.");
+            }
+        } else {
+            int expectedCols = rows > 0 ? rowCols[0] : 0;
+            bool uniformCols = true;
+            for (int i = 1; i < rows; ++i) {
+                if (rowCols[i] != expectedCols) { uniformCols = false; break; }
+            }
+            if (!uniformCols) throw std::runtime_error("VM Error: Matrix rows must have the same number of columns.");
+
+            if (hasString) {
+                std::vector<std::string> flat(total);
+                for (int ii = 0; ii < total; ++ii) {
+                    const Value& v = regs[startReg + ii];
+                    if (v.isString()) flat[ii] = v.asString();
+                    else { std::ostringstream oss; if (v.isUninit()) oss << "Uninitialized"; else oss << v; flat[ii] = oss.str(); }
+                }
+                result = Value(StringMatrix(rows, expectedCols, flat));
+            } else if (hasSymbolic) {
+                std::vector<SymExpr> flat(total);
+                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[startReg + ii].asSymbolic();
+                result = Value(SymMatrix(rows, expectedCols, flat));
+            } else if (hasComplex) {
+                std::vector<Complex> flat(total);
+                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[startReg + ii].asComplex();
+                result = Value(ComplexMatrix(rows, expectedCols, flat));
+            } else {
+                std::vector<double> flat(total);
+                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[startReg + ii].asDouble();
+                result = Value(RealMatrix(rows, expectedCols, flat));
+            }
+        }
+    }
+    return result.as_bits;
+}
+
+uint64_t jc2_jit_build_slice(uint32_t startReg) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    ObjSlice* slice = GcHeap::get().allocate<ObjSlice>();
+    Value res(slice);
+    GcValueGuard guard(res);
+    
+    auto readInt = [&](int idx) -> int {
+        Value v = regs[startReg + idx];
+        if (v.isNone()) return ObjSlice::SLICE_NONE;
+        int64_t val64 = 0;
+        if (v.isInt32()) {
+            val64 = v.asInt32();
+        } else if (v.isDouble()) {
+            val64 = static_cast<int64_t>(std::round(v.asDoubleRaw()));
+        } else if (v.isBigInt()) {
+            try {
+                val64 = v.asBigInt().toInt64();
+            } catch (...) {
+                throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+            }
+        } else {
+            val64 = static_cast<int64_t>(std::round(v.asDouble()));
+        }
+        if (val64 > 2147483647LL || val64 < -2147483647LL) {
+            throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+        }
+        return static_cast<int>(val64);
+    };
+    
+    slice->start = readInt(0);
+    slice->end = readInt(1);
+    slice->step = readInt(2);
+    return res.as_bits;
+}
+
+uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk) {
+    const std::string& name = chunk->constants[nameIdx].asString();
+    auto cls = GcHeap::get().allocate<ObjClass>();
+    cls->name = name;
+    return Value(cls).as_bits;
+}
+
+uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    const std::string& nsName = chunk->constants[nameIdx].asString();
+    ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+    Value res(ns);
+    GcValueGuard guard(res);
+    ns->name = nsName;
+    
+    CallFrame* frame = vm->getCurrentFrame();
+    
+    for (uint32_t i = 0; i < count; ++i) {
+        Value keyVal = regs[startReg + i * 3];
+        Value slotVal = regs[startReg + i * 3 + 1];
+        Value isConstVal = regs[startReg + i * 3 + 2];
+        
+        std::string key = keyVal.asString();
+        int slot = static_cast<int>(slotVal.asDouble());
+        bool isConst = isConstVal.truthy();
+        
+        ObjUpVal* upval = vm->captureUpvaluePublic(frame->registerBase + slot);
+        ns->fields[key] = { upval, isConst };
+    }
+    return res.as_bits;
+}
+
+uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    bool allStrings = true;
+    size_t totalLen = 0;
+    for (uint32_t i = 0; i < count; ++i) {
+        Value& v = regs[startReg + i];
+        if (v.isString()) {
+            totalLen += v.asString().size();
+        } else {
+            allStrings = false;
+            break;
+        }
+    }
+    
+    std::string result;
+    if (allStrings) {
+        result.reserve(totalLen);
+        for (uint32_t i = 0; i < count; ++i) {
+            result += regs[startReg + i].asString();
+        }
+    } else {
+        for (uint32_t i = 0; i < count; ++i) {
+            Value& v = regs[startReg + i];
+            if (v.isString()) {
+                result += v.asString();
+            } else {
+                std::ostringstream oss;
+                if (v.isUninit()) oss << "Uninitialized";
+                else oss << v;
+                result += oss.str();
+            }
+        }
+    }
+    return Value(result).as_bits;
+}
+
+uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk) {
+    VM* vm = VM::activeVM;
+    Value val = vm->getRegisters()[valReg];
+    const std::string& spec = chunk->constants[specIdx].asString();
+
+    char align = '\0';
+    int width = 0;
+    int precision = -1;
+    char type = '\0';
+    size_t si = 0;
+    if (si < spec.size() && (spec[si] == '<' || spec[si] == '>' || spec[si] == '^'))
+        align = spec[si++];
+    while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
+        width = width * 10 + (spec[si++] - '0');
+    if (si < spec.size() && spec[si] == '.') {
+        si++; precision = 0;
+        while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
+            precision = precision * 10 + (spec[si++] - '0');
+    }
+    if (si < spec.size()) type = spec[si++];
+
+    std::ostringstream oss;
+    if (type == 'f' || type == 'e') {
+        if (precision >= 0) oss << std::fixed << std::setprecision(precision);
+        if (type == 'e') oss << std::scientific;
+        oss << val.asDouble();
+    }
+    else if (type == 'd') { oss << static_cast<int64_t>(std::round(val.asDouble())); }
+    else if (type == 'x') { oss << std::hex << static_cast<int64_t>(std::round(val.asDouble())); }
+    else { oss << val; }
+
+    std::string result = oss.str();
+    if (width > 0 && static_cast<int>(result.size()) < width) {
+        int pad = width - static_cast<int>(result.size());
+        if (align == '<') result += std::string(pad, ' ');
+        else if (align == '^') {
+            int l = pad / 2, r = pad - l;
+            result = std::string(l, ' ') + result + std::string(r, ' ');
+        }
+        else result = std::string(pad, ' ') + result;
+    }
+    return Value(result).as_bits;
+}
+
+uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    Value obj = regs[objReg];
+    Value excludeKeysVal = regs[excludeKeysReg];
+    
+    std::unordered_set<std::string> excludeKeys;
+    if (excludeKeysVal.isObjType(ObjType::LIST)) {
+        for (const auto& k : static_cast<ObjList*>(excludeKeysVal.asObj())->vec) {
+            if (k.isString()) excludeKeys.insert(k.asString());
+        }
+    }
+    
+    ObjDict* restDict = GcHeap::get().allocate<ObjDict>();
+    Value res(restDict);
+    GcValueGuard guard(res);
+    
+    if (obj.isObjType(ObjType::DICT)) {
+        auto d = static_cast<ObjDict*>(obj.asObj());
+        for (const auto& [k, v] : d->elements) {
+            if (k.isString() && excludeKeys.count(k.asString())) continue;
+            restDict->set(k, v);
+        }
+    } else if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        for (const auto& [k, prop] : inst->properties) {
+            if (prop.is_local) continue;
+            if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+            if (excludeKeys.count(k)) continue;
+            restDict->set(Value(k), prop.val);
+        }
+    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+        for (const auto& [k, field] : ns->fields) {
+            if (excludeKeys.count(k)) continue;
+            restDict->set(Value(k), *(field.upval->location));
+        }
+    } else if (obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        while (cls) {
+            for (const auto& [k, prop] : cls->properties) {
+                if (prop.is_local) continue;
+                if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+                if (excludeKeys.count(k)) continue;
+                if (restDict->keyMap.find(Value(k)) == restDict->keyMap.end()) {
+                    restDict->set(Value(k), prop.val);
+                }
+            }
+            cls = cls->parent;
+        }
+    }
+    return res.as_bits;
+}
+
+uint64_t jc2_jit_closure(uint32_t fnIdx) {
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    
+    if (fnIdx >= vm->getCompiledFunctions().size())
+        throw std::runtime_error("JIT Error: Invalid function index.");
+
+    auto& fn = vm->getCompiledFunctions()[fnIdx];
+    auto closure = GcHeap::get().allocate<ObjClosure>(
+        std::vector<std::string>{}, std::vector<bool>{}, fn->name, nullptr
+    );
+    Value res(closure);
+    GcValueGuard closureGuard(res);
+    closure->compiledFnIndex = fnIdx;
+
+    if (!fn->upvalues.empty()) {
+        closure->upvalueCount = static_cast<int>(fn->upvalues.size());
+        closure->upvalues = new ObjUpVal*[closure->upvalueCount];
+        for (int i = 0; i < closure->upvalueCount; ++i) closure->upvalues[i] = nullptr;
+        for (int i = 0; i < closure->upvalueCount; ++i) {
+            auto& uv = fn->upvalues[i];
+            if (uv.isRef) {
+                if (uv.isLocal) {
+                    if (uv.isRefParam) {
+                        closure->upvalues[i] = static_cast<ObjUpVal*>(regs[frame->refParamsBase + uv.index].asObj());
+                    } else {
+                        closure->upvalues[i] = vm->captureUpvaluePublic(frame->registerBase + uv.index);
+                    }
+                } else {
+                    if (frame->closure && uv.index < frame->closure->upvalueCount)
+                        closure->upvalues[i] = frame->closure->upvalues[uv.index];
+                    else {
+                        auto dummy = GcHeap::get().allocate<ObjUpVal>();
+                        dummy->closed = Value::none();
+                        dummy->location = &dummy->closed;
+                        closure->upvalues[i] = dummy;
+                    }
+                }
+            } else {
+                auto dummy = GcHeap::get().allocate<ObjUpVal>();
+                if (uv.isExplicitState) {
+                    dummy->closed = Value::uninit();
+                } else if (uv.isLocal) {
+                    if (uv.isRefParam) {
+                        dummy->closed = *(static_cast<ObjUpVal*>(regs[frame->refParamsBase + uv.index].asObj())->location);
+                    } else {
+                        dummy->closed = regs[frame->registerBase + uv.index];
+                    }
+                } else {
+                    if (frame->closure && uv.index < frame->closure->upvalueCount) {
+                        dummy->closed = *(frame->closure->upvalues[uv.index]->location);
+                    } else {
+                        dummy->closed = Value::none();
+                    }
+                }
+                dummy->location = &dummy->closed;
+                closure->upvalues[i] = dummy;
+            }
+        }
+    }
+            
+    int capturedFnIdx = fnIdx;
+    Value currentSelf = frame->selfContext;
+    Value currentClass = frame->classContext;
+    closure->nativeFn = std::make_any<NativeCallable>(
+        [vm, capturedFnIdx, closure, currentSelf, currentClass](const std::vector<Value>& args) -> Value {
+            Value s = !helpers::nativeSelfStack.empty() ? helpers::nativeSelfStack.back() : currentSelf;
+            Value c = !helpers::nativeClassStack.empty() ? helpers::nativeClassStack.back() : currentClass;
+            return vm->callVMFunction(capturedFnIdx, args, closure, s, c);
+        }
+    );
+
+    closure->paramNames = fn->paramNames;
+    closure->isRef = fn->paramIsRef;
+    int defaultLimit = fn->hasRestParam ? (fn->maxArity - 1) : fn->maxArity;
+    for (int j = fn->arity; j < defaultLimit; ++j) {
+        closure->defaultValues.push_back(Value::uninit());
+    }
+    closure->hasRestParam = fn->hasRestParam;
+    closure->boundSelf = frame->selfContext;
+    closure->boundClass = frame->classContext;
+    
+    if (!fn->paramTypeRegs.empty()) {
+        closure->paramTypesCount = static_cast<int>(fn->paramTypeRegs.size());
+        closure->paramTypes = new Value[closure->paramTypesCount];
+        for (int i = 0; i < closure->paramTypesCount; ++i) {
+            int reg = fn->paramTypeRegs[i];
+            closure->paramTypes[i] = (reg != -1) ? regs[frame->registerBase + reg] : Value::none();
+        }
+    }
+    if (fn->returnTypeReg != -1) {
+        closure->returnType = regs[frame->registerBase + fn->returnTypeReg];
+    }
+    
+    return res.as_bits;
+}
+
 } // namespace jc

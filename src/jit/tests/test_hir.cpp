@@ -7,7 +7,7 @@ int main() {
     std::cout << "Running HIRBuilder test..." << std::endl;
 
     HIRGraph graph;
-    HIRBuilder builder(&graph);
+    HIRBuilder builder(&graph, 256);
 
     // 1. 创建入口控制流
     builder.createStart();

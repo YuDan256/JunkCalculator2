@@ -27,7 +27,7 @@ int main() {
     // return sum;
 
     HIRGraph hirGraph;
-    HIRBuilder hirBuilder(&hirGraph);
+    HIRBuilder hirBuilder(&hirGraph, 256);
 
     // Block 0: Entry
     auto start = hirBuilder.createStart();
@@ -90,7 +90,7 @@ int main() {
     masm.finalize(mem);
 
     // 3. 执行机器码
-    Value registers[1];
+    Value registers[256];
     JitFunc func = reinterpret_cast<JitFunc>(mem.get());
     
     std::cout << "\n=== Executing JIT Code ===\n";

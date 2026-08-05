@@ -83,6 +83,10 @@ private:
     void closeUpvalues(int lastRegIndex);
     ObjUpVal* captureUpvalue(int regIndex);
 
+public:
+    ObjUpVal* captureUpvaluePublic(int regIndex) { return captureUpvalue(regIndex); }
+
+private:
     struct ExceptionHandler {
         int frameIndex = 0;
         int ip = 0;
@@ -281,6 +285,19 @@ public:
     std::vector<WatchPoint> watchpoints;
     std::set<int> breakpoints;
 };
+
+// JIT Runtime Helpers (Step 84)
+uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count);
+uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count);
+uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count);
+uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk);
+uint64_t jc2_jit_build_slice(uint32_t startReg);
+uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count);
+uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk);
+uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg);
+uint64_t jc2_jit_closure(uint32_t fnIdx);
 
 } // namespace jc
 

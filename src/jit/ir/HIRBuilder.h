@@ -201,8 +201,8 @@ public:
         return graph_->allocateNode<BinaryOpNode>(HIROp::MulI32, JITType::Int32, lhs, rhs, fs);
     }
 
-    BinaryOpNode* createDivI32(HIRNode* lhs, HIRNode* rhs) {
-        return graph_->allocateNode<BinaryOpNode>(HIROp::DivI32, JITType::Int32, lhs, rhs);
+    BinaryOpNode* createDivI32(HIRNode* lhs, HIRNode* rhs, FrameStateNode* fs = nullptr) {
+        return graph_->allocateNode<BinaryOpNode>(HIROp::DivI32, JITType::Int32, lhs, rhs, fs);
     }
 
     BinaryOpNode* createIDivI32(HIRNode* lhs, HIRNode* rhs) {

@@ -203,6 +203,32 @@ private:
                 }
                 break;
             }
+            case LIROpcode::DivI32: {
+                const LIROperand& src = inst->uses()[1];
+                masm_.cdq();
+                if (src.isPhysicalGPR()) {
+                    masm_.idiv(src.pregGPR());
+                } else if (src.isStackSlot()) {
+                    masm_.idiv(getStackOperand(src.slot()));
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported DivI32 operand.");
+                }
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    Label isZero;
+                    masm_.test(rdx, rdx);
+                    masm_.jcc(Condition::Zero, isZero);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(isZero);
+                    
+                    StackMap map;
+                    map.bailoutId = inst->bailoutId();
+                    map.bytecodeIp = inst->bailoutId();
+                    DeoptRegistry::get().addStackMap(map);
+                }
+                break;
+            }
             case LIROpcode::IDivI32: {
                 const LIROperand& src = inst->uses()[1];
                 masm_.cdq();

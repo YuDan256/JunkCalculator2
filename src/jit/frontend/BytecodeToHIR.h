@@ -436,7 +436,7 @@ public:
                             if (op == OpCode::ADD) opNode = builder_.createAddI32(unboxL, unboxR, fs);
                             else if (op == OpCode::SUB) opNode = builder_.createSubI32(unboxL, unboxR, fs);
                             else if (op == OpCode::MUL) opNode = builder_.createMulI32(unboxL, unboxR, fs);
-                            else if (op == OpCode::DIV) opNode = builder_.createDivI32(unboxL, unboxR);
+                            else if (op == OpCode::DIV) opNode = builder_.createDivI32(unboxL, unboxR, fs);
                             else if (op == OpCode::IDIV) opNode = builder_.createIDivI32(unboxL, unboxR);
                             else if (op == OpCode::MOD) opNode = builder_.createModI32(unboxL, unboxR);
                             

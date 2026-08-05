@@ -245,13 +245,18 @@ private:
             }
             case HIROp::DivI32:
             case HIROp::IDivI32: {
+                LIROpcode lop = (node->opcode() == HIROp::DivI32) ? LIROpcode::DivI32 : LIROpcode::IDivI32;
                 LIROperand lhs = getOperand(node->inputs()[0]);
                 LIROperand rhs = getOperand(node->inputs()[1]);
                 // IDIV 约束：被除数在 RAX，商在 RAX，余数在 RDX (被破坏)
-                auto inst = builder_.emitWithConstraints(LIROpcode::IDivI32, 
+                auto inst = builder_.emitWithConstraints(lop, 
                     {{out, LIRConstraint::fixedReg(rax.id())}}, 
                     {{lhs, LIRConstraint::fixedReg(rax.id())}, {rhs, LIRConstraint::anyReg()}});
                 inst->addClobber(rdx);
+                
+                if (node->inputs().size() > 2 && node->inputs()[2]) {
+                    inst->setBailoutId(static_cast<FrameStateNode*>(node->inputs()[2])->bailoutId());
+                }
                 break;
             }
             case HIROp::ModI32: {

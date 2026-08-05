@@ -41,6 +41,12 @@ public:
         os << "digraph HIR {\n";
         os << "  node [shape=record, fontname=\"Courier New\"];\n";
         for (auto node : nodes_) {
+            // 隐藏被 DCE 杀死的死节点 (无输入且无输出，且不是入口节点)
+            if (node->opcode() != HIROp::Start && node->opcode() != HIROp::OSREntry) {
+                if (node->inputs().empty() && node->uses().empty()) {
+                    continue;
+                }
+            }
             std::string extra = node->extraLabel();
             if (!extra.empty()) {
                 os << "  node" << node->id() << " [label=\"{ #" << node->id() << " " << to_string(node->opcode()) << " | " << extra << " | " << to_string(node->type()) << " }\"];\n";
@@ -67,13 +73,16 @@ private:
 // ============================================================================
 class HIRBuilder {
 public:
-    explicit HIRBuilder(HIRGraph* graph) 
+    explicit HIRBuilder(HIRGraph* graph, int maxRegs = 256) 
         : graph_(graph), currentControl_(nullptr), currentEffect_(nullptr) {
-        // 预分配 256 个虚拟寄存器槽位，用于模拟解释器状态
-        registers_.resize(256, nullptr);
+        // 预分配虚拟寄存器槽位，用于模拟解释器状态
+        registers_.resize(maxRegs, nullptr);
     }
 
     // --- 状态环境管理 ---
+    const std::vector<HIRNode*>& getRegisters() const { return registers_; }
+    void setRegisters(const std::vector<HIRNode*>& regs) { registers_ = regs; }
+
     void setLocal(size_t index, HIRNode* node) {
         if (index >= registers_.size()) {
             registers_.resize(index + 256, nullptr);
@@ -94,6 +103,13 @@ public:
     // --- 基础控制流节点 ---
     HIRNode* createStart() {
         auto node = graph_->allocateNode<HIRNode>(HIROp::Start, JITType::Control);
+        currentControl_ = node;
+        currentEffect_ = node;
+        return node;
+    }
+
+    OSREntryNode* createOSREntry(int loopHeaderIp) {
+        auto node = graph_->allocateNode<OSREntryNode>(loopHeaderIp);
         currentControl_ = node;
         currentEffect_ = node;
         return node;
@@ -365,7 +381,11 @@ public:
         auto fs = graph_->allocateNode<FrameStateNode>(bailoutId, ip);
         // 自动捕获当前所有虚拟寄存器的状态
         for (HIRNode* reg : registers_) {
-            fs->addInput(reg);
+            if (reg && reg->opcode() != HIROp::LoadRegister && reg->opcode() != HIROp::NoneConstant) {
+                fs->addInput(reg);
+            } else {
+                fs->addInput(nullptr);
+            }
         }
         return fs;
     }
@@ -468,7 +488,6 @@ public:
     // --- 内存与对象操作 ---
     RegisterAccessNode* createLoadRegister(int regIndex) {
         auto node = graph_->allocateNode<RegisterAccessNode>(HIROp::LoadRegister, JITType::TaggedValue, currentControl_, currentEffect_, regIndex);
-        currentEffect_ = node;
         return node;
     }
 
@@ -481,7 +500,6 @@ public:
 
     GlobalAccessNode* createLoadGlobal(int slot) {
         auto node = graph_->allocateNode<GlobalAccessNode>(HIROp::LoadGlobal, JITType::TaggedValue, currentControl_, currentEffect_, slot);
-        currentEffect_ = node;
         return node;
     }
 
@@ -498,7 +516,6 @@ public:
         node->addInput(currentEffect_);
         node->addInput(object);
         node->addInput(offset);
-        currentEffect_ = node;
         return node;
     }
 
@@ -519,7 +536,6 @@ public:
         node->addInput(currentEffect_);
         node->addInput(array);
         node->addInput(index);
-        currentEffect_ = node;
         return node;
     }
 

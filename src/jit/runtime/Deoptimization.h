@@ -29,8 +29,8 @@ struct StackMapSlot {
 
 // 栈图：描述一个 BailoutId 对应的解释器状态
 struct StackMap {
-    uint32_t bailoutId;
-    uint32_t bytecodeIp; // 对应的字节码 IP
+    uint32_t bailoutId = 0;
+    uint32_t bytecodeIp = 0; // 对应的字节码 IP
     std::vector<StackMapSlot> locals; // 虚拟寄存器 0~N 的映射
 };
 
@@ -55,12 +55,7 @@ private:
     std::unordered_map<uint32_t, StackMap> maps_;
 };
 
-// 去优化异常：用于跨越 JIT 边界安全地退回到解释器
-struct DeoptimizationException : public std::exception {
-    const char* what() const noexcept override {
-        return "Deoptimization triggered";
-    }
-};
+inline thread_local bool g_jc2_jit_deoptimized = false;
 
 // 去优化运行时函数 (Step 45)
 // 由汇编跳板调用，负责重建解释器状态并触发退回
@@ -143,8 +138,8 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
     // 2. 恢复指令指针
     frame->ip = map->bytecodeIp;
 
-    // 3. 抛出异常以展开 C++ 栈，退回到 VM::run 的 catch 块
-    throw DeoptimizationException();
+    // 3. 标记去优化状态，让跳板返回到 VM::run
+    g_jc2_jit_deoptimized = true;
 }
 
 } // namespace jit

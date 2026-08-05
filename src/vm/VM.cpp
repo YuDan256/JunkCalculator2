@@ -47,7 +47,7 @@ extern bool g_profile;
 
 namespace jc {
 
-extern "C" uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
+uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
     (void)current_regs;
     Value callee; callee.as_bits = callee_bits;
     std::vector<Value> args(argc);
@@ -563,7 +563,34 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 typedef uint64_t (*JitFunc)(Value*);
                 JitFunc func = reinterpret_cast<JitFunc>(jitEntryPoints[closure->compiledFnIndex]);
                 
+                jit::g_jc2_jit_deoptimized = false;
                 uint64_t retBits = func(&registers[newBase]);
+                
+                if (jit::g_jc2_jit_deoptimized) {
+                    jit::g_jc2_jit_deoptimized = false;
+                    // 去优化：状态已由 jc2_jit_deoptimize 恢复，直接继续解释执行
+                    int targetDepth = frameCount - 1;
+                    try {
+                        registers[currentFrame->registerBase + dstReg] = run(targetDepth);
+                        return;
+                    } catch (...) {
+                        while (frameCount > targetDepth) {
+                            CallFrame* f = &frames[frameCount - 1];
+                            profileFrameEnd(f);
+                            int clearBase = f->registerBase;
+                            int clearCount = f->function->localCount + f->function->refCount;
+                            for (int i = 0; i < clearCount; ++i) {
+                                registers[clearBase + i] = Value::none();
+                            }
+                            f->selfContext = Value::none();
+                            f->classContext = Value::none();
+                            f->closure = nullptr;
+                            f->refParamsBase = -1;
+                            frameCount--;
+                        }
+                        throw;
+                    }
+                }
                 
                 profileFrameEnd(&frames[frameCount - 1]);
                 frameCount--;
@@ -2535,6 +2562,79 @@ std::string VM::buildStackTrace() const {
     return oss.str();
 }
 
+void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
+    auto& fnDef = compiledFunctions[fnIdx];
+    try {
+        std::cout << "[OSR] Starting compilation for fnIdx " << fnIdx << " at IP " << loopHeaderIp << "\n";
+        jit::HIRGraph hirGraph;
+        jit::HIRBuilder hirBuilder(&hirGraph, fnDef->localCount + fnDef->refCount);
+        jit::BytecodeToHIR converter(fnDef->chunk, hirBuilder, fnDef->localCount + fnDef->refCount);
+        converter.setOSRMode(loopHeaderIp);
+        converter.build();
+        std::cout << "[OSR] BytecodeToHIR done.\n";
+        if (g_showIR) {
+            std::cout << "--- OSR HIR Graph (Unoptimized) ---\n";
+            hirGraph.printDOT(std::cout);
+        }
+
+        // --- Mid-level Optimizations (Phase 11 & 12) ---
+        jit::DeadPhiElimination(hirGraph, hirBuilder).run();
+        std::cout << "[OSR] DeadPhiElimination done.\n";
+        jit::ConstantFolding(hirGraph, hirBuilder).run();
+        std::cout << "[OSR] ConstantFolding done.\n";
+        jit::AlgebraicSimplification(hirGraph, hirBuilder).run();
+        std::cout << "[OSR] AlgebraicSimplification done.\n";
+        jit::CommonSubexpressionElimination(hirGraph, hirBuilder).run();
+        std::cout << "[OSR] CSE done.\n";
+        jit::DeadCodeElimination(hirGraph, hirBuilder).run();
+        std::cout << "[OSR] DCE done.\n";
+        
+        if (g_showIR) {
+            std::cout << "--- OSR HIR Graph (Optimized) ---\n";
+            hirGraph.printDOT(std::cout);
+        }
+
+        jit::LIRGraph lirGraph;
+        jit::LIRBuilder lirBuilder(&lirGraph);
+        jit::GCM gcm(hirGraph, lirGraph);
+        gcm.schedule();
+        std::cout << "[OSR] GCM done.\n";
+
+        jit::InstructionSelector selector(gcm, hirGraph, lirGraph, lirBuilder);
+        selector.select();
+        std::cout << "[OSR] InstructionSelector done.\n";
+
+        jit::LivenessAnalyzer liveness(lirGraph);
+        liveness.analyze();
+        std::cout << "[OSR] LivenessAnalyzer done.\n";
+
+        jit::LinearScanAllocator allocator(lirGraph, liveness);
+        allocator.allocate();
+        std::cout << "[OSR] LinearScanAllocator done.\n";
+
+        jit::MacroAssembler masm;
+        jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), globals.data(), reinterpret_cast<void*>(jc2_jit_call_helper));
+        
+        emitter.emit(allocator.getStackSize(), true); // ★ Step 81: 触发 OSR Prologue
+        masm.emitConstantPool();
+        std::cout << "[OSR] CodeEmitter done.\n";
+
+        auto mem = std::make_shared<jit::ExecutableMemory>();
+        masm.finalize(*mem);
+
+        osrCompiledCode[fnIdx][loopHeaderIp] = mem;
+        osrEntryPoints[fnIdx][loopHeaderIp] = mem->get();
+        std::cout << "[OSR] Compilation successful.\n";
+    } catch (const std::exception& e) {
+        std::cout << "[OSR] Compilation failed: " << e.what() << "\n";
+        // OSR 编译失败，回退到解释器，并标记不再尝试编译
+        osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; 
+    } catch (...) {
+        std::cout << "[OSR] Compilation failed with unknown exception.\n";
+        osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; 
+    }
+}
+
 void VM::profileFrameStart(CallFrame* frame) {
     if (frame->function) {
         CompiledFunction* fn = const_cast<CompiledFunction*>(frame->function);
@@ -2548,8 +2648,8 @@ void VM::profileFrameStart(CallFrame* frame) {
             if (jitEntryPoints.find(fnIdx) == jitEntryPoints.end()) {
                 try {
                     jit::HIRGraph hirGraph;
-                    jit::HIRBuilder hirBuilder(&hirGraph);
-                    jit::BytecodeToHIR converter(fn->chunk, hirBuilder);
+                    jit::HIRBuilder hirBuilder(&hirGraph, fn->localCount + fn->refCount);
+                    jit::BytecodeToHIR converter(fn->chunk, hirBuilder, fn->localCount + fn->refCount);
                     converter.build();
 
                     // --- Mid-level Optimizations (Phase 11 & 12) ---
@@ -2936,12 +3036,19 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     if (jitEntryPoints.count(fnIdx) && jitEntryPoints[fnIdx] != nullptr) {
         typedef uint64_t (*JitFunc)(Value*);
         JitFunc func = reinterpret_cast<JitFunc>(jitEntryPoints[fnIdx]);
+        jit::g_jc2_jit_deoptimized = false;
         uint64_t retBits = func(&registers[newBase]);
-        profileFrameEnd(&frames[frameCount - 1]);
-        frameCount--;
-        Value retVal;
-        retVal.as_bits = retBits;
-        return retVal;
+        if (jit::g_jc2_jit_deoptimized) {
+            jit::g_jc2_jit_deoptimized = false;
+            // 去优化：状态已由 jc2_jit_deoptimize 恢复，直接继续解释执行
+            // Fall through to run() below
+        } else {
+            profileFrameEnd(&frames[frameCount - 1]);
+            frameCount--;
+            Value retVal;
+            retVal.as_bits = retBits;
+            return retVal;
+        }
     }
 
     int targetDepth = frameCount - 1;
@@ -3091,6 +3198,48 @@ Value VM::run(int targetFrameDepth) {
 
     // K-Bit 机制：解析寄存器或常量池索引 (按值返回，强制放入寄存器，消除内存间接访问)
     #define GET_RK(rk) (ISK(rk) ? ((rk) == ESCAPE_KBIT_CONST ? chunk->constants.data()[FETCH_EXTRA()] : chunk->constants.data()[INDEXK(rk)]) : ((rk) == ESCAPE_KBIT_REG ? frameRegs[FETCH_EXTRA()] : frameRegs[rk]))
+
+    #define ATTEMPT_OSR(loopHeaderIp) \
+        do { \
+            void* osrEntry = osrEntryPoints[fnIdx][loopHeaderIp]; \
+            if (osrEntry) { \
+                typedef uint64_t (*JitFunc)(Value*); \
+                JitFunc func = reinterpret_cast<JitFunc>(osrEntry); \
+                jit::g_jc2_jit_deoptimized = false; \
+                uint64_t retBits = func(frameRegs); \
+                if (jit::g_jc2_jit_deoptimized) { \
+                    jit::g_jc2_jit_deoptimized = false; \
+                    ip = frame->ip; \
+                    osrTriggered = true; \
+                } else { \
+                    Value res; res.as_bits = retBits; \
+                    runDefersDownTo(frame->deferBase); \
+                    while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) { \
+                        exceptionHandlers.pop_back(); \
+                    } \
+                    closeUpvalues(frame->registerBase); \
+                    int targetReg = frame->returnRegister; \
+                    bool isInit = (frame->function && frame->function->name == "init"); \
+                    Value selfCtx = frame->selfContext; \
+                    profileFrameEnd(frame); \
+                    int clearBase = frame->registerBase; \
+                    int clearCount = frame->function->localCount + frame->function->refCount; \
+                    for (int i = 0; i < clearCount; ++i) { \
+                        registers[clearBase + i] = Value::none(); \
+                    } \
+                    frameCount--; \
+                    if (frameCount <= targetFrameDepth) return res; \
+                    frame = &frames[frameCount - 1]; \
+                    chunk = frame->chunk; \
+                    code = chunk->code.data(); \
+                    frameRegs = &registers[frame->registerBase]; \
+                    ip = frame->ip; \
+                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx; \
+                    else getReg(targetReg) = res; \
+                    osrTriggered = true; \
+                } \
+            } \
+        } while(0)
 
     int prevLine = -1;
     int lastBrokenLine = -1;
@@ -4150,6 +4299,20 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::JMP: {
+                if (sax < 0) {
+                    if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                        if (frame->closure && frame->closure->isBytecode()) {
+                            int fnIdx = frame->closure->compiledFnIndex;
+                            int loopHeaderIp = ip + sax;
+                            if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
+                                compileForOSR(fnIdx, loopHeaderIp);
+                            }
+                            bool osrTriggered = false;
+                            ATTEMPT_OSR(loopHeaderIp);
+                            if (osrTriggered) break;
+                        }
+                    }
+                }
                 ip += sax;
                 break;
             }
@@ -4161,7 +4324,23 @@ Value VM::run(int targetFrameDepth) {
                 else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
                 else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
-                if (cond) ip += sbx;
+                if (cond) {
+                    if (sbx < 0) {
+                        if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                            if (frame->closure && frame->closure->isBytecode()) {
+                                int fnIdx = frame->closure->compiledFnIndex;
+                                int loopHeaderIp = ip + sbx;
+                                if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
+                                    compileForOSR(fnIdx, loopHeaderIp);
+                                }
+                                bool osrTriggered = false;
+                                ATTEMPT_OSR(loopHeaderIp);
+                                if (osrTriggered) break;
+                            }
+                        }
+                    }
+                    ip += sbx;
+                }
                 break;
             }
             case OpCode::JMP_FALSE: {
@@ -4172,7 +4351,23 @@ Value VM::run(int targetFrameDepth) {
                 else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
                 else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
-                if (!cond) ip += sbx;
+                if (!cond) {
+                    if (sbx < 0) {
+                        if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                            if (frame->closure && frame->closure->isBytecode()) {
+                                int fnIdx = frame->closure->compiledFnIndex;
+                                int loopHeaderIp = ip + sbx;
+                                if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
+                                    compileForOSR(fnIdx, loopHeaderIp);
+                                }
+                                bool osrTriggered = false;
+                                ATTEMPT_OSR(loopHeaderIp);
+                                if (osrTriggered) break;
+                            }
+                        }
+                    }
+                    ip += sbx;
+                }
                 break;
             }
             case OpCode::BUILD_LIST: {
@@ -7519,14 +7714,6 @@ Value VM::run(int targetFrameDepth) {
             }
         } catch (const EngineInterruptError&) {
             throw;
-        } catch (const jit::DeoptimizationException&) {
-            // 去优化：状态已由 jc2_jit_deoptimize 恢复，直接继续解释执行
-            frame = &frames[frameCount - 1];
-            chunk = frame->chunk;
-            code = chunk->code.data();
-            frameRegs = &registers[frame->registerBase];
-            ip = frame->ip;
-            continue;
         } catch (const ValueException& ex) {
             frame->ip = ip;
             Value errVal = wrapException("Exception", ex.val);

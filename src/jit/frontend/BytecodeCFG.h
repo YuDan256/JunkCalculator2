@@ -15,9 +15,9 @@ namespace jit {
 // 字节码基本块 (Step 32)
 // ============================================================================
 struct BytecodeBlock {
-    int id;
-    int startIp;
-    int endIp; // 独占边界 (Exclusive)
+    int id = 0;
+    int startIp = 0;
+    int endIp = 0; // 独占边界 (Exclusive)
     std::vector<int> successors;
     std::vector<int> predecessors;
     bool isLoopHeader = false;

@@ -18,9 +18,13 @@ public:
     CodeEmitter(const LIRGraph& lir, MacroAssembler& masm, void* deoptRuntimeFunc = nullptr, void* globalsData = nullptr, void* callRuntimeFunc = nullptr)
         : lir_(lir), masm_(masm), deoptRuntimeFunc_(deoptRuntimeFunc), globalsData_(globalsData), callRuntimeFunc_(callRuntimeFunc) {}
 
-    void emit(int32_t stackSize) {
-        // 0. 发射函数序言 (Prologue)
-        masm_.prologue(stackSize);
+    void emit(int32_t stackSize, bool isOSR = false) {
+        // 0. 发射函数序言 (Prologue / OSR Prologue)
+        if (isOSR) {
+            masm_.osrPrologue(stackSize);
+        } else {
+            masm_.prologue(stackSize);
+        }
         
         // 将 frameRegs 指针保存到专用的 R14 寄存器中
 #ifdef _WIN32
@@ -459,6 +463,19 @@ private:
                 // 将 BailoutId 存入 R10，供跳板使用
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                 masm_.jmp(deoptTrampolineLabel_);
+                
+                // 注册 StackMap
+                StackMap map;
+                map.bailoutId = inst->bailoutId();
+                map.bytecodeIp = inst->bailoutId(); // 简化：BailoutId 直接等于 IP
+                
+                // 遍历所有虚拟寄存器，记录它们的物理位置
+                for (uint32_t i = 0; i < 256; ++i) {
+                    // 简化：目前我们没有在 LIR 中保留完整的 FrameState 映射
+                    // 真正的工业级 JIT 需要在 InstructionSelector 中将 FrameState 转换为 LIR 操作数
+                    // 这里为了防止崩溃，我们先注册一个空的 StackMap
+                }
+                DeoptRegistry::get().addStackMap(map);
                 break;
             }
             case LIROpcode::LoadGlobal: {
@@ -543,6 +560,10 @@ private:
                 if (!obj.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsClass requires GPR.");
                 
                 needsDeoptTrampoline_ = true;
+                StackMap map;
+                map.bailoutId = inst->bailoutId();
+                map.bytecodeIp = inst->bailoutId();
+                DeoptRegistry::get().addStackMap(map);
                 
                 // 1. 检查是否为 Obj (带有 SIGN_BIT | QNAN)
                 masm_.movq(r11, obj.pregGPR());

@@ -62,6 +62,7 @@ private:
         // 纯数据节点（如 AddI32, Int32Constant）如果不被这些根节点依赖，将被视为死代码。
         switch (node->opcode()) {
             case HIROp::Start:
+            case HIROp::OSREntry:
             case HIROp::Return:
             case HIROp::Branch:
             case HIROp::IfTrue:

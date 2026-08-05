@@ -45,6 +45,7 @@ enum class HIROp : uint16_t {
     // 控制流节点 (Control Flow)
     // ==========================================
     Start,
+    OSREntry,
     Return,
     Branch,
     IfTrue,
@@ -178,6 +179,7 @@ enum class HIROp : uint16_t {
 inline std::string to_string(HIROp op) {
     switch (op) {
         case HIROp::Start: return "Start";
+        case HIROp::OSREntry: return "OSREntry";
         case HIROp::Return: return "Return";
         case HIROp::Branch: return "Branch";
         case HIROp::IfTrue: return "IfTrue";
@@ -535,6 +537,16 @@ public:
 };
 
 // --- 控制流节点 ---
+class OSREntryNode : public HIRNode {
+    int loopHeaderIp_;
+public:
+    OSREntryNode(uint32_t id, int loopHeaderIp)
+        : HIRNode(id, HIROp::OSREntry, JITType::Control), loopHeaderIp_(loopHeaderIp) {}
+    
+    int loopHeaderIp() const { return loopHeaderIp_; }
+    std::string extraLabel() const override { return "ip:" + std::to_string(loopHeaderIp_); }
+};
+
 class BranchNode : public HIRNode {
 public:
     BranchNode(uint32_t id, HIRNode* control, HIRNode* condition)

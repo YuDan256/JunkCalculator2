@@ -16,8 +16,13 @@ namespace jit {
 // ============================================================================
 class BytecodeToHIR {
 public:
-    BytecodeToHIR(const Chunk& chunk, HIRBuilder& builder, int inlineDepth = 0, int registerOffset = 0)
-        : chunk_(chunk), builder_(builder), inlineDepth_(inlineDepth), registerOffset_(registerOffset) {}
+    BytecodeToHIR(const Chunk& chunk, HIRBuilder& builder, int maxRegs, int inlineDepth = 0, int registerOffset = 0)
+        : chunk_(chunk), builder_(builder), maxRegs_(maxRegs), inlineDepth_(inlineDepth), registerOffset_(registerOffset) {}
+
+    void setOSRMode(int loopHeaderIp) {
+        isOSR_ = true;
+        osrLoopHeaderIp_ = loopHeaderIp;
+    }
 
     HIRNode* buildInline(const std::vector<HIRNode*>& args) {
         isInline_ = true;
@@ -35,31 +40,105 @@ public:
             for (size_t i = 0; i < inlineArgs_.size(); ++i) {
                 builder_.setLocal(registerOffset_ + i, inlineArgs_[i]);
             }
+            blockEntryControls_[0].push_back(builder_.createStart());
+            blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor for inline
+        } else if (isOSR_) {
+            auto osrEntry = builder_.createOSREntry(osrLoopHeaderIp_);
+            for (int i = 0; i < maxRegs_; ++i) {
+                auto load = builder_.createLoadRegister(registerOffset_ + i);
+                builder_.setLocal(registerOffset_ + i, load);
+            }
+            int startBlockId = cfg_.ipToBlockId[osrLoopHeaderIp_];
+            blockEntryControls_[startBlockId].push_back(osrEntry);
+            blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor for OSR
         } else {
-            builder_.createStart();
+            blockEntryControls_[0].push_back(builder_.createStart());
+            blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor
         }
 
         // 3. 抽象解释主循环：遍历基本块
         for (const auto& block : cfg_.blocks) {
             if (block.startIp >= static_cast<int>(chunk_.code.size())) continue;
+            if (isOSR_ && block.startIp < osrLoopHeaderIp_) continue;
 
-            // Step 55: 乐观 Phi 插入 (Optimistic Phi Insertion)
-            if (block.isLoopHeader) {
-                std::vector<HIRNode*> forwardControls = { builder_.currentControl() };
-                HIRNode* loopBegin = builder_.createLoopBegin(forwardControls);
-                loopHeaderControls_[block.id] = loopBegin;
-                
-                std::vector<HIRNode*> phis(256, nullptr);
-                for (size_t i = 0; i < 256; ++i) {
-                    HIRNode* val = builder_.getLocal(registerOffset_ + i);
-                    if (val) {
-                        // 预创建 Phi 节点，初始只包含前向边的数据
-                        HIRNode* phi = builder_.createPhi(val->type(), {val});
+            auto& entryControls = blockEntryControls_[block.id];
+            if (entryControls.empty()) continue; // 不可达块
+
+            // 构建控制流汇合与 Phi 节点
+            if (entryControls.size() > 1 || block.isLoopHeader) {
+                HIRNode* merge = nullptr;
+                if (block.isLoopHeader) {
+                    merge = builder_.createLoopBegin(entryControls);
+                    loopHeaderControls_[block.id] = merge;
+                } else {
+                    merge = builder_.createMerge(entryControls);
+                }
+                builder_.setCurrentControl(merge);
+
+                std::vector<HIRNode*> phis(maxRegs_, nullptr);
+                for (int i = 0; i < maxRegs_; ++i) {
+                    bool needsPhi = false;
+                    HIRNode* firstVal = nullptr;
+                    
+                    auto checkPreds = [&](const std::vector<int>& preds) {
+                        for (int predId : preds) {
+                            if (blockExitStates_.count(predId)) {
+                                HIRNode* val = blockExitStates_[predId][i];
+                                if (!firstVal) firstVal = val;
+                                else if (firstVal != val) { needsPhi = true; break; }
+                            } else if (block.isLoopHeader) {
+                                needsPhi = true; break;
+                            }
+                        }
+                    };
+                    
+                    std::vector<int> predsToCheck;
+                    if (block.id == 0 || (isOSR_ && block.startIp == osrLoopHeaderIp_)) {
+                        predsToCheck.push_back(-1);
+                    }
+                    for (int p : block.predecessors) {
+                        predsToCheck.push_back(p);
+                    }
+                    checkPreds(predsToCheck);
+
+                    if (needsPhi) {
+                        JITType type = JITType::TaggedValue;
+                        std::vector<HIRNode*> phiInputs;
+                        
+                        auto addInputs = [&](const std::vector<int>& preds) {
+                            for (int predId : preds) {
+                                if (blockExitStates_.count(predId)) {
+                                    HIRNode* val = blockExitStates_[predId][i];
+                                    if (val) {
+                                        type = val->type();
+                                        phiInputs.push_back(val);
+                                    } else {
+                                        phiInputs.push_back(builder_.createNoneConstant());
+                                    }
+                                }
+                            }
+                        };
+                        
+                        addInputs(predsToCheck);
+                        
+                        HIRNode* phi = builder_.createPhi(type, phiInputs);
                         builder_.setLocal(registerOffset_ + i, phi);
                         phis[i] = phi;
+                    } else if (firstVal) {
+                        builder_.setLocal(registerOffset_ + i, firstVal);
                     }
                 }
-                loopHeaderPhis_[block.id] = phis;
+                if (block.isLoopHeader) {
+                    loopHeaderPhis_[block.id] = phis;
+                }
+            } else {
+                builder_.setCurrentControl(entryControls[0]);
+                int predId = block.predecessors.empty() ? -1 : block.predecessors[0];
+                if (block.id == 0 || (isOSR_ && block.startIp == osrLoopHeaderIp_)) predId = -1;
+                
+                if (blockExitStates_.count(predId)) {
+                    builder_.setRegisters(blockExitStates_[predId]);
+                }
             }
 
             int ip = block.startIp;
@@ -146,11 +225,58 @@ public:
                         else if (c == ESCAPE_KBIT_REG) c = fetchExtra();
                         break;
 
-                    case OpCode::JMP_TRUE: case OpCode::JMP_FALSE: case OpCode::TRY_BEGIN:
+                    case OpCode::JMP_TRUE:
+                    case OpCode::JMP_FALSE: {
+                        if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                        uint8_t fb = chunk_.typeFeedback[currentIp];
+                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                        HIRNode* condNode = nullptr;
+                        
+                        if (fb == 0x01) {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto guard = builder_.createGuardIsInt32(val, fs);
+                            auto unbox = builder_.createUnboxInt32(val, guard);
+                            auto zero = builder_.createInt32Constant(0);
+                            condNode = builder_.createCmpNeqI32(unbox, zero);
+                        } else if (fb == 0x08) {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto guard = builder_.createGuardIsBool(val, fs);
+                            condNode = builder_.createUnboxBool(val, guard);
+                        } else {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            builder_.createDeoptimize(fs);
+                            break;
+                        }
+                        
+                        auto branch = builder_.createBranch(condNode);
+                        auto ifTrue = builder_.createIfTrue(branch);
+                        auto ifFalse = builder_.createIfFalse(branch);
+                        
+                        int trueTargetIp = (op == OpCode::JMP_TRUE) ? (ip + sbx) : ip;
+                        int falseTargetIp = (op == OpCode::JMP_FALSE) ? (ip + sbx) : ip;
+                        
+                        if (cfg_.ipToBlockId.count(trueTargetIp)) {
+                            blockEntryControls_[cfg_.ipToBlockId[trueTargetIp]].push_back(ifTrue);
+                        }
+                        if (cfg_.ipToBlockId.count(falseTargetIp)) {
+                            blockEntryControls_[cfg_.ipToBlockId[falseTargetIp]].push_back(ifFalse);
+                        }
+                        break;
+                    }
+
+                    case OpCode::JMP: {
+                        int targetIp = ip + sax;
+                        if (cfg_.ipToBlockId.count(targetIp)) {
+                            blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(builder_.currentControl());
+                        }
+                        builder_.setCurrentControl(nullptr);
+                        break;
+                    }
+
+                    case OpCode::TRY_BEGIN:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         break;
 
-                    case OpCode::JMP:
                     case OpCode::TRY_END: case OpCode::EXTRAARG: case OpCode::SET_KW_ARGC:
                         break;
 
@@ -177,15 +303,47 @@ public:
                     return node;
                 };
 
+                auto getBoxedRKNode = [&](int rk) -> HIRNode* {
+                    HIRNode* node = getRKNode(rk);
+                    if (node->type() != JITType::TaggedValue) {
+                        if (node->type() == JITType::Int32) return builder_.createBoxInt32(node);
+                        if (node->type() == JITType::Double) return builder_.createBoxDouble(node);
+                        if (node->type() == JITType::Bool) return builder_.createBoxBool(node);
+                    }
+                    return node;
+                };
+
+                // ★ Step 81: OSR 模式下，跳过循环头之前的 HIR 节点生成，但保留 regFuncName_ 追踪
+                if (isOSR_ && currentIp < osrLoopHeaderIp_) {
+                    if (op == OpCode::LOADK) {
+                        const Value& kst = chunk_.constants[bx];
+                        if (kst.isString()) regFuncName_[a] = kst.asString();
+                    } else if (op == OpCode::GET_GLOBAL) {
+                        InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[bx]);
+                        if (ic.cachedGlobalSlot >= 0) regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
+                    } else if (op == OpCode::MOVE) {
+                        regFuncName_[a] = regFuncName_[b];
+                    }
+                    continue;
+                }
+
                 // Eager Sync: 写入虚拟寄存器时，同步写回 VM::registers 以保证 GC 安全
                 auto setLocalSync = [&](int reg, HIRNode* node) {
                     builder_.setLocal(registerOffset_ + reg, node);
                     regFuncName_.erase(reg); // 默认清空函数名追踪
-                    HIRNode* boxedNode = node;
-                    if (node->type() == JITType::Int32) boxedNode = builder_.createBoxInt32(node);
-                    else if (node->type() == JITType::Double) boxedNode = builder_.createBoxDouble(node);
-                    else if (node->type() == JITType::Bool) boxedNode = builder_.createBoxBool(node);
-                    builder_.createStoreRegister(registerOffset_ + reg, boxedNode);
+                };
+
+                auto syncAllRegisters = [&]() {
+                    for (int i = 0; i < maxRegs_; ++i) {
+                        HIRNode* val = builder_.getLocal(registerOffset_ + i);
+                        if (val && val->opcode() != HIROp::NoneConstant && val->opcode() != HIROp::LoadRegister) {
+                            HIRNode* boxedNode = val;
+                            if (val->type() == JITType::Int32) boxedNode = builder_.createBoxInt32(val);
+                            else if (val->type() == JITType::Double) boxedNode = builder_.createBoxDouble(val);
+                            else if (val->type() == JITType::Bool) boxedNode = builder_.createBoxBool(val);
+                            builder_.createStoreRegister(registerOffset_ + static_cast<int>(i), boxedNode);
+                        }
+                    }
                 };
 
                 // 抽象解释：根据操作码更新 HIRBuilder 的虚拟寄存器状态
@@ -242,7 +400,13 @@ public:
                     case OpCode::SET_GLOBAL: {
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[bx]);
                         if (ic.cachedGlobalSlot >= 0) {
-                            builder_.createStoreGlobal(ic.cachedGlobalSlot, builder_.getLocal(registerOffset_ + a));
+                            HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                            if (val->type() != JITType::TaggedValue) {
+                                if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
+                                else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
+                                else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
+                            }
+                            builder_.createStoreGlobal(ic.cachedGlobalSlot, val);
                         } else {
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             builder_.createDeoptimize(fs);
@@ -413,19 +577,26 @@ public:
                         break;
                     }
                     case OpCode::RETURN: {
+                        HIRNode* retVal = getRKNode(a);
+                        if (retVal->type() != JITType::TaggedValue) {
+                            if (retVal->type() == JITType::Int32) retVal = builder_.createBoxInt32(retVal);
+                            else if (retVal->type() == JITType::Double) retVal = builder_.createBoxDouble(retVal);
+                            else if (retVal->type() == JITType::Bool) retVal = builder_.createBoxBool(retVal);
+                        }
                         if (isInline_) {
-                            returnValues_.push_back(getRKNode(a));
+                            returnValues_.push_back(retVal);
                             returnControls_.push_back(builder_.currentControl());
                             builder_.setCurrentControl(nullptr);
                         } else {
-                            builder_.createReturn(getRKNode(a));
+                            syncAllRegisters();
+                            builder_.createReturn(retVal);
                         }
                         break;
                     }
                     case OpCode::GET_PROP: {
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[c]);
                         if (ic.cachedClassId != 0 && ic.cachedFieldIndex >= 0) {
-                            HIRNode* obj = getRKNode(b);
+                            HIRNode* obj = getBoxedRKNode(b);
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             builder_.createGuardIsClass(obj, fs, ic.cachedClassId);
                             auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
@@ -441,8 +612,8 @@ public:
                     case OpCode::SET_PROP: {
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[b]);
                         if (ic.cachedClassId != 0 && ic.cachedFieldIndex >= 0) {
-                            HIRNode* obj = getRKNode(a);
-                            HIRNode* val = getRKNode(c);
+                            HIRNode* obj = getBoxedRKNode(a);
+                            HIRNode* val = getBoxedRKNode(c);
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             builder_.createGuardIsClass(obj, fs, ic.cachedClassId);
                             auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
@@ -453,12 +624,21 @@ public:
                         }
                         break;
                     }
+                    case OpCode::JMP_TRUE:
+                    case OpCode::JMP_FALSE:
+                    case OpCode::JMP:
+                    case OpCode::TRY_BEGIN:
+                    case OpCode::TRY_END:
+                    case OpCode::EXTRAARG:
+                    case OpCode::SET_KW_ARGC:
+                        break;
+
                     case OpCode::CALL:
                     case OpCode::TAIL_CALL: {
-                        HIRNode* callee = getRKNode(b);
+                        HIRNode* callee = getBoxedRKNode(b);
                         std::vector<HIRNode*> args;
                         for (int i = 0; i < c; ++i) {
-                            args.push_back(getRKNode(b + 1 + i));
+                            args.push_back(getBoxedRKNode(b + 1 + i));
                         }
                         
                         std::string funcName = regFuncName_[b];
@@ -531,19 +711,22 @@ public:
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, callNode);
                             } else {
+                                syncAllRegisters();
                                 builder_.createReturn(callNode);
                             }
                         } else if (canInline) {
                             // Step 77: 实现内联展开逻辑
-                            int newOffset = registerOffset_ + 256;
-                            BytecodeToHIR inliner(targetFn->chunk, builder_, inlineDepth_ + 1, newOffset);
+                            int newOffset = registerOffset_ + maxRegs_;
+                            BytecodeToHIR inliner(targetFn->chunk, builder_, targetFn->localCount + targetFn->refCount, inlineDepth_ + 1, newOffset);
                             HIRNode* inlineRes = inliner.buildInline(args);
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, inlineRes);
                             } else {
+                                syncAllRegisters();
                                 builder_.createReturn(inlineRes);
                             }
                         } else {
+                            syncAllRegisters();
                             auto callNode = builder_.createCall(callee, c, args);
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, callNode);
@@ -554,35 +737,59 @@ public:
                         break;
                     }
                     default:
-                        // 尚未实现的指令，暂时跳过
-                        break;
+                        throw std::runtime_error("JIT Error: Unsupported opcode " + std::to_string(static_cast<int>(op)));
                 }
 
                 if (!builder_.currentControl()) break; // 控制流已终止，跳过基本块剩余指令
             }
 
-            // Step 56: 回边数据流绑定 (Back-edge Data Flow Binding)
+            // 保存当前块的出口状态
+            blockExitStates_[block.id] = builder_.getRegisters();
+
+            // 处理 Fallthrough 控制流
             if (builder_.currentControl()) {
-                for (int succId : block.successors) {
-                    const auto& succBlock = cfg_.blocks[succId];
-                    if (succBlock.isLoopHeader) {
-                        if (std::find(succBlock.backEdges.begin(), succBlock.backEdges.end(), block.id) != succBlock.backEdges.end()) {
-                            // 1. 绑定控制流回边
-                            if (loopHeaderControls_.count(succId)) {
-                                loopHeaderControls_[succId]->addInput(builder_.currentControl());
+                int nextIp = block.endIp;
+                if (cfg_.ipToBlockId.count(nextIp)) {
+                    blockEntryControls_[cfg_.ipToBlockId[nextIp]].push_back(builder_.currentControl());
+                }
+            }
+
+            // Step 56: 回边数据流绑定 (Back-edge Data Flow Binding)
+            for (int succId : block.successors) {
+                const auto& succBlock = cfg_.blocks[succId];
+                if (succBlock.isLoopHeader) {
+                    if (std::find(succBlock.backEdges.begin(), succBlock.backEdges.end(), block.id) != succBlock.backEdges.end()) {
+                        // 1. 绑定控制流回边
+                        // 回边控制流由 JMP 或 Fallthrough 提供，已经在 blockEntryControls_ 中了
+                        // 但对于 LoopBegin 节点，我们需要直接将回边控制流加到它的 inputs 中
+                        if (loopHeaderControls_.count(succId)) {
+                            // 找到从当前块跳向 succId 的控制流节点
+                            HIRNode* backEdgeCtrl = nullptr;
+                            auto& entries = blockEntryControls_[succId];
+                            if (!entries.empty()) {
+                                backEdgeCtrl = entries.back();
+                                entries.pop_back(); // 移除它，因为它直接连到 LoopBegin
                             }
-                            
-                            // 2. 绑定数据流回边
-                            if (loopHeaderPhis_.count(succId)) {
-                                auto& phis = loopHeaderPhis_[succId];
-                                for (size_t i = 0; i < 256; ++i) {
-                                    if (phis[i]) {
-                                        HIRNode* backEdgeVal = builder_.getLocal(registerOffset_ + i);
-                                        if (backEdgeVal) {
-                                            phis[i]->addInput(backEdgeVal);
-                                        } else {
-                                            phis[i]->addInput(builder_.createNoneConstant());
+                            if (backEdgeCtrl) {
+                                loopHeaderControls_[succId]->addInput(backEdgeCtrl);
+                            }
+                        }
+                        
+                        // 2. 绑定数据流回边
+                        if (loopHeaderPhis_.count(succId)) {
+                            auto& phis = loopHeaderPhis_[succId];
+                            for (int i = 0; i < maxRegs_; ++i) {
+                                if (phis[i]) {
+                                    HIRNode* backEdgeVal = blockExitStates_[block.id][i];
+                                    if (backEdgeVal) {
+                                        if (phis[i]->type() == JITType::TaggedValue && backEdgeVal->type() != JITType::TaggedValue) {
+                                            if (backEdgeVal->type() == JITType::Int32) backEdgeVal = builder_.createBoxInt32(backEdgeVal);
+                                            else if (backEdgeVal->type() == JITType::Double) backEdgeVal = builder_.createBoxDouble(backEdgeVal);
+                                            else if (backEdgeVal->type() == JITType::Bool) backEdgeVal = builder_.createBoxBool(backEdgeVal);
                                         }
+                                        phis[i]->addInput(backEdgeVal);
+                                    } else {
+                                        phis[i]->addInput(builder_.createNoneConstant());
                                     }
                                 }
                             }
@@ -632,12 +839,17 @@ private:
     std::map<int, std::vector<HIRNode*>> loopHeaderPhis_;
     std::map<int, HIRNode*> loopHeaderControls_;
     std::map<int, std::string> regFuncName_;
+    std::map<int, std::vector<HIRNode*>> blockEntryControls_;
+    std::map<int, std::vector<HIRNode*>> blockExitStates_;
 
     bool isInline_ = false;
+    bool isOSR_ = false;
+    int osrLoopHeaderIp_ = -1;
     std::vector<HIRNode*> inlineArgs_;
     HIRNode* inlineResult_ = nullptr;
     std::vector<HIRNode*> returnValues_;
     std::vector<HIRNode*> returnControls_;
+    int maxRegs_ = 0;
     int registerOffset_ = 0;
 };
 

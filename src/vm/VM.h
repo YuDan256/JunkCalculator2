@@ -63,6 +63,12 @@ private:
     std::vector<std::shared_ptr<CompiledFunction>> compiledFunctions;
     std::unordered_map<int, std::shared_ptr<jit::ExecutableMemory>> jitCompiledCode;
     std::unordered_map<int, void*> jitEntryPoints;
+    
+    // ★ JIT OSR Profiling (Step 79)
+    std::unordered_map<int, std::unordered_map<int, std::shared_ptr<jit::ExecutableMemory>>> osrCompiledCode;
+    std::unordered_map<int, std::unordered_map<int, void*>> osrEntryPoints;
+    void compileForOSR(int fnIdx, int loopHeaderIp);
+
     std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
     std::vector<ObjClosure*> deferStack;
     void runDefersDownTo(int targetBase, Value* currentException = nullptr);

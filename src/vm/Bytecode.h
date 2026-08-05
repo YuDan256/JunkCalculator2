@@ -370,6 +370,7 @@ class Chunk {
 public:
     std::vector<Instruction> code;
     std::vector<uint8_t> typeFeedback; // ★ JIT Tier 0 Profiling
+    std::vector<uint32_t> osrCounters; // ★ JIT OSR Profiling (Step 78)
     std::vector<Value> constants;
     std::vector<int> lines;
     std::vector<InlineCache> inlineCaches;
@@ -380,6 +381,7 @@ public:
     void write(Instruction inst, int line) {
         code.push_back(inst);
         typeFeedback.push_back(0); // 初始化为 0 (Uninitialized)
+        osrCounters.push_back(0);  // 初始化为 0
         lines.push_back(line);
     }
 

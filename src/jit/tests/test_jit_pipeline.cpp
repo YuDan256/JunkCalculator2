@@ -14,7 +14,6 @@ using namespace jc::jit;
 
 typedef uint64_t (*JitFunc)(Value*);
 
-// 辅助函数：打印 LIR 状态
 void printLIR(const LIRGraph& lirGraph, const std::string& stage) {
     std::cout << "\n=== LIR after " << stage << " ===\n";
     for (LIRBlock* block : lirGraph.blocks()) {
@@ -52,8 +51,6 @@ void printLIR(const LIRGraph& lirGraph, const std::string& stage) {
 int main() {
     std::cout << "Running End-to-End JIT Pipeline test with Control Flow..." << std::endl;
 
-    // 1. 手动构建带有控制流的 HIR 图 (模拟 if-else 分支与 Phi 汇聚)
-    // 逻辑: 
     // a = 10, b = 20
     // if (a < b) res = a + b (30)
     // else       res = a - b (-10)
@@ -67,7 +64,6 @@ int main() {
     auto a = hirBuilder.createInt32Constant(10);
     auto b = hirBuilder.createInt32Constant(20);
     
-    // 模拟写入寄存器 (测试 Load/Store Register)
     hirBuilder.createStoreRegister(0, hirBuilder.createBoxInt32(a));
     hirBuilder.createStoreRegister(1, hirBuilder.createBoxInt32(b));
 
@@ -98,29 +94,24 @@ int main() {
     std::cout << "\n=== HIR Graph (Graphviz DOT) ===\n";
     hirGraph.printDOT(std::cout);
 
-    // 2. LIR 构建与 GCM 调度
     LIRGraph lirGraph;
     LIRBuilder lirBuilder(&lirGraph);
     GCM gcm(hirGraph, lirGraph);
     gcm.schedule();
 
-    // 3. 指令选择 (降级为机器指令)
     InstructionSelector selector(gcm, hirGraph, lirGraph, lirBuilder);
     selector.select();
     
     printLIR(lirGraph, "Instruction Selection (Pre-Allocation)");
 
-    // 4. 活跃区间分析
     LivenessAnalyzer liveness(lirGraph);
     liveness.analyze();
 
-    // 5. 线性扫描寄存器分配
     LinearScanAllocator allocator(lirGraph, liveness);
     allocator.allocate();
     
     printLIR(lirGraph, "Linear Scan Register Allocation (Post-Allocation)");
 
-    // 6. 机器码发射
     MacroAssembler masm;
     CodeEmitter emitter(lirGraph, masm);
     emitter.emit(allocator.getStackSize());
@@ -129,8 +120,7 @@ int main() {
     ExecutableMemory mem;
     masm.finalize(mem);
 
-    // 7. 执行 JIT 编译出的机器码
-    Value registers[3]; // 模拟 VM 的寄存器窗口
+    Value registers[3];
     JitFunc func = reinterpret_cast<JitFunc>(mem.get());
     
     std::cout << "\n=== Executing JIT Code ===\n";

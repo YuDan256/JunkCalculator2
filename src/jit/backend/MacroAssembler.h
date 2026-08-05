@@ -911,19 +911,23 @@ public:
 
     // --- CALL C++ Function (ABI Compliant) ---
     void callCFunction(void* funcPtr) {
-        // 1. 保存原始 RSP
-        movq(r11, rsp);
-        // 2. 16 字节对齐
+        // 1. 保存 R12 (Callee-Saved)
+        push(r12);
+        // 2. 保存原始 RSP 到 R12
+        movq(r12, rsp);
+        // 3. 16 字节对齐
         andq(rsp, -16);
-        // 3. 分配 Shadow Space (Windows x64 需要 32 字节)
+        // 4. 分配 Shadow Space (Windows x64 需要 32 字节)
 #ifdef _WIN32
         subq(rsp, 32);
 #endif
-        // 4. 调用目标函数
+        // 5. 调用目标函数
         movabs(rax, reinterpret_cast<uint64_t>(funcPtr));
         call(rax);
-        // 5. 恢复原始 RSP
-        movq(rsp, r11);
+        // 6. 恢复原始 RSP
+        movq(rsp, r12);
+        // 7. 恢复 R12
+        pop(r12);
     }
 
     // --- CALL ---
@@ -1148,44 +1152,21 @@ public:
         movq(rsp, r11);
 
         // 4. 恢复所有浮点寄存器
-        movsd(xmm0, Operand(rsp, 0));
-        movsd(xmm1, Operand(rsp, 8));
-        movsd(xmm2, Operand(rsp, 16));
-        movsd(xmm3, Operand(rsp, 24));
-        movsd(xmm4, Operand(rsp, 32));
-        movsd(xmm5, Operand(rsp, 40));
-        movsd(xmm6, Operand(rsp, 48));
-        movsd(xmm7, Operand(rsp, 56));
-        movsd(xmm8, Operand(rsp, 64));
-        movsd(xmm9, Operand(rsp, 72));
-        movsd(xmm10, Operand(rsp, 80));
-        movsd(xmm11, Operand(rsp, 88));
-        movsd(xmm12, Operand(rsp, 96));
-        movsd(xmm13, Operand(rsp, 104));
-        movsd(xmm14, Operand(rsp, 112));
-        movsd(xmm15, Operand(rsp, 120));
-        addq(rsp, 128);
+        addq(rsp, 128); // 丢弃浮点寄存器保存区
 
         // 5. 恢复所有通用寄存器
-        pop(rax);
-        pop(rcx);
-        pop(rdx);
-        pop(rbx);
-        addq(rsp, 8); // 跳过占位的 RSP
-        pop(rbp);
-        pop(rsi);
-        pop(rdi);
-        pop(r8);
-        pop(r9);
-        pop(r10);
-        pop(r11);
-        pop(r12);
-        pop(r13);
-        pop(r14);
-        pop(r15);
+        addq(rsp, 128); // 丢弃通用寄存器保存区
 
-        // 6. 触发断点 (去优化通常不会返回到这里)
-        int3();
+        // 6. 执行 Epilogue 并返回到 VM::run
+        epilogue();
+    }
+
+    // --- OSR Prologue (Step 81) ---
+    // OSR Prologue 负责在热切换时建立 JIT 栈帧。
+    // 具体的变量装载（从解释器栈到物理寄存器）由 HIR 的 LoadRegister 节点
+    // 结合 LinearScan 自动完成，从而完美复用现有的寄存器分配和死代码消除管线。
+    void osrPrologue(int32_t stackSize = 0) {
+        prologue(stackSize);
     }
 
     // --- Prologue ---

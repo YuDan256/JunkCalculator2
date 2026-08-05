@@ -65,7 +65,7 @@ private:
     void buildCFG() {
         HIRNode* startNode = nullptr;
         for (auto node : hir_.nodes()) {
-            if (node->opcode() == HIROp::Start) {
+            if (node->opcode() == HIROp::Start || node->opcode() == HIROp::OSREntry) {
                 startNode = node;
                 break;
             }
@@ -296,10 +296,12 @@ private:
 
         if (isPinned(node)) {
             if (node->opcode() == HIROp::Phi) {
-                HIRNode* ctrl = node->inputs()[0];
-                if (ctrl) {
-                    scheduleEarlyNode(ctrl, visited);
-                    nodeToBlock_[node] = nodeToBlock_[ctrl];
+                if (!node->inputs().empty()) {
+                    HIRNode* ctrl = node->inputs()[0];
+                    if (ctrl) {
+                        scheduleEarlyNode(ctrl, visited);
+                        nodeToBlock_[node] = nodeToBlock_[ctrl];
+                    }
                 }
             }
             return;
@@ -360,6 +362,7 @@ private:
         }
 
         if (lca == nullptr) {
+            nodeToBlock_.erase(node);
             return; // Dead code
         }
 

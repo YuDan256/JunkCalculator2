@@ -375,6 +375,30 @@ private:
             }
             case HIROp::Deoptimize: {
                 auto fs = static_cast<FrameStateNode*>(node->inputs()[2]);
+                if (fs) {
+                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
+                        HIRNode* val = fs->inputs()[i];
+                        if (val && val->opcode() != HIROp::NoneConstant && val->opcode() != HIROp::LoadRegister) {
+                            LIROperand valOp = getOperand(val);
+                            if (!valOp.isInvalid()) {
+                                LIROperand boxedOp = valOp;
+                                if (val->type() == JITType::Int32) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (val->type() == JITType::Double) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                } else if (val->type() == JITType::Bool) {
+                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
+                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
+                                }
+                                
+                                LIROperand mem = LIROperand::createMemory(Operand(r14, static_cast<int32_t>(i * sizeof(uint64_t))));
+                                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{boxedOp, LIRConstraint::anyReg()}});
+                            }
+                        }
+                    }
+                }
                 auto inst = builder_.emit(LIROpcode::Deoptimize);
                 if (fs) inst->setBailoutId(fs->bailoutId());
                 break;

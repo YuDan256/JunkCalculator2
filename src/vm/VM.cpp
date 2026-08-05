@@ -57,26 +57,10 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
         ObjClosure* cl = callee.asFunction();
         if (cl->isBytecode()) {
             int fnIdx = cl->compiledFnIndex;
-            void* entry = VM::activeVM->getJitEntryPoint(fnIdx);
-            if (entry != nullptr) {
-                // Step 75: JIT-to-JIT Fast Path
-                // 跳过解释器 CallFrame 创建，直接计算寄存器窗口并 call 目标机器码
-                auto& fnDef = VM::activeVM->getCompiledFunctions()[fnIdx];
-                CallFrame* currentFrame = VM::activeVM->getCurrentFrame();
-                int newBase = currentFrame->registerBase + currentFrame->function->localCount + currentFrame->function->refCount;
-                
-                Value* regs = VM::activeVM->getRegisters();
-                for (uint32_t i = 0; i < argc; ++i) regs[newBase + i] = args[i];
-                for (int i = static_cast<int>(argc); i < fnDef->maxArity; ++i) regs[newBase + i] = Value::uninit();
-                for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) regs[newBase + i] = Value::none();
-                
-                typedef uint64_t (*JitFunc)(Value*);
-                JitFunc func = reinterpret_cast<JitFunc>(entry);
-                return func(&regs[newBase]);
-            } else {
-                // Slow Path: 回退到解释器执行
-                return VM::activeVM->callVMFunction(fnIdx, args, cl).as_bits;
-            }
+            // Slow Path: 回退到解释器执行
+            // 注意：为了保证去优化 (Deoptimization) 时 CallFrame 栈的正确性，
+            // 必须走完整的 callVMFunction 压帧流程。
+            return VM::activeVM->callVMFunction(fnIdx, args, cl).as_bits;
         } else if (cl->isNative()) {
             auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
             return fn(args).as_bits;
@@ -603,6 +587,9 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (jit::g_jc2_jit_deoptimized) {
                     jit::g_jc2_jit_deoptimized = false;
                     // 去优化：状态已由 jc2_jit_deoptimize 恢复，直接继续解释执行
+                    jitEntryPoints[closure->compiledFnIndex] = nullptr;
+                    jitCompiledCode.erase(closure->compiledFnIndex);
+                    fnDef->callCount = 0;
                     int targetDepth = frameCount - 1;
                     try {
                         registers[currentFrame->registerBase + dstReg] = run(targetDepth);
@@ -3060,6 +3047,9 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         if (jit::g_jc2_jit_deoptimized) {
             jit::g_jc2_jit_deoptimized = false;
             // 去优化：状态已由 jc2_jit_deoptimize 恢复，直接继续解释执行
+            jitEntryPoints[fnIdx] = nullptr;
+            jitCompiledCode.erase(fnIdx);
+            fnDef->callCount = 0;
             // Fall through to run() below
         } else {
             profileFrameEnd(&frames[frameCount - 1]);
@@ -3230,6 +3220,9 @@ Value VM::run(int targetFrameDepth) {
                     jit::g_jc2_jit_deoptimized = false; \
                     ip = frame->ip; \
                     osrTriggered = true; \
+                    osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; \
+                    osrCompiledCode[fnIdx].erase(loopHeaderIp); \
+                    const_cast<Chunk*>(chunk)->osrCounters[op_ip] = 0; \
                 } else { \
                     Value res; res.as_bits = retBits; \
                     runDefersDownTo(frame->deferBase); \

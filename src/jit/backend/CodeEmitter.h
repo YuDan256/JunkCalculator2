@@ -166,18 +166,18 @@ private:
                     } else if (dst.isStackSlot() && src.isPhysicalXMM()) {
                         masm_.movsd(getStackOperand(dst.slot()), src.pregXMM());
                     } else if (dst.isStackSlot() && src.isStackSlot()) {
-                        masm_.movq(r11, getStackOperand(src.slot()));
-                        masm_.movq(getStackOperand(dst.slot()), r11);
+                        masm_.movq(r10, getStackOperand(src.slot()));
+                        masm_.movq(getStackOperand(dst.slot()), r10);
                     } else if (dst.isPhysicalGPR() && src.isImm32()) {
                         masm_.mov(dst.pregGPR(), src.imm32());
                     } else if (dst.isPhysicalGPR() && src.isImm64()) {
                         masm_.movabs(dst.pregGPR(), src.imm64());
                     } else if (dst.isStackSlot() && src.isImm32()) {
-                        masm_.mov(r11, src.imm32());
-                        masm_.movq(getStackOperand(dst.slot()), r11);
+                        masm_.mov(r10, src.imm32());
+                        masm_.movq(getStackOperand(dst.slot()), r10);
                     } else if (dst.isStackSlot() && src.isImm64()) {
-                        masm_.movabs(r11, src.imm64());
-                        masm_.movq(getStackOperand(dst.slot()), r11);
+                        masm_.movabs(r10, src.imm64());
+                        masm_.movq(getStackOperand(dst.slot()), r10);
                     } else {
                         throw std::runtime_error("CodeEmitter: Unsupported ParallelMove operand combination.");
                     }

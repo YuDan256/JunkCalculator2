@@ -8750,6 +8750,134 @@ uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_CATCH
 }
 
+uint64_t jc2_jit_load_element(uint64_t obj_bits, uint64_t idx_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value obj = Value::fromRawBits(obj_bits);
+    Value idx = Value::fromRawBits(idx_bits);
+    Value res;
+    
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        auto [getitemMethod, owner] = vm->findDunder(obj, "__getitem__");
+        if (getitemMethod) {
+            res = vm->callDunder(obj, getitemMethod, owner, {idx});
+        } else if (idx.isString()) {
+            std::string keyStr = idx.asString();
+            if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+                throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+            }
+            auto it = inst->properties.find(keyStr);
+            if (it != inst->properties.end() && !it->second.is_local) {
+                res = it->second.val;
+            } else {
+                throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
+            }
+        } else {
+            throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __getitem__.");
+        }
+    } else if (obj.isObjType(ObjType::LIST)) {
+        auto list = static_cast<ObjList*>(obj.asObj());
+        auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
+        if (!range.isSlice) res = list->vec[range.scalarIdx];
+        else {
+            ObjList* resList = GcHeap::get().allocate<ObjList>();
+            resList->vec.reserve(range.sliceInfo.count);
+            for (int i = 0; i < range.sliceInfo.count; ++i) {
+                resList->vec.push_back(list->vec[range.sliceInfo.start + i * range.sliceInfo.step]);
+            }
+            res = Value(resList);
+        }
+    } else if (obj.isString()) {
+        ObjString* objStr = obj.asObjString();
+        auto range = idx.parseIndex(static_cast<int>(objStr->charLength), false);
+        if (!range.isSlice) {
+            if (objStr->isAscii) {
+                char c_str[2] = { objStr->str[range.scalarIdx], '\0' };
+                res = Value(c_str);
+            } else {
+                res = Value(utf8::substring(objStr->str, range.scalarIdx, 1, objStr->isAscii));
+            }
+        } else {
+            std::string resStr;
+            if (objStr->isAscii) {
+                resStr.reserve(range.sliceInfo.count);
+                for (int i = 0; i < range.sliceInfo.count; ++i) {
+                    resStr += objStr->str[range.sliceInfo.start + i * range.sliceInfo.step];
+                }
+            } else {
+                for (int i = 0; i < range.sliceInfo.count; ++i) {
+                    resStr += utf8::substring(objStr->str, range.sliceInfo.start + i * range.sliceInfo.step, 1, false);
+                }
+            }
+            res = Value(resStr);
+        }
+    } else if (obj.isObjType(ObjType::DICT)) {
+        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+        auto dict = static_cast<ObjDict*>(obj.asObj());
+        auto it = dict->keyMap.find(idx);
+        if (it == dict->keyMap.end()) throw std::runtime_error("VM Error: Key not found.");
+        res = dict->elements[it->second].second;
+    } else {
+        throw std::runtime_error("VM Error: Unsupported 1D index get in JIT.");
+    }
+    
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_store_element(uint64_t obj_bits, uint64_t idx_bits, uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value obj = Value::fromRawBits(obj_bits);
+    Value idx = Value::fromRawBits(idx_bits);
+    Value val = Value::fromRawBits(val_bits);
+    
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        inst->checkModify();
+        auto [setitemMethod, owner] = vm->findDunder(obj, "__setitem__");
+        if (setitemMethod) {
+            vm->callDunder(obj, setitemMethod, owner, {idx, val});
+        } else if (idx.isString()) {
+            std::string keyStr = idx.asString();
+            if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+                throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+            }
+            inst->setProperty(keyStr, val);
+        } else {
+            throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __setitem__.");
+        }
+    } else if (obj.isObjType(ObjType::LIST)) {
+        auto list = static_cast<ObjList*>(obj.asObj());
+        auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
+        if (!range.isSlice) {
+            list->mut()[range.scalarIdx] = val;
+        } else {
+            if (val.isObjType(ObjType::LIST)) {
+                const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
+                if (static_cast<int>(srcL.size()) != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                for (int k = 0; k < range.sliceInfo.count; ++k) list->mut()[range.sliceInfo.start + k * range.sliceInfo.step] = srcL[k];
+            } else {
+                for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
+            }
+        }
+    } else if (obj.isObjType(ObjType::DICT)) {
+        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+        auto dict = static_cast<ObjDict*>(obj.asObj());
+        dict->set(idx, val);
+    } else {
+        throw std::runtime_error("VM Error: Unsupported 1D index set in JIT.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_truthy(uint64_t val_bits) {
+    Value val = Value::fromRawBits(val_bits);
+    return VM::activeVM->evaluateTruthiness(val) ? 1 : 0;
+}
+
 void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;

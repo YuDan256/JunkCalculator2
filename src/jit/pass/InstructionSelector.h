@@ -478,6 +478,13 @@ private:
                 builder_.emitWithConstraints(LIROpcode::Move, {{out, LIRConstraint::anyReg()}}, {{mem, LIRConstraint::none()}});
                 break;
             }
+            case HIROp::StoreRegister: {
+                auto n = static_cast<RegisterAccessNode*>(node);
+                LIROperand val = getOperand(node->inputs()[2]);
+                LIROperand mem = LIROperand::createMemory(Operand(r14, n->regIndex() * sizeof(uint64_t)));
+                builder_.emitWithConstraints(LIROpcode::Move, {{mem, LIRConstraint::none()}}, {{val, LIRConstraint::anyReg()}});
+                break;
+            }
             case HIROp::LoadGlobal: {
                 auto n = static_cast<GlobalAccessNode*>(node);
                 builder_.emitWithConstraints(LIROpcode::LoadGlobal, 
@@ -534,6 +541,42 @@ private:
                         {},
                         {{base, LIRConstraint::fixedReg(rcx.id())}, {offset, LIRConstraint::anyReg()}, {val, LIRConstraint::anyReg()}});
                     inst->addClobber(rcx);
+                }
+                break;
+            }
+            case HIROp::LoadElement: {
+                LIROperand array = getOperand(node->inputs()[2]);
+                LIROperand index = getOperand(node->inputs()[3]);
+                std::vector<std::pair<LIROperand, LIRConstraint>> uses = {
+                    {array, LIRConstraint::none()},
+                    {index, LIRConstraint::none()}
+                };
+                std::vector<std::pair<LIROperand, LIRConstraint>> defs;
+                if (!out.isInvalid()) {
+                    defs.push_back({out, LIRConstraint::fixedReg(rax.id())});
+                }
+                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, defs, uses);
+                inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_load_element));
+                inst->setArgc(2);
+                if (node->inputs().size() > 4 && node->inputs()[4]) {
+                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[4]));
+                }
+                break;
+            }
+            case HIROp::StoreElement: {
+                LIROperand array = getOperand(node->inputs()[2]);
+                LIROperand index = getOperand(node->inputs()[3]);
+                LIROperand val = getOperand(node->inputs()[4]);
+                std::vector<std::pair<LIROperand, LIRConstraint>> uses = {
+                    {array, LIRConstraint::none()},
+                    {index, LIRConstraint::none()},
+                    {val, LIRConstraint::none()}
+                };
+                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
+                inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_store_element));
+                inst->setArgc(3);
+                if (node->inputs().size() > 5 && node->inputs()[5]) {
+                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[5]));
                 }
                 break;
             }

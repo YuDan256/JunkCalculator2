@@ -545,22 +545,24 @@ public:
         return node;
     }
 
-    HIRNode* createLoadElement(HIRNode* array, HIRNode* index) {
+    HIRNode* createLoadElement(HIRNode* array, HIRNode* index, FrameStateNode* fs = nullptr) {
         auto node = graph_->allocateNode<HIRNode>(HIROp::LoadElement, JITType::TaggedValue);
         node->addInput(currentControl_);
         node->addInput(currentEffect_);
         node->addInput(array);
         node->addInput(index);
+        if (fs) node->addInput(fs);
         return node;
     }
 
-    HIRNode* createStoreElement(HIRNode* array, HIRNode* index, HIRNode* value) {
+    HIRNode* createStoreElement(HIRNode* array, HIRNode* index, HIRNode* value, FrameStateNode* fs = nullptr) {
         auto node = graph_->allocateNode<HIRNode>(HIROp::StoreElement, JITType::Effect);
         node->addInput(currentControl_);
         node->addInput(currentEffect_);
         node->addInput(array);
         node->addInput(index);
         node->addInput(value);
+        if (fs) node->addInput(fs);
         currentEffect_ = node;
         return node;
     }

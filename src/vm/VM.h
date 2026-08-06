@@ -330,6 +330,9 @@ uint64_t jc2_jit_unary_bnot(uint64_t val_bits);
 // Dynamic Properties & Indexing (Step 94)
 uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
 void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk);
+uint64_t jc2_jit_load_element(uint64_t obj_bits, uint64_t idx_bits);
+void jc2_jit_store_element(uint64_t obj_bits, uint64_t idx_bits, uint64_t val_bits);
+uint64_t jc2_jit_truthy(uint64_t val_bits);
 
 // Megamorphic Comparison Fallbacks (Step 91)
 uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits);

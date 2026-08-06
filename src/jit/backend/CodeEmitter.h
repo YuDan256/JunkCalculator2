@@ -942,7 +942,27 @@ private:
                 break;
             }
             case LIROpcode::GuardTruthy: {
-                throw std::runtime_error("CodeEmitter: GuardTruthy not implemented.");
+                const LIROperand& val = inst->uses()[0];
+                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardTruthy requires GPR.");
+                needsDeoptTrampoline_ = true;
+                registerStackMap(inst);
+
+                masm_.emitPushAll();
+#ifdef _WIN32
+                masm_.movq(rcx, val.pregGPR());
+#else
+                masm_.movq(rdi, val.pregGPR());
+#endif
+                masm_.callCFunction(reinterpret_cast<void*>(jc2_jit_truthy));
+                masm_.movq(r11, rax);
+                masm_.emitPopAll();
+
+                masm_.test(r11, r11);
+                Label isTruthy;
+                masm_.jcc(Condition::NotZero, isTruthy);
+                masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                masm_.jmp(deoptTrampolineLabel_);
+                masm_.bind(isTruthy);
                 break;
             }
             case LIROpcode::GuardIsClass: {

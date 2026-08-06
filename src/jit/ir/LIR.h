@@ -141,7 +141,6 @@ enum class LIROpcode : uint16_t {
     ParallelMove,
     LoadImm32,
     LoadImm64,
-    Lea,
     AddI32, SubI32, MulI32, DivI32, IDivI32, ModI32,
     AndI32, OrI32, XorI32, ShlI32, ShrI32, SarI32,
     NegI32, NotI32,
@@ -151,15 +150,12 @@ enum class LIROpcode : uint16_t {
     CmpI32, Cmp64, TestI32, CmpF64,
     Setcc,
     Jmp, Jcc,
-    Call, CallRuntime, Callout, Ret,
-    Push, Pop,
+    Call, Callout, Ret,
     Deoptimize,
     BoxInt32, BoxDouble, BoxBool,
     UnboxInt32, UnboxDouble, UnboxBool,
     Int32ToDouble,
-    SpillStore, SpillLoad, // 供寄存器分配器使用
-    LoadRegister, StoreRegister,
-    LoadGlobal, StoreGlobal,
+    LoadGlobal,
     LoadField, StoreField,
     GuardIsInt32, GuardIsDouble, GuardIsBool, GuardIsString, GuardIsObject, GuardTruthy,
     GuardIsClass
@@ -172,7 +168,6 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::ParallelMove: return "ParallelMove";
         case LIROpcode::LoadImm32: return "LoadImm32";
         case LIROpcode::LoadImm64: return "LoadImm64";
-        case LIROpcode::Lea: return "Lea";
         case LIROpcode::AddI32: return "AddI32";
         case LIROpcode::SubI32: return "SubI32";
         case LIROpcode::MulI32: return "MulI32";
@@ -210,11 +205,8 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::Jmp: return "Jmp";
         case LIROpcode::Jcc: return "Jcc";
         case LIROpcode::Call: return "Call";
-        case LIROpcode::CallRuntime: return "CallRuntime";
         case LIROpcode::Callout: return "Callout";
         case LIROpcode::Ret: return "Ret";
-        case LIROpcode::Push: return "Push";
-        case LIROpcode::Pop: return "Pop";
         case LIROpcode::Deoptimize: return "Deoptimize";
         case LIROpcode::BoxInt32: return "BoxInt32";
         case LIROpcode::BoxDouble: return "BoxDouble";
@@ -223,10 +215,7 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::UnboxDouble: return "UnboxDouble";
         case LIROpcode::UnboxBool: return "UnboxBool";
         case LIROpcode::Int32ToDouble: return "Int32ToDouble";
-        case LIROpcode::SpillStore: return "SpillStore";
-        case LIROpcode::SpillLoad: return "SpillLoad";
         case LIROpcode::LoadGlobal: return "LoadGlobal";
-        case LIROpcode::StoreGlobal: return "StoreGlobal";
         case LIROpcode::LoadField: return "LoadField";
         case LIROpcode::StoreField: return "StoreField";
         case LIROpcode::GuardIsInt32: return "GuardIsInt32";

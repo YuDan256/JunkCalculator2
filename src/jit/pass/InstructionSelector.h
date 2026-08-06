@@ -271,9 +271,13 @@ private:
                 LIROperand lhs = getOperand(node->inputs()[0]);
                 LIROperand rhs = getOperand(node->inputs()[1]);
                 // 移位指令约束：移位量必须在 RCX (CL) 中
-                builder_.emitWithConstraints(lop, 
+                auto inst = builder_.emitWithConstraints(lop, 
                     {{out, LIRConstraint::sameAsInput(0)}}, 
                     {{lhs, LIRConstraint::none()}, {rhs, LIRConstraint::fixedReg(rcx.id())}});
+                
+                if (node->inputs().size() > 2 && node->inputs()[2]) {
+                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[2]));
+                }
                 break;
             }
             case HIROp::DivI32:
@@ -300,6 +304,10 @@ private:
                     {{out, LIRConstraint::fixedReg(rdx.id())}}, 
                     {{lhs, LIRConstraint::fixedReg(rax.id())}, {rhs, LIRConstraint::anyReg()}});
                 inst->addClobber(rax);
+                
+                if (node->inputs().size() > 2 && node->inputs()[2]) {
+                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[2]));
+                }
                 break;
             }
             case HIROp::NegI32:
@@ -607,6 +615,14 @@ private:
                 uses.push_back({calleeOp, LIRConstraint::none()});
                 for (const auto& argOp : argOps) {
                     uses.push_back({argOp, LIRConstraint::none()});
+                }
+                
+                // 将额外的 inputs 加入 uses 列表，强制延长其生命周期，确保 Eager Sync 读取安全
+                for (size_t i = 4 + n->argc(); i < n->inputs().size(); ++i) {
+                    LIROperand extraOp = getOperand(n->inputs()[i]);
+                    if (!extraOp.isInvalid()) {
+                        uses.push_back({extraOp, LIRConstraint::none()});
+                    }
                 }
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> defs;

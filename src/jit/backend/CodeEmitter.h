@@ -369,6 +369,31 @@ private:
             }
             case LIROpcode::DivI32: {
                 const LIROperand& src = inst->uses()[1];
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    registerStackMap(inst);
+                    
+                    // 1. 检查除零
+                    if (src.isPhysicalGPR()) masm_.test(src.pregGPR(), src.pregGPR());
+                    else masm_.cmp(getStackOperand(src.slot()), 0);
+                    Label notZero;
+                    masm_.jcc(Condition::NotZero, notZero);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(notZero);
+                    
+                    // 2. 检查 INT32_MIN / -1
+                    Label notOverflow;
+                    masm_.cmp(rax, 0x80000000);
+                    masm_.jcc(Condition::NotEqual, notOverflow);
+                    if (src.isPhysicalGPR()) masm_.cmp(src.pregGPR(), -1);
+                    else masm_.cmp(getStackOperand(src.slot()), -1);
+                    masm_.jcc(Condition::NotEqual, notOverflow);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(notOverflow);
+                }
+                
                 masm_.cdq();
                 if (src.isPhysicalGPR()) {
                     masm_.idiv(src.pregGPR());
@@ -377,21 +402,45 @@ private:
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported DivI32 operand.");
                 }
+                
                 if (inst->hasBailoutId()) {
-                    needsDeoptTrampoline_ = true;
-                    Label isZero;
+                    // 3. 检查余数是否为 0 (Fraction 回退)
+                    Label isZeroRem;
                     masm_.test(rdx, rdx);
-                    masm_.jcc(Condition::Zero, isZero);
+                    masm_.jcc(Condition::Zero, isZeroRem);
                     masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                     masm_.jmp(deoptTrampolineLabel_);
-                    masm_.bind(isZero);
-                    
-                    registerStackMap(inst);
+                    masm_.bind(isZeroRem);
                 }
                 break;
             }
             case LIROpcode::IDivI32: {
                 const LIROperand& src = inst->uses()[1];
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    registerStackMap(inst);
+                    
+                    // 1. 检查除零
+                    if (src.isPhysicalGPR()) masm_.test(src.pregGPR(), src.pregGPR());
+                    else masm_.cmp(getStackOperand(src.slot()), 0);
+                    Label notZero;
+                    masm_.jcc(Condition::NotZero, notZero);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(notZero);
+                    
+                    // 2. 检查 INT32_MIN / -1
+                    Label notOverflow;
+                    masm_.cmp(rax, 0x80000000);
+                    masm_.jcc(Condition::NotEqual, notOverflow);
+                    if (src.isPhysicalGPR()) masm_.cmp(src.pregGPR(), -1);
+                    else masm_.cmp(getStackOperand(src.slot()), -1);
+                    masm_.jcc(Condition::NotEqual, notOverflow);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(notOverflow);
+                }
+                
                 masm_.cdq();
                 if (src.isPhysicalGPR()) {
                     masm_.idiv(src.pregGPR());
@@ -404,6 +453,31 @@ private:
             }
             case LIROpcode::ModI32: {
                 const LIROperand& src = inst->uses()[1];
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    registerStackMap(inst);
+                    
+                    // 1. 检查除零
+                    if (src.isPhysicalGPR()) masm_.test(src.pregGPR(), src.pregGPR());
+                    else masm_.cmp(getStackOperand(src.slot()), 0);
+                    Label notZero;
+                    masm_.jcc(Condition::NotZero, notZero);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(notZero);
+                    
+                    // 2. 检查 INT32_MIN / -1
+                    Label notOverflow;
+                    masm_.cmp(rax, 0x80000000);
+                    masm_.jcc(Condition::NotEqual, notOverflow);
+                    if (src.isPhysicalGPR()) masm_.cmp(src.pregGPR(), -1);
+                    else masm_.cmp(getStackOperand(src.slot()), -1);
+                    masm_.jcc(Condition::NotEqual, notOverflow);
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(notOverflow);
+                }
+                
                 masm_.cdq();
                 if (src.isPhysicalGPR()) {
                     masm_.idiv(src.pregGPR());
@@ -453,7 +527,32 @@ private:
             case LIROpcode::ShlI32: {
                 const LIROperand& dst = inst->defs()[0];
                 if (dst.isPhysicalGPR()) {
-                    masm_.shl_cl(dst.pregGPR());
+                    if (inst->hasBailoutId()) {
+                        needsDeoptTrampoline_ = true;
+                        // 检查 shift >= 31 或 shift < 0 (作为无符号数比较 >= 31 即可)
+                        masm_.cmp(rcx, 31);
+                        Label validShift;
+                        masm_.jcc(Condition::Below, validShift);
+                        masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                        masm_.jmp(deoptTrampolineLabel_);
+                        masm_.bind(validShift);
+                        
+                        // 检查左移溢出：如果 (dst << cl) >> cl != original_dst，则溢出
+                        masm_.mov(r11, dst.pregGPR()); // 保存原值
+                        masm_.shl_cl(dst.pregGPR());
+                        masm_.mov(r10, dst.pregGPR());
+                        masm_.sar_cl(r10); // 算术右移回去
+                        masm_.cmp(r11, r10);
+                        Label noOverflow;
+                        masm_.jcc(Condition::Equal, noOverflow);
+                        masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                        masm_.jmp(deoptTrampolineLabel_);
+                        masm_.bind(noOverflow);
+                        
+                        registerStackMap(inst);
+                    } else {
+                        masm_.shl_cl(dst.pregGPR());
+                    }
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported ShlI32 destination.");
                 }
@@ -462,7 +561,19 @@ private:
             case LIROpcode::ShrI32: {
                 const LIROperand& dst = inst->defs()[0];
                 if (dst.isPhysicalGPR()) {
-                    masm_.shr_cl(dst.pregGPR());
+                    if (inst->hasBailoutId()) {
+                        needsDeoptTrampoline_ = true;
+                        // 检查 shift >= 31 或 shift < 0
+                        masm_.cmp(rcx, 31);
+                        Label validShift;
+                        masm_.jcc(Condition::Below, validShift);
+                        masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                        masm_.jmp(deoptTrampolineLabel_);
+                        masm_.bind(validShift);
+                        
+                        registerStackMap(inst);
+                    }
+                    masm_.sar_cl(dst.pregGPR()); // JC2 的 Shr 是算术右移
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported ShrI32 destination.");
                 }

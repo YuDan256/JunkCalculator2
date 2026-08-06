@@ -98,8 +98,20 @@ private:
                         case HIROp::BitAndI32: return builder_.createInt32Constant(l & r);
                         case HIROp::BitOrI32: return builder_.createInt32Constant(l | r);
                         case HIROp::BitXorI32: return builder_.createInt32Constant(l ^ r);
-                        case HIROp::ShlI32: return builder_.createInt32Constant(static_cast<int32_t>(ul << (r & 31)));
-                        case HIROp::ShrI32: return builder_.createInt32Constant(l >> (r & 31)); // 算术右移保留符号位
+                        case HIROp::ShlI32: 
+                            if (r >= 0 && r < 31) {
+                                int64_t res = static_cast<int64_t>(l) << r;
+                                if (res >= INT32_MIN && res <= INT32_MAX) {
+                                    return builder_.createInt32Constant(static_cast<int32_t>(res));
+                                }
+                            }
+                            break; // 溢出或负数移位交由运行时处理
+                        case HIROp::ShrI32: 
+                            if (r >= 0) {
+                                if (r < 31) return builder_.createInt32Constant(l >> r);
+                                else return builder_.createInt32Constant(l < 0 ? -1 : 0);
+                            }
+                            break;
                         default: break;
                     }
                 }

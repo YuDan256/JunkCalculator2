@@ -436,8 +436,8 @@ public:
                             else if (op == OpCode::SUB) opNode = builder_.createSubI32(unboxL, unboxR, fs);
                             else if (op == OpCode::MUL) opNode = builder_.createMulI32(unboxL, unboxR, fs);
                             else if (op == OpCode::DIV) opNode = builder_.createDivI32(unboxL, unboxR, fs);
-                            else if (op == OpCode::IDIV) opNode = builder_.createIDivI32(unboxL, unboxR);
-                            else if (op == OpCode::MOD) opNode = builder_.createModI32(unboxL, unboxR);
+                            else if (op == OpCode::IDIV) opNode = builder_.createIDivI32(unboxL, unboxR, fs);
+                            else if (op == OpCode::MOD) opNode = builder_.createModI32(unboxL, unboxR, fs);
                             
                             setLocalSync(a, builder_.createBoxInt32(opNode));
                             
@@ -494,8 +494,8 @@ public:
                             if (op == OpCode::BAND) opNode = builder_.createBitAndI32(unboxL, unboxR);
                             else if (op == OpCode::BOR) opNode = builder_.createBitOrI32(unboxL, unboxR);
                             else if (op == OpCode::BXOR) opNode = builder_.createBitXorI32(unboxL, unboxR);
-                            else if (op == OpCode::SHL) opNode = builder_.createShlI32(unboxL, unboxR);
-                            else if (op == OpCode::SHR) opNode = builder_.createShrI32(unboxL, unboxR);
+                            else if (op == OpCode::SHL) opNode = builder_.createShlI32(unboxL, unboxR, fs);
+                            else if (op == OpCode::SHR) opNode = builder_.createShrI32(unboxL, unboxR, fs);
                             
                             setLocalSync(a, builder_.createBoxInt32(opNode));
                         } else {

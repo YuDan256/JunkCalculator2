@@ -158,8 +158,6 @@ enum class HIROp : uint16_t {
     StoreGlobal,
     LoadField,
     StoreField,
-    LoadElement,
-    StoreElement,
     LoadRegister,
     StoreRegister,
 
@@ -257,8 +255,6 @@ inline std::string to_string(HIROp op) {
         case HIROp::StoreGlobal: return "StoreGlobal";
         case HIROp::LoadField: return "LoadField";
         case HIROp::StoreField: return "StoreField";
-        case HIROp::LoadElement: return "LoadElement";
-        case HIROp::StoreElement: return "StoreElement";
         case HIROp::LoadRegister: return "LoadRegister";
         case HIROp::StoreRegister: return "StoreRegister";
         case HIROp::Call: return "Call";

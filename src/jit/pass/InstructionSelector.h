@@ -143,7 +143,7 @@ private:
 
     void attachFrameState(LIRInst* inst, FrameStateNode* fs) {
         if (!fs) return;
-        inst->setBailoutId(fs->bailoutId());
+        inst->setBailoutId(fs->bailoutId(), fs->ip());
         for (size_t i = 0; i < fs->inputs().size(); ++i) {
             HIRNode* val = fs->inputs()[i];
             if (val) {
@@ -544,42 +544,6 @@ private:
                 }
                 break;
             }
-            case HIROp::LoadElement: {
-                LIROperand array = getOperand(node->inputs()[2]);
-                LIROperand index = getOperand(node->inputs()[3]);
-                std::vector<std::pair<LIROperand, LIRConstraint>> uses = {
-                    {array, LIRConstraint::none()},
-                    {index, LIRConstraint::none()}
-                };
-                std::vector<std::pair<LIROperand, LIRConstraint>> defs;
-                if (!out.isInvalid()) {
-                    defs.push_back({out, LIRConstraint::fixedReg(rax.id())});
-                }
-                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, defs, uses);
-                inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_load_element));
-                inst->setArgc(2);
-                if (node->inputs().size() > 4 && node->inputs()[4]) {
-                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[4]));
-                }
-                break;
-            }
-            case HIROp::StoreElement: {
-                LIROperand array = getOperand(node->inputs()[2]);
-                LIROperand index = getOperand(node->inputs()[3]);
-                LIROperand val = getOperand(node->inputs()[4]);
-                std::vector<std::pair<LIROperand, LIRConstraint>> uses = {
-                    {array, LIRConstraint::none()},
-                    {index, LIRConstraint::none()},
-                    {val, LIRConstraint::none()}
-                };
-                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
-                inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_store_element));
-                inst->setArgc(3);
-                if (node->inputs().size() > 5 && node->inputs()[5]) {
-                    attachFrameState(inst, static_cast<FrameStateNode*>(node->inputs()[5]));
-                }
-                break;
-            }
             case HIROp::UnboxInt32: {
                 LIROperand inVal = getOperand(node->inputs()[1]);
                 if (!inVal.isInvalid() && !out.isInvalid()) {
@@ -663,6 +627,14 @@ private:
                 for (uint32_t i = 0; i < n->argc(); ++i) {
                     LIROperand argOp = getOperand(n->arg(i));
                     uses.push_back({argOp, LIRConstraint::none()});
+                }
+                
+                // 将额外的 inputs 加入 uses 列表，强制延长其生命周期，确保 Eager Sync 读取安全
+                for (size_t i = 3 + n->argc(); i < n->inputs().size(); ++i) {
+                    LIROperand extraOp = getOperand(n->inputs()[i]);
+                    if (!extraOp.isInvalid()) {
+                        uses.push_back({extraOp, LIRConstraint::none()});
+                    }
                 }
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> defs;

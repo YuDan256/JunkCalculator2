@@ -388,16 +388,9 @@ public:
         for (size_t i = 0; i < registers_.size(); ++i) {
             HIRNode* reg = registers_[i];
             if (reg) {
-                if (reg->opcode() == HIROp::LoadRegister) {
-                    auto loadReg = static_cast<RegisterAccessNode*>(reg);
-                    if (loadReg->regIndex() == static_cast<int>(i)) {
-                        fs->addInput(nullptr);
-                    } else {
-                        fs->addInput(reg);
-                    }
-                } else {
-                    fs->addInput(reg);
-                }
+                // 修复：即使是 LoadRegister，只要它被加入 FrameState，就必须作为真实 input 存在，
+                // 否则 DCE 可能会将其消除，导致 Eager Sync 时无法刷回正确的物理寄存器值。
+                fs->addInput(reg);
             } else {
                 fs->addInput(nullptr);
             }
@@ -541,28 +534,6 @@ public:
         node->addInput(object);
         node->addInput(offset);
         node->addInput(value);
-        currentEffect_ = node;
-        return node;
-    }
-
-    HIRNode* createLoadElement(HIRNode* array, HIRNode* index, FrameStateNode* fs = nullptr) {
-        auto node = graph_->allocateNode<HIRNode>(HIROp::LoadElement, JITType::TaggedValue);
-        node->addInput(currentControl_);
-        node->addInput(currentEffect_);
-        node->addInput(array);
-        node->addInput(index);
-        if (fs) node->addInput(fs);
-        return node;
-    }
-
-    HIRNode* createStoreElement(HIRNode* array, HIRNode* index, HIRNode* value, FrameStateNode* fs = nullptr) {
-        auto node = graph_->allocateNode<HIRNode>(HIROp::StoreElement, JITType::Effect);
-        node->addInput(currentControl_);
-        node->addInput(currentEffect_);
-        node->addInput(array);
-        node->addInput(index);
-        node->addInput(value);
-        if (fs) node->addInput(fs);
         currentEffect_ = node;
         return node;
     }

@@ -68,7 +68,7 @@ private:
         if (!inst->hasBailoutId()) return;
         StackMap map;
         map.bailoutId = inst->bailoutId();
-        map.bytecodeIp = inst->bailoutId();
+        map.bytecodeIp = inst->bytecodeIp();
         for (const auto& fsUse : inst->fsUses()) {
             StackMapSlot slot;
             slot.location = fsUse.first;
@@ -136,7 +136,8 @@ private:
                 } else if (dst.isPhysicalGPR() && src.isImm64()) {
                     masm_.movabs(dst.pregGPR(), src.imm64());
                 } else if (dst.isStackSlot() && src.isImm32()) {
-                    masm_.mov(getStackOperand(dst.slot()), src.imm32());
+                    masm_.mov(r11, src.imm32());
+                    masm_.movq(getStackOperand(dst.slot()), r11);
                 } else if (dst.isStackSlot() && src.isImm64()) {
                     masm_.movabs(r11, src.imm64());
                     masm_.movq(getStackOperand(dst.slot()), r11);
@@ -172,7 +173,8 @@ private:
                     } else if (dst.isPhysicalGPR() && src.isImm64()) {
                         masm_.movabs(dst.pregGPR(), src.imm64());
                     } else if (dst.isStackSlot() && src.isImm32()) {
-                        masm_.mov(getStackOperand(dst.slot()), src.imm32());
+                        masm_.mov(r11, src.imm32());
+                        masm_.movq(getStackOperand(dst.slot()), r11);
                     } else if (dst.isStackSlot() && src.isImm64()) {
                         masm_.movabs(r11, src.imm64());
                         masm_.movq(getStackOperand(dst.slot()), r11);
@@ -272,7 +274,8 @@ private:
                 if (dst.isPhysicalGPR()) {
                     masm_.mov(dst.pregGPR(), src.imm32());
                 } else if (dst.isStackSlot()) {
-                    masm_.mov(getStackOperand(dst.slot()), src.imm32());
+                    masm_.mov(r11, src.imm32());
+                    masm_.movq(getStackOperand(dst.slot()), r11);
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported LoadImm32 destination.");
                 }
@@ -915,8 +918,10 @@ private:
                 masm_.shlq(r11, 16);
                 masm_.sarq(r11, 16);
                 
-                // 3. Check ObjType == STRING (1)
-                masm_.cmp(Operand(r11, 4), 1);
+                // 3. Check ObjType == STRING (0)
+                Obj dummyObj;
+                int32_t typeOffset = static_cast<int32_t>(reinterpret_cast<char*>(&dummyObj.type) - reinterpret_cast<char*>(&dummyObj));
+                masm_.cmp(Operand(r11, typeOffset), static_cast<int32_t>(ObjType::STRING));
                 Label isString;
                 masm_.jcc(Condition::Equal, isString);
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
@@ -954,7 +959,7 @@ private:
                 masm_.movq(rdi, val.pregGPR());
 #endif
                 masm_.callCFunction(reinterpret_cast<void*>(jc2_jit_truthy));
-                masm_.movq(r11, rax);
+                masm_.movq(Operand(rsp, 216), rax); // Overwrite saved r11 on stack
                 masm_.emitPopAll();
 
                 masm_.test(r11, r11);
@@ -998,8 +1003,8 @@ private:
                 masm_.shlq(r11, 16);
                 masm_.sarq(r11, 16);
                 
-                // 3. 检查 ObjType 是否为 INSTANCE (枚举值 14)
-                masm_.cmp(Operand(r11, typeOffset), 14);
+                // 3. 检查 ObjType 是否为 INSTANCE
+                masm_.cmp(Operand(r11, typeOffset), static_cast<int32_t>(ObjType::INSTANCE));
                 Label isInst;
                 masm_.jcc(Condition::Equal, isInst);
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
@@ -1137,6 +1142,9 @@ private:
                             masm_.movq(Operand(rsp, i * 8), arg.pregGPR());
                         } else if (arg.isStackSlot()) {
                             masm_.movq(r11, getStackOperand(arg.slot()));
+                            masm_.movq(Operand(rsp, i * 8), r11);
+                        } else if (arg.isImm32()) {
+                            masm_.mov(r11, arg.imm32());
                             masm_.movq(Operand(rsp, i * 8), r11);
                         } else if (arg.isImm64()) {
                             masm_.movabs(r11, arg.imm64());

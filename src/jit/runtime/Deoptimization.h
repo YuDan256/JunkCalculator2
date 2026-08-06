@@ -24,7 +24,7 @@ struct SavedRegisters {
 // 栈图槽位：描述一个虚拟寄存器在去优化时的物理位置和类型
 struct StackMapSlot {
     LIROperand location; // 物理位置 (PhysicalGPR, PhysicalXMM, StackSlot, Constant)
-    JITType type;        // 数据类型 (用于决定如何装箱)
+    JITType type = JITType::Unknown; // 数据类型 (用于决定如何装箱)
 };
 
 // 栈图：描述一个 BailoutId 对应的解释器状态
@@ -55,8 +55,8 @@ private:
     std::unordered_map<uint32_t, StackMap> maps_;
 };
 
-inline thread_local bool g_jc2_jit_deoptimized = false;
-inline thread_local uint32_t g_jit_pending_exception = 0;
+inline bool g_jc2_jit_deoptimized = false;
+inline uint32_t g_jit_pending_exception = 0;
 
 // 主动同步运行时函数 (Eager Sync)
 // 由汇编跳板调用，负责将 JIT 物理寄存器状态安全地刷回解释器，触发正确的引用计数

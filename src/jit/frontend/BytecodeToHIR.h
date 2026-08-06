@@ -7,6 +7,7 @@
 #include "../../vm/VM.h"
 #include <vector>
 #include <stdexcept>
+#include <atomic>
 
 namespace jc {
 namespace jit {
@@ -18,6 +19,12 @@ class BytecodeToHIR {
 public:
     BytecodeToHIR(const Chunk& chunk, HIRBuilder& builder, int maxRegs, int inlineDepth = 0, int registerOffset = 0)
         : chunk_(chunk), builder_(builder), maxRegs_(maxRegs), inlineDepth_(inlineDepth), registerOffset_(registerOffset) {}
+
+    FrameStateNode* captureFrameState(int currentIp) {
+        static std::atomic<uint32_t> nextBailoutId{1};
+        uint32_t bailoutId = nextBailoutId.fetch_add(1, std::memory_order_relaxed);
+        return builder_.captureFrameState(bailoutId, currentIp);
+    }
 
     void setOSRMode(int loopHeaderIp) {
         isOSR_ = true;
@@ -233,13 +240,13 @@ public:
                         HIRNode* condNode = nullptr;
                         
                         if (fb == 0x01) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guard = builder_.createGuardIsInt32(val, fs);
                             auto unbox = builder_.createUnboxInt32(val, guard);
                             auto zero = builder_.createInt32Constant(0);
                             condNode = builder_.createCmpNeqI32(unbox, zero);
                         } else if (fb == 0x08) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guard = builder_.createGuardIsBool(val, fs);
                             condNode = builder_.createUnboxBool(val, guard);
                         } else {
@@ -377,22 +384,31 @@ public:
                             setLocalSync(a, node);
                             regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
                         } else {
-                            throw std::runtime_error("JIT Error: Unresolved global variable.");
+                            auto fs = captureFrameState(currentIp);
+                            auto icIdxNode = builder_.createInt32Constant(bx);
+                            auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                            auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_global), JITType::TaggedValue, 2, {icIdxNode, chunkNode}, fs);
+                            setLocalSync(a, callout);
+                            regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
                         }
                         break;
                     }
                     case OpCode::SET_GLOBAL: {
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[bx]);
+                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                        if (val->type() != JITType::TaggedValue) {
+                            if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
+                            else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
+                            else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
+                        }
                         if (ic.cachedGlobalSlot >= 0) {
-                            HIRNode* val = builder_.getLocal(registerOffset_ + a);
-                            if (val->type() != JITType::TaggedValue) {
-                                if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
-                                else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
-                                else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
-                            }
                             builder_.createStoreGlobal(ic.cachedGlobalSlot, val);
                         } else {
-                            throw std::runtime_error("JIT Error: Unresolved global variable.");
+                            auto fs = captureFrameState(currentIp);
+                            auto icIdxNode = builder_.createInt32Constant(bx);
+                            auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                            auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_global), JITType::Unknown, 3, {icIdxNode, val, chunkNode}, fs);
+                            builder_.setCurrentEffect(callout);
                         }
                         break;
                     }
@@ -409,7 +425,7 @@ public:
                         HIRNode* rhs = getRKNode(c);
                         
                         if (fb == 0x01 && op != OpCode::POW && op != OpCode::LDIV) { // Monomorphic Int32 (纯 32 位整数)
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guardL = builder_.createGuardIsInt32(lhs, fs);
                             auto guardR = builder_.createGuardIsInt32(rhs, fs);
                             auto unboxL = builder_.createUnboxInt32(lhs, guardL);
@@ -426,7 +442,7 @@ public:
                             setLocalSync(a, builder_.createBoxInt32(opNode));
                             
                         } else if (fb == 0x02 && op != OpCode::POW && op != OpCode::LDIV) { // Monomorphic Double (纯 64 位浮点数)
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guardL = builder_.createGuardIsDouble(lhs, fs);
                             auto guardR = builder_.createGuardIsDouble(rhs, fs);
                             auto unboxL = builder_.createUnboxDouble(lhs, guardL);
@@ -442,7 +458,7 @@ public:
                             
                             setLocalSync(a, builder_.createBoxDouble(opNode));
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             void* fnPtr = nullptr;
                             if (op == OpCode::ADD) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_add);
                             else if (op == OpCode::SUB) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_sub);
@@ -468,7 +484,7 @@ public:
                         HIRNode* rhs = getRKNode(c);
                         
                         if (fb == 0x01) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guardL = builder_.createGuardIsInt32(lhs, fs);
                             auto guardR = builder_.createGuardIsInt32(rhs, fs);
                             auto unboxL = builder_.createUnboxInt32(lhs, guardL);
@@ -483,7 +499,7 @@ public:
                             
                             setLocalSync(a, builder_.createBoxInt32(opNode));
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             void* fnPtr = nullptr;
                             if (op == OpCode::BAND) fnPtr = reinterpret_cast<void*>(jc2_jit_bitwise_and);
                             else if (op == OpCode::BOR) fnPtr = reinterpret_cast<void*>(jc2_jit_bitwise_or);
@@ -508,7 +524,7 @@ public:
                         HIRNode* rhs = getRKNode(c);
                         
                         if (fb == 0x01) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guardL = builder_.createGuardIsInt32(lhs, fs);
                             auto guardR = builder_.createGuardIsInt32(rhs, fs);
                             auto unboxL = builder_.createUnboxInt32(lhs, guardL);
@@ -524,7 +540,7 @@ public:
                             
                             setLocalSync(a, builder_.createBoxBool(opNode));
                         } else if (fb == 0x02) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guardL = builder_.createGuardIsDouble(lhs, fs);
                             auto guardR = builder_.createGuardIsDouble(rhs, fs);
                             auto unboxL = builder_.createUnboxDouble(lhs, guardL);
@@ -543,7 +559,7 @@ public:
                         } else if (op == OpCode::IS) {
                             setLocalSync(a, builder_.createBoxBool(builder_.createCmpEqTagged(lhs, rhs)));
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             void* fnPtr = nullptr;
                             if (op == OpCode::EQ) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_eq);
                             else if (op == OpCode::NEQ) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_neq);
@@ -565,7 +581,7 @@ public:
                         HIRNode* val = builder_.getLocal(registerOffset_ + b);
                         
                         if (fb == 0x01) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guard = builder_.createGuardIsInt32(val, fs);
                             auto unbox = builder_.createUnboxInt32(val, guard);
                             
@@ -581,12 +597,12 @@ public:
                                 setLocalSync(a, builder_.createBoxBool(builder_.createCmpNeqI32(unbox, zero)));
                             }
                         } else if (fb == 0x02 && op == OpCode::UNM) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guard = builder_.createGuardIsDouble(val, fs);
                             auto unbox = builder_.createUnboxDouble(val, guard);
                             setLocalSync(a, builder_.createBoxDouble(builder_.createNegF64(unbox)));
                         } else if (fb == 0x08 && (op == OpCode::NOT || op == OpCode::TO_BOOL)) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto guard = builder_.createGuardIsBool(val, fs);
                             auto unbox = builder_.createUnboxBool(val, guard);
                             if (op == OpCode::NOT) {
@@ -596,7 +612,7 @@ public:
                                 setLocalSync(a, val);
                             }
                         } else if (op == OpCode::UNM || op == OpCode::BNOT) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             void* fnPtr = (op == OpCode::UNM) ? reinterpret_cast<void*>(jc2_jit_unary_unm) : reinterpret_cast<void*>(jc2_jit_unary_bnot);
                             auto callout = builder_.createCallout(fnPtr, JITType::TaggedValue, 1, {getBoxedRKNode(b)}, fs);
                             setLocalSync(a, callout);
@@ -623,31 +639,38 @@ public:
                     }
                     case OpCode::GET_PROP: {
                         InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[c]);
-                        if (ic.cachedClassId != 0 && ic.cachedFieldIndex >= 0) {
-                            HIRNode* obj = getBoxedRKNode(b);
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
-                            builder_.createGuardIsClass(obj, fs, ic.cachedClassId);
-                            auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
-                            auto loadField = builder_.createLoadField(obj, offset);
-                            setLocalSync(a, loadField);
-                            regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
-                        } else {
-                            throw std::runtime_error("JIT Error: Unresolved property access.");
-                        }
+                        auto fs = captureFrameState(currentIp);
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto icIdxNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_prop), JITType::TaggedValue, 3, {objRegNode, icIdxNode, chunkNode}, fs);
+                        callout->addInput(getBoxedRKNode(b));
+                        setLocalSync(a, callout);
+                        regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
+                        break;
+                    }
+                    case OpCode::TRY_GET_PROP: {
+                        InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[c]);
+                        auto fs = captureFrameState(currentIp);
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto icIdxNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_try_get_prop), JITType::TaggedValue, 3, {objRegNode, icIdxNode, chunkNode}, fs);
+                        callout->addInput(getBoxedRKNode(b));
+                        setLocalSync(a, callout);
+                        regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
                         break;
                     }
                     case OpCode::SET_PROP: {
-                        InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[b]);
-                        if (ic.cachedClassId != 0 && ic.cachedFieldIndex >= 0) {
-                            HIRNode* obj = getBoxedRKNode(a);
-                            HIRNode* val = getBoxedRKNode(c);
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
-                            builder_.createGuardIsClass(obj, fs, ic.cachedClassId);
-                            auto offset = builder_.createInt32Constant(ic.cachedFieldIndex);
-                            builder_.createStoreField(obj, offset, val);
-                        } else {
-                            throw std::runtime_error("JIT Error: Unresolved property access.");
-                        }
+                        auto fs = captureFrameState(currentIp);
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + a);
+                        auto valRegNode = builder_.createInt32Constant(registerOffset_ + c);
+                        auto icIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_prop), JITType::Unknown, 4, {objRegNode, valRegNode, icIdxNode, chunkNode}, fs);
+                        callout->addInput(getBoxedRKNode(a));
+                        callout->addInput(getBoxedRKNode(c));
+                        builder_.setCurrentEffect(callout);
                         break;
                     }
                     case OpCode::JMP_TRUE:
@@ -661,7 +684,7 @@ public:
                         break;
 
                     case OpCode::BUILD_LIST: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_list), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
@@ -670,7 +693,7 @@ public:
                         break;
                     }
                     case OpCode::BUILD_DICT: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_dict), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
@@ -679,7 +702,7 @@ public:
                         break;
                     }
                     case OpCode::BUILD_SET: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_set), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
@@ -687,8 +710,36 @@ public:
                         setLocalSync(a, callout);
                         break;
                     }
+                    case OpCode::INDEX_GET: {
+                        bool noThrow = (c & 0x80) != 0;
+                        int dims = c & 0x7F;
+                        auto fs = captureFrameState(currentIp);
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto argsRegNode = builder_.createInt32Constant(registerOffset_ + b + 1);
+                        auto dimsNode = builder_.createInt32Constant(dims);
+                        auto noThrowNode = builder_.createInt32Constant(noThrow ? 1 : 0);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_get), JITType::TaggedValue, 4, {objRegNode, argsRegNode, dimsNode, noThrowNode}, fs);
+                        callout->addInput(getBoxedRKNode(b));
+                        for (int i = 0; i < dims; ++i) callout->addInput(getBoxedRKNode(b + 1 + i));
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::INDEX_SET: {
+                        int dims = c;
+                        auto fs = captureFrameState(currentIp);
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + a);
+                        auto argsRegNode = builder_.createInt32Constant(registerOffset_ + a + 1);
+                        auto dimsNode = builder_.createInt32Constant(dims);
+                        auto valRegNode = builder_.createInt32Constant(registerOffset_ + a + c + 1);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_set), JITType::Unknown, 4, {objRegNode, argsRegNode, dimsNode, valRegNode}, fs);
+                        callout->addInput(getBoxedRKNode(a));
+                        for (int i = 0; i < dims; ++i) callout->addInput(getBoxedRKNode(a + 1 + i));
+                        callout->addInput(getBoxedRKNode(a + c + 1));
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
                     case OpCode::BUILD_MATRIX: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto shapeIdxNode = builder_.createInt32Constant(c);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
@@ -703,7 +754,7 @@ public:
                         break;
                     }
                     case OpCode::BUILD_SLICE: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_slice), JITType::TaggedValue, 1, {startRegNode}, fs);
                         for (int i = 0; i < 3; ++i) callout->addInput(getBoxedRKNode(b + i));
@@ -711,7 +762,7 @@ public:
                         break;
                     }
                     case OpCode::CLASS: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto nameIdxNode = builder_.createInt32Constant(bx);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_class), JITType::TaggedValue, 2, {nameIdxNode, chunkNode}, fs);
@@ -719,7 +770,7 @@ public:
                         break;
                     }
                     case OpCode::BUILD_NAMESPACE: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + a + 1);
                         auto countNode = builder_.createInt32Constant(c);
                         auto nameIdxNode = builder_.createInt32Constant(b);
@@ -731,7 +782,7 @@ public:
                         break;
                     }
                     case OpCode::CONCAT_STRINGS: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_concat_strings), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
@@ -740,7 +791,7 @@ public:
                         break;
                     }
                     case OpCode::FORMAT_STRING: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto valRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto specIdxNode = builder_.createInt32Constant(c);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
@@ -750,7 +801,7 @@ public:
                         break;
                     }
                     case OpCode::DICT_REST: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto objRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto excludeKeysRegNode = builder_.createInt32Constant(registerOffset_ + c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_rest), JITType::TaggedValue, 2, {objRegNode, excludeKeysRegNode}, fs);
@@ -760,13 +811,13 @@ public:
                         break;
                     }
                     case OpCode::DICT_INIT: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_init), JITType::TaggedValue, 0, {}, fs);
                         setLocalSync(a, callout);
                         break;
                     }
                     case OpCode::DICT_APPEND: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         auto dictRegNode = builder_.createInt32Constant(registerOffset_ + a);
                         auto keyRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto valRegNode = builder_.createInt32Constant(registerOffset_ + c);
@@ -778,7 +829,7 @@ public:
                         break;
                     }
                     case OpCode::CLOSURE: {
-                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto fs = captureFrameState(currentIp);
                         int fnIdx = static_cast<int>(std::round(chunk_.constants[bx].asDouble()));
                         auto fnIdxNode = builder_.createInt32Constant(fnIdx);
                         auto offsetNode = builder_.createInt32Constant(registerOffset_);
@@ -847,7 +898,7 @@ public:
                         // Step 69: 结合 Profiling 数据，如果参数为 Double，则将内置函数调用直接替换为对应的 HIR 数学节点。
                         // Step 70: 仅对语义安全的函数（如 sqrtD, sin）实现 Int32 -> Double 的自动类型提升。
                         if (isMathIntrinsic && c == 1 && (fb == 0x02 || (fb == 0x01 && allowInt32Promotion))) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             HIRNode* unbox = nullptr;
                             if (fb == 0x02) {
                                 auto guard = builder_.createGuardIsDouble(args[0], fs);
@@ -871,7 +922,7 @@ public:
                                 builder_.createReturn(boxedRes);
                             }
                         } else if (isMathIntrinsic) {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto callNode = builder_.createCallBuiltin(callee, c, args, fs);
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, callNode);
@@ -889,7 +940,7 @@ public:
                                 builder_.createReturn(inlineRes);
                             }
                         } else {
-                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto fs = captureFrameState(currentIp);
                             auto callNode = builder_.createCall(callee, c, args, fs);
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, callNode);
@@ -897,6 +948,95 @@ public:
                                 builder_.createReturn(callNode);
                             }
                         }
+                        break;
+                    }
+                    case OpCode::INVOKE:
+                    case OpCode::TAIL_INVOKE:
+                    case OpCode::INVOKE_PRIVATE:
+                    case OpCode::TAIL_INVOKE_PRIVATE:
+                    case OpCode::INVOKE_FALLBACK:
+                    case OpCode::TAIL_INVOKE_FALLBACK: {
+                        auto fs = captureFrameState(currentIp);
+                        
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + a);
+                        auto argcNode = builder_.createInt32Constant(b);
+                        auto icIdxNode = builder_.createInt32Constant(c);
+                        
+                        int isPrivate = (op == OpCode::INVOKE_PRIVATE || op == OpCode::TAIL_INVOKE_PRIVATE) ? 1 : 0;
+                        int fbType = (op == OpCode::INVOKE_FALLBACK || op == OpCode::TAIL_INVOKE_FALLBACK) ? 1 : -1;
+                        
+                        auto isPrivateNode = builder_.createInt32Constant(isPrivate);
+                        auto fbTypeNode = builder_.createInt32Constant(fbType);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_invoke), JITType::TaggedValue, 6, {objRegNode, argcNode, icIdxNode, isPrivateNode, fbTypeNode, chunkNode}, fs);
+                        
+                        callout->addInput(getBoxedRKNode(a));
+                        for (int i = 0; i < b; ++i) {
+                            callout->addInput(getBoxedRKNode(a + 1 + i));
+                        }
+                        if (fbType == 1) {
+                            callout->addInput(getBoxedRKNode(a + 1 + b)); // fallback value
+                        }
+                        
+                        if (op == OpCode::INVOKE || op == OpCode::INVOKE_PRIVATE || op == OpCode::INVOKE_FALLBACK) {
+                            setLocalSync(a, callout);
+                        } else {
+                            builder_.createReturn(callout);
+                        }
+                        break;
+                    }
+                    case OpCode::SUPER_INVOKE:
+                    case OpCode::TAIL_SUPER_INVOKE: {
+                        auto fs = captureFrameState(currentIp);
+                        
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + a);
+                        auto argcNode = builder_.createInt32Constant(b);
+                        auto nameIdxNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_super_invoke), JITType::TaggedValue, 4, {objRegNode, argcNode, nameIdxNode, chunkNode}, fs);
+                        
+                        callout->addInput(getBoxedRKNode(a));
+                        for (int i = 0; i < b; ++i) {
+                            callout->addInput(getBoxedRKNode(a + 1 + i));
+                        }
+                        
+                        if (op == OpCode::SUPER_INVOKE) {
+                            setLocalSync(a, callout);
+                        } else {
+                            builder_.createReturn(callout);
+                        }
+                        break;
+                    }
+                    case OpCode::GET_SUPER: {
+                        auto fs = captureFrameState(currentIp);
+                        auto objRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto nameIdxNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_super), JITType::TaggedValue, 3, {objRegNode, nameIdxNode, chunkNode}, fs);
+                        callout->addInput(getBoxedRKNode(b));
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::GET_REF_PARAM: {
+                        auto fs = captureFrameState(currentIp);
+                        auto bxNode = builder_.createInt32Constant(bx);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_ref_param), JITType::TaggedValue, 1, {bxNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::SET_REF_PARAM: {
+                        auto fs = captureFrameState(currentIp);
+                        auto bxNode = builder_.createInt32Constant(bx);
+                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                        if (val->type() != JITType::TaggedValue) {
+                            if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
+                            else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
+                            else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
+                        }
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_ref_param), JITType::Unknown, 2, {bxNode, val}, fs);
+                        builder_.setCurrentEffect(callout);
                         break;
                     }
                     default:
@@ -984,20 +1124,11 @@ private:
     static constexpr size_t MAX_INLINE_INSTS = 50;
 
     bool shouldInline(const CompiledFunction* fn) const {
-        if (inlineDepth_ >= MAX_INLINE_DEPTH) return false;
-        if (!fn) return false;
-        if (fn->chunk.code.size() > MAX_INLINE_INSTS) return false;
-        
-        // Step 87: 调整内联启发式算法
-        // 拒绝内联包含异常处理或延迟执行的函数 (TRY_BEGIN, DEFER)
-        // 复杂指令 (如 BUILD_MATRIX, CLASS, CLOSURE) 现在已通过 Callout 支持，允许内联！
-        for (Instruction inst : fn->chunk.code) {
-            OpCode op = GET_OPCODE(inst);
-            if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER) {
-                return false;
-            }
-        }
-        return true;
+        (void)fn;
+        // 暂时完全禁用内联，直到实现完整的 Inline Deoptimization (CallFrame 重建)
+        // 否则内联函数内部的去优化会导致 IP 损坏和重复执行副作用。
+        // 此外，目前的内联器尚未正确映射 GET_REF_PARAM/SET_REF_PARAM 到调用方的实际参数。
+        return false;
     }
 
     BytecodeCFG cfg_;

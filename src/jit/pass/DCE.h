@@ -121,7 +121,6 @@ private:
             case HIROp::Deoptimize:
             case HIROp::StoreGlobal:
             case HIROp::StoreField:
-            case HIROp::StoreElement:
             case HIROp::StoreRegister:
             case HIROp::Call:
             case HIROp::CallNative:

@@ -52,7 +52,6 @@ private:
 
     Value* registers = nullptr;
     CallFrame* frames = nullptr;
-    int frameCount = 0;
 
     std::vector<Value> globals;
     std::unordered_map<std::string, uint32_t> globalNames;
@@ -85,6 +84,7 @@ private:
     ObjUpVal* captureUpvalue(int regIndex);
 
 public:
+    int frameCount = 0;
     ObjUpVal* captureUpvaluePublic(int regIndex) { return captureUpvalue(regIndex); }
 
 private:
@@ -126,7 +126,6 @@ private:
     void profileFrameStart(CallFrame* frame);
     void profileFrameEnd(CallFrame* frame);
 
-    Value run(int targetFrameDepth = 0);
     bool handleExceptionUnwind(Value* errValPtr);
     std::string buildStackTrace() const;
     Value wrapException(const std::string& type, Value val);
@@ -135,9 +134,12 @@ private:
     void execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall = false);
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
+    Value execImport(const std::string& name);
+
+public:
+    Value run(int targetFrameDepth = 0);
     void execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false);
     void execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall);
-    Value execImport(const std::string& name);
 
     void execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx);
     void execAssertReturnType(const Value& val);
@@ -299,6 +301,10 @@ uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count);
 uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk);
 uint64_t jc2_jit_build_slice(uint32_t startReg);
 uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_get_global(uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_set_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk);
+uint64_t jc2_jit_get_ref_param(uint32_t bx);
+void jc2_jit_set_ref_param(uint32_t bx, uint64_t val_bits);
 uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset);
 uint64_t jc2_jit_dict_init();
 void jc2_jit_dict_append(uint32_t dictReg, uint32_t keyReg, uint32_t valReg);
@@ -329,10 +335,14 @@ uint64_t jc2_jit_unary_bnot(uint64_t val_bits);
 
 // Dynamic Properties & Indexing (Step 94)
 uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
+uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
 void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk);
-uint64_t jc2_jit_load_element(uint64_t obj_bits, uint64_t idx_bits);
-void jc2_jit_store_element(uint64_t obj_bits, uint64_t idx_bits, uint64_t val_bits);
+uint64_t jc2_jit_index_get(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t noThrow);
+void jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t valReg);
 uint64_t jc2_jit_truthy(uint64_t val_bits);
+uint64_t jc2_jit_invoke(uint32_t objReg, uint32_t argc, uint32_t icIdx, uint32_t isPrivate, uint32_t fbType, const Chunk* chunk);
+uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_get_super(uint32_t objReg, uint32_t nameIdx, const Chunk* chunk);
 
 // Megamorphic Comparison Fallbacks (Step 91)
 uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits);

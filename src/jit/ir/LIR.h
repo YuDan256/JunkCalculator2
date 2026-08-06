@@ -269,8 +269,9 @@ public:
     class LIRBlock* target() const { return target_; }
 
     // 供 Deoptimize 使用
-    void setBailoutId(uint32_t id) { bailoutId_ = id; hasBailoutId_ = true; }
+    void setBailoutId(uint32_t id, uint32_t ip) { bailoutId_ = id; bytecodeIp_ = ip; hasBailoutId_ = true; }
     uint32_t bailoutId() const { return bailoutId_; }
+    uint32_t bytecodeIp() const { return bytecodeIp_; }
     bool hasBailoutId() const { return hasBailoutId_; }
 
     void addFsUse(const LIROperand& op, JITType type) { fsUses_.push_back({op, type}); }
@@ -300,6 +301,7 @@ private:
     Condition cond_ = Condition::Equal;
     class LIRBlock* target_ = nullptr;
     uint32_t bailoutId_ = 0;
+    uint32_t bytecodeIp_ = 0;
     bool hasBailoutId_ = false;
     void* functionPtr_ = nullptr;
     uint32_t argc_ = 0;

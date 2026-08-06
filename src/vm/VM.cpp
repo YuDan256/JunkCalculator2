@@ -69,8 +69,19 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
             return res.as_bits;
         } else if (cl->isNative()) {
-            auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
-            Value res = fn(args);
+            helpers::nativeSelfStack.push_back(cl->boundSelf);
+            helpers::nativeClassStack.push_back(cl->boundClass);
+            Value res;
+            try {
+                auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
+                res = fn(args);
+            } catch (...) {
+                helpers::nativeSelfStack.pop_back();
+                helpers::nativeClassStack.pop_back();
+                throw;
+            }
+            helpers::nativeSelfStack.pop_back();
+            helpers::nativeClassStack.pop_back();
             VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
             return res.as_bits;
         }
@@ -2798,6 +2809,7 @@ VM::VM() {
     GcHeap::get().isInitializing = true;
     registers = new Value[MAX_REGISTERS];
     frames = new CallFrame[MAX_FRAMES];
+    globals.reserve(65536); // 预分配足够的空间，确保 globals.data() 指针在 JIT 执行期间绝对稳定
     
     GcHeap::get().markCallback = [this]() {
         for (size_t i = 0; i < globals.size(); ++i) {
@@ -5468,7 +5480,7 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                         if (!found) {
-                            cls->properties[key] = { val, false, false };
+                            if (cls) cls->properties[key] = { val, false, false };
                         }
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 1D index set.");
@@ -6038,10 +6050,10 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST) {
                         fn->is_local = true;
                         fn->owner_class = cls;
-                        std::string mangledName = std::to_string(cls->classId) + "::" + methodName;
-                        cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true};
+                        std::string mangledName = std::to_string(cls ? cls->classId : 0) + "::" + methodName;
+                        if (cls) cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true};
                     } else {
-                        cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false};
+                        if (cls) cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false};
                     }
                 } else {
                     throw std::runtime_error("VM Error: Invalid closure type for method.");
@@ -6059,7 +6071,7 @@ Value VM::run(int targetFrameDepth) {
                 auto sub = static_cast<ObjClass*>(subClass.asObj());
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
                 
-                sub->parent = sup;
+                if (sub) sub->parent = sup;
                 break;
             }
             case OpCode::GET_PRIVATE: {
@@ -6956,7 +6968,7 @@ Value VM::run(int targetFrameDepth) {
                         std::string mangledName = std::to_string(cls->classId) + "::" + keyStr;
                         auto it = cls->properties.find(mangledName);
                         if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' already defined.");
-                        cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
+                        if (cls) cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
                     }
                 } else {
                     throw std::runtime_error("VM Error: Cannot set private property on this type.");
@@ -6993,7 +7005,7 @@ Value VM::run(int targetFrameDepth) {
                     if (it != cls->properties.end()) {
                         throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
                     }
-                    cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
+                    if (cls) cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
                 } else {
                     throw std::runtime_error("VM Error: Cannot define property on this type.");
                 }
@@ -7071,7 +7083,7 @@ Value VM::run(int targetFrameDepth) {
                         c_cls = c_cls->parent;
                     }
                     if (!found) {
-                        cls->properties[keyStr] = { val, false, false };
+                        if (cls) cls->properties[keyStr] = { val, false, false };
                     }
                 } else {
                     throw std::runtime_error("VM Error: Cannot set property on this type.");
@@ -8198,6 +8210,74 @@ void jc2_jit_dict_append(uint32_t dictReg, uint32_t keyReg, uint32_t valReg) {
     JIT_CALLOUT_CATCH_VOID
 }
 
+uint64_t jc2_jit_get_ref_param(uint32_t bx) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
+    Value res = *(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj())->location);
+    frame->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_set_ref_param(uint32_t bx, uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
+    Value val = Value::fromRawBits(val_bits);
+    *(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj())->location) = val;
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_set_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    const std::string& name = chunk->constants[ic.nameIdx].asString();
+    Value val = Value::fromRawBits(val_bits);
+    
+    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
+    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
+    if (name == "<enum>") throw std::runtime_error("Syntax Error: cannot override context keyword 'enum'.");
+    
+    vm->setGlobal(name, val);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_get_global(uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    const std::string& name = chunk->constants[ic.nameIdx].asString();
+    
+    if (name == "<class>") {
+        ic.cachedGlobalSlot = -2;
+        Value ctx = vm->getCurrentFrame()->classContext;
+        if (ctx.isNone()) throw std::runtime_error("VM Error: 'class' accessed outside of context.");
+        vm->getCurrentFrame()->jitReturnSlot = ctx;
+        return ctx.as_bits;
+    }
+    
+    Value val = vm->getGlobal(name);
+    if (!val.isNone()) {
+        vm->getCurrentFrame()->jitReturnSlot = val;
+        return val.as_bits;
+    }
+    
+    Value builtinVal = vm->getBuiltinValue(name);
+    if (builtinVal.isNone()) builtinVal = vm->getBuiltinClosure(name);
+    if (!builtinVal.isNone()) {
+        vm->setGlobal(name, builtinVal);
+        vm->getCurrentFrame()->jitReturnSlot = builtinVal;
+        return builtinVal.as_bits;
+    }
+    
+    throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+    JIT_CALLOUT_CATCH
+}
+
 uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
@@ -8750,125 +8830,1161 @@ uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_load_element(uint64_t obj_bits, uint64_t idx_bits) {
+uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value obj = Value::fromRawBits(obj_bits);
-    Value idx = Value::fromRawBits(idx_bits);
-    Value res;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
     
+    Value obj = regs[base + objReg];
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        auto it = inst->properties.find(keyVal.asString());
+        if (it != inst->properties.end() && !it->second.is_local) {
+            vm->getCurrentFrame()->jitReturnSlot = it->second.val;
+            return it->second.val.as_bits;
+        }
+    } else if (obj.isObjType(ObjType::DICT)) {
+        auto d = static_cast<ObjDict*>(obj.asObj());
+        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+            if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                vm->getCurrentFrame()->jitReturnSlot = d->elements[ic.cachedFieldIndex].second;
+                return d->elements[ic.cachedFieldIndex].second.as_bits;
+            }
+        }
+        auto it = d->keyMap.find(keyVal);
+        if (it != d->keyMap.end()) {
+            ic.cachedBuiltinType = BuiltinType::DICT;
+            ic.cachedFieldIndex = static_cast<int>(it->second);
+            vm->getCurrentFrame()->jitReturnSlot = d->elements[it->second].second;
+            return d->elements[it->second].second.as_bits;
+        }
+    }
+
+    const std::string& field = keyVal.asString();
+    bool found = false;
+    Value result;
+    
+    BuiltinType objBt = BuiltinType::UNKNOWN;
+    if (obj.isObjType(ObjType::LIST)) objBt = BuiltinType::LIST;
+    else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
+    else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
+    else if (obj.isString()) objBt = BuiltinType::STRING;
+    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+
+    if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
+        auto rawMethod = ic.cachedMethod;
+        auto bound = GcHeap::get().allocate<ObjClosure>(
+            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+        );
+        bound->paramNames = rawMethod->paramNames;
+        bound->isRef = rawMethod->isRef;
+        bound->defaultValues = rawMethod->defaultValues;
+        bound->hasRestParam = rawMethod->hasRestParam;
+        bound->compiledFnIndex = rawMethod->compiledFnIndex;
+        if (rawMethod->upvalueCount > 0) {
+            bound->upvalueCount = rawMethod->upvalueCount;
+            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+            for (int i = 0; i < bound->upvalueCount; ++i) {
+                bound->upvalues[i] = rawMethod->upvalues[i];
+            }
+        }
+        if (rawMethod->paramTypesCount > 0) {
+            bound->paramTypesCount = rawMethod->paramTypesCount;
+            bound->paramTypes = new Value[bound->paramTypesCount];
+            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                bound->paramTypes[i] = rawMethod->paramTypes[i];
+            }
+        }
+        bound->returnType = rawMethod->returnType;
+        bound->nativeFn = rawMethod->nativeFn;
+        bound->boundSelf = obj;
+        bound->boundClass = Value(ic.cachedClass);
+        result = Value(bound);
+        found = true;
+    } else if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
+            auto rawMethod = ic.cachedMethod;
+            auto bound = GcHeap::get().allocate<ObjClosure>(
+                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+            );
+            bound->paramNames = rawMethod->paramNames;
+            bound->isRef = rawMethod->isRef;
+            bound->defaultValues = rawMethod->defaultValues;
+            bound->hasRestParam = rawMethod->hasRestParam;
+            bound->compiledFnIndex = rawMethod->compiledFnIndex;
+            if (rawMethod->upvalueCount > 0) {
+                bound->upvalueCount = rawMethod->upvalueCount;
+                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                for (int i = 0; i < bound->upvalueCount; ++i) {
+                    bound->upvalues[i] = rawMethod->upvalues[i];
+                }
+            }
+            if (rawMethod->paramTypesCount > 0) {
+                bound->paramTypesCount = rawMethod->paramTypesCount;
+                bound->paramTypes = new Value[bound->paramTypesCount];
+                for (int i = 0; i < bound->paramTypesCount; ++i) {
+                    bound->paramTypes[i] = rawMethod->paramTypes[i];
+                }
+            }
+            bound->returnType = rawMethod->returnType;
+            bound->nativeFn = rawMethod->nativeFn;
+            bound->boundSelf = Value(inst);
+            bound->boundClass = Value(ic.cachedClass);
+            result = Value(bound);
+            found = true;
+        }
+        if (!found) {
+            auto cls = inst->classDef;
+            while (cls) {
+                auto it = cls->properties.find(field);
+                if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                    auto rawMethod = it->second.val.asFunction();
+                    ic.cachedClassId = inst->classDef->classId;
+                    ic.cachedMethod = rawMethod;
+                    ic.cachedClass = cls;
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->paramNames = rawMethod->paramNames;
+                    bound->isRef = rawMethod->isRef;
+                    bound->defaultValues = rawMethod->defaultValues;
+                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
+                    if (rawMethod->paramTypesCount > 0) {
+                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                        bound->paramTypes = new Value[bound->paramTypesCount];
+                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                        }
+                    }
+                    bound->returnType = rawMethod->returnType;
+                    bound->nativeFn = rawMethod->nativeFn;
+                    bound->boundSelf = Value(inst);
+                    bound->boundClass = Value(cls);
+                    result = Value(bound);
+                    found = true;
+                    break;
+                }
+                cls = cls->parent;
+            }
+            if (!found) {
+                auto [getattrMethod, owner] = vm->findDunder(obj, "__getattr__");
+                if (getattrMethod) {
+                    try {
+                        result = vm->callDunder(obj, getattrMethod, owner, {Value(field)});
+                        found = true;
+                    } catch (...) {
+                        found = false;
+                    }
+                }
+            }
+        }
+    } else if (!found) {
+        ObjClass* nativeProto = nullptr;
+        if (objBt == BuiltinType::LIST) nativeProto = vm->listProto;
+        else if (objBt == BuiltinType::DICT) nativeProto = vm->dictProto;
+        else if (objBt == BuiltinType::SET) nativeProto = vm->setProto;
+        else if (objBt == BuiltinType::STRING) nativeProto = vm->stringProto;
+        else if (objBt == BuiltinType::MATRIX) nativeProto = vm->matrixProto;
+
+        if (nativeProto) {
+            auto it = nativeProto->properties.find(field);
+            if (it != nativeProto->properties.end() && !it->second.is_local) {
+                if (it->second.val.isFunctionClosure()) {
+                    auto rawMethod = it->second.val.asFunction();
+                    ic.cachedBuiltinType = objBt;
+                    ic.cachedMethod = rawMethod;
+                    ic.cachedClass = nativeProto;
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->paramNames = rawMethod->paramNames;
+                    bound->isRef = rawMethod->isRef;
+                    bound->defaultValues = rawMethod->defaultValues;
+                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
+                    if (rawMethod->paramTypesCount > 0) {
+                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                        bound->paramTypes = new Value[bound->paramTypesCount];
+                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                        }
+                    }
+                    bound->returnType = rawMethod->returnType;
+                    bound->nativeFn = rawMethod->nativeFn;
+                    bound->boundSelf = obj;
+                    bound->boundClass = Value(nativeProto);
+                    result = Value(bound);
+                } else {
+                    result = it->second.val;
+                }
+                found = true;
+            }
+        }
+    }
+    
+    if (!found && obj.isObjType(ObjType::NAMESPACE)) {
+        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+        auto it = ns->fields.find(field);
+        if (it != ns->fields.end()) {
+            result = *(it->second.upval->location);
+            found = true;
+        }
+    } else if (!found && obj.isSlice()) {
+        Value prop = obj.asSlice()->getProperty(field);
+        if (!prop.isUninit()) {
+            result = prop;
+            found = true;
+        }
+    } else if (!found && obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        while (cls) {
+            auto it = cls->properties.find(field);
+            if (it != cls->properties.end() && !it->second.is_local) {
+                if (it->second.val.isFunctionClosure()) {
+                    auto rawMethod = it->second.val.asFunction();
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->paramNames = rawMethod->paramNames;
+                    bound->isRef = rawMethod->isRef;
+                    bound->defaultValues = rawMethod->defaultValues;
+                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
+                    if (rawMethod->paramTypesCount > 0) {
+                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                        bound->paramTypes = new Value[bound->paramTypesCount];
+                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                        }
+                    }
+                    bound->returnType = rawMethod->returnType;
+                    bound->nativeFn = rawMethod->nativeFn;
+                    bound->boundSelf = Value::none();
+                    bound->boundClass = Value(cls);
+                    result = Value(bound);
+                } else {
+                    result = it->second.val;
+                }
+                found = true;
+                break;
+            }
+            cls = cls->parent;
+        }
+    }
+    
+    if (!found) {
+        if (ic.cachedGlobalSlot == -4) {
+            auto bound = GcHeap::get().allocate<ObjClosure>(
+                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+            );
+            bound->boundSelf = obj;
+            
+            Value builtinClosureVal = vm->getBuiltinClosure(field);
+            ObjClosure* targetFn = builtinClosureVal.asFunction();
+            bound->paramNames = targetFn->paramNames;
+            bound->isRef = targetFn->isRef;
+            bound->defaultValues = targetFn->defaultValues;
+            bound->hasRestParam = targetFn->hasRestParam;
+            bound->isUFCS = true;
+
+            bound->nativeFn = ic.cachedNativeFn;
+            result = Value(bound);
+            found = true;
+        } else {
+            if (ic.cachedGlobalSlot >= 0) {
+                Value gVal = vm->getGlobal(field);
+                if (gVal.isFunctionClosure()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    ObjClosure* targetFn = gVal.asFunction();
+                
+                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->paramNames = targetFn->paramNames;
+                    bound->isRef = targetFn->isRef;
+                    bound->defaultValues = targetFn->defaultValues;
+                    bound->isUFCS = true;
+
+                    if (targetFn->isBytecode()) {
+                        bound->compiledFnIndex = targetFn->compiledFnIndex;
+                        if (targetFn->upvalueCount > 0) {
+                            bound->upvalueCount = targetFn->upvalueCount;
+                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                            for (int i = 0; i < bound->upvalueCount; ++i) {
+                                bound->upvalues[i] = targetFn->upvalues[i];
+                            }
+                        }
+                        if (targetFn->paramTypesCount > 0) {
+                            bound->paramTypesCount = targetFn->paramTypesCount;
+                            bound->paramTypes = new Value[bound->paramTypesCount];
+                            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                bound->paramTypes[i] = targetFn->paramTypes[i];
+                            }
+                        }
+                        bound->returnType = targetFn->returnType;
+                    } else {
+                        bound->boundClass = targetFn->boundClass;
+                    }
+                    bound->nativeFn = targetFn->nativeFn;
+                    result = Value(bound);
+                    found = true;
+                }
+            } else {
+                Value gVal = vm->getGlobal(field);
+                if (gVal.isFunctionClosure()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    ObjClosure* targetFn = gVal.asFunction();
+                
+                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->paramNames = targetFn->paramNames;
+                    bound->isRef = targetFn->isRef;
+                    bound->defaultValues = targetFn->defaultValues;
+                    bound->isUFCS = true;
+
+                    if (targetFn->isBytecode()) {
+                        bound->compiledFnIndex = targetFn->compiledFnIndex;
+                        if (targetFn->upvalueCount > 0) {
+                            bound->upvalueCount = targetFn->upvalueCount;
+                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                            for (int i = 0; i < bound->upvalueCount; ++i) {
+                                bound->upvalues[i] = targetFn->upvalues[i];
+                            }
+                        }
+                        if (targetFn->paramTypesCount > 0) {
+                            bound->paramTypesCount = targetFn->paramTypesCount;
+                            bound->paramTypes = new Value[bound->paramTypesCount];
+                            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                bound->paramTypes[i] = targetFn->paramTypes[i];
+                            }
+                        }
+                        bound->returnType = targetFn->returnType;
+                    } else {
+                        bound->boundClass = targetFn->boundClass;
+                    }
+                    bound->nativeFn = targetFn->nativeFn;
+                    result = Value(bound);
+                    found = true;
+                }
+            }
+
+            if (!found) {
+                const auto& nativeBuiltins = vm->getNativeBuiltins();
+                auto nIt = nativeBuiltins.find(field);
+                if (nIt != nativeBuiltins.end()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    
+                    Value builtinClosureVal = vm->getBuiltinClosure(field);
+                    ObjClosure* targetFn = builtinClosureVal.asFunction();
+                    bound->paramNames = targetFn->paramNames;
+                    bound->isRef = targetFn->isRef;
+                    bound->defaultValues = targetFn->defaultValues;
+                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->isUFCS = true;
+
+                    NativeCallable nativeFn = nIt->second;
+                    
+                    const auto& builtinArity = vm->getBuiltinArity();
+                    auto ait = builtinArity.find(field);
+                    std::set<int> allowedArities;
+                    if (ait != builtinArity.end()) allowedArities = ait->second;
+
+                    bound->nativeFn = std::make_any<NativeCallable>(
+                        [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
+                            Value capturedObj = helpers::nativeSelfStack.back();
+                            int totalArgs = static_cast<int>(args.size()) + 1;
+                            if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
+                                std::string expected;
+                                for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
+                                    if (aIt != allowedArities.begin()) expected += " or ";
+                                    expected += std::to_string(*aIt - 1);
+                                }
+                                throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                            }
+                            std::vector<Value> fullArgs;
+                            fullArgs.reserve(totalArgs);
+                            fullArgs.push_back(capturedObj);
+                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                            return nativeFn(fullArgs);
+                        }
+                    );
+                    
+                    ic.cachedGlobalSlot = -4;
+                    ic.cachedNativeFn = bound->nativeFn;
+                    
+                    result = Value(bound);
+                    found = true;
+                }
+            }
+        }
+    }
+
+    if (!found) {
+        result = Value::uninit();
+    }
+    
+    vm->getCurrentFrame()->jitReturnSlot = result;
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_index_get(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t noThrow) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
+
+    Value obj = regs[base + objReg];
+    std::vector<Value> args;
+    args.reserve(dims);
+    for (uint32_t i = 0; i < dims; ++i) {
+        args.push_back(regs[base + argsReg + i]);
+    }
+
+    Value result;
+
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
         auto [getitemMethod, owner] = vm->findDunder(obj, "__getitem__");
         if (getitemMethod) {
-            res = vm->callDunder(obj, getitemMethod, owner, {idx});
-        } else if (idx.isString()) {
-            std::string keyStr = idx.asString();
+            try {
+                result = vm->callDunder(obj, getitemMethod, owner, args);
+            } catch (...) {
+                if (noThrow) result = Value::uninit();
+                else throw;
+            }
+        } else if (dims == 1 && args[0].isString()) {
+            std::string keyStr = args[0].asString();
             if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
-                throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
-            }
-            auto it = inst->properties.find(keyStr);
-            if (it != inst->properties.end() && !it->second.is_local) {
-                res = it->second.val;
+                if (noThrow) result = Value::uninit();
+                else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
             } else {
-                throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
-            }
-        } else {
-            throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __getitem__.");
-        }
-    } else if (obj.isObjType(ObjType::LIST)) {
-        auto list = static_cast<ObjList*>(obj.asObj());
-        auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
-        if (!range.isSlice) res = list->vec[range.scalarIdx];
-        else {
-            ObjList* resList = GcHeap::get().allocate<ObjList>();
-            resList->vec.reserve(range.sliceInfo.count);
-            for (int i = 0; i < range.sliceInfo.count; ++i) {
-                resList->vec.push_back(list->vec[range.sliceInfo.start + i * range.sliceInfo.step]);
-            }
-            res = Value(resList);
-        }
-    } else if (obj.isString()) {
-        ObjString* objStr = obj.asObjString();
-        auto range = idx.parseIndex(static_cast<int>(objStr->charLength), false);
-        if (!range.isSlice) {
-            if (objStr->isAscii) {
-                char c_str[2] = { objStr->str[range.scalarIdx], '\0' };
-                res = Value(c_str);
-            } else {
-                res = Value(utf8::substring(objStr->str, range.scalarIdx, 1, objStr->isAscii));
-            }
-        } else {
-            std::string resStr;
-            if (objStr->isAscii) {
-                resStr.reserve(range.sliceInfo.count);
-                for (int i = 0; i < range.sliceInfo.count; ++i) {
-                    resStr += objStr->str[range.sliceInfo.start + i * range.sliceInfo.step];
+                ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                bool foundPrivate = false;
+                if (ctxOwner) {
+                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                    auto it = inst->properties.find(mangledName);
+                    if (it != inst->properties.end()) {
+                        result = it->second.val;
+                        foundPrivate = true;
+                    }
                 }
-            } else {
-                for (int i = 0; i < range.sliceInfo.count; ++i) {
-                    resStr += utf8::substring(objStr->str, range.sliceInfo.start + i * range.sliceInfo.step, 1, false);
+                if (!foundPrivate) {
+                    auto it = inst->properties.find(keyStr);
+                    if (it != inst->properties.end() && !it->second.is_local) {
+                        result = it->second.val;
+                    } else {
+                        if (noThrow) result = Value::uninit();
+                        else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
+                    }
                 }
             }
-            res = Value(resStr);
+        } else {
+            if (noThrow) result = Value::uninit();
+            else throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __getitem__.");
         }
-    } else if (obj.isObjType(ObjType::DICT)) {
-        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
-        auto dict = static_cast<ObjDict*>(obj.asObj());
-        auto it = dict->keyMap.find(idx);
-        if (it == dict->keyMap.end()) throw std::runtime_error("VM Error: Key not found.");
-        res = dict->elements[it->second].second;
+    } else if (dims == 1) {
+        Value idx = args[0];
+        if (obj.isObjType(ObjType::LIST)) {
+            auto list = static_cast<ObjList*>(obj.asObj());
+            auto range = idx.parseIndex(static_cast<int>(list->vec.size()), noThrow != 0);
+            if (!range.isSlice && range.scalarIdx == -1) result = Value::uninit();
+            else if (!range.isSlice) result = list->vec[range.scalarIdx];
+            else {
+                ObjList* resList = GcHeap::get().allocate<ObjList>();
+                resList->vec.reserve(range.sliceInfo.count);
+                for (int i = 0; i < range.sliceInfo.count; ++i) {
+                    resList->vec.push_back(list->vec[range.sliceInfo.start + i * range.sliceInfo.step]);
+                }
+                result = Value(resList);
+            }
+        } else if (obj.isString()) {
+            ObjString* objStr = obj.asObjString();
+            auto range = idx.parseIndex(static_cast<int>(objStr->charLength), noThrow != 0);
+            if (!range.isSlice && range.scalarIdx == -1) result = Value::uninit();
+            else if (!range.isSlice) {
+                if (objStr->isAscii) {
+                    char c_str[2] = { objStr->str[range.scalarIdx], '\0' };
+                    result = Value(c_str);
+                } else {
+                    result = Value(utf8::substring(objStr->str, range.scalarIdx, 1, objStr->isAscii));
+                }
+            } else {
+                std::string resStr;
+                if (objStr->isAscii) {
+                    resStr.reserve(range.sliceInfo.count);
+                    for (int i = 0; i < range.sliceInfo.count; ++i) {
+                        resStr += objStr->str[range.sliceInfo.start + i * range.sliceInfo.step];
+                    }
+                } else {
+                    for (int i = 0; i < range.sliceInfo.count; ++i) {
+                        resStr += utf8::substring(objStr->str, range.sliceInfo.start + i * range.sliceInfo.step, 1, false);
+                    }
+                }
+                result = Value(resStr);
+            }
+        } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+            auto processMatGet = [&](const auto& m) -> Value {
+                using MatType = std::decay_t<decltype(m)>;
+                int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                auto range = idx.parseIndex(n, noThrow != 0);
+                if (!range.isSlice && range.scalarIdx == -1) return Value::uninit();
+                
+                if (!range.isSlice) {
+                    if (m.getRows() == 1) return Value(m(0, range.scalarIdx));
+                    else if (m.getCols() == 1) return Value(m(range.scalarIdx, 0));
+                    else {
+                        using ElemType = std::decay_t<decltype(m(0,0))>;
+                        std::vector<ElemType> row(m.getCols());
+                        for (int j = 0; j < m.getCols(); ++j) row[j] = m(range.scalarIdx, j);
+                        return Value(MatType(1, m.getCols(), row));
+                    }
+                } else {
+                    using ElemType = std::decay_t<decltype(m(0,0))>;
+                    std::vector<ElemType> flat;
+                    if (m.getRows() == 1) {
+                        flat.reserve(range.sliceInfo.count);
+                        for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(0, range.sliceInfo.start + i * range.sliceInfo.step));
+                        return Value(MatType(1, range.sliceInfo.count, flat));
+                    } else if (m.getCols() == 1) {
+                        flat.reserve(range.sliceInfo.count);
+                        for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(range.sliceInfo.start + i * range.sliceInfo.step, 0));
+                        return Value(MatType(range.sliceInfo.count, 1, flat));
+                    } else {
+                        flat.reserve(range.sliceInfo.count * m.getCols());
+                        for (int i = 0; i < range.sliceInfo.count; ++i) {
+                            int r = range.sliceInfo.start + i * range.sliceInfo.step;
+                            for (int j = 0; j < m.getCols(); ++j) flat.push_back(m(r, j));
+                        }
+                        return Value(MatType(range.sliceInfo.count, m.getCols(), flat));
+                    }
+                }
+            };
+            if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+            else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+            else result = processMatGet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+        } else if (obj.isObjType(ObjType::DICT)) {
+            if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+            auto dict = static_cast<ObjDict*>(obj.asObj());
+            auto it = dict->keyMap.find(idx);
+            if (it == dict->keyMap.end()) {
+                if (noThrow) result = Value::uninit();
+                else throw std::runtime_error("VM Error: Key not found.");
+            } else {
+                result = dict->elements[it->second].second;
+            }
+        } else if (obj.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(obj.asObj());
+            if (!idx.isString()) {
+                if (noThrow) result = Value::uninit();
+                else throw std::runtime_error("VM Error: Namespace keys must be strings.");
+            } else {
+                std::string key = idx.asString();
+                auto it = ns->fields.find(key);
+                if (it == ns->fields.end()) {
+                    if (noThrow) result = Value::uninit();
+                    else throw std::runtime_error("VM Error: Key not found in namespace.");
+                } else {
+                    result = *(it->second.upval->location);
+                }
+            }
+        } else if (obj.isClass()) {
+            auto cls = static_cast<ObjClass*>(obj.asObj());
+            if (!idx.isString()) {
+                if (noThrow) result = Value::uninit();
+                else throw std::runtime_error("VM Error: Class static field keys must be strings.");
+            } else {
+                std::string key = idx.asString();
+                if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
+                    if (noThrow) result = Value::uninit();
+                    else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                } else {
+                    bool foundStatic = false;
+                    ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                    if (ctxOwner) {
+                        std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                        auto it = ctxOwner->properties.find(mangledName);
+                        if (it != ctxOwner->properties.end()) {
+                            if (it->second.val.isFunctionClosure()) {
+                                auto rawMethod = it->second.val.asFunction();
+                                auto bound = GcHeap::get().allocate<ObjClosure>(
+                                    std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
+                                );
+                                bound->paramNames = rawMethod->paramNames;
+                                bound->isRef = rawMethod->isRef;
+                                bound->defaultValues = rawMethod->defaultValues;
+                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                if (rawMethod->upvalueCount > 0) {
+                                    bound->upvalueCount = rawMethod->upvalueCount;
+                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                    for (int i = 0; i < bound->upvalueCount; ++i) {
+                                        bound->upvalues[i] = rawMethod->upvalues[i];
+                                    }
+                                }
+                                if (rawMethod->paramTypesCount > 0) {
+                                    bound->paramTypesCount = rawMethod->paramTypesCount;
+                                    bound->paramTypes = new Value[bound->paramTypesCount];
+                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                    }
+                                }
+                                bound->returnType = rawMethod->returnType;
+                                bound->nativeFn = rawMethod->nativeFn;
+                                bound->boundSelf = Value::none();
+                                bound->boundClass = Value(ctxOwner);
+                                bound->is_local = true;
+                                result = Value(bound);
+                            } else {
+                                result = it->second.val;
+                            }
+                            foundStatic = true;
+                        }
+                    }
+                    if (!foundStatic) {
+                        auto c_cls = cls;
+                        while (c_cls) {
+                            auto it = c_cls->properties.find(key);
+                            if (it != c_cls->properties.end() && !it->second.is_local) {
+                                if (it->second.val.isFunctionClosure()) {
+                                    auto rawMethod = it->second.val.asFunction();
+                                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                                        std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
+                                    );
+                                    bound->paramNames = rawMethod->paramNames;
+                                    bound->isRef = rawMethod->isRef;
+                                    bound->defaultValues = rawMethod->defaultValues;
+                                    bound->hasRestParam = rawMethod->hasRestParam;
+                                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                                    if (rawMethod->upvalueCount > 0) {
+                                        bound->upvalueCount = rawMethod->upvalueCount;
+                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                                            bound->upvalues[i] = rawMethod->upvalues[i];
+                                        }
+                                    }
+                                    if (rawMethod->paramTypesCount > 0) {
+                                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                                        bound->paramTypes = new Value[bound->paramTypesCount];
+                                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                                        }
+                                    }
+                                    bound->returnType = rawMethod->returnType;
+                                    bound->nativeFn = rawMethod->nativeFn;
+                                    bound->boundSelf = Value::none();
+                                    bound->boundClass = Value(c_cls);
+                                    result = Value(bound);
+                                } else {
+                                    result = it->second.val;
+                                }
+                                foundStatic = true;
+                                break;
+                            }
+                            c_cls = c_cls->parent;
+                        }
+                    }
+                    if (!foundStatic) {
+                        if (noThrow) result = Value::uninit();
+                        else throw std::runtime_error("VM Error: Static field not found in class.");
+                    }
+                }
+            }
+        } else if (obj.isSlice()) {
+            if (!idx.isString()) {
+                if (noThrow) result = Value::uninit();
+                else throw std::runtime_error("VM Error: Slice properties must be accessed with string keys.");
+            } else {
+                Value prop = obj.asSlice()->getProperty(idx.asString());
+                if (prop.isUninit()) {
+                    if (noThrow) result = Value::uninit();
+                    else throw std::runtime_error("VM Error: Property '" + idx.asString() + "' not found on slice.");
+                } else {
+                    result = prop;
+                }
+            }
+        } else {
+            if (noThrow) result = Value::uninit();
+            else throw std::runtime_error("VM Error: Unsupported 1D index get.");
+        }
+    } else if (dims == 2) {
+        Value rowIdx = args[0];
+        Value colIdx = args[1];
+        if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+            auto processMatGet2D = [&](const auto& m) -> Value {
+                using MatType = std::decay_t<decltype(m)>;
+                auto rRange = rowIdx.parseIndex(m.getRows(), noThrow != 0);
+                auto cRange = colIdx.parseIndex(m.getCols(), noThrow != 0);
+                
+                if ((!rRange.isSlice && rRange.scalarIdx == -1) || (!cRange.isSlice && cRange.scalarIdx == -1)) return Value::uninit();
+                
+                if (!rRange.isSlice && !cRange.isSlice) {
+                    return Value(m(rRange.scalarIdx, cRange.scalarIdx));
+                } else if (!rRange.isSlice && cRange.isSlice) {
+                    using ElemType = std::decay_t<decltype(m(0,0))>;
+                    std::vector<ElemType> flat;
+                    flat.reserve(cRange.sliceInfo.count);
+                    for (int j = 0; j < cRange.sliceInfo.count; ++j) {
+                        flat.push_back(m(rRange.scalarIdx, cRange.sliceInfo.start + j * cRange.sliceInfo.step));
+                    }
+                    return Value(MatType(1, cRange.sliceInfo.count, flat));
+                } else if (rRange.isSlice && !cRange.isSlice) {
+                    using ElemType = std::decay_t<decltype(m(0,0))>;
+                    std::vector<ElemType> flat;
+                    flat.reserve(rRange.sliceInfo.count);
+                    for (int i = 0; i < rRange.sliceInfo.count; ++i) {
+                        flat.push_back(m(rRange.sliceInfo.start + i * rRange.sliceInfo.step, cRange.scalarIdx));
+                    }
+                    return Value(MatType(rRange.sliceInfo.count, 1, flat));
+                } else {
+                    using ElemType = std::decay_t<decltype(m(0,0))>;
+                    std::vector<ElemType> flat;
+                    flat.reserve(rRange.sliceInfo.count * cRange.sliceInfo.count);
+                    for (int i = 0; i < rRange.sliceInfo.count; ++i) {
+                        int r = rRange.sliceInfo.start + i * rRange.sliceInfo.step;
+                        for (int j = 0; j < cRange.sliceInfo.count; ++j) {
+                            int c = cRange.sliceInfo.start + j * cRange.sliceInfo.step;
+                            flat.push_back(m(r, c));
+                        }
+                    }
+                    return Value(MatType(rRange.sliceInfo.count, cRange.sliceInfo.count, flat));
+                }
+            };
+            if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+            else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+            else result = processMatGet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+        } else {
+            if (noThrow) result = Value::uninit();
+            else throw std::runtime_error("VM Error: Unsupported 2D index get.");
+        }
     } else {
-        throw std::runtime_error("VM Error: Unsupported 1D index get in JIT.");
+        throw std::runtime_error("VM Error: Unsupported index dimensionality.");
     }
-    
-    vm->getCurrentFrame()->jitReturnSlot = res;
-    return res.as_bits;
+
+    vm->getCurrentFrame()->jitReturnSlot = result;
+    return result.as_bits;
     JIT_CALLOUT_CATCH
 }
 
-void jc2_jit_store_element(uint64_t obj_bits, uint64_t idx_bits, uint64_t val_bits) {
+void jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t valReg) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value obj = Value::fromRawBits(obj_bits);
-    Value idx = Value::fromRawBits(idx_bits);
-    Value val = Value::fromRawBits(val_bits);
-    
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
+
+    Value obj = regs[base + objReg];
+    Value val = regs[base + valReg];
+    std::vector<Value> args;
+    args.reserve(dims);
+    for (uint32_t i = 0; i < dims; ++i) {
+        args.push_back(regs[base + argsReg + i]);
+    }
+
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
         inst->checkModify();
         auto [setitemMethod, owner] = vm->findDunder(obj, "__setitem__");
         if (setitemMethod) {
-            vm->callDunder(obj, setitemMethod, owner, {idx, val});
-        } else if (idx.isString()) {
-            std::string keyStr = idx.asString();
+            args.push_back(val);
+            vm->callDunder(obj, setitemMethod, owner, args);
+        } else if (dims == 1 && args[0].isString()) {
+            std::string keyStr = args[0].asString();
             if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
                 throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
             }
-            inst->setProperty(keyStr, val);
+            ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+            bool foundPrivate = false;
+            if (ctxOwner) {
+                std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                auto it = inst->properties.find(mangledName);
+                if (it != inst->properties.end()) {
+                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
+                    it->second.val = val;
+                    foundPrivate = true;
+                }
+            }
+            if (!foundPrivate) {
+                inst->setProperty(keyStr, val);
+            }
         } else {
             throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __setitem__.");
         }
-    } else if (obj.isObjType(ObjType::LIST)) {
-        auto list = static_cast<ObjList*>(obj.asObj());
-        auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
-        if (!range.isSlice) {
-            list->mut()[range.scalarIdx] = val;
-        } else {
-            if (val.isObjType(ObjType::LIST)) {
-                const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
-                if (static_cast<int>(srcL.size()) != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
-                for (int k = 0; k < range.sliceInfo.count; ++k) list->mut()[range.sliceInfo.start + k * range.sliceInfo.step] = srcL[k];
+    } else if (dims == 1) {
+        Value idx = args[0];
+        if (obj.isObjType(ObjType::LIST)) {
+            auto list = static_cast<ObjList*>(obj.asObj());
+            auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
+            if (!range.isSlice) {
+                list->mut()[range.scalarIdx] = val;
             } else {
-                for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
+                if (val.isObjType(ObjType::LIST)) {
+                    const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
+                    if (static_cast<int>(srcL.size()) != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                    for (int k = 0; k < range.sliceInfo.count; ++k) list->mut()[range.sliceInfo.start + k * range.sliceInfo.step] = srcL[k];
+                } else {
+                    for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
+                }
             }
+        } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+            auto processMatSet = [&](auto& m) {
+                int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                auto range = idx.parseIndex(n, false);
+                using ElemType = std::decay_t<decltype(m(0,0))>;
+                
+                if (!range.isSlice) {
+                    ElemType scalarVal{};
+                    if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                    else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                    else if constexpr (std::is_same_v<ElemType, std::string>) {
+                        if (val.isString()) scalarVal = val.asString();
+                        else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                    } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                        scalarVal = val.asSymbolic();
+                    }
+                    
+                    if (m.getRows() == 1) m(0, range.scalarIdx) = scalarVal;
+                    else if (m.getCols() == 1) m(range.scalarIdx, 0) = scalarVal;
+                    else {
+                        bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                        if (isRhsMat) {
+                            int srcR = 0, srcC = 0;
+                            if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
+                            else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
+                            else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
+                            else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
+                            
+                            if (srcR != 1 || srcC != m.getCols()) throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
+                            
+                            for (int j = 0; j < m.getCols(); ++j) {
+                                if constexpr (std::is_same_v<ElemType, double>) {
+                                    if (val.isObjType(ObjType::REAL_MATRIX)) m(range.scalarIdx, j) = static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j);
+                                    else throw std::runtime_error("VM Error: Cannot assign complex/string/sym matrix to real matrix row.");
+                                } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                    if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(range.scalarIdx, j) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(0, j);
+                                    else if (val.isObjType(ObjType::REAL_MATRIX)) m(range.scalarIdx, j) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j));
+                                    else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix row.");
+                                } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                    std::ostringstream oss;
+                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(0, j);
+                                    else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(0, j));
+                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(0, j));
+                                    else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j));
+                                    m(range.scalarIdx, j) = oss.str();
+                                } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                                    if (val.isObjType(ObjType::SYM_MATRIX)) m(range.scalarIdx, j) = static_cast<ObjSymMatrix*>(val.asObj())->mat(0, j);
+                                    else if (val.isObjType(ObjType::REAL_MATRIX)) m(range.scalarIdx, j) = SymExpr(static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j));
+                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(range.scalarIdx, j) = SymExpr(static_cast<ObjComplexMatrix*>(val.asObj())->mat(0, j));
+                                    else throw std::runtime_error("VM Error: Cannot assign string matrix to sym matrix row.");
+                                }
+                            }
+                        } else {
+                            for (int j = 0; j < m.getCols(); ++j) m(range.scalarIdx, j) = scalarVal;
+                        }
+                    }
+                } else {
+                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                    if (isRhsMat) {
+                        int srcR = 0, srcC = 0;
+                        if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
+                        else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
+                        else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
+                        else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
+                        
+                        if (m.getRows() == 1 || m.getCols() == 1) {
+                            int srcLen = (srcR == 1) ? srcC : ((srcC == 1) ? srcR : srcR * srcC);
+                            if (srcLen != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                            
+                            auto getSrcVal = [&](int k) -> ElemType {
+                                int sr = (srcR == 1) ? 0 : ((srcC == 1) ? k : k / srcC);
+                                int sc = (srcR == 1) ? k : ((srcC == 1) ? 0 : k % srcC);
+                                if constexpr (std::is_same_v<ElemType, double>) {
+                                    if (val.isObjType(ObjType::REAL_MATRIX)) return static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc);
+                                    throw std::runtime_error("VM Error: Cannot assign complex/string/sym matrix to real matrix slice.");
+                                } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                    if (val.isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(val.asObj())->mat(sr, sc);
+                                    if (val.isObjType(ObjType::REAL_MATRIX)) return Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc));
+                                    throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
+                                } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                    std::ostringstream oss;
+                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(sr, sc);
+                                    else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(sr, sc));
+                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(sr, sc));
+                                    else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc));
+                                    return oss.str();
+                                } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                                    if (val.isObjType(ObjType::SYM_MATRIX)) return static_cast<ObjSymMatrix*>(val.asObj())->mat(sr, sc);
+                                    if (val.isObjType(ObjType::REAL_MATRIX)) return SymExpr(static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc));
+                                    if (val.isObjType(ObjType::COMPLEX_MATRIX)) return SymExpr(static_cast<ObjComplexMatrix*>(val.asObj())->mat(sr, sc));
+                                    throw std::runtime_error("VM Error: Cannot assign string matrix to sym matrix slice.");
+                                }
+                            };
+                            
+                            if (m.getRows() == 1) {
+                                for (int k = 0; k < range.sliceInfo.count; ++k) m(0, range.sliceInfo.start + k * range.sliceInfo.step) = getSrcVal(k);
+                            } else {
+                                for (int k = 0; k < range.sliceInfo.count; ++k) m(range.sliceInfo.start + k * range.sliceInfo.step, 0) = getSrcVal(k);
+                            }
+                        } else {
+                            if (srcR != range.sliceInfo.count || srcC != m.getCols()) throw std::runtime_error("VM Error: Slice assignment size mismatch for matrix rows.");
+                            for (int k = 0; k < range.sliceInfo.count; ++k) {
+                                int id = range.sliceInfo.start + k * range.sliceInfo.step;
+                                for (int j = 0; j < m.getCols(); ++j) {
+                                    if constexpr (std::is_same_v<ElemType, double>) {
+                                        if (val.isObjType(ObjType::REAL_MATRIX)) m(id, j) = static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j);
+                                        else throw std::runtime_error("VM Error: Cannot assign complex/string/sym matrix to real matrix slice.");
+                                    } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                        if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(id, j) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(k, j);
+                                        else if (val.isObjType(ObjType::REAL_MATRIX)) m(id, j) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j));
+                                        else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
+                                    } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                        std::ostringstream oss;
+                                        if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(k, j);
+                                        else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(k, j));
+                                        else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(k, j));
+                                        else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j));
+                                        m(id, j) = oss.str();
+                                    } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                                        if (val.isObjType(ObjType::SYM_MATRIX)) m(id, j) = static_cast<ObjSymMatrix*>(val.asObj())->mat(k, j);
+                                        else if (val.isObjType(ObjType::REAL_MATRIX)) m(id, j) = SymExpr(static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j));
+                                        else if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(id, j) = SymExpr(static_cast<ObjComplexMatrix*>(val.asObj())->mat(k, j));
+                                        else throw std::runtime_error("VM Error: Cannot assign string matrix to sym matrix slice.");
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        ElemType scalarVal{};
+                        if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                        else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                        else if constexpr (std::is_same_v<ElemType, std::string>) {
+                            if (val.isString()) scalarVal = val.asString();
+                            else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                        } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                            scalarVal = val.asSymbolic();
+                        }
+                        if (m.getRows() == 1) {
+                            for (int i = 0; i < range.sliceInfo.count; ++i) m(0, range.sliceInfo.start + i * range.sliceInfo.step) = scalarVal;
+                        } else if (m.getCols() == 1) {
+                            for (int i = 0; i < range.sliceInfo.count; ++i) m(range.sliceInfo.start + i * range.sliceInfo.step, 0) = scalarVal;
+                        } else {
+                            for (int i = 0; i < range.sliceInfo.count; ++i) {
+                                int id = range.sliceInfo.start + i * range.sliceInfo.step;
+                                for (int j = 0; j < m.getCols(); ++j) m(id, j) = scalarVal;
+                            }
+                        }
+                    }
+                }
+            };
+            
+            if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                processMatSet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                processMatSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                processMatSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            } else {
+                if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
+                processMatSet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            }
+        } else if (obj.isObjType(ObjType::DICT)) {
+            if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+            auto dict = static_cast<ObjDict*>(obj.asObj());
+            dict->set(idx, val);
+        } else if (obj.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(obj.asObj());
+            if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
+            std::string key = idx.asString();
+            ns->setField(key, val);
+        } else if (obj.isClass()) {
+            auto cls = static_cast<ObjClass*>(obj.asObj());
+            if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
+            std::string key = idx.asString();
+            if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
+                throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+            }
+            
+            bool found = false;
+            ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+            if (ctxOwner) {
+                std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                auto it = ctxOwner->properties.find(mangledName);
+                if (it != ctxOwner->properties.end()) {
+                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
+                    it->second.val = val;
+                    found = true;
+                }
+            }
+            if (!found) {
+                auto c_cls = cls;
+                while (c_cls) {
+                    auto it = c_cls->properties.find(key);
+                    if (it != c_cls->properties.end()) {
+                        if (it->second.is_local) {
+                            if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
+                            break;
+                        }
+                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
+                        it->second.val = val;
+                        found = true;
+                        break;
+                    }
+                    c_cls = c_cls->parent;
+                }
+            }
+            if (!found) {
+                if (cls) cls->properties[key] = { val, false, false };
+            }
+        } else {
+            throw std::runtime_error("VM Error: Unsupported 1D index set.");
         }
-    } else if (obj.isObjType(ObjType::DICT)) {
-        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
-        auto dict = static_cast<ObjDict*>(obj.asObj());
-        dict->set(idx, val);
+    } else if (dims == 2) {
+        Value rowIdx = args[0];
+        Value colIdx = args[1];
+        if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+            auto processMatSet2D = [&](auto& m) {
+                using ElemType = std::decay_t<decltype(m(0,0))>;
+                auto rRange = rowIdx.parseIndex(m.getRows(), false);
+                auto cRange = colIdx.parseIndex(m.getCols(), false);
+                
+                if (!rRange.isSlice && !cRange.isSlice) {
+                    ElemType scalarVal{};
+                    if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                    else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                    else if constexpr (std::is_same_v<ElemType, std::string>) {
+                        if (val.isString()) scalarVal = val.asString();
+                        else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                    } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                        scalarVal = val.asSymbolic();
+                    }
+                    m(rRange.scalarIdx, cRange.scalarIdx) = scalarVal;
+                } else {
+                    int dstR = rRange.isSlice ? rRange.sliceInfo.count : 1;
+                    int dstC = cRange.isSlice ? cRange.sliceInfo.count : 1;
+                    
+                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                    if (isRhsMat) {
+                        int srcR = 0, srcC = 0;
+                        if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
+                        else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
+                        else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
+                        else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
+                        
+                        if (srcR != dstR || srcC != dstC) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                        
+                        for (int i = 0; i < dstR; ++i) {
+                            int ri = rRange.isSlice ? rRange.sliceInfo.start + i * rRange.sliceInfo.step : rRange.scalarIdx;
+                            for (int j = 0; j < dstC; ++j) {
+                                int ci = cRange.isSlice ? cRange.sliceInfo.start + j * cRange.sliceInfo.step : cRange.scalarIdx;
+                                if constexpr (std::is_same_v<ElemType, double>) {
+                                    if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j);
+                                    else throw std::runtime_error("VM Error: Cannot assign complex/string/sym matrix to real matrix slice.");
+                                } else if constexpr (std::is_same_v<ElemType, Complex>) {
+                                    if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(ri, ci) = static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j);
+                                    else if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = Complex(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
+                                    else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
+                                } else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                    std::ostringstream oss;
+                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(i, j);
+                                    else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(i, j));
+                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j));
+                                    else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
+                                    m(ri, ci) = oss.str();
+                                } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                                    if (val.isObjType(ObjType::SYM_MATRIX)) m(ri, ci) = static_cast<ObjSymMatrix*>(val.asObj())->mat(i, j);
+                                    else if (val.isObjType(ObjType::REAL_MATRIX)) m(ri, ci) = SymExpr(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
+                                    else if (val.isObjType(ObjType::COMPLEX_MATRIX)) m(ri, ci) = SymExpr(static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j));
+                                    else throw std::runtime_error("VM Error: Cannot assign string matrix to sym matrix slice.");
+                                }
+                            }
+                        }
+                    } else {
+                        ElemType scalarVal{};
+                        if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
+                        else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
+                        else if constexpr (std::is_same_v<ElemType, std::string>) {
+                            if (val.isString()) scalarVal = val.asString();
+                            else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
+                        } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                            scalarVal = val.asSymbolic();
+                        }
+                        for (int i = 0; i < dstR; ++i) {
+                            int ri = rRange.isSlice ? rRange.sliceInfo.start + i * rRange.sliceInfo.step : rRange.scalarIdx;
+                            for (int j = 0; j < dstC; ++j) {
+                                int ci = cRange.isSlice ? cRange.sliceInfo.start + j * cRange.sliceInfo.step : cRange.scalarIdx;
+                                m(ri, ci) = scalarVal;
+                            }
+                        }
+                    }
+                }
+            };
+            
+            if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                processMatSet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                processMatSet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                processMatSet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            } else {
+                if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
+                processMatSet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                regs[base + objReg] = obj;
+            }
+        } else {
+            throw std::runtime_error("VM Error: Unsupported 2D index set.");
+        }
     } else {
-        throw std::runtime_error("VM Error: Unsupported 1D index set in JIT.");
+        throw std::runtime_error("VM Error: Unsupported index dimensionality.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -8876,6 +9992,113 @@ void jc2_jit_store_element(uint64_t obj_bits, uint64_t idx_bits, uint64_t val_bi
 uint64_t jc2_jit_truthy(uint64_t val_bits) {
     Value val = Value::fromRawBits(val_bits);
     return VM::activeVM->evaluateTruthiness(val) ? 1 : 0;
+}
+
+uint64_t jc2_jit_invoke(uint32_t objReg, uint32_t argc, uint32_t icIdx, uint32_t isPrivate, uint32_t fbType, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    (void)chunk;
+    VM* vm = VM::activeVM;
+    int initialFrameCount = vm->frameCount;
+    
+    vm->execInvoke(objReg, argc, 0, icIdx, false, static_cast<int>(fbType), isPrivate != 0);
+    
+    if (vm->frameCount > initialFrameCount) {
+        int targetDepth = initialFrameCount;
+        Value res = vm->run(targetDepth);
+        vm->getCurrentFrame()->jitReturnSlot = res;
+        return res.as_bits;
+    } else {
+        Value res = vm->getRegisters()[vm->getCurrentFrame()->registerBase + objReg];
+        vm->getCurrentFrame()->jitReturnSlot = res;
+        return res.as_bits;
+    }
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    (void)chunk;
+    VM* vm = VM::activeVM;
+    int initialFrameCount = vm->frameCount;
+    
+    vm->execSuperInvoke(objReg, argc, 0, nameIdx, false);
+    
+    if (vm->frameCount > initialFrameCount) {
+        int targetDepth = initialFrameCount;
+        Value res = vm->run(targetDepth);
+        vm->getCurrentFrame()->jitReturnSlot = res;
+        return res.as_bits;
+    } else {
+        Value res = vm->getRegisters()[vm->getCurrentFrame()->registerBase + objReg];
+        vm->getCurrentFrame()->jitReturnSlot = res;
+        return res.as_bits;
+    }
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_get_super(uint32_t objReg, uint32_t nameIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
+    
+    const std::string& field = chunk->constants[nameIdx].asString();
+    Value selfVal = regs[base + objReg];
+    if (!selfVal.isInstance()) throw std::runtime_error("VM Error: 'super' requires an instance context.");
+    auto inst = selfVal.asInstance();
+    
+    Value classVal = frame->classContext;
+    if (!classVal.isClass()) throw std::runtime_error("VM Error: 'super' requires class context.");
+    auto currentClass = static_cast<ObjClass*>(classVal.asObj());
+    auto parentClass = currentClass->parent;
+    if (!parentClass) throw std::runtime_error("VM Error: No parent class.");
+    
+    ObjClosure* rawMethod = nullptr;
+    ObjClass* ownerClass = nullptr;
+    auto cls = parentClass;
+    while (cls) {
+        auto it = cls->properties.find(field);
+        if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+            rawMethod = it->second.val.asFunction();
+            ownerClass = cls;
+            break;
+        }
+        cls = cls->parent;
+    }
+    if (!rawMethod) throw std::runtime_error("VM Error: Parent class has no method '" + field + "'.");
+    
+    auto bound = GcHeap::get().allocate<ObjClosure>(
+        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+    );
+    bound->paramNames = rawMethod->paramNames;
+    bound->isRef = rawMethod->isRef;
+    bound->defaultValues = rawMethod->defaultValues;
+    bound->hasRestParam = rawMethod->hasRestParam;
+    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+    if (rawMethod->upvalueCount > 0) {
+        bound->upvalueCount = rawMethod->upvalueCount;
+        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+        for (int i = 0; i < bound->upvalueCount; ++i) {
+            bound->upvalues[i] = rawMethod->upvalues[i];
+        }
+    }
+    if (rawMethod->paramTypesCount > 0) {
+        bound->paramTypesCount = rawMethod->paramTypesCount;
+        bound->paramTypes = new Value[bound->paramTypesCount];
+        for (int i = 0; i < bound->paramTypesCount; ++i) {
+            bound->paramTypes[i] = rawMethod->paramTypes[i];
+        }
+    }
+    bound->returnType = rawMethod->returnType;
+    bound->nativeFn = rawMethod->nativeFn;
+    bound->boundSelf = Value(inst);
+    bound->boundClass = Value(ownerClass);
+    
+    Value res(bound);
+    frame->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk) {
@@ -8949,7 +10172,7 @@ void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Ch
             c_cls = c_cls->parent;
         }
         if (!found) {
-            cls->properties[keyStr] = { val, false, false };
+            if (cls) cls->properties[keyStr] = { val, false, false };
         }
     } else {
         throw std::runtime_error("VM Error: Cannot set property on this type.");

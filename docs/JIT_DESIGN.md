@@ -500,11 +500,11 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 93:** 编写端到端测试，验证包含矩阵运算、字符串拼接和大整数计算的循环能够被 JIT 成功编译并极速执行，全程无去优化。
 
 ### Phase 19: 动态属性与索引访问 (Dynamic Properties & Indexing) (Steps 94-98)
-*   **Step 94:** 在 C++ 侧实现动态属性访问的 JIT 辅助函数（涵盖 `GET_PROP`, `SET_PROP`, `TRY_GET_PROP`），用于处理 Inline Cache (IC) 未命中的情况。
-*   **Step 95:** 修改 `BytecodeToHIR`，将属性访问的 IC Miss 路径从生成 `Deoptimize` 节点改为生成 `Callout` 节点，彻底消除多态对象导致的去优化。
-*   **Step 96:** 在 C++ 侧实现 1D 和 2D 索引访问的 JIT 辅助函数（涵盖 `INDEX_GET`, `INDEX_SET`）。
-*   **Step 97:** 修改 `BytecodeToHIR`，全面支持 `INDEX_GET` 和 `INDEX_SET` 指令，将其降级为 `Callout` 节点。
-*   **Step 98:** 编写端到端测试，验证包含字典键值查找、矩阵切片读写和动态对象属性操作的函数在 JIT 下的正确性与 GC 安全性。
+*   **[已完成] Step 94:** 在 C++ 侧实现动态属性访问的 JIT 辅助函数（涵盖 `GET_PROP`, `SET_PROP`, `TRY_GET_PROP`），用于处理 Inline Cache (IC) 未命中的情况。
+*   **[已完成] Step 95:** 修改 `BytecodeToHIR`，将属性访问的 IC Miss 路径从生成 `Deoptimize` 节点改为生成 `Callout` 节点，彻底消除多态对象导致的去优化。
+*   **[已完成] Step 96:** 在 C++ 侧实现 1D 和 2D 索引访问的 JIT 辅助函数（涵盖 `INDEX_GET`, `INDEX_SET`）。
+*   **[已完成] Step 97:** 修改 `BytecodeToHIR`，全面支持 `INDEX_GET` 和 `INDEX_SET` 指令，将其降级为 `Callout` 节点。
+*   **[已完成] Step 98:** 编写端到端测试，验证包含字典键值查找、矩阵切片读写和动态对象属性操作的函数在 JIT 下的正确性与 GC 安全性。
 
 ### Phase 20: 迭代器与 For-In 循环 (Iterators & For-In Loops) (Steps 99-103)
 *   **Step 99:** 在 C++ 侧实现迭代器初始化的 JIT 辅助函数（对应 `ITER_INIT` 指令）。

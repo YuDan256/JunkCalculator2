@@ -58,72 +58,178 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
     std::vector<Value> args(argc);
     for (uint32_t i = 0; i < argc; ++i) args[i] = Value::fromRawBits(arg_bits[i]);
     
-    if (callee.isFunctionClosure()) {
-        ObjClosure* cl = callee.asFunction();
-        if (cl->isBytecode()) {
-            int fnIdx = cl->compiledFnIndex;
-            // Slow Path: 回退到解释器执行
-            // 注意：为了保证去优化 (Deoptimization) 时 CallFrame 栈的正确性，
-            // 必须走完整的 callVMFunction 压帧流程。
-            Value res = VM::activeVM->callVMFunction(fnIdx, args, cl);
-            VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
-            return res.as_bits;
-        } else if (cl->isNative()) {
-            helpers::nativeSelfStack.push_back(cl->boundSelf);
-            helpers::nativeClassStack.push_back(cl->boundClass);
-            Value res;
-            try {
-                auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
-                res = fn(args);
-            } catch (...) {
+    while (true) {
+        if (callee.isString()) {
+            const std::string& tag = callee.asString();
+            Value gVal = VM::activeVM->getGlobal(tag);
+            if (!gVal.isNone()) {
+                callee = gVal;
+                continue;
+            } else {
+                auto nIt = VM::activeVM->getNativeBuiltins().find(tag);
+                if (nIt != VM::activeVM->getNativeBuiltins().end()) {
+                    callee = VM::activeVM->getBuiltinClosure(tag);
+                    continue;
+                } else {
+                    throw std::runtime_error("VM Error: Unknown function or not callable '" + tag + "'.");
+                }
+            }
+        }
+
+        if (callee.isType()) {
+            ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
+            if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
+                BuiltinType bt = std::get<BuiltinType>(td->types[0]);
+                if (bt == BuiltinType::TYPE_DEF) {
+                    if (argc != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                    Value v = args[0];
+                    ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                    if (v.isType()) {
+                        resTd->types.push_back(BuiltinType::TYPE_DEF);
+                    } else if (v.isClass()) {
+                        resTd->types.push_back(BuiltinType::CLASS);
+                    } else if (v.isInstance()) {
+                        resTd->types.push_back(v.asInstance()->classDef);
+                    } else {
+                        BuiltinType vbt = BuiltinType::ANY;
+                        if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
+                        else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                        else if (v.isString()) vbt = BuiltinType::STRING;
+                        else if (v.isBool()) vbt = BuiltinType::BOOL;
+                        else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
+                        else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
+                        else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
+                        else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
+                        else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
+                        else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
+                        else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
+                        else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
+                        else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
+                        else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
+                        else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
+                        else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
+                        else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
+                        else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+                        else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+                        resTd->types.push_back(vbt);
+                    }
+                    resTd->normalize();
+                    Value res(resTd);
+                    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                    return res.as_bits;
+                } else {
+                    std::string name = td->name();
+                    auto nIt = VM::activeVM->getNativeBuiltins().find(name);
+                    if (nIt != VM::activeVM->getNativeBuiltins().end()) {
+                        callee = VM::activeVM->getBuiltinClosure(name);
+                        continue;
+                    }
+                }
+            }
+            throw std::runtime_error("TypeError: This type object is not callable.");
+        }
+
+        if (callee.isFunctionClosure()) {
+            ObjClosure* cl = callee.asFunction();
+            if (cl->isBytecode()) {
+                int fnIdx = cl->compiledFnIndex;
+                Value res = VM::activeVM->callVMFunction(fnIdx, args, cl, cl->boundSelf, cl->boundClass);
+                VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                return res.as_bits;
+            } else if (cl->isNative()) {
+                helpers::nativeSelfStack.push_back(cl->boundSelf);
+                helpers::nativeClassStack.push_back(cl->boundClass);
+                Value res;
+                try {
+                    auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
+                    res = fn(args);
+                } catch (...) {
+                    helpers::nativeSelfStack.pop_back();
+                    helpers::nativeClassStack.pop_back();
+                    throw;
+                }
                 helpers::nativeSelfStack.pop_back();
                 helpers::nativeClassStack.pop_back();
-                throw;
+                VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                return res.as_bits;
             }
-            helpers::nativeSelfStack.pop_back();
-            helpers::nativeClassStack.pop_back();
+        } else if (callee.isClass()) {
+            auto cls = static_cast<ObjClass*>(callee.asObj());
+            if (cls->native_allocator) {
+                Value res = cls->native_allocator(args);
+                VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                return res.as_bits;
+            }
+            auto instance = GcHeap::get().allocate<ObjInstance>();
+            Value res(instance);
+            GcValueGuard guard(res);
+            instance->classDef = cls;
+            
+            ObjClosure* initMethod = nullptr;
+            auto c = cls;
+            while (c) {
+                auto it = c->properties.find("<init>");
+                if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                    initMethod = it->second.val.asFunction();
+                    break;
+                }
+                c = c->parent;
+            }
+            
+            if (initMethod) {
+                if (initMethod->isBytecode()) {
+                    VM::activeVM->callVMFunction(initMethod->compiledFnIndex, args, initMethod, res, Value(cls));
+                } else if (initMethod->isNative()) {
+                    helpers::nativeSelfStack.push_back(res);
+                    helpers::nativeClassStack.push_back(Value(cls));
+                    auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
+                    fn(args);
+                    helpers::nativeSelfStack.pop_back();
+                    helpers::nativeClassStack.pop_back();
+                }
+            }
             VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
             return res.as_bits;
-        }
-    } else if (callee.isClass()) {
-        auto cls = static_cast<ObjClass*>(callee.asObj());
-        if (cls->native_allocator) {
-            Value res = cls->native_allocator(args);
-            VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
-            return res.as_bits;
-        }
-        auto instance = GcHeap::get().allocate<ObjInstance>();
-        Value res(instance);
-        GcValueGuard guard(res);
-        instance->classDef = cls;
-        
-        ObjClosure* initMethod = nullptr;
-        auto c = cls;
-        while (c) {
-            auto it = c->properties.find("<init>");
-            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                initMethod = it->second.val.asFunction();
-                break;
+        } else if (callee.isInstance()) {
+            auto inst = callee.asInstance();
+            ObjClosure* method = nullptr;
+            ObjClass* owningClass = nullptr;
+            auto c = inst->classDef;
+            while (c) {
+                auto it = c->properties.find("__call__");
+                if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                    method = it->second.val.asFunction();
+                    owningClass = c;
+                    break;
+                }
+                c = c->parent;
             }
-            c = c->parent;
-        }
-        
-        if (initMethod) {
-            if (initMethod->isBytecode()) {
-                VM::activeVM->callVMFunction(initMethod->compiledFnIndex, args, initMethod, res, Value(cls));
-            } else if (initMethod->isNative()) {
-                helpers::nativeSelfStack.push_back(res);
-                helpers::nativeClassStack.push_back(Value(cls));
-                auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
-                fn(args);
-                helpers::nativeSelfStack.pop_back();
-                helpers::nativeClassStack.pop_back();
+            if (method) {
+                if (method->isBytecode()) {
+                    Value res = VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, callee, Value(owningClass));
+                    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                    return res.as_bits;
+                } else if (method->isNative()) {
+                    helpers::nativeSelfStack.push_back(callee);
+                    helpers::nativeClassStack.push_back(Value(owningClass));
+                    Value res;
+                    try {
+                        auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
+                        res = fn(args);
+                    } catch (...) {
+                        helpers::nativeSelfStack.pop_back();
+                        helpers::nativeClassStack.pop_back();
+                        throw;
+                    }
+                    helpers::nativeSelfStack.pop_back();
+                    helpers::nativeClassStack.pop_back();
+                    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                    return res.as_bits;
+                }
             }
         }
-        VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
-        return res.as_bits;
+        throw std::runtime_error("JIT Error: Target is not callable.");
     }
-    throw std::runtime_error("JIT Error: Target is not callable.");
     JIT_CALLOUT_CATCH
 }
 
@@ -433,7 +539,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         const std::string& tag = callee.asString();
         auto it = globalNames.find(tag);
         if (it != globalNames.end()) {
-            registers[currentFrame->registerBase + dstReg] = globals[it->second];
+            callee = globals[it->second];
         } else {
             auto nIt = nativeBuiltins.find(tag);
             if (nIt != nativeBuiltins.end()) {
@@ -1664,7 +1770,7 @@ invoke_method:
         }
         
         if (ic.cachedGlobalSlot >= 0) {
-            if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
+            if (globals[ic.cachedGlobalSlot].isFunctionClosure() || globals[ic.cachedGlobalSlot].isType() || globals[ic.cachedGlobalSlot].isClass()) {
                 for (int i = argc - 1; i >= 0; --i) {
                     registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
                 }
@@ -1678,7 +1784,7 @@ invoke_method:
             }
         } else {
             auto gIt = globalNames.find(methodName);
-            if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
+            if (gIt != globalNames.end() && (globals[gIt->second].isFunctionClosure() || globals[gIt->second].isType() || globals[gIt->second].isClass())) {
                 ic.cachedGlobalSlot = gIt->second;
                 for (int i = argc - 1; i >= 0; --i) {
                     registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
@@ -8729,6 +8835,104 @@ uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
                     bound->nativeFn = targetFn->nativeFn;
                     result = Value(bound);
                     found = true;
+                } else if (gVal.isType() || gVal.isClass()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    bound->isUFCS = true;
+                    bound->nativeFn = std::make_any<NativeCallable>(
+                        [gVal](const std::vector<Value>& args) -> Value {
+                            Value capturedObj = helpers::nativeSelfStack.back();
+                            std::vector<Value> fullArgs;
+                            fullArgs.reserve(args.size() + 1);
+                            fullArgs.push_back(capturedObj);
+                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                            
+                            if (gVal.isType()) {
+                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
+                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
+                                    if (bt == BuiltinType::TYPE_DEF) {
+                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        Value v = fullArgs[0];
+                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
+                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
+                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
+                                        else {
+                                            BuiltinType vbt = BuiltinType::ANY;
+                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
+                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isString()) vbt = BuiltinType::STRING;
+                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
+                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
+                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
+                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
+                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
+                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
+                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
+                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
+                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
+                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
+                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
+                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
+                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
+                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
+                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+                                            resTd->types.push_back(vbt);
+                                        }
+                                        resTd->normalize();
+                                        return Value(resTd);
+                                    } else {
+                                        std::string name = td->name();
+                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
+                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
+                                            return nIt->second(fullArgs);
+                                        }
+                                    }
+                                }
+                                throw std::runtime_error("TypeError: This type object is not callable.");
+                            } else {
+                                auto cls = static_cast<ObjClass*>(gVal.asObj());
+                                if (cls->native_allocator) {
+                                    return cls->native_allocator(fullArgs);
+                                }
+                                auto instance = GcHeap::get().allocate<ObjInstance>();
+                                Value res(instance);
+                                GcValueGuard guard(res);
+                                instance->classDef = cls;
+                                
+                                ObjClosure* initMethod = nullptr;
+                                auto c = cls;
+                                while (c) {
+                                    auto it = c->properties.find("<init>");
+                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                                        initMethod = it->second.val.asFunction();
+                                        break;
+                                    }
+                                    c = c->parent;
+                                }
+                                
+                                if (initMethod) {
+                                    if (initMethod->isBytecode()) {
+                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
+                                    } else if (initMethod->isNative()) {
+                                        helpers::nativeSelfStack.push_back(res);
+                                        helpers::nativeClassStack.push_back(Value(cls));
+                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
+                                        fn(fullArgs);
+                                        helpers::nativeSelfStack.pop_back();
+                                        helpers::nativeClassStack.pop_back();
+                                    }
+                                }
+                                return res;
+                            }
+                        }
+                    );
+                    result = Value(bound);
+                    found = true;
                 }
             } else {
                 Value gVal = vm->getGlobal(field);
@@ -8766,6 +8970,104 @@ uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
                         bound->boundClass = targetFn->boundClass;
                     }
                     bound->nativeFn = targetFn->nativeFn;
+                    result = Value(bound);
+                    found = true;
+                } else if (gVal.isType() || gVal.isClass()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    bound->isUFCS = true;
+                    bound->nativeFn = std::make_any<NativeCallable>(
+                        [gVal](const std::vector<Value>& args) -> Value {
+                            Value capturedObj = helpers::nativeSelfStack.back();
+                            std::vector<Value> fullArgs;
+                            fullArgs.reserve(args.size() + 1);
+                            fullArgs.push_back(capturedObj);
+                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                            
+                            if (gVal.isType()) {
+                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
+                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
+                                    if (bt == BuiltinType::TYPE_DEF) {
+                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        Value v = fullArgs[0];
+                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
+                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
+                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
+                                        else {
+                                            BuiltinType vbt = BuiltinType::ANY;
+                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
+                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isString()) vbt = BuiltinType::STRING;
+                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
+                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
+                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
+                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
+                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
+                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
+                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
+                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
+                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
+                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
+                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
+                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
+                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
+                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
+                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+                                            resTd->types.push_back(vbt);
+                                        }
+                                        resTd->normalize();
+                                        return Value(resTd);
+                                    } else {
+                                        std::string name = td->name();
+                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
+                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
+                                            return nIt->second(fullArgs);
+                                        }
+                                    }
+                                }
+                                throw std::runtime_error("TypeError: This type object is not callable.");
+                            } else {
+                                auto cls = static_cast<ObjClass*>(gVal.asObj());
+                                if (cls->native_allocator) {
+                                    return cls->native_allocator(fullArgs);
+                                }
+                                auto instance = GcHeap::get().allocate<ObjInstance>();
+                                Value res(instance);
+                                GcValueGuard guard(res);
+                                instance->classDef = cls;
+                                
+                                ObjClosure* initMethod = nullptr;
+                                auto c = cls;
+                                while (c) {
+                                    auto it = c->properties.find("<init>");
+                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                                        initMethod = it->second.val.asFunction();
+                                        break;
+                                    }
+                                    c = c->parent;
+                                }
+                                
+                                if (initMethod) {
+                                    if (initMethod->isBytecode()) {
+                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
+                                    } else if (initMethod->isNative()) {
+                                        helpers::nativeSelfStack.push_back(res);
+                                        helpers::nativeClassStack.push_back(Value(cls));
+                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
+                                        fn(fullArgs);
+                                        helpers::nativeSelfStack.pop_back();
+                                        helpers::nativeClassStack.pop_back();
+                                    }
+                                }
+                                return res;
+                            }
+                        }
+                    );
                     result = Value(bound);
                     found = true;
                 }
@@ -9161,6 +9463,104 @@ uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chun
                     bound->nativeFn = targetFn->nativeFn;
                     result = Value(bound);
                     found = true;
+                } else if (gVal.isType() || gVal.isClass()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    bound->isUFCS = true;
+                    bound->nativeFn = std::make_any<NativeCallable>(
+                        [gVal](const std::vector<Value>& args) -> Value {
+                            Value capturedObj = helpers::nativeSelfStack.back();
+                            std::vector<Value> fullArgs;
+                            fullArgs.reserve(args.size() + 1);
+                            fullArgs.push_back(capturedObj);
+                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                            
+                            if (gVal.isType()) {
+                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
+                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
+                                    if (bt == BuiltinType::TYPE_DEF) {
+                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        Value v = fullArgs[0];
+                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
+                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
+                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
+                                        else {
+                                            BuiltinType vbt = BuiltinType::ANY;
+                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
+                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isString()) vbt = BuiltinType::STRING;
+                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
+                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
+                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
+                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
+                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
+                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
+                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
+                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
+                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
+                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
+                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
+                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
+                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
+                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
+                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+                                            resTd->types.push_back(vbt);
+                                        }
+                                        resTd->normalize();
+                                        return Value(resTd);
+                                    } else {
+                                        std::string name = td->name();
+                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
+                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
+                                            return nIt->second(fullArgs);
+                                        }
+                                    }
+                                }
+                                throw std::runtime_error("TypeError: This type object is not callable.");
+                            } else {
+                                auto cls = static_cast<ObjClass*>(gVal.asObj());
+                                if (cls->native_allocator) {
+                                    return cls->native_allocator(fullArgs);
+                                }
+                                auto instance = GcHeap::get().allocate<ObjInstance>();
+                                Value res(instance);
+                                GcValueGuard guard(res);
+                                instance->classDef = cls;
+                                
+                                ObjClosure* initMethod = nullptr;
+                                auto c = cls;
+                                while (c) {
+                                    auto it = c->properties.find("<init>");
+                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                                        initMethod = it->second.val.asFunction();
+                                        break;
+                                    }
+                                    c = c->parent;
+                                }
+                                
+                                if (initMethod) {
+                                    if (initMethod->isBytecode()) {
+                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
+                                    } else if (initMethod->isNative()) {
+                                        helpers::nativeSelfStack.push_back(res);
+                                        helpers::nativeClassStack.push_back(Value(cls));
+                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
+                                        fn(fullArgs);
+                                        helpers::nativeSelfStack.pop_back();
+                                        helpers::nativeClassStack.pop_back();
+                                    }
+                                }
+                                return res;
+                            }
+                        }
+                    );
+                    result = Value(bound);
+                    found = true;
                 }
             } else {
                 Value gVal = vm->getGlobal(field);
@@ -9198,6 +9598,104 @@ uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chun
                         bound->boundClass = targetFn->boundClass;
                     }
                     bound->nativeFn = targetFn->nativeFn;
+                    result = Value(bound);
+                    found = true;
+                } else if (gVal.isType() || gVal.isClass()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    bound->isUFCS = true;
+                    bound->nativeFn = std::make_any<NativeCallable>(
+                        [gVal](const std::vector<Value>& args) -> Value {
+                            Value capturedObj = helpers::nativeSelfStack.back();
+                            std::vector<Value> fullArgs;
+                            fullArgs.reserve(args.size() + 1);
+                            fullArgs.push_back(capturedObj);
+                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                            
+                            if (gVal.isType()) {
+                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
+                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
+                                    if (bt == BuiltinType::TYPE_DEF) {
+                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        Value v = fullArgs[0];
+                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
+                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
+                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
+                                        else {
+                                            BuiltinType vbt = BuiltinType::ANY;
+                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
+                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isString()) vbt = BuiltinType::STRING;
+                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
+                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
+                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
+                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
+                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
+                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
+                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
+                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
+                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
+                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
+                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
+                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
+                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
+                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
+                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
+                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+                                            resTd->types.push_back(vbt);
+                                        }
+                                        resTd->normalize();
+                                        return Value(resTd);
+                                    } else {
+                                        std::string name = td->name();
+                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
+                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
+                                            return nIt->second(fullArgs);
+                                        }
+                                    }
+                                }
+                                throw std::runtime_error("TypeError: This type object is not callable.");
+                            } else {
+                                auto cls = static_cast<ObjClass*>(gVal.asObj());
+                                if (cls->native_allocator) {
+                                    return cls->native_allocator(fullArgs);
+                                }
+                                auto instance = GcHeap::get().allocate<ObjInstance>();
+                                Value res(instance);
+                                GcValueGuard guard(res);
+                                instance->classDef = cls;
+                                
+                                ObjClosure* initMethod = nullptr;
+                                auto c = cls;
+                                while (c) {
+                                    auto it = c->properties.find("<init>");
+                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                                        initMethod = it->second.val.asFunction();
+                                        break;
+                                    }
+                                    c = c->parent;
+                                }
+                                
+                                if (initMethod) {
+                                    if (initMethod->isBytecode()) {
+                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
+                                    } else if (initMethod->isNative()) {
+                                        helpers::nativeSelfStack.push_back(res);
+                                        helpers::nativeClassStack.push_back(Value(cls));
+                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
+                                        fn(fullArgs);
+                                        helpers::nativeSelfStack.pop_back();
+                                        helpers::nativeClassStack.pop_back();
+                                    }
+                                }
+                                return res;
+                            }
+                        }
+                    );
                     result = Value(bound);
                     found = true;
                 }

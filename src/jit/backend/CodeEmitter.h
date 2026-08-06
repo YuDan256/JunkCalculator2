@@ -1161,17 +1161,25 @@ private:
                 }
                 
 #ifdef _WIN32
+                if (callee.isPhysicalGPR()) {
+                    if (callee.pregGPR() != rcx) masm_.movq(rcx, callee.pregGPR());
+                } else if (callee.isStackSlot()) {
+                    masm_.movq(rcx, getStackOperand(callee.slot()));
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
+                }
                 if (argc > 0) masm_.movq(r8, rsp); else masm_.movq(r8, 0);
-                if (callee.isPhysicalGPR()) masm_.movq(rcx, callee.pregGPR());
-                else if (callee.isStackSlot()) masm_.movq(rcx, getStackOperand(callee.slot()));
-                else throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
                 masm_.movq(rdx, r14);
                 masm_.mov(r9, static_cast<int32_t>(argc));
 #else
+                if (callee.isPhysicalGPR()) {
+                    if (callee.pregGPR() != rdi) masm_.movq(rdi, callee.pregGPR());
+                } else if (callee.isStackSlot()) {
+                    masm_.movq(rdi, getStackOperand(callee.slot()));
+                } else {
+                    throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
+                }
                 if (argc > 0) masm_.movq(rdx, rsp); else masm_.movq(rdx, 0);
-                if (callee.isPhysicalGPR()) masm_.movq(rdi, callee.pregGPR());
-                else if (callee.isStackSlot()) masm_.movq(rdi, getStackOperand(callee.slot()));
-                else throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
                 masm_.movq(rsi, r14);
                 masm_.mov(rcx, static_cast<int32_t>(argc));
 #endif

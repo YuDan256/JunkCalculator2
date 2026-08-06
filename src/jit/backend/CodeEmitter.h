@@ -938,17 +938,12 @@ private:
                     }
                 }
                 
-                masm_.callCFunction(inst->functionPtr(), argc);
+                Register stackArg1 = Register();
+                Register stackArg2 = Register();
+                if (argc > argRegs.size()) stackArg1 = r10;
+                if (argc > argRegs.size() + 1) stackArg2 = r11;
                 
-                // Write stack arguments
-                for (uint32_t i = static_cast<uint32_t>(argRegs.size()); i < argc; ++i) {
-                    Register srcReg = (i == argRegs.size()) ? r10 : r11;
-#ifdef _WIN32
-                    masm_.movq(Operand(rsp, 32 + (i - 4) * 8), srcReg);
-#else
-                    masm_.movq(Operand(rsp, (i - 6) * 8), srcReg);
-#endif
-                }
+                masm_.callCFunction(inst->functionPtr(), argc, stackArg1, stackArg2);
                 break;
             }
             default:

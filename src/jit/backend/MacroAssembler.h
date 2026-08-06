@@ -89,23 +89,20 @@ public:
 
     // 发射 16 位数据 (小端序)
     void emit16(uint16_t value) {
-        size_t pos = buffer_.size();
-        buffer_.resize(pos + sizeof(uint16_t));
-        std::memcpy(buffer_.data() + pos, &value, sizeof(uint16_t));
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(&value);
+        buffer_.insert(buffer_.end(), p, p + sizeof(uint16_t));
     }
 
     // 发射 32 位数据 (小端序)
     void emit32(uint32_t value) {
-        size_t pos = buffer_.size();
-        buffer_.resize(pos + sizeof(uint32_t));
-        std::memcpy(buffer_.data() + pos, &value, sizeof(uint32_t));
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(&value);
+        buffer_.insert(buffer_.end(), p, p + sizeof(uint32_t));
     }
 
     // 发射 64 位数据 (小端序)
     void emit64(uint64_t value) {
-        size_t pos = buffer_.size();
-        buffer_.resize(pos + sizeof(uint64_t));
-        std::memcpy(buffer_.data() + pos, &value, sizeof(uint64_t));
+        const uint8_t* p = reinterpret_cast<const uint8_t*>(&value);
+        buffer_.insert(buffer_.end(), p, p + sizeof(uint64_t));
     }
 
     // 将缓冲区中的机器码复制到可执行内存中，并修改内存权限为 RX
@@ -910,7 +907,7 @@ public:
     }
 
     // --- CALL C++ Function (ABI Compliant) ---
-    void callCFunction(void* funcPtr, uint32_t argc = 0) {
+    void callCFunction(void* funcPtr, uint32_t argc = 0, Register stackArg1 = Register(), Register stackArg2 = Register()) {
         // 1. 保存 R12 (Callee-Saved)
         push(r12);
         // 2. 保存原始 RSP 到 R12
@@ -925,6 +922,9 @@ public:
         }
         stackSpace = (stackSpace + 15) & ~15;
         if (stackSpace > 0) subq(rsp, stackSpace);
+        
+        if (stackArg1.isValid()) movq(Operand(rsp, 32), stackArg1);
+        if (stackArg2.isValid()) movq(Operand(rsp, 40), stackArg2);
 #else
         uint32_t stackSpace = 0;
         if (argc > 6) {
@@ -932,6 +932,9 @@ public:
             stackSpace = (stackSpace + 15) & ~15;
             if (stackSpace > 0) subq(rsp, stackSpace);
         }
+        
+        if (stackArg1.isValid()) movq(Operand(rsp, 0), stackArg1);
+        if (stackArg2.isValid()) movq(Operand(rsp, 8), stackArg2);
 #endif
         // 5. 调用目标函数
         movabs(rax, reinterpret_cast<uint64_t>(funcPtr));

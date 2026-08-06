@@ -273,7 +273,7 @@ private:
                         LiveInterval& interval = liveness_.intervalsMut().at(use.vreg());
                         if (interval.allocatedSlot != -1) {
                             // Spilled
-                            if (inst->opcode() == LIROpcode::Move || inst->opcode() == LIROpcode::ParallelMove) {
+                            if (inst->opcode() == LIROpcode::Move || inst->opcode() == LIROpcode::ParallelMove || constraint.type == LIRConstraintType::None) {
                                 use = LIROperand::createStackSlot(interval.allocatedSlot);
                             } else {
                                 LIROperand stackOp = LIROperand::createStackSlot(interval.allocatedSlot);

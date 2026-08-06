@@ -291,7 +291,8 @@ public:
                         if (kst.isDouble()) return builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
                         if (kst.isBool()) return builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
                         if (kst.isString()) return builder_.createStringConstant(kst.asString());
-                        return builder_.createNoneConstant();
+                        if (kst.isNone()) return builder_.createNoneConstant();
+                        return builder_.createInt64Constant(kst.as_bits);
                     }
                     HIRNode* node = builder_.getLocal(registerOffset_ + rk);
                     if (!node) {
@@ -354,8 +355,10 @@ public:
                             node = builder_.createStringConstant(kst.asString());
                         } else if (kst.isNone()) {
                             node = builder_.createNoneConstant();
+                        } else {
+                            node = builder_.createInt64Constant(kst.as_bits);
                         }
-                        // TODO: 其他复杂常量类型（如 BigInt, Matrix）的加载
+                        
                         if (node) {
                             setLocalSync(a, node);
                             if (kst.isString()) regFuncName_[a] = kst.asString();
@@ -401,12 +404,14 @@ public:
                     case OpCode::MUL:
                     case OpCode::DIV:
                     case OpCode::IDIV:
-                    case OpCode::MOD: {
+                    case OpCode::MOD:
+                    case OpCode::POW:
+                    case OpCode::LDIV: {
                         uint8_t fb = chunk_.typeFeedback[currentIp];
                         HIRNode* lhs = getRKNode(b);
                         HIRNode* rhs = getRKNode(c);
                         
-                        if (fb == 0x01) { // Monomorphic Int32 (纯 32 位整数)
+                        if (fb == 0x01 && op != OpCode::POW && op != OpCode::LDIV) { // Monomorphic Int32 (纯 32 位整数)
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsInt32(lhs, fs);
                             auto guardR = builder_.createGuardIsInt32(rhs, fs);
@@ -423,7 +428,7 @@ public:
                             
                             setLocalSync(a, builder_.createBoxInt32(opNode));
                             
-                        } else if (fb == 0x02) { // Monomorphic Double (纯 64 位浮点数)
+                        } else if (fb == 0x02 && op != OpCode::POW && op != OpCode::LDIV) { // Monomorphic Double (纯 64 位浮点数)
                             auto fs = builder_.captureFrameState(currentIp, currentIp);
                             auto guardL = builder_.createGuardIsDouble(lhs, fs);
                             auto guardR = builder_.createGuardIsDouble(rhs, fs);
@@ -440,7 +445,19 @@ public:
                             
                             setLocalSync(a, builder_.createBoxDouble(opNode));
                         } else {
-                            throw std::runtime_error("JIT Error: Unsupported type feedback for arithmetic op.");
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            void* fnPtr = nullptr;
+                            if (op == OpCode::ADD) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_add);
+                            else if (op == OpCode::SUB) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_sub);
+                            else if (op == OpCode::MUL) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_mul);
+                            else if (op == OpCode::DIV) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_div);
+                            else if (op == OpCode::IDIV) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_idiv);
+                            else if (op == OpCode::MOD) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_mod);
+                            else if (op == OpCode::POW) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_pow);
+                            else if (op == OpCode::LDIV) fnPtr = reinterpret_cast<void*>(jc2_jit_arith_ldiv);
+                            
+                            auto callout = builder_.createCallout(fnPtr, JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
+                            setLocalSync(a, callout);
                         }
                         break;
                     }
@@ -469,7 +486,16 @@ public:
                             
                             setLocalSync(a, builder_.createBoxInt32(opNode));
                         } else {
-                            throw std::runtime_error("JIT Error: Unsupported type feedback for bitwise op.");
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            void* fnPtr = nullptr;
+                            if (op == OpCode::BAND) fnPtr = reinterpret_cast<void*>(jc2_jit_bitwise_and);
+                            else if (op == OpCode::BOR) fnPtr = reinterpret_cast<void*>(jc2_jit_bitwise_or);
+                            else if (op == OpCode::BXOR) fnPtr = reinterpret_cast<void*>(jc2_jit_bitwise_xor);
+                            else if (op == OpCode::SHL) fnPtr = reinterpret_cast<void*>(jc2_jit_bitwise_shl);
+                            else if (op == OpCode::SHR) fnPtr = reinterpret_cast<void*>(jc2_jit_bitwise_shr);
+                            
+                            auto callout = builder_.createCallout(fnPtr, JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
+                            setLocalSync(a, callout);
                         }
                         break;
                     }
@@ -520,7 +546,17 @@ public:
                         } else if (op == OpCode::IS) {
                             setLocalSync(a, builder_.createBoxBool(builder_.createCmpEqTagged(lhs, rhs)));
                         } else {
-                            throw std::runtime_error("JIT Error: Unsupported type feedback for comparison op.");
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            void* fnPtr = nullptr;
+                            if (op == OpCode::EQ) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_eq);
+                            else if (op == OpCode::NEQ) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_neq);
+                            else if (op == OpCode::LT) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_lt);
+                            else if (op == OpCode::LE) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_le);
+                            else if (op == OpCode::GT) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_gt);
+                            else if (op == OpCode::GE) fnPtr = reinterpret_cast<void*>(jc2_jit_cmp_ge);
+                            
+                            auto callout = builder_.createCallout(fnPtr, JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
+                            setLocalSync(a, callout);
                         }
                         break;
                     }
@@ -562,8 +598,13 @@ public:
                             } else {
                                 setLocalSync(a, val);
                             }
+                        } else if (op == OpCode::UNM || op == OpCode::BNOT) {
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            void* fnPtr = (op == OpCode::UNM) ? reinterpret_cast<void*>(jc2_jit_unary_unm) : reinterpret_cast<void*>(jc2_jit_unary_bnot);
+                            auto callout = builder_.createCallout(fnPtr, JITType::TaggedValue, 1, {getBoxedRKNode(b)}, fs);
+                            setLocalSync(a, callout);
                         } else {
-                            throw std::runtime_error("JIT Error: Unsupported type feedback for unary op.");
+                            throw std::runtime_error("JIT Error: Unsupported type feedback for logical NOT/TO_BOOL.");
                         }
                         break;
                     }
@@ -619,6 +660,7 @@ public:
                     case OpCode::TRY_END:
                     case OpCode::EXTRAARG:
                     case OpCode::SET_KW_ARGC:
+                    case OpCode::PASS_REFS:
                         break;
 
                     case OpCode::BUILD_LIST: {
@@ -626,6 +668,7 @@ public:
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_list), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        for (int i = 0; i < c; ++i) callout->addInput(getBoxedRKNode(b + i));
                         setLocalSync(a, callout);
                         break;
                     }
@@ -634,6 +677,7 @@ public:
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_dict), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        for (int i = 0; i < c * 2; ++i) callout->addInput(getBoxedRKNode(b + i));
                         setLocalSync(a, callout);
                         break;
                     }
@@ -642,6 +686,7 @@ public:
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_set), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        for (int i = 0; i < c; ++i) callout->addInput(getBoxedRKNode(b + i));
                         setLocalSync(a, callout);
                         break;
                     }
@@ -651,6 +696,12 @@ public:
                         auto shapeIdxNode = builder_.createInt32Constant(c);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_matrix), JITType::TaggedValue, 3, {startRegNode, shapeIdxNode, chunkNode}, fs);
+                        
+                        const auto& shape = chunk_.matrixShapes[c];
+                        int total = 0;
+                        for (uint16_t cols : shape.rowCols) total += cols;
+                        for (int i = 0; i < total; ++i) callout->addInput(getBoxedRKNode(b + i));
+                        
                         setLocalSync(a, callout);
                         break;
                     }
@@ -658,6 +709,7 @@ public:
                         auto fs = builder_.captureFrameState(currentIp, currentIp);
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_slice), JITType::TaggedValue, 1, {startRegNode}, fs);
+                        for (int i = 0; i < 3; ++i) callout->addInput(getBoxedRKNode(b + i));
                         setLocalSync(a, callout);
                         break;
                     }
@@ -677,6 +729,7 @@ public:
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
                         auto offsetNode = builder_.createInt32Constant(registerOffset_);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_namespace), JITType::TaggedValue, 5, {startRegNode, countNode, nameIdxNode, chunkNode, offsetNode}, fs);
+                        for (int i = 0; i < c * 3; ++i) callout->addInput(getBoxedRKNode(a + 1 + i));
                         setLocalSync(a, callout);
                         break;
                     }
@@ -685,6 +738,7 @@ public:
                         auto startRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto countNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_concat_strings), JITType::TaggedValue, 2, {startRegNode, countNode}, fs);
+                        for (int i = 0; i < c; ++i) callout->addInput(getBoxedRKNode(b + i));
                         setLocalSync(a, callout);
                         break;
                     }
@@ -694,6 +748,7 @@ public:
                         auto specIdxNode = builder_.createInt32Constant(c);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_format_string), JITType::TaggedValue, 3, {valRegNode, specIdxNode, chunkNode}, fs);
+                        callout->addInput(getBoxedRKNode(b));
                         setLocalSync(a, callout);
                         break;
                     }
@@ -702,7 +757,27 @@ public:
                         auto objRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto excludeKeysRegNode = builder_.createInt32Constant(registerOffset_ + c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_rest), JITType::TaggedValue, 2, {objRegNode, excludeKeysRegNode}, fs);
+                        callout->addInput(getBoxedRKNode(b));
+                        callout->addInput(getBoxedRKNode(c));
                         setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::DICT_INIT: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_init), JITType::TaggedValue, 0, {}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::DICT_APPEND: {
+                        auto fs = builder_.captureFrameState(currentIp, currentIp);
+                        auto dictRegNode = builder_.createInt32Constant(registerOffset_ + a);
+                        auto keyRegNode = builder_.createInt32Constant(registerOffset_ + b);
+                        auto valRegNode = builder_.createInt32Constant(registerOffset_ + c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_append), JITType::Unknown, 3, {dictRegNode, keyRegNode, valRegNode}, fs);
+                        callout->addInput(getBoxedRKNode(a));
+                        callout->addInput(getBoxedRKNode(b));
+                        callout->addInput(getBoxedRKNode(c));
+                        builder_.setCurrentEffect(callout);
                         break;
                     }
                     case OpCode::CLOSURE: {
@@ -711,6 +786,16 @@ public:
                         auto fnIdxNode = builder_.createInt32Constant(fnIdx);
                         auto offsetNode = builder_.createInt32Constant(registerOffset_);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_closure), JITType::TaggedValue, 2, {fnIdxNode, offsetNode}, fs);
+                        
+                        if (VM::activeVM && fnIdx >= 0 && fnIdx < static_cast<int>(VM::activeVM->getCompiledFunctions().size())) {
+                            auto& fn = VM::activeVM->getCompiledFunctions()[fnIdx];
+                            for (const auto& uv : fn->upvalues) {
+                                if (uv.isLocal) {
+                                    callout->addInput(getBoxedRKNode(uv.index));
+                                }
+                            }
+                        }
+                        
                         setLocalSync(a, callout);
                         break;
                     }

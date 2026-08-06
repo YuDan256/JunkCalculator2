@@ -45,13 +45,18 @@ extern bool g_profile;
 #include <unistd.h>
 #endif
 
+#define JIT_CALLOUT_TRY try {
+#define JIT_CALLOUT_CATCH } catch (const std::exception& e) { VM::activeVM->jit_exception_value = Value(std::string(e.what())); jit::g_jit_pending_exception = 1; return 0; } catch (...) { VM::activeVM->jit_exception_value = Value("Unknown JIT Exception"); jit::g_jit_pending_exception = 1; return 0; }
+#define JIT_CALLOUT_CATCH_VOID } catch (const std::exception& e) { VM::activeVM->jit_exception_value = Value(std::string(e.what())); jit::g_jit_pending_exception = 1; return; } catch (...) { VM::activeVM->jit_exception_value = Value("Unknown JIT Exception"); jit::g_jit_pending_exception = 1; return; }
+
 namespace jc {
 
 uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
+    JIT_CALLOUT_TRY
     (void)current_regs;
-    Value callee; callee.as_bits = callee_bits;
+    Value callee = Value::fromRawBits(callee_bits);
     std::vector<Value> args(argc);
-    for (uint32_t i = 0; i < argc; ++i) args[i].as_bits = arg_bits[i];
+    for (uint32_t i = 0; i < argc; ++i) args[i] = Value::fromRawBits(arg_bits[i]);
     
     if (callee.isFunctionClosure()) {
         ObjClosure* cl = callee.asFunction();
@@ -108,6 +113,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
         return res.as_bits;
     }
     throw std::runtime_error("JIT Error: Target is not callable.");
+    JIT_CALLOUT_CATCH
 }
 
 Value VM::makeTokenInstance(const Token& t) {
@@ -597,6 +603,12 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     jitEntryPoints[closure->compiledFnIndex] = nullptr;
                     jitCompiledCode.erase(closure->compiledFnIndex);
                     fnDef->callCount = 0;
+                    if (jit::g_jit_pending_exception) {
+                        jit::g_jit_pending_exception = 0;
+                        Value exVal = jit_exception_value;
+                        jit_exception_value = Value::none();
+                        throw std::runtime_error(exVal.asString());
+                    }
                     int targetDepth = frameCount - 1;
                     try {
                         registers[currentFrame->registerBase + dstReg] = run(targetDepth);
@@ -621,8 +633,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     }
                 }
             
-                Value retVal;
-                retVal.as_bits = retBits;
+                Value retVal = Value::fromRawBits(retBits);
                 registers[currentFrame->registerBase + dstReg] = retVal;
 
                 CallFrame* f = &frames[frameCount - 1];
@@ -2662,10 +2673,15 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
 
         osrCompiledCode[fnIdx][loopHeaderIp] = mem;
         osrEntryPoints[fnIdx][loopHeaderIp] = mem->get();
-    } catch (const std::exception&) {
+        if (g_profile) {
+            std::cout << "[JIT] OSR Compilation successful for loop header IP: " << loopHeaderIp << "\n";
+        }
+    } catch (const std::exception& e) {
+        if (g_profile) std::cout << "[JIT] OSR Compilation failed: " << e.what() << "\n";
         // OSR 编译失败，回退到解释器，并标记不再尝试编译
         osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; 
     } catch (...) {
+        if (g_profile) std::cout << "[JIT] OSR Compilation failed with unknown error.\n";
         osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; 
     }
 }
@@ -2719,7 +2735,9 @@ void VM::profileFrameStart(CallFrame* frame) {
 
                     jitCompiledCode[fnIdx] = mem;
                     jitEntryPoints[fnIdx] = mem->get();
-                } catch (const std::exception&) {
+                    if (g_profile) std::cout << "[JIT] Tier 2 Compilation successful for function '" << fn->name << "'\n";
+                } catch (const std::exception& e) {
+                    if (g_profile) std::cout << "[JIT] Tier 2 Compilation failed for function '" << fn->name << "': " << e.what() << "\n";
                     // JIT 编译失败，回退到解释器，并标记不再尝试编译
                     jitEntryPoints[fnIdx] = nullptr; 
                 }
@@ -3080,10 +3098,15 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
             jitEntryPoints[fnIdx] = nullptr;
             jitCompiledCode.erase(fnIdx);
             fnDef->callCount = 0;
+            if (jit::g_jit_pending_exception) {
+                jit::g_jit_pending_exception = 0;
+                Value exVal = jit_exception_value;
+                jit_exception_value = Value::none();
+                throw std::runtime_error(exVal.asString());
+            }
             // Fall through to run() below
         } else {
-            Value retVal;
-            retVal.as_bits = retBits;
+            Value retVal = Value::fromRawBits(retBits);
                 
             CallFrame* f = &frames[frameCount - 1];
             profileFrameEnd(f);
@@ -3260,19 +3283,28 @@ Value VM::run(int targetFrameDepth) {
         do { \
             void* osrEntry = osrEntryPoints[fnIdx][loopHeaderIp]; \
             if (osrEntry) { \
+                if (g_profile) std::cout << "[JIT] Executing OSR machine code from IP: " << loopHeaderIp << "\n"; \
                 typedef uint64_t (*JitFunc)(Value*); \
                 JitFunc func = reinterpret_cast<JitFunc>(osrEntry); \
                 jit::g_jc2_jit_deoptimized = false; \
                 uint64_t retBits = func(frameRegs); \
                 if (jit::g_jc2_jit_deoptimized) { \
+                    if (g_profile) std::cout << "[JIT] OSR Deoptimized! Falling back to interpreter.\n"; \
                     jit::g_jc2_jit_deoptimized = false; \
                     ip = frame->ip; \
                     osrTriggered = true; \
                     osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; \
                     osrCompiledCode[fnIdx].erase(loopHeaderIp); \
                     const_cast<Chunk*>(chunk)->osrCounters[op_ip] = 0; \
+                    if (jit::g_jit_pending_exception) { \
+                        jit::g_jit_pending_exception = 0; \
+                        Value exVal = jit_exception_value; \
+                        jit_exception_value = Value::none(); \
+                        throw std::runtime_error(exVal.asString()); \
+                    } \
                 } else { \
-                    Value res; res.as_bits = retBits; \
+                    if (g_profile) std::cout << "[JIT] OSR Execution completed successfully.\n"; \
+                    Value res = Value::fromRawBits(retBits); \
                     runDefersDownTo(frame->deferBase); \
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) { \
                         exceptionHandlers.pop_back(); \
@@ -7848,6 +7880,7 @@ Value VM::run(int targetFrameDepth) {
 // ============================================================================
 
 uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     int base = vm->getCurrentFrame()->registerBase;
@@ -7860,9 +7893,11 @@ uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count) {
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     int base = vm->getCurrentFrame()->registerBase;
@@ -7876,9 +7911,11 @@ uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count) {
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     int base = vm->getCurrentFrame()->registerBase;
@@ -7892,9 +7929,11 @@ uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count) {
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     int base = vm->getCurrentFrame()->registerBase;
@@ -8076,9 +8115,11 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
     }
     vm->getCurrentFrame()->jitReturnSlot = result;
     return result.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_build_slice(uint32_t startReg) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     int base = vm->getCurrentFrame()->registerBase;
@@ -8114,18 +8155,51 @@ uint64_t jc2_jit_build_slice(uint32_t startReg) {
     slice->step = readInt(2);
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
     const std::string& name = chunk->constants[nameIdx].asString();
     auto cls = GcHeap::get().allocate<ObjClass>();
     cls->name = name;
     Value res(cls);
     VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_dict_init() {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    ObjDict* dict = GcHeap::get().allocate<ObjDict>();
+    Value res(dict);
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_dict_append(uint32_t dictReg, uint32_t keyReg, uint32_t valReg) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
+    
+    Value dictVal = regs[base + dictReg];
+    Value keyVal = regs[base + keyReg];
+    Value valVal = regs[base + valReg];
+    
+    if (dictVal.isObjType(ObjType::DICT)) {
+        static_cast<ObjDict*>(dictVal.asObj())->set(keyVal, valVal);
+    } else {
+        throw std::runtime_error("VM Error: DICT_APPEND target is not a dict.");
+    }
+    JIT_CALLOUT_CATCH_VOID
 }
 
 uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     CallFrame* frame = vm->getCurrentFrame();
@@ -8150,9 +8224,11 @@ uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nam
     }
     frame->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     int base = vm->getCurrentFrame()->registerBase;
@@ -8190,9 +8266,11 @@ uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
     Value res(result);
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     int base = vm->getCurrentFrame()->registerBase;
     Value val = vm->getRegisters()[base + valReg];
@@ -8237,9 +8315,522 @@ uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* c
     Value res(result);
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
+    
+    Value obj = regs[base + objReg];
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        auto it = inst->properties.find(keyVal.asString());
+        if (it != inst->properties.end() && !it->second.is_local) {
+            vm->getCurrentFrame()->jitReturnSlot = it->second.val;
+            return it->second.val.as_bits;
+        }
+    } else if (obj.isObjType(ObjType::DICT)) {
+        auto d = static_cast<ObjDict*>(obj.asObj());
+        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+            if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                vm->getCurrentFrame()->jitReturnSlot = d->elements[ic.cachedFieldIndex].second;
+                return d->elements[ic.cachedFieldIndex].second.as_bits;
+            }
+        }
+        auto it = d->keyMap.find(keyVal);
+        if (it != d->keyMap.end()) {
+            ic.cachedBuiltinType = BuiltinType::DICT;
+            ic.cachedFieldIndex = static_cast<int>(it->second);
+            vm->getCurrentFrame()->jitReturnSlot = d->elements[it->second].second;
+            return d->elements[it->second].second.as_bits;
+        }
+    }
+
+    const std::string& field = keyVal.asString();
+    bool found = false;
+    Value result;
+    
+    BuiltinType objBt = BuiltinType::UNKNOWN;
+    if (obj.isObjType(ObjType::LIST)) objBt = BuiltinType::LIST;
+    else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
+    else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
+    else if (obj.isString()) objBt = BuiltinType::STRING;
+    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+
+    if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
+        auto rawMethod = ic.cachedMethod;
+        auto bound = GcHeap::get().allocate<ObjClosure>(
+            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+        );
+        bound->paramNames = rawMethod->paramNames;
+        bound->isRef = rawMethod->isRef;
+        bound->defaultValues = rawMethod->defaultValues;
+        bound->hasRestParam = rawMethod->hasRestParam;
+        bound->compiledFnIndex = rawMethod->compiledFnIndex;
+        if (rawMethod->upvalueCount > 0) {
+            bound->upvalueCount = rawMethod->upvalueCount;
+            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+            for (int i = 0; i < bound->upvalueCount; ++i) {
+                bound->upvalues[i] = rawMethod->upvalues[i];
+            }
+        }
+        if (rawMethod->paramTypesCount > 0) {
+            bound->paramTypesCount = rawMethod->paramTypesCount;
+            bound->paramTypes = new Value[bound->paramTypesCount];
+            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                bound->paramTypes[i] = rawMethod->paramTypes[i];
+            }
+        }
+        bound->returnType = rawMethod->returnType;
+        bound->nativeFn = rawMethod->nativeFn;
+        bound->boundSelf = obj;
+        bound->boundClass = Value(ic.cachedClass);
+        result = Value(bound);
+        found = true;
+    } else if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
+            auto rawMethod = ic.cachedMethod;
+            auto bound = GcHeap::get().allocate<ObjClosure>(
+                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+            );
+            bound->paramNames = rawMethod->paramNames;
+            bound->isRef = rawMethod->isRef;
+            bound->defaultValues = rawMethod->defaultValues;
+            bound->hasRestParam = rawMethod->hasRestParam;
+            bound->compiledFnIndex = rawMethod->compiledFnIndex;
+            if (rawMethod->upvalueCount > 0) {
+                bound->upvalueCount = rawMethod->upvalueCount;
+                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                for (int i = 0; i < bound->upvalueCount; ++i) {
+                    bound->upvalues[i] = rawMethod->upvalues[i];
+                }
+            }
+            if (rawMethod->paramTypesCount > 0) {
+                bound->paramTypesCount = rawMethod->paramTypesCount;
+                bound->paramTypes = new Value[bound->paramTypesCount];
+                for (int i = 0; i < bound->paramTypesCount; ++i) {
+                    bound->paramTypes[i] = rawMethod->paramTypes[i];
+                }
+            }
+            bound->returnType = rawMethod->returnType;
+            bound->nativeFn = rawMethod->nativeFn;
+            bound->boundSelf = Value(inst);
+            bound->boundClass = Value(ic.cachedClass);
+            result = Value(bound);
+            found = true;
+        }
+        if (!found) {
+            auto cls = inst->classDef;
+            while (cls) {
+                auto it = cls->properties.find(field);
+                if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                    auto rawMethod = it->second.val.asFunction();
+                    ic.cachedClassId = inst->classDef->classId;
+                    ic.cachedMethod = rawMethod;
+                    ic.cachedClass = cls;
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->paramNames = rawMethod->paramNames;
+                    bound->isRef = rawMethod->isRef;
+                    bound->defaultValues = rawMethod->defaultValues;
+                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
+                    if (rawMethod->paramTypesCount > 0) {
+                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                        bound->paramTypes = new Value[bound->paramTypesCount];
+                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                        }
+                    }
+                    bound->returnType = rawMethod->returnType;
+                    bound->nativeFn = rawMethod->nativeFn;
+                    bound->boundSelf = Value(inst);
+                    bound->boundClass = Value(cls);
+                    result = Value(bound);
+                    found = true;
+                    break;
+                }
+                cls = cls->parent;
+            }
+            if (!found) {
+                auto [getattrMethod, owner] = vm->findDunder(obj, "__getattr__");
+                if (getattrMethod) {
+                    try {
+                        result = vm->callDunder(obj, getattrMethod, owner, {Value(field)});
+                        found = true;
+                    } catch (...) {
+                        found = false;
+                    }
+                }
+            }
+        }
+    } else if (!found) {
+        ObjClass* nativeProto = nullptr;
+        if (objBt == BuiltinType::LIST) nativeProto = vm->listProto;
+        else if (objBt == BuiltinType::DICT) nativeProto = vm->dictProto;
+        else if (objBt == BuiltinType::SET) nativeProto = vm->setProto;
+        else if (objBt == BuiltinType::STRING) nativeProto = vm->stringProto;
+        else if (objBt == BuiltinType::MATRIX) nativeProto = vm->matrixProto;
+
+        if (nativeProto) {
+            auto it = nativeProto->properties.find(field);
+            if (it != nativeProto->properties.end() && !it->second.is_local) {
+                if (it->second.val.isFunctionClosure()) {
+                    auto rawMethod = it->second.val.asFunction();
+                    ic.cachedBuiltinType = objBt;
+                    ic.cachedMethod = rawMethod;
+                    ic.cachedClass = nativeProto;
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->paramNames = rawMethod->paramNames;
+                    bound->isRef = rawMethod->isRef;
+                    bound->defaultValues = rawMethod->defaultValues;
+                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
+                    if (rawMethod->paramTypesCount > 0) {
+                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                        bound->paramTypes = new Value[bound->paramTypesCount];
+                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                        }
+                    }
+                    bound->returnType = rawMethod->returnType;
+                    bound->nativeFn = rawMethod->nativeFn;
+                    bound->boundSelf = obj;
+                    bound->boundClass = Value(nativeProto);
+                    result = Value(bound);
+                } else {
+                    result = it->second.val;
+                }
+                found = true;
+            }
+        }
+    }
+    
+    if (!found && obj.isObjType(ObjType::NAMESPACE)) {
+        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+        auto it = ns->fields.find(field);
+        if (it != ns->fields.end()) {
+            result = *(it->second.upval->location);
+            found = true;
+        }
+    } else if (!found && obj.isSlice()) {
+        Value prop = obj.asSlice()->getProperty(field);
+        if (!prop.isUninit()) {
+            result = prop;
+            found = true;
+        }
+    } else if (!found && obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        while (cls) {
+            auto it = cls->properties.find(field);
+            if (it != cls->properties.end() && !it->second.is_local) {
+                if (it->second.val.isFunctionClosure()) {
+                    auto rawMethod = it->second.val.asFunction();
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->paramNames = rawMethod->paramNames;
+                    bound->isRef = rawMethod->isRef;
+                    bound->defaultValues = rawMethod->defaultValues;
+                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
+                    if (rawMethod->upvalueCount > 0) {
+                        bound->upvalueCount = rawMethod->upvalueCount;
+                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                        for (int i = 0; i < bound->upvalueCount; ++i) {
+                            bound->upvalues[i] = rawMethod->upvalues[i];
+                        }
+                    }
+                    if (rawMethod->paramTypesCount > 0) {
+                        bound->paramTypesCount = rawMethod->paramTypesCount;
+                        bound->paramTypes = new Value[bound->paramTypesCount];
+                        for (int i = 0; i < bound->paramTypesCount; ++i) {
+                            bound->paramTypes[i] = rawMethod->paramTypes[i];
+                        }
+                    }
+                    bound->returnType = rawMethod->returnType;
+                    bound->nativeFn = rawMethod->nativeFn;
+                    bound->boundSelf = Value::none();
+                    bound->boundClass = Value(cls);
+                    result = Value(bound);
+                } else {
+                    result = it->second.val;
+                }
+                found = true;
+                break;
+            }
+            cls = cls->parent;
+        }
+    }
+    
+    if (!found) {
+        if (ic.cachedGlobalSlot == -4) {
+            auto bound = GcHeap::get().allocate<ObjClosure>(
+                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+            );
+            bound->boundSelf = obj;
+            
+            Value builtinClosureVal = vm->getBuiltinClosure(field);
+            ObjClosure* targetFn = builtinClosureVal.asFunction();
+            bound->paramNames = targetFn->paramNames;
+            bound->isRef = targetFn->isRef;
+            bound->defaultValues = targetFn->defaultValues;
+            bound->hasRestParam = targetFn->hasRestParam;
+            bound->isUFCS = true;
+
+            bound->nativeFn = ic.cachedNativeFn;
+            result = Value(bound);
+            found = true;
+        } else {
+            if (ic.cachedGlobalSlot >= 0) {
+                Value gVal = vm->getGlobal(field);
+                if (gVal.isFunctionClosure()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    ObjClosure* targetFn = gVal.asFunction();
+                
+                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->paramNames = targetFn->paramNames;
+                    bound->isRef = targetFn->isRef;
+                    bound->defaultValues = targetFn->defaultValues;
+                    bound->isUFCS = true;
+
+                    if (targetFn->isBytecode()) {
+                        bound->compiledFnIndex = targetFn->compiledFnIndex;
+                        if (targetFn->upvalueCount > 0) {
+                            bound->upvalueCount = targetFn->upvalueCount;
+                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                            for (int i = 0; i < bound->upvalueCount; ++i) {
+                                bound->upvalues[i] = targetFn->upvalues[i];
+                            }
+                        }
+                        if (targetFn->paramTypesCount > 0) {
+                            bound->paramTypesCount = targetFn->paramTypesCount;
+                            bound->paramTypes = new Value[bound->paramTypesCount];
+                            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                bound->paramTypes[i] = targetFn->paramTypes[i];
+                            }
+                        }
+                        bound->returnType = targetFn->returnType;
+                    } else {
+                        bound->boundClass = targetFn->boundClass;
+                    }
+                    bound->nativeFn = targetFn->nativeFn;
+                    result = Value(bound);
+                    found = true;
+                }
+            } else {
+                Value gVal = vm->getGlobal(field);
+                if (gVal.isFunctionClosure()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    ObjClosure* targetFn = gVal.asFunction();
+                
+                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->paramNames = targetFn->paramNames;
+                    bound->isRef = targetFn->isRef;
+                    bound->defaultValues = targetFn->defaultValues;
+                    bound->isUFCS = true;
+
+                    if (targetFn->isBytecode()) {
+                        bound->compiledFnIndex = targetFn->compiledFnIndex;
+                        if (targetFn->upvalueCount > 0) {
+                            bound->upvalueCount = targetFn->upvalueCount;
+                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+                            for (int i = 0; i < bound->upvalueCount; ++i) {
+                                bound->upvalues[i] = targetFn->upvalues[i];
+                            }
+                        }
+                        if (targetFn->paramTypesCount > 0) {
+                            bound->paramTypesCount = targetFn->paramTypesCount;
+                            bound->paramTypes = new Value[bound->paramTypesCount];
+                            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                                bound->paramTypes[i] = targetFn->paramTypes[i];
+                            }
+                        }
+                        bound->returnType = targetFn->returnType;
+                    } else {
+                        bound->boundClass = targetFn->boundClass;
+                    }
+                    bound->nativeFn = targetFn->nativeFn;
+                    result = Value(bound);
+                    found = true;
+                }
+            }
+
+            if (!found) {
+                const auto& nativeBuiltins = vm->getNativeBuiltins();
+                auto nIt = nativeBuiltins.find(field);
+                if (nIt != nativeBuiltins.end()) {
+                    auto bound = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
+                    );
+                    bound->boundSelf = obj;
+                    
+                    Value builtinClosureVal = vm->getBuiltinClosure(field);
+                    ObjClosure* targetFn = builtinClosureVal.asFunction();
+                    bound->paramNames = targetFn->paramNames;
+                    bound->isRef = targetFn->isRef;
+                    bound->defaultValues = targetFn->defaultValues;
+                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->isUFCS = true;
+
+                    NativeCallable nativeFn = nIt->second;
+                    
+                    const auto& builtinArity = vm->getBuiltinArity();
+                    auto ait = builtinArity.find(field);
+                    std::set<int> allowedArities;
+                    if (ait != builtinArity.end()) allowedArities = ait->second;
+
+                    bound->nativeFn = std::make_any<NativeCallable>(
+                        [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
+                            Value capturedObj = helpers::nativeSelfStack.back();
+                            int totalArgs = static_cast<int>(args.size()) + 1;
+                            if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
+                                std::string expected;
+                                for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
+                                    if (aIt != allowedArities.begin()) expected += " or ";
+                                    expected += std::to_string(*aIt - 1);
+                                }
+                                throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                            }
+                            std::vector<Value> fullArgs;
+                            fullArgs.reserve(totalArgs);
+                            fullArgs.push_back(capturedObj);
+                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
+                            return nativeFn(fullArgs);
+                        }
+                    );
+                    
+                    ic.cachedGlobalSlot = -4;
+                    ic.cachedNativeFn = bound->nativeFn;
+                    
+                    result = Value(bound);
+                    found = true;
+                }
+            }
+        }
+    }
+
+    if (!found) {
+        throw std::runtime_error("VM Error: Property '" + field + "' not found.");
+    }
+    
+    vm->getCurrentFrame()->jitReturnSlot = result;
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value* regs = vm->getRegisters();
+    int base = frame->registerBase;
+    
+    Value obj = regs[base + objReg];
+    Value val = regs[base + valReg];
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        std::string keyStr = keyVal.asString();
+        
+        auto [setattrMethod, owner] = vm->findDunder(obj, DUNDER_SETATTR);
+        if (setattrMethod) {
+            inst->checkModify();
+            auto it = inst->properties.find(keyStr);
+            if (it != inst->properties.end()) {
+                if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
+                if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
+            }
+            vm->callDunder(obj, setattrMethod, owner, {keyVal, val});
+        } else {
+            inst->setProperty(keyStr, val);
+        }
+    } else if (obj.isObjType(ObjType::DICT)) {
+        auto d = static_cast<ObjDict*>(obj.asObj());
+        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+            if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                d->elements[ic.cachedFieldIndex].second = val;
+                return;
+            }
+        }
+        auto it = d->keyMap.find(keyVal);
+        if (it != d->keyMap.end()) {
+            d->elements[it->second].second = val;
+            ic.cachedBuiltinType = BuiltinType::DICT;
+            ic.cachedFieldIndex = static_cast<int>(it->second);
+        } else {
+            ic.cachedBuiltinType = BuiltinType::DICT;
+            ic.cachedFieldIndex = static_cast<int>(d->elements.size());
+            d->keyMap[keyVal] = d->elements.size();
+            d->elements.push_back({keyVal, val});
+        }
+    } else if (obj.isObjType(ObjType::NAMESPACE)) {
+        auto ns = static_cast<ObjNamespace*>(obj.asObj());
+        ns->setField(keyVal.asString(), val);
+    } else if (obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        std::string keyStr = keyVal.asString();
+        
+        bool found = false;
+        auto c_cls = cls;
+        while (c_cls) {
+            auto it = c_cls->properties.find(keyStr);
+            if (it != c_cls->properties.end()) {
+                if (it->second.is_local) {
+                    if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + keyStr + "'.");
+                    break;
+                }
+                if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + keyStr + "'.");
+                it->second.val = val;
+                found = true;
+                break;
+            }
+            c_cls = c_cls->parent;
+        }
+        if (!found) {
+            cls->properties[keyStr] = { val, false, false };
+        }
+    } else {
+        throw std::runtime_error("VM Error: Cannot set property on this type.");
+    }
+    JIT_CALLOUT_CATCH_VOID
 }
 
 uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value* regs = vm->getRegisters();
     int base = vm->getCurrentFrame()->registerBase;
@@ -8293,15 +8884,377 @@ uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 void jc2_jit_assign_global(uint32_t slot, uint64_t src_bits) {
-    Value src;
-    src.as_bits = src_bits;
+    JIT_CALLOUT_TRY
+    Value src = Value::fromRawBits(src_bits);
     VM::activeVM->setGlobalSlot(slot, src);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_arith_add(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_ADD); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RADD); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs + rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_arith_sub(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_SUB); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RSUB); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs - rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_arith_mul(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_MUL); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RMUL); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs * rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_arith_div(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_DIV); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RDIV); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs / rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_arith_idiv(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_IDIV); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RIDIV); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = idivide(lhs, rhs);
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_arith_mod(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_MOD); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RMOD); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs % rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_arith_pow(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_POW); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RPOW); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs ^ rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_arith_ldiv(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_LDIV); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RLDIV); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = ldivide(lhs, rhs);
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_bitwise_and(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_BITAND); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RBITAND); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs & rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_bitwise_or(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_BITOR); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RBITOR); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs | rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_bitwise_xor(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_BITXOR); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RBITXOR); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = bitXor(lhs, rhs);
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_bitwise_shl(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_LSHIFT); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RLSHIFT); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs << rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_bitwise_shr(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, DUNDER_RSHIFT); if (meth) { res = vm->callDunder(lhs, meth, owner, {rhs}); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, DUNDER_RRSHIFT); if (meth) { res = vm->callDunder(rhs, meth, owner, {lhs}); goto done; } }
+    res = lhs >> rhs;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_unary_unm(uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value val = Value::fromRawBits(val_bits);
+    Value res;
+    if (val.isInstance()) { auto [meth, owner] = vm->findDunder(val, DUNDER_NEG); if (meth) { res = vm->callDunder(val, meth, owner, {}); goto done; } }
+    res = -val;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_unary_bnot(uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value val = Value::fromRawBits(val_bits);
+    Value res;
+    if (val.isInstance()) { auto [meth, owner] = vm->findDunder(val, DUNDER_BITNOT); if (meth) { res = vm->callDunder(val, meth, owner, {}); goto done; } }
+    res = ~val;
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, "__eq__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__eq__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
+    res = Value(Value::equals(lhs, rhs));
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_cmp_neq(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, "__neq__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; } }
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, "__eq__"); if (meth) { res = Value(!vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__neq__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__eq__"); if (meth) { res = Value(!vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
+    res = Value(!Value::equals(lhs, rhs));
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_cmp_lt(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, "__lt__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; } }
+    if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__gt__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
+    res = Value(lhs < rhs);
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_cmp_le(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { 
+        auto [meth, owner] = vm->findDunder(lhs, "__le__");
+        if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; }
+        auto [methLt, ownerLt] = vm->findDunder(lhs, "__lt__");
+        if (methLt) {
+            if (vm->evaluateTruthiness(vm->callDunder(lhs, methLt, ownerLt, {rhs}))) { res = Value(true); goto done; }
+            auto [methEq, ownerEq] = vm->findDunder(lhs, "__eq__");
+            if (methEq) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, methEq, ownerEq, {rhs}))); goto done; }
+        }
+    }
+    if (rhs.isInstance()) { 
+        auto [meth, owner] = vm->findDunder(rhs, "__ge__");
+        if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; }
+        auto [methGt, ownerGt] = vm->findDunder(rhs, "__gt__");
+        if (methGt) {
+            if (vm->evaluateTruthiness(vm->callDunder(rhs, methGt, ownerGt, {lhs}))) { res = Value(true); goto done; }
+            auto [methEq, ownerEq] = vm->findDunder(rhs, "__eq__");
+            if (methEq) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, methEq, ownerEq, {lhs}))); goto done; }
+        }
+    }
+    res = Value(lhs <= rhs);
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_cmp_gt(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { 
+        auto [meth, owner] = vm->findDunder(lhs, "__gt__");
+        if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; }
+        auto [methLt, ownerLt] = vm->findDunder(lhs, "__lt__");
+        if (methLt) {
+            if (vm->evaluateTruthiness(vm->callDunder(lhs, methLt, ownerLt, {rhs}))) { res = Value(false); goto done; }
+            auto [methEq, ownerEq] = vm->findDunder(lhs, "__eq__");
+            if (methEq) { res = Value(!vm->evaluateTruthiness(vm->callDunder(lhs, methEq, ownerEq, {rhs}))); goto done; }
+        }
+    }
+    if (rhs.isInstance()) { 
+        auto [meth, owner] = vm->findDunder(rhs, "__lt__");
+        if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; }
+        auto [methGt, ownerGt] = vm->findDunder(rhs, "__gt__");
+        if (methGt) {
+            if (vm->evaluateTruthiness(vm->callDunder(rhs, methGt, ownerGt, {lhs}))) { res = Value(false); goto done; }
+            auto [methEq, ownerEq] = vm->findDunder(rhs, "__eq__");
+            if (methEq) { res = Value(!vm->evaluateTruthiness(vm->callDunder(rhs, methEq, ownerEq, {lhs}))); goto done; }
+        }
+    }
+    res = Value(lhs > rhs);
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_cmp_ge(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res;
+    if (lhs.isInstance()) { 
+        auto [meth, owner] = vm->findDunder(lhs, "__ge__");
+        if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; }
+        auto [methLt, ownerLt] = vm->findDunder(lhs, "__lt__");
+        if (methLt) { res = Value(!vm->evaluateTruthiness(vm->callDunder(lhs, methLt, ownerLt, {rhs}))); goto done; }
+    }
+    if (rhs.isInstance()) { 
+        auto [meth, owner] = vm->findDunder(rhs, "__le__");
+        if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; }
+        auto [methGt, ownerGt] = vm->findDunder(rhs, "__gt__");
+        if (methGt) { res = Value(!vm->evaluateTruthiness(vm->callDunder(rhs, methGt, ownerGt, {lhs}))); goto done; }
+    }
+    res = Value(lhs >= rhs);
+done:
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
+    JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     Value* regs = vm->getRegisters();
@@ -8399,6 +9352,7 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     
     frame->jitReturnSlot = res;
     return res.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 } // namespace jc

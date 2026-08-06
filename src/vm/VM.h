@@ -145,9 +145,10 @@ private:
     std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, bool hasRestParam, Value boundSelf = Value::none());
 
     std::string getTypeName(const Value& val);
-    bool evaluateTruthiness(const Value& val);
 
 public:
+    Value jit_exception_value = Value::none();
+    bool evaluateTruthiness(const Value& val);
     bool checkValueType(const Value& val, ObjTypeDef* td);
     std::pair<ObjClosure*, ObjClass*> findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
@@ -299,11 +300,44 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
 uint64_t jc2_jit_build_slice(uint32_t startReg);
 uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk);
 uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset);
+uint64_t jc2_jit_dict_init();
+void jc2_jit_dict_append(uint32_t dictReg, uint32_t keyReg, uint32_t valReg);
 uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count);
 uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk);
 uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg);
 uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset);
 void jc2_jit_assign_global(uint32_t slot, uint64_t src_bits);
+
+// Megamorphic Math Fallbacks (Step 89)
+uint64_t jc2_jit_arith_add(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_arith_sub(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_arith_mul(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_arith_div(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_arith_idiv(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_arith_mod(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_arith_pow(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_arith_ldiv(uint64_t lhs_bits, uint64_t rhs_bits);
+
+// Megamorphic Bitwise & Unary Fallbacks (Step 90)
+uint64_t jc2_jit_bitwise_and(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_bitwise_or(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_bitwise_xor(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_bitwise_shl(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_bitwise_shr(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_unary_unm(uint64_t val_bits);
+uint64_t jc2_jit_unary_bnot(uint64_t val_bits);
+
+// Dynamic Properties & Indexing (Step 94)
+uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk);
+
+// Megamorphic Comparison Fallbacks (Step 91)
+uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_cmp_neq(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_cmp_lt(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_cmp_le(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_cmp_gt(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_cmp_ge(uint64_t lhs_bits, uint64_t rhs_bits);
 
 } // namespace jc
 

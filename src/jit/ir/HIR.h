@@ -382,7 +382,7 @@ class Int64ConstantNode : public HIRNode {
     uint64_t value_;
 public:
     Int64ConstantNode(uint32_t id, uint64_t val)
-        : HIRNode(id, HIROp::Int64Constant, JITType::Int32), value_(val) {}
+        : HIRNode(id, HIROp::Int64Constant, JITType::TaggedValue), value_(val) {}
     uint64_t value() const { return value_; }
     std::string extraLabel() const override { return std::to_string(value_); }
 };

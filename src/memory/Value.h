@@ -204,6 +204,12 @@ namespace jc {
             if (obj) obj->refCount++;
             return v;
         }
+        inline static Value fromRawBits(uint64_t bits) {
+            Value v;
+            v.as_bits = bits;
+            if (v.isObj()) v.asObj()->refCount++;
+            return v;
+        }
 
         bool isDouble() const { return (as_bits & QNAN) != QNAN; }
         bool isInt32() const { return (as_bits & 0xFFFFFFFF00000000ULL) == INT32_MASK; }

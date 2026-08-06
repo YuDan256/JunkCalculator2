@@ -125,6 +125,12 @@ private:
                 } else if (dst.isStackSlot() && src.isStackSlot()) {
                     masm_.movq(r11, getStackOperand(src.slot()));
                     masm_.movq(getStackOperand(dst.slot()), r11);
+                } else if (dst.isStackSlot() && src.isMemory()) {
+                    masm_.movq(r11, src.memory());
+                    masm_.movq(getStackOperand(dst.slot()), r11);
+                } else if (dst.isMemory() && src.isStackSlot()) {
+                    masm_.movq(r11, getStackOperand(src.slot()));
+                    masm_.movq(dst.memory(), r11);
                 } else if (dst.isPhysicalGPR() && src.isImm32()) {
                     masm_.mov(dst.pregGPR(), src.imm32());
                 } else if (dst.isPhysicalGPR() && src.isImm64()) {
@@ -284,6 +290,9 @@ private:
                     masm_.emit8(0x0F);
                     masm_.emit8(0x6E);
                     masm_.emitModRM(3, dst.pregXMM().id(), r11.id());
+                } else if (dst.isStackSlot()) {
+                    masm_.movabs(r11, src.imm64());
+                    masm_.movq(getStackOperand(dst.slot()), r11);
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported LoadImm64 destination.");
                 }
@@ -600,34 +609,115 @@ private:
             case LIROpcode::CmpI32: {
                 const LIROperand& lhs = inst->uses()[0];
                 const LIROperand& rhs = inst->uses()[1];
+                
+                auto loadToReg = [&](const LIROperand& op, Register reg) {
+                    if (op.isPhysicalGPR()) masm_.mov(reg, op.pregGPR());
+                    else if (op.isStackSlot()) masm_.mov(reg, getStackOperand(op.slot()));
+                    else if (op.isImm32()) masm_.mov(reg, op.imm32());
+                };
+
                 if (lhs.isPhysicalGPR() && rhs.isPhysicalGPR()) {
                     masm_.cmp(lhs.pregGPR(), rhs.pregGPR());
                 } else if (lhs.isPhysicalGPR() && rhs.isStackSlot()) {
                     masm_.cmp(lhs.pregGPR(), getStackOperand(rhs.slot()));
+                } else if (lhs.isStackSlot() && rhs.isPhysicalGPR()) {
+                    masm_.cmp(getStackOperand(lhs.slot()), rhs.pregGPR());
+                } else if (lhs.isStackSlot() && rhs.isStackSlot()) {
+                    masm_.mov(r11, getStackOperand(lhs.slot()));
+                    masm_.cmp(r11, getStackOperand(rhs.slot()));
+                } else if (lhs.isPhysicalGPR() && rhs.isImm32()) {
+                    masm_.cmp(lhs.pregGPR(), rhs.imm32());
+                } else if (lhs.isStackSlot() && rhs.isImm32()) {
+                    masm_.cmp(getStackOperand(lhs.slot()), rhs.imm32());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported CmpI32 operands.");
+                    loadToReg(lhs, r11);
+                    if (rhs.isImm32()) {
+                        masm_.cmp(r11, rhs.imm32());
+                    } else if (rhs.isStackSlot()) {
+                        masm_.cmp(r11, getStackOperand(rhs.slot()));
+                    } else if (rhs.isPhysicalGPR()) {
+                        masm_.cmp(r11, rhs.pregGPR());
+                    } else {
+                        loadToReg(rhs, r10);
+                        masm_.cmp(r11, r10);
+                    }
                 }
                 break;
             }
             case LIROpcode::TestI32: {
                 const LIROperand& lhs = inst->uses()[0];
                 const LIROperand& rhs = inst->uses()[1];
+                
+                auto loadToReg = [&](const LIROperand& op, Register reg) {
+                    if (op.isPhysicalGPR()) masm_.mov(reg, op.pregGPR());
+                    else if (op.isStackSlot()) masm_.mov(reg, getStackOperand(op.slot()));
+                    else if (op.isImm32()) masm_.mov(reg, op.imm32());
+                };
+
                 if (lhs.isPhysicalGPR() && rhs.isPhysicalGPR()) {
                     masm_.test(lhs.pregGPR(), rhs.pregGPR());
+                } else if (lhs.isPhysicalGPR() && rhs.isStackSlot()) {
+                    masm_.test(lhs.pregGPR(), getStackOperand(rhs.slot()));
+                } else if (lhs.isStackSlot() && rhs.isPhysicalGPR()) {
+                    masm_.test(getStackOperand(lhs.slot()), rhs.pregGPR());
+                } else if (lhs.isStackSlot() && rhs.isStackSlot()) {
+                    masm_.mov(r11, getStackOperand(lhs.slot()));
+                    masm_.test(r11, getStackOperand(rhs.slot()));
+                } else if (lhs.isPhysicalGPR() && rhs.isImm32()) {
+                    masm_.test(lhs.pregGPR(), rhs.imm32());
+                } else if (lhs.isStackSlot() && rhs.isImm32()) {
+                    masm_.test(getStackOperand(lhs.slot()), rhs.imm32());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported TestI32 operands.");
+                    loadToReg(lhs, r11);
+                    if (rhs.isImm32()) {
+                        masm_.test(r11, rhs.imm32());
+                    } else if (rhs.isStackSlot()) {
+                        masm_.test(r11, getStackOperand(rhs.slot()));
+                    } else if (rhs.isPhysicalGPR()) {
+                        masm_.test(r11, rhs.pregGPR());
+                    } else {
+                        loadToReg(rhs, r10);
+                        masm_.test(r11, r10);
+                    }
                 }
                 break;
             }
             case LIROpcode::Cmp64: {
                 const LIROperand& lhs = inst->uses()[0];
                 const LIROperand& rhs = inst->uses()[1];
+                
+                auto loadToReg = [&](const LIROperand& op, Register reg) {
+                    if (op.isPhysicalGPR()) masm_.movq(reg, op.pregGPR());
+                    else if (op.isStackSlot()) masm_.movq(reg, getStackOperand(op.slot()));
+                    else if (op.isImm32()) masm_.movq(reg, op.imm32());
+                    else if (op.isImm64()) masm_.movabs(reg, op.imm64());
+                };
+
                 if (lhs.isPhysicalGPR() && rhs.isPhysicalGPR()) {
                     masm_.cmpq(lhs.pregGPR(), rhs.pregGPR());
                 } else if (lhs.isPhysicalGPR() && rhs.isStackSlot()) {
                     masm_.cmpq(lhs.pregGPR(), getStackOperand(rhs.slot()));
+                } else if (lhs.isStackSlot() && rhs.isPhysicalGPR()) {
+                    masm_.cmpq(getStackOperand(lhs.slot()), rhs.pregGPR());
+                } else if (lhs.isStackSlot() && rhs.isStackSlot()) {
+                    masm_.movq(r11, getStackOperand(lhs.slot()));
+                    masm_.cmpq(r11, getStackOperand(rhs.slot()));
+                } else if (lhs.isPhysicalGPR() && rhs.isImm32()) {
+                    masm_.cmpq(lhs.pregGPR(), rhs.imm32());
+                } else if (lhs.isStackSlot() && rhs.isImm32()) {
+                    masm_.cmpq(getStackOperand(lhs.slot()), rhs.imm32());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Cmp64 operands.");
+                    loadToReg(lhs, r11);
+                    if (rhs.isImm32()) {
+                        masm_.cmpq(r11, rhs.imm32());
+                    } else if (rhs.isStackSlot()) {
+                        masm_.cmpq(r11, getStackOperand(rhs.slot()));
+                    } else if (rhs.isPhysicalGPR()) {
+                        masm_.cmpq(r11, rhs.pregGPR());
+                    } else {
+                        loadToReg(rhs, r10);
+                        masm_.cmpq(r11, r10);
+                    }
                 }
                 break;
             }
@@ -638,6 +728,12 @@ private:
                     masm_.ucomisd(lhs.pregXMM(), rhs.pregXMM());
                 } else if (lhs.isPhysicalXMM() && rhs.isStackSlot()) {
                     masm_.ucomisd(lhs.pregXMM(), getStackOperand(rhs.slot()));
+                } else if (lhs.isStackSlot() && rhs.isPhysicalXMM()) {
+                    masm_.movsd(xmm15, getStackOperand(lhs.slot()));
+                    masm_.ucomisd(xmm15, rhs.pregXMM());
+                } else if (lhs.isStackSlot() && rhs.isStackSlot()) {
+                    masm_.movsd(xmm15, getStackOperand(lhs.slot()));
+                    masm_.ucomisd(xmm15, getStackOperand(rhs.slot()));
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported CmpF64 operands.");
                 }
@@ -697,7 +793,7 @@ private:
             }
             case LIROpcode::LoadField: {
                 const LIROperand& dst = inst->defs()[0];
-                const LIROperand& base = inst->uses()[0];
+                const LIROperand& base = inst->uses()[0]; // rcx
                 const LIROperand& offset = inst->uses()[1];
                 
                 if (!base.isPhysicalGPR() || !dst.isPhysicalGPR()) {
@@ -705,21 +801,20 @@ private:
                 }
                 
                 // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针并符号扩展
-                masm_.movq(r11, base.pregGPR());
-                masm_.shlq(r11, 16);
-                masm_.sarq(r11, 16);
+                masm_.shlq(rcx, 16);
+                masm_.sarq(rcx, 16);
                 
                 if (offset.isImm32()) {
-                    masm_.movq(dst.pregGPR(), Operand(r11, offset.imm32()));
+                    masm_.movq(dst.pregGPR(), Operand(rcx, offset.imm32()));
                 } else if (offset.isPhysicalGPR()) {
-                    masm_.movq(dst.pregGPR(), Operand(r11, offset.pregGPR(), Scale::Times1, 0));
+                    masm_.movq(dst.pregGPR(), Operand(rcx, offset.pregGPR(), Scale::Times1, 0));
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported LoadField offset.");
                 }
                 break;
             }
             case LIROpcode::StoreField: {
-                const LIROperand& base = inst->uses()[0];
+                const LIROperand& base = inst->uses()[0]; // rcx
                 const LIROperand& offset = inst->uses()[1];
                 const LIROperand& val = inst->uses()[2];
                 
@@ -728,14 +823,13 @@ private:
                 }
                 
                 // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针并符号扩展
-                masm_.movq(r11, base.pregGPR());
-                masm_.shlq(r11, 16);
-                masm_.sarq(r11, 16);
+                masm_.shlq(rcx, 16);
+                masm_.sarq(rcx, 16);
                 
                 if (offset.isImm32()) {
-                    masm_.movq(Operand(r11, offset.imm32()), val.pregGPR());
+                    masm_.movq(Operand(rcx, offset.imm32()), val.pregGPR());
                 } else if (offset.isPhysicalGPR()) {
-                    masm_.movq(Operand(r11, offset.pregGPR(), Scale::Times1, 0), val.pregGPR());
+                    masm_.movq(Operand(rcx, offset.pregGPR(), Scale::Times1, 0), val.pregGPR());
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported StoreField offset.");
                 }
@@ -1046,6 +1140,20 @@ private:
                     uint32_t stackSpace = (argc * 8 + 15) & ~15;
                     masm_.addq(rsp, stackSpace);
                 }
+                
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    masm_.movabs(r11, reinterpret_cast<uint64_t>(&g_jit_pending_exception));
+                    masm_.cmp(Operand(r11, 0), 0);
+                    Label noException;
+                    masm_.jcc(Condition::Equal, noException);
+                    
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    
+                    masm_.bind(noException);
+                    registerStackMap(inst);
+                }
                 break;
             }
             case LIROpcode::Callout: {
@@ -1093,6 +1201,20 @@ private:
                 if (argc > argRegs.size() + 1) stackArg2 = r11;
                 
                 masm_.callCFunction(inst->functionPtr(), argc, stackArg1, stackArg2);
+                
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    masm_.movabs(r11, reinterpret_cast<uint64_t>(&g_jit_pending_exception));
+                    masm_.cmp(Operand(r11, 0), 0);
+                    Label noException;
+                    masm_.jcc(Condition::Equal, noException);
+                    
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    
+                    masm_.bind(noException);
+                    registerStackMap(inst);
+                }
                 break;
             }
             default:

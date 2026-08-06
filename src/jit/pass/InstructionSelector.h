@@ -492,8 +492,8 @@ private:
                 LIROperand slotOp = LIROperand::createImm32(n->slot());
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> uses;
-                uses.push_back({slotOp, LIRConstraint::anyReg()});
-                uses.push_back({val, LIRConstraint::anyReg()});
+                uses.push_back({slotOp, LIRConstraint::none()});
+                uses.push_back({val, LIRConstraint::none()});
                 
                 auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
                 inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_global));
@@ -505,14 +505,16 @@ private:
                 HIRNode* offsetNode = node->inputs()[3];
                 if (offsetNode->opcode() == HIROp::Int32Constant) {
                     int32_t offsetVal = static_cast<Int32ConstantNode*>(offsetNode)->value();
-                    builder_.emitWithConstraints(LIROpcode::LoadField,
+                    auto inst = builder_.emitWithConstraints(LIROpcode::LoadField,
                         {{out, LIRConstraint::anyReg()}},
-                        {{base, LIRConstraint::anyReg()}, {LIROperand::createImm32(offsetVal), LIRConstraint::none()}});
+                        {{base, LIRConstraint::fixedReg(rcx.id())}, {LIROperand::createImm32(offsetVal), LIRConstraint::none()}});
+                    inst->addClobber(rcx);
                 } else {
                     LIROperand offset = getOperand(offsetNode);
-                    builder_.emitWithConstraints(LIROpcode::LoadField,
+                    auto inst = builder_.emitWithConstraints(LIROpcode::LoadField,
                         {{out, LIRConstraint::anyReg()}},
-                        {{base, LIRConstraint::anyReg()}, {offset, LIRConstraint::anyReg()}});
+                        {{base, LIRConstraint::fixedReg(rcx.id())}, {offset, LIRConstraint::anyReg()}});
+                    inst->addClobber(rcx);
                 }
                 break;
             }
@@ -522,14 +524,16 @@ private:
                 LIROperand val = getOperand(node->inputs()[4]);
                 if (offsetNode->opcode() == HIROp::Int32Constant) {
                     int32_t offsetVal = static_cast<Int32ConstantNode*>(offsetNode)->value();
-                    builder_.emitWithConstraints(LIROpcode::StoreField,
+                    auto inst = builder_.emitWithConstraints(LIROpcode::StoreField,
                         {},
-                        {{base, LIRConstraint::anyReg()}, {LIROperand::createImm32(offsetVal), LIRConstraint::none()}, {val, LIRConstraint::anyReg()}});
+                        {{base, LIRConstraint::fixedReg(rcx.id())}, {LIROperand::createImm32(offsetVal), LIRConstraint::none()}, {val, LIRConstraint::anyReg()}});
+                    inst->addClobber(rcx);
                 } else {
                     LIROperand offset = getOperand(offsetNode);
-                    builder_.emitWithConstraints(LIROpcode::StoreField,
+                    auto inst = builder_.emitWithConstraints(LIROpcode::StoreField,
                         {},
-                        {{base, LIRConstraint::anyReg()}, {offset, LIRConstraint::anyReg()}, {val, LIRConstraint::anyReg()}});
+                        {{base, LIRConstraint::fixedReg(rcx.id())}, {offset, LIRConstraint::anyReg()}, {val, LIRConstraint::anyReg()}});
+                    inst->addClobber(rcx);
                 }
                 break;
             }
@@ -582,7 +586,9 @@ private:
                 }
                 break;
             }
-            case HIROp::Call: {
+            case HIROp::Call:
+            case HIROp::CallNative:
+            case HIROp::CallBuiltin: {
                 auto n = static_cast<CallNode*>(node);
                 std::vector<LIROperand> argOps;
                 for (uint32_t i = 0; i < n->argc(); ++i) {
@@ -591,9 +597,9 @@ private:
                 LIROperand calleeOp = getOperand(n->callee());
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> uses;
-                uses.push_back({calleeOp, LIRConstraint::anyReg()});
+                uses.push_back({calleeOp, LIRConstraint::none()});
                 for (const auto& argOp : argOps) {
-                    uses.push_back({argOp, LIRConstraint::anyReg()});
+                    uses.push_back({argOp, LIRConstraint::none()});
                 }
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> defs;
@@ -613,7 +619,7 @@ private:
                 
                 for (uint32_t i = 0; i < n->argc(); ++i) {
                     LIROperand argOp = getOperand(n->arg(i));
-                    uses.push_back({argOp, LIRConstraint::anyReg()});
+                    uses.push_back({argOp, LIRConstraint::none()});
                 }
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> defs;

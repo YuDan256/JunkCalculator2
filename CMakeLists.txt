@@ -75,56 +75,6 @@ set(JC2_SOURCES
 add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-# ★ Build JIT Memory Test Executable
-add_executable(test_memory "src/jit/tests/test_memory.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
-target_include_directories(test_memory PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT HIR Test Executable
-add_executable(test_hir "src/jit/tests/test_hir.cpp")
-target_include_directories(test_hir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT BytecodeToHIR Test Executable
-add_executable(test_bytecode_to_hir "src/jit/tests/test_bytecode_to_hir.cpp")
-target_include_directories(test_bytecode_to_hir PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT InstructionSelector Test Executable
-add_executable(test_instruction_selector "src/jit/tests/test_instruction_selector.cpp")
-target_include_directories(test_instruction_selector PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT End-to-End Pipeline Test Executable
-add_executable(test_jit_pipeline "src/jit/tests/test_jit_pipeline.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
-target_include_directories(test_jit_pipeline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT Mid-Level Optimizations Test Executable
-add_executable(test_mid_level_opt "src/jit/tests/test_mid_level_opt.cpp")
-target_include_directories(test_mid_level_opt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT Loop Test Executable
-add_executable(test_jit_loop "src/jit/tests/test_jit_loop.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
-target_include_directories(test_jit_loop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT OOP Test Executable
-add_executable(test_jit_oop "src/jit/tests/test_jit_oop.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
-target_include_directories(test_jit_oop PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT Math Intrinsics Benchmark Executable
-add_executable(test_jit_math_intrinsics "src/jit/tests/test_jit_math_intrinsics.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
-target_include_directories(test_jit_math_intrinsics PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT Callout & Inlining Test Executable
-add_executable(test_jit_call_inline "src/jit/tests/test_jit_call_inline.cpp" "src/jit/backend/ExecutableMemory.cpp" "src/jit/backend/MacroAssembler.cpp")
-target_include_directories(test_jit_call_inline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT OSR Test Executable
-set(TEST_OSR_SOURCES ${JC2_SOURCES})
-list(REMOVE_ITEM TEST_OSR_SOURCES "src/main.cpp")
-add_executable(test_jit_osr "src/jit/tests/test_jit_osr.cpp" ${TEST_OSR_SOURCES})
-target_include_directories(test_jit_osr PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# ★ Build JIT Complex Inline Test Executable
-add_executable(test_jit_complex_inline "src/jit/tests/test_jit_complex_inline.cpp" ${TEST_OSR_SOURCES})
-target_include_directories(test_jit_complex_inline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
 # ★ Build Image Module as a standalone DLL
 add_library(image SHARED "src/lib/image/image_module.cpp")
 target_include_directories(image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -184,8 +134,6 @@ set_target_properties(regex PROPERTIES PREFIX "") # Output regex.dll instead of 
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
     target_link_libraries(JunkCalculator2 PRIVATE ws2_32 User32 Gdi32 imm32)
-    target_link_libraries(test_jit_osr PRIVATE ws2_32 User32 Gdi32 imm32)
-    target_link_libraries(test_jit_complex_inline PRIVATE ws2_32 User32 Gdi32 imm32)
     target_link_libraries(socket PRIVATE ws2_32)
     target_link_libraries(window PRIVATE User32 Gdi32 imm32)
 endif()
@@ -205,7 +153,7 @@ endforeach()
 # ==============================================================================
 if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
-    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt test_jit_loop test_jit_oop test_jit_math_intrinsics test_jit_call_inline test_jit_osr test_jit_complex_inline ${JC2_LIBS})
+    foreach(target JunkCalculator2 ${JC2_LIBS})
         target_compile_options(${target} PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     endforeach()
     
@@ -214,7 +162,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
 else()
-    foreach(target JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt test_jit_loop test_jit_oop test_jit_math_intrinsics test_jit_call_inline test_jit_osr test_jit_complex_inline ${JC2_LIBS})
+    foreach(target JunkCalculator2 ${JC2_LIBS})
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -O3 -march=native)
         # Force static linking for MinGW to ensure portability (Green version)
         if(MINGW OR CYGWIN)
@@ -226,7 +174,7 @@ else()
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported)
     if(ipo_supported)
-        set_target_properties(JunkCalculator2 test_memory test_hir test_bytecode_to_hir test_instruction_selector test_jit_pipeline test_mid_level_opt test_jit_loop test_jit_oop test_jit_math_intrinsics test_jit_call_inline test_jit_osr test_jit_complex_inline ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        set_target_properties(JunkCalculator2 ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 

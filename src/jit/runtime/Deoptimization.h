@@ -56,6 +56,7 @@ private:
 };
 
 inline thread_local bool g_jc2_jit_deoptimized = false;
+inline thread_local uint32_t g_jit_pending_exception = 0;
 
 // 主动同步运行时函数 (Eager Sync)
 // 由汇编跳板调用，负责将 JIT 物理寄存器状态安全地刷回解释器，触发正确的引用计数
@@ -85,7 +86,7 @@ inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
             } else if (slot.type == JITType::Bool) {
                 reconstructed = Value(rawVal != 0);
             } else if (slot.type == JITType::TaggedValue) {
-                reconstructed.as_bits = rawVal;
+                reconstructed = Value::fromRawBits(rawVal);
             }
         } else if (slot.location.isPhysicalXMM()) {
             double rawVal = regs->xmm[slot.location.pregXMM().id()];
@@ -104,7 +105,7 @@ inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
             } else if (slot.type == JITType::Bool) {
                 reconstructed = Value(*slotPtr != 0);
             } else if (slot.type == JITType::TaggedValue) {
-                reconstructed.as_bits = *slotPtr;
+                reconstructed = Value::fromRawBits(*slotPtr);
             }
         } else if (slot.location.isImm32()) {
             if (slot.type == JITType::Int32) {
@@ -119,7 +120,7 @@ inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
                 std::memcpy(&d, &bits, sizeof(double));
                 reconstructed = Value::fromDouble(d);
             } else if (slot.type == JITType::TaggedValue) {
-                reconstructed.as_bits = slot.location.imm64();
+                reconstructed = Value::fromRawBits(slot.location.imm64());
             }
         }
 
@@ -164,7 +165,7 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
             } else if (slot.type == JITType::Bool) {
                 reconstructed = Value(rawVal != 0);
             } else if (slot.type == JITType::TaggedValue) {
-                reconstructed.as_bits = rawVal;
+                reconstructed = Value::fromRawBits(rawVal);
             }
         } else if (slot.location.isPhysicalXMM()) {
             double rawVal = regs->xmm[slot.location.pregXMM().id()];
@@ -185,7 +186,7 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
             } else if (slot.type == JITType::Bool) {
                 reconstructed = Value(*slotPtr != 0);
             } else if (slot.type == JITType::TaggedValue) {
-                reconstructed.as_bits = *slotPtr;
+                reconstructed = Value::fromRawBits(*slotPtr);
             }
         } else if (slot.location.isImm32()) {
             if (slot.type == JITType::Int32) {
@@ -200,7 +201,7 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
                 std::memcpy(&d, &bits, sizeof(double));
                 reconstructed = Value::fromDouble(d);
             } else if (slot.type == JITType::TaggedValue) {
-                reconstructed.as_bits = slot.location.imm64();
+                reconstructed = Value::fromRawBits(slot.location.imm64());
             }
         }
 

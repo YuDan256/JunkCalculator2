@@ -101,7 +101,7 @@ private:
     void buildClobbers() {
         for (LIRBlock* block : lir_.blocks()) {
             for (LIRInst* inst : block->instructions()) {
-                if (inst->opcode() == LIROpcode::Call || inst->opcode() == LIROpcode::CallRuntime || inst->opcode() == LIROpcode::Callout) {
+                if (inst->opcode() == LIROpcode::Call || inst->opcode() == LIROpcode::Callout) {
                     // Caller-saved GPRs
                     clobberPoints_.push_back({inst->linearId(), rax});
                     clobberPoints_.push_back({inst->linearId(), rcx});

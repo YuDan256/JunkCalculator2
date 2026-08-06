@@ -2513,6 +2513,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         if (it == globalNames.end()) {
             globalNames[k] = static_cast<uint32_t>(globals.size());
             globals.push_back(*(field.upval->location));
+            globalsDataPtr = globals.data();
             if (field.isConst) constGlobals.insert(k);
             comptimeGlobals.push_back(k);
         } else {
@@ -2674,7 +2675,7 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
         allocator.allocate();
 
         jit::MacroAssembler masm;
-        jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), globals.data(), reinterpret_cast<void*>(jc2_jit_call_helper));
+        jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), reinterpret_cast<void**>(&globalsDataPtr), reinterpret_cast<void*>(jc2_jit_call_helper));
         
         emitter.emit(allocator.getStackSize(), true); // ★ Step 81: 触发 OSR Prologue
         masm.emitConstantPool();
@@ -2736,7 +2737,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                     allocator.allocate();
 
                     jit::MacroAssembler masm;
-                    jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), globals.data(), reinterpret_cast<void*>(jc2_jit_call_helper));
+                    jit::CodeEmitter emitter(lirGraph, masm, reinterpret_cast<void*>(jit::jc2_jit_deoptimize), reinterpret_cast<void**>(&globalsDataPtr), reinterpret_cast<void*>(jc2_jit_call_helper));
                     
                     emitter.emit(allocator.getStackSize());
                     masm.emitConstantPool();
@@ -2809,7 +2810,7 @@ VM::VM() {
     GcHeap::get().isInitializing = true;
     registers = new Value[MAX_REGISTERS];
     frames = new CallFrame[MAX_FRAMES];
-    globals.reserve(65536); // 预分配足够的空间，确保 globals.data() 指针在 JIT 执行期间绝对稳定
+    globalsDataPtr = globals.data();
     
     GcHeap::get().markCallback = [this]() {
         for (size_t i = 0; i < globals.size(); ++i) {
@@ -3570,6 +3571,7 @@ Value VM::run(int targetFrameDepth) {
                             int newSlot = static_cast<int>(globals.size());
                             globalNames[name] = newSlot;
                             globals.push_back(builtinVal);
+                            globalsDataPtr = globals.data();
                             clearAllGlobalICs();
                             ic.cachedGlobalSlot = newSlot;
                             getReg(a) = builtinVal;
@@ -3623,6 +3625,7 @@ Value VM::run(int targetFrameDepth) {
                         int newSlot = static_cast<int>(globals.size());
                         globalNames[name] = newSlot;
                         globals.push_back(val);
+                        globalsDataPtr = globals.data();
                         clearAllGlobalICs();
                         ic.cachedGlobalSlot = newSlot;
                     }
@@ -3879,6 +3882,7 @@ Value VM::run(int targetFrameDepth) {
                                 if (builtinVal.isNone()) builtinVal = getBuiltinClosure(name);
                                 globalNames[name] = static_cast<uint32_t>(globals.size());
                                 globals.push_back(builtinVal.isNone() ? Value::none() : builtinVal);
+                                globalsDataPtr = globals.data();
                                 clearAllGlobalICs();
                             }
                             upval->location = &globals[globalNames[name]];

@@ -16,8 +16,8 @@ namespace jit {
 // ============================================================================
 class CodeEmitter {
 public:
-    CodeEmitter(const LIRGraph& lir, MacroAssembler& masm, void* deoptRuntimeFunc = nullptr, void* globalsData = nullptr, void* callRuntimeFunc = nullptr)
-        : lir_(lir), masm_(masm), deoptRuntimeFunc_(deoptRuntimeFunc), globalsData_(globalsData), callRuntimeFunc_(callRuntimeFunc) {}
+    CodeEmitter(const LIRGraph& lir, MacroAssembler& masm, void* deoptRuntimeFunc = nullptr, void** globalsDataPtr = nullptr, void* callRuntimeFunc = nullptr)
+        : lir_(lir), masm_(masm), deoptRuntimeFunc_(deoptRuntimeFunc), globalsDataPtr_(globalsDataPtr), callRuntimeFunc_(callRuntimeFunc) {}
 
     void emit(int32_t stackSize, bool isOSR = false) {
         // 0. 发射函数序言 (Prologue / OSR Prologue)
@@ -58,7 +58,7 @@ private:
     const LIRGraph& lir_;
     MacroAssembler& masm_;
     void* deoptRuntimeFunc_;
-    void* globalsData_;
+    void** globalsDataPtr_;
     void* callRuntimeFunc_;
     Label deoptTrampolineLabel_;
     bool needsDeoptTrampoline_ = false;
@@ -784,11 +784,16 @@ private:
             case LIROpcode::LoadGlobal: {
                 const LIROperand& dst = inst->defs()[0];
                 int32_t slot = inst->uses()[0].imm32();
-                if (!globalsData_) throw std::runtime_error("CodeEmitter: globalsData is null.");
-                uint64_t addr = reinterpret_cast<uint64_t>(globalsData_) + slot * sizeof(uint64_t);
-                masm_.movabs(r11, addr);
+                if (!globalsDataPtr_) throw std::runtime_error("CodeEmitter: globalsDataPtr is null.");
+                
+                // 1. 加载 globalsDataPtr 的绝对地址
+                masm_.movabs(r11, reinterpret_cast<uint64_t>(globalsDataPtr_));
+                // 2. 解引用获取真实的 globals.data() 指针
+                masm_.movq(r11, Operand(r11, 0));
+                
                 if (dst.isPhysicalGPR()) {
-                    masm_.movq(dst.pregGPR(), Operand(r11, 0));
+                    // 3. 加上偏移量读取全局变量
+                    masm_.movq(dst.pregGPR(), Operand(r11, slot * sizeof(uint64_t)));
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported LoadGlobal destination.");
                 }

@@ -54,6 +54,7 @@ private:
     CallFrame* frames = nullptr;
 
     std::vector<Value> globals;
+    Value* globalsDataPtr = nullptr;
     std::unordered_map<std::string, uint32_t> globalNames;
     std::unordered_set<std::string> constGlobals;
     std::unordered_map<std::string, Value> loadedModules;
@@ -177,6 +178,7 @@ public:
 
     void clearGlobals() {
         globals.clear();
+        globalsDataPtr = globals.data();
         globalNames.clear();
         constGlobals.clear();
         importedModules.clear();
@@ -232,6 +234,7 @@ public:
         } else {
             globalNames[name] = static_cast<uint32_t>(globals.size());
             globals.push_back(val);
+            globalsDataPtr = globals.data();
         }
     }
 

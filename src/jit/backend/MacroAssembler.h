@@ -910,16 +910,28 @@ public:
     }
 
     // --- CALL C++ Function (ABI Compliant) ---
-    void callCFunction(void* funcPtr) {
+    void callCFunction(void* funcPtr, uint32_t argc = 0) {
         // 1. 保存 R12 (Callee-Saved)
         push(r12);
         // 2. 保存原始 RSP 到 R12
         movq(r12, rsp);
         // 3. 16 字节对齐
         andq(rsp, -16);
-        // 4. 分配 Shadow Space (Windows x64 需要 32 字节)
+        // 4. 分配 Shadow Space 和额外参数空间
 #ifdef _WIN32
-        subq(rsp, 32);
+        uint32_t stackSpace = 32;
+        if (argc > 4) {
+            stackSpace += (argc - 4) * 8;
+        }
+        stackSpace = (stackSpace + 15) & ~15;
+        if (stackSpace > 0) subq(rsp, stackSpace);
+#else
+        uint32_t stackSpace = 0;
+        if (argc > 6) {
+            stackSpace += (argc - 6) * 8;
+            stackSpace = (stackSpace + 15) & ~15;
+            if (stackSpace > 0) subq(rsp, stackSpace);
+        }
 #endif
         // 5. 调用目标函数
         movabs(rax, reinterpret_cast<uint64_t>(funcPtr));

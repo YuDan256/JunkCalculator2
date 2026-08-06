@@ -463,18 +463,11 @@ private:
                 auto n = static_cast<RegisterAccessNode*>(node);
                 LIROperand val = getOperand(node->inputs()[2]);
                 
-                std::vector<Register> argRegs;
-#ifdef _WIN32
-                argRegs = {rcx, rdx, r8, r9};
-#else
-                argRegs = {rdi, rsi, rdx, rcx, r8, r9};
-#endif
-                
                 LIROperand regIdxOp = LIROperand::createImm32(n->regIndex());
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> uses;
-                uses.push_back({regIdxOp, LIRConstraint::fixedReg(argRegs[0].id())});
-                uses.push_back({val, LIRConstraint::fixedReg(argRegs[1].id())});
+                uses.push_back({regIdxOp, LIRConstraint::anyReg()});
+                uses.push_back({val, LIRConstraint::anyReg()});
                 
                 auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
                 inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_value));
@@ -492,18 +485,11 @@ private:
                 auto n = static_cast<GlobalAccessNode*>(node);
                 LIROperand val = getOperand(node->inputs()[2]);
                 
-                std::vector<Register> argRegs;
-#ifdef _WIN32
-                argRegs = {rcx, rdx, r8, r9};
-#else
-                argRegs = {rdi, rsi, rdx, rcx, r8, r9};
-#endif
-                
                 LIROperand slotOp = LIROperand::createImm32(n->slot());
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> uses;
-                uses.push_back({slotOp, LIRConstraint::fixedReg(argRegs[0].id())});
-                uses.push_back({val, LIRConstraint::fixedReg(argRegs[1].id())});
+                uses.push_back({slotOp, LIRConstraint::anyReg()});
+                uses.push_back({val, LIRConstraint::anyReg()});
                 
                 auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
                 inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_global));
@@ -639,16 +625,10 @@ private:
                                     builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
                                 }
                                 
-                                std::vector<Register> syncArgRegs;
-#ifdef _WIN32
-                                syncArgRegs = {rcx, rdx, r8, r9};
-#else
-                                syncArgRegs = {rdi, rsi, rdx, rcx, r8, r9};
-#endif
                                 LIROperand regIdxOp = LIROperand::createImm32(static_cast<int32_t>(i));
                                 std::vector<std::pair<LIROperand, LIRConstraint>> syncUses;
-                                syncUses.push_back({regIdxOp, LIRConstraint::fixedReg(syncArgRegs[0].id())});
-                                syncUses.push_back({boxedOp, LIRConstraint::fixedReg(syncArgRegs[1].id())});
+                                syncUses.push_back({regIdxOp, LIRConstraint::anyReg()});
+                                syncUses.push_back({boxedOp, LIRConstraint::anyReg()});
                                 
                                 auto syncInst = builder_.emitWithConstraints(LIROpcode::Callout, {}, syncUses);
                                 syncInst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_value));
@@ -660,24 +640,9 @@ private:
 
                 std::vector<std::pair<LIROperand, LIRConstraint>> uses;
                 
-                // 准备参数 (遵循 C ABI)
-                // Windows x64: RCX, RDX, R8, R9
-                // System V: RDI, RSI, RDX, RCX, R8, R9
-                // 这里为了简化，我们假设最多 4 个参数，并根据平台分配寄存器
-                std::vector<Register> argRegs;
-#ifdef _WIN32
-                argRegs = {rcx, rdx, r8, r9};
-#else
-                argRegs = {rdi, rsi, rdx, rcx, r8, r9};
-#endif
-                
                 for (uint32_t i = 0; i < n->argc(); ++i) {
-                    if (i < argRegs.size()) {
-                        LIROperand argOp = getOperand(n->arg(i));
-                        uses.push_back({argOp, LIRConstraint::fixedReg(argRegs[i].id())});
-                    } else {
-                        throw std::runtime_error("InstructionSelector: Callout with more than supported arguments.");
-                    }
+                    LIROperand argOp = getOperand(n->arg(i));
+                    uses.push_back({argOp, LIRConstraint::anyReg()});
                 }
                 
                 std::vector<std::pair<LIROperand, LIRConstraint>> defs;

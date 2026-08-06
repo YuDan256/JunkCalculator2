@@ -190,25 +190,40 @@ private:
 
     void spillAtInterval(LiveInterval* current, std::vector<LiveInterval*>& active, 
                          std::vector<Register>* freeGPRs, std::vector<XMMRegister>* freeXMMs) {
-        LiveInterval* spillCandidate = active.back(); // active is sorted by end time, so back() ends latest
-        if (spillCandidate->ranges.back().end > current->ranges.back().end) {
-            // Spill the candidate
+        auto bestIt = active.end();
+        for (auto it = active.begin(); it != active.end(); ++it) {
+            LiveInterval* candidate = *it;
+            bool clobbered = false;
+            if (freeGPRs) {
+                clobbered = isClobbered(candidate->allocatedGPR, current);
+            } else if (freeXMMs) {
+                clobbered = isClobberedXMM(candidate->allocatedXMM, current);
+            }
+            
+            if (!clobbered) {
+                if (bestIt == active.end() || candidate->ranges.back().end > (*bestIt)->ranges.back().end) {
+                    bestIt = it;
+                }
+            }
+        }
+        
+        if (bestIt != active.end() && (*bestIt)->ranges.back().end > current->ranges.back().end) {
+            LiveInterval* spillCandidate = *bestIt;
             spillCandidate->allocatedSlot = nextStackSlot_;
-            nextStackSlot_ += 8; // 8 bytes per slot
+            nextStackSlot_ += 8;
             
             if (freeGPRs) {
                 current->allocatedGPR = spillCandidate->allocatedGPR;
-                spillCandidate->allocatedGPR = Register(); // Invalid
+                spillCandidate->allocatedGPR = Register();
             }
             if (freeXMMs) {
                 current->allocatedXMM = spillCandidate->allocatedXMM;
-                spillCandidate->allocatedXMM = XMMRegister(); // Invalid
+                spillCandidate->allocatedXMM = XMMRegister();
             }
             
-            active.pop_back();
+            active.erase(bestIt);
             active.push_back(current);
         } else {
-            // Spill current
             current->allocatedSlot = nextStackSlot_;
             nextStackSlot_ += 8;
         }

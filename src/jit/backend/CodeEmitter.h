@@ -901,7 +901,54 @@ private:
                 break;
             }
             case LIROpcode::Callout: {
-                masm_.callCFunction(inst->functionPtr());
+                uint32_t argc = inst->argc();
+                std::vector<Register> argRegs;
+#ifdef _WIN32
+                argRegs = {rcx, rdx, r8, r9};
+#else
+                argRegs = {rdi, rsi, rdx, rcx, r8, r9};
+#endif
+                if (argc > argRegs.size() + 2) throw std::runtime_error("CodeEmitter: Callout with too many arguments.");
+                
+                // Push all arguments to stack to avoid register swap problems
+                for (uint32_t i = 0; i < argc; ++i) {
+                    const LIROperand& arg = inst->uses()[i];
+                    if (arg.isPhysicalGPR()) {
+                        masm_.push(arg.pregGPR());
+                    } else if (arg.isStackSlot()) {
+                        masm_.push(getStackOperand(arg.slot()));
+                    } else if (arg.isImm32()) {
+                        masm_.push(arg.imm32());
+                    } else if (arg.isImm64()) {
+                        masm_.movabs(r11, arg.imm64());
+                        masm_.push(r11);
+                    } else {
+                        throw std::runtime_error("CodeEmitter: Unsupported Callout argument type.");
+                    }
+                }
+                
+                // Pop them into the correct registers (in reverse order)
+                for (int i = static_cast<int>(argc) - 1; i >= 0; --i) {
+                    if (i < static_cast<int>(argRegs.size())) {
+                        masm_.pop(argRegs[i]);
+                    } else if (i == static_cast<int>(argRegs.size())) {
+                        masm_.pop(r10);
+                    } else if (i == static_cast<int>(argRegs.size()) + 1) {
+                        masm_.pop(r11);
+                    }
+                }
+                
+                masm_.callCFunction(inst->functionPtr(), argc);
+                
+                // Write stack arguments
+                for (uint32_t i = static_cast<uint32_t>(argRegs.size()); i < argc; ++i) {
+                    Register srcReg = (i == argRegs.size()) ? r10 : r11;
+#ifdef _WIN32
+                    masm_.movq(Operand(rsp, 32 + (i - 4) * 8), srcReg);
+#else
+                    masm_.movq(Operand(rsp, (i - 6) * 8), srcReg);
+#endif
+                }
                 break;
             }
             default:

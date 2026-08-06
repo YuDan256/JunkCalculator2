@@ -174,7 +174,7 @@ private:
                     if (def.isVirtual()) {
                         live.erase(def.vreg());
                         LiveInterval& interval = getInterval(def.vreg());
-                        interval.spillWeight += std::pow(10.0f, block->loopDepth());
+                        interval.spillWeight += static_cast<float>(std::pow(10.0, block->loopDepth()));
                         if (!interval.ranges.empty()) {
                             // 截断当前区间到定义处
                             interval.ranges.front().start = id;
@@ -190,7 +190,7 @@ private:
                     if (use.isVirtual()) {
                         live.insert(use.vreg());
                         LiveInterval& interval = getInterval(use.vreg());
-                        interval.spillWeight += std::pow(10.0f, block->loopDepth());
+                        interval.spillWeight += static_cast<float>(std::pow(10.0, block->loopDepth()));
                         bool isSameAs = false;
                         for (size_t j = 0; j < inst->defs().size(); ++j) {
                             if (inst->defConstraints()[j].type == LIRConstraintType::SameAsInput && inst->defConstraints()[j].value == i) {
@@ -207,7 +207,7 @@ private:
                     if (use.isVirtual()) {
                         live.insert(use.vreg());
                         LiveInterval& interval = getInterval(use.vreg());
-                        interval.spillWeight += std::pow(10.0f, block->loopDepth());
+                        interval.spillWeight += static_cast<float>(std::pow(10.0, block->loopDepth()));
                         interval.addRange(blockStart, id + 1);
                     }
                 }

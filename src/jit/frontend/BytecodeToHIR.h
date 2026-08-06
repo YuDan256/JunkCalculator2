@@ -331,25 +331,6 @@ public:
                     regFuncName_.erase(reg); // 默认清空函数名追踪
                 };
 
-                auto syncAllRegisters = [&]() {
-                    for (int i = 0; i < maxRegs_; ++i) {
-                        HIRNode* val = builder_.getLocal(registerOffset_ + i);
-                        if (val) {
-                            if (val->opcode() == HIROp::LoadRegister) {
-                                auto loadReg = static_cast<RegisterAccessNode*>(val);
-                                if (loadReg->regIndex() == registerOffset_ + i) {
-                                    continue;
-                                }
-                            }
-                            HIRNode* boxedNode = val;
-                            if (val->type() == JITType::Int32) boxedNode = builder_.createBoxInt32(val);
-                            else if (val->type() == JITType::Double) boxedNode = builder_.createBoxDouble(val);
-                            else if (val->type() == JITType::Bool) boxedNode = builder_.createBoxBool(val);
-                            builder_.createStoreRegister(registerOffset_ + static_cast<int>(i), boxedNode);
-                        }
-                    }
-                };
-
                 // 抽象解释：根据操作码更新 HIRBuilder 的虚拟寄存器状态
                 switch (op) {
                     case OpCode::MOVE: {
@@ -598,7 +579,6 @@ public:
                             returnControls_.push_back(builder_.currentControl());
                             builder_.setCurrentControl(nullptr);
                         } else {
-                            syncAllRegisters();
                             builder_.createReturn(retVal);
                         }
                         break;
@@ -809,11 +789,11 @@ public:
                                 builder_.createReturn(boxedRes);
                             }
                         } else if (isMathIntrinsic) {
-                            auto callNode = builder_.createCallBuiltin(callee, c, args);
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto callNode = builder_.createCallBuiltin(callee, c, args, fs);
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, callNode);
                             } else {
-                                syncAllRegisters();
                                 builder_.createReturn(callNode);
                             }
                         } else if (canInline) {
@@ -824,12 +804,11 @@ public:
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, inlineRes);
                             } else {
-                                syncAllRegisters();
                                 builder_.createReturn(inlineRes);
                             }
                         } else {
-                            syncAllRegisters();
-                            auto callNode = builder_.createCall(callee, c, args);
+                            auto fs = builder_.captureFrameState(currentIp, currentIp);
+                            auto callNode = builder_.createCall(callee, c, args, fs);
                             if (op == OpCode::CALL) {
                                 setLocalSync(a, callNode);
                             } else {

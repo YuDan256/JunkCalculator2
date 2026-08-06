@@ -508,11 +508,12 @@ public:
 class CallNode : public HIRNode {
     uint32_t argc_;
 public:
-    CallNode(uint32_t id, HIROp op, JITType type, HIRNode* control, HIRNode* effect, HIRNode* callee, uint32_t argc)
+    CallNode(uint32_t id, HIROp op, JITType type, HIRNode* control, HIRNode* effect, HIRNode* callee, uint32_t argc, FrameStateNode* frameState)
         : HIRNode(id, op, type), argc_(argc) {
         addInput(control);
         addInput(effect);
         addInput(callee);
+        addInput(frameState);
         // 后续的参数通过 addInput 追加
     }
     
@@ -520,7 +521,8 @@ public:
     HIRNode* control() const { return inputs()[0]; }
     HIRNode* effect() const { return inputs()[1]; }
     HIRNode* callee() const { return inputs()[2]; }
-    HIRNode* arg(uint32_t index) const { return inputs()[3 + index]; }
+    FrameStateNode* frameState() const { return static_cast<FrameStateNode*>(inputs()[3]); }
+    HIRNode* arg(uint32_t index) const { return inputs()[4 + index]; }
 };
 
 class CalloutNode : public HIRNode {

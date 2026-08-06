@@ -620,10 +620,24 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                         throw;
                     }
                 }
-                
-                profileFrameEnd(&frames[frameCount - 1]);
+            
+                Value retVal;
+                retVal.as_bits = retBits;
+                registers[currentFrame->registerBase + dstReg] = retVal;
+
+                CallFrame* f = &frames[frameCount - 1];
+                profileFrameEnd(f);
+                int clearBase = f->registerBase;
+                int clearCount = f->function->localCount + f->function->refCount;
+                for (int i = 0; i < clearCount; ++i) {
+                    registers[clearBase + i] = Value::none();
+                }
+                f->selfContext = Value::none();
+                f->classContext = Value::none();
+                f->jitReturnSlot = Value::none();
+                f->closure = nullptr;
+                f->refParamsBase = -1;
                 frameCount--;
-                registers[currentFrame->registerBase + dstReg].as_bits = retBits;
                 return;
             }
 
@@ -3068,10 +3082,23 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
             fnDef->callCount = 0;
             // Fall through to run() below
         } else {
-            profileFrameEnd(&frames[frameCount - 1]);
-            frameCount--;
             Value retVal;
             retVal.as_bits = retBits;
+                
+            CallFrame* f = &frames[frameCount - 1];
+            profileFrameEnd(f);
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int i = 0; i < clearCount; ++i) {
+                registers[clearBase + i] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
+            frameCount--;
+                
             return retVal;
         }
     }
@@ -8266,15 +8293,6 @@ uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
-}
-
-void jc2_jit_assign_value(uint32_t regIndex, uint64_t src_bits) {
-    VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
-    Value src;
-    src.as_bits = src_bits;
-    regs[base + regIndex] = src;
 }
 
 void jc2_jit_assign_global(uint32_t slot, uint64_t src_bits) {

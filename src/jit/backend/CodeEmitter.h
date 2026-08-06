@@ -85,6 +85,20 @@ private:
         return Operand(rbp, -slot - 64);
     }
 
+    void emitEagerSync(LIRInst* inst) {
+        if (!inst->hasBailoutId()) return;
+        masm_.emitPushAll();
+#ifdef _WIN32
+        masm_.movq(rcx, rsp);
+        masm_.mov(rdx, static_cast<int32_t>(inst->bailoutId()));
+#else
+        masm_.movq(rdi, rsp);
+        masm_.mov(rsi, static_cast<int32_t>(inst->bailoutId()));
+#endif
+        masm_.callCFunction(reinterpret_cast<void*>(jc2_jit_sync_frame));
+        masm_.emitPopAll();
+    }
+
     void emitInstruction(LIRInst* inst) {
         switch (inst->opcode()) {
             case LIROpcode::Label:
@@ -985,6 +999,7 @@ private:
                 break;
             }
             case LIROpcode::Call: {
+                emitEagerSync(inst);
                 uint32_t argc = inst->argc();
                 const LIROperand& callee = inst->uses()[0];
                 
@@ -1034,6 +1049,7 @@ private:
                 break;
             }
             case LIROpcode::Callout: {
+                emitEagerSync(inst);
                 uint32_t argc = inst->argc();
                 std::vector<Register> argRegs;
 #ifdef _WIN32

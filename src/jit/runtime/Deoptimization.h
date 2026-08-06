@@ -57,6 +57,77 @@ private:
 
 inline thread_local bool g_jc2_jit_deoptimized = false;
 
+// 主动同步运行时函数 (Eager Sync)
+// 由汇编跳板调用，负责将 JIT 物理寄存器状态安全地刷回解释器，触发正确的引用计数
+inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
+    const StackMap* map = DeoptRegistry::get().getStackMap(bailoutId);
+    if (!map) return;
+
+    VM* vm = VM::activeVM;
+    if (!vm) return;
+
+    CallFrame* frame = vm->getCurrentFrame();
+    if (!frame) return;
+
+    Value* vmRegisters = vm->getRegisters();
+    int registerBase = frame->registerBase;
+
+    for (size_t i = 0; i < map->locals.size(); ++i) {
+        const StackMapSlot& slot = map->locals[i];
+        if (slot.location.isInvalid()) continue;
+        
+        Value reconstructed;
+
+        if (slot.location.isPhysicalGPR()) {
+            uint64_t rawVal = regs->gpr[slot.location.pregGPR().id()];
+            if (slot.type == JITType::Int32) {
+                reconstructed = Value::fromInt32(static_cast<int32_t>(rawVal));
+            } else if (slot.type == JITType::Bool) {
+                reconstructed = Value(rawVal != 0);
+            } else if (slot.type == JITType::TaggedValue) {
+                reconstructed.as_bits = rawVal;
+            }
+        } else if (slot.location.isPhysicalXMM()) {
+            double rawVal = regs->xmm[slot.location.pregXMM().id()];
+            if (slot.type == JITType::Double) {
+                reconstructed = Value::fromDouble(rawVal);
+            }
+        } else if (slot.location.isStackSlot()) {
+            uint64_t frame_rbp = regs->gpr[5];
+            uint64_t* slotPtr = reinterpret_cast<uint64_t*>(frame_rbp - slot.location.slot() - 64);
+            if (slot.type == JITType::Int32) {
+                reconstructed = Value::fromInt32(static_cast<int32_t>(*slotPtr));
+            } else if (slot.type == JITType::Double) {
+                double d;
+                std::memcpy(&d, slotPtr, sizeof(double));
+                reconstructed = Value::fromDouble(d);
+            } else if (slot.type == JITType::Bool) {
+                reconstructed = Value(*slotPtr != 0);
+            } else if (slot.type == JITType::TaggedValue) {
+                reconstructed.as_bits = *slotPtr;
+            }
+        } else if (slot.location.isImm32()) {
+            if (slot.type == JITType::Int32) {
+                reconstructed = Value::fromInt32(slot.location.imm32());
+            } else if (slot.type == JITType::Bool) {
+                reconstructed = Value(slot.location.imm32() != 0);
+            }
+        } else if (slot.location.isImm64()) {
+            if (slot.type == JITType::Double) {
+                double d;
+                uint64_t bits = slot.location.imm64();
+                std::memcpy(&d, &bits, sizeof(double));
+                reconstructed = Value::fromDouble(d);
+            } else if (slot.type == JITType::TaggedValue) {
+                reconstructed.as_bits = slot.location.imm64();
+            }
+        }
+
+        // 写回解释器寄存器数组，安全触发 operator= 和引用计数
+        vmRegisters[registerBase + i] = reconstructed;
+    }
+}
+
 // 去优化运行时函数 (Step 45)
 // 由汇编跳板调用，负责重建解释器状态并触发退回
 inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
@@ -104,7 +175,7 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
             // 从机器栈槽位恢复 (栈槽相对于 RBP)
             // regs->gpr[5] 是 RBP
             uint64_t frame_rbp = regs->gpr[5];
-            uint64_t* slotPtr = reinterpret_cast<uint64_t*>(frame_rbp - slot.location.slot() - 8);
+            uint64_t* slotPtr = reinterpret_cast<uint64_t*>(frame_rbp - slot.location.slot() - 64);
             if (slot.type == JITType::Int32) {
                 reconstructed = Value::fromInt32(static_cast<int32_t>(*slotPtr));
             } else if (slot.type == JITType::Double) {

@@ -478,21 +478,6 @@ private:
                 builder_.emitWithConstraints(LIROpcode::Move, {{out, LIRConstraint::anyReg()}}, {{mem, LIRConstraint::none()}});
                 break;
             }
-            case HIROp::StoreRegister: {
-                auto n = static_cast<RegisterAccessNode*>(node);
-                LIROperand val = getOperand(node->inputs()[2]);
-                
-                LIROperand regIdxOp = LIROperand::createImm32(n->regIndex());
-                
-                std::vector<std::pair<LIROperand, LIRConstraint>> uses;
-                uses.push_back({regIdxOp, LIRConstraint::anyReg()});
-                uses.push_back({val, LIRConstraint::anyReg()});
-                
-                auto inst = builder_.emitWithConstraints(LIROpcode::Callout, {}, uses);
-                inst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_value));
-                inst->setArgc(2);
-                break;
-            }
             case HIROp::LoadGlobal: {
                 auto n = static_cast<GlobalAccessNode*>(node);
                 builder_.emitWithConstraints(LIROpcode::LoadGlobal, 
@@ -618,45 +603,12 @@ private:
                 
                 auto inst = builder_.emitWithConstraints(LIROpcode::Call, defs, uses);
                 inst->setArgc(n->argc());
+                attachFrameState(inst, n->frameState());
                 break;
             }
             case HIROp::Callout: {
                 auto n = static_cast<CalloutNode*>(node);
                 
-                // Step 74: Eager Sync 机制
-                // 在调用 C++ 运行时函数前，将 FrameState 中的所有存活变量刷回 VM::registers
-                FrameStateNode* fs = n->frameState();
-                if (fs) {
-                    for (size_t i = 0; i < fs->inputs().size(); ++i) {
-                        HIRNode* val = fs->inputs()[i];
-                        if (val) {
-                            LIROperand valOp = getOperand(val);
-                            if (!valOp.isInvalid()) {
-                                LIROperand boxedOp = valOp;
-                                if (val->type() == JITType::Int32) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxInt32, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (val->type() == JITType::Double) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxDouble, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                } else if (val->type() == JITType::Bool) {
-                                    boxedOp = LIROperand::createVirtual(builder_.allocateVirtualRegister(false));
-                                    builder_.emitWithConstraints(LIROpcode::BoxBool, {{boxedOp, LIRConstraint::anyReg()}}, {{valOp, LIRConstraint::anyReg()}});
-                                }
-                                
-                                LIROperand regIdxOp = LIROperand::createImm32(static_cast<int32_t>(i));
-                                std::vector<std::pair<LIROperand, LIRConstraint>> syncUses;
-                                syncUses.push_back({regIdxOp, LIRConstraint::anyReg()});
-                                syncUses.push_back({boxedOp, LIRConstraint::anyReg()});
-                                
-                                auto syncInst = builder_.emitWithConstraints(LIROpcode::Callout, {}, syncUses);
-                                syncInst->setFunctionPtr(reinterpret_cast<void*>(jc2_jit_assign_value));
-                                syncInst->setArgc(2);
-                            }
-                        }
-                    }
-                }
-
                 std::vector<std::pair<LIROperand, LIRConstraint>> uses;
                 
                 for (uint32_t i = 0; i < n->argc(); ++i) {
@@ -676,6 +628,7 @@ private:
                 auto inst = builder_.emitWithConstraints(LIROpcode::Callout, defs, uses);
                 inst->setFunctionPtr(n->functionPtr());
                 inst->setArgc(n->argc());
+                attachFrameState(inst, n->frameState());
                 break;
             }
             default:

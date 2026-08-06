@@ -566,22 +566,22 @@ public:
     }
 
     // --- 函数调用 ---
-    CallNode* createCall(HIRNode* callee, uint32_t argc, const std::vector<HIRNode*>& args) {
-        auto node = graph_->allocateNode<CallNode>(HIROp::Call, JITType::TaggedValue, currentControl_, currentEffect_, callee, argc);
+    CallNode* createCall(HIRNode* callee, uint32_t argc, const std::vector<HIRNode*>& args, FrameStateNode* fs) {
+        auto node = graph_->allocateNode<CallNode>(HIROp::Call, JITType::TaggedValue, currentControl_, currentEffect_, callee, argc, fs);
         for (auto arg : args) node->addInput(arg);
         currentEffect_ = node;
         return node;
     }
 
-    CallNode* createCallNative(HIRNode* callee, uint32_t argc, const std::vector<HIRNode*>& args) {
-        auto node = graph_->allocateNode<CallNode>(HIROp::CallNative, JITType::TaggedValue, currentControl_, currentEffect_, callee, argc);
+    CallNode* createCallNative(HIRNode* callee, uint32_t argc, const std::vector<HIRNode*>& args, FrameStateNode* fs) {
+        auto node = graph_->allocateNode<CallNode>(HIROp::CallNative, JITType::TaggedValue, currentControl_, currentEffect_, callee, argc, fs);
         for (auto arg : args) node->addInput(arg);
         currentEffect_ = node;
         return node;
     }
 
-    CallNode* createCallBuiltin(HIRNode* callee, uint32_t argc, const std::vector<HIRNode*>& args) {
-        auto node = graph_->allocateNode<CallNode>(HIROp::CallBuiltin, JITType::TaggedValue, currentControl_, currentEffect_, callee, argc);
+    CallNode* createCallBuiltin(HIRNode* callee, uint32_t argc, const std::vector<HIRNode*>& args, FrameStateNode* fs) {
+        auto node = graph_->allocateNode<CallNode>(HIROp::CallBuiltin, JITType::TaggedValue, currentControl_, currentEffect_, callee, argc, fs);
         for (auto arg : args) node->addInput(arg);
         currentEffect_ = node;
         return node;

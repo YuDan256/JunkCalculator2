@@ -759,6 +759,25 @@ public:
         emit8(0xCC);
     }
 
+    // --- Push/Pop All (For Trampolines) ---
+    void emitPushAll() {
+        push(r15); push(r14); push(r13); push(r12); push(r11); push(r10); push(r9); push(r8);
+        push(rdi); push(rsi); push(rbp); subq(rsp, 8); push(rbx); push(rdx); push(rcx); push(rax);
+        subq(rsp, 128);
+        movsd(Operand(rsp, 0), xmm0); movsd(Operand(rsp, 8), xmm1); movsd(Operand(rsp, 16), xmm2);
+        movsd(Operand(rsp, 24), xmm3); movsd(Operand(rsp, 32), xmm4); movsd(Operand(rsp, 40), xmm5);
+        movsd(Operand(rsp, 48), xmm6); movsd(Operand(rsp, 56), xmm7); movsd(Operand(rsp, 64), xmm8);
+        movsd(Operand(rsp, 72), xmm9); movsd(Operand(rsp, 80), xmm10); movsd(Operand(rsp, 88), xmm11);
+        movsd(Operand(rsp, 96), xmm12); movsd(Operand(rsp, 104), xmm13); movsd(Operand(rsp, 112), xmm14);
+        movsd(Operand(rsp, 120), xmm15);
+    }
+
+    void emitPopAll() {
+        addq(rsp, 128);
+        pop(rax); pop(rcx); pop(rdx); pop(rbx); addq(rsp, 8); pop(rbp); pop(rsi); pop(rdi);
+        pop(r8); pop(r9); pop(r10); pop(r11); pop(r12); pop(r13); pop(r14); pop(r15);
+    }
+
     // ========================================================================
     // 常量池与 RIP 相对寻址 (Step 20)
     // ========================================================================
@@ -978,6 +997,10 @@ public:
     }
     void movsd(const Operand& dst, XMMRegister src) {
         emit8(0xF2); emitRex(false, src, dst); emit8(0x0F); emit8(0x11); emitOperand(src, dst);
+    }
+
+    void movq(const Operand& dst, XMMRegister src) {
+        emit8(0x66); emitRex(true, src, dst); emit8(0x0F); emit8(0xD6); emitOperand(src, dst);
     }
 
     // --- MOVAPD ---

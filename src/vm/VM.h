@@ -303,7 +303,6 @@ uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count);
 uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk);
 uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg);
 uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset);
-void jc2_jit_assign_value(uint32_t regIndex, uint64_t src_bits);
 void jc2_jit_assign_global(uint32_t slot, uint64_t src_bits);
 
 } // namespace jc

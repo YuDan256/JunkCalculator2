@@ -31,9 +31,15 @@ public:
         }
 
         // 2. 传播阶段 (Propagation): 沿着 Use-Def 链反向传播存活状态
+        // 注意：在传播时，我们暂时不将 FrameState 的 inputs 加入 worklist，
+        // 以避免无脑保活所有虚拟寄存器 (优化寄存器压力)
         while (!worklist.empty()) {
             HIRNode* current = worklist.back();
             worklist.pop_back();
+
+            if (current->opcode() == HIROp::FrameState) {
+                continue;
+            }
 
             for (HIRNode* input : current->inputs()) {
                 if (input && liveNodes.find(input) == liveNodes.end()) {
@@ -43,7 +49,48 @@ public:
             }
         }
 
-        // 3. 消除阶段 (Elimination): 断开所有未被标记为存活的节点
+        // 3. 优化 FrameState (FrameState Optimization)
+        // 遍历所有存活的 FrameState 节点，将其死变量输入替换为 NoneConstant
+        HIRNode* noneConst = builder_.createNoneConstant();
+        liveNodes.insert(noneConst);
+        
+        size_t numNodes = graph_.nodes().size();
+        for (size_t i = 0; i < numNodes; ++i) {
+            HIRNode* node = graph_.nodes()[i];
+            if (node->opcode() == HIROp::FrameState && liveNodes.find(node) != liveNodes.end()) {
+                for (size_t j = 0; j < node->inputs().size(); ++j) {
+                    HIRNode* input = node->inputs()[j];
+                    if (input && liveNodes.find(input) == liveNodes.end()) {
+                        node->replaceInput(j, noneConst);
+                    }
+                }
+                // 将 FrameState 真正存活的 inputs 加入 liveNodes
+                for (HIRNode* input : node->inputs()) {
+                    if (input && liveNodes.find(input) == liveNodes.end()) {
+                        liveNodes.insert(input);
+                        worklist.push_back(input);
+                    }
+                }
+            }
+        }
+
+        // 4. 二次传播 (Secondary Propagation)
+        // 传播那些被 FrameState 保活的节点
+        while (!worklist.empty()) {
+            HIRNode* current = worklist.back();
+            worklist.pop_back();
+
+            if (current->opcode() == HIROp::FrameState) continue;
+
+            for (HIRNode* input : current->inputs()) {
+                if (input && liveNodes.find(input) == liveNodes.end()) {
+                    liveNodes.insert(input);
+                    worklist.push_back(input);
+                }
+            }
+        }
+
+        // 5. 消除阶段 (Elimination): 断开所有未被标记为存活的节点
         for (auto node : graph_.nodes()) {
             if (liveNodes.find(node) == liveNodes.end()) {
                 // killNode 会将该节点的所有 input 设为 nullptr，

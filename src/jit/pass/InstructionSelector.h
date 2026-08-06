@@ -141,7 +141,20 @@ private:
         for (size_t i = 0; i < fs->inputs().size(); ++i) {
             HIRNode* val = fs->inputs()[i];
             if (val) {
-                inst->addFsUse(getOperand(val), val->type());
+                if (val->opcode() == HIROp::NoneConstant) {
+                    inst->addFsUse(LIROperand::createImm64(0x7ffc000000000001ULL), JITType::TaggedValue);
+                } else if (val->opcode() == HIROp::Int32Constant) {
+                    inst->addFsUse(LIROperand::createImm32(static_cast<Int32ConstantNode*>(val)->value()), JITType::Int32);
+                } else if (val->opcode() == HIROp::DoubleConstant) {
+                    uint64_t bits;
+                    double d = static_cast<DoubleConstantNode*>(val)->value();
+                    std::memcpy(&bits, &d, sizeof(double));
+                    inst->addFsUse(LIROperand::createImm64(bits), JITType::Double);
+                } else if (val->opcode() == HIROp::BoolConstant) {
+                    inst->addFsUse(LIROperand::createImm32(static_cast<BoolConstantNode*>(val)->value() ? 1 : 0), JITType::Bool);
+                } else {
+                    inst->addFsUse(getOperand(val), val->type());
+                }
             } else {
                 inst->addFsUse(LIROperand(), JITType::Unknown);
             }

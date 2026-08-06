@@ -290,7 +290,6 @@ public:
                         if (kst.isInt32()) return builder_.createBoxInt32(builder_.createInt32Constant(kst.asInt32()));
                         if (kst.isDouble()) return builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
                         if (kst.isBool()) return builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
-                        if (kst.isString()) return builder_.createStringConstant(kst.asString());
                         if (kst.isNone()) return builder_.createNoneConstant();
                         return builder_.createInt64Constant(kst.as_bits);
                     }
@@ -351,8 +350,6 @@ public:
                             node = builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
                         } else if (kst.isBool()) {
                             node = builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
-                        } else if (kst.isString()) {
-                            node = builder_.createStringConstant(kst.asString());
                         } else if (kst.isNone()) {
                             node = builder_.createNoneConstant();
                         } else {

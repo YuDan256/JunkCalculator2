@@ -493,11 +493,11 @@ JIT 的核心优势在于极速处理标量（Int32, Double, Bool）的控制流
 *   **[已完成] Step 88:** 编写端到端测试，验证包含矩阵构建和类定义的函数在被内联后，既能享受 JIT 加速，又不会发生 GC 崩溃。
 
 ### Phase 18: 算术与逻辑指令的超态回退 (Megamorphic Math Fallbacks) (Steps 89-93)
-*   **Step 89:** 在 C++ 侧实现超态算术运算的 JIT 辅助函数（涵盖 `ADD`, `SUB`, `MUL`, `DIV`, `IDIV`, `MOD`, `POW`, `LDIV`）。
-*   **Step 90:** 在 C++ 侧实现超态位运算与一元运算的 JIT 辅助函数（涵盖 `BAND`, `BOR`, `BXOR`, `SHL`, `SHR`, `UNM`, `BNOT`）。
-*   **Step 91:** 在 C++ 侧实现超态比较运算的 JIT 辅助函数（涵盖 `EQ`, `NEQ`, `LT`, `LE`, `GT`, `GE`）。
-*   **Step 92:** 修改 `BytecodeToHIR`，当算术/逻辑/比较指令的类型反馈为 `0x80` (超态) 或 `0x10` (溢出/突变) 时，不再忽略或去优化，而是生成对应的 `Callout` 节点。
-*   **Step 93:** 编写端到端测试，验证包含矩阵运算、字符串拼接和大整数计算的循环能够被 JIT 成功编译并极速执行，全程无去优化。
+*   **[已完成] Step 89:** 在 C++ 侧实现超态算术运算的 JIT 辅助函数（涵盖 `ADD`, `SUB`, `MUL`, `DIV`, `IDIV`, `MOD`, `POW`, `LDIV`）。
+*   **[已完成] Step 90:** 在 C++ 侧实现超态位运算与一元运算的 JIT 辅助函数（涵盖 `BAND`, `BOR`, `BXOR`, `SHL`, `SHR`, `UNM`, `BNOT`）。
+*   **[已完成] Step 91:** 在 C++ 侧实现超态比较运算的 JIT 辅助函数（涵盖 `EQ`, `NEQ`, `LT`, `LE`, `GT`, `GE`）。
+*   **[已完成] Step 92:** 修改 `BytecodeToHIR`，当算术/逻辑/比较指令的类型反馈为 `0x80` (超态) 或 `0x10` (溢出/突变) 时，不再忽略或去优化，而是生成对应的 `Callout` 节点。
+*   **[已完成] Step 93:** 编写端到端测试，验证包含矩阵运算、字符串拼接和大整数计算的循环能够被 JIT 成功编译并极速执行，全程无去优化。
 
 ### Phase 19: 动态属性与索引访问 (Dynamic Properties & Indexing) (Steps 94-98)
 *   **Step 94:** 在 C++ 侧实现动态属性访问的 JIT 辅助函数（涵盖 `GET_PROP`, `SET_PROP`, `TRY_GET_PROP`），用于处理 Inline Cache (IC) 未命中的情况。

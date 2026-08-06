@@ -894,6 +894,8 @@ private:
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
                 
+                masm_.push(val.pregGPR());
+                
                 // 1. Check if Obj
                 masm_.movq(r11, val.pregGPR());
                 masm_.movabs(r10, 0xFFFC000000000000ULL);
@@ -901,9 +903,12 @@ private:
                 masm_.cmpq(r11, r10);
                 Label isObj;
                 masm_.jcc(Condition::Equal, isObj);
+                masm_.pop(val.pregGPR());
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                 masm_.jmp(deoptTrampolineLabel_);
                 masm_.bind(isObj);
+                
+                masm_.pop(val.pregGPR());
                 
                 // 2. Extract pointer
                 masm_.movq(r11, val.pregGPR());
@@ -952,6 +957,8 @@ private:
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
                 
+                masm_.push(obj.pregGPR());
+                
                 // 1. 检查是否为 Obj (带有 SIGN_BIT | QNAN)
                 masm_.movq(r11, obj.pregGPR());
                 masm_.movabs(r10, 0xFFFC000000000000ULL);
@@ -959,9 +966,12 @@ private:
                 masm_.cmpq(r11, r10);
                 Label isObj;
                 masm_.jcc(Condition::Equal, isObj);
+                masm_.pop(obj.pregGPR());
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                 masm_.jmp(deoptTrampolineLabel_);
                 masm_.bind(isObj);
+                
+                masm_.pop(obj.pregGPR());
                 
                 // 2. 提取对象指针并符号扩展
                 masm_.movq(r11, obj.pregGPR());
@@ -994,15 +1004,14 @@ private:
                 const LIROperand& dst = inst->defs()[0];
                 const LIROperand& src = inst->uses()[0];
                 if (dst.isPhysicalGPR() && src.isPhysicalGPR()) {
-                    if (dst.pregGPR() != src.pregGPR()) {
-                        masm_.mov(dst.pregGPR(), src.pregGPR());
-                    } else {
-                        masm_.mov(dst.pregGPR(), dst.pregGPR()); // Force zero-extension
-                    }
-                    masm_.movabs(r11, 0x7FFC000100000000ULL);
-                    masm_.emitRex(true, dst.pregGPR(), r11);
+                    // 强制使用 32 位 mov 进行零扩展，清除高 32 位
+                    masm_.mov(dst.pregGPR(), src.pregGPR());
+                    
+                    Register scratch = (dst.pregGPR() == r11) ? r10 : r11;
+                    masm_.movabs(scratch, 0x7FFC000100000000ULL);
+                    masm_.emitRex(true, dst.pregGPR(), scratch);
                     masm_.emit8(0x0B); // OR r64, r/m64
-                    masm_.emitModRM(3, dst.pregGPR().id(), r11.id());
+                    masm_.emitModRM(3, dst.pregGPR().id(), scratch.id());
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported BoxInt32 operands.");
                 }
@@ -1060,8 +1069,9 @@ private:
                     } else {
                         masm_.mov(dst.pregGPR(), dst.pregGPR()); // Force zero-extension
                     }
-                    masm_.movabs(r11, 0x7FFC000000000002ULL); // TAG_FALSE
-                    masm_.addq(dst.pregGPR(), r11);
+                    Register scratch = (dst.pregGPR() == r11) ? r10 : r11;
+                    masm_.movabs(scratch, 0x7FFC000000000002ULL); // TAG_FALSE
+                    masm_.addq(dst.pregGPR(), scratch);
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported BoxBool operands.");
                 }
@@ -1175,7 +1185,9 @@ private:
                     } else if (arg.isStackSlot()) {
                         masm_.push(getStackOperand(arg.slot()));
                     } else if (arg.isImm32()) {
-                        masm_.push(arg.imm32());
+                        // 必须先将 32 位立即数零扩展到 64 位寄存器，再压栈，防止符号扩展破坏 TaggedValue
+                        masm_.mov(r11, arg.imm32());
+                        masm_.push(r11);
                     } else if (arg.isImm64()) {
                         masm_.movabs(r11, arg.imm64());
                         masm_.push(r11);
@@ -1192,6 +1204,9 @@ private:
                         masm_.pop(r10);
                     } else if (i == static_cast<int>(argRegs.size()) + 1) {
                         masm_.pop(r11);
+                    } else {
+                        // 超过 6 个参数（Windows 下超过 4 个）且超过 2 个额外栈参数时，直接丢弃（目前不支持这么多参数的 Callout）
+                        masm_.addq(rsp, 8);
                     }
                 }
                 

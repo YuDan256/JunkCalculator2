@@ -1174,8 +1174,13 @@ public:
         movsd(Operand(rsp, 120), xmm15);
 
         // 3. 准备调用 C++ 运行时函数
+#ifdef _WIN32
         movq(rcx, rsp); // arg1: savedRegs (指向栈顶的 256 字节结构体)
         movq(rdx, r10); // arg2: bailoutId (之前存在 R10)
+#else
+        movq(rdi, rsp);
+        movq(rsi, r10);
+#endif
 
         movq(r11, rsp); // 保存原始 RSP
         andq(rsp, -16); // 16 字节对齐

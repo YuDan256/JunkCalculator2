@@ -36,7 +36,13 @@ public:
 
         // 初始化空闲物理寄存器池 (排除 RSP, RBP, R14(专用 frameRegs), 以及作为 Scratch 寄存器的 R10, R11)
         std::vector<Register> freeGPRs = { r15, r13, r12, r9, r8, rdi, rsi, rbx, rdx, rcx, rax };
+#ifdef _WIN32
+        // Windows x64 ABI: xmm6-xmm15 are callee-saved. Since our prologue doesn't save them, we exclude them.
+        std::vector<XMMRegister> freeXMMs = { xmm5, xmm4, xmm3, xmm2, xmm1, xmm0 };
+#else
+        // System V ABI: all xmm registers are caller-saved.
         std::vector<XMMRegister> freeXMMs = { xmm13, xmm12, xmm11, xmm10, xmm9, xmm8, xmm7, xmm6, xmm5, xmm4, xmm3, xmm2, xmm1, xmm0 };
+#endif
 
         buildClobbers();
 
@@ -110,6 +116,11 @@ private:
                     clobberPoints_.push_back({inst->linearId(), r9});
                     clobberPoints_.push_back({inst->linearId(), r10});
                     clobberPoints_.push_back({inst->linearId(), r11});
+#ifndef _WIN32
+                    // System V ABI: rsi and rdi are caller-saved
+                    clobberPoints_.push_back({inst->linearId(), rsi});
+                    clobberPoints_.push_back({inst->linearId(), rdi});
+#endif
                     
                     // Caller-saved XMMs
                     xmmClobberPoints_.push_back({inst->linearId(), xmm0});

@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <cmath>
 
 namespace jc {
 namespace jit {
@@ -28,6 +29,7 @@ struct LiveInterval {
     Register allocatedGPR;
     XMMRegister allocatedXMM;
     int32_t allocatedSlot = -1;
+    float spillWeight = 0.0f;
 
     void addRange(uint32_t start, uint32_t end) {
         if (start >= end) return;
@@ -172,6 +174,7 @@ private:
                     if (def.isVirtual()) {
                         live.erase(def.vreg());
                         LiveInterval& interval = getInterval(def.vreg());
+                        interval.spillWeight += std::pow(10.0f, block->loopDepth());
                         if (!interval.ranges.empty()) {
                             // 截断当前区间到定义处
                             interval.ranges.front().start = id;
@@ -186,6 +189,8 @@ private:
                     const auto& use = inst->uses()[i];
                     if (use.isVirtual()) {
                         live.insert(use.vreg());
+                        LiveInterval& interval = getInterval(use.vreg());
+                        interval.spillWeight += std::pow(10.0f, block->loopDepth());
                         bool isSameAs = false;
                         for (size_t j = 0; j < inst->defs().size(); ++j) {
                             if (inst->defConstraints()[j].type == LIRConstraintType::SameAsInput && inst->defConstraints()[j].value == i) {
@@ -201,7 +206,9 @@ private:
                     const auto& use = fsUsePair.first;
                     if (use.isVirtual()) {
                         live.insert(use.vreg());
-                        getInterval(use.vreg()).addRange(blockStart, id + 1);
+                        LiveInterval& interval = getInterval(use.vreg());
+                        interval.spillWeight += std::pow(10.0f, block->loopDepth());
+                        interval.addRange(blockStart, id + 1);
                     }
                 }
             }

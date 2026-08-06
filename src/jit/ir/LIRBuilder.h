@@ -2,6 +2,7 @@
 #define JC2_JIT_LIR_BUILDER_H
 
 #include "LIR.h"
+#include "../memory/ArenaAllocator.h"
 #include <vector>
 #include <memory>
 #include <cassert>
@@ -18,7 +19,7 @@ public:
     LIRGraph() = default;
     ~LIRGraph() {
         for (auto block : blocks_) {
-            delete block;
+            block->~LIRBlock();
         }
     }
 
@@ -28,9 +29,14 @@ public:
 
     LIRBlock* createBlock() {
         uint32_t id = static_cast<uint32_t>(blocks_.size());
-        auto block = new LIRBlock(id);
+        auto block = arena_.allocateObject<LIRBlock>(id);
         blocks_.push_back(block);
         return block;
+    }
+
+    template <typename... Args>
+    LIRInst* allocateInst(Args&&... args) {
+        return arena_.allocateObject<LIRInst>(std::forward<Args>(args)...);
     }
 
     const std::vector<LIRBlock*>& blocks() const { return blocks_; }
@@ -47,6 +53,7 @@ public:
     }
 
 private:
+    ArenaAllocator arena_;
     std::vector<LIRBlock*> blocks_;
     std::vector<bool> vregIsFloat_;
 };
@@ -78,7 +85,7 @@ public:
 
     // --- 基础指令发射 ---
     LIRInst* emit(LIROpcode opcode) {
-        auto inst = new LIRInst(nextInstId_++, opcode);
+        auto inst = graph_->allocateInst(nextInstId_++, opcode);
         if (currentBlock_) {
             currentBlock_->addInstruction(inst);
         }

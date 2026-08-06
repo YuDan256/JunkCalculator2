@@ -2,6 +2,7 @@
 #define JC2_JIT_HIR_BUILDER_H
 
 #include "HIR.h"
+#include "../memory/ArenaAllocator.h"
 #include <memory>
 #include <vector>
 #include <cassert>
@@ -19,7 +20,7 @@ public:
     HIRGraph() = default;
     ~HIRGraph() {
         for (auto node : nodes_) {
-            delete node;
+            node->~HIRNode();
         }
     }
 
@@ -30,7 +31,7 @@ public:
     template <typename T, typename... Args>
     T* allocateNode(Args&&... args) {
         uint32_t id = static_cast<uint32_t>(nodes_.size());
-        T* node = new T(id, std::forward<Args>(args)...);
+        T* node = arena_.allocateObject<T>(id, std::forward<Args>(args)...);
         nodes_.push_back(node);
         return node;
     }
@@ -64,6 +65,7 @@ public:
     }
 
 private:
+    ArenaAllocator arena_;
     std::vector<HIRNode*> nodes_;
 };
 

@@ -201,13 +201,14 @@ private:
             }
             
             if (!clobbered) {
-                if (bestIt == active.end() || candidate->ranges.back().end > (*bestIt)->ranges.back().end) {
+                if (bestIt == active.end() || candidate->spillWeight < (*bestIt)->spillWeight || 
+                   (candidate->spillWeight == (*bestIt)->spillWeight && candidate->ranges.back().end > (*bestIt)->ranges.back().end)) {
                     bestIt = it;
                 }
             }
         }
         
-        if (bestIt != active.end() && (*bestIt)->ranges.back().end > current->ranges.back().end) {
+        if (bestIt != active.end() && (*bestIt)->spillWeight <= current->spillWeight) {
             LiveInterval* spillCandidate = *bestIt;
             spillCandidate->allocatedSlot = nextStackSlot_;
             nextStackSlot_ += 8;
@@ -272,22 +273,26 @@ private:
                         LiveInterval& interval = liveness_.intervalsMut().at(use.vreg());
                         if (interval.allocatedSlot != -1) {
                             // Spilled
-                            LIROperand stackOp = LIROperand::createStackSlot(interval.allocatedSlot);
-                            LIROperand regOp;
-                            if (lir_.isVRegFloat(use.vreg())) {
-                                XMMRegister reg = (constraint.type == LIRConstraintType::FixedReg) ? XMMRegister(constraint.value) : getScratchXMM();
-                                regOp = LIROperand::createPhysicalXMM(reg);
+                            if (inst->opcode() == LIROpcode::Move || inst->opcode() == LIROpcode::ParallelMove) {
+                                use = LIROperand::createStackSlot(interval.allocatedSlot);
                             } else {
-                                Register reg = (constraint.type == LIRConstraintType::FixedReg) ? Register(constraint.value) : getScratchGPR();
-                                regOp = LIROperand::createPhysicalGPR(reg);
+                                LIROperand stackOp = LIROperand::createStackSlot(interval.allocatedSlot);
+                                LIROperand regOp;
+                                if (lir_.isVRegFloat(use.vreg())) {
+                                    XMMRegister reg = (constraint.type == LIRConstraintType::FixedReg) ? XMMRegister(constraint.value) : getScratchXMM();
+                                    regOp = LIROperand::createPhysicalXMM(reg);
+                                } else {
+                                    Register reg = (constraint.type == LIRConstraintType::FixedReg) ? Register(constraint.value) : getScratchGPR();
+                                    regOp = LIROperand::createPhysicalGPR(reg);
+                                }
+                                
+                                auto moveInst = lir_.allocateInst(0, LIROpcode::Move);
+                                moveInst->addDef(regOp);
+                                moveInst->addUse(stackOp);
+                                newInsts.push_back(moveInst);
+                                
+                                use = regOp;
                             }
-                            
-                            auto moveInst = new LIRInst(0, LIROpcode::Move);
-                            moveInst->addDef(regOp);
-                            moveInst->addUse(stackOp);
-                            newInsts.push_back(moveInst);
-                            
-                            use = regOp;
                         } else if (lir_.isVRegFloat(use.vreg())) {
                             use = LIROperand::createPhysicalXMM(interval.allocatedXMM);
                         } else {
@@ -296,7 +301,7 @@ private:
                                 Register fixedReg(constraint.value);
                                 LIROperand fixedOp = LIROperand::createPhysicalGPR(fixedReg);
                                 if (physOp != fixedOp) {
-                                    auto moveInst = new LIRInst(0, LIROpcode::Move);
+                                    auto moveInst = lir_.allocateInst(0, LIROpcode::Move);
                                     moveInst->addDef(fixedOp);
                                     moveInst->addUse(physOp);
                                     newInsts.push_back(moveInst);
@@ -316,46 +321,50 @@ private:
                         LiveInterval& interval = liveness_.intervalsMut().at(def.vreg());
                         if (interval.allocatedSlot != -1) {
                             // Spilled
-                            LIROperand stackOp = LIROperand::createStackSlot(interval.allocatedSlot);
-                            LIROperand regOp;
-                            if (lir_.isVRegFloat(def.vreg())) {
-                                XMMRegister reg;
-                                if (constraint.type == LIRConstraintType::FixedReg) {
-                                    reg = XMMRegister(constraint.value);
-                                } else if (constraint.type == LIRConstraintType::SameAsInput) {
-                                    reg = getScratchXMM();
-                                    auto moveInst = new LIRInst(0, LIROpcode::Move);
-                                    moveInst->addDef(LIROperand::createPhysicalXMM(reg));
-                                    moveInst->addUse(inst->uses()[constraint.value]);
-                                    newInsts.push_back(moveInst);
-                                    inst->usesMut()[constraint.value] = LIROperand::createPhysicalXMM(reg);
-                                } else {
-                                    reg = getScratchXMM();
-                                }
-                                regOp = LIROperand::createPhysicalXMM(reg);
+                            if (inst->opcode() == LIROpcode::Move || inst->opcode() == LIROpcode::ParallelMove) {
+                                def = LIROperand::createStackSlot(interval.allocatedSlot);
                             } else {
-                                Register reg;
-                                if (constraint.type == LIRConstraintType::FixedReg) {
-                                    reg = Register(constraint.value);
-                                } else if (constraint.type == LIRConstraintType::SameAsInput) {
-                                    reg = getScratchGPR();
-                                    auto moveInst = new LIRInst(0, LIROpcode::Move);
-                                    moveInst->addDef(LIROperand::createPhysicalGPR(reg));
-                                    moveInst->addUse(inst->uses()[constraint.value]);
-                                    newInsts.push_back(moveInst);
-                                    inst->usesMut()[constraint.value] = LIROperand::createPhysicalGPR(reg);
+                                LIROperand stackOp = LIROperand::createStackSlot(interval.allocatedSlot);
+                                LIROperand regOp;
+                                if (lir_.isVRegFloat(def.vreg())) {
+                                    XMMRegister reg;
+                                    if (constraint.type == LIRConstraintType::FixedReg) {
+                                        reg = XMMRegister(constraint.value);
+                                    } else if (constraint.type == LIRConstraintType::SameAsInput) {
+                                        reg = getScratchXMM();
+                                        auto moveInst = lir_.allocateInst(0, LIROpcode::Move);
+                                        moveInst->addDef(LIROperand::createPhysicalXMM(reg));
+                                        moveInst->addUse(inst->uses()[constraint.value]);
+                                        newInsts.push_back(moveInst);
+                                        inst->usesMut()[constraint.value] = LIROperand::createPhysicalXMM(reg);
+                                    } else {
+                                        reg = getScratchXMM();
+                                    }
+                                    regOp = LIROperand::createPhysicalXMM(reg);
                                 } else {
-                                    reg = getScratchGPR();
+                                    Register reg;
+                                    if (constraint.type == LIRConstraintType::FixedReg) {
+                                        reg = Register(constraint.value);
+                                    } else if (constraint.type == LIRConstraintType::SameAsInput) {
+                                        reg = getScratchGPR();
+                                        auto moveInst = lir_.allocateInst(0, LIROpcode::Move);
+                                        moveInst->addDef(LIROperand::createPhysicalGPR(reg));
+                                        moveInst->addUse(inst->uses()[constraint.value]);
+                                        newInsts.push_back(moveInst);
+                                        inst->usesMut()[constraint.value] = LIROperand::createPhysicalGPR(reg);
+                                    } else {
+                                        reg = getScratchGPR();
+                                    }
+                                    regOp = LIROperand::createPhysicalGPR(reg);
                                 }
-                                regOp = LIROperand::createPhysicalGPR(reg);
+                                
+                                auto moveInst = lir_.allocateInst(0, LIROpcode::Move);
+                                moveInst->addDef(stackOp);
+                                moveInst->addUse(regOp);
+                                postInsts.push_back(moveInst);
+                                
+                                def = regOp;
                             }
-                            
-                            auto moveInst = new LIRInst(0, LIROpcode::Move);
-                            moveInst->addDef(stackOp);
-                            moveInst->addUse(regOp);
-                            postInsts.push_back(moveInst);
-                            
-                            def = regOp;
                         } else {
                             LIROperand physOp;
                             if (lir_.isVRegFloat(def.vreg())) {
@@ -373,7 +382,7 @@ private:
                                 }
                                 
                                 if (physOp != fixedOp) {
-                                    auto moveInst = new LIRInst(0, LIROpcode::Move);
+                                    auto moveInst = lir_.allocateInst(0, LIROpcode::Move);
                                     moveInst->addDef(physOp);
                                     moveInst->addUse(fixedOp);
                                     postInsts.push_back(moveInst);
@@ -384,7 +393,7 @@ private:
                             } else if (constraint.type == LIRConstraintType::SameAsInput) {
                                 LIROperand inputOp = inst->uses()[constraint.value];
                                 if (physOp != inputOp) {
-                                    auto moveInst = new LIRInst(0, LIROpcode::Move);
+                                    auto moveInst = lir_.allocateInst(0, LIROpcode::Move);
                                     moveInst->addDef(physOp);
                                     moveInst->addUse(inputOp);
                                     newInsts.push_back(moveInst);

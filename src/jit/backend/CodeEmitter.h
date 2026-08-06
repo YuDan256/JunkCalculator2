@@ -108,8 +108,141 @@ private:
                     masm_.movsd(dst.pregXMM(), getStackOperand(src.slot()));
                 } else if (dst.isStackSlot() && src.isPhysicalXMM()) {
                     masm_.movsd(getStackOperand(dst.slot()), src.pregXMM());
+                } else if (dst.isStackSlot() && src.isStackSlot()) {
+                    masm_.movq(r11, getStackOperand(src.slot()));
+                    masm_.movq(getStackOperand(dst.slot()), r11);
+                } else if (dst.isPhysicalGPR() && src.isImm32()) {
+                    masm_.mov(dst.pregGPR(), src.imm32());
+                } else if (dst.isPhysicalGPR() && src.isImm64()) {
+                    masm_.movabs(dst.pregGPR(), src.imm64());
+                } else if (dst.isStackSlot() && src.isImm32()) {
+                    masm_.mov(getStackOperand(dst.slot()), src.imm32());
+                } else if (dst.isStackSlot() && src.isImm64()) {
+                    masm_.movabs(r11, src.imm64());
+                    masm_.movq(getStackOperand(dst.slot()), r11);
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported Move operands.");
+                }
+                break;
+            }
+            case LIROpcode::ParallelMove: {
+                size_t n = inst->defs().size();
+                std::vector<bool> ready(n, false);
+                std::vector<bool> todo(n, true);
+                
+                auto emitSingleMove = [&](const LIROperand& dst, const LIROperand& src) {
+                    if (dst == src) return;
+                    if (dst.isPhysicalGPR() && src.isPhysicalGPR()) {
+                        masm_.movq(dst.pregGPR(), src.pregGPR());
+                    } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
+                        masm_.movq(dst.pregGPR(), getStackOperand(src.slot()));
+                    } else if (dst.isStackSlot() && src.isPhysicalGPR()) {
+                        masm_.movq(getStackOperand(dst.slot()), src.pregGPR());
+                    } else if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
+                        masm_.movsd(dst.pregXMM(), src.pregXMM());
+                    } else if (dst.isPhysicalXMM() && src.isStackSlot()) {
+                        masm_.movsd(dst.pregXMM(), getStackOperand(src.slot()));
+                    } else if (dst.isStackSlot() && src.isPhysicalXMM()) {
+                        masm_.movsd(getStackOperand(dst.slot()), src.pregXMM());
+                    } else if (dst.isStackSlot() && src.isStackSlot()) {
+                        masm_.movq(r11, getStackOperand(src.slot()));
+                        masm_.movq(getStackOperand(dst.slot()), r11);
+                    } else if (dst.isPhysicalGPR() && src.isImm32()) {
+                        masm_.mov(dst.pregGPR(), src.imm32());
+                    } else if (dst.isPhysicalGPR() && src.isImm64()) {
+                        masm_.movabs(dst.pregGPR(), src.imm64());
+                    } else if (dst.isStackSlot() && src.isImm32()) {
+                        masm_.mov(getStackOperand(dst.slot()), src.imm32());
+                    } else if (dst.isStackSlot() && src.isImm64()) {
+                        masm_.movabs(r11, src.imm64());
+                        masm_.movq(getStackOperand(dst.slot()), r11);
+                    } else {
+                        throw std::runtime_error("CodeEmitter: Unsupported ParallelMove operand combination.");
+                    }
+                };
+
+                bool progress = true;
+                while (progress) {
+                    progress = false;
+                    for (size_t i = 0; i < n; ++i) {
+                        if (!todo[i]) continue;
+                        
+                        bool isUsed = false;
+                        for (size_t j = 0; j < n; ++j) {
+                            if (i != j && todo[j] && inst->uses()[j] == inst->defs()[i]) {
+                                isUsed = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!isUsed) {
+                            emitSingleMove(inst->defs()[i], inst->uses()[i]);
+                            todo[i] = false;
+                            ready[i] = true;
+                            progress = true;
+                        }
+                    }
+                }
+                
+                for (size_t i = 0; i < n; ++i) {
+                    if (todo[i]) {
+                        LIROperand cycleStart = inst->defs()[i];
+                        bool isFloat = false;
+                        if (cycleStart.isPhysicalXMM()) isFloat = true;
+                        else if (cycleStart.isStackSlot()) {
+                            for (size_t j = 0; j < n; ++j) {
+                                if (inst->defs()[j] == cycleStart && inst->uses()[j].isPhysicalXMM()) {
+                                    isFloat = true; break;
+                                }
+                            }
+                        }
+                        
+                        if (isFloat) {
+                            if (cycleStart.isPhysicalXMM()) {
+                                masm_.movsd(xmm15, cycleStart.pregXMM());
+                            } else {
+                                masm_.movsd(xmm15, getStackOperand(cycleStart.slot()));
+                            }
+                        } else {
+                            if (cycleStart.isPhysicalGPR()) {
+                                masm_.movq(r11, cycleStart.pregGPR());
+                            } else {
+                                masm_.movq(r11, getStackOperand(cycleStart.slot()));
+                            }
+                        }
+                        
+                        size_t curr = i;
+                        while (todo[curr]) {
+                            todo[curr] = false;
+                            size_t next = n;
+                            for (size_t j = 0; j < n; ++j) {
+                                if (todo[j] && inst->defs()[j] == inst->uses()[curr]) {
+                                    next = j;
+                                    break;
+                                }
+                            }
+                            
+                            if (next != n) {
+                                emitSingleMove(inst->defs()[curr], inst->uses()[curr]);
+                                curr = next;
+                            } else {
+                                if (isFloat) {
+                                    if (inst->defs()[curr].isPhysicalXMM()) {
+                                        masm_.movsd(inst->defs()[curr].pregXMM(), xmm15);
+                                    } else {
+                                        masm_.movsd(getStackOperand(inst->defs()[curr].slot()), xmm15);
+                                    }
+                                } else {
+                                    if (inst->defs()[curr].isPhysicalGPR()) {
+                                        masm_.movq(inst->defs()[curr].pregGPR(), r11);
+                                    } else {
+                                        masm_.movq(getStackOperand(inst->defs()[curr].slot()), r11);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
                 }
                 break;
             }

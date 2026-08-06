@@ -138,6 +138,7 @@ private:
 enum class LIROpcode : uint16_t {
     Label,
     Move,
+    ParallelMove,
     LoadImm32,
     LoadImm64,
     Lea,
@@ -168,6 +169,7 @@ inline std::string to_string(LIROpcode op) {
     switch (op) {
         case LIROpcode::Label: return "Label";
         case LIROpcode::Move: return "Move";
+        case LIROpcode::ParallelMove: return "ParallelMove";
         case LIROpcode::LoadImm32: return "LoadImm32";
         case LIROpcode::LoadImm64: return "LoadImm64";
         case LIROpcode::Lea: return "Lea";
@@ -321,7 +323,7 @@ class LIRBlock {
 public:
     explicit LIRBlock(uint32_t id) : id_(id) {}
     ~LIRBlock() {
-        for (auto inst : instructions_) delete inst;
+        for (auto inst : instructions_) inst->~LIRInst();
     }
 
     uint32_t id() const { return id_; }

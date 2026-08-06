@@ -86,7 +86,9 @@ public:
         }
 
         // 5. 降级 Phi 节点 (De-SSA)
-        // 将 Phi 节点转换为在其各个前驱基本块末尾的 Move 指令
+        // 将 Phi 节点转换为在其各个前驱基本块末尾的 ParallelMove 指令
+        std::unordered_map<LIRBlock*, LIRInst*> blockParallelMoves;
+        
         for (LIRBlock* block : lir_.blocks()) {
             auto& nodes = blockNodes[block];
             for (HIRNode* node : nodes) {
@@ -103,23 +105,27 @@ public:
                         if (predBlock && dataIn) {
                             LIROperand inVal = getOperand(dataIn);
                             if (!inVal.isInvalid() && !out.isInvalid()) {
-                                auto moveInst = new LIRInst(0, LIROpcode::Move);
-                                moveInst->addDef(out);
-                                moveInst->addUse(inVal);
-                                
-                                // 插入到前驱块的末尾，但在任何跳转指令 (Jmp/Jcc/Ret) 之前
-                                auto& insts = predBlock->instructionsMut();
-                                auto insertIt = insts.end();
-                                while (insertIt != insts.begin()) {
-                                    auto prev = std::prev(insertIt);
-                                    LIROpcode op = (*prev)->opcode();
-                                    if (op == LIROpcode::Jmp || op == LIROpcode::Jcc || op == LIROpcode::Ret || op == LIROpcode::Deoptimize) {
-                                        insertIt = prev;
-                                    } else {
-                                        break;
+                                LIRInst* pmove = blockParallelMoves[predBlock];
+                                if (!pmove) {
+                                    pmove = lir_.allocateInst(0, LIROpcode::ParallelMove);
+                                    blockParallelMoves[predBlock] = pmove;
+                                    
+                                    // 插入到前驱块的末尾，但在任何跳转指令 (Jmp/Jcc/Ret) 之前
+                                    auto& insts = predBlock->instructionsMut();
+                                    auto insertIt = insts.end();
+                                    while (insertIt != insts.begin()) {
+                                        auto prev = std::prev(insertIt);
+                                        LIROpcode op = (*prev)->opcode();
+                                        if (op == LIROpcode::Jmp || op == LIROpcode::Jcc || op == LIROpcode::Ret || op == LIROpcode::Deoptimize) {
+                                            insertIt = prev;
+                                        } else {
+                                            break;
+                                        }
                                     }
+                                    insts.insert(insertIt, pmove);
                                 }
-                                insts.insert(insertIt, moveInst);
+                                pmove->addDef(out);
+                                pmove->addUse(inVal);
                             }
                         }
                     }

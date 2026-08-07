@@ -373,14 +373,13 @@ private:
         LIRBlock* curr = lca;
 
         // Block Selection: 在 earlyBlock 和 lca 之间选择循环深度最小的块 (LICM)
-        while (curr != nullptr && curr != earlyBlock && (!blocks_.empty() && curr != blocks_[0])) {
+        while (curr != nullptr) {
             if (curr->loopDepth() < bestBlock->loopDepth()) {
                 bestBlock = curr;
             }
+            if (curr == earlyBlock) break;
+            if (curr == idom_[curr]) break; // 防止到达支配树根节点后死循环
             curr = idom_[curr];
-        }
-        if (earlyBlock && earlyBlock->loopDepth() < bestBlock->loopDepth()) {
-            bestBlock = earlyBlock;
         }
 
         nodeToBlock_[node] = bestBlock;

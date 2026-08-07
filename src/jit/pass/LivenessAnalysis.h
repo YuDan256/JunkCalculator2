@@ -154,10 +154,21 @@ private:
 
     // 4. 逆序遍历指令，构建活跃区间
     void buildIntervals() {
+        std::unordered_map<LIRBlock*, std::pair<uint32_t, uint32_t>> blockRanges;
+        uint32_t currentId = 0;
+        for (LIRBlock* block : lir_.blocks()) {
+            uint32_t start = currentId;
+            if (!block->instructions().empty()) {
+                start = block->instructions().front()->linearId();
+                currentId = block->instructions().back()->linearId() + 2;
+            }
+            blockRanges[block] = {start, currentId};
+        }
+
         for (auto it = lir_.blocks().rbegin(); it != lir_.blocks().rend(); ++it) {
             LIRBlock* block = *it;
-            uint32_t blockStart = block->instructions().empty() ? 0 : block->instructions().front()->linearId();
-            uint32_t blockEnd = block->instructions().empty() ? blockStart + 2 : block->instructions().back()->linearId() + 2;
+            uint32_t blockStart = blockRanges[block].first;
+            uint32_t blockEnd = blockRanges[block].second;
 
             std::unordered_set<uint32_t> live = block->liveOut;
 

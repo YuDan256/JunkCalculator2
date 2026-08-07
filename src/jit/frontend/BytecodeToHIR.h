@@ -260,18 +260,28 @@ public:
                         int trueTargetIp = (op == OpCode::JMP_TRUE) ? (ip + sbx) : ip;
                         int falseTargetIp = (op == OpCode::JMP_FALSE) ? (ip + sbx) : ip;
                         
-                        if (cfg_.ipToBlockId.count(trueTargetIp)) {
-                            blockEntryControls_[cfg_.ipToBlockId[trueTargetIp]].push_back(ifTrue);
-                        }
-                        if (cfg_.ipToBlockId.count(falseTargetIp)) {
-                            blockEntryControls_[cfg_.ipToBlockId[falseTargetIp]].push_back(ifFalse);
-                        }
+                        auto handleBranchTarget = [&](HIRNode* branchCtrl, int targetIp) {
+                            if (isOSR_ && targetIp < osrLoopHeaderIp_) {
+                                builder_.setCurrentControl(branchCtrl);
+                                auto fs = captureFrameState(currentIp);
+                                builder_.createDeoptimize(fs);
+                            } else if (cfg_.ipToBlockId.count(targetIp)) {
+                                blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(branchCtrl);
+                            }
+                        };
+                        
+                        handleBranchTarget(ifTrue, trueTargetIp);
+                        handleBranchTarget(ifFalse, falseTargetIp);
+                        builder_.setCurrentControl(nullptr);
                         break;
                     }
 
                     case OpCode::JMP: {
                         int targetIp = ip + sax;
-                        if (cfg_.ipToBlockId.count(targetIp)) {
+                        if (isOSR_ && targetIp < osrLoopHeaderIp_) {
+                            auto fs = captureFrameState(currentIp);
+                            builder_.createDeoptimize(fs);
+                        } else if (cfg_.ipToBlockId.count(targetIp)) {
                             blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(builder_.currentControl());
                         }
                         builder_.setCurrentControl(nullptr);
@@ -825,6 +835,38 @@ public:
                         callout->addInput(getBoxedRKNode(a));
                         callout->addInput(getBoxedRKNode(b));
                         callout->addInput(getBoxedRKNode(c));
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::GET_SELF: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_self), JITType::TaggedValue, 0, {}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::GET_CURRENT_CLOSURE: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_current_closure), JITType::TaggedValue, 0, {}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::GET_UPVAL: {
+                        auto fs = captureFrameState(currentIp);
+                        auto uvIdxNode = builder_.createInt32Constant(b);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_upval), JITType::TaggedValue, 1, {uvIdxNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::SET_UPVAL: {
+                        auto fs = captureFrameState(currentIp);
+                        auto uvIdxNode = builder_.createInt32Constant(b);
+                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                        if (val->type() != JITType::TaggedValue) {
+                            if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
+                            else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
+                            else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
+                        }
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_upval), JITType::Unknown, 2, {uvIdxNode, val}, fs);
                         builder_.setCurrentEffect(callout);
                         break;
                     }

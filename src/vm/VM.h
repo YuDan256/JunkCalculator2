@@ -348,6 +348,10 @@ uint64_t jc2_jit_truthy(uint64_t val_bits);
 uint64_t jc2_jit_invoke(uint32_t objReg, uint32_t argc, uint32_t icIdx, uint32_t isPrivate, uint32_t fbType, const Chunk* chunk);
 uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, const Chunk* chunk);
 uint64_t jc2_jit_get_super(uint32_t objReg, uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_get_self();
+uint64_t jc2_jit_get_current_closure();
+uint64_t jc2_jit_get_upval(uint32_t uvIdx);
+void jc2_jit_set_upval(uint32_t uvIdx, uint64_t val_bits);
 
 // Megamorphic Comparison Fallbacks (Step 91)
 uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits);

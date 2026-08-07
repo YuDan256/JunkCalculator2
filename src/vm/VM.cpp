@@ -10599,6 +10599,47 @@ uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, 
     JIT_CALLOUT_CATCH
 }
 
+uint64_t jc2_jit_get_self() {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value selfCtx = vm->getCurrentFrame()->selfContext;
+    if (selfCtx.isNone()) throw std::runtime_error("VM Error: 'self' accessed outside of context.");
+    vm->getCurrentFrame()->jitReturnSlot = selfCtx;
+    return selfCtx.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_get_current_closure() {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value closure(vm->getCurrentFrame()->closure);
+    vm->getCurrentFrame()->jitReturnSlot = closure;
+    return closure.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_get_upval(uint32_t uvIdx) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
+        throw std::runtime_error("VM Error: Invalid upvalue index.");
+    Value res = *(frame->closure->upvalues[uvIdx]->location);
+    frame->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_set_upval(uint32_t uvIdx, uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
+        throw std::runtime_error("VM Error: Invalid upvalue index.");
+    *(frame->closure->upvalues[uvIdx]->location) = Value::fromRawBits(val_bits);
+    JIT_CALLOUT_CATCH_VOID
+}
+
 uint64_t jc2_jit_get_super(uint32_t objReg, uint32_t nameIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;

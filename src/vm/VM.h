@@ -129,7 +129,9 @@ private:
 
     bool handleExceptionUnwind(Value* errValPtr);
     std::string buildStackTrace() const;
+public:
     Value wrapException(const std::string& type, Value val);
+private:
     std::string formatException(const Value& errVal);
 
     void execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall = false);

@@ -46,8 +46,43 @@ extern bool g_profile;
 #endif
 
 #define JIT_CALLOUT_TRY try {
-#define JIT_CALLOUT_CATCH } catch (const std::exception& e) { VM::activeVM->jit_exception_value = Value(std::string(e.what())); jit::g_jit_pending_exception = 1; return 0; } catch (...) { VM::activeVM->jit_exception_value = Value("Unknown JIT Exception"); jit::g_jit_pending_exception = 1; return 0; }
-#define JIT_CALLOUT_CATCH_VOID } catch (const std::exception& e) { VM::activeVM->jit_exception_value = Value(std::string(e.what())); jit::g_jit_pending_exception = 1; return; } catch (...) { VM::activeVM->jit_exception_value = Value("Unknown JIT Exception"); jit::g_jit_pending_exception = 1; return; }
+#define JIT_CALLOUT_CATCH \
+    } catch (const ValueException& e) { \
+        VM::activeVM->jit_exception_value = e.val; \
+        jit::g_jit_pending_exception = 1; \
+        return 0; \
+    } catch (const RuntimeError& e) { \
+        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, e.message); \
+        jit::g_jit_pending_exception = 1; \
+        return 0; \
+    } catch (const std::exception& e) { \
+        VM::activeVM->jit_exception_value = Value(std::string(e.what())); \
+        jit::g_jit_pending_exception = 1; \
+        return 0; \
+    } catch (...) { \
+        VM::activeVM->jit_exception_value = Value("Unknown JIT Exception"); \
+        jit::g_jit_pending_exception = 1; \
+        return 0; \
+    }
+
+#define JIT_CALLOUT_CATCH_VOID \
+    } catch (const ValueException& e) { \
+        VM::activeVM->jit_exception_value = e.val; \
+        jit::g_jit_pending_exception = 1; \
+        return; \
+    } catch (const RuntimeError& e) { \
+        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, e.message); \
+        jit::g_jit_pending_exception = 1; \
+        return; \
+    } catch (const std::exception& e) { \
+        VM::activeVM->jit_exception_value = Value(std::string(e.what())); \
+        jit::g_jit_pending_exception = 1; \
+        return; \
+    } catch (...) { \
+        VM::activeVM->jit_exception_value = Value("Unknown JIT Exception"); \
+        jit::g_jit_pending_exception = 1; \
+        return; \
+    }
 
 namespace jc {
 
@@ -724,7 +759,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                         jit::g_jit_pending_exception = 0;
                         Value exVal = jit_exception_value;
                         jit_exception_value = Value::none();
-                        throw std::runtime_error(exVal.asString());
+                        throw ValueException(exVal);
                     }
                     int targetDepth = frameCount - 1;
                     try {
@@ -2743,6 +2778,20 @@ std::string VM::buildStackTrace() const {
 
 void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
     auto& fnDef = compiledFunctions[fnIdx];
+    
+    bool supported = true;
+    for (Instruction inst : fnDef->chunk.code) {
+        OpCode op = GET_OPCODE(inst);
+        if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER) {
+            supported = false;
+            break;
+        }
+    }
+    if (!supported) {
+        osrEntryPoints[fnIdx][loopHeaderIp] = nullptr;
+        return;
+    }
+    
     try {
         jit::HIRGraph hirGraph;
         jit::HIRBuilder hirBuilder(&hirGraph, fnDef->localCount + fnDef->refCount);
@@ -2815,6 +2864,18 @@ void VM::profileFrameStart(CallFrame* frame) {
             int fnIdx = frame->closure->compiledFnIndex;
             // 触发 JIT 编译 (Tier 2)
             if (jitEntryPoints.find(fnIdx) == jitEntryPoints.end()) {
+                bool supported = true;
+                for (Instruction inst : fn->chunk.code) {
+                    OpCode op = GET_OPCODE(inst);
+                    if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER) {
+                        supported = false;
+                        break;
+                    }
+                }
+                if (!supported) {
+                    jitEntryPoints[fnIdx] = nullptr;
+                    return;
+                }
                 try {
                     jit::HIRGraph hirGraph;
                     jit::HIRBuilder hirBuilder(&hirGraph, fn->localCount + fn->refCount);
@@ -3221,7 +3282,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
                 jit::g_jit_pending_exception = 0;
                 Value exVal = jit_exception_value;
                 jit_exception_value = Value::none();
-                throw std::runtime_error(exVal.asString());
+                throw ValueException(exVal);
             }
             // Fall through to run() below
         } else {
@@ -3419,7 +3480,7 @@ Value VM::run(int targetFrameDepth) {
                         jit::g_jit_pending_exception = 0; \
                         Value exVal = jit_exception_value; \
                         jit_exception_value = Value::none(); \
-                        throw std::runtime_error(exVal.asString()); \
+                        throw ValueException(exVal); \
                     } \
                 } else { \
                     if (g_profile) std::cout << "[JIT] OSR Execution completed successfully.\n"; \

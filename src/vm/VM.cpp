@@ -3171,6 +3171,14 @@ VM::VM() {
         return Value(list);
     };
     builtinArity["__dbg_type_feedback"] = {1};
+
+    nativeBuiltins["__dbg_is_jitted"] = [this](const std::vector<Value>& args) -> Value {
+        if (args.empty() || !args[0].isFunctionClosure()) return Value(false);
+        ObjClosure* closure = args[0].asFunction();
+        if (!closure->isBytecode()) return Value(false);
+        return Value(getJitEntryPoint(closure->compiledFnIndex) != nullptr);
+    };
+    builtinArity["__dbg_is_jitted"] = {1};
 }
 
 VM::~VM() {

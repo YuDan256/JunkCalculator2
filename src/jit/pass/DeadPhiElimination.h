@@ -37,9 +37,8 @@ public:
             inWorklist.erase(phi);
 
             HIRNode* replacement = tryEliminate(phi);
-            if (replacement && replacement != phi) {
-                // 如果 Phi 被替换，将所有使用该 Phi 的其他 Phi 节点重新加入队列，
-                // 因为它们可能因此变成新的冗余 Phi 节点。
+            if (replacement != phi) {
+                // 如果 Phi 被替换 (replacement 可能为 nullptr)，将所有使用该 Phi 的其他 Phi 节点重新加入队列
                 for (auto use : phi->uses()) {
                     if (use->opcode() == HIROp::Phi && inWorklist.find(use) == inWorklist.end()) {
                         worklist.push_back(use);
@@ -58,31 +57,28 @@ private:
 
     HIRNode* tryEliminate(HIRNode* phi) {
         HIRNode* same = nullptr;
+        bool hasRealInput = false;
         
         // inputs()[0] 是控制流边 (Merge / LoopBegin)，数据边从 inputs()[1] 开始
         for (size_t i = 1; i < phi->inputs().size(); ++i) {
             HIRNode* op = phi->inputs()[i];
             
-            // 忽略对自身的引用和重复的引用
-            if (op == phi || op == same) {
+            // 忽略对自身的引用、重复的引用以及 nullptr (未初始化)
+            if (op == phi || op == same || op == nullptr) {
                 continue;
             }
             
             // 如果已经有一个不同的值，说明该 Phi 节点合并了至少两个不同的值，不是冗余的
-            if (same != nullptr) {
-                return nullptr;
+            if (hasRealInput) {
+                return phi; // 返回 phi 自身表示无法消除
             }
             
             same = op;
+            hasRealInput = true;
         }
 
-        // 如果 same 仍为 nullptr，说明该 Phi 节点只引用了自身（或者没有数据输入）。
-        // 这是一个死循环引用，属于不可达的死代码，替换为 NoneConstant 打破循环。
-        if (same == nullptr) {
-            return builder_.createNoneConstant();
-        }
-
-        // 否则，该 Phi 节点是冗余的，可以直接被 same 替换
+        // 如果 same 仍为 nullptr，说明该 Phi 节点只引用了自身或 nullptr。
+        // 这意味着该变量在所有路径上都未被初始化，直接返回 nullptr 消除它。
         return same;
     }
 };

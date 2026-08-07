@@ -120,7 +120,7 @@ public:
                                         type = val->type();
                                         phiInputs.push_back(val);
                                     } else {
-                                        phiInputs.push_back(builder_.createNoneConstant());
+                                        phiInputs.push_back(nullptr);
                                     }
                                 }
                             }
@@ -1134,16 +1134,7 @@ public:
                             for (int i = 0; i < maxRegs_; ++i) {
                                 if (phis[i]) {
                                     HIRNode* backEdgeVal = blockExitStates_[block.id][i];
-                                    if (backEdgeVal) {
-                                        if (phis[i]->type() == JITType::TaggedValue && backEdgeVal->type() != JITType::TaggedValue) {
-                                            if (backEdgeVal->type() == JITType::Int32) backEdgeVal = builder_.createBoxInt32(backEdgeVal);
-                                            else if (backEdgeVal->type() == JITType::Double) backEdgeVal = builder_.createBoxDouble(backEdgeVal);
-                                            else if (backEdgeVal->type() == JITType::Bool) backEdgeVal = builder_.createBoxBool(backEdgeVal);
-                                        }
-                                        phis[i]->addInput(backEdgeVal);
-                                    } else {
-                                        phis[i]->addInput(builder_.createNoneConstant());
-                                    }
+                                    phis[i]->addInput(backEdgeVal);
                                 }
                             }
                         }

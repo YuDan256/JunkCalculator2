@@ -49,22 +49,12 @@ public:
             }
         }
 
-        // 3. 优化 FrameState (FrameState Optimization)
-        // 遍历所有存活的 FrameState 节点，将其死变量输入替换为 NoneConstant
-        HIRNode* noneConst = builder_.createNoneConstant();
-        liveNodes.insert(noneConst);
-        
-        size_t numNodes = graph_.nodes().size();
-        for (size_t i = 0; i < numNodes; ++i) {
-            HIRNode* node = graph_.nodes()[i];
+        // 3. 二次传播 (Secondary Propagation)
+        // 传播那些被 FrameState 保活的节点。
+        // 注意：我们不能将 FrameState 中死掉的变量替换为 NoneConstant，
+        // 因为去优化后解释器可能仍然需要读取这些变量的原始值。
+        for (auto node : graph_.nodes()) {
             if (node->opcode() == HIROp::FrameState && liveNodes.find(node) != liveNodes.end()) {
-                for (size_t j = 0; j < node->inputs().size(); ++j) {
-                    HIRNode* input = node->inputs()[j];
-                    if (input && liveNodes.find(input) == liveNodes.end()) {
-                        node->replaceInput(j, noneConst);
-                    }
-                }
-                // 将 FrameState 真正存活的 inputs 加入 liveNodes
                 for (HIRNode* input : node->inputs()) {
                     if (input && liveNodes.find(input) == liveNodes.end()) {
                         liveNodes.insert(input);
@@ -74,13 +64,9 @@ public:
             }
         }
 
-        // 4. 二次传播 (Secondary Propagation)
-        // 传播那些被 FrameState 保活的节点
         while (!worklist.empty()) {
             HIRNode* current = worklist.back();
             worklist.pop_back();
-
-            if (current->opcode() == HIROp::FrameState) continue;
 
             for (HIRNode* input : current->inputs()) {
                 if (input && liveNodes.find(input) == liveNodes.end()) {

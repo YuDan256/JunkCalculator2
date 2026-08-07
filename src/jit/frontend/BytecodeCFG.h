@@ -201,8 +201,10 @@ public:
             for (int target : targets) {
                 if (ipToBlockId.count(target)) {
                     int targetBlockId = ipToBlockId[target];
-                    block.successors.push_back(targetBlockId);
-                    blocks[targetBlockId].predecessors.push_back(block.id);
+                    if (std::find(block.successors.begin(), block.successors.end(), targetBlockId) == block.successors.end()) {
+                        block.successors.push_back(targetBlockId);
+                        blocks[targetBlockId].predecessors.push_back(block.id);
+                    }
                 }
             }
 
@@ -210,8 +212,10 @@ public:
             if (!isTerminal && block.endIp < n) {
                 if (ipToBlockId.count(block.endIp)) {
                     int fallthroughId = ipToBlockId[block.endIp];
-                    block.successors.push_back(fallthroughId);
-                    blocks[fallthroughId].predecessors.push_back(block.id);
+                    if (std::find(block.successors.begin(), block.successors.end(), fallthroughId) == block.successors.end()) {
+                        block.successors.push_back(fallthroughId);
+                        blocks[fallthroughId].predecessors.push_back(block.id);
+                    }
                 }
             }
         }

@@ -250,7 +250,8 @@ public:
                             auto guard = builder_.createGuardIsBool(val, fs);
                             condNode = builder_.createUnboxBool(val, guard);
                         } else {
-                            throw std::runtime_error("JIT Error: Unsupported type feedback for branch.");
+                            auto fs = captureFrameState(currentIp);
+                            condNode = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_truthy), JITType::Bool, 1, {val}, fs);
                         }
                         
                         auto branch = builder_.createBranch(condNode);
@@ -627,7 +628,14 @@ public:
                             auto callout = builder_.createCallout(fnPtr, JITType::TaggedValue, 1, {getBoxedRKNode(b)}, fs);
                             setLocalSync(a, callout);
                         } else {
-                            throw std::runtime_error("JIT Error: Unsupported type feedback for logical NOT/TO_BOOL.");
+                            auto fs = captureFrameState(currentIp);
+                            auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_truthy), JITType::Bool, 1, {val}, fs);
+                            if (op == OpCode::NOT) {
+                                auto falseNode = builder_.createBoolConstant(false);
+                                setLocalSync(a, builder_.createBoxBool(builder_.createCmpEqI32(callout, falseNode)));
+                            } else {
+                                setLocalSync(a, builder_.createBoxBool(callout));
+                            }
                         }
                         break;
                     }

@@ -84,6 +84,12 @@ private:
                         case HIROp::SubI32: return builder_.createInt32Constant(static_cast<int32_t>(ul - ur));
                         case HIROp::MulI32: return builder_.createInt32Constant(static_cast<int32_t>(ul * ur));
                         case HIROp::DivI32:
+                            if (r != 0 && !(l == INT32_MIN && r == -1)) {
+                                if (l % r == 0) {
+                                    return builder_.createInt32Constant(l / r);
+                                }
+                            }
+                            break;
                         case HIROp::IDivI32: 
                             // 避免除以零和 INT32_MIN / -1 导致的硬件异常
                             if (r != 0 && !(l == INT32_MIN && r == -1)) {

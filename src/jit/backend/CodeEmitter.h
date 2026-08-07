@@ -304,6 +304,9 @@ private:
             case LIROpcode::AddI32: {
                 const LIROperand& dst = inst->defs()[0];
                 const LIROperand& src = inst->uses()[1];
+                if (inst->hasBailoutId()) {
+                    masm_.mov(r11, dst.pregGPR());
+                }
                 if (dst.isPhysicalGPR() && src.isPhysicalGPR()) {
                     masm_.add(dst.pregGPR(), src.pregGPR());
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
@@ -315,6 +318,7 @@ private:
                     needsDeoptTrampoline_ = true;
                     Label noOverflow;
                     masm_.jcc(Condition::NoOverflow, noOverflow);
+                    masm_.mov(dst.pregGPR(), r11);
                     masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(noOverflow);
@@ -326,6 +330,9 @@ private:
             case LIROpcode::SubI32: {
                 const LIROperand& dst = inst->defs()[0];
                 const LIROperand& src = inst->uses()[1];
+                if (inst->hasBailoutId()) {
+                    masm_.mov(r11, dst.pregGPR());
+                }
                 if (dst.isPhysicalGPR() && src.isPhysicalGPR()) {
                     masm_.sub(dst.pregGPR(), src.pregGPR());
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
@@ -337,6 +344,7 @@ private:
                     needsDeoptTrampoline_ = true;
                     Label noOverflow;
                     masm_.jcc(Condition::NoOverflow, noOverflow);
+                    masm_.mov(dst.pregGPR(), r11);
                     masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(noOverflow);
@@ -348,6 +356,9 @@ private:
             case LIROpcode::MulI32: {
                 const LIROperand& dst = inst->defs()[0];
                 const LIROperand& src = inst->uses()[1];
+                if (inst->hasBailoutId()) {
+                    masm_.mov(r11, dst.pregGPR());
+                }
                 if (dst.isPhysicalGPR() && src.isPhysicalGPR()) {
                     masm_.imul(dst.pregGPR(), src.pregGPR());
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
@@ -359,6 +370,7 @@ private:
                     needsDeoptTrampoline_ = true;
                     Label noOverflow;
                     masm_.jcc(Condition::NoOverflow, noOverflow);
+                    masm_.mov(dst.pregGPR(), r11);
                     masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(noOverflow);
@@ -392,6 +404,9 @@ private:
                     masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(notOverflow);
+                    
+                    // 保存 RAX 原值到 r11
+                    masm_.mov(r11, rax);
                 }
                 
                 masm_.cdq();
@@ -408,6 +423,7 @@ private:
                     Label isZeroRem;
                     masm_.test(rdx, rdx);
                     masm_.jcc(Condition::Zero, isZeroRem);
+                    masm_.mov(rax, r11);
                     masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                     masm_.jmp(deoptTrampolineLabel_);
                     masm_.bind(isZeroRem);
@@ -545,6 +561,7 @@ private:
                         masm_.cmp(r11, r10);
                         Label noOverflow;
                         masm_.jcc(Condition::Equal, noOverflow);
+                        masm_.mov(dst.pregGPR(), r11);
                         masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                         masm_.jmp(deoptTrampolineLabel_);
                         masm_.bind(noOverflow);

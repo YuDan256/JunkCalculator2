@@ -69,7 +69,7 @@ class Tetris extends engine.GameEngine {
         self.next_idx = random.randint(0, 6)
         
         self.curr_r = 0
-        self.curr_c = int(self.COLS / 2) - int(self.curr_piece.cols() / 2)
+        self.curr_c = (self.COLS ~/ 2) - (self.curr_piece.cols() ~/ 2)
         
         // If it collides on spawn, the board is full -> GAME OVER
         if (!self.isValid(self.curr_piece, self.curr_r, self.curr_c)) {
@@ -288,8 +288,8 @@ class Tetris extends engine.GameEngine {
         nc = next_p.cols()
         
         // Mathematically center the preview piece inside the 160x120 box!
-        prev_ox = ui_x + int((160 - nc * self.CELL) / 2)
-        prev_oy = next_y + 30 + int((120 - nr * self.CELL) / 2)
+        prev_ox = ui_x + ((160 - nc * self.CELL) ~/ 2)
+        prev_oy = next_y + 30 + ((120 - nr * self.CELL) ~/ 2)
         
         for (r = 0; r < nr; r += 1) {
             for (c = 0; c < nc; c += 1) {

@@ -3469,7 +3469,7 @@ Value VM::run(int targetFrameDepth) {
                 jit::g_jc2_jit_deoptimized = false; \
                 uint64_t retBits = func(frameRegs); \
                 if (jit::g_jc2_jit_deoptimized) { \
-                    if (g_profile) std::cout << "[JIT] OSR Deoptimized! Falling back to interpreter.\n"; \
+                    if (g_profile) std::cout << "[JIT] OSR Deoptimized! Falling back to interpreter at IP: " << frame->ip << "\n"; \
                     jit::g_jc2_jit_deoptimized = false; \
                     ip = frame->ip; \
                     osrTriggered = true; \
@@ -5168,10 +5168,15 @@ Value VM::run(int targetFrameDepth) {
                                 }
                             }
                         };
-                        if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-                        else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                        else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
-                        else result = processMatGet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                        try {
+                            if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                            else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                            else result = processMatGet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                        } catch (...) {
+                            std::cout << "[DEBUG] Interpreter INDEX_GET 1D Exception: arg[0]=" << args[0] << "\n";
+                            throw;
+                        }
                     } else if (obj.isObjType(ObjType::DICT)) {
                         if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
                         auto dict = static_cast<ObjDict*>(obj.asObj());
@@ -5359,10 +5364,15 @@ Value VM::run(int targetFrameDepth) {
                                 return Value(MatType(rRange.sliceInfo.count, cRange.sliceInfo.count, flat));
                             }
                         };
-                        if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-                        else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                        else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
-                        else result = processMatGet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                        try {
+                            if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                            else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                            else result = processMatGet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                        } catch (...) {
+                            std::cout << "[DEBUG] Interpreter INDEX_GET 2D Exception: arg[0]=" << args[0] << ", arg[1]=" << args[1] << "\n";
+                            throw;
+                        }
                     } else {
                         if (noThrow) result = Value::uninit();
                         else throw std::runtime_error("VM Error: Unsupported 2D index get.");
@@ -5588,22 +5598,27 @@ Value VM::run(int targetFrameDepth) {
                             }
                         };
                         
-                        if (obj.isObjType(ObjType::REAL_MATRIX)) {
-                            if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
-                            processMatSet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
-                        } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-                            if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
-                            processMatSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
-                        } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                            if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                            processMatSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
-                        } else {
-                            if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
-                            processMatSet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
+                        try {
+                            if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                                if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                                processMatSet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                                if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                                processMatSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                                processMatSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            } else {
+                                if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
+                                processMatSet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            }
+                        } catch (...) {
+                            std::cout << "[DEBUG] Interpreter INDEX_SET 1D Exception: arg[0]=" << args[0] << ", val=" << val << "\n";
+                            throw;
                         }
                     } else if (obj.isObjType(ObjType::DICT)) {
                         if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
@@ -5737,22 +5752,27 @@ Value VM::run(int targetFrameDepth) {
                             }
                         };
                         
-                        if (obj.isObjType(ObjType::REAL_MATRIX)) {
-                            if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
-                            processMatSet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
-                        } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
-                            if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
-                            processMatSet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
-                        } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                            if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                            processMatSet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
-                        } else {
-                            if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
-                            processMatSet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
-                            getReg(a) = obj;
+                        try {
+                            if (obj.isObjType(ObjType::REAL_MATRIX)) {
+                                if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
+                                processMatSet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
+                                if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
+                                processMatSet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
+                                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
+                                processMatSet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            } else {
+                                if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
+                                processMatSet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
+                                getReg(a) = obj;
+                            }
+                        } catch (...) {
+                            std::cout << "[DEBUG] Interpreter INDEX_SET 2D Exception: arg[0]=" << args[0] << ", arg[1]=" << args[1] << ", val=" << val << "\n";
+                            throw;
                         }
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 2D index set.");

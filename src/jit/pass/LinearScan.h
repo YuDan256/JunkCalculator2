@@ -38,10 +38,12 @@ public:
         std::vector<Register> freeGPRs = { r15, r13, r12, r9, r8, rdi, rsi, rbx, rdx, rcx, rax };
 #ifdef _WIN32
         // Windows x64 ABI: xmm6-xmm15 are callee-saved. Since our prologue doesn't save them, we exclude them.
-        std::vector<XMMRegister> freeXMMs = { xmm5, xmm4, xmm3, xmm2, xmm1, xmm0 };
+        // We also exclude xmm4 and xmm5 to use them as scratch registers.
+        std::vector<XMMRegister> freeXMMs = { xmm3, xmm2, xmm1, xmm0 };
 #else
         // System V ABI: all xmm registers are caller-saved.
-        std::vector<XMMRegister> freeXMMs = { xmm13, xmm12, xmm11, xmm10, xmm9, xmm8, xmm7, xmm6, xmm5, xmm4, xmm3, xmm2, xmm1, xmm0 };
+        // We exclude xmm4 and xmm5 to use them as scratch registers.
+        std::vector<XMMRegister> freeXMMs = { xmm15, xmm14, xmm13, xmm12, xmm11, xmm10, xmm9, xmm8, xmm7, xmm6, xmm3, xmm2, xmm1, xmm0 };
 #endif
 
         buildClobbers();
@@ -247,7 +249,7 @@ private:
             for (LIRInst* inst : block->instructions()) {
                 std::vector<LIRInst*> postInsts;
                 Register scratchGPRs[] = { r10, r11 };
-                XMMRegister scratchXMMs[] = { xmm14, xmm15 };
+                XMMRegister scratchXMMs[] = { xmm4, xmm5 };
                 int scratchGPRIdx = 0;
                 int scratchXMMIdx = 0;
 

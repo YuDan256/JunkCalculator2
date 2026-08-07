@@ -221,9 +221,9 @@ private:
                         
                         if (isFloat) {
                             if (cycleStart.isPhysicalXMM()) {
-                                masm_.movsd(xmm15, cycleStart.pregXMM());
+                                masm_.movsd(xmm5, cycleStart.pregXMM());
                             } else {
-                                masm_.movsd(xmm15, getStackOperand(cycleStart.slot()));
+                                masm_.movsd(xmm5, getStackOperand(cycleStart.slot()));
                             }
                         } else {
                             if (cycleStart.isPhysicalGPR()) {
@@ -250,9 +250,9 @@ private:
                             } else {
                                 if (isFloat) {
                                     if (inst->defs()[curr].isPhysicalXMM()) {
-                                        masm_.movsd(inst->defs()[curr].pregXMM(), xmm15);
+                                        masm_.movsd(inst->defs()[curr].pregXMM(), xmm5);
                                     } else {
-                                        masm_.movsd(getStackOperand(inst->defs()[curr].slot()), xmm15);
+                                        masm_.movsd(getStackOperand(inst->defs()[curr].slot()), xmm5);
                                     }
                                 } else {
                                     if (inst->defs()[curr].isPhysicalGPR()) {
@@ -843,11 +843,11 @@ private:
                 } else if (lhs.isPhysicalXMM() && rhs.isStackSlot()) {
                     masm_.ucomisd(lhs.pregXMM(), getStackOperand(rhs.slot()));
                 } else if (lhs.isStackSlot() && rhs.isPhysicalXMM()) {
-                    masm_.movsd(xmm15, getStackOperand(lhs.slot()));
-                    masm_.ucomisd(xmm15, rhs.pregXMM());
+                    masm_.movsd(xmm5, getStackOperand(lhs.slot()));
+                    masm_.ucomisd(xmm5, rhs.pregXMM());
                 } else if (lhs.isStackSlot() && rhs.isStackSlot()) {
-                    masm_.movsd(xmm15, getStackOperand(lhs.slot()));
-                    masm_.ucomisd(xmm15, getStackOperand(rhs.slot()));
+                    masm_.movsd(xmm5, getStackOperand(lhs.slot()));
+                    masm_.ucomisd(xmm5, getStackOperand(rhs.slot()));
                 } else {
                     throw std::runtime_error("CodeEmitter: Unsupported CmpF64 operands.");
                 }
@@ -1037,7 +1037,8 @@ private:
                 // 3. Check ObjType == STRING (0)
                 Obj dummyObj;
                 int32_t typeOffset = static_cast<int32_t>(reinterpret_cast<char*>(&dummyObj.type) - reinterpret_cast<char*>(&dummyObj));
-                masm_.cmp(Operand(r11, typeOffset), static_cast<int32_t>(ObjType::STRING));
+                masm_.movzxb(r10, Operand(r11, typeOffset));
+                masm_.cmp(r10, static_cast<int32_t>(ObjType::STRING));
                 Label isString;
                 masm_.jcc(Condition::Equal, isString);
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
@@ -1120,7 +1121,8 @@ private:
                 masm_.sarq(r11, 16);
                 
                 // 3. 检查 ObjType 是否为 INSTANCE
-                masm_.cmp(Operand(r11, typeOffset), static_cast<int32_t>(ObjType::INSTANCE));
+                masm_.movzxb(r10, Operand(r11, typeOffset));
+                masm_.cmp(r10, static_cast<int32_t>(ObjType::INSTANCE));
                 Label isInst;
                 masm_.jcc(Condition::Equal, isInst);
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));

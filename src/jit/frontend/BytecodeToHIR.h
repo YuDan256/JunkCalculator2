@@ -59,7 +59,12 @@ public:
             blockEntryControls_[startBlockId].push_back(osrEntry);
             blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor for OSR
         } else {
-            blockEntryControls_[0].push_back(builder_.createStart());
+            auto startNode = builder_.createStart();
+            for (int i = 0; i < maxRegs_; ++i) {
+                auto load = builder_.createLoadRegister(registerOffset_ + i);
+                builder_.setLocal(registerOffset_ + i, load);
+            }
+            blockEntryControls_[0].push_back(startNode);
             blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor
         }
 
@@ -109,18 +114,40 @@ public:
                     checkPreds(predsToCheck);
 
                     if (needsPhi) {
-                        JITType type = JITType::TaggedValue;
+                        JITType type = JITType::Unknown;
                         std::vector<HIRNode*> phiInputs;
                         
                         auto addInputs = [&](const std::vector<int>& preds) {
+                            // 第一次遍历：确定 Phi 节点的最终类型
                             for (int predId : preds) {
                                 if (blockExitStates_.count(predId)) {
                                     HIRNode* val = blockExitStates_[predId][i];
                                     if (val) {
-                                        type = val->type();
+                                        if (type == JITType::TaggedValue) {
+                                            // 已经是 TaggedValue，保持不变
+                                        } else if (type == JITType::Unknown) {
+                                            type = val->type();
+                                        } else if (type != val->type()) {
+                                            type = JITType::TaggedValue; // 类型冲突，提升为 TaggedValue
+                                        }
+                                    }
+                                }
+                            }
+                            if (type == JITType::Unknown) type = JITType::TaggedValue;
+
+                            // 第二次遍历：根据最终类型进行装箱
+                            for (int predId : preds) {
+                                if (blockExitStates_.count(predId)) {
+                                    HIRNode* val = blockExitStates_[predId][i];
+                                    if (val) {
+                                        if (type == JITType::TaggedValue && val->type() != JITType::TaggedValue) {
+                                            if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
+                                            else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
+                                            else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
+                                        }
                                         phiInputs.push_back(val);
                                     } else {
-                                        phiInputs.push_back(nullptr);
+                                        phiInputs.push_back(builder_.createNoneConstant());
                                     }
                                 }
                             }
@@ -1134,7 +1161,16 @@ public:
                             for (int i = 0; i < maxRegs_; ++i) {
                                 if (phis[i]) {
                                     HIRNode* backEdgeVal = blockExitStates_[block.id][i];
-                                    phis[i]->addInput(backEdgeVal);
+                                    if (backEdgeVal) {
+                                        if (phis[i]->type() == JITType::TaggedValue && backEdgeVal->type() != JITType::TaggedValue) {
+                                            if (backEdgeVal->type() == JITType::Int32) backEdgeVal = builder_.createBoxInt32(backEdgeVal);
+                                            else if (backEdgeVal->type() == JITType::Double) backEdgeVal = builder_.createBoxDouble(backEdgeVal);
+                                            else if (backEdgeVal->type() == JITType::Bool) backEdgeVal = builder_.createBoxBool(backEdgeVal);
+                                        }
+                                        phis[i]->addInput(backEdgeVal);
+                                    } else {
+                                        phis[i]->addInput(builder_.createNoneConstant());
+                                    }
                                 }
                             }
                         }

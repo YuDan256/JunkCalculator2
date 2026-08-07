@@ -51,14 +51,22 @@ public:
 
         // 3. 二次传播 (Secondary Propagation)
         // 传播那些被 FrameState 保活的节点。
-        // 注意：我们不能将 FrameState 中死掉的变量替换为 NoneConstant，
-        // 因为去优化后解释器可能仍然需要读取这些变量的原始值。
         for (auto node : graph_.nodes()) {
             if (node->opcode() == HIROp::FrameState && liveNodes.find(node) != liveNodes.end()) {
-                for (HIRNode* input : node->inputs()) {
+                for (size_t i = 0; i < node->inputs().size(); ++i) {
+                    HIRNode* input = node->inputs()[i];
                     if (input && liveNodes.find(input) == liveNodes.end()) {
-                        liveNodes.insert(input);
-                        worklist.push_back(input);
+                        if (input->opcode() == HIROp::LoadRegister) {
+                            // 如果 FrameState 引用了一个死掉的 LoadRegister，
+                            // 说明这个寄存器在 JIT 中从未被修改过。
+                            // 我们直接将其从 FrameState 中移除 (设为 nullptr)，
+                            // 这样去优化时解释器会直接使用 VM::registers 中原有的正确值！
+                            // 同时，这个 LoadRegister 节点将保持死状态并被消除，实现零开销！
+                            node->replaceInput(i, nullptr);
+                        } else {
+                            liveNodes.insert(input);
+                            worklist.push_back(input);
+                        }
                     }
                 }
             }

@@ -10194,7 +10194,7 @@ uint64_t jc2_jit_index_get(uint32_t objReg, uint32_t argsReg, uint32_t dims, uin
     JIT_CALLOUT_CATCH
 }
 
-void jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t valReg) {
+uint64_t jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t valReg) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
@@ -10577,7 +10577,10 @@ void jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_
     } else {
         throw std::runtime_error("VM Error: Unsupported index dimensionality.");
     }
-    JIT_CALLOUT_CATCH_VOID
+    
+    vm->getCurrentFrame()->jitReturnSlot = obj;
+    return obj.as_bits;
+    JIT_CALLOUT_CATCH
 }
 
 uint64_t jc2_jit_truthy(uint64_t val_bits) {

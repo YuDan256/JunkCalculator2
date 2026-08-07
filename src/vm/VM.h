@@ -343,7 +343,7 @@ uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
 uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
 void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk);
 uint64_t jc2_jit_index_get(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t noThrow);
-void jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t valReg);
+uint64_t jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t valReg);
 uint64_t jc2_jit_truthy(uint64_t val_bits);
 uint64_t jc2_jit_invoke(uint32_t objReg, uint32_t argc, uint32_t icIdx, uint32_t isPrivate, uint32_t fbType, const Chunk* chunk);
 uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, const Chunk* chunk);

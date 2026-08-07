@@ -445,7 +445,7 @@ public:
                             auto fs = captureFrameState(currentIp);
                             auto icIdxNode = builder_.createInt32Constant(bx);
                             auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
-                            auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_global), JITType::Unknown, 3, {icIdxNode, val, chunkNode}, fs);
+                            auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_global), JITType::Effect, 3, {icIdxNode, val, chunkNode}, fs);
                             builder_.setCurrentEffect(callout);
                         }
                         break;
@@ -712,7 +712,7 @@ public:
                         auto valRegNode = builder_.createInt32Constant(registerOffset_ + c);
                         auto icIdxNode = builder_.createInt32Constant(b);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_prop), JITType::Unknown, 4, {objRegNode, valRegNode, icIdxNode, chunkNode}, fs);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_prop), JITType::Effect, 4, {objRegNode, valRegNode, icIdxNode, chunkNode}, fs);
                         callout->addInput(getBoxedRKNode(a));
                         callout->addInput(getBoxedRKNode(c));
                         builder_.setCurrentEffect(callout);
@@ -776,11 +776,11 @@ public:
                         auto argsRegNode = builder_.createInt32Constant(registerOffset_ + a + 1);
                         auto dimsNode = builder_.createInt32Constant(dims);
                         auto valRegNode = builder_.createInt32Constant(registerOffset_ + a + c + 1);
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_set), JITType::Unknown, 4, {objRegNode, argsRegNode, dimsNode, valRegNode}, fs);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_set), JITType::TaggedValue, 4, {objRegNode, argsRegNode, dimsNode, valRegNode}, fs);
                         callout->addInput(getBoxedRKNode(a));
                         for (int i = 0; i < dims; ++i) callout->addInput(getBoxedRKNode(a + 1 + i));
                         callout->addInput(getBoxedRKNode(a + c + 1));
-                        builder_.setCurrentEffect(callout);
+                        setLocalSync(a, callout);
                         break;
                     }
                     case OpCode::BUILD_MATRIX: {
@@ -866,7 +866,7 @@ public:
                         auto dictRegNode = builder_.createInt32Constant(registerOffset_ + a);
                         auto keyRegNode = builder_.createInt32Constant(registerOffset_ + b);
                         auto valRegNode = builder_.createInt32Constant(registerOffset_ + c);
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_append), JITType::Unknown, 3, {dictRegNode, keyRegNode, valRegNode}, fs);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_dict_append), JITType::Effect, 3, {dictRegNode, keyRegNode, valRegNode}, fs);
                         callout->addInput(getBoxedRKNode(a));
                         callout->addInput(getBoxedRKNode(b));
                         callout->addInput(getBoxedRKNode(c));
@@ -901,7 +901,7 @@ public:
                             else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
                             else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
                         }
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_upval), JITType::Unknown, 2, {uvIdxNode, val}, fs);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_upval), JITType::Effect, 2, {uvIdxNode, val}, fs);
                         builder_.setCurrentEffect(callout);
                         break;
                     }
@@ -1112,7 +1112,7 @@ public:
                             else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
                             else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
                         }
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_ref_param), JITType::Unknown, 2, {bxNode, val}, fs);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_ref_param), JITType::Effect, 2, {bxNode, val}, fs);
                         builder_.setCurrentEffect(callout);
                         break;
                     }

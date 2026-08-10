@@ -33,8 +33,11 @@
 #include <fstream>
 
 extern bool g_showIR;
+extern bool g_showHIR;
+extern bool g_showMachineCode;
 extern bool g_autoDebug;
 extern bool g_profile;
+extern bool g_enableJit;
 
 #if defined(_WIN32)
 #define NOMINMAX
@@ -2798,7 +2801,7 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
         jit::BytecodeToHIR converter(fnDef->chunk, hirBuilder, fnDef->localCount + fnDef->refCount);
         converter.setOSRMode(loopHeaderIp);
         converter.build();
-        if (g_showIR) {
+        if (g_showHIR) {
             std::cout << "--- OSR HIR Graph (Unoptimized) ---\n";
             hirGraph.printDOT(std::cout);
         }
@@ -2810,7 +2813,7 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
         jit::CommonSubexpressionElimination(hirGraph, hirBuilder).run();
         jit::DeadCodeElimination(hirGraph, hirBuilder).run();
         
-        if (g_showIR) {
+        if (g_showHIR) {
             std::cout << "--- OSR HIR Graph (Optimized) ---\n";
             hirGraph.printDOT(std::cout);
         }
@@ -2838,6 +2841,16 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
         auto mem = std::make_shared<jit::ExecutableMemory>();
         masm.finalize(*mem);
 
+        if (g_showMachineCode) {
+            std::cout << "--- OSR Machine Code (Size: " << mem->size() << " bytes) ---\n";
+            const uint8_t* code = mem->get();
+            for (size_t i = 0; i < mem->size(); ++i) {
+                printf("%02X ", code[i]);
+                if ((i + 1) % 16 == 0) printf("\n");
+            }
+            printf("\n");
+        }
+
         osrCompiledCode[fnIdx][loopHeaderIp] = mem;
         osrEntryPoints[fnIdx][loopHeaderIp] = mem->get();
         if (g_profile) {
@@ -2863,7 +2876,7 @@ void VM::profileFrameStart(CallFrame* frame) {
         } else if (fn->callCount == 1000 && frame->closure) {
             int fnIdx = frame->closure->compiledFnIndex;
             // 触发 JIT 编译 (Tier 2)
-            if (jitEntryPoints.find(fnIdx) == jitEntryPoints.end()) {
+            if (g_enableJit && jitEntryPoints.find(fnIdx) == jitEntryPoints.end()) {
                 bool supported = true;
                 for (Instruction inst : fn->chunk.code) {
                     OpCode op = GET_OPCODE(inst);
@@ -2882,12 +2895,22 @@ void VM::profileFrameStart(CallFrame* frame) {
                     jit::BytecodeToHIR converter(fn->chunk, hirBuilder, fn->localCount + fn->refCount);
                     converter.build();
 
+                    if (g_showHIR) {
+                        std::cout << "--- Tier 2 HIR Graph (Unoptimized) ---\n";
+                        hirGraph.printDOT(std::cout);
+                    }
+
                     // --- Mid-level Optimizations (Phase 11 & 12) ---
                     jit::DeadPhiElimination(hirGraph, hirBuilder).run();
                     jit::ConstantFolding(hirGraph, hirBuilder).run();
                     jit::AlgebraicSimplification(hirGraph, hirBuilder).run();
                     jit::CommonSubexpressionElimination(hirGraph, hirBuilder).run();
                     jit::DeadCodeElimination(hirGraph, hirBuilder).run();
+
+                    if (g_showHIR) {
+                        std::cout << "--- Tier 2 HIR Graph (Optimized) ---\n";
+                        hirGraph.printDOT(std::cout);
+                    }
 
                     jit::LIRGraph lirGraph;
                     jit::LIRBuilder lirBuilder(&lirGraph);
@@ -2911,6 +2934,16 @@ void VM::profileFrameStart(CallFrame* frame) {
 
                     auto mem = std::make_shared<jit::ExecutableMemory>();
                     masm.finalize(*mem);
+
+                    if (g_showMachineCode) {
+                        std::cout << "--- Tier 2 Machine Code (Size: " << mem->size() << " bytes) ---\n";
+                        const uint8_t* code = mem->get();
+                        for (size_t i = 0; i < mem->size(); ++i) {
+                            printf("%02X ", code[i]);
+                            if ((i + 1) % 16 == 0) printf("\n");
+                        }
+                        printf("\n");
+                    }
 
                     jitCompiledCode[fnIdx] = mem;
                     jitEntryPoints[fnIdx] = mem->get();
@@ -4585,7 +4618,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::JMP: {
                 if (sax < 0) {
                     if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
-                        if (frame->closure && frame->closure->isBytecode()) {
+                        if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
                             int fnIdx = frame->closure->compiledFnIndex;
                             int loopHeaderIp = ip + sax;
                             if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
@@ -4611,7 +4644,7 @@ Value VM::run(int targetFrameDepth) {
                 if (cond) {
                     if (sbx < 0) {
                         if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
-                            if (frame->closure && frame->closure->isBytecode()) {
+                            if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
                                 int fnIdx = frame->closure->compiledFnIndex;
                                 int loopHeaderIp = ip + sbx;
                                 if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
@@ -4638,7 +4671,7 @@ Value VM::run(int targetFrameDepth) {
                 if (!cond) {
                     if (sbx < 0) {
                         if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
-                            if (frame->closure && frame->closure->isBytecode()) {
+                            if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
                                 int fnIdx = frame->closure->compiledFnIndex;
                                 int loopHeaderIp = ip + sbx;
                                 if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {

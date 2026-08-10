@@ -116,11 +116,14 @@ void printHelpTopic(const std::string& topic) {
 jc::VM vm;
 bool g_showDisasm = false;  // ★ 新增：字节码反汇编开关
 bool g_showIR = false;      // ★ 新增：IR 图打印开关
+bool g_showHIR = false;     // ★ 新增：JIT HIR 图打印开关
+bool g_showMachineCode = false; // ★ 新增：JIT 机器码打印开关
 bool g_autoDebug = false;
 bool g_profile = false;
 bool g_quiet = false;
 bool g_showNone = false;
 bool g_silentRepl = false;
+bool g_enableJit = false;
 
 // ★ 执行一段任意多行/单行代码的统一接口
 jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool isFile = false) {
@@ -515,6 +518,12 @@ int main(int argc, char* argv[]) {
         else if (arg == "--ir") {
             g_showIR = true;
         }
+        else if (arg == "--hir") {
+            g_showHIR = true;
+        }
+        else if (arg == "--mc") {
+            g_showMachineCode = true;
+        }
         else if (arg == "--debug") {    // ★ 拦截 --debug 启动项
             g_autoDebug = true;
         }
@@ -538,6 +547,9 @@ int main(int argc, char* argv[]) {
         else if (arg == "--profile") {
             g_profile = true;
             std::cout << "Profiler enabled.\n";
+        }
+        else if (arg == "--jit") {
+            g_enableJit = true;
         }
         else if (arg == "--test") {
             runTests = true;
@@ -847,6 +859,26 @@ int main(int argc, char* argv[]) {
                 std::cout << "IR Graph printing disabled.\n";
                 continue;
             }
+            if (input == "/hir on") {
+                g_showHIR = true;
+                std::cout << "JIT HIR Graph printing enabled.\n";
+                continue;
+            }
+            if (input == "/hir off") {
+                g_showHIR = false;
+                std::cout << "JIT HIR Graph printing disabled.\n";
+                continue;
+            }
+            if (input == "/mc on") {
+                g_showMachineCode = true;
+                std::cout << "JIT Machine Code printing enabled.\n";
+                continue;
+            }
+            if (input == "/mc off") {
+                g_showMachineCode = false;
+                std::cout << "JIT Machine Code printing disabled.\n";
+                continue;
+            }
 
             // ★ 随时开关全局单步 Debugger
             if (input == "/debug on") {
@@ -867,6 +899,16 @@ int main(int argc, char* argv[]) {
             if (input == "/profile off") {
                 g_profile = false;
                 std::cout << "Profiler disabled.\n";
+                continue;
+            }
+            if (input == "/jit on") {
+                g_enableJit = true;
+                std::cout << "JIT Compilation enabled.\n";
+                continue;
+            }
+            if (input == "/jit off") {
+                g_enableJit = false;
+                std::cout << "JIT Compilation disabled.\n";
                 continue;
             }
             if (input == "/show_none on") {

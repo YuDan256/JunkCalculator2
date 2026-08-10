@@ -213,7 +213,8 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
     // 2. 恢复指令指针
     frame->ip = map->bytecodeIp;
 
-    std::cout << "[DEBUG] Deoptimized at BailoutId: " << bailoutId << ", Bytecode IP: " << map->bytecodeIp << "\n";
+    std::string fnName = frame->function ? frame->function->name : "<unknown>";
+    std::cout << "[DEBUG] Deoptimized in function '" << fnName << "' at BailoutId: " << bailoutId << ", Bytecode IP: " << map->bytecodeIp << "\n";
     std::cout << "[DEBUG] Registers state upon deoptimization:\n";
     for (size_t i = 0; i < map->locals.size(); ++i) {
         if (!map->locals[i].location.isInvalid()) {

@@ -745,7 +745,7 @@ public:
                     }
 
                     case OpCode::JMP: {
-                        int targetIp = ip + sbx;
+                        int targetIp = ip + sax;
                         if (isOSR_ && targetIp < osrLoopHeaderIp_) {
                             auto fs = captureFrameState(currentIp);
                             builder_.createDeoptimize(fs);

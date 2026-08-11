@@ -291,61 +291,12 @@ public:
                         break;
 
                     case OpCode::JMP_TRUE:
-                    case OpCode::JMP_FALSE: {
+                    case OpCode::JMP_FALSE:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                        uint8_t fb = chunk_.typeFeedback[currentIp];
-                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
-                        HIRNode* condNode = nullptr;
-                        
-                        if (fb == 0x01) {
-                            auto fs = captureFrameState(currentIp);
-                            auto guard = builder_.createGuardIsInt32(val, fs);
-                            auto unbox = builder_.createUnboxInt32(val, guard);
-                            auto zero = builder_.createInt32Constant(0);
-                            condNode = builder_.createCmpNeqI32(unbox, zero);
-                        } else if (fb == 0x08) {
-                            auto fs = captureFrameState(currentIp);
-                            auto guard = builder_.createGuardIsBool(val, fs);
-                            condNode = builder_.createUnboxBool(val, guard);
-                        } else {
-                            auto fs = captureFrameState(currentIp);
-                            condNode = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_truthy), JITType::Bool, 1, {val}, fs);
-                        }
-                        
-                        auto branch = builder_.createBranch(condNode);
-                        auto ifTrue = builder_.createIfTrue(branch);
-                        auto ifFalse = builder_.createIfFalse(branch);
-                        
-                        int trueTargetIp = (op == OpCode::JMP_TRUE) ? (ip + sbx) : ip;
-                        int falseTargetIp = (op == OpCode::JMP_FALSE) ? (ip + sbx) : ip;
-                        
-                        auto handleBranchTarget = [&](HIRNode* branchCtrl, int targetIp) {
-                            if (isOSR_ && targetIp < osrLoopHeaderIp_) {
-                                builder_.setCurrentControl(branchCtrl);
-                                auto fs = captureFrameState(currentIp);
-                                builder_.createDeoptimize(fs);
-                            } else if (cfg_.ipToBlockId.count(targetIp)) {
-                                blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(branchCtrl);
-                            }
-                        };
-                        
-                        handleBranchTarget(ifTrue, trueTargetIp);
-                        handleBranchTarget(ifFalse, falseTargetIp);
-                        builder_.setCurrentControl(nullptr);
                         break;
-                    }
 
-                    case OpCode::JMP: {
-                        int targetIp = ip + sbx;
-                        if (isOSR_ && targetIp < osrLoopHeaderIp_) {
-                            auto fs = captureFrameState(currentIp);
-                            builder_.createDeoptimize(fs);
-                        } else if (cfg_.ipToBlockId.count(targetIp)) {
-                            blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(builder_.currentControl());
-                        }
-                        builder_.setCurrentControl(nullptr);
+                    case OpCode::JMP:
                         break;
-                    }
 
                     case OpCode::TRY_BEGIN:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
@@ -750,8 +701,61 @@ public:
                         break;
                     }
                     case OpCode::JMP_TRUE:
-                    case OpCode::JMP_FALSE:
-                    case OpCode::JMP:
+                    case OpCode::JMP_FALSE: {
+                        uint8_t fb = chunk_.typeFeedback[currentIp];
+                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                        HIRNode* condNode = nullptr;
+                        
+                        if (fb == 0x01) {
+                            auto fs = captureFrameState(currentIp);
+                            auto guard = builder_.createGuardIsInt32(val, fs);
+                            auto unbox = builder_.createUnboxInt32(val, guard);
+                            auto zero = builder_.createInt32Constant(0);
+                            condNode = builder_.createCmpNeqI32(unbox, zero);
+                        } else if (fb == 0x08) {
+                            auto fs = captureFrameState(currentIp);
+                            auto guard = builder_.createGuardIsBool(val, fs);
+                            condNode = builder_.createUnboxBool(val, guard);
+                        } else {
+                            auto fs = captureFrameState(currentIp);
+                            condNode = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_truthy), JITType::Bool, 1, {val}, fs);
+                        }
+                        
+                        auto branch = builder_.createBranch(condNode);
+                        auto ifTrue = builder_.createIfTrue(branch);
+                        auto ifFalse = builder_.createIfFalse(branch);
+                        
+                        int trueTargetIp = (op == OpCode::JMP_TRUE) ? (ip + sbx) : ip;
+                        int falseTargetIp = (op == OpCode::JMP_FALSE) ? (ip + sbx) : ip;
+                        
+                        auto handleBranchTarget = [&](HIRNode* branchCtrl, int targetIp) {
+                            if (isOSR_ && targetIp < osrLoopHeaderIp_) {
+                                builder_.setCurrentControl(branchCtrl);
+                                auto fs = captureFrameState(currentIp);
+                                builder_.createDeoptimize(fs);
+                            } else if (cfg_.ipToBlockId.count(targetIp)) {
+                                blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(branchCtrl);
+                            }
+                        };
+                        
+                        handleBranchTarget(ifTrue, trueTargetIp);
+                        handleBranchTarget(ifFalse, falseTargetIp);
+                        builder_.setCurrentControl(nullptr);
+                        break;
+                    }
+
+                    case OpCode::JMP: {
+                        int targetIp = ip + sbx;
+                        if (isOSR_ && targetIp < osrLoopHeaderIp_) {
+                            auto fs = captureFrameState(currentIp);
+                            builder_.createDeoptimize(fs);
+                        } else if (cfg_.ipToBlockId.count(targetIp)) {
+                            blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(builder_.currentControl());
+                        }
+                        builder_.setCurrentControl(nullptr);
+                        break;
+                    }
+
                     case OpCode::TRY_BEGIN:
                     case OpCode::TRY_END:
                     case OpCode::EXTRAARG:

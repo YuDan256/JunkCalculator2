@@ -8,6 +8,9 @@
 #include <vector>
 #include <stdexcept>
 #include <atomic>
+#include <set>
+#include <map>
+#include <algorithm>
 
 namespace jc {
 namespace jit {
@@ -41,7 +44,38 @@ public:
         // 1. 构建字节码控制流图
         cfg_.build(chunk_);
 
-        // 2. 初始化入口状态
+        // 2. 重新计算 RPO 和正确的循环回边 (基于 DFS)
+        std::vector<int> rpo;
+        std::vector<bool> visited(cfg_.blocks.size(), false);
+        std::vector<bool> inStack(cfg_.blocks.size(), false);
+        std::set<int> loopHeaders;
+        std::map<int, std::vector<int>> backEdges; // succId -> list of predIds
+
+        std::function<void(int)> dfs = [&](int blockId) {
+            visited[blockId] = true;
+            inStack[blockId] = true;
+            for (int succId : cfg_.blocks[blockId].successors) {
+                if (!visited[succId]) {
+                    dfs(succId);
+                } else if (inStack[succId]) {
+                    loopHeaders.insert(succId);
+                    backEdges[succId].push_back(blockId);
+                }
+            }
+            inStack[blockId] = false;
+            rpo.push_back(blockId);
+        };
+
+        if (!cfg_.blocks.empty()) {
+            int startBlockId = 0;
+            if (isOSR_ && cfg_.ipToBlockId.count(osrLoopHeaderIp_)) {
+                startBlockId = cfg_.ipToBlockId[osrLoopHeaderIp_];
+            }
+            dfs(startBlockId);
+        }
+        std::reverse(rpo.begin(), rpo.end());
+
+        // 3. 初始化入口状态
         if (isInline_) {
             for (size_t i = 0; i < inlineArgs_.size(); ++i) {
                 builder_.setLocal(registerOffset_ + i, inlineArgs_[i]);
@@ -70,18 +104,21 @@ public:
             blockExitEffects_[-1] = builder_.currentEffect();
         }
 
-        // 3. 抽象解释主循环：遍历基本块
-        for (const auto& block : cfg_.blocks) {
+        // 4. 抽象解释主循环：按 RPO 遍历基本块
+        for (int blockId : rpo) {
+            const auto& block = cfg_.blocks[blockId];
             if (block.startIp >= static_cast<int>(chunk_.code.size())) continue;
             if (isOSR_ && block.startIp < osrLoopHeaderIp_) continue;
 
             auto& entryControls = blockEntryControls_[block.id];
             if (entryControls.empty()) continue; // 不可达块
 
+            bool isLoopHeader = loopHeaders.count(block.id);
+
             // 构建控制流汇合与 Phi 节点
-            if (entryControls.size() > 1 || block.isLoopHeader) {
+            if (entryControls.size() > 1 || isLoopHeader) {
                 HIRNode* merge = nullptr;
-                if (block.isLoopHeader) {
+                if (isLoopHeader) {
                     merge = builder_.createLoopBegin(entryControls);
                     loopHeaderControls_[block.id] = merge;
                 } else {
@@ -107,7 +144,7 @@ public:
                         if (!firstEffect) firstEffect = eff;
                         else if (firstEffect != eff) needsEffectPhi = true;
                         effectInputs.push_back(eff);
-                    } else if (block.isLoopHeader) {
+                    } else if (isLoopHeader) {
                         needsEffectPhi = true;
                         effectInputs.push_back(nullptr);
                     }
@@ -115,7 +152,7 @@ public:
                 if (needsEffectPhi) {
                     HIRNode* effectPhi = builder_.createPhi(JITType::Effect, effectInputs);
                     builder_.setCurrentEffect(effectPhi);
-                    if (block.isLoopHeader) {
+                    if (isLoopHeader) {
                         loopHeaderEffectPhis_[block.id] = effectPhi;
                     }
                 } else if (firstEffect) {
@@ -133,7 +170,7 @@ public:
                                 HIRNode* val = blockExitStates_[predId][i];
                                 if (!firstVal) firstVal = val;
                                 else if (firstVal != val) { needsPhi = true; break; }
-                            } else if (block.isLoopHeader) {
+                            } else if (isLoopHeader) {
                                 needsPhi = true; break;
                             }
                         }
@@ -190,7 +227,7 @@ public:
                         builder_.setLocal(registerOffset_ + i, firstVal);
                     }
                 }
-                if (block.isLoopHeader) {
+                if (isLoopHeader) {
                     loopHeaderPhis_[block.id] = phis;
                 }
             } else {
@@ -1172,9 +1209,9 @@ public:
 
             // Step 56: 回边数据流绑定 (Back-edge Data Flow Binding)
             for (int succId : block.successors) {
-                const auto& succBlock = cfg_.blocks[succId];
-                if (succBlock.isLoopHeader) {
-                    if (std::find(succBlock.backEdges.begin(), succBlock.backEdges.end(), block.id) != succBlock.backEdges.end()) {
+                if (loopHeaders.count(succId)) {
+                    auto& edges = backEdges[succId];
+                    if (std::find(edges.begin(), edges.end(), block.id) != edges.end()) {
                         // 1. 绑定控制流回边
                         // 回边控制流由 JMP 或 Fallthrough 提供，已经在 blockEntryControls_ 中了
                         // 但对于 LoopBegin 节点，我们需要直接将回边控制流加到它的 inputs 中

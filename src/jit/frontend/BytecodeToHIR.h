@@ -49,6 +49,7 @@ public:
             }
             blockEntryControls_[0].push_back(builder_.createStart());
             blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor for inline
+            blockExitEffects_[-1] = builder_.currentEffect();
         } else if (isOSR_) {
             auto osrEntry = builder_.createOSREntry(osrLoopHeaderIp_);
             for (int i = 0; i < maxRegs_; ++i) {
@@ -58,6 +59,7 @@ public:
             int startBlockId = cfg_.ipToBlockId[osrLoopHeaderIp_];
             blockEntryControls_[startBlockId].push_back(osrEntry);
             blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor for OSR
+            blockExitEffects_[-1] = builder_.currentEffect();
         } else {
             auto startNode = builder_.createStart();
             for (int i = 0; i < maxRegs_; ++i) {
@@ -66,6 +68,7 @@ public:
             }
             blockEntryControls_[0].push_back(startNode);
             blockExitStates_[-1] = builder_.getRegisters(); // Dummy predecessor
+            blockExitEffects_[-1] = builder_.currentEffect();
         }
 
         // 3. 抽象解释主循环：遍历基本块
@@ -87,6 +90,39 @@ public:
                 }
                 builder_.setCurrentControl(merge);
 
+                std::vector<int> predsToCheck;
+                if (block.id == 0 || (isOSR_ && block.startIp == osrLoopHeaderIp_)) {
+                    predsToCheck.push_back(-1);
+                }
+                for (int p : block.predecessors) {
+                    predsToCheck.push_back(p);
+                }
+
+                // 构建 Effect Phi
+                std::vector<HIRNode*> effectInputs;
+                bool needsEffectPhi = false;
+                HIRNode* firstEffect = nullptr;
+                for (int predId : predsToCheck) {
+                    if (blockExitEffects_.count(predId)) {
+                        HIRNode* eff = blockExitEffects_[predId];
+                        if (!firstEffect) firstEffect = eff;
+                        else if (firstEffect != eff) needsEffectPhi = true;
+                        effectInputs.push_back(eff);
+                    } else if (block.isLoopHeader) {
+                        needsEffectPhi = true;
+                        effectInputs.push_back(nullptr);
+                    }
+                }
+                if (needsEffectPhi) {
+                    HIRNode* effectPhi = builder_.createPhi(JITType::Effect, effectInputs);
+                    builder_.setCurrentEffect(effectPhi);
+                    if (block.isLoopHeader) {
+                        loopHeaderEffectPhis_[block.id] = effectPhi;
+                    }
+                } else if (firstEffect) {
+                    builder_.setCurrentEffect(firstEffect);
+                }
+
                 std::vector<HIRNode*> phis(maxRegs_, nullptr);
                 for (int i = 0; i < maxRegs_; ++i) {
                     bool needsPhi = false;
@@ -104,13 +140,6 @@ public:
                         }
                     };
                     
-                    std::vector<int> predsToCheck;
-                    if (block.id == 0 || (isOSR_ && block.startIp == osrLoopHeaderIp_)) {
-                        predsToCheck.push_back(-1);
-                    }
-                    for (int p : block.predecessors) {
-                        predsToCheck.push_back(p);
-                    }
                     checkPreds(predsToCheck);
 
                     if (needsPhi) {
@@ -172,6 +201,9 @@ public:
                 
                 if (blockExitStates_.count(predId)) {
                     builder_.setRegisters(blockExitStates_[predId]);
+                }
+                if (blockExitEffects_.count(predId)) {
+                    builder_.setCurrentEffect(blockExitEffects_[predId]);
                 }
             }
 
@@ -1125,6 +1157,7 @@ public:
 
             // 保存当前块的出口状态
             blockExitStates_[block.id] = builder_.getRegisters();
+            blockExitEffects_[block.id] = builder_.currentEffect();
 
             // 处理 Fallthrough 控制流
             if (builder_.currentControl()) {
@@ -1174,6 +1207,17 @@ public:
                                 }
                             }
                         }
+                        
+                        // 3. 绑定 Effect 回边
+                        if (loopHeaderEffectPhis_.count(succId)) {
+                            HIRNode* effectPhi = loopHeaderEffectPhis_[succId];
+                            HIRNode* backEdgeEffect = blockExitEffects_[block.id];
+                            if (backEdgeEffect) {
+                                effectPhi->addInput(backEdgeEffect);
+                            } else {
+                                effectPhi->addInput(builder_.createStart()); // Fallback
+                            }
+                        }
                     }
                 }
             }
@@ -1210,10 +1254,12 @@ private:
 
     BytecodeCFG cfg_;
     std::map<int, std::vector<HIRNode*>> loopHeaderPhis_;
+    std::map<int, HIRNode*> loopHeaderEffectPhis_;
     std::map<int, HIRNode*> loopHeaderControls_;
     std::map<int, std::string> regFuncName_;
     std::map<int, std::vector<HIRNode*>> blockEntryControls_;
     std::map<int, std::vector<HIRNode*>> blockExitStates_;
+    std::map<int, HIRNode*> blockExitEffects_;
 
     bool isInline_ = false;
     bool isOSR_ = false;

@@ -99,8 +99,24 @@ public:
                     // Phi 的 inputs[1..N] 对应 Merge 的 inputs[0..N-1]
                     for (size_t i = 1; i < node->inputs().size(); ++i) {
                         HIRNode* dataIn = node->inputs()[i];
-                        HIRNode* ctrlIn = mergeNode->inputs()[i - 1];
-                        LIRBlock* predBlock = gcm_.getBlockForNode(ctrlIn);
+                        
+                        // 处理 OSREntry 的特殊情况：它的第一个数据输入来自解释器状态，没有 LIR 前驱块
+                        if (mergeNode->opcode() == HIROp::OSREntry && i == 1) {
+                            continue;
+                        }
+                        
+                        // 计算对应的控制输入索引
+                        size_t ctrlIdx = i - 1;
+                        if (mergeNode->opcode() == HIROp::OSREntry && mergeNode->inputs().size() < node->inputs().size() - 1) {
+                            ctrlIdx = i - 2; // 如果 OSREntry 没有保留 forward edge 的占位符
+                        }
+                        
+                        HIRNode* ctrlIn = nullptr;
+                        if (ctrlIdx < mergeNode->inputs().size()) {
+                            ctrlIn = mergeNode->inputs()[ctrlIdx];
+                        }
+                        
+                        LIRBlock* predBlock = ctrlIn ? gcm_.getBlockForNode(ctrlIn) : nullptr;
                         
                         if (predBlock && dataIn) {
                             LIROperand inVal = getOperand(dataIn);

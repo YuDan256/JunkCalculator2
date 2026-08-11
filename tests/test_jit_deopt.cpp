@@ -19,6 +19,9 @@ using namespace jc;
 bool g_showIR = false;
 bool g_autoDebug = false;
 bool g_profile = false;
+bool g_showMachineCode = false;
+bool g_showHIR = false;
+bool g_enableJit = true;
 
 // 辅助函数：编译并执行一段 JC2 代码
 Value runScript(VM& vm, const std::string& code) {

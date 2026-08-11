@@ -21,8 +21,7 @@ public:
         : chunk_(chunk), builder_(builder), maxRegs_(maxRegs), inlineDepth_(inlineDepth), registerOffset_(registerOffset) {}
 
     FrameStateNode* captureFrameState(int currentIp) {
-        static std::atomic<uint32_t> nextBailoutId{1};
-        uint32_t bailoutId = nextBailoutId.fetch_add(1, std::memory_order_relaxed);
+        uint32_t bailoutId = builder_.generateBailoutId();
         return builder_.captureFrameState(bailoutId, currentIp);
     }
 

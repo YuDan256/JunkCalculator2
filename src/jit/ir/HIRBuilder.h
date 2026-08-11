@@ -76,9 +76,13 @@ private:
 class HIRBuilder {
 public:
     explicit HIRBuilder(HIRGraph* graph, int maxRegs = 256) 
-        : graph_(graph), currentControl_(nullptr), currentEffect_(nullptr) {
+        : graph_(graph), currentControl_(nullptr), currentEffect_(nullptr), nextBailoutId_(0) {
         // 预分配虚拟寄存器槽位，用于模拟解释器状态
         registers_.resize(maxRegs, nullptr);
+    }
+
+    uint32_t generateBailoutId() {
+        return nextBailoutId_++;
     }
 
     // --- 状态环境管理 ---
@@ -606,6 +610,7 @@ private:
     HIRNode* currentControl_;
     HIRNode* currentEffect_;
     std::vector<HIRNode*> registers_; // 模拟解释器的虚拟寄存器状态
+    uint32_t nextBailoutId_;
 };
 
 } // namespace jit

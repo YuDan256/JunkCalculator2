@@ -131,6 +131,19 @@ public:
                     predsToCheck.push_back(-1);
                 }
                 for (int p : block.predecessors) {
+                    // 回边块在 Step 56 里单独绑定，这里排除，避免 Phi 的 value 重复计数
+                    // 导致 Phi value 数量 > Merge ctrl 数量，进而 GCM::scheduleLateNode 越界。
+                    if (isLoopHeader) {
+                        auto& edges = backEdges[block.id];
+                        if (std::find(edges.begin(), edges.end(), p) != edges.end()) {
+                            continue;
+                        }
+                    }
+                    // OSR 编译时，位于 OSR 头之前的前驱边在 handleBranchTarget 中走 deopt 路径、
+                    // 不会写入 entryControls，因此这里也要一并排除，保持 predsToCheck 与 entryControls 对齐。
+                    if (isOSR_ && cfg_.blocks[p].startIp < osrLoopHeaderIp_) {
+                        continue;
+                    }
                     predsToCheck.push_back(p);
                 }
 
@@ -144,11 +157,10 @@ public:
                         if (!firstEffect) firstEffect = eff;
                         else if (firstEffect != eff) needsEffectPhi = true;
                         effectInputs.push_back(eff);
-                    } else if (isLoopHeader) {
-                        needsEffectPhi = true;
-                        effectInputs.push_back(nullptr);
                     }
                 }
+                // 循环头始终需要 Effect Phi：回边 effect 会在 Step 56 里追加进来
+                if (isLoopHeader) needsEffectPhi = true;
                 if (needsEffectPhi) {
                     HIRNode* effectPhi = builder_.createPhi(JITType::Effect, effectInputs);
                     builder_.setCurrentEffect(effectPhi);
@@ -762,8 +774,8 @@ public:
                         auto ifTrue = builder_.createIfTrue(branch);
                         auto ifFalse = builder_.createIfFalse(branch);
                         
-                        int trueTargetIp = (op == OpCode::JMP_TRUE) ? (ip + sbx) : ip;
-                        int falseTargetIp = (op == OpCode::JMP_FALSE) ? (ip + sbx) : ip;
+                        int trueTargetIp = (op == OpCode::JMP_TRUE) ? (currentIp + sbx) : ip;
+                        int falseTargetIp = (op == OpCode::JMP_FALSE) ? (currentIp + sbx) : ip;
                         
                         auto handleBranchTarget = [&](HIRNode* branchCtrl, int targetIp) {
                             if (isOSR_ && targetIp < osrLoopHeaderIp_) {
@@ -782,7 +794,7 @@ public:
                     }
 
                     case OpCode::JMP: {
-                        int targetIp = ip + sax;
+                        int targetIp = currentIp + sax;
                         if (isOSR_ && targetIp < osrLoopHeaderIp_) {
                             auto fs = captureFrameState(currentIp);
                             builder_.createDeoptimize(fs);

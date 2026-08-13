@@ -2797,7 +2797,7 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
     
     try {
         jit::HIRGraph hirGraph;
-        jit::HIRBuilder hirBuilder(&hirGraph, fnDef->localCount + fnDef->refCount);
+        jit::HIRBuilder hirBuilder(&hirGraph, fnDef->localCount + fnDef->refCount, jit::DeoptRegistry::get().allocateBailoutIdBase());
         jit::BytecodeToHIR converter(fnDef->chunk, hirBuilder, fnDef->localCount + fnDef->refCount);
         converter.setOSRMode(loopHeaderIp);
         converter.build();
@@ -2891,7 +2891,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                 }
                 try {
                     jit::HIRGraph hirGraph;
-                    jit::HIRBuilder hirBuilder(&hirGraph, fn->localCount + fn->refCount);
+                    jit::HIRBuilder hirBuilder(&hirGraph, fn->localCount + fn->refCount, jit::DeoptRegistry::get().allocateBailoutIdBase());
                     jit::BytecodeToHIR converter(fn->chunk, hirBuilder, fn->localCount + fn->refCount);
                     converter.build();
 

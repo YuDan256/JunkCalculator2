@@ -75,8 +75,8 @@ private:
 // ============================================================================
 class HIRBuilder {
 public:
-    explicit HIRBuilder(HIRGraph* graph, int maxRegs = 256) 
-        : graph_(graph), currentControl_(nullptr), currentEffect_(nullptr), nextBailoutId_(0) {
+    explicit HIRBuilder(HIRGraph* graph, int maxRegs = 256, uint32_t bailoutIdBase = 0) 
+        : graph_(graph), currentControl_(nullptr), currentEffect_(nullptr), nextBailoutId_(bailoutIdBase) {
         // 预分配虚拟寄存器槽位，用于模拟解释器状态
         registers_.resize(maxRegs, nullptr);
     }

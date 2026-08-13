@@ -848,6 +848,12 @@ public:
                         auto argsRegNode = builder_.createInt32Constant(registerOffset_ + a + 1);
                         auto dimsNode = builder_.createInt32Constant(dims);
                         auto valRegNode = builder_.createInt32Constant(registerOffset_ + a + c + 1);
+                        // 修复：INDEX_SET 必须是 TaggedValue 返回类型。callout 内部会对矩阵做
+                        // copy-on-write，产生一个“新”的矩阵对象并写回 regs[base+objReg]，但 JIT
+                        // 物理寄存器里仍然持有旧对象。若作为 Effect 丢弃返回值，下一次 Eager Sync
+                        // 会用旧对象覆盖解释器寄存器，导致矩阵修改丢失（停在某个值）。
+                        // 这里接收返回值并 setLocalSync(a, callout)，让 JIT 的虚拟寄存器同步到新对象，
+                        // 后续 MOVE 链会把新对象传播回 R(0)。
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_set), JITType::TaggedValue, 4, {objRegNode, argsRegNode, dimsNode, valRegNode}, fs);
                         callout->addInput(getBoxedRKNode(a));
                         for (int i = 0; i < dims; ++i) callout->addInput(getBoxedRKNode(a + 1 + i));

@@ -52,8 +52,17 @@ public:
         return it != maps_.end() ? &it->second : nullptr;
     }
 
+    // 为每次编译分配一段全局唯一的 bailoutId 基址，避免 OSR / Tier 2 多次编译
+    // 之间 bailoutId 冲突（后编译的 StackMap 覆盖先编译的，导致去优化拿错映射）。
+    uint32_t allocateBailoutIdBase() {
+        uint32_t base = nextBase_;
+        nextBase_ += 4096;
+        return base;
+    }
+
 private:
     std::unordered_map<uint32_t, StackMap> maps_;
+    uint32_t nextBase_ = 0;
 };
 
 inline bool g_jc2_jit_deoptimized = false;

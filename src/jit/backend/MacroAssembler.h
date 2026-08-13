@@ -824,6 +824,8 @@ public:
         return addConstant64(bits);
     }
     void emitConstantPool() {
+        // 常量池须 16 字节对齐：128 位 SSE 读（如 xorpd）的内存操作数要求 16 字节对齐，否则 #GP
+        while (offset() % 16 != 0) emit8(0);
         for (auto& pair : constants_) {
             bind(pair.first);
             emit64(pair.second);

@@ -57,12 +57,22 @@ public:
                     HIRNode* input = node->inputs()[i];
                     if (input && liveNodes.find(input) == liveNodes.end()) {
                         if (input->opcode() == HIROp::LoadRegister) {
-                            // 如果 FrameState 引用了一个死掉的 LoadRegister，
-                            // 说明这个寄存器在 JIT 中从未被修改过。
-                            // 我们直接将其从 FrameState 中移除 (设为 nullptr)，
-                            // 这样去优化时解释器会直接使用 VM::registers 中原有的正确值！
-                            // 同时，这个 LoadRegister 节点将保持死状态并被消除，实现零开销！
-                            node->replaceInput(i, nullptr);
+                            // 死掉的 LoadRegister 有两种：
+                            // 1) 从未被修改，仅被 FrameState 引用，可安全移除（零开销，
+                            //    去优化时解释器直接用 VM::registers 中的旧值）；
+                            // 2) 被循环头的 Phi 引用，说明它的值在循环中被修改。
+                            //    若传播阶段因循环依赖未将其标记存活，这里若直接移除，
+                            //    去优化时会丢失修改后的值。因此被 Phi 引用时必须保活。
+                            bool usedByPhi = false;
+                            for (HIRNode* use : input->uses()) {
+                                if (use->opcode() == HIROp::Phi) { usedByPhi = true; break; }
+                            }
+                            if (usedByPhi) {
+                                liveNodes.insert(input);
+                                worklist.push_back(input);
+                            } else {
+                                node->replaceInput(i, nullptr);
+                            }
                         } else {
                             liveNodes.insert(input);
                             worklist.push_back(input);

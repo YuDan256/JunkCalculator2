@@ -265,6 +265,10 @@ public:
                 (void)ax;
 
                 auto fetchExtra = [&]() { return chunk_.code[ip++] >> 8; };
+                // 转义操作数的完整索引可能 >= 128（与 RK 的 0x80 标志位冲突），
+                // 用 bit 24/25 作为转义标记，低 24 位承载完整索引，避免 INDEXK 截断。
+                constexpr int RK_ESCAPED_CONST = 0x1000000;
+                constexpr int RK_ESCAPED_REG  = 0x2000000;
 
                 // 模拟解释器的操作数获取逻辑，确保 IP 正确推进并获取扩展操作数
                 switch (op) {
@@ -325,10 +329,10 @@ public:
                     case OpCode::SHR: case OpCode::EQ: case OpCode::NEQ: case OpCode::LT:
                     case OpCode::LE: case OpCode::GT: case OpCode::GE: case OpCode::IS:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
-                        if (b == ESCAPE_KBIT_CONST) b = RKASK(fetchExtra());
-                        else if (b == ESCAPE_KBIT_REG) b = fetchExtra();
-                        if (c == ESCAPE_KBIT_CONST) c = RKASK(fetchExtra());
-                        else if (c == ESCAPE_KBIT_REG) c = fetchExtra();
+                        if (b == ESCAPE_KBIT_CONST) b = fetchExtra() | RK_ESCAPED_CONST;
+                        else if (b == ESCAPE_KBIT_REG) b = fetchExtra() | RK_ESCAPED_REG;
+                        if (c == ESCAPE_KBIT_CONST) c = fetchExtra() | RK_ESCAPED_CONST;
+                        else if (c == ESCAPE_KBIT_REG) c = fetchExtra() | RK_ESCAPED_REG;
                         break;
 
                     case OpCode::JMP_TRUE:
@@ -352,21 +356,26 @@ public:
 
                 // 辅助函数：解析 K-Bit 操作数（寄存器或常量）
                 auto getRKNode = [&](int rk) -> HIRNode* {
-                    if (ISK(rk)) {
-                        int idx = INDEXK(rk);
+                    auto resolveConst = [&](int idx) -> HIRNode* {
                         const Value& kst = chunk_.constants[idx];
                         if (kst.isInt32()) return builder_.createBoxInt32(builder_.createInt32Constant(kst.asInt32()));
                         if (kst.isDouble()) return builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
                         if (kst.isBool()) return builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
                         if (kst.isNone()) return builder_.createNoneConstant();
                         return builder_.createInt64Constant(kst.as_bits);
-                    }
-                    HIRNode* node = builder_.getLocal(registerOffset_ + rk);
-                    if (!node) {
-                        node = builder_.createLoadRegister(registerOffset_ + rk);
-                        builder_.setLocal(registerOffset_ + rk, node);
-                    }
-                    return node;
+                    };
+                    auto resolveReg = [&](int reg) -> HIRNode* {
+                        HIRNode* node = builder_.getLocal(registerOffset_ + reg);
+                        if (!node) {
+                            node = builder_.createLoadRegister(registerOffset_ + reg);
+                            builder_.setLocal(registerOffset_ + reg, node);
+                        }
+                        return node;
+                    };
+                    if (rk & RK_ESCAPED_CONST) return resolveConst(rk & 0xFFFFFF);
+                    if (rk & RK_ESCAPED_REG) return resolveReg(rk & 0xFFFFFF);
+                    if (ISK(rk)) return resolveConst(INDEXK(rk));
+                    return resolveReg(rk);
                 };
 
                 auto getBoxedRKNode = [&](int rk) -> HIRNode* {

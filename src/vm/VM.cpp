@@ -5210,7 +5210,6 @@ Value VM::run(int targetFrameDepth) {
                             else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                             else result = processMatGet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
                         } catch (...) {
-                            std::cout << "[DEBUG] Interpreter INDEX_GET 1D Exception: arg[0]=" << args[0] << "\n";
                             throw;
                         }
                     } else if (obj.isObjType(ObjType::DICT)) {
@@ -5406,7 +5405,6 @@ Value VM::run(int targetFrameDepth) {
                             else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                             else result = processMatGet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
                         } catch (...) {
-                            std::cout << "[DEBUG] Interpreter INDEX_GET 2D Exception: arg[0]=" << args[0] << ", arg[1]=" << args[1] << "\n";
                             throw;
                         }
                     } else {
@@ -5653,7 +5651,6 @@ Value VM::run(int targetFrameDepth) {
                                 getReg(a) = obj;
                             }
                         } catch (...) {
-                            std::cout << "[DEBUG] Interpreter INDEX_SET 1D Exception: arg[0]=" << args[0] << ", val=" << val << "\n";
                             throw;
                         }
                     } else if (obj.isObjType(ObjType::DICT)) {
@@ -5807,7 +5804,6 @@ Value VM::run(int targetFrameDepth) {
                                 getReg(a) = obj;
                             }
                         } catch (...) {
-                            std::cout << "[DEBUG] Interpreter INDEX_SET 2D Exception: arg[0]=" << args[0] << ", arg[1]=" << args[1] << ", val=" << val << "\n";
                             throw;
                         }
                     } else {

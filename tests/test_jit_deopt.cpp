@@ -387,6 +387,101 @@ void testOsrNestedLoopOuterVar() {
     std::cout << "  -> Passed.\n";
 }
 
+void testOsrHighRegPressure() {
+    std::cout << "[TEST] OSR + High Register Pressure + Mixed Arithmetic...\n";
+    VM vm;
+    std::string code = R"(
+        f() = {
+            a1 = 1.0; a2 = 2.0; a3 = 3.0; a4 = 4.0; a5 = 5.0; a6 = 6.0; a7 = 7.0; a8 = 8.0; a9 = 9.0; a10 = 10.0
+            a11 = 11.0; a12 = 12.0; a13 = 13.0; a14 = 14.0; a15 = 15.0; a16 = 16.0; a17 = 17.0; a18 = 18.0; a19 = 19.0; a20 = 20.0
+            a21 = 21.0; a22 = 22.0; a23 = 23.0; a24 = 24.0; a25 = 25.0; a26 = 26.0; a27 = 27.0; a28 = 28.0; a29 = 29.0; a30 = 30.0
+            sum = 0.0
+            for (ty = 0; ty < 8; ty += 1) {
+                y0 = a1 + ty * a2
+                y1 = a3 + (ty + 1) * a4
+                c0 = y0 > 0.0 ? y0 : 0.0
+                c1 = y1 < 1000.0 ? y1 : 1000.0
+                t = (c1 - c0) + a5 + a6 + a7 + a8 + a9 + a10 + a11 + a12 + a13 + a14 + a15 + a16 + a17 + a18 + a19 + a20 + a21 + a22 + a23 + a24 + a25 + a26 + a27 + a28 + a29 + a30
+                sum = sum + t
+            }
+            return sum
+        }
+        res = 0.0
+        for (k = 0; k < 3000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    // c1-c0 = y1-y0 = 6+2*ty; sum(c1-c0) = 104; sum(a5..a30) = 455; sum = 104 + 8*455 = 3744
+    assert(res.isDouble() && res.asDoubleRaw() == 3744.0);
+    std::cout << "  -> Passed.\n";
+}
+
+void testOsrCombined() {
+    std::cout << "[TEST] OSR Combined (prop + outer-var + list + nested + mixed)...\n";
+    VM vm;
+    std::string code = R"(
+        class G {
+            H = 600
+        }
+        g = G()
+        f() = {
+            sum = 0.0
+            for (e = 0; e < 5; e += 1) {
+                sprite_top = 100.0 + e
+                pixel_h = 10.5
+                arr = @[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                for (ty = 0; ty < 8; ty += 1) {
+                    y0 = sprite_top + ty * pixel_h
+                    y1 = sprite_top + (ty + 1) * pixel_h
+                    clip_y0 = y0 > 0.0 ? y0 : 0.0
+                    clip_y1 = y1 < g.H - 1.0 ? y1 : g.H - 1.0
+                    arr[ty] = clip_y1 - clip_y0
+                }
+                sum = sum + arr[7]
+            }
+            return sum
+        }
+        res = 0.0
+        for (k = 0; k < 3000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    // arr[7] = pixel_h = 10.5 per e; sum = 5 * 10.5 = 52.5
+    assert(res.isDouble() && res.asDoubleRaw() == 52.5);
+    std::cout << "  -> Passed.\n";
+}
+
+void testOsrInstanceMethod() {
+    std::cout << "[TEST] OSR + Instance Method (self.H) + Mixed Arithmetic...\n";
+    VM vm;
+    std::string code = R"(
+        class G {
+            H = 600
+            W = 800
+            f() = {
+                pixel_h = 10.5
+                sprite_top = 100.0
+                sum = 0.0
+                for (ty = 0; ty < 8; ty += 1) {
+                    y0 = sprite_top + ty * pixel_h
+                    y1 = sprite_top + (ty + 1) * pixel_h
+                    clip_y1 = y1 < self.H - 1.0 ? y1 : self.H - 1.0
+                    sum = sum + clip_y1
+                }
+                return sum
+            }
+        }
+        g = G()
+        res = 0.0
+        for (k = 0; k < 3000; k += 1) { res = g.f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    // y1 = 110.5 + 10.5*ty < 599 always; sum = sum_{ty=0..7} y1 = 8*110.5 + 10.5*28 = 1178
+    assert(res.isDouble() && res.asDoubleRaw() == 1178.0);
+    std::cout << "  -> Passed.\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "   JIT Deoptimization & OSR Unit Tests  \n";
@@ -405,6 +500,9 @@ int main() {
         testOsrInstancePropMixedArith();
         testOsrListStore();
         testOsrNestedLoopOuterVar();
+        testOsrHighRegPressure();
+        testOsrCombined();
+        testOsrInstanceMethod();
         std::cout << "\nAll JIT tests passed successfully!\n";
     } catch (const std::exception& e) {
         std::cerr << "\n[FAILED] Exception caught: " << e.what() << "\n";

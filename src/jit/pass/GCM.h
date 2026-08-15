@@ -62,6 +62,30 @@ private:
         return isControlNode(node) || node->opcode() == HIROp::Phi;
     }
 
+    // 副作用节点（调用/存储/守卫）必须固定在其控制流块中，
+    // 不能被 LICM 提升出循环，否则会破坏副作用顺序（例如循环条件 guard 读取循环变量）。
+    bool isSideEffecting(HIRNode* node) const {
+        switch (node->opcode()) {
+            case HIROp::Callout:
+            case HIROp::Call:
+            case HIROp::CallNative:
+            case HIROp::CallBuiltin:
+            case HIROp::StoreGlobal:
+            case HIROp::StoreField:
+            case HIROp::StoreRegister:
+            case HIROp::GuardIsInt32:
+            case HIROp::GuardIsDouble:
+            case HIROp::GuardIsBool:
+            case HIROp::GuardIsString:
+            case HIROp::GuardIsObject:
+            case HIROp::GuardIsClass:
+            case HIROp::GuardTruthy:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     void buildCFG() {
         HIRNode* startNode = nullptr;
         for (auto node : hir_.nodes()) {
@@ -364,6 +388,21 @@ private:
         if (lca == nullptr) {
             nodeToBlock_.erase(node);
             return; // Dead code
+        }
+
+        // 副作用节点固定在控制块，不做 LICM 提升，避免破坏副作用顺序。
+        if (isSideEffecting(node)) {
+            if (!node->inputs().empty()) {
+                HIRNode* ctrl = node->inputs()[0];
+                if (ctrl && nodeToBlock_.count(ctrl)) {
+                    nodeToBlock_[node] = nodeToBlock_[ctrl];
+                    return;
+                }
+            }
+            LIRBlock* eb = nodeToBlock_[node];
+            if (!eb && !blocks_.empty()) eb = blocks_[0];
+            nodeToBlock_[node] = eb;
+            return;
         }
 
         LIRBlock* earlyBlock = nodeToBlock_[node];

@@ -482,6 +482,51 @@ void testOsrInstanceMethod() {
     std::cout << "  -> Passed.\n";
 }
 
+void testOsrSpriteLikeRepro() {
+    std::cout << "[TEST] OSR Sprite-Like Computed Invariants Repro...\n";
+    VM vm;
+    std::string code = R"(
+        class G {
+            H = 600
+            W = 800
+        }
+        g = G()
+        f() = {
+            q1=1.0; q2=2.0; q3=3.0; q4=4.0; q5=5.0; q6=6.0; q7=7.0; q8=8.0; q9=9.0; q10=10.0
+            q11=11.0; q12=12.0; q13=13.0; q14=14.0; q15=15.0; q16=16.0; q17=17.0; q18=18.0; q19=19.0; q20=20.0
+            q21=21.0; q22=22.0; q23=23.0; q24=24.0; q25=25.0; q26=26.0; q27=27.0; q28=28.0; q29=29.0; q30=30.0
+            q31=31.0; q32=32.0; q33=33.0; q34=34.0; q35=35.0; q36=36.0; q37=37.0; q38=38.0; q39=39.0; q40=40.0
+            sum = 0.0
+            for (e = 0; e < 4; e += 1) {
+                transY = 2.0
+                base_h = g.H / transY
+                scale = 0.25
+                s_h = base_h * scale
+                floor_y = g.H / 2.0 + base_h / 2.0
+                sprite_top = floor_y - s_h
+                pixel_h = s_h / 8.0
+                h_coords = @[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                for (ty = 0; ty < 8; ty += 1) {
+                    y0 = sprite_top + ty * pixel_h
+                    y1 = sprite_top + (ty + 1) * pixel_h
+                    clip_y0 = y0 > 0.0 ? y0 : 0.0
+                    clip_y1 = y1 < g.H - 1.0 ? y1 : g.H - 1.0
+                    h_coords[ty] = clip_y1 - clip_y0
+                }
+                sum = sum + h_coords[7]
+            }
+            return sum + q1+q2+q3+q4+q5+q6+q7+q8+q9+q10+q11+q12+q13+q14+q15+q16+q17+q18+q19+q20+q21+q22+q23+q24+q25+q26+q27+q28+q29+q30+q31+q32+q33+q34+q35+q36+q37+q38+q39+q40
+        }
+        res = 0.0
+        for (k = 0; k < 5000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    // sum = 4 * pixel_h = 4 * 9.375 = 37.5; q-sum = 820; total = 857.5
+    assert(res.isDouble() && res.asDoubleRaw() == 857.5);
+    std::cout << "  -> Passed.\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "   JIT Deoptimization & OSR Unit Tests  \n";
@@ -503,6 +548,7 @@ int main() {
         testOsrHighRegPressure();
         testOsrCombined();
         testOsrInstanceMethod();
+        testOsrSpriteLikeRepro();
         std::cout << "\nAll JIT tests passed successfully!\n";
     } catch (const std::exception& e) {
         std::cerr << "\n[FAILED] Exception caught: " << e.what() << "\n";

@@ -57,7 +57,7 @@ public:
             for (int succId : cfg_.blocks[blockId].successors) {
                 if (!visited[succId]) {
                     dfs(succId);
-                } else if (inStack[succId]) {
+                } else if (inStack[succId] && cfg_.blocks[blockId].startIp > cfg_.blocks[succId].startIp) {
                     loopHeaders.insert(succId);
                     backEdges[succId].push_back(blockId);
                 }

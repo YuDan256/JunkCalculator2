@@ -226,6 +226,167 @@ void testOSR() {
     std::cout << "  -> Passed.\n";
 }
 
+void testOsrMixedArith() {
+    std::cout << "[TEST] OSR + Mixed Int*Double Arithmetic...\n";
+    VM vm;
+    std::string code = R"(
+        f() = {
+            pixel_h = 10.5
+            sprite_top = 100.0
+            sum = 0.0
+            for (ty = 0; ty < 8; ty += 1) {
+                y0 = sprite_top + ty * pixel_h
+                y1 = sprite_top + (ty + 1) * pixel_h
+                clip_y0 = y0 > 0.0 ? y0 : 0.0
+                clip_y1 = y1 < 600.0 ? y1 : 600.0
+                sum = sum + (clip_y1 - clip_y0)
+            }
+            return sum
+        }
+        res = 0.0
+        for (k = 0; k < 3000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    assert(res.isDouble() && res.asDoubleRaw() == 84.0);
+    std::cout << "  -> Passed.\n";
+}
+
+void testOsrNestedLoop() {
+    std::cout << "[TEST] OSR Nested Loop (outer x inner)...\n";
+    VM vm;
+    std::string code = R"(
+        f() = {
+            pixel_h = 10.5
+            sprite_top = 100.0
+            sum = 0.0
+            for (x = 0; x < 50; x += 1) {
+                for (ty = 0; ty < 8; ty += 1) {
+                    y0 = sprite_top + ty * pixel_h
+                    y1 = sprite_top + (ty + 1) * pixel_h
+                    clip_y0 = y0 > 0.0 ? y0 : 0.0
+                    clip_y1 = y1 < 600.0 ? y1 : 600.0
+                    sum = sum + (clip_y1 - clip_y0)
+                }
+            }
+            return sum
+        }
+        res = 0.0
+        for (k = 0; k < 2000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    assert(res.isDouble() && res.asDoubleRaw() == 4200.0);
+    std::cout << "  -> Passed.\n";
+}
+
+void testOsrMixedArithDeopt() {
+    std::cout << "[TEST] OSR + Mixed Arithmetic + Deopt...\n";
+    VM vm;
+    std::string code = R"(
+        f(n) = {
+            pixel_h = 10.5
+            sum = 0.0
+            for (i = 0; i < n; i += 1) {
+                sum = sum + i * pixel_h
+            }
+            return sum
+        }
+        res = 0.0
+        for (k = 0; k < 2000; k += 1) { res = f(50) }
+        return f(50.5)
+    )";
+    Value res = runScript(vm, code);
+    // f(50.5): loop i = 0..50, sum = 10.5 * (0+1+...+50) = 10.5 * 1275 = 13387.5
+    assert(res.isDouble() && res.asDoubleRaw() == 13387.5);
+    std::cout << "  -> Passed.\n";
+}
+
+void testOsrInstancePropMixedArith() {
+    std::cout << "[TEST] OSR + Instance Property + Mixed Arithmetic...\n";
+    VM vm;
+    std::string code = R"(
+        class G {
+            H = 600
+            W = 800
+        }
+        g = G()
+        f() = {
+            pixel_h = 10.5
+            sprite_top = 100.0
+            sum = 0.0
+            for (ty = 0; ty < 8; ty += 1) {
+                y0 = sprite_top + ty * pixel_h
+                y1 = sprite_top + (ty + 1) * pixel_h
+                clip_y0 = y0 > 0.0 ? y0 : 0.0
+                clip_y1 = y1 < g.H - 1.0 ? y1 : g.H - 1.0
+                sum = sum + (clip_y1 - clip_y0)
+            }
+            return sum
+        }
+        res = 0.0
+        for (k = 0; k < 3000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    assert(res.isDouble() && res.asDoubleRaw() == 84.0);
+    std::cout << "  -> Passed.\n";
+}
+
+void testOsrListStore() {
+    std::cout << "[TEST] OSR + List Store + Mixed Arithmetic...\n";
+    VM vm;
+    std::string code = R"(
+        f() = {
+            pixel_h = 10.5
+            sprite_top = 100.0
+            arr = @[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            for (ty = 0; ty < 8; ty += 1) {
+                y0 = sprite_top + ty * pixel_h
+                y1 = sprite_top + (ty + 1) * pixel_h
+                clip_y0 = y0 > 0.0 ? y0 : 0.0
+                clip_y1 = y1 < 600.0 ? y1 : 600.0
+                arr[ty] = clip_y1 - clip_y0
+            }
+            return arr[7]
+        }
+        res = 0.0
+        for (k = 0; k < 3000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    assert(res.isDouble() && res.asDoubleRaw() == 10.5);
+    std::cout << "  -> Passed.\n";
+}
+
+void testOsrNestedLoopOuterVar() {
+    std::cout << "[TEST] OSR Nested Loop + Outer-Loop Variables...\n";
+    VM vm;
+    std::string code = R"(
+        f() = {
+            sum = 0.0
+            for (e = 0; e < 5; e += 1) {
+                sprite_top = 100.0 + e
+                pixel_h = 10.5
+                for (ty = 0; ty < 8; ty += 1) {
+                    y0 = sprite_top + ty * pixel_h
+                    y1 = sprite_top + (ty + 1) * pixel_h
+                    clip_y0 = y0 > 0.0 ? y0 : 0.0
+                    clip_y1 = y1 < 600.0 ? y1 : 600.0
+                    sum = sum + (clip_y1 - clip_y0)
+                }
+            }
+            return sum
+        }
+        res = 0.0
+        for (k = 0; k < 3000; k += 1) { res = f() }
+        return res
+    )";
+    Value res = runScript(vm, code);
+    assert(res.isDouble() && res.asDoubleRaw() == 420.0);
+    std::cout << "  -> Passed.\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "   JIT Deoptimization & OSR Unit Tests  \n";
@@ -238,6 +399,12 @@ int main() {
         testCalloutStateReconstruction();
         testExceptionDeopt();
         testOSR();
+        testOsrMixedArith();
+        testOsrNestedLoop();
+        testOsrMixedArithDeopt();
+        testOsrInstancePropMixedArith();
+        testOsrListStore();
+        testOsrNestedLoopOuterVar();
         std::cout << "\nAll JIT tests passed successfully!\n";
     } catch (const std::exception& e) {
         std::cerr << "\n[FAILED] Exception caught: " << e.what() << "\n";

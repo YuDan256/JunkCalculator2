@@ -24,6 +24,7 @@
 #include "../jit/pass/LivenessAnalysis.h"
 #include "../jit/pass/LinearScan.h"
 #include "../jit/backend/CodeEmitter.h"
+#include "../jit/backend/Disassembler.h"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -2842,13 +2843,10 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
         masm.finalize(*mem);
 
         if (g_showMachineCode) {
-            std::cout << "--- OSR Machine Code (Size: " << mem->size() << " bytes) ---\n";
+            std::cout << "--- OSR Machine Code [fn=" << fnDef->name << " osrIp=" << loopHeaderIp << "] (Size: " << mem->size() << " bytes) ---\n";
             const uint8_t* code = mem->get();
-            for (size_t i = 0; i < mem->size(); ++i) {
-                printf("%02X ", code[i]);
-                if ((i + 1) % 16 == 0) printf("\n");
-            }
-            printf("\n");
+            jit::disassemble(code, mem->size(), std::cout);
+            std::cout << "\n";
         }
 
         osrCompiledCode[fnIdx][loopHeaderIp] = mem;
@@ -2938,11 +2936,8 @@ void VM::profileFrameStart(CallFrame* frame) {
                     if (g_showMachineCode) {
                         std::cout << "--- Tier 2 Machine Code (Size: " << mem->size() << " bytes) ---\n";
                         const uint8_t* code = mem->get();
-                        for (size_t i = 0; i < mem->size(); ++i) {
-                            printf("%02X ", code[i]);
-                            if ((i + 1) % 16 == 0) printf("\n");
-                        }
-                        printf("\n");
+                        jit::disassemble(code, mem->size(), std::cout);
+                        std::cout << "\n";
                     }
 
                     jitCompiledCode[fnIdx] = mem;

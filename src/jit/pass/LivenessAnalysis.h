@@ -95,7 +95,9 @@ private:
                 }
                 for (const auto& fsUsePair : inst->fsUses()) {
                     const auto& use = fsUsePair.first;
-                    if (use.isVirtual() && liveKill.find(use.vreg()) == liveKill.end()) {
+                    // fsUse 是去优化点需要恢复的寄存器，即使在同一块内先被 def 覆盖，
+                    // def 之后的值在去优化点仍然活跃，因此无条件加入 liveGen。
+                    if (use.isVirtual()) {
                         liveGen.insert(use.vreg());
                     }
                 }

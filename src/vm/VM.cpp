@@ -756,6 +756,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (jit::g_jc2_jit_deoptimized) {
                     jit::g_jc2_jit_deoptimized = false;
                     // 去优化：状态已由 jc2_jit_deoptimize 恢复，直接继续解释执行
+                    // ★ 从 deopt 中学习：把实际 site 标记为 megamorphic，
+                    //   重编译时走 callout 通用路径，避免重复去优化。
+                    if (newFrame.ip >= 0 && newFrame.ip < (int)fnDef->chunk.typeFeedback.size()) {
+                        fnDef->chunk.typeFeedback[newFrame.ip] |= 0x80;
+                    }
                     jitEntryPoints[closure->compiledFnIndex] = nullptr;
                     jitCompiledCode.erase(closure->compiledFnIndex);
                     fnDef->callCount = 0;
@@ -3509,6 +3514,9 @@ Value VM::run(int targetFrameDepth) {
                     jit::g_jc2_jit_deoptimized = false; \
                     ip = frame->ip; \
                     osrTriggered = true; \
+                    if (frame->ip >= 0 && frame->ip < (int)chunk->typeFeedback.size()) { \
+                        const_cast<Chunk*>(chunk)->typeFeedback[frame->ip] |= 0x80; \
+                    } \
                     osrEntryPoints[fnIdx][loopHeaderIp] = nullptr; \
                     osrCompiledCode[fnIdx].erase(loopHeaderIp); \
                     const_cast<Chunk*>(chunk)->osrCounters[op_ip] = 0; \
@@ -4127,7 +4135,11 @@ Value VM::run(int targetFrameDepth) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04; // Monomorphic String
                     getReg(a) = Value(vb.asString() + vc.asString()); break;
                 }
-                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
+                } else {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_ADD); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RADD); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb + vc;
@@ -4145,7 +4157,11 @@ Value VM::run(int targetFrameDepth) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() - vc.asDoubleRaw()); break; 
                 }
-                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
+                } else {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_SUB); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RSUB); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb - vc;
@@ -4163,7 +4179,11 @@ Value VM::run(int targetFrameDepth) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() * vc.asDoubleRaw()); break; 
                 }
-                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
+                } else {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_MUL); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RMUL); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb * vc;
@@ -4194,7 +4214,11 @@ Value VM::run(int targetFrameDepth) {
                     if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
                 }
-                const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
+                } else {
+                    const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
+                }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_DIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RDIV); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb / vc;
@@ -9877,19 +9901,469 @@ uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chun
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_index_get(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t noThrow) {
+// ============================================================================
+// opIn / opMatchType 辅助方法 + IN / IMPORT / MATCH_TYPE 的 callout
+// ============================================================================
+// ============================================================================
+// opIterInit / opIterNext 辅助方法 + ITER_INIT / ITER_NEXT / ASSERT_PARAM_TYPE 的 callout
+// ============================================================================
+Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
+    if (iterable.isInstance()) {
+        auto [method, owner] = findDunder(iterable, DUNDER_ITER);
+        if (method) {
+            Value iterObj = callDunder(iterable, method, owner, {});
+            GcValueGuard iterGuard(iterObj);
+            ObjList* state = GcHeap::get().allocate<ObjList>();
+            state->vec.push_back(iterObj);
+            if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {
+                state->vec.push_back(Value::none());
+            } else {
+                auto [nextMethod, nextOwner] = findDunder(iterObj, DUNDER_NEXT);
+                if (!nextMethod) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
+                state->vec.push_back(Value(nextMethod));
+                state->vec.push_back(Value(nextOwner));
+            }
+            return Value(state);
+        }
+    }
+
+    if (iterable.isObjType(ObjType::LIST) || iterable.isString() ||
+        iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) ||
+        iterable.isObjType(ObjType::STRING_MATRIX) || iterable.isObjType(ObjType::SYM_MATRIX)) {
+        ObjList* state = GcHeap::get().allocate<ObjList>();
+        state->vec.push_back(iterable);
+        state->vec.push_back(Value::fromInt32(0));
+        return Value(state);
+    }
+
+    ObjList* elements = GcHeap::get().allocate<ObjList>();
+    Value result(elements); // ★ 立即 Root 防止 GC 误杀
+
+    if (iterable.isObjType(ObjType::DICT)) {
+        const auto* d = static_cast<ObjDict*>(iterable.asObj());
+        if (destructFlag) {
+            for (const auto& [key, val] : d->elements) {
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(key);
+                pair->vec.push_back(val);
+                pair->is_frozen = true;
+                elements->vec.push_back(Value(pair));
+            }
+        } else {
+            for (const auto& [key, val] : d->elements) {
+                elements->vec.push_back(key);
+            }
+        }
+    } else if (iterable.isObjType(ObjType::NAMESPACE)) {
+        const auto* ns = static_cast<ObjNamespace*>(iterable.asObj());
+        if (destructFlag) {
+            for (const auto& [key, field] : ns->fields) {
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(Value(key));
+                pair->vec.push_back(*(field.upval->location));
+                pair->is_frozen = true;
+                elements->vec.push_back(Value(pair));
+            }
+        } else {
+            for (const auto& [key, field] : ns->fields) {
+                elements->vec.push_back(Value(key));
+            }
+        }
+    } else if (iterable.isClass()) {
+        const auto* cls = static_cast<ObjClass*>(iterable.asObj());
+        std::unordered_set<std::string> seen;
+        while (cls) {
+            if (destructFlag) {
+                for (const auto& [key, prop] : cls->properties) {
+                    if (prop.is_local || seen.count(key)) continue;
+                    if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                    seen.insert(key);
+                    ObjList* pair = GcHeap::get().allocate<ObjList>();
+                    pair->vec.push_back(Value(key));
+                    pair->vec.push_back(prop.val);
+                    pair->is_frozen = true;
+                    elements->vec.push_back(Value(pair));
+                }
+            } else {
+                for (const auto& [key, prop] : cls->properties) {
+                    if (prop.is_local || seen.count(key)) continue;
+                    if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                    seen.insert(key);
+                    elements->vec.push_back(Value(key));
+                }
+            }
+            cls = cls->parent;
+        }
+    } else if (iterable.isObjType(ObjType::SET)) {
+        const auto* s = static_cast<ObjSet*>(iterable.asObj());
+        for (const auto& val : s->elements) {
+            elements->vec.push_back(val);
+        }
+    } else if (iterable.isInstance()) {
+        auto inst = iterable.asInstance();
+        if (destructFlag) {
+            for (const auto& [key, prop] : inst->properties) {
+                if (prop.is_local) continue;
+                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(Value(key));
+                pair->vec.push_back(prop.val);
+                pair->is_frozen = true;
+                elements->vec.push_back(Value(pair));
+            }
+        } else {
+            for (const auto& [key, prop] : inst->properties) {
+                if (prop.is_local) continue;
+                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                elements->vec.push_back(Value(key));
+            }
+        }
+    } else {
+        throw std::runtime_error("VM Error: Cannot iterate over this type.");
+    }
+
+    ObjList* state = GcHeap::get().allocate<ObjList>();
+    state->vec.push_back(Value(elements));
+    state->vec.push_back(Value::fromInt32(0));
+    return Value(state);
+}
+
+Value VM::opIterNext(Value stateVal) {
+    auto state = static_cast<ObjList*>(stateVal.asObj());
+    if (state->vec.size() >= 2 && state->vec[1].isInt32()) {
+        Value iterTarget = state->vec[0];
+        int i = state->vec[1].asInt32();
+
+        if (iterTarget.isObjType(ObjType::LIST)) {
+            const auto& elems = static_cast<ObjList*>(iterTarget.asObj())->vec;
+            if (i >= static_cast<int>(elems.size())) return Value::uninit();
+            Value out = elems[i];
+            state->vec[1] = Value::fromInt32(i + 1);
+            return out;
+        } else if (iterTarget.isString()) {
+            ObjString* objStr = iterTarget.asObjString();
+            if (i >= static_cast<int>(objStr->charLength)) return Value::uninit();
+            if (objStr->isAscii) {
+                Value out = Value(std::string(1, objStr->str[i]));
+                state->vec[1] = Value::fromInt32(i + 1);
+                return out;
+            } else {
+                int byteOffset = state->vec.size() > 2 ? state->vec[2].asInt32() : 0;
+                int charLen = 1;
+                unsigned char ch = objStr->str[byteOffset];
+                if ((ch & 0xE0) == 0xC0) charLen = 2;
+                else if ((ch & 0xF0) == 0xE0) charLen = 3;
+                else if ((ch & 0xF8) == 0xF0) charLen = 4;
+                Value out = Value(objStr->str.substr(byteOffset, charLen));
+                state->vec[1] = Value::fromInt32(i + 1);
+                if (state->vec.size() > 2) state->vec[2] = Value::fromInt32(byteOffset + charLen);
+                else state->vec.push_back(Value::fromInt32(byteOffset + charLen));
+                return out;
+            }
+        } else if (iterTarget.isObjType(ObjType::REAL_MATRIX)) {
+            const auto& m = static_cast<ObjRealMatrix*>(iterTarget.asObj())->mat;
+            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            if (i >= len) return Value::uninit();
+            Value out;
+            if (m.getRows() == 1) out = Value(m(0, i));
+            else if (m.getCols() == 1) out = Value(m(i, 0));
+            else {
+                std::vector<double> row(m.getCols());
+                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                out = Value(RealMatrix(1, m.getCols(), row));
+            }
+            state->vec[1] = Value::fromInt32(i + 1);
+            return out;
+        } else if (iterTarget.isObjType(ObjType::COMPLEX_MATRIX)) {
+            const auto& m = static_cast<ObjComplexMatrix*>(iterTarget.asObj())->mat;
+            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            if (i >= len) return Value::uninit();
+            Value out;
+            if (m.getRows() == 1) out = Value(m(0, i));
+            else if (m.getCols() == 1) out = Value(m(i, 0));
+            else {
+                std::vector<Complex> row(m.getCols());
+                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                out = Value(ComplexMatrix(1, m.getCols(), row));
+            }
+            state->vec[1] = Value::fromInt32(i + 1);
+            return out;
+        } else if (iterTarget.isObjType(ObjType::STRING_MATRIX)) {
+            const auto& m = static_cast<ObjStringMatrix*>(iterTarget.asObj())->mat;
+            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            if (i >= len) return Value::uninit();
+            Value out;
+            if (m.getRows() == 1) out = Value(m(0, i));
+            else if (m.getCols() == 1) out = Value(m(i, 0));
+            else {
+                std::vector<std::string> row(m.getCols());
+                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                out = Value(StringMatrix(1, m.getCols(), row));
+            }
+            state->vec[1] = Value::fromInt32(i + 1);
+            return out;
+        } else if (iterTarget.isObjType(ObjType::SYM_MATRIX)) {
+            const auto& m = static_cast<ObjSymMatrix*>(iterTarget.asObj())->mat;
+            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            if (i >= len) return Value::uninit();
+            Value out;
+            if (m.getRows() == 1) out = Value(m(0, i));
+            else if (m.getCols() == 1) out = Value(m(i, 0));
+            else {
+                std::vector<SymExpr> row(m.getCols());
+                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
+                out = Value(SymMatrix(1, m.getCols(), row));
+            }
+            state->vec[1] = Value::fromInt32(i + 1);
+            return out;
+        }
+    }
+
+    Value iterObj = state->vec[0];
+    if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {
+        return iterObj.asInstance()->c_nativeNext(iterObj.asInstance());
+    } else {
+        ObjClosure* method = state->vec[1].asFunction();
+        ObjClass* owner = state->vec.size() > 2 ? static_cast<ObjClass*>(state->vec[2].asObj()) : nullptr;
+        Value nextVal = callDunder(iterObj, method, owner, {});
+        if (nextVal.isNone()) return Value::uninit();
+        return nextVal;
+    }
+}
+
+uint64_t jc2_jit_is_uninit(uint64_t val_bits) {
+    Value val = Value::fromRawBits(val_bits);
+    return val.isUninit() ? 1 : 0;
+}
+
+uint64_t jc2_jit_iter_init(uint64_t iterable_bits, uint32_t c) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value result = vm->opIterInit(Value::fromRawBits(iterable_bits), (uint8_t)c);
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_iter_next(uint64_t state_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value result = vm->opIterNext(Value::fromRawBits(state_bits));
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_assert_param_type(uint32_t a, uint32_t b, uint32_t c) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
+    vm->execAssertParamType(regs[base + a], (int)b, c);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+bool VM::opIn(Value needle, Value haystack) {
+    CallFrame* frame = getCurrentFrame();
+    bool found = false;
+
+    if (needle.isString() && haystack.isString()) {
+        found = haystack.asString().find(needle.asString()) != std::string::npos;
+    } else if (haystack.isObjType(ObjType::LIST)) {
+        const auto& L = static_cast<ObjList*>(haystack.asObj())->vec;
+        for (const auto& e : L) {
+            try {
+                bool eq = (needle.isString() && e.isString()) ? (needle.asString() == e.asString()) : Value::equals(needle, e);
+                if (eq) { found = true; break; }
+            } catch (...) {}
+        }
+    } else if (haystack.isObjType(ObjType::DICT)) {
+        auto d = static_cast<ObjDict*>(haystack.asObj());
+        found = d->keyMap.find(needle) != d->keyMap.end();
+    } else if (haystack.isObjType(ObjType::NAMESPACE)) {
+        auto ns = static_cast<ObjNamespace*>(haystack.asObj());
+        if (needle.isString()) {
+            found = ns->fields.find(needle.asString()) != ns->fields.end();
+        }
+    } else if (haystack.isClass()) {
+        auto cls = static_cast<ObjClass*>(haystack.asObj());
+        if (needle.isString()) {
+            std::string key = needle.asString();
+            ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+            if (ctxOwner) {
+                auto it = ctxOwner->properties.find(key);
+                if (it != ctxOwner->properties.end() && it->second.is_local) {
+                    found = true;
+                }
+            }
+            if (!found) {
+                while (cls) {
+                    auto it = cls->properties.find(key);
+                    if (it != cls->properties.end() && !it->second.is_local) {
+                        found = true;
+                        break;
+                    }
+                    cls = cls->parent;
+                }
+            }
+        }
+    } else if (haystack.isObjType(ObjType::SET)) {
+        auto s = static_cast<ObjSet*>(haystack.asObj());
+        found = s->keys.find(needle) != s->keys.end();
+    } else if (haystack.isObjType(ObjType::REAL_MATRIX)) {
+        const auto& m = static_cast<ObjRealMatrix*>(haystack.asObj())->mat;
+        if (needle.isNumber() || needle.isObjType(ObjType::BIGINT) || needle.isObjType(ObjType::FRACTION)) {
+            double nv = needle.asDouble();
+            for (int i = 0; i < m.getRows(); ++i) {
+                for (int j = 0; j < m.getCols(); ++j) {
+                    if (m(i, j) == nv) { found = true; break; }
+                }
+                if (found) break;
+            }
+        }
+    } else if (haystack.isObjType(ObjType::COMPLEX_MATRIX)) {
+        const auto& m = static_cast<ObjComplexMatrix*>(haystack.asObj())->mat;
+        if (needle.isNumber() || needle.isObjType(ObjType::BIGINT) || needle.isObjType(ObjType::FRACTION) || needle.isObjType(ObjType::COMPLEX)) {
+            Complex nv = needle.asComplex();
+            for (int i = 0; i < m.getRows(); ++i) {
+                for (int j = 0; j < m.getCols(); ++j) {
+                    if (m(i, j) == nv) { found = true; break; }
+                }
+                if (found) break;
+            }
+        }
+    } else if (haystack.isObjType(ObjType::STRING_MATRIX)) {
+        const auto& m = static_cast<ObjStringMatrix*>(haystack.asObj())->mat;
+        std::string nv;
+        if (needle.isString()) nv = needle.asString();
+        else { std::ostringstream oss; oss << needle; nv = oss.str(); }
+        for (int i = 0; i < m.getRows(); ++i) {
+            for (int j = 0; j < m.getCols(); ++j) {
+                if (m(i, j) == nv) { found = true; break; }
+            }
+            if (found) break;
+        }
+    } else if (haystack.isObjType(ObjType::SYM_MATRIX)) {
+        const auto& m = static_cast<ObjSymMatrix*>(haystack.asObj())->mat;
+        if (needle.isSymbolic() || needle.isNumber() || needle.isBigInt() || needle.isObjType(ObjType::FRACTION) || needle.isComplex()) {
+            SymExpr nv = needle.asSymbolic();
+            for (int i = 0; i < m.getRows(); ++i) {
+                for (int j = 0; j < m.getCols(); ++j) {
+                    if (m(i, j) == nv) { found = true; break; }
+                }
+                if (found) break;
+            }
+        }
+    } else if (haystack.isInstance()) {
+        auto [method, owner] = findDunder(haystack, DUNDER_CONTAINS);
+        if (method) {
+            found = evaluateTruthiness(callDunder(haystack, method, owner, {needle}));
+        } else {
+            auto inst = haystack.asInstance();
+            if (needle.isString()) {
+                std::string key = needle.asString();
+                ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+                if (ctxOwner) {
+                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                    if (inst->properties.find(mangledName) != inst->properties.end()) {
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    auto it = inst->properties.find(key);
+                    if (it != inst->properties.end() && !it->second.is_local) {
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    auto cls = inst->classDef;
+                    while (cls) {
+                        auto cit = cls->properties.find(key);
+                        if (cit != cls->properties.end() && !cit->second.is_local && cit->second.val.isFunctionClosure()) {
+                            found = true;
+                            break;
+                        }
+                        cls = cls->parent;
+                    }
+                    if (!found) {
+                        auto [getattrMethod, getattrOwner] = findDunder(haystack, DUNDER_GETATTR);
+                        if (getattrMethod) {
+                            try {
+                                callDunder(haystack, getattrMethod, getattrOwner, {needle});
+                                found = true;
+                            } catch (...) {
+                                // Fall through to false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        throw std::runtime_error("VM Error: 'in' requires a string, list, dict, set, matrix, or instance.");
+    }
+
+    return found;
+}
+
+Value VM::opMatchType(Value val, Value typeVal) {
+    if (typeVal.isClass()) {
+        ObjClass* expectedClass = static_cast<ObjClass*>(typeVal.asObj());
+        bool matched = false;
+        if (val.isInstance()) {
+            ObjClass* cls = val.asInstance()->classDef;
+            while (cls) {
+                if (cls == expectedClass) { matched = true; break; }
+                cls = cls->parent;
+            }
+        }
+        return Value(matched);
+    } else {
+        if (!typeVal.isType()) throw std::runtime_error("TypeError: Expected a type object.");
+        return Value(checkValueType(val, static_cast<ObjTypeDef*>(typeVal.asObj())));
+    }
+}
+
+uint64_t jc2_jit_in(uint32_t b, uint32_t c) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
+    bool found = vm->opIn(regs[base + b], regs[base + c]);
+    return Value(found).as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_import(uint32_t b) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
+    Value path = regs[base + b];
+    if (!path.isString()) throw std::runtime_error("VM Error: import requires a string path.");
+    Value result = vm->importModule(path.asString());
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_match_type(uint32_t b, uint32_t c) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
+    Value result = vm->opMatchType(regs[base + b], regs[base + c]);
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t dims, uint32_t noThrow) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
-    Value* regs = vm->getRegisters();
-    int base = frame->registerBase;
 
-    Value obj = regs[base + objReg];
+    Value obj = Value::fromRawBits(obj_bits);
     std::vector<Value> args;
     args.reserve(dims);
-    for (uint32_t i = 0; i < dims; ++i) {
-        args.push_back(regs[base + argsReg + i]);
-    }
+    if (dims > 0) args.push_back(Value::fromRawBits(a0));
+    if (dims > 1) args.push_back(Value::fromRawBits(a1));
 
     Value result;
 
@@ -10218,20 +10692,19 @@ uint64_t jc2_jit_index_get(uint32_t objReg, uint32_t argsReg, uint32_t dims, uin
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_index_set(uint32_t objReg, uint32_t argsReg, uint32_t dims, uint32_t valReg) {
+uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t val_bits, uint32_t dims, uint32_t objReg) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     Value* regs = vm->getRegisters();
     int base = frame->registerBase;
 
-    Value obj = regs[base + objReg];
-    Value val = regs[base + valReg];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value val = Value::fromRawBits(val_bits);
     std::vector<Value> args;
     args.reserve(dims);
-    for (uint32_t i = 0; i < dims; ++i) {
-        args.push_back(regs[base + argsReg + i]);
-    }
+    if (dims > 0) args.push_back(Value::fromRawBits(a0));
+    if (dims > 1) args.push_back(Value::fromRawBits(a1));
 
     if (obj.isInstance()) {
         auto inst = obj.asInstance();

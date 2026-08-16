@@ -44,6 +44,22 @@ public:
             }
         }
 
+        // 2.5 OSR 编译：phi 输出与入口 LoadRegister 合并到同一 vreg（两者活跃区间不重叠，安全复用）。
+        // 否则 phi 输出被 spill 而入口值仍在寄存器，循环头会读到未初始化的 phi 输出。
+        // 注意：OSR 循环头的 phi 其 inputs[0] 是 LoopBegin（不是 OSREntry），入口值才是 LoadRegister。
+        for (auto node : hir_.nodes()) {
+            if (node->opcode() == HIROp::Phi && node->inputs().size() > 1) {
+                HIRNode* entryVal = node->inputs()[1];
+                if (entryVal && entryVal->opcode() == HIROp::LoadRegister) {
+                    auto entryIt = nodeToOperand_.find(entryVal);
+                    auto phiIt = nodeToOperand_.find(node);
+                    if (entryIt != nodeToOperand_.end() && phiIt != nodeToOperand_.end()) {
+                        phiIt->second = entryIt->second;
+                    }
+                }
+            }
+        }
+
         // 3. 遍历每个 LIRBlock，进行块内拓扑排序并降级指令
         for (LIRBlock* block : lir_.blocks()) {
             builder_.setCurrentBlock(block);

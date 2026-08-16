@@ -788,8 +788,15 @@ public:
                             }
                         };
                         
-                        handleBranchTarget(ifTrue, trueTargetIp);
-                        handleBranchTarget(ifFalse, falseTargetIp);
+                        if (trueTargetIp == falseTargetIp) {
+                            // 两个分支汇合到同一点（如 JMP_FALSE 偏移 0）：合并为单个 Merge 控制流，
+                            // 保持 blockEntryControls_ 数量与 CFG predecessors（去重后）一致，避免 phi 与 Merge 输入数错位。
+                            auto merge = builder_.createMerge({ifTrue, ifFalse});
+                            handleBranchTarget(merge, trueTargetIp);
+                        } else {
+                            handleBranchTarget(ifTrue, trueTargetIp);
+                            handleBranchTarget(ifFalse, falseTargetIp);
+                        }
                         builder_.setCurrentControl(nullptr);
                         break;
                     }

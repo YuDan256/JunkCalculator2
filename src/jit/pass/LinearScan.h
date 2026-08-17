@@ -234,7 +234,6 @@ private:
                 current->allocatedXMM = spillCandidate->allocatedXMM;
                 spillCandidate->allocatedXMM = XMMRegister();
             }
-            
             active.erase(bestIt);
             active.push_back(current);
         } else {
@@ -267,10 +266,11 @@ private:
                 for (auto& fsUsePair : inst->fsUsesMut()) {
                     LIROperand& use = fsUsePair.first;
                     if (use.isVirtual()) {
-                        LiveInterval& interval = liveness_.intervalsMut().at(use.vreg());
+                        uint32_t fsvreg = use.vreg();
+                        LiveInterval& interval = liveness_.intervalsMut().at(fsvreg);
                         if (interval.allocatedSlot != -1) {
                             use = LIROperand::createStackSlot(interval.allocatedSlot);
-                        } else if (lir_.isVRegFloat(use.vreg())) {
+                        } else if (lir_.isVRegFloat(fsvreg)) {
                             use = LIROperand::createPhysicalXMM(interval.allocatedXMM);
                         } else {
                             use = LIROperand::createPhysicalGPR(interval.allocatedGPR);

@@ -527,6 +527,33 @@ void testOsrSpriteLikeRepro() {
     std::cout << "  -> Passed.\n";
 }
 
+void testOsrInstancePropDeopt() {
+    std::cout << "[TEST] OSR + Instance Property + Deopt...\n";
+    VM vm;
+    std::string code = R"(
+        class T {
+            init() = {
+                self.arr = @[10, 20, 30]
+            }
+            f(y) = {
+                total = 0
+                for (i = 0; i < 1000; i += 1) {
+                    val = self.arr[1]
+                    total = total + val + y
+                }
+                return total
+            }
+        }
+        t = T()
+        t.f(5)
+        return t.f(5.5)
+    )";
+    Value res = runScript(vm, code);
+    // total = 1000 * (20 + 5.5) = 25500.0
+    assert(res.isDouble() && res.asDoubleRaw() == 25500.0);
+    std::cout << "  -> Passed.\n";
+}
+
 int main() {
     std::cout << "========================================\n";
     std::cout << "   JIT Deoptimization & OSR Unit Tests  \n";
@@ -549,6 +576,7 @@ int main() {
         testOsrCombined();
         testOsrInstanceMethod();
         testOsrSpriteLikeRepro();
+        testOsrInstancePropDeopt();
         std::cout << "\nAll JIT tests passed successfully!\n";
     } catch (const std::exception& e) {
         std::cerr << "\n[FAILED] Exception caught: " << e.what() << "\n";

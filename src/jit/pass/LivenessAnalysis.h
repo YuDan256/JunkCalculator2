@@ -157,14 +157,28 @@ private:
     // 4. 逆序遍历指令，构建活跃区间
     void buildIntervals() {
         std::unordered_map<LIRBlock*, std::pair<uint32_t, uint32_t>> blockRanges;
-        uint32_t currentId = 0;
+        // 先收集每个块的起始 linearId
         for (LIRBlock* block : lir_.blocks()) {
-            uint32_t start = currentId;
+            uint32_t start = 0;
             if (!block->instructions().empty()) {
                 start = block->instructions().front()->linearId();
-                currentId = block->instructions().back()->linearId() + 2;
             }
-            blockRanges[block] = {start, currentId};
+            blockRanges[block] = {start, 0};
+        }
+        // blockEnd 统一延续到函数末尾，消除跨块和跨回边的 linearId gap。
+        // 只延续到“下一个块的起始”无法覆盖循环回边（回边块→循环头）以及嵌套循环边界的
+        // 活跃区间，会导致跨循环存活的 phi 回边值（如循环外的矩阵变量）被错误地复用栈槽，
+        // 去优化恢复时读到被覆盖的 stale 值。
+        const auto& blks = lir_.blocks();
+        uint32_t funcEnd = 0;
+        for (LIRBlock* b : blks) {
+            if (!b->instructions().empty()) {
+                funcEnd = std::max(funcEnd, b->instructions().back()->linearId() + 2);
+            }
+        }
+        for (size_t i = 0; i < blks.size(); ++i) {
+            uint32_t start = blockRanges[blks[i]].first;
+            blockRanges[blks[i]] = {start, funcEnd};
         }
 
         for (auto it = lir_.blocks().rbegin(); it != lir_.blocks().rend(); ++it) {
@@ -189,8 +203,12 @@ private:
                         LiveInterval& interval = getInterval(def.vreg());
                         interval.spillWeight += static_cast<float>(std::pow(10.0, block->loopDepth()));
                         if (!interval.ranges.empty()) {
-                            // 截断当前区间到定义处
-                            interval.ranges.front().start = id;
+                            // 截断当前区间到定义处。
+                            // 但跨循环存活的 vreg（在 liveOut 里，即回边 def → 循环头 use 的闭合）不能截断，
+                            // 否则循环闭合段的活跃区间出现 gap，寄存器分配器会复用其栈槽，去优化恢复读到 stale 值。
+                            if (block->liveOut.find(def.vreg()) == block->liveOut.end()) {
+                                interval.ranges.front().start = id;
+                            }
                         } else {
                             // 死存储 (Dead Store)：定义后从未被使用，至少存活一瞬
                             interval.addRange(id, id + 1);

@@ -99,6 +99,42 @@ private:
         masm_.emitPopAll();
     }
 
+    // callout 前：按 StackMap 标记活容器 + pin 纯数据（替代 Eager Sync 的全量写回）
+    void emitGcPin(LIRInst* inst) {
+        if (!inst->hasBailoutId()) return;
+        masm_.emitPushAll();
+#ifdef _WIN32
+        masm_.movq(rcx, rsp);
+        masm_.mov(rdx, static_cast<int32_t>(inst->bailoutId()));
+#else
+        masm_.movq(rdi, rsp);
+        masm_.mov(rsi, static_cast<int32_t>(inst->bailoutId()));
+#endif
+        masm_.callCFunction(reinterpret_cast<void*>(jc2_jit_gc_pin));
+        masm_.emitPopAll();
+    }
+
+    // callout 后：恢复 pin 的 refCount（call 会破坏 rax/xmm0，先保存返回值）
+    void emitGcUnpin(LIRInst* inst) {
+        bool hasRet = !inst->defs().empty();
+        bool isDouble = hasRet && inst->defs()[0].isPhysicalXMM();
+        if (hasRet) {
+            masm_.push(rax);
+            if (isDouble) {
+                masm_.subq(rsp, 16);
+                masm_.movsd(Operand(rsp, 0), xmm0);
+            }
+        }
+        masm_.callCFunction(reinterpret_cast<void*>(jc2_jit_gc_unpin));
+        if (hasRet) {
+            if (isDouble) {
+                masm_.movsd(xmm0, Operand(rsp, 0));
+                masm_.addq(rsp, 16);
+            }
+            masm_.pop(rax);
+        }
+    }
+
     void emitInstruction(LIRInst* inst) {
         switch (inst->opcode()) {
             case LIROpcode::Label:
@@ -1263,7 +1299,7 @@ private:
                 break;
             }
             case LIROpcode::Call: {
-                emitEagerSync(inst);
+                emitGcPin(inst);
                 uint32_t argc = inst->argc();
                 const LIROperand& callee = inst->uses()[0];
                 
@@ -1322,6 +1358,8 @@ private:
                     masm_.addq(rsp, stackSpace);
                 }
                 
+                emitGcUnpin(inst);
+                
                 if (inst->hasBailoutId()) {
                     needsDeoptTrampoline_ = true;
                     masm_.movabs(r11, reinterpret_cast<uint64_t>(&g_jit_pending_exception));
@@ -1338,8 +1376,66 @@ private:
                 break;
             }
             case LIROpcode::Callout: {
-                emitEagerSync(inst);
+                emitGcPin(inst);
                 uint32_t argc = inst->argc();
+                uint32_t numValues = static_cast<uint32_t>(inst->uses().size()) - argc;
+                
+                if (numValues > 0) {
+                    // 变长 callout：把额外值输入构建成数组，传指针（rcx）给 callout
+                    for (int i = static_cast<int>(numValues) - 1; i >= 0; --i) {
+                        const LIROperand& v = inst->uses()[argc + i];
+                        if (v.isPhysicalGPR()) {
+                            masm_.push(v.pregGPR());
+                        } else if (v.isStackSlot()) {
+                            masm_.push(getStackOperand(v.slot()));
+                        } else if (v.isImm32()) {
+                            masm_.mov(r11, v.imm32());
+                            masm_.push(r11);
+                        } else if (v.isImm64()) {
+                            masm_.movabs(r11, v.imm64());
+                            masm_.push(r11);
+                        } else {
+                            throw std::runtime_error("CodeEmitter: Unsupported var-arg value type.");
+                        }
+                    }
+                    
+                    masm_.movq(rcx, rsp);
+                    
+                    for (uint32_t i = 0; i < argc && i < 3; ++i) {
+                        const LIROperand& arg = inst->uses()[i];
+                        Register dst = (i == 0) ? rdx : ((i == 1) ? r8 : r9);
+                        if (arg.isPhysicalGPR()) {
+                            if (arg.pregGPR() != dst) masm_.movq(dst, arg.pregGPR());
+                        } else if (arg.isStackSlot()) {
+                            masm_.movq(dst, getStackOperand(arg.slot()));
+                        } else if (arg.isImm32()) {
+                            masm_.mov(dst, arg.imm32());
+                        } else if (arg.isImm64()) {
+                            masm_.movabs(dst, arg.imm64());
+                        }
+                    }
+                    
+                    masm_.callCFunction(inst->functionPtr());
+                    masm_.addq(rsp, numValues * 8);
+                    
+                    emitGcUnpin(inst);
+                    
+                    if (inst->hasBailoutId()) {
+                        needsDeoptTrampoline_ = true;
+                        masm_.movabs(r11, reinterpret_cast<uint64_t>(&g_jit_pending_exception));
+                        masm_.cmp(Operand(r11, 0), 0);
+                        Label noException;
+                        masm_.jcc(Condition::Equal, noException);
+                        
+                        masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                        masm_.jmp(deoptTrampolineLabel_);
+                        
+                        masm_.bind(noException);
+                        registerStackMap(inst);
+                    }
+                    break;
+                }
+                
                 std::vector<Register> argRegs;
 #ifdef _WIN32
                 argRegs = {rcx, rdx, r8, r9};
@@ -1387,6 +1483,8 @@ private:
                 if (argc > argRegs.size() + 1) stackArg2 = r11;
                 
                 masm_.callCFunction(inst->functionPtr(), argc, stackArg1, stackArg2);
+                
+                emitGcUnpin(inst);
                 
                 if (inst->hasBailoutId()) {
                     needsDeoptTrampoline_ = true;

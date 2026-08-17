@@ -8138,70 +8138,62 @@ Value VM::run(int targetFrameDepth) {
 // JIT Runtime Helpers (Step 84)
 // ============================================================================
 
-uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count) {
+uint64_t jc2_jit_build_list(uint64_t* values, uint32_t count) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
     ObjList* list = GcHeap::get().allocate<ObjList>();
     Value res(list);
     GcValueGuard guard(res);
     list->vec.reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
-        list->vec.push_back(regs[base + startReg + i]);
+        list->vec.push_back(Value::fromRawBits(values[i]));
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count) {
+uint64_t jc2_jit_build_dict(uint64_t* values, uint32_t count) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
     ObjDict* dict = GcHeap::get().allocate<ObjDict>();
     Value res(dict);
     GcValueGuard guard(res);
     dict->elements.reserve(count);
     dict->keyMap.reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
-        dict->set(regs[base + startReg + i * 2], regs[base + startReg + i * 2 + 1]);
+        dict->set(Value::fromRawBits(values[i * 2]), Value::fromRawBits(values[i * 2 + 1]));
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count) {
+uint64_t jc2_jit_build_set(uint64_t* values, uint32_t count) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     Value res(set);
     GcValueGuard guard(res);
     set->elements.reserve(count);
     set->keys.reserve(count);
     for (uint32_t i = 0; i < count; ++i) {
-        set->add(regs[base + startReg + i]);
+        set->add(Value::fromRawBits(values[i]));
     }
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk) {
+uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
     const auto& shape = chunk->matrixShapes[shapeIdx];
     uint16_t rows = shape.rows;
     const std::vector<uint16_t>& rowCols = shape.rowCols;
 
-    int total = 0;
-    for (uint16_t cols : rowCols) total += cols;
+    std::vector<Value> vals(total);
+    for (int _i = 0; _i < static_cast<int>(total); ++_i) vals[_i] = Value::fromRawBits(values[_i]);
 
     bool hasComplex = false;
     bool hasString = false;
@@ -8217,7 +8209,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
     };
 
     for (int ii = 0; ii < total; ++ii) {
-        const Value& v = regs[base + startReg + ii];
+        const Value& v = vals[ii];
         if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
         if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
         if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
@@ -8237,7 +8229,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
             ObjList* L = GcHeap::get().allocate<ObjList>();
             result = Value(L);
             GcValueGuard guard(result);
-            for (int ii = 0; ii < total; ++ii) L->vec.push_back(regs[base + startReg + ii]);
+            for (int ii = 0; ii < total; ++ii) L->vec.push_back(vals[ii]);
         } else {
             ObjList* outer = GcHeap::get().allocate<ObjList>();
             result = Value(outer);
@@ -8246,7 +8238,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
             for (int i = 0; i < rows; ++i) {
                 ObjList* inner = GcHeap::get().allocate<ObjList>();
                 int cols = rowCols[i];
-                for (int j = 0; j < cols; ++j) inner->vec.push_back(regs[base + startReg + idx++]);
+                for (int j = 0; j < cols; ++j) inner->vec.push_back(vals[idx++]);
                 inner->is_frozen = true;
                 outer->vec.push_back(Value(inner));
             }
@@ -8254,7 +8246,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
     } else {
         bool hasSubMatrix = false;
         for (int ii = 0; ii < total; ++ii) {
-            const Value& v = regs[base + startReg + ii];
+            const Value& v = vals[ii];
             if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
         }
 
@@ -8317,7 +8309,7 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
                     Value rowResult = Value::none();
                     int cols = rowCols[i];
                     for (int j = 0; j < cols; ++j) {
-                        Value cell = regs[base + startReg + idx++];
+                        Value cell = vals[idx++];
                         extractCell(cell);
                         if (rowResult.isNone()) {
                             rowResult = cell;
@@ -8352,22 +8344,22 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
             if (hasString) {
                 std::vector<std::string> flat(total);
                 for (int ii = 0; ii < total; ++ii) {
-                    const Value& v = regs[base + startReg + ii];
+                    const Value& v = vals[ii];
                     if (v.isString()) flat[ii] = v.asString();
                     else { std::ostringstream oss; if (v.isUninit()) oss << "Uninitialized"; else oss << v; flat[ii] = oss.str(); }
                 }
                 result = Value(StringMatrix(rows, expectedCols, flat));
             } else if (hasSymbolic) {
                 std::vector<SymExpr> flat(total);
-                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[base + startReg + ii].asSymbolic();
+                for (int ii = 0; ii < total; ++ii) flat[ii] = vals[ii].asSymbolic();
                 result = Value(SymMatrix(rows, expectedCols, flat));
             } else if (hasComplex) {
                 std::vector<Complex> flat(total);
-                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[base + startReg + ii].asComplex();
+                for (int ii = 0; ii < total; ++ii) flat[ii] = vals[ii].asComplex();
                 result = Value(ComplexMatrix(rows, expectedCols, flat));
             } else {
                 std::vector<double> flat(total);
-                for (int ii = 0; ii < total; ++ii) flat[ii] = regs[base + startReg + ii].asDouble();
+                for (int ii = 0; ii < total; ++ii) flat[ii] = vals[ii].asDouble();
                 result = Value(RealMatrix(rows, expectedCols, flat));
             }
         }
@@ -8377,17 +8369,14 @@ uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk*
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_build_slice(uint32_t startReg) {
+uint64_t jc2_jit_build_slice(uint64_t start_bits, uint64_t stop_bits, uint64_t step_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
     ObjSlice* slice = GcHeap::get().allocate<ObjSlice>();
     Value res(slice);
     GcValueGuard guard(res);
     
-    auto readInt = [&](int idx) -> int {
-        Value v = regs[base + startReg + idx];
+    auto readInt = [&](const Value& v) -> int {
         if (v.isNone()) return ObjSlice::SLICE_NONE;
         int64_t val64 = 0;
         if (v.isInt32()) {
@@ -8409,9 +8398,9 @@ uint64_t jc2_jit_build_slice(uint32_t startReg) {
         return static_cast<int>(val64);
     };
     
-    slice->start = readInt(0);
-    slice->end = readInt(1);
-    slice->step = readInt(2);
+    slice->start = readInt(Value::fromRawBits(start_bits));
+    slice->end = readInt(Value::fromRawBits(stop_bits));
+    slice->step = readInt(Value::fromRawBits(step_bits));
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
     JIT_CALLOUT_CATCH
@@ -8438,16 +8427,12 @@ uint64_t jc2_jit_dict_init() {
     JIT_CALLOUT_CATCH
 }
 
-void jc2_jit_dict_append(uint32_t dictReg, uint32_t keyReg, uint32_t valReg) {
+void jc2_jit_dict_append(uint64_t dict_bits, uint64_t key_bits, uint64_t val_bits) {
     JIT_CALLOUT_TRY
-    VM* vm = VM::activeVM;
-    CallFrame* frame = vm->getCurrentFrame();
-    Value* regs = vm->getRegisters();
-    int base = frame->registerBase;
     
-    Value dictVal = regs[base + dictReg];
-    Value keyVal = regs[base + keyReg];
-    Value valVal = regs[base + valReg];
+    Value dictVal = Value::fromRawBits(dict_bits);
+    Value keyVal = Value::fromRawBits(key_bits);
+    Value valVal = Value::fromRawBits(val_bits);
     
     if (dictVal.isObjType(ObjType::DICT)) {
         static_cast<ObjDict*>(dictVal.asObj())->set(keyVal, valVal);
@@ -8525,10 +8510,9 @@ uint64_t jc2_jit_get_global(uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset) {
+uint64_t jc2_jit_build_namespace(uint64_t* values, uint32_t count, uint32_t nameIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
     CallFrame* frame = vm->getCurrentFrame();
     int base = frame->registerBase;
     const std::string& nsName = chunk->constants[nameIdx].asString();
@@ -8538,15 +8522,15 @@ uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nam
     ns->name = nsName;
     
     for (uint32_t i = 0; i < count; ++i) {
-        Value keyVal = regs[base + startReg + i * 3];
-        Value slotVal = regs[base + startReg + i * 3 + 1];
-        Value isConstVal = regs[base + startReg + i * 3 + 2];
+        Value keyVal = Value::fromRawBits(values[i * 3]);
+        Value slotVal = Value::fromRawBits(values[i * 3 + 1]);
+        Value isConstVal = Value::fromRawBits(values[i * 3 + 2]);
         
         std::string key = keyVal.asString();
         int slot = static_cast<int>(slotVal.asDouble());
         bool isConst = isConstVal.truthy();
         
-        ObjUpVal* upval = vm->captureUpvaluePublic(base + registerOffset + slot);
+        ObjUpVal* upval = vm->captureUpvaluePublic(base + slot);
         ns->fields[key] = { upval, isConst };
     }
     frame->jitReturnSlot = res;
@@ -8554,15 +8538,13 @@ uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nam
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
+uint64_t jc2_jit_concat_strings(uint64_t* values, uint32_t count) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
     bool allStrings = true;
     size_t totalLen = 0;
     for (uint32_t i = 0; i < count; ++i) {
-        Value& v = regs[base + startReg + i];
+        Value v = Value::fromRawBits(values[i]);
         if (v.isString()) {
             totalLen += v.asString().size();
         } else {
@@ -8575,11 +8557,11 @@ uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
     if (allStrings) {
         result.reserve(totalLen);
         for (uint32_t i = 0; i < count; ++i) {
-            result += regs[base + startReg + i].asString();
+            result += Value::fromRawBits(values[i]).asString();
         }
     } else {
         for (uint32_t i = 0; i < count; ++i) {
-            Value& v = regs[base + startReg + i];
+            Value v = Value::fromRawBits(values[i]);
             if (v.isString()) {
                 result += v.asString();
             } else {
@@ -8596,11 +8578,10 @@ uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count) {
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk) {
+uint64_t jc2_jit_format_string(uint64_t val_bits, uint32_t specIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    int base = vm->getCurrentFrame()->registerBase;
-    Value val = vm->getRegisters()[base + valReg];
+    Value val = Value::fromRawBits(val_bits);
     const std::string& spec = chunk->constants[specIdx].asString();
 
     char align = '\0';
@@ -8645,14 +8626,11 @@ uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* c
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
+uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    CallFrame* frame = vm->getCurrentFrame();
-    Value* regs = vm->getRegisters();
-    int base = frame->registerBase;
     
-    Value obj = regs[base + objReg];
+    Value obj = Value::fromRawBits(obj_bits);
     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
     Value keyVal = chunk->constants[ic.nameIdx];
     
@@ -9273,14 +9251,11 @@ uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk) {
+uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    CallFrame* frame = vm->getCurrentFrame();
-    Value* regs = vm->getRegisters();
-    int base = frame->registerBase;
     
-    Value obj = regs[base + objReg];
+    Value obj = Value::fromRawBits(obj_bits);
     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
     Value keyVal = chunk->constants[ic.nameIdx];
     
@@ -10152,12 +10127,10 @@ uint64_t jc2_jit_iter_next(uint64_t state_bits) {
     JIT_CALLOUT_CATCH
 }
 
-void jc2_jit_assert_param_type(uint32_t a, uint32_t b, uint32_t c) {
+void jc2_jit_assert_param_type(uint64_t a_bits, uint32_t b, uint32_t c) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
-    vm->execAssertParamType(regs[base + a], (int)b, c);
+    vm->execAssertParamType(Value::fromRawBits(a_bits), (int)b, c);
     JIT_CALLOUT_CATCH_VOID
 }
 
@@ -10322,34 +10295,28 @@ Value VM::opMatchType(Value val, Value typeVal) {
     }
 }
 
-uint64_t jc2_jit_in(uint32_t b, uint32_t c) {
+uint64_t jc2_jit_in(uint64_t b_bits, uint64_t c_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
-    bool found = vm->opIn(regs[base + b], regs[base + c]);
+    bool found = vm->opIn(Value::fromRawBits(b_bits), Value::fromRawBits(c_bits));
     return Value(found).as_bits;
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_import(uint32_t b) {
+uint64_t jc2_jit_import(uint64_t b_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
-    Value path = regs[base + b];
+    Value path = Value::fromRawBits(b_bits);
     if (!path.isString()) throw std::runtime_error("VM Error: import requires a string path.");
     Value result = vm->importModule(path.asString());
     return result.as_bits;
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_match_type(uint32_t b, uint32_t c) {
+uint64_t jc2_jit_match_type(uint64_t b_bits, uint64_t c_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
-    Value result = vm->opMatchType(regs[base + b], regs[base + c]);
+    Value result = vm->opMatchType(Value::fromRawBits(b_bits), Value::fromRawBits(c_bits));
     return result.as_bits;
     JIT_CALLOUT_CATCH
 }
@@ -11085,13 +11052,19 @@ uint64_t jc2_jit_truthy(uint64_t val_bits) {
     return VM::activeVM->evaluateTruthiness(val) ? 1 : 0;
 }
 
-uint64_t jc2_jit_invoke(uint32_t objReg, uint32_t argc, uint32_t icIdx, uint32_t isPrivate, uint32_t fbType, const Chunk* chunk) {
+uint64_t jc2_jit_invoke(uint64_t* values, const JitInvokeInfo* info) {
     JIT_CALLOUT_TRY
-    (void)chunk;
     VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     int initialFrameCount = vm->frameCount;
     
-    vm->execInvoke(objReg, argc, 0, icIdx, false, static_cast<int>(fbType), isPrivate != 0);
+    uint32_t total = info->argc + 1 + (info->fbType == 1 ? 1 : 0);
+    for (uint32_t i = 0; i < total; ++i) {
+        regs[base + info->objReg + i] = Value::fromRawBits(values[i]);
+    }
+    
+    vm->execInvoke(info->objReg, info->argc, 0, info->icIdx, false, static_cast<int>(info->fbType), info->isPrivate != 0);
     
     if (vm->frameCount > initialFrameCount) {
         int targetDepth = initialFrameCount;
@@ -11099,20 +11072,26 @@ uint64_t jc2_jit_invoke(uint32_t objReg, uint32_t argc, uint32_t icIdx, uint32_t
         vm->getCurrentFrame()->jitReturnSlot = res;
         return res.as_bits;
     } else {
-        Value res = vm->getRegisters()[vm->getCurrentFrame()->registerBase + objReg];
+        Value res = regs[base + info->objReg];
         vm->getCurrentFrame()->jitReturnSlot = res;
         return res.as_bits;
     }
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, const Chunk* chunk) {
+uint64_t jc2_jit_super_invoke(uint64_t* values, const JitSuperInvokeInfo* info) {
     JIT_CALLOUT_TRY
-    (void)chunk;
     VM* vm = VM::activeVM;
+    Value* regs = vm->getRegisters();
+    int base = vm->getCurrentFrame()->registerBase;
     int initialFrameCount = vm->frameCount;
     
-    vm->execSuperInvoke(objReg, argc, 0, nameIdx, false);
+    uint32_t total = info->argc + 1;
+    for (uint32_t i = 0; i < total; ++i) {
+        regs[base + info->objReg + i] = Value::fromRawBits(values[i]);
+    }
+    
+    vm->execSuperInvoke(info->objReg, info->argc, 0, info->nameIdx, false);
     
     if (vm->frameCount > initialFrameCount) {
         int targetDepth = initialFrameCount;
@@ -11120,7 +11099,7 @@ uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, 
         vm->getCurrentFrame()->jitReturnSlot = res;
         return res.as_bits;
     } else {
-        Value res = vm->getRegisters()[vm->getCurrentFrame()->registerBase + objReg];
+        Value res = regs[base + info->objReg];
         vm->getCurrentFrame()->jitReturnSlot = res;
         return res.as_bits;
     }
@@ -11168,15 +11147,13 @@ void jc2_jit_set_upval(uint32_t uvIdx, uint64_t val_bits) {
     JIT_CALLOUT_CATCH_VOID
 }
 
-uint64_t jc2_jit_get_super(uint32_t objReg, uint32_t nameIdx, const Chunk* chunk) {
+uint64_t jc2_jit_get_super(uint64_t obj_bits, uint32_t nameIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
-    Value* regs = vm->getRegisters();
-    int base = frame->registerBase;
     
     const std::string& field = chunk->constants[nameIdx].asString();
-    Value selfVal = regs[base + objReg];
+    Value selfVal = Value::fromRawBits(obj_bits);
     if (!selfVal.isInstance()) throw std::runtime_error("VM Error: 'super' requires an instance context.");
     auto inst = selfVal.asInstance();
     
@@ -11233,15 +11210,12 @@ uint64_t jc2_jit_get_super(uint32_t objReg, uint32_t nameIdx, const Chunk* chunk
     JIT_CALLOUT_CATCH
 }
 
-void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk) {
+void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    CallFrame* frame = vm->getCurrentFrame();
-    Value* regs = vm->getRegisters();
-    int base = frame->registerBase;
     
-    Value obj = regs[base + objReg];
-    Value val = regs[base + valReg];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value val = Value::fromRawBits(val_bits);
     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
     Value keyVal = chunk->constants[ic.nameIdx];
     
@@ -11312,13 +11286,11 @@ void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Ch
     JIT_CALLOUT_CATCH_VOID
 }
 
-uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg) {
+uint64_t jc2_jit_dict_rest(uint64_t obj_bits, uint64_t exclude_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
-    Value* regs = vm->getRegisters();
-    int base = vm->getCurrentFrame()->registerBase;
-    Value obj = regs[base + objReg];
-    Value excludeKeysVal = regs[base + excludeKeysReg];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value excludeKeysVal = Value::fromRawBits(exclude_bits);
     
     std::unordered_set<std::string> excludeKeys;
     if (excludeKeysVal.isObjType(ObjType::LIST)) {

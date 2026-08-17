@@ -68,6 +68,60 @@ private:
 inline bool g_jc2_jit_deoptimized = false;
 inline uint32_t g_jit_pending_exception = 0;
 
+// GC 安全运行时函数 (StackMap pin)
+// 由汇编在 callout 前调用，按 StackMap 精确标记 JIT 活对象：
+// - 容器/字符串：markObj（sweep 保留）
+// - 纯数据（BigInt/Matrix 等）：refCount +1（pin，防止 freeObj 即时释放）
+// callout 返回后调用 jc2_jit_gc_unpin 恢复 refCount。
+inline void jc2_jit_gc_pin(SavedRegisters* regs, uint32_t bailoutId) {
+    const StackMap* map = DeoptRegistry::get().getStackMap(bailoutId);
+    if (!map) return;
+    VM* vm = VM::activeVM;
+    if (!vm) return;
+
+    for (size_t i = 0; i < map->locals.size(); ++i) {
+        const StackMapSlot& slot = map->locals[i];
+        if (slot.location.isInvalid()) continue;
+
+        Value v;
+        if (slot.location.isPhysicalGPR()) {
+            uint64_t rawVal = regs->gpr[slot.location.pregGPR().id()];
+            if (slot.type == JITType::TaggedValue) v = Value::fromRawBits(rawVal);
+        } else if (slot.location.isStackSlot()) {
+            uint64_t frame_rbp = regs->gpr[5];
+            uint64_t* slotPtr = reinterpret_cast<uint64_t*>(frame_rbp - slot.location.slot() - 64);
+            if (slot.type == JITType::TaggedValue) v = Value::fromRawBits(*slotPtr);
+        } else if (slot.location.isImm64()) {
+            if (slot.type == JITType::TaggedValue) v = Value::fromRawBits(slot.location.imm64());
+        }
+
+        if (v.isObj()) {
+            Obj* obj = v.asObj();
+            bool isContainerOrString = obj->type == ObjType::LIST || obj->type == ObjType::DICT ||
+                                       obj->type == ObjType::SET || obj->type == ObjType::CLOSURE ||
+                                       obj->type == ObjType::CLASS || obj->type == ObjType::INSTANCE ||
+                                       obj->type == ObjType::SUPER_PROXY || obj->type == ObjType::NAMESPACE ||
+                                       obj->type == ObjType::UPVALUE || obj->type == ObjType::STRING ||
+                                       obj->type == ObjType::TYPE_DEF;
+            if (isContainerOrString) {
+                GcHeap::get().markObj(obj);
+            } else {
+                obj->refCount++;
+                vm->jitPinList.push_back(obj);
+            }
+        }
+    }
+}
+
+inline void jc2_jit_gc_unpin() {
+    VM* vm = VM::activeVM;
+    if (!vm) return;
+    for (Obj* obj : vm->jitPinList) {
+        obj->refCount--;
+    }
+    vm->jitPinList.clear();
+}
+
 // 主动同步运行时函数 (Eager Sync)
 // 由汇编跳板调用，负责将 JIT 物理寄存器状态安全地刷回解释器，触发正确的引用计数
 inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {

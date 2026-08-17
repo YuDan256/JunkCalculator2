@@ -153,6 +153,8 @@ public:
 
 public:
     Value jit_exception_value = Value::none();
+    // ★ JIT GC pin 列表：callout 期间由 jc2_jit_gc_pin 记录 +1 的纯数据对象，jc2_jit_gc_unpin 时 -1
+    std::vector<Obj*> jitPinList;
     bool evaluateTruthiness(const Value& val);
     bool checkValueType(const Value& val, ObjTypeDef* td);
     bool opIn(Value needle, Value haystack);
@@ -305,22 +307,46 @@ public:
 };
 
 // JIT Runtime Helpers (Step 84)
-uint64_t jc2_jit_build_list(uint32_t startReg, uint32_t count);
-uint64_t jc2_jit_build_dict(uint32_t startReg, uint32_t count);
-uint64_t jc2_jit_build_set(uint32_t startReg, uint32_t count);
-uint64_t jc2_jit_build_matrix(uint32_t startReg, uint32_t shapeIdx, const Chunk* chunk);
-uint64_t jc2_jit_build_slice(uint32_t startReg);
+// invoke 的编译时常量打包：callout 只传 values 数组 + 指向此结构的指针，
+// 避免在变长 callout 里传 6 个固定参数（其中 5 个都是编译时常量）。
+struct JitInvokeInfo {
+    uint32_t objReg;
+    uint32_t argc;
+    uint32_t icIdx;
+    uint32_t isPrivate;
+    int32_t fbType;
+    const Chunk* chunk;
+};
+inline std::vector<JitInvokeInfo>& jitInvokeInfos() {
+    static std::vector<JitInvokeInfo> infos;
+    return infos;
+}
+struct JitSuperInvokeInfo {
+    uint32_t objReg;
+    uint32_t argc;
+    uint32_t nameIdx;
+    const Chunk* chunk;
+};
+inline std::vector<JitSuperInvokeInfo>& jitSuperInvokeInfos() {
+    static std::vector<JitSuperInvokeInfo> infos;
+    return infos;
+}
+uint64_t jc2_jit_build_list(uint64_t* values, uint32_t count);
+uint64_t jc2_jit_build_dict(uint64_t* values, uint32_t count);
+uint64_t jc2_jit_build_set(uint64_t* values, uint32_t count);
+uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, const Chunk* chunk);
+uint64_t jc2_jit_build_slice(uint64_t start_bits, uint64_t stop_bits, uint64_t step_bits);
 uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk);
 uint64_t jc2_jit_get_global(uint32_t icIdx, const Chunk* chunk);
 void jc2_jit_set_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk);
 uint64_t jc2_jit_get_ref_param(uint32_t bx);
 void jc2_jit_set_ref_param(uint32_t bx, uint64_t val_bits);
-uint64_t jc2_jit_build_namespace(uint32_t startReg, uint32_t count, uint32_t nameIdx, const Chunk* chunk, uint32_t registerOffset);
+uint64_t jc2_jit_build_namespace(uint64_t* values, uint32_t count, uint32_t nameIdx, const Chunk* chunk);
 uint64_t jc2_jit_dict_init();
-void jc2_jit_dict_append(uint32_t dictReg, uint32_t keyReg, uint32_t valReg);
-uint64_t jc2_jit_concat_strings(uint32_t startReg, uint32_t count);
-uint64_t jc2_jit_format_string(uint32_t valReg, uint32_t specIdx, const Chunk* chunk);
-uint64_t jc2_jit_dict_rest(uint32_t objReg, uint32_t excludeKeysReg);
+void jc2_jit_dict_append(uint64_t dict_bits, uint64_t key_bits, uint64_t val_bits);
+uint64_t jc2_jit_concat_strings(uint64_t* values, uint32_t count);
+uint64_t jc2_jit_format_string(uint64_t val_bits, uint32_t specIdx, const Chunk* chunk);
+uint64_t jc2_jit_dict_rest(uint64_t obj_bits, uint64_t exclude_bits);
 uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset);
 void jc2_jit_assign_global(uint32_t slot, uint64_t src_bits);
 
@@ -344,22 +370,22 @@ uint64_t jc2_jit_unary_unm(uint64_t val_bits);
 uint64_t jc2_jit_unary_bnot(uint64_t val_bits);
 
 // Dynamic Properties & Indexing (Step 94)
-uint64_t jc2_jit_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
-uint64_t jc2_jit_try_get_prop(uint32_t objReg, uint32_t icIdx, const Chunk* chunk);
-void jc2_jit_set_prop(uint32_t objReg, uint32_t valReg, uint32_t icIdx, const Chunk* chunk);
+uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk);
+uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk);
 uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t dims, uint32_t noThrow);
 uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t val_bits, uint32_t dims, uint32_t objReg);
-uint64_t jc2_jit_in(uint32_t b, uint32_t c);
-uint64_t jc2_jit_import(uint32_t b);
-uint64_t jc2_jit_match_type(uint32_t b, uint32_t c);
+uint64_t jc2_jit_in(uint64_t b_bits, uint64_t c_bits);
+uint64_t jc2_jit_import(uint64_t b_bits);
+uint64_t jc2_jit_match_type(uint64_t b_bits, uint64_t c_bits);
 uint64_t jc2_jit_iter_init(uint64_t iterable_bits, uint32_t c);
 uint64_t jc2_jit_iter_next(uint64_t state_bits);
 uint64_t jc2_jit_is_uninit(uint64_t val_bits);
-void jc2_jit_assert_param_type(uint32_t a, uint32_t b, uint32_t c);
+void jc2_jit_assert_param_type(uint64_t a_bits, uint32_t b, uint32_t c);
 uint64_t jc2_jit_truthy(uint64_t val_bits);
-uint64_t jc2_jit_invoke(uint32_t objReg, uint32_t argc, uint32_t icIdx, uint32_t isPrivate, uint32_t fbType, const Chunk* chunk);
-uint64_t jc2_jit_super_invoke(uint32_t objReg, uint32_t argc, uint32_t nameIdx, const Chunk* chunk);
-uint64_t jc2_jit_get_super(uint32_t objReg, uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_invoke(uint64_t* values, const JitInvokeInfo* info);
+uint64_t jc2_jit_super_invoke(uint64_t* values, const JitSuperInvokeInfo* info);
+uint64_t jc2_jit_get_super(uint64_t obj_bits, uint32_t nameIdx, const Chunk* chunk);
 uint64_t jc2_jit_get_self();
 uint64_t jc2_jit_get_current_closure();
 uint64_t jc2_jit_get_upval(uint32_t uvIdx);

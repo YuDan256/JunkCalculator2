@@ -777,6 +777,9 @@ public:
                         auto handleBranchTarget = [&](HIRNode* branchCtrl, int targetIp) {
                             if (isOSR_ && targetIp < osrLoopHeaderIp_) {
                                 builder_.setCurrentControl(branchCtrl);
+                                if (blockExitStates_.count(-1)) {
+                                    builder_.setRegisters(blockExitStates_[-1]);
+                                }
                                 auto fs = captureFrameState(currentIp);
                                 builder_.createDeoptimize(fs);
                             } else if (cfg_.ipToBlockId.count(targetIp)) {
@@ -800,6 +803,13 @@ public:
                     case OpCode::JMP: {
                         int targetIp = ip + sax;
                         if (isOSR_ && targetIp < osrLoopHeaderIp_) {
+                            // OSR 退出：deopt 点应快照 OSR 入口的完整寄存器状态（LoadRegister），
+                            // 而不是循环体内 MOVE/GET_PROP 传播后的更新值（可能 stale）。
+                            // 否则循环第一次迭代就退出时，更新值在 JIT 里从未被计算，
+                            // deopt 恢复会读到 stale 的寄存器/栈槽残留。
+                            if (blockExitStates_.count(-1)) {
+                                builder_.setRegisters(blockExitStates_[-1]);
+                            }
                             auto fs = captureFrameState(currentIp);
                             builder_.createDeoptimize(fs);
                         } else if (cfg_.ipToBlockId.count(targetIp)) {

@@ -803,13 +803,9 @@ public:
                     case OpCode::JMP: {
                         int targetIp = ip + sax;
                         if (isOSR_ && targetIp < osrLoopHeaderIp_) {
-                            // OSR 退出：deopt 点应快照 OSR 入口的完整寄存器状态（LoadRegister），
-                            // 而不是循环体内 MOVE/GET_PROP 传播后的更新值（可能 stale）。
-                            // 否则循环第一次迭代就退出时，更新值在 JIT 里从未被计算，
-                            // deopt 恢复会读到 stale 的寄存器/栈槽残留。
-                            if (blockExitStates_.count(-1)) {
-                                builder_.setRegisters(blockExitStates_[-1]);
-                            }
+                            // OSR 退出：deopt 点快照当前寄存器状态（数据流分析已保证正确性）。
+                            // 不能用 OSR 入口快照（blockExitStates_[-1]），否则循环体内已更新的值
+                            // （如 x += STRIP_WIDTH）会被回退成入口旧值，deopt 恢复后读到错误状态。
                             auto fs = captureFrameState(currentIp);
                             builder_.createDeoptimize(fs);
                         } else if (cfg_.ipToBlockId.count(targetIp)) {

@@ -30,6 +30,7 @@ struct LiveInterval {
     XMMRegister allocatedXMM;
     int32_t allocatedSlot = -1;
     float spillWeight = 0.0f;
+    int32_t spillPos = -1; // 溢出 store 的 linearId；-1 = 未溢出
 
     void addRange(uint32_t start, uint32_t end) {
         if (start >= end) return;

@@ -228,11 +228,10 @@ private:
             
             if (freeGPRs) {
                 current->allocatedGPR = spillCandidate->allocatedGPR;
-                spillCandidate->allocatedGPR = Register();
+                // 保留 spillCandidate->allocatedGPR：溢出 store 之前的 deopt 点还要用物理寄存器恢复
             }
             if (freeXMMs) {
                 current->allocatedXMM = spillCandidate->allocatedXMM;
-                spillCandidate->allocatedXMM = XMMRegister();
             }
             active.erase(bestIt);
             active.push_back(current);
@@ -243,6 +242,21 @@ private:
     }
 
     void rewriteInstructions() {
+        // 预扫描：提前记录每个被溢出 vreg 的溢出 store 位置（其第一个 def 的 linearId）。
+        // 必须在主循环之前完成，否则主循环里靠前的 deopt 点会看到 spillPos 还是 -1。
+        for (LIRBlock* block : lir_.blocks()) {
+            for (LIRInst* inst : block->instructions()) {
+                for (const auto& def : inst->defs()) {
+                    if (def.isVirtual()) {
+                        LiveInterval& interval = liveness_.intervalsMut().at(def.vreg());
+                        if (interval.allocatedSlot != -1 && interval.spillPos == -1) {
+                            interval.spillPos = static_cast<int32_t>(inst->linearId());
+                        }
+                    }
+                }
+            }
+        }
+
         for (LIRBlock* block : lir_.blocks()) {
             std::vector<LIRInst*> newInsts;
             for (LIRInst* inst : block->instructions()) {
@@ -261,22 +275,6 @@ private:
                     if (scratchXMMIdx >= 2) throw std::runtime_error("JIT Error: Out of scratch XMMs.");
                     return scratchXMMs[scratchXMMIdx++];
                 };
-
-                // Resolve fsUses
-                for (auto& fsUsePair : inst->fsUsesMut()) {
-                    LIROperand& use = fsUsePair.first;
-                    if (use.isVirtual()) {
-                        uint32_t fsvreg = use.vreg();
-                        LiveInterval& interval = liveness_.intervalsMut().at(fsvreg);
-                        if (interval.allocatedSlot != -1) {
-                            use = LIROperand::createStackSlot(interval.allocatedSlot);
-                        } else if (lir_.isVRegFloat(fsvreg)) {
-                            use = LIROperand::createPhysicalXMM(interval.allocatedXMM);
-                        } else {
-                            use = LIROperand::createPhysicalGPR(interval.allocatedGPR);
-                        }
-                    }
-                }
 
                 // Resolve uses
                 for (size_t i = 0; i < inst->uses().size(); ++i) {
@@ -336,6 +334,7 @@ private:
                             // Spilled
                             if (inst->opcode() == LIROpcode::Move || inst->opcode() == LIROpcode::ParallelMove) {
                                 def = LIROperand::createStackSlot(interval.allocatedSlot);
+                                if (interval.spillPos == -1) interval.spillPos = static_cast<int32_t>(inst->linearId());
                             } else {
                                 LIROperand stackOp = LIROperand::createStackSlot(interval.allocatedSlot);
                                 LIROperand regOp;
@@ -419,7 +418,33 @@ private:
                         }
                     }
                 }
-                
+
+                // Resolve fsUses（必须在 Resolve defs 之后：此时才记录好每个 vreg 的溢出位置）
+                for (auto& fsUsePair : inst->fsUsesMut()) {
+                    LIROperand& use = fsUsePair.first;
+                    if (use.isVirtual()) {
+                        uint32_t fsvreg = use.vreg();
+                        LiveInterval& interval = liveness_.intervalsMut().at(fsvreg);
+                        if (interval.allocatedSlot != -1) {
+                            // deopt 点在溢出 store 之前：值还在物理寄存器里，用物理寄存器；
+                            // 之后：值在栈槽里，用栈槽。
+                            if (interval.spillPos != -1 && inst->linearId() < static_cast<uint32_t>(interval.spillPos)) {
+                                if (lir_.isVRegFloat(fsvreg)) {
+                                    use = LIROperand::createPhysicalXMM(interval.allocatedXMM);
+                                } else {
+                                    use = LIROperand::createPhysicalGPR(interval.allocatedGPR);
+                                }
+                            } else {
+                                use = LIROperand::createStackSlot(interval.allocatedSlot);
+                            }
+                        } else if (lir_.isVRegFloat(fsvreg)) {
+                            use = LIROperand::createPhysicalXMM(interval.allocatedXMM);
+                        } else {
+                            use = LIROperand::createPhysicalGPR(interval.allocatedGPR);
+                        }
+                    }
+                }
+
                 newInsts.push_back(inst);
                 for (auto post : postInsts) {
                     newInsts.push_back(post);

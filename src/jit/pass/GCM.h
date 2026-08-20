@@ -59,7 +59,10 @@ private:
     }
 
     bool isPinned(HIRNode* node) const {
-        return isControlNode(node) || node->opcode() == HIROp::Phi;
+        // LoadRegister 必须固定在 OSR 入口（其 control input 所在块），不能被 GCM 调度到 use 位置。
+        // 否则内层循环里不变参数（如 draw 的 im）的 LoadRegister 会被移到循环体末尾的 INVOKE 处，
+        // 导致循环体前段 deopt 点读到未初始化的物理寄存器（垃圾值），恢复后类型错误。
+        return isControlNode(node) || node->opcode() == HIROp::Phi || node->opcode() == HIROp::LoadRegister;
     }
 
     // 副作用节点（调用/存储/守卫）必须固定在其控制流块中，
@@ -344,7 +347,7 @@ private:
         visited.insert(node);
 
         if (isPinned(node)) {
-            if (node->opcode() == HIROp::Phi) {
+            if (node->opcode() == HIROp::Phi || node->opcode() == HIROp::LoadRegister) {
                 if (!node->inputs().empty()) {
                     HIRNode* ctrl = node->inputs()[0];
                     if (ctrl) {

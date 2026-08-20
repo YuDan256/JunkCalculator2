@@ -422,7 +422,33 @@ private:
             }
         }
 
+        // 带 FrameState（deopt 恢复点）的节点固定在其 uses 的 LCA，不能被 LICM 提升。
+        // 否则 deopt 恢复的寄存器状态会对错执行位置：例如内层循环回边增量 ty += 1
+        // 被提升到外层循环头，其 FrameState 引用的内层循环 phi 尚未定义，导致恢复读垃圾。
+        bool hasFrameState = false;
+        for (HIRNode* in : node->inputs()) {
+            if (in && in->type() == JITType::FrameState) {
+                hasFrameState = true;
+                break;
+            }
+        }
+
         if (lca == nullptr) {
+            // 节点只被 FrameState（deopt 恢复点）引用时不能当作 dead。
+            // 否则它的 def 不生成，deopt 恢复读到未初始化的栈槽。例如外层循环回边增量
+            // x += STRIP_WIDTH 的 BoxInt32 装箱结果只被回边 deopt 点的 FrameState 引用，
+            // 被当作 dead 后恢复读到垃圾值，导致 slice 越界。
+            bool usedByFrameState = false;
+            for (HIRNode* use : node->uses()) {
+                if (use->type() == JITType::FrameState) { usedByFrameState = true; break; }
+            }
+            if (usedByFrameState) {
+                // 固定到 earlyBlock（scheduleEarly 计算的 inputs 最大 domDepth），保证 def 在 deopt 点之前。
+                LIRBlock* eb = nodeToBlock_[node];
+                if (!eb && !blocks_.empty()) eb = blocks_[0];
+                nodeToBlock_[node] = eb;
+                return;
+            }
             nodeToBlock_.erase(node);
             return; // Dead code
         }
@@ -442,17 +468,7 @@ private:
             return;
         }
 
-        // 带 FrameState（deopt 恢复点）的节点固定在其 uses 的 LCA，不能被 LICM 提升。
-        // 否则 deopt 恢复的寄存器状态会对错执行位置：例如内层循环回边增量 ty += 1
-        // 被提升到外层循环头，其 FrameState 引用的内层循环 phi 尚未定义，导致恢复读垃圾。
-        bool hasFrameState = false;
-        for (HIRNode* in : node->inputs()) {
-            if (in && in->type() == JITType::FrameState) {
-                hasFrameState = true;
-                break;
-            }
-        }
-        if (hasFrameState && lca != nullptr) {
+        if (hasFrameState) {
             nodeToBlock_[node] = lca;
             return;
         }

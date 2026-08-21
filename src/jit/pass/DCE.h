@@ -56,27 +56,13 @@ public:
                 for (size_t i = 0; i < node->inputs().size(); ++i) {
                     HIRNode* input = node->inputs()[i];
                     if (input && liveNodes.find(input) == liveNodes.end()) {
-                        if (input->opcode() == HIROp::LoadRegister) {
-                            // 死掉的 LoadRegister 有两种：
-                            // 1) 从未被修改，仅被 FrameState 引用，可安全移除（零开销，
-                            //    去优化时解释器直接用 VM::registers 中的旧值）；
-                            // 2) 被循环头的 Phi 引用，说明它的值在循环中被修改。
-                            //    若传播阶段因循环依赖未将其标记存活，这里若直接移除，
-                            //    去优化时会丢失修改后的值。因此被 Phi 引用时必须保活。
-                            bool usedByPhi = false;
-                            for (HIRNode* use : input->uses()) {
-                                if (use->opcode() == HIROp::Phi) { usedByPhi = true; break; }
-                            }
-                            if (usedByPhi) {
-                                liveNodes.insert(input);
-                                worklist.push_back(input);
-                            } else {
-                                node->replaceInput(i, nullptr);
-                            }
-                        } else {
-                            liveNodes.insert(input);
-                            worklist.push_back(input);
-                        }
+                        // ★ 修复：所有 input（包括 LoadRegister）一律保活。
+                        // LoadRegister 是 TaggedValue（可能是 GC 对象，如 self.zombies 这种 DICT），
+                        // GC pin (jc2_jit_gc_pin) 依赖 FrameState 记录所有活跃对象；
+                        // 若移除，FrameState 会遗漏该对象，GC sweep 会回收仍在使用的对象（use-after-free）。
+                        // 去优化恢复仍安全：解释器直接用 VM::registers 中的旧值。
+                        liveNodes.insert(input);
+                        worklist.push_back(input);
                     }
                 }
             }

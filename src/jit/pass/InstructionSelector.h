@@ -44,11 +44,16 @@ public:
             }
         }
 
-        // 2.5 OSR 编译：phi 输出与入口 LoadRegister 合并到同一 vreg（两者活跃区间不重叠，安全复用）。
+        // 2.5 OSR 编译：循环头 phi 输出与入口 LoadRegister 合并到同一 vreg（两者活跃区间不重叠，安全复用）。
         // 否则 phi 输出被 spill 而入口值仍在寄存器，循环头会读到未初始化的 phi 输出。
         // 注意：OSR 循环头的 phi 其 inputs[0] 是 LoopBegin（不是 OSREntry），入口值才是 LoadRegister。
+        // 只合并 in0 是 LoopBegin 的循环头 phi。循环体内部的 Merge phi（in0 是 Merge）虽然
+        // 入口值也可能是同一个 LoadRegister，但它们彼此活跃区间重叠，若都合并到同一 vreg 会
+        // 导致 LinearScan 分配冲突，deopt 恢复时读到错位的值（zombie 里 R7/R8 恢复成 none/double）。
         for (auto node : hir_.nodes()) {
             if (node->opcode() == HIROp::Phi && node->inputs().size() > 1) {
+                HIRNode* mergeNode = node->inputs()[0];
+                if (!mergeNode || mergeNode->opcode() != HIROp::LoopBegin) continue;
                 HIRNode* entryVal = node->inputs()[1];
                 if (entryVal && entryVal->opcode() == HIROp::LoadRegister) {
                     auto entryIt = nodeToOperand_.find(entryVal);

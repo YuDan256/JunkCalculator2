@@ -7,6 +7,7 @@
 #include "../frontend/Token.h"
 #include "../jit/backend/ExecutableMemory.h"
 #include <vector>
+#include <deque>
 #include <unordered_map>
 #include <memory>
 #include <set>
@@ -317,8 +318,8 @@ struct JitInvokeInfo {
     int32_t fbType;
     const Chunk* chunk;
 };
-inline std::vector<JitInvokeInfo>& jitInvokeInfos() {
-    static std::vector<JitInvokeInfo> infos;
+inline std::deque<JitInvokeInfo>& jitInvokeInfos() {
+    static std::deque<JitInvokeInfo> infos;
     return infos;
 }
 struct JitSuperInvokeInfo {
@@ -327,8 +328,8 @@ struct JitSuperInvokeInfo {
     uint32_t nameIdx;
     const Chunk* chunk;
 };
-inline std::vector<JitSuperInvokeInfo>& jitSuperInvokeInfos() {
-    static std::vector<JitSuperInvokeInfo> infos;
+inline std::deque<JitSuperInvokeInfo>& jitSuperInvokeInfos() {
+    static std::deque<JitSuperInvokeInfo> infos;
     return infos;
 }
 uint64_t jc2_jit_build_list(uint64_t* values, uint32_t count);

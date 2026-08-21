@@ -371,6 +371,8 @@ public:
     std::vector<Instruction> code;
     std::vector<uint8_t> typeFeedback; // ★ JIT Tier 0 Profiling
     std::vector<uint32_t> osrCounters; // ★ JIT OSR Profiling (Step 78)
+    std::vector<uint8_t> osrLoopHeaderFlags; // ★ 真正的循环头标志（基于 CFG 回边，Step 78+）
+    bool osrLoopHeadersComputed = false; // ★ 循环头标志是否已计算
     std::vector<Value> constants;
     std::vector<int> lines;
     std::vector<InlineCache> inlineCaches;
@@ -382,6 +384,7 @@ public:
         code.push_back(inst);
         typeFeedback.push_back(0); // 初始化为 0 (Uninitialized)
         osrCounters.push_back(0);  // 初始化为 0
+        osrLoopHeaderFlags.push_back(0); // 循环头标志，由 CFG 分析填充
         lines.push_back(line);
     }
 

@@ -13,6 +13,7 @@
 #include "EngineInterrupt.h"
 #include "BytecodeSerializer.h"
 #include "../jit/runtime/Deoptimization.h"
+#include "../jit/frontend/BytecodeCFG.h"
 #include "../jit/frontend/BytecodeToHIR.h"
 #include "../jit/pass/DeadPhiElimination.h"
 #include "../jit/pass/ConstantFolding.h"
@@ -3494,6 +3495,23 @@ Value VM::run(int targetFrameDepth) {
     // 提取 EXTRAARG 扩展操作数 (24-bit)
     #define FETCH_EXTRA() (code[ip++] >> 8)
 
+    // 懒构建循环头标志：基于 CFG（dominator 回边）识别真正的循环头，
+    // 避免把循环体内部的向后跳转（如 zombie 里 ty 循环退出后跳回 GET_SELF）误判为回边。
+    #define ENSURE_OSR_LOOP_HEADERS() \
+        do { \
+            if (!chunk->osrLoopHeadersComputed) { \
+                jit::BytecodeCFG _cfg; \
+                _cfg.build(*chunk); \
+                const_cast<Chunk*>(chunk)->osrLoopHeaderFlags.assign(chunk->code.size(), 0); \
+                for (const auto& _blk : _cfg.blocks) { \
+                    if (_blk.isLoopHeader && _blk.startIp >= 0 && _blk.startIp < static_cast<int>(chunk->code.size())) { \
+                        const_cast<Chunk*>(chunk)->osrLoopHeaderFlags[_blk.startIp] = 1; \
+                    } \
+                } \
+                const_cast<Chunk*>(chunk)->osrLoopHeadersComputed = true; \
+            } \
+        } while (0)
+
     // 获取物理寄存器或溢出槽 (Unified Address Space)
     #define getReg(idx) frameRegs[idx]
 
@@ -4636,16 +4654,21 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::JMP: {
                 if (sax < 0) {
-                    if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
-                        if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
-                            int fnIdx = frame->closure->compiledFnIndex;
-                            int loopHeaderIp = ip + sax;
-                            if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
-                                compileForOSR(fnIdx, loopHeaderIp);
+                    int loopHeaderIp = ip + sax;
+                    if (loopHeaderIp >= 0 && loopHeaderIp < static_cast<int>(chunk->code.size())) {
+                        ENSURE_OSR_LOOP_HEADERS();
+                        if (chunk->osrLoopHeaderFlags[loopHeaderIp]) {
+                            if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                                if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
+                                    int fnIdx = frame->closure->compiledFnIndex;
+                                    if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
+                                        compileForOSR(fnIdx, loopHeaderIp);
+                                    }
+                                    bool osrTriggered = false;
+                                    ATTEMPT_OSR(loopHeaderIp);
+                                    if (osrTriggered) break;
+                                }
                             }
-                            bool osrTriggered = false;
-                            ATTEMPT_OSR(loopHeaderIp);
-                            if (osrTriggered) break;
                         }
                     }
                 }
@@ -4662,16 +4685,21 @@ Value VM::run(int targetFrameDepth) {
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (cond) {
                     if (sbx < 0) {
-                        if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
-                            if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
-                                int fnIdx = frame->closure->compiledFnIndex;
-                                int loopHeaderIp = ip + sbx;
-                                if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
-                                    compileForOSR(fnIdx, loopHeaderIp);
+                        int loopHeaderIp = ip + sbx;
+                        if (loopHeaderIp >= 0 && loopHeaderIp < static_cast<int>(chunk->code.size())) {
+                            ENSURE_OSR_LOOP_HEADERS();
+                            if (chunk->osrLoopHeaderFlags[loopHeaderIp]) {
+                                if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                                    if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
+                                        int fnIdx = frame->closure->compiledFnIndex;
+                                        if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
+                                            compileForOSR(fnIdx, loopHeaderIp);
+                                        }
+                                        bool osrTriggered = false;
+                                        ATTEMPT_OSR(loopHeaderIp);
+                                        if (osrTriggered) break;
+                                    }
                                 }
-                                bool osrTriggered = false;
-                                ATTEMPT_OSR(loopHeaderIp);
-                                if (osrTriggered) break;
                             }
                         }
                     }
@@ -4689,16 +4717,21 @@ Value VM::run(int targetFrameDepth) {
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (!cond) {
                     if (sbx < 0) {
-                        if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
-                            if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
-                                int fnIdx = frame->closure->compiledFnIndex;
-                                int loopHeaderIp = ip + sbx;
-                                if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
-                                    compileForOSR(fnIdx, loopHeaderIp);
+                        int loopHeaderIp = ip + sbx;
+                        if (loopHeaderIp >= 0 && loopHeaderIp < static_cast<int>(chunk->code.size())) {
+                            ENSURE_OSR_LOOP_HEADERS();
+                            if (chunk->osrLoopHeaderFlags[loopHeaderIp]) {
+                                if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                                    if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
+                                        int fnIdx = frame->closure->compiledFnIndex;
+                                        if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
+                                            compileForOSR(fnIdx, loopHeaderIp);
+                                        }
+                                        bool osrTriggered = false;
+                                        ATTEMPT_OSR(loopHeaderIp);
+                                        if (osrTriggered) break;
+                                    }
                                 }
-                                bool osrTriggered = false;
-                                ATTEMPT_OSR(loopHeaderIp);
-                                if (osrTriggered) break;
                             }
                         }
                     }

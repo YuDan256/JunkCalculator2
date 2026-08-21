@@ -1,5 +1,6 @@
 #include "BytecodeSerializer.h"
 #include "VM.h"
+#include "../jit/frontend/BytecodeCFG.h"
 #include <fstream>
 #include <cstring>
 #include <stdexcept>
@@ -309,7 +310,21 @@ void BytecodeSerializer::readChunk(std::istream& is, Chunk& chunk, int baseIdx) 
     chunk.code.resize(codeSize);
     chunk.typeFeedback.assign(codeSize, 0); // ★ JIT Tier 0 Profiling: 初始化为 0
     chunk.osrCounters.assign(codeSize, 0);  // ★ JIT OSR Profiling: 初始化为 0
+    chunk.osrLoopHeaderFlags.assign(codeSize, 0);
     for (uint32_t i = 0; i < codeSize; ++i) chunk.code[i] = read32(is);
+
+    // ★ 基于 CFG 识别真正的循环头（dominator 回边），填充 osrLoopHeaderFlags。
+    // 这样 VM 的 OSR 触发检测只对真正的循环回边生效，不会被循环体内部的向后跳转误导。
+    {
+        jit::BytecodeCFG cfg;
+        cfg.build(chunk);
+        for (const auto& blk : cfg.blocks) {
+            if (blk.isLoopHeader && blk.startIp >= 0 && blk.startIp < static_cast<int>(codeSize)) {
+                chunk.osrLoopHeaderFlags[blk.startIp] = 1;
+            }
+        }
+        chunk.osrLoopHeadersComputed = true;
+    }
 
     uint32_t linesSize = read32(is);
     chunk.lines.resize(linesSize);

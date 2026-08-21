@@ -824,12 +824,15 @@ public:
         return addConstant64(bits);
     }
     void emitConstantPool() {
-        // 常量池须 16 字节对齐：128 位 SSE 读（如 xorpd）的内存操作数要求 16 字节对齐，否则 #GP
-        while (offset() % 16 != 0) emit8(0);
+        // 常量池须 16 字节对齐：128 位 SSE 读（xorpd/andpd）的内存操作数要求 16 字节对齐，否则 #GP。
+        // 必须对 EACH 常量分别对齐（不能只对齐第一个），否则奇数索引的常量会落在 8-mod-16。
         for (auto& pair : constants_) {
+            while (offset() % 16 != 0) emit8(0);
             bind(pair.first);
             emit64(pair.second);
         }
+        // 末尾再对齐一次，保证最后一个常量的 128 位读不会越过 buffer 末尾。
+        while (offset() % 16 != 0) emit8(0);
         constants_.clear();
     }
 

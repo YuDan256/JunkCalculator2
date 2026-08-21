@@ -366,3 +366,6 @@ FodyWeavers.xsd
 RCa*
 
 data/Prime.bin
+
+# 本地调试文件（不上传仓库）
+local/

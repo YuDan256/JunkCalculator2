@@ -314,6 +314,11 @@ class Raycaster3D extends engine.GameEngine {
     }
 
     tryMove(new_x, new_y, axis) = {
+        // 边界钳制：防止 dt 突刺导致一步跨出地图（索引越界）
+        if (new_x < 0.0) new_x = 0.0
+        if (new_x > double(self.size - 1)) new_x = double(self.size - 1)
+        if (new_y < 0.0) new_y = 0.0
+        if (new_y > double(self.size - 1)) new_y = double(self.size - 1)
         val = self.map[int(new_x), int(new_y)]
         if (val == 5.0) { 
             if (self.level >= self.MAX_LEVEL) {

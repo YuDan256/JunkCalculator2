@@ -140,13 +140,6 @@ typedef struct JC2_HostAPI {
     int (*complex_matrix_cols)(JC2_VMContext ctx, JC2_ValueHandle mat);
     bool (*is_complex_matrix)(JC2_VMContext ctx, JC2_ValueHandle v);
     
-    JC2_ValueHandle (*make_string_matrix)(JC2_VMContext ctx, int rows, int cols);
-    const char* (*string_matrix_get)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col, size_t* out_len);
-    void (*string_matrix_set)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col, const char* str, size_t len);
-    int (*string_matrix_rows)(JC2_VMContext ctx, JC2_ValueHandle mat);
-    int (*string_matrix_cols)(JC2_VMContext ctx, JC2_ValueHandle mat);
-    bool (*is_string_matrix)(JC2_VMContext ctx, JC2_ValueHandle v);
-    
     /* --- 集合操作 (Set Operations) --- */
     JC2_ValueHandle (*make_set)(JC2_VMContext ctx);
     void (*set_add)(JC2_VMContext ctx, JC2_ValueHandle set, JC2_ValueHandle val);

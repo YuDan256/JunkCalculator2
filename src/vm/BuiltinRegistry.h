@@ -293,7 +293,6 @@ private:
     void registerControlFlow();
     void registerStringFunctions();
     void registerArrayFunctions();
-    void registerStringMatrix();
     void registerDictFunctions();
     void registerListConversion();
     void registerIntrospection();

@@ -146,7 +146,6 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                         else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                         else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                         else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                        else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
                         else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
                         else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                         else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
@@ -644,7 +643,6 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                     else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                     else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                    else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
                     else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
                     else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                     else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
@@ -1432,9 +1430,8 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                 case BuiltinType::SYMBOLIC: if (val.isObjType(ObjType::SYMBOLIC)) return true; break;
                 case BuiltinType::REALMAT: if (val.isObjType(ObjType::REAL_MATRIX)) return true; break;
                 case BuiltinType::COMPLEXMAT: if (val.isObjType(ObjType::COMPLEX_MATRIX)) return true; break;
-                case BuiltinType::STRINGMAT: if (val.isObjType(ObjType::STRING_MATRIX)) return true; break;
                 case BuiltinType::SYMMAT: if (val.isObjType(ObjType::SYM_MATRIX)) return true; break;
-                case BuiltinType::MATRIX: if (val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) return true; break;
+                case BuiltinType::MATRIX: if (val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) return true; break;
                 case BuiltinType::FUNC: if (val.isFunctionClosure()) return true; break;
                 case BuiltinType::CLASS: if (val.isClass()) return true; break;
                 case BuiltinType::INSTANCE: if (val.isInstance()) return true; break;
@@ -1442,7 +1439,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                 case BuiltinType::ITERABLE: {
                     if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
                         val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                        val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) return true;
+                        val.isObjType(ObjType::SYM_MATRIX)) return true;
                     if (val.isInstance()) { if (findDunder(val, "__iter__").first || findDunder(val, "__next__").first) return true; }
                     break;
                 }
@@ -1454,7 +1451,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                 case BuiltinType::INDEXABLE: {
                     if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
                         val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                        val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) return true;
+                        val.isObjType(ObjType::SYM_MATRIX)) return true;
                     if (val.isInstance()) { if (findDunder(val, "__getitem__").first != nullptr) return true; }
                     break;
                 }
@@ -1634,7 +1631,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
     else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
     else if (obj.isString()) objBt = BuiltinType::STRING;
-    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
 
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
@@ -3176,7 +3173,6 @@ VM::VM() {
     builtinValues["symbolic"] = makeType(BuiltinType::SYMBOLIC);
     builtinValues["realmatrix"] = makeType(BuiltinType::REALMAT);
     builtinValues["complexmatrix"] = makeType(BuiltinType::COMPLEXMAT);
-    builtinValues["stringmatrix"] = makeType(BuiltinType::STRINGMAT);
     builtinValues["symmatrix"] = makeType(BuiltinType::SYMMAT);
     builtinValues["matrix"] = makeType(BuiltinType::MATRIX);
     builtinValues["function"] = makeType(BuiltinType::FUNC);
@@ -4815,7 +4811,6 @@ Value VM::run(int targetFrameDepth) {
                 for (uint16_t cols : rowCols) total += cols;
 
                 bool hasComplex = false;
-                bool hasString = false;
                 bool hasSymbolic = false;
                 bool hasOther = false;
 
@@ -4824,13 +4819,12 @@ Value VM::run(int targetFrameDepth) {
                         v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
                         v.isObjType(ObjType::SYMBOLIC) ||
                         v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
-                        v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX);
+                        v.isObjType(ObjType::SYM_MATRIX);
                 };
 
                 for (int ii = 0; ii < total; ++ii) {
                     const Value& v = getReg(b + ii);
                     if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
-                    if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
                     if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
                     if (!canBeMatrixElement(v)) {
                         hasOther = true;
@@ -4866,16 +4860,13 @@ Value VM::run(int targetFrameDepth) {
                     bool hasSubMatrix = false;
                     for (int ii = 0; ii < total; ++ii) {
                         const Value& v = getReg(b + ii);
-                        if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
+                        if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
                     }
 
                     if (hasSubMatrix) {
                         auto extractCell = [&](Value& cell) {
-                            if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::STRING_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
-                                if (hasString) {
-                                    std::ostringstream oss; oss << cell;
-                                    cell = Value(StringMatrix(1, 1, { oss.str() }));
-                                } else if (hasSymbolic) {
+                            if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
+                                if (hasSymbolic) {
                                     cell = Value(SymMatrix(1, 1, { cell.asSymbolic() }));
                                 } else if (hasComplex) {
                                     cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
@@ -4883,36 +4874,7 @@ Value VM::run(int targetFrameDepth) {
                                     cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
                                 }
                             }
-                            if (hasString) {
-                                if (cell.isObjType(ObjType::REAL_MATRIX)) {
-                                    const auto& m = static_cast<ObjRealMatrix*>(cell.asObj())->mat;
-                                    std::vector<std::string> flat;
-                                    for (int i = 0; i < m.getRows(); ++i)
-                                        for (int j = 0; j < m.getCols(); ++j) {
-                                            std::ostringstream oss; oss << Value(m(i, j));
-                                            flat.push_back(oss.str());
-                                        }
-                                    cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                                } else if (cell.isObjType(ObjType::COMPLEX_MATRIX)) {
-                                    const auto& m = static_cast<ObjComplexMatrix*>(cell.asObj())->mat;
-                                    std::vector<std::string> flat;
-                                    for (int i = 0; i < m.getRows(); ++i)
-                                        for (int j = 0; j < m.getCols(); ++j) {
-                                            std::ostringstream oss; oss << Value(m(i, j));
-                                            flat.push_back(oss.str());
-                                        }
-                                    cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                                } else if (cell.isObjType(ObjType::SYM_MATRIX)) {
-                                    const auto& m = static_cast<ObjSymMatrix*>(cell.asObj())->mat;
-                                    std::vector<std::string> flat;
-                                    for (int i = 0; i < m.getRows(); ++i)
-                                        for (int j = 0; j < m.getCols(); ++j) {
-                                            std::ostringstream oss; oss << Value(m(i, j));
-                                            flat.push_back(oss.str());
-                                        }
-                                    cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                                }
-                            } else if (hasSymbolic) {
+                            if (hasSymbolic) {
                                 if (cell.isObjType(ObjType::REAL_MATRIX) || cell.isObjType(ObjType::COMPLEX_MATRIX)) {
                                     cell = Value(cell.asSymMatrix());
                                 }
@@ -4933,8 +4895,7 @@ Value VM::run(int targetFrameDepth) {
                                     if (rowResult.isNone()) {
                                         rowResult = cell;
                                     } else {
-                                        if (hasString) rowResult = Value(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjStringMatrix*>(cell.asObj())->mat));
-                                        else if (hasSymbolic) rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
+                                        if (hasSymbolic) rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
                                         else if (hasComplex) rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
                                         else rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
                                     }
@@ -4942,8 +4903,7 @@ Value VM::run(int targetFrameDepth) {
                                 if (matResult.isNone()) {
                                     matResult = rowResult;
                                 } else {
-                                    if (hasString) matResult = Value(static_cast<ObjStringMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat));
-                                    else if (hasSymbolic) matResult = Value(static_cast<ObjSymMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat));
+                                    if (hasSymbolic) matResult = Value(static_cast<ObjSymMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat));
                                     else if (hasComplex) matResult = Value(static_cast<ObjComplexMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat));
                                     else matResult = Value(static_cast<ObjRealMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat));
                                 }
@@ -4960,15 +4920,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         if (!uniformCols) throw std::runtime_error("VM Error: Matrix rows must have the same number of columns.");
 
-                        if (hasString) {
-                            std::vector<std::string> flat(total);
-                            for (int ii = 0; ii < total; ++ii) {
-                                const Value& v = getReg(b + ii);
-                                if (v.isString()) flat[ii] = v.asString();
-                                else { std::ostringstream oss; if (v.isUninit()) oss << "Uninitialized"; else oss << v; flat[ii] = oss.str(); }
-                            }
-                            result = Value(StringMatrix(rows, expectedCols, flat));
-                        } else if (hasSymbolic) {
+                        if (hasSymbolic) {
                             std::vector<SymExpr> flat(total);
                             for (int ii = 0; ii < total; ++ii) flat[ii] = getReg(b + ii).asSymbolic();
                             result = Value(SymMatrix(rows, expectedCols, flat));
@@ -5249,7 +5201,7 @@ Value VM::run(int targetFrameDepth) {
                             }
                             result = Value(resStr);
                         }
-                    } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         auto processMatGet = [&](const auto& m) -> Value {
                             using MatType = std::decay_t<decltype(m)>;
                             int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
@@ -5289,7 +5241,6 @@ Value VM::run(int targetFrameDepth) {
                         try {
                             if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
                             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                             else result = processMatGet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
                         } catch (...) {
                             throw;
@@ -5441,7 +5392,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (dims == 2) {
                     Value rowIdx = args[0];
                     Value colIdx = args[1];
-                    if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+                    if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         auto processMatGet2D = [&](const auto& m) -> Value {
                             using MatType = std::decay_t<decltype(m)>;
                             auto rRange = rowIdx.parseIndex(m.getRows(), noThrow);
@@ -5484,7 +5435,6 @@ Value VM::run(int targetFrameDepth) {
                         try {
                             if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
                             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                             else result = processMatGet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
                         } catch (...) {
                             throw;
@@ -5569,7 +5519,7 @@ Value VM::run(int targetFrameDepth) {
                                 for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
                             }
                         }
-                    } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+                    } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         auto processMatSet = [&](auto& m) {
                             int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                             auto range = idx.parseIndex(n, false);
@@ -5589,12 +5539,11 @@ Value VM::run(int targetFrameDepth) {
                                 if (m.getRows() == 1) m(0, range.scalarIdx) = scalarVal;
                                 else if (m.getCols() == 1) m(range.scalarIdx, 0) = scalarVal;
                                 else {
-                                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                                     if (isRhsMat) {
                                         int srcR = 0, srcC = 0;
                                         if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
                                         else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
-                                        else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
                                         else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
                                         
                                         if (srcR != 1 || srcC != m.getCols()) throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
@@ -5609,8 +5558,7 @@ Value VM::run(int targetFrameDepth) {
                                                 else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix row.");
                                             } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                                 std::ostringstream oss;
-                                                if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(0, j);
-                                                else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(0, j));
+                                                if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(0, j));
                                                 else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(0, j));
                                                 else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j));
                                                 m(range.scalarIdx, j) = oss.str();
@@ -5626,12 +5574,11 @@ Value VM::run(int targetFrameDepth) {
                                     }
                                 }
                             } else {
-                                bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                                bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                                 if (isRhsMat) {
                                     int srcR = 0, srcC = 0;
                                     if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
                                     else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
-                                    else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
                                     else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
                                     
                                     if (m.getRows() == 1 || m.getCols() == 1) {
@@ -5650,8 +5597,7 @@ Value VM::run(int targetFrameDepth) {
                                                 throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
                                             } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                                 std::ostringstream oss;
-                                                if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(sr, sc);
-                                                else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(sr, sc));
+                                                if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(sr, sc));
                                                 else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(sr, sc));
                                                 else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc));
                                                 return oss.str();
@@ -5682,8 +5628,7 @@ Value VM::run(int targetFrameDepth) {
                                                     else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
                                                 } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                                     std::ostringstream oss;
-                                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(k, j);
-                                                    else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(k, j));
+                                                    if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(k, j));
                                                     else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(k, j));
                                                     else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j));
                                                     m(id, j) = oss.str();
@@ -5728,10 +5673,6 @@ Value VM::run(int targetFrameDepth) {
                             } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                                 processMatSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                                getReg(a) = obj;
-                            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                                processMatSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                                 getReg(a) = obj;
                             } else {
                                 if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
@@ -5806,7 +5747,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (dims == 2) {
                     Value rowIdx = args[0];
                     Value colIdx = args[1];
-                    if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+                    if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         auto processMatSet2D = [&](auto& m) {
                             using ElemType = std::decay_t<decltype(m(0,0))>;
                             auto rRange = rowIdx.parseIndex(m.getRows(), false);
@@ -5827,12 +5768,11 @@ Value VM::run(int targetFrameDepth) {
                                 int dstR = rRange.isSlice ? rRange.sliceInfo.count : 1;
                                 int dstC = cRange.isSlice ? cRange.sliceInfo.count : 1;
                                 
-                                bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                                bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                                 if (isRhsMat) {
                                     int srcR = 0, srcC = 0;
                                     if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
                                     else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
-                                    else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
                                     else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
                                     
                                     if (srcR != dstR || srcC != dstC) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
@@ -5850,8 +5790,7 @@ Value VM::run(int targetFrameDepth) {
                                                 else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
                                             } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                                 std::ostringstream oss;
-                                                if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(i, j);
-                                                else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(i, j));
+                                                if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(i, j));
                                                 else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j));
                                                 else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
                                                 m(ri, ci) = oss.str();
@@ -5892,10 +5831,6 @@ Value VM::run(int targetFrameDepth) {
                             } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                                 processMatSet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                                getReg(a) = obj;
-                            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                                processMatSet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                                 getReg(a) = obj;
                             } else {
                                 if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
@@ -5943,7 +5878,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (iterable.isObjType(ObjType::LIST) || iterable.isString() || 
                     iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) || 
-                    iterable.isObjType(ObjType::STRING_MATRIX) || iterable.isObjType(ObjType::SYM_MATRIX)) {
+                    iterable.isObjType(ObjType::SYM_MATRIX)) {
                     ObjList* state = GcHeap::get().allocate<ObjList>();
                     state->vec.push_back(iterable);
                     state->vec.push_back(Value::fromInt32(0));
@@ -6118,22 +6053,6 @@ Value VM::run(int targetFrameDepth) {
                                 state->vec[1] = Value::fromInt32(i + 1);
                             }
                             break;
-                        } else if (iterTarget.isObjType(ObjType::STRING_MATRIX)) {
-                            const auto& m = static_cast<ObjStringMatrix*>(iterTarget.asObj())->mat;
-                            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
-                            if (i >= len) {
-                                getReg(a) = Value::uninit();
-                            } else {
-                                if (m.getRows() == 1) getReg(a) = Value(m(0, i));
-                                else if (m.getCols() == 1) getReg(a) = Value(m(i, 0));
-                                else {
-                                    std::vector<std::string> row(m.getCols());
-                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                                    getReg(a) = Value(StringMatrix(1, m.getCols(), row));
-                                }
-                                state->vec[1] = Value::fromInt32(i + 1);
-                            }
-                            break;
                         } else if (iterTarget.isObjType(ObjType::SYM_MATRIX)) {
                             const auto& m = static_cast<ObjSymMatrix*>(iterTarget.asObj())->mat;
                             int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
@@ -6244,17 +6163,6 @@ Value VM::run(int targetFrameDepth) {
                             }
                             if (found) break;
                         }
-                    }
-                } else if (haystack.isObjType(ObjType::STRING_MATRIX)) {
-                    const auto& m = static_cast<ObjStringMatrix*>(haystack.asObj())->mat;
-                    std::string nv;
-                    if (needle.isString()) nv = needle.asString();
-                    else { std::ostringstream oss; oss << needle; nv = oss.str(); }
-                    for (int i = 0; i < m.getRows(); ++i) {
-                        for (int j = 0; j < m.getCols(); ++j) {
-                            if (m(i, j) == nv) { found = true; break; }
-                        }
-                        if (found) break;
                     }
                 } else if (haystack.isObjType(ObjType::SYM_MATRIX)) {
                     const auto& m = static_cast<ObjSymMatrix*>(haystack.asObj())->mat;
@@ -6544,7 +6452,7 @@ Value VM::run(int targetFrameDepth) {
                 else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
                 else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
                 else if (obj.isString()) objBt = BuiltinType::STRING;
-                else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+                else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
 
                 if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
                     auto rawMethod = ic.cachedMethod;
@@ -7037,7 +6945,7 @@ Value VM::run(int targetFrameDepth) {
                     else if (obj.isObjType(ObjType::DICT)) nativeProto = dictProto;
                     else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
                     else if (obj.isString()) nativeProto = stringProto;
-                    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX)) nativeProto = matrixProto;
+                    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX)) nativeProto = matrixProto;
 
                     if (nativeProto) {
                         auto it = nativeProto->properties.find(field);
@@ -7514,7 +7422,6 @@ Value VM::run(int targetFrameDepth) {
                 }
                 
                 bool hasComplex = false;
-                bool hasString = false;
                 bool hasSymbolic = false;
                 bool hasOther = false;
                 bool hasSubMatrix = false;
@@ -7524,14 +7431,13 @@ Value VM::run(int targetFrameDepth) {
                            v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
                            v.isObjType(ObjType::SYMBOLIC) ||
                            v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
-                           v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX);
+                           v.isObjType(ObjType::SYM_MATRIX);
                 };
 
                 for (const auto& v : l->vec) {
                     if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
-                    if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
                     if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
-                    if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
+                    if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
                     if (!canBeMatrixElement(v)) {
                         hasOther = true;
                     } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) || v.isObjType(ObjType::BASENUM)) {
@@ -7547,11 +7453,8 @@ Value VM::run(int targetFrameDepth) {
 
                 if (hasSubMatrix) {
                     auto extractCell = [&](Value& cell) {
-                        if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::STRING_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
-                            if (hasString) {
-                                std::ostringstream oss; oss << cell;
-                                cell = Value(StringMatrix(1, 1, { oss.str() }));
-                            } else if (hasSymbolic) {
+                        if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
+                            if (hasSymbolic) {
                                 cell = Value(SymMatrix(1, 1, { cell.asSymbolic() }));
                             } else if (hasComplex) {
                                 cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
@@ -7559,36 +7462,7 @@ Value VM::run(int targetFrameDepth) {
                                 cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
                             }
                         }
-                        if (hasString) {
-                            if (cell.isObjType(ObjType::REAL_MATRIX)) {
-                                const auto& m = static_cast<ObjRealMatrix*>(cell.asObj())->mat;
-                                std::vector<std::string> flat;
-                                for (int i = 0; i < m.getRows(); ++i)
-                                    for (int j = 0; j < m.getCols(); ++j) {
-                                        std::ostringstream oss; oss << Value(m(i, j));
-                                        flat.push_back(oss.str());
-                                    }
-                                cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                            } else if (cell.isObjType(ObjType::COMPLEX_MATRIX)) {
-                                const auto& m = static_cast<ObjComplexMatrix*>(cell.asObj())->mat;
-                                std::vector<std::string> flat;
-                                for (int i = 0; i < m.getRows(); ++i)
-                                    for (int j = 0; j < m.getCols(); ++j) {
-                                        std::ostringstream oss; oss << Value(m(i, j));
-                                        flat.push_back(oss.str());
-                                    }
-                                cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                            } else if (cell.isObjType(ObjType::SYM_MATRIX)) {
-                                const auto& m = static_cast<ObjSymMatrix*>(cell.asObj())->mat;
-                                std::vector<std::string> flat;
-                                for (int i = 0; i < m.getRows(); ++i)
-                                    for (int j = 0; j < m.getCols(); ++j) {
-                                        std::ostringstream oss; oss << Value(m(i, j));
-                                        flat.push_back(oss.str());
-                                    }
-                                cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                            }
-                        } else if (hasSymbolic) {
+                        if (hasSymbolic) {
                             if (cell.isObjType(ObjType::REAL_MATRIX) || cell.isObjType(ObjType::COMPLEX_MATRIX)) {
                                 cell = Value(cell.asSymMatrix());
                             }
@@ -7605,9 +7479,7 @@ Value VM::run(int targetFrameDepth) {
                             if (rowResult.isNone()) {
                                 rowResult = cell;
                             } else {
-                                if (hasString)
-                                    rowResult = Value(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjStringMatrix*>(cell.asObj())->mat));
-                                else if (hasSymbolic)
+                                if (hasSymbolic)
                                     rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
                                 else if (hasComplex)
                                     rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
@@ -7619,19 +7491,6 @@ Value VM::run(int targetFrameDepth) {
                     } catch (...) {
                         throw std::runtime_error("VM Error: Dimension mismatch during list comprehension matrix concatenation.");
                     }
-                } else if (hasString) {
-                    std::vector<std::string> flat(total);
-                    for (int ii = 0; ii < total; ++ii) {
-                        const Value& v = l->vec[ii];
-                        if (v.isString()) flat[ii] = v.asString();
-                        else {
-                            std::ostringstream oss;
-                            if (v.isUninit()) oss << "Uninitialized";
-                            else oss << v;
-                            flat[ii] = oss.str();
-                        }
-                    }
-                    getReg(a) = Value(StringMatrix(1, total, flat));
                 } else if (hasSymbolic) {
                     std::vector<SymExpr> flat(total);
                     for (int ii = 0; ii < total; ++ii) flat[ii] = l->vec[ii].asSymbolic();
@@ -7797,17 +7656,6 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                     const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
-                    if (is1DPattern) {
-                        if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
-                        else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
-                    } else {
-                        bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
-                        bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
-                        if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
-                        else matched = rMatch && cMatch;
-                    }
-                } else if (val.isObjType(ObjType::STRING_MATRIX)) {
-                    const auto& m = static_cast<ObjStringMatrix*>(val.asObj())->mat;
                     if (is1DPattern) {
                         if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
                         else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
@@ -8295,7 +8143,6 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
     for (int _i = 0; _i < static_cast<int>(total); ++_i) vals[_i] = Value::fromRawBits(values[_i]);
 
     bool hasComplex = false;
-    bool hasString = false;
     bool hasSymbolic = false;
     bool hasOther = false;
 
@@ -8304,13 +8151,12 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
             v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
             v.isObjType(ObjType::SYMBOLIC) ||
             v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
-            v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX);
+            v.isObjType(ObjType::SYM_MATRIX);
     };
 
     for (int ii = 0; ii < total; ++ii) {
         const Value& v = vals[ii];
         if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
-        if (v.isString() || v.isObjType(ObjType::STRING_MATRIX)) hasString = true;
         if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
         if (!canBeMatrixElement(v)) {
             hasOther = true;
@@ -8346,16 +8192,13 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
         bool hasSubMatrix = false;
         for (int ii = 0; ii < total; ++ii) {
             const Value& v = vals[ii];
-            if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::STRING_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
+            if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
         }
 
         if (hasSubMatrix) {
             auto extractCell = [&](Value& cell) {
-                if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::STRING_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
-                    if (hasString) {
-                        std::ostringstream oss; oss << cell;
-                        cell = Value(StringMatrix(1, 1, { oss.str() }));
-                    } else if (hasSymbolic) {
+                if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
+                    if (hasSymbolic) {
                         cell = Value(SymMatrix(1, 1, { cell.asSymbolic() }));
                     } else if (hasComplex) {
                         cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
@@ -8363,36 +8206,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
                         cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
                     }
                 }
-                if (hasString) {
-                    if (cell.isObjType(ObjType::REAL_MATRIX)) {
-                        const auto& m = static_cast<ObjRealMatrix*>(cell.asObj())->mat;
-                        std::vector<std::string> flat;
-                        for (int i = 0; i < m.getRows(); ++i)
-                            for (int j = 0; j < m.getCols(); ++j) {
-                                std::ostringstream oss; oss << Value(m(i, j));
-                                flat.push_back(oss.str());
-                            }
-                        cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                    } else if (cell.isObjType(ObjType::COMPLEX_MATRIX)) {
-                        const auto& m = static_cast<ObjComplexMatrix*>(cell.asObj())->mat;
-                        std::vector<std::string> flat;
-                        for (int i = 0; i < m.getRows(); ++i)
-                            for (int j = 0; j < m.getCols(); ++j) {
-                                std::ostringstream oss; oss << Value(m(i, j));
-                                flat.push_back(oss.str());
-                            }
-                        cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                    } else if (cell.isObjType(ObjType::SYM_MATRIX)) {
-                        const auto& m = static_cast<ObjSymMatrix*>(cell.asObj())->mat;
-                        std::vector<std::string> flat;
-                        for (int i = 0; i < m.getRows(); ++i)
-                            for (int j = 0; j < m.getCols(); ++j) {
-                                std::ostringstream oss; oss << Value(m(i, j));
-                                flat.push_back(oss.str());
-                            }
-                        cell = Value(StringMatrix(m.getRows(), m.getCols(), flat));
-                    }
-                } else if (hasSymbolic) {
+                if (hasSymbolic) {
                     if (cell.isObjType(ObjType::REAL_MATRIX) || cell.isObjType(ObjType::COMPLEX_MATRIX)) {
                         cell = Value(cell.asSymMatrix());
                     }
@@ -8413,8 +8227,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
                         if (rowResult.isNone()) {
                             rowResult = cell;
                         } else {
-                            if (hasString) rowResult = Value(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjStringMatrix*>(cell.asObj())->mat));
-                            else if (hasSymbolic) rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
+                            if (hasSymbolic) rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
                             else if (hasComplex) rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
                             else rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
                         }
@@ -8422,8 +8235,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
                     if (matResult.isNone()) {
                         matResult = rowResult;
                     } else {
-                        if (hasString) matResult = Value(static_cast<ObjStringMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjStringMatrix*>(rowResult.asObj())->mat));
-                        else if (hasSymbolic) matResult = Value(static_cast<ObjSymMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat));
+                        if (hasSymbolic) matResult = Value(static_cast<ObjSymMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat));
                         else if (hasComplex) matResult = Value(static_cast<ObjComplexMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat));
                         else matResult = Value(static_cast<ObjRealMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat));
                     }
@@ -8440,15 +8252,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
             }
             if (!uniformCols) throw std::runtime_error("VM Error: Matrix rows must have the same number of columns.");
 
-            if (hasString) {
-                std::vector<std::string> flat(total);
-                for (int ii = 0; ii < total; ++ii) {
-                    const Value& v = vals[ii];
-                    if (v.isString()) flat[ii] = v.asString();
-                    else { std::ostringstream oss; if (v.isUninit()) oss << "Uninitialized"; else oss << v; flat[ii] = oss.str(); }
-                }
-                result = Value(StringMatrix(rows, expectedCols, flat));
-            } else if (hasSymbolic) {
+            if (hasSymbolic) {
                 std::vector<SymExpr> flat(total);
                 for (int ii = 0; ii < total; ++ii) flat[ii] = vals[ii].asSymbolic();
                 result = Value(SymMatrix(rows, expectedCols, flat));
@@ -8766,7 +8570,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
     else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
     else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
     else if (obj.isString()) objBt = BuiltinType::STRING;
-    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
 
     if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
         auto rawMethod = ic.cachedMethod;
@@ -9090,7 +8894,6 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
                                             else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
                                             else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                                             else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
@@ -9227,7 +9030,6 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
                                             else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
                                             else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                                             else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
@@ -9391,7 +9193,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
     else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
     else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
     else if (obj.isString()) objBt = BuiltinType::STRING;
-    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
 
     if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
         auto rawMethod = ic.cachedMethod;
@@ -9715,7 +9517,6 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
                                             else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
                                             else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                                             else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
@@ -9852,7 +9653,6 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
                                             else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
                                             else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                                             else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
@@ -10003,7 +9803,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
 
     if (iterable.isObjType(ObjType::LIST) || iterable.isString() ||
         iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) ||
-        iterable.isObjType(ObjType::STRING_MATRIX) || iterable.isObjType(ObjType::SYM_MATRIX)) {
+        iterable.isObjType(ObjType::SYM_MATRIX)) {
         ObjList* state = GcHeap::get().allocate<ObjList>();
         state->vec.push_back(iterable);
         state->vec.push_back(Value::fromInt32(0));
@@ -10162,20 +9962,6 @@ Value VM::opIterNext(Value stateVal) {
             }
             state->vec[1] = Value::fromInt32(i + 1);
             return out;
-        } else if (iterTarget.isObjType(ObjType::STRING_MATRIX)) {
-            const auto& m = static_cast<ObjStringMatrix*>(iterTarget.asObj())->mat;
-            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
-            if (i >= len) return Value::uninit();
-            Value out;
-            if (m.getRows() == 1) out = Value(m(0, i));
-            else if (m.getCols() == 1) out = Value(m(i, 0));
-            else {
-                std::vector<std::string> row(m.getCols());
-                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                out = Value(StringMatrix(1, m.getCols(), row));
-            }
-            state->vec[1] = Value::fromInt32(i + 1);
-            return out;
         } else if (iterTarget.isObjType(ObjType::SYM_MATRIX)) {
             const auto& m = static_cast<ObjSymMatrix*>(iterTarget.asObj())->mat;
             int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
@@ -10301,17 +10087,6 @@ bool VM::opIn(Value needle, Value haystack) {
                 }
                 if (found) break;
             }
-        }
-    } else if (haystack.isObjType(ObjType::STRING_MATRIX)) {
-        const auto& m = static_cast<ObjStringMatrix*>(haystack.asObj())->mat;
-        std::string nv;
-        if (needle.isString()) nv = needle.asString();
-        else { std::ostringstream oss; oss << needle; nv = oss.str(); }
-        for (int i = 0; i < m.getRows(); ++i) {
-            for (int j = 0; j < m.getCols(); ++j) {
-                if (m(i, j) == nv) { found = true; break; }
-            }
-            if (found) break;
         }
     } else if (haystack.isObjType(ObjType::SYM_MATRIX)) {
         const auto& m = static_cast<ObjSymMatrix*>(haystack.asObj())->mat;
@@ -10513,7 +10288,7 @@ uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t
                 }
                 result = Value(resStr);
             }
-        } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+        } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
             auto processMatGet = [&](const auto& m) -> Value {
                 using MatType = std::decay_t<decltype(m)>;
                 int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
@@ -10552,7 +10327,6 @@ uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t
             };
             if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
             else result = processMatGet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
         } else if (obj.isObjType(ObjType::DICT)) {
             if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
@@ -10701,7 +10475,7 @@ uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t
     } else if (dims == 2) {
         Value rowIdx = args[0];
         Value colIdx = args[1];
-        if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+        if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
             auto processMatGet2D = [&](const auto& m) -> Value {
                 using MatType = std::decay_t<decltype(m)>;
                 auto rRange = rowIdx.parseIndex(m.getRows(), noThrow != 0);
@@ -10743,7 +10517,6 @@ uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t
             };
             if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-            else if (obj.isObjType(ObjType::STRING_MATRIX)) result = processMatGet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
             else result = processMatGet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
         } else {
             if (noThrow) result = Value::uninit();
@@ -10823,7 +10596,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                     for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
                 }
             }
-        } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+        } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
             auto processMatSet = [&](auto& m) {
                 int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
                 auto range = idx.parseIndex(n, false);
@@ -10843,12 +10616,11 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                     if (m.getRows() == 1) m(0, range.scalarIdx) = scalarVal;
                     else if (m.getCols() == 1) m(range.scalarIdx, 0) = scalarVal;
                     else {
-                        bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                        bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                         if (isRhsMat) {
                             int srcR = 0, srcC = 0;
                             if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
                             else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
-                            else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
                             else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
                             
                             if (srcR != 1 || srcC != m.getCols()) throw std::runtime_error("VM Error: Matrix row assignment dimension mismatch.");
@@ -10863,8 +10635,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                                     else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix row.");
                                 } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                     std::ostringstream oss;
-                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(0, j);
-                                    else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(0, j));
+                                    if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(0, j));
                                     else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(0, j));
                                     else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(0, j));
                                     m(range.scalarIdx, j) = oss.str();
@@ -10880,12 +10651,11 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                         }
                     }
                 } else {
-                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                     if (isRhsMat) {
                         int srcR = 0, srcC = 0;
                         if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
                         else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
-                        else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
                         else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
                         
                         if (m.getRows() == 1 || m.getCols() == 1) {
@@ -10904,8 +10674,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                                     throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
                                 } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                     std::ostringstream oss;
-                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(sr, sc);
-                                    else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(sr, sc));
+                                    if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(sr, sc));
                                     else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(sr, sc));
                                     else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(sr, sc));
                                     return oss.str();
@@ -10936,8 +10705,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                                         else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
                                     } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                         std::ostringstream oss;
-                                        if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(k, j);
-                                        else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(k, j));
+                                        if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(k, j));
                                         else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(k, j));
                                         else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(k, j));
                                         m(id, j) = oss.str();
@@ -10981,10 +10749,6 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
             } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                 processMatSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
-            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                processMatSet(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                 regs[base + objReg] = obj;
             } else {
                 if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
@@ -11056,7 +10820,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
     } else if (dims == 2) {
         Value rowIdx = args[0];
         Value colIdx = args[1];
-        if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::STRING_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
+        if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
             auto processMatSet2D = [&](auto& m) {
                 using ElemType = std::decay_t<decltype(m(0,0))>;
                 auto rRange = rowIdx.parseIndex(m.getRows(), false);
@@ -11077,12 +10841,11 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                     int dstR = rRange.isSlice ? rRange.sliceInfo.count : 1;
                     int dstC = cRange.isSlice ? cRange.sliceInfo.count : 1;
                     
-                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::STRING_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
+                    bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                     if (isRhsMat) {
                         int srcR = 0, srcC = 0;
                         if (val.isObjType(ObjType::REAL_MATRIX)) { srcR = static_cast<ObjRealMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjRealMatrix*>(val.asObj())->mat.getCols(); }
                         else if (val.isObjType(ObjType::COMPLEX_MATRIX)) { srcR = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjComplexMatrix*>(val.asObj())->mat.getCols(); }
-                        else if (val.isObjType(ObjType::STRING_MATRIX)) { srcR = static_cast<ObjStringMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjStringMatrix*>(val.asObj())->mat.getCols(); }
                         else { srcR = static_cast<ObjSymMatrix*>(val.asObj())->mat.getRows(); srcC = static_cast<ObjSymMatrix*>(val.asObj())->mat.getCols(); }
                         
                         if (srcR != dstR || srcC != dstC) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
@@ -11100,8 +10863,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                                     else throw std::runtime_error("VM Error: Cannot assign string/sym matrix to complex matrix slice.");
                                 } else if constexpr (std::is_same_v<ElemType, std::string>) {
                                     std::ostringstream oss;
-                                    if (val.isObjType(ObjType::STRING_MATRIX)) oss << static_cast<ObjStringMatrix*>(val.asObj())->mat(i, j);
-                                    else if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(i, j));
+                                    if (val.isObjType(ObjType::SYM_MATRIX)) oss << Value(static_cast<ObjSymMatrix*>(val.asObj())->mat(i, j));
                                     else if (val.isObjType(ObjType::COMPLEX_MATRIX)) oss << Value(static_cast<ObjComplexMatrix*>(val.asObj())->mat(i, j));
                                     else oss << Value(static_cast<ObjRealMatrix*>(val.asObj())->mat(i, j));
                                     m(ri, ci) = oss.str();
@@ -11141,10 +10903,6 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
             } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                 processMatSet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
-            } else if (obj.isObjType(ObjType::STRING_MATRIX)) {
-                if (obj.asObj()->refCount > 2) obj = Value(StringMatrix(static_cast<ObjStringMatrix*>(obj.asObj())->mat));
-                processMatSet2D(static_cast<ObjStringMatrix*>(obj.asObj())->mat);
                 regs[base + objReg] = obj;
             } else {
                 if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));

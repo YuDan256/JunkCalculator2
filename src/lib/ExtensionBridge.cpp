@@ -65,7 +65,6 @@ static JC2_ValueHandle host_get_type(JC2_VMContext, JC2_ValueHandle v) {
         else if (val.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
         else if (val.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
         else if (val.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-        else if (val.isObjType(ObjType::STRING_MATRIX)) vbt = BuiltinType::STRINGMAT;
         else if (val.isFunctionClosure()) vbt = BuiltinType::FUNC;
         else if (val.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
         resTd->types.push_back(vbt);
@@ -468,43 +467,6 @@ static bool host_is_complex_matrix(JC2_VMContext, JC2_ValueHandle v) {
     return from_handle(v).isObjType(ObjType::COMPLEX_MATRIX);
 }
 
-static JC2_ValueHandle host_make_string_matrix(JC2_VMContext, int rows, int cols) {
-    return protect(Value(StringMatrix(rows, cols)));
-}
-
-static const char* host_string_matrix_get(JC2_VMContext, JC2_ValueHandle mat, int row, int col, size_t* out_len) {
-    Value m = from_handle(mat);
-    if (m.isObjType(ObjType::STRING_MATRIX)) {
-        const std::string& s = static_cast<ObjStringMatrix*>(m.asObj())->mat(row, col);
-        if (out_len) *out_len = s.length();
-        return s.c_str();
-    }
-    return nullptr;
-}
-
-static void host_string_matrix_set(JC2_VMContext, JC2_ValueHandle mat, int row, int col, const char* str, size_t len) {
-    Value m = from_handle(mat);
-    if (m.isObjType(ObjType::STRING_MATRIX)) {
-        static_cast<ObjStringMatrix*>(m.asObj())->mat(row, col) = std::string(str, len);
-    }
-}
-
-static int host_string_matrix_rows(JC2_VMContext, JC2_ValueHandle mat) {
-    Value m = from_handle(mat);
-    if (m.isObjType(ObjType::STRING_MATRIX)) return static_cast<ObjStringMatrix*>(m.asObj())->mat.getRows();
-    return 0;
-}
-
-static int host_string_matrix_cols(JC2_VMContext, JC2_ValueHandle mat) {
-    Value m = from_handle(mat);
-    if (m.isObjType(ObjType::STRING_MATRIX)) return static_cast<ObjStringMatrix*>(m.asObj())->mat.getCols();
-    return 0;
-}
-
-static bool host_is_string_matrix(JC2_VMContext, JC2_ValueHandle v) {
-    return from_handle(v).isObjType(ObjType::STRING_MATRIX);
-}
-
 static JC2_ValueHandle host_make_set(JC2_VMContext) {
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     return protect(Value(set));
@@ -857,12 +819,6 @@ static const JC2_HostAPI host_api = {
     host_complex_matrix_rows,
     host_complex_matrix_cols,
     host_is_complex_matrix,
-    host_make_string_matrix,
-    host_string_matrix_get,
-    host_string_matrix_set,
-    host_string_matrix_rows,
-    host_string_matrix_cols,
-    host_is_string_matrix,
     host_make_set,
     host_set_add,
     host_set_remove,

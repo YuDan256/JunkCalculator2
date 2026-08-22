@@ -288,14 +288,6 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
             varNames.push_back(v.as_string());
         }
     }
-    else if (arg1.is_string_matrix()) {
-        jc2::StringMatrix m(arg1.get_handle());
-        for (int i = 0; i < m.rows(); ++i) {
-            for (int j = 0; j < m.cols(); ++j) {
-                varNames.push_back(m.get(i, j));
-            }
-        }
-    }
     else jc2::throw_error("compile_latex(): 2nd argument must be a List or Matrix of variable strings.");
 
     LatexParser parser;

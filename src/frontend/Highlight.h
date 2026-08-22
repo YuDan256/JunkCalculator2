@@ -287,8 +287,6 @@ namespace jc {
             return col(Ansi::BRIGHT_YELLOW);
         if (typeName == "ComplexMatrix")
             return col(Ansi::BRIGHT_MAGENTA);
-        if (typeName == "StringMatrix")
-            return col(Ansi::BRIGHT_GREEN);
         if (typeName == "BaseNum")
             return col(Ansi::BRIGHT_CYAN);
         if (typeName == "Function")

@@ -137,15 +137,6 @@ void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const st
         for (Complex c : raw) { writeDouble(os, c.real); writeDouble(os, c.imag); }
         return;
     }
-    if (val.isObjType(ObjType::STRING_MATRIX)) {
-        write8(os, static_cast<uint8_t>(ConstTag::STRING_MATRIX));
-        StringMatrix m = static_cast<ObjStringMatrix*>(val.asObj())->mat;
-        write16(os, static_cast<uint16_t>(m.getRows()));
-        write16(os, static_cast<uint16_t>(m.getCols()));
-        const auto& raw = m.rawData();
-        for (const std::string& s : raw) writeString(os, s);
-        return;
-    }
     if (val.isObjType(ObjType::NAMESPACE)) {
         ObjNamespace* ns = static_cast<ObjNamespace*>(val.asObj());
         write8(os, static_cast<uint8_t>(ConstTag::NAMESPACE));
@@ -218,13 +209,6 @@ Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
                 raw[i] = Complex(re, im);
             }
             return Value(ComplexMatrix(r, c, raw));
-        }
-        case ConstTag::STRING_MATRIX: {
-            uint16_t r = read16(is);
-            uint16_t c = read16(is);
-            std::vector<std::string> raw(r * c);
-            for (int i = 0; i < r * c; ++i) raw[i] = readString(is);
-            return Value(StringMatrix(r, c, raw));
         }
         case ConstTag::NAMESPACE: {
             ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();

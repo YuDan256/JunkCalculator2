@@ -40,7 +40,6 @@ public:
     bool is_set() const { return Env::api->is_set(Env::ctx, handle); }
     bool is_real_matrix() const { return Env::api->is_real_matrix(Env::ctx, handle); }
     bool is_complex_matrix() const { return Env::api->is_complex_matrix(Env::ctx, handle); }
-    bool is_string_matrix() const { return Env::api->is_string_matrix(Env::ctx, handle); }
     bool is_function() const { return Env::api->is_function(Env::ctx, handle); }
     bool is_bigint() const { return Env::api->is_bigint(Env::ctx, handle); }
     bool is_fraction() const { return Env::api->is_fraction(Env::ctx, handle); }
@@ -256,23 +255,6 @@ public:
     void set(int row, int col, double r, double i) { Env::api->complex_matrix_set(Env::ctx, get_handle(), row, col, r, i); }
     int rows() const { return Env::api->complex_matrix_rows(Env::ctx, get_handle()); }
     int cols() const { return Env::api->complex_matrix_cols(Env::ctx, get_handle()); }
-};
-
-class StringMatrix : public Value {
-public:
-    StringMatrix(int rows, int cols) : Value(Env::api->make_string_matrix(Env::ctx, rows, cols)) {}
-    StringMatrix(JC2_ValueHandle h) : Value(h) {}
-    
-    std::string get(int row, int col) const {
-        size_t len = 0;
-        const char* s = Env::api->string_matrix_get(Env::ctx, get_handle(), row, col, &len);
-        return s ? std::string(s, len) : "";
-    }
-    void set(int row, int col, const std::string& str) {
-        Env::api->string_matrix_set(Env::ctx, get_handle(), row, col, str.c_str(), str.length());
-    }
-    int rows() const { return Env::api->string_matrix_rows(Env::ctx, get_handle()); }
-    int cols() const { return Env::api->string_matrix_cols(Env::ctx, get_handle()); }
 };
 
 class Function : public Value {

@@ -26,7 +26,7 @@ private:
     enum class ConstTag : uint8_t {
         NONE = 0, BOOL_FALSE, BOOL_TRUE, INT32, DOUBLE, STRING,
         BIGINT, FRACTION, COMPLEX, BASENUM,
-        REAL_MATRIX, COMPLEX_MATRIX, STRING_MATRIX,
+        REAL_MATRIX, COMPLEX_MATRIX,
         NAMESPACE, FNIDX
     };
 

@@ -147,12 +147,15 @@ class Raycaster3D extends engine.GameEngine {
         
         self.compiled_tex = dict()
         for ([name, art] in self.tex) {
-            mat = strmat(8, 8)
+            mat = @[]
+            for (r = 0; r < 8; r += 1) {
+                mat.push(@["", "", "", "", "", "", "", ""])
+            }
             for (r = 0; r < 8; r += 1) {
                 for (c = 0; c < 8; c += 1) {
                     char = art[r][c]
-                    if (char == ".") mat[r, c] = ""
-                    else mat[r, c] = self.pal[char]
+                    if (char == ".") mat[r][c] = ""
+                    else mat[r][c] = self.pal[char]
                 }
             }
             self.compiled_tex[name] = mat
@@ -548,7 +551,7 @@ class Raycaster3D extends engine.GameEngine {
                         if (tx > 7) tx = 7
                         
                         for (ty = 0; ty < 8; ty += 1) {
-                            c_hex = tex_art[ty, tx] 
+                            c_hex = tex_art[ty][tx] 
                             
                             if (c_hex != "") { 
                                 block_h = h_coords[ty]

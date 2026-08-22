@@ -79,7 +79,6 @@ namespace jc {
     struct ObjBaseNum;
     struct ObjRealMatrix;
     struct ObjComplexMatrix;
-    struct ObjStringMatrix;
     struct ObjSymMatrix;
     struct ObjList;
     struct ObjDict;
@@ -148,10 +147,6 @@ namespace jc {
     struct ObjComplexMatrix : public Obj {
         ComplexMatrix mat;
         ObjComplexMatrix(ComplexMatrix m) : mat(std::move(m)) { type = ObjType::COMPLEX_MATRIX; }
-    };
-    struct ObjStringMatrix : public Obj {
-        StringMatrix mat;
-        ObjStringMatrix(StringMatrix m) : mat(std::move(m)) { type = ObjType::STRING_MATRIX; }
     };
     struct ObjSymMatrix : public Obj {
         SymMatrix mat;
@@ -351,17 +346,12 @@ namespace jc {
         }
         Value(Fraction val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjFraction>(std::move(val))); }
         Value(BaseNum val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjBaseNum>(std::move(val))); }
-        Value(StringMatrix val) : as_bits(QNAN | TAG_NONE) {
-            if (val.getRows() * val.getCols() == 0) val = StringMatrix(0, 0);
-            *this = fromObj(GcHeap::get().allocate<ObjStringMatrix>(std::move(val)));
-        }
         Value(SymMatrix val) : as_bits(QNAN | TAG_NONE) {
             if (val.getRows() * val.getCols() == 0) val = SymMatrix(0, 0);
             *this = fromObj(GcHeap::get().allocate<ObjSymMatrix>(std::move(val)));
         }
-        
         Value(SymExpr val);
-
+        
         bool isInstance() const { return isObjType(ObjType::INSTANCE); }
         bool isClass() const { return isObjType(ObjType::CLASS); }
         bool isComplex() const { return isObjType(ObjType::COMPLEX); }
@@ -601,7 +591,6 @@ namespace jc {
                         case BuiltinType::SYMBOLIC: res += "symbolic"; break;
                         case BuiltinType::REALMAT: res += "realmatrix"; break;
                         case BuiltinType::COMPLEXMAT: res += "complexmatrix"; break;
-                        case BuiltinType::STRINGMAT: res += "stringmatrix"; break;
                         case BuiltinType::SYMMAT: res += "symmatrix"; break;
                         case BuiltinType::MATRIX: res += "matrix"; break;
                         case BuiltinType::FUNC: res += "function"; break;
@@ -1730,15 +1719,6 @@ namespace jc {
                 }
                 return res + "]";
             }
-            case ObjType::STRING_MATRIX: {
-                const auto& mat = static_cast<ObjStringMatrix*>(obj)->mat;
-                if (mat.getRows() * mat.getCols() == 0) return "[]";
-                std::string res = "strmat(" + std::to_string(mat.getRows()) + ", " + std::to_string(mat.getCols());
-                for (int i = 0; i < mat.getRows(); ++i)
-                    for (int j = 0; j < mat.getCols(); ++j)
-                        res += ", \"" + mat(i, j) + "\"";
-                return res + ")";
-            }
             case ObjType::SYM_MATRIX: {
                 const auto& mat = static_cast<ObjSymMatrix*>(obj)->mat;
                 if (mat.getRows() * mat.getCols() == 0) return "[]";
@@ -1974,7 +1954,6 @@ namespace jc {
             case ObjType::BASENUM:
             case ObjType::REAL_MATRIX:
             case ObjType::COMPLEX_MATRIX:
-            case ObjType::STRING_MATRIX:
             case ObjType::SYM_MATRIX:
             case ObjType::CLASS:
             case ObjType::SYMBOLIC:
@@ -2148,15 +2127,6 @@ namespace jc {
                     for (int i = 0; i < a.getRows(); ++i)
                         for (int j = 0; j < a.getCols(); ++j)
                             if (!(a(i, j) == b(i, j))) return false;
-                    return true;
-                }
-                case ObjType::STRING_MATRIX: {
-                    const auto& a = static_cast<ObjStringMatrix*>(lobj)->mat;
-                    const auto& b = static_cast<ObjStringMatrix*>(robj)->mat;
-                    if (a.getRows() != b.getRows() || a.getCols() != b.getCols()) return false;
-                    for (int i = 0; i < a.getRows(); ++i)
-                        for (int j = 0; j < a.getCols(); ++j)
-                            if (a(i, j) != b(i, j)) return false;
                     return true;
                 }
                 case ObjType::SYM_MATRIX: {
@@ -2375,7 +2345,6 @@ namespace jc {
             case ObjType::BASENUM: return "basenum";
             case ObjType::REAL_MATRIX: return "realmatrix";
             case ObjType::COMPLEX_MATRIX: return "complexmatrix";
-            case ObjType::STRING_MATRIX: return "stringmatrix";
             case ObjType::SYM_MATRIX: return "symmatrix";
             case ObjType::LIST: return "list";
             case ObjType::DICT: return "dict";
@@ -2520,16 +2489,6 @@ namespace jc {
                 return Value(m);
             }
             
-            if (lhs.isObjType(ObjType::STRING_MATRIX) && rhs.isObjType(ObjType::STRING_MATRIX)) {
-                const auto& a = static_cast<ObjStringMatrix*>(lhs.asObj())->mat;
-                const auto& b = static_cast<ObjStringMatrix*>(rhs.asObj())->mat;
-                if (a.getRows() != b.getRows() || a.getCols() != b.getCols()) throw std::runtime_error("Type Error: StringMatrix dimensions must match for +.");
-                std::vector<std::string> flat(a.getRows() * a.getCols());
-                for (int i = 0; i < a.getRows(); ++i)
-                    for (int j = 0; j < a.getCols(); ++j)
-                        flat[i * a.getCols() + j] = a(i, j) + b(i, j);
-                return Value(StringMatrix(a.getRows(), a.getCols(), flat));
-            }
 
             if (lhs.isSymbolic() || rhs.isSymbolic()) return Value(lhs.asSymbolic() + rhs.asSymbolic());
 
@@ -2728,12 +2687,6 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         }
         case ObjType::COMPLEX_MATRIX: {
             const auto& m = static_cast<ObjComplexMatrix*>(obj)->mat;
-            if (m.getRows() * m.getCols() == 0) os << "[]";
-            else os << m;
-            break;
-        }
-        case ObjType::STRING_MATRIX: {
-            const auto& m = static_cast<ObjStringMatrix*>(obj)->mat;
             if (m.getRows() * m.getCols() == 0) os << "[]";
             else os << m;
             break;
@@ -2970,17 +2923,6 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 double i = raw[idx].imag; if (i == 0.0) i = 0.0;
                 size_t h = (i == 0.0) ? sipHash24Double(r) : (sipHash24Double(r) ^ (sipHash24Double(i) << 1));
                 h += 0x9e3779b9 + idx;
-                seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            }
-            return seed;
-        }
-        case ObjType::STRING_MATRIX: {
-            const auto& m = static_cast<ObjStringMatrix*>(obj)->mat;
-            const auto& raw = m.rawData();
-            size_t sz = raw.size();
-            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x8B3E5A2F1D7C4068ULL;
-            for (size_t idx = 0; idx < raw.size(); ++idx) {
-                size_t h = sipHash24String(raw[idx]) + 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             return seed;

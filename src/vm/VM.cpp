@@ -3584,6 +3584,8 @@ Value VM::run(int targetFrameDepth) {
                         registers[clearBase + i] = Value::none(); \
                     } \
                     frame->jitReturnSlot = Value::none(); \
+                    frame->selfContext = Value::none(); \
+                    frame->classContext = Value::none(); \
                     frameCount--; \
                     if (frameCount <= targetFrameDepth) return res; \
                     frame = &frames[frameCount - 1]; \
@@ -4049,6 +4051,7 @@ Value VM::run(int targetFrameDepth) {
                                 }
                                 f->selfContext = Value::none();
                                 f->classContext = Value::none();
+                                f->jitReturnSlot = Value::none();
                                 f->closure = nullptr;
                                 f->refParamsBase = -1;
                                 vm->frameCount--;
@@ -7865,6 +7868,8 @@ Value VM::run(int targetFrameDepth) {
                         registers[clearBase + i] = Value::none();
                     }
                     frame->jitReturnSlot = Value::none();
+                    frame->selfContext = Value::none();
+                    frame->classContext = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -7913,6 +7918,8 @@ Value VM::run(int targetFrameDepth) {
                         registers[clearBase + i] = Value::none();
                     }
                     frame->jitReturnSlot = Value::none();
+                    frame->selfContext = Value::none();
+                    frame->classContext = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -8021,6 +8028,8 @@ Value VM::run(int targetFrameDepth) {
                         registers[clearBase + i] = Value::none();
                     }
                     frame->jitReturnSlot = Value::none();
+                    frame->selfContext = Value::none();
+                    frame->classContext = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -8087,6 +8096,8 @@ Value VM::run(int targetFrameDepth) {
                         registers[clearBase + i] = Value::none();
                     }
                     frame->jitReturnSlot = Value::none();
+                    frame->selfContext = Value::none();
+                    frame->classContext = Value::none();
 
                     frameCount--;
                     if (frameCount <= targetFrameDepth) return res;
@@ -8131,6 +8142,8 @@ Value VM::run(int targetFrameDepth) {
                     registers[clearBase + i] = Value::none();
                 }
                 frame->jitReturnSlot = Value::none();
+                frame->selfContext = Value::none();
+                frame->classContext = Value::none();
 
                 frameCount--;
                 if (frameCount <= targetFrameDepth) {

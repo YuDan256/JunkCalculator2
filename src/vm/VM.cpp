@@ -4838,24 +4838,7 @@ Value VM::run(int targetFrameDepth) {
                 Value result;
 
                 if (hasOther) {
-                    if (rows == 1) {
-                        ObjList* L = GcHeap::get().allocate<ObjList>();
-                        getReg(a) = Value(L); // ★ 立即 Root 防止 GC 误杀
-                        for (int ii = 0; ii < total; ++ii) L->vec.push_back(getReg(b + ii));
-                        result = Value(L);
-                    } else {
-                        ObjList* outer = GcHeap::get().allocate<ObjList>();
-                        getReg(a) = Value(outer); // ★ 立即 Root 防止 GC 误杀
-                        int idx = 0;
-                        for (int i = 0; i < rows; ++i) {
-                            ObjList* inner = GcHeap::get().allocate<ObjList>();
-                            int cols = rowCols[i];
-                            for (int j = 0; j < cols; ++j) inner->vec.push_back(getReg(b + idx++));
-                            inner->is_frozen = true;
-                            outer->vec.push_back(Value(inner));
-                        }
-                        result = Value(outer);
-                    }
+                    throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, string, or symbolic. Use @[...] for lists.");
                 } else {
                     bool hasSubMatrix = false;
                     for (int ii = 0; ii < total; ++ii) {
@@ -7447,7 +7430,9 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
 
-                if (hasOther) break;
+                if (hasOther) {
+                    throw std::runtime_error("VM Error: Matrix comprehension elements must be numeric, complex, string, or symbolic. Use @[...] for lists.");
+                }
 
                 int total = static_cast<int>(l->vec.size());
 
@@ -8170,24 +8155,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
     Value result;
 
     if (hasOther) {
-        if (rows == 1) {
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            result = Value(L);
-            GcValueGuard guard(result);
-            for (int ii = 0; ii < total; ++ii) L->vec.push_back(vals[ii]);
-        } else {
-            ObjList* outer = GcHeap::get().allocate<ObjList>();
-            result = Value(outer);
-            GcValueGuard guard(result);
-            int idx = 0;
-            for (int i = 0; i < rows; ++i) {
-                ObjList* inner = GcHeap::get().allocate<ObjList>();
-                int cols = rowCols[i];
-                for (int j = 0; j < cols; ++j) inner->vec.push_back(vals[idx++]);
-                inner->is_frozen = true;
-                outer->vec.push_back(Value(inner));
-            }
-        }
+        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, string, or symbolic. Use @[...] for lists.");
     } else {
         bool hasSubMatrix = false;
         for (int ii = 0; ii < total; ++ii) {

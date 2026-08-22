@@ -2793,6 +2793,21 @@ void VM::invalidateJIT() {
     jitEntryPoints.clear();
 }
 
+static bool isContainerValue(const Value& v) {
+    if (!v.isObj()) return false;
+    ObjType t = v.asObj()->type;
+    return t == ObjType::LIST || t == ObjType::DICT || t == ObjType::SET ||
+           t == ObjType::CLOSURE || t == ObjType::CLASS || t == ObjType::INSTANCE ||
+           t == ObjType::SUPER_PROXY || t == ObjType::NAMESPACE ||
+           t == ObjType::UPVALUE || t == ObjType::TYPE_DEF;
+}
+
+void VM::invalidateJITOnContainerReplace(const Value& oldVal, const Value& newVal) {
+    if (isContainerValue(oldVal) || isContainerValue(newVal)) {
+        invalidateJIT();
+    }
+}
+
 void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
     auto& fnDef = compiledFunctions[fnIdx];
     
@@ -5516,11 +5531,16 @@ Value VM::run(int targetFrameDepth) {
                             auto it = inst->properties.find(mangledName);
                             if (it != inst->properties.end()) {
                                 if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
+                                invalidateJITOnContainerReplace(it->second.val, val);
                                 it->second.val = val;
                                 foundPrivate = true;
                             }
                         }
                         if (!foundPrivate) {
+                            Value oldVal = Value::none();
+                            auto oldIt = inst->properties.find(keyStr);
+                            if (oldIt != inst->properties.end()) oldVal = oldIt->second.val;
+                            invalidateJITOnContainerReplace(oldVal, val);
                             inst->setProperty(keyStr, val);
                         }
                         break;
@@ -5535,6 +5555,7 @@ Value VM::run(int targetFrameDepth) {
                         auto list = static_cast<ObjList*>(obj.asObj());
                         auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
                         if (!range.isSlice) {
+                            invalidateJITOnContainerReplace(list->vec[range.scalarIdx], val);
                             list->mut()[range.scalarIdx] = val;
                         } else {
                             if (val.isObjType(ObjType::LIST)) {
@@ -5720,11 +5741,19 @@ Value VM::run(int targetFrameDepth) {
                     } else if (obj.isObjType(ObjType::DICT)) {
                         if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
                         auto dict = static_cast<ObjDict*>(obj.asObj());
+                        Value oldVal = Value::none();
+                        auto dit = dict->keyMap.find(idx);
+                        if (dit != dict->keyMap.end()) oldVal = dict->elements[dit->second].second;
+                        invalidateJITOnContainerReplace(oldVal, val);
                         dict->set(idx, val);
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
                         if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
                         std::string key = idx.asString();
+                        Value oldVal = Value::none();
+                        auto nsIt = ns->fields.find(key);
+                        if (nsIt != ns->fields.end()) oldVal = *(nsIt->second.upval->location);
+                        invalidateJITOnContainerReplace(oldVal, val);
                         ns->setField(key, val);
                     } else if (obj.isClass()) {
                         auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -5741,6 +5770,7 @@ Value VM::run(int targetFrameDepth) {
                             auto it = ctxOwner->properties.find(mangledName);
                             if (it != ctxOwner->properties.end()) {
                                 if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
+                                invalidateJITOnContainerReplace(it->second.val, val);
                                 it->second.val = val;
                                 found = true;
                             }
@@ -5755,6 +5785,7 @@ Value VM::run(int targetFrameDepth) {
                                         break;
                                     }
                                     if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
+                                    invalidateJITOnContainerReplace(it->second.val, val);
                                     it->second.val = val;
                                     found = true;
                                     break;
@@ -5763,6 +5794,7 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                         if (!found) {
+                            invalidateJITOnContainerReplace(Value::none(), val);
                             if (cls) cls->properties[key] = { val, false, false };
                         }
                     } else {
@@ -7322,21 +7354,18 @@ Value VM::run(int targetFrameDepth) {
                         }
                         callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
-                        // ★ 容器属性被替换时，失效所有 JIT 代码，防止 OSR/函数级 JIT 循环的
-                        // 迭代状态持有旧容器的悬垂引用（关卡转换 replace self.zombies 时触发）。
-                        bool oldIsContainer = false;
+                        // ★ 容器属性被替换时，失效所有 JIT 代码（INSTANCE 分支）
+                        Value oldVal = Value::none();
                         auto oldIt = inst->properties.find(keyStr);
-                        if (oldIt != inst->properties.end()) {
-                            oldIsContainer = oldIt->second.val.isObjType(ObjType::LIST) || oldIt->second.val.isObjType(ObjType::DICT);
-                        }
-                        bool newIsContainer = val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT);
-                        if (oldIsContainer || newIsContainer) invalidateJIT();
+                        if (oldIt != inst->properties.end()) oldVal = oldIt->second.val;
+                        invalidateJITOnContainerReplace(oldVal, val);
                         inst->setProperty(keyStr, val);
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
                         if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                            invalidateJITOnContainerReplace(d->elements[ic.cachedFieldIndex].second, val);
                             d->elements[ic.cachedFieldIndex].second = val;
                             goto set_prop_dict_done;
                         }
@@ -7344,10 +7373,12 @@ Value VM::run(int targetFrameDepth) {
                     {
                         auto it = d->keyMap.find(keyVal);
                         if (it != d->keyMap.end()) {
+                            invalidateJITOnContainerReplace(d->elements[it->second].second, val);
                             d->elements[it->second].second = val;
                             ic.cachedBuiltinType = BuiltinType::DICT;
                             ic.cachedFieldIndex = static_cast<int>(it->second);
                         } else {
+                            invalidateJITOnContainerReplace(Value::none(), val);
                             ic.cachedBuiltinType = BuiltinType::DICT;
                             ic.cachedFieldIndex = static_cast<int>(d->elements.size());
                             d->keyMap[keyVal] = d->elements.size();
@@ -7357,6 +7388,10 @@ Value VM::run(int targetFrameDepth) {
                 set_prop_dict_done:;
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
+                    Value oldVal = Value::none();
+                    auto nsIt = ns->fields.find(keyVal.asString());
+                    if (nsIt != ns->fields.end()) oldVal = *(nsIt->second.upval->location);
+                    invalidateJITOnContainerReplace(oldVal, val);
                     ns->setField(keyVal.asString(), val);
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -7372,6 +7407,7 @@ Value VM::run(int targetFrameDepth) {
                                 break;
                             }
                             if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + keyStr + "'.");
+                            invalidateJITOnContainerReplace(it->second.val, val);
                             it->second.val = val;
                             found = true;
                             break;
@@ -7379,6 +7415,7 @@ Value VM::run(int targetFrameDepth) {
                         c_cls = c_cls->parent;
                     }
                     if (!found) {
+                        invalidateJITOnContainerReplace(Value::none(), val);
                         if (cls) cls->properties[keyStr] = { val, false, false };
                     }
                 } else {
@@ -10741,11 +10778,16 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                 auto it = inst->properties.find(mangledName);
                 if (it != inst->properties.end()) {
                     if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
+                    vm->invalidateJITOnContainerReplace(it->second.val, val);
                     it->second.val = val;
                     foundPrivate = true;
                 }
             }
             if (!foundPrivate) {
+                Value oldVal = Value::none();
+                auto oldIt = inst->properties.find(keyStr);
+                if (oldIt != inst->properties.end()) oldVal = oldIt->second.val;
+                vm->invalidateJITOnContainerReplace(oldVal, val);
                 inst->setProperty(keyStr, val);
             }
         } else {
@@ -10757,6 +10799,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
             auto list = static_cast<ObjList*>(obj.asObj());
             auto range = idx.parseIndex(static_cast<int>(list->vec.size()), false);
             if (!range.isSlice) {
+                vm->invalidateJITOnContainerReplace(list->vec[range.scalarIdx], val);
                 list->mut()[range.scalarIdx] = val;
             } else {
                 if (val.isObjType(ObjType::LIST)) {
@@ -10938,11 +10981,19 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
         } else if (obj.isObjType(ObjType::DICT)) {
             if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
             auto dict = static_cast<ObjDict*>(obj.asObj());
+            Value oldVal = Value::none();
+            auto dit = dict->keyMap.find(idx);
+            if (dit != dict->keyMap.end()) oldVal = dict->elements[dit->second].second;
+            vm->invalidateJITOnContainerReplace(oldVal, val);
             dict->set(idx, val);
         } else if (obj.isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(obj.asObj());
             if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
             std::string key = idx.asString();
+            Value oldVal = Value::none();
+            auto nsIt = ns->fields.find(key);
+            if (nsIt != ns->fields.end()) oldVal = *(nsIt->second.upval->location);
+            vm->invalidateJITOnContainerReplace(oldVal, val);
             ns->setField(key, val);
         } else if (obj.isClass()) {
             auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -10959,6 +11010,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                 auto it = ctxOwner->properties.find(mangledName);
                 if (it != ctxOwner->properties.end()) {
                     if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
+                    vm->invalidateJITOnContainerReplace(it->second.val, val);
                     it->second.val = val;
                     found = true;
                 }
@@ -10973,6 +11025,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                             break;
                         }
                         if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
+                        vm->invalidateJITOnContainerReplace(it->second.val, val);
                         it->second.val = val;
                         found = true;
                         break;
@@ -10981,6 +11034,7 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
                 }
             }
             if (!found) {
+                vm->invalidateJITOnContainerReplace(Value::none(), val);
                 if (cls) cls->properties[key] = { val, false, false };
             }
         } else {
@@ -11282,29 +11336,29 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
             }
             vm->callDunder(obj, setattrMethod, owner, {keyVal, val});
         } else {
-            bool oldIsContainer = false;
+            Value oldVal = Value::none();
             auto oldIt = inst->properties.find(keyStr);
-            if (oldIt != inst->properties.end()) {
-                oldIsContainer = oldIt->second.val.isObjType(ObjType::LIST) || oldIt->second.val.isObjType(ObjType::DICT);
-            }
-            bool newIsContainer = val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT);
-            if (oldIsContainer || newIsContainer) vm->invalidateJIT();
+            if (oldIt != inst->properties.end()) oldVal = oldIt->second.val;
+            vm->invalidateJITOnContainerReplace(oldVal, val);
             inst->setProperty(keyStr, val);
         }
     } else if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
         if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
             if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
+                vm->invalidateJITOnContainerReplace(d->elements[ic.cachedFieldIndex].second, val);
                 d->elements[ic.cachedFieldIndex].second = val;
                 return;
             }
         }
         auto it = d->keyMap.find(keyVal);
         if (it != d->keyMap.end()) {
+            vm->invalidateJITOnContainerReplace(d->elements[it->second].second, val);
             d->elements[it->second].second = val;
             ic.cachedBuiltinType = BuiltinType::DICT;
             ic.cachedFieldIndex = static_cast<int>(it->second);
         } else {
+            vm->invalidateJITOnContainerReplace(Value::none(), val);
             ic.cachedBuiltinType = BuiltinType::DICT;
             ic.cachedFieldIndex = static_cast<int>(d->elements.size());
             d->keyMap[keyVal] = d->elements.size();
@@ -11312,6 +11366,10 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
         }
     } else if (obj.isObjType(ObjType::NAMESPACE)) {
         auto ns = static_cast<ObjNamespace*>(obj.asObj());
+        Value oldVal = Value::none();
+        auto nsIt = ns->fields.find(keyVal.asString());
+        if (nsIt != ns->fields.end()) oldVal = *(nsIt->second.upval->location);
+        vm->invalidateJITOnContainerReplace(oldVal, val);
         ns->setField(keyVal.asString(), val);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -11327,6 +11385,7 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
                     break;
                 }
                 if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + keyStr + "'.");
+                vm->invalidateJITOnContainerReplace(it->second.val, val);
                 it->second.val = val;
                 found = true;
                 break;
@@ -11334,6 +11393,7 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
             c_cls = c_cls->parent;
         }
         if (!found) {
+            vm->invalidateJITOnContainerReplace(Value::none(), val);
             if (cls) cls->properties[keyStr] = { val, false, false };
         }
     } else {

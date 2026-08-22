@@ -271,6 +271,7 @@ public:
     // 因为 JIT/OSR 循环的迭代状态可能持有旧容器的悬垂引用，若不失效，
     // 关卡转换后旧容器被 GC 回收，循环继续遍历旧容器导致 use-after-free。
     void invalidateJIT();
+    void invalidateJITOnContainerReplace(const Value& oldVal, const Value& newVal);
 
     void setCompiledFunctions(const std::vector<std::shared_ptr<CompiledFunction>>& fns) {
         compiledFunctions = fns;

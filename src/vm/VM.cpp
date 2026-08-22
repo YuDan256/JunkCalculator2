@@ -4816,7 +4816,7 @@ Value VM::run(int targetFrameDepth) {
 
                 auto canBeMatrixElement = [](const Value& v) -> bool {
                     return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-                        v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
+                        v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) ||
                         v.isObjType(ObjType::SYMBOLIC) ||
                         v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
                         v.isObjType(ObjType::SYM_MATRIX);
@@ -4838,7 +4838,7 @@ Value VM::run(int targetFrameDepth) {
                 Value result;
 
                 if (hasOther) {
-                    throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, string, or symbolic. Use @[...] for lists.");
+                    throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                 } else {
                     bool hasSubMatrix = false;
                     for (int ii = 0; ii < total; ++ii) {
@@ -7411,7 +7411,7 @@ Value VM::run(int targetFrameDepth) {
 
                 auto canBeMatrixElement = [](const Value& v) -> bool {
                     return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-                           v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
+                           v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) ||
                            v.isObjType(ObjType::SYMBOLIC) ||
                            v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
                            v.isObjType(ObjType::SYM_MATRIX);
@@ -7431,7 +7431,7 @@ Value VM::run(int targetFrameDepth) {
                 }
 
                 if (hasOther) {
-                    throw std::runtime_error("VM Error: Matrix comprehension elements must be numeric, complex, string, or symbolic. Use @[...] for lists.");
+                    throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                 }
 
                 int total = static_cast<int>(l->vec.size());
@@ -8133,7 +8133,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
 
     auto canBeMatrixElement = [](const Value& v) -> bool {
         return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-            v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) || v.isString() ||
+            v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) ||
             v.isObjType(ObjType::SYMBOLIC) ||
             v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
             v.isObjType(ObjType::SYM_MATRIX);
@@ -8155,7 +8155,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
     Value result;
 
     if (hasOther) {
-        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, string, or symbolic. Use @[...] for lists.");
+        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
     } else {
         bool hasSubMatrix = false;
         for (int ii = 0; ii < total; ++ii) {

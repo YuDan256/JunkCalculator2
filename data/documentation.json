@@ -472,7 +472,6 @@
       "    matrix(r, c, ...)   Construct matrix from dimensions + elements",
       "                          matrix(2, 2, 1, 2, 3, 4)       → realmatrix",
       "                          matrix(2, 2, 1+1i, 2, 3, 4-2i)    → complexmatrix",
-      "                          matrix(2, 2, \"a\", \"b\", \"c\", \"d\") → stringmatrix",
       "                          matrix(3, 3)                    → 3×3 zero matrix",
       "",
       "  Trigonometric & Hyperbolic  (also accept complex & matrix)",
@@ -675,7 +674,6 @@
       "    ",
       "    Elements may be expressions:  [sin(PI), 2*i; 0, 1]",
       "    Any complex element auto-promotes the whole matrix to complexmatrix.",
-      "    If any element is a string, the entire matrix becomes a stringmatrix.",
       "",
       "    ★ Empty Matrices:",
       "    Any matrix with 0 elements (e.g., from out-of-bounds slicing) automatically",
@@ -689,8 +687,6 @@
       "    Auto-detects element type:",
       "      matrix(2, 2, 1, 2, 3, 4)             → realmatrix",
       "      matrix(2, 2, 1+1i, 2, 3, 4-2i)       → complexmatrix",
-      "      matrix(2, 2, \"a\", \"b\", \"c\", \"d\")     → stringmatrix",
-      "      matrix(2, 2, 1, \"mixed\", 3, 4)       → stringmatrix (mixed → string)",
       "",
       "  Arithmetic & Scalars",
       "  ──────────────────────",
@@ -707,7 +703,7 @@
       "    A.maxE(B)  A.minE(B)  A.andE(B)  A.orE(B)   A.xorE(B)",
       "    A.atan2E(B) A.hypotE(B)  mask.whereE(A, B)",
       "      (Element-wise operations. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
-      "       Comparisons also support stringmatrix and strings.)",
+      "       Comparisons also support strings.)",
       "",
       "  Dimensions & Element Access",
       "  ──────────────────────",
@@ -783,7 +779,6 @@
       "    ismatrix(A)         Any matrix type",
       "    isrealmatrix(A)     RealMatrix specifically",
       "    iscomplexmatrix(A)  ComplexMatrix specifically",
-      "    isstringmatrix(A)   StringMatrix specifically",
       "    isvector(A)         Row vector or column vector",
       "    issquare(A)         Square matrix",
       "",
@@ -791,8 +786,7 @@
       "  ──────────────────────",
       "    toList(A)           matrix → list of lists (2D structure)",
       "    toMatrix(L)         list of lists → matrix (reverse)",
-      "    toArray(L)          flat list → row vector",
-      "    toStrMat(A)         Any matrix → stringmatrix"
+      "    toArray(L)          flat list → row vector"
     ],
     "linalg": [
       "═══ Linear Algebra ═══",
@@ -1322,7 +1316,7 @@
       "    Supported Exact & Union Types: ",
       "      int, whole, double, real, number, exact, string, bool, binary, none_type,",
       "      list, dict, set, fraction, complex, basenum, symbolic,",
-      "      realmatrix, complexmatrix, stringmatrix, symmatrix, matrix, function, class_type, instance, namespace_type, any_type",
+      "      realmatrix, complexmatrix, symmatrix, matrix, function, class_type, instance, namespace_type, any_type",
       "",
       "    Duck Types / Interfaces (Behavioral Contracts):",
       "      iterable    → Matches lists, dicts, sets, strings, matrices, or instances with __iter__/__next__",
@@ -1366,10 +1360,9 @@
       "",
       "  Container & Duck Type Checks",
       "  ──────────────────────",
-      "    ismatrix(x)         Any matrix? (real, complex, string, or symbolic)",
+      "    ismatrix(x)         Any matrix? (real, complex, or symbolic)",
       "    isrealmatrix(x)     realmatrix specifically?",
       "    iscomplexmatrix(x)  complexmatrix specifically?",
-      "    isstringmatrix(x)   stringmatrix specifically?",
       "    issymmatrix(x)      symmatrix specifically?",
       "    isvector(x)         Row vector (1×N) or column vector (N×1)?",
       "    issquare(x)         Square matrix (N×N)?",
@@ -1893,45 +1886,16 @@
       "",
       "    Custom Delimiter (for patterns containing parentheses):",
       "      r\"TAG(content)TAG\"",
-      "      r\"RE((\\d+)-(\\d+))RE\"    ← Use this for regex patterns starting with (",
-      "",
-      "  stringmatrix — Tabular String Data",
-      "  ──────────────────────",
-      "    [\"hello\", \"world\"]            Creates a stringmatrix (1×2)",
-      "    [\"a\", \"b\"; \"c\", \"d\"]          Creates a stringmatrix (2×2)",
-      "",
-      "    ★ UNIVERSAL COMPATIBILITY:",
-      "    stringmatrix now supports ALL array manipulation functions:",
-      "      push, prepend, insert, removeAt, slice, reverse, flatten,",
-      "      unique, indexOf, count, join, map, filter, reduce, sort,",
-      "      any, all, countIf, zip, cat",
-      "    ",
-      "    Examples:",
-      "      [\"a\",\"b\"].push(\"c\")                     → [\"a\",\"b\",\"c\"]",
-      "      [\"banana\",\"apple\",\"cherry\"].sort()      → [\"apple\",\"banana\",\"cherry\"]",
-      "      [\"hello\",\"world\"].map((s) => s.upper()) → [\"HELLO\",\"WORLD\"]",
-      "      [\"hi\",\"hello\"].filter((s) => s.len() > 3) → [\"hello\"]",
-      "      [\"x\",\"y\",\"z\"].join(\"-\")                 → \"x-y-z\"",
-      "      [\"a\",\"b\",\"c\"].reverse()                 → [\"c\",\"b\",\"a\"]",
-      "",
-      "    Conversion & Utilities:",
-      "      toStrMat(A)                         Convert any matrix → stringmatrix",
-      "      toList([\"a\",\"b\"])                   stringmatrix → list",
-      "      matrix(2, 2, \"a\", \"b\", \"c\", \"d\")    stringmatrix via constructor",
-      "      strmat(r, c, ...)                   Construct stringmatrix",
-      "      strvec(...)                         Construct column stringmatrix",
-      "      strrow(...)                         Construct row stringmatrix",
-      "      strfill(str, n)                     Create 1xN stringmatrix filled with str"
+      "      r\"RE((\\d+)-(\\d+))RE\"    ← Use this for regex patterns starting with ("
     ],
     "array": [
       "═══ Array / Data Functions ═══",
       "  Arrays are structurally defined as row vectors (1×N matrices): `[1, 2, 3]`",
       "  ",
       "  ★ UNIVERSAL COMPATIBILITY:",
-      "  All array functions below work seamlessly across FOUR container types:",
+      "  All array functions below work seamlessly across THREE container types:",
       "    • realmatrix      [1, 2, 3]",
       "    • complexmatrix    [1+1i, 2+2i]",
-      "    • stringmatrix    [\"hello\", \"world\"]",
       "    • list            list(1, \"hi\", [1,2])",
       "  Functions automatically preserve the input type in their output.",
       "",
@@ -2059,7 +2023,6 @@
       "                          [1,2,3].join(\"-\")              → \"1-2-3\"",
       "                          [\"a\",\"b\",\"c\"].join(\", \")        → \"a, b, c\"",
       "    zip(a, b)           Pair-wise merge → N×2 matrix or list of pairs",
-      "    toStrVec(v)         Convert list/stringmatrix to column stringmatrix",
       "",
       "  Iteration Helpers",
       "  ──────────────────────",
@@ -2093,9 +2056,8 @@
       "    @[1, 2; 3, 4]                  Creates a list of lists: @[@[1, 2], @[3, 4]]",
       "    toList([1, 2, 3])              Convert array → list of doubles",
       "    toList([1+1i, 2+2i])           Convert complexmatrix → list",
-      "    toList([\"a\", \"b\"])             Convert stringmatrix → list",
       "    toArray(L)                     Convert flat list → row vector (must be numeric)",
-      "    toMatrix(L)                    Convert nested list → matrix/stringmatrix",
+      "    toMatrix(L)                    Convert nested list → matrix",
       "",
       "  Access & Modification (0-indexed, negative wraps)",
       "  ──────────────────────",
@@ -2185,7 +2147,6 @@
       "    toMatrix(L)             list → matrix (auto-detects type)",
       "                              list(1,2,3) → [1, 2, 3]  (row vector)",
       "                              list(list(1,2), list(3,4)) → [1,2; 3,4]",
-      "    toStrVec(L)             list → column stringmatrix",
       "",
       "  When to use list vs Array?",
       "  ──────────────────────",
@@ -2753,7 +2714,7 @@
       "    isinstance(p)            true if p is any class instance",
       "    isinstance(p, Point)     true if p is (or inherits from) Point",
       "    hasField(p, \"x\")         true if field exists",
-      "    getFields(p)             All field names as stringmatrix",
+      "    getFields(p)             All field names as list",
       "    getClass(p)              The class definition object",
       "    getParent(Dog)           Parent class or none",
       "",
@@ -3290,7 +3251,7 @@
       "  CSV Files (Data Analysis)",
       "  ──────────────────────",
       "    io.readCSV(path, delim)     Reads a CSV into a list of lists.",
-      "    io.readCSVMat(path, delim)  Reads a CSV directly into a stringmatrix.",
+      "    io.readCSVMat(path, delim)  Reads a CSV into a list of lists (one per row).",
       "    io.parseCSVNum(path, delim) Reads a CSV into a mathematical realmatrix.",
       "    io.writeCSV(path, data, delim) Writes a matrix or list out to a CSV file.",
       "",
@@ -4943,31 +4904,6 @@
       "desc": "Generates n evenly-spaced points from a to b.",
       "examples": ["linspace(0, 1, 5)"]
     },
-    "strmat": {
-      "signature": "strmat(r, c, ...)",
-      "desc": "Constructs a stringmatrix with r rows and c columns.",
-      "examples": ["strmat(2, 2, \"a\", \"b\", \"c\", \"d\")"]
-    },
-    "strvec": {
-      "signature": "strvec(...)",
-      "desc": "Constructs a column stringmatrix.",
-      "examples": ["strvec(\"a\", \"b\")"]
-    },
-    "strrow": {
-      "signature": "strrow(...)",
-      "desc": "Constructs a row stringmatrix.",
-      "examples": ["strrow(\"a\", \"b\")"]
-    },
-    "strfill": {
-      "signature": "strfill(str, n)",
-      "desc": "Creates a 1xN stringmatrix filled with str.",
-      "examples": ["strfill(\"x\", 3)"]
-    },
-    "toStrMat": {
-      "signature": "toStrMat(A)",
-      "desc": "Converts any matrix to a stringmatrix.",
-      "examples": ["toStrMat([1, 2; 3, 4])"]
-    },
     "merge": {
       "signature": "d1.merge(d2)",
       "desc": "Merges d2 into d1, overwriting existing keys.",
@@ -4982,11 +4918,6 @@
       "signature": "toList(v)",
       "desc": "Converts an array, matrix, string, or set to a list.",
       "examples": ["toList([1, 2, 3])"]
-    },
-    "toStrVec": {
-      "signature": "toStrVec(v)",
-      "desc": "Converts a list or stringmatrix to a column stringmatrix.",
-      "examples": ["toStrVec(list(\"a\", \"b\"))"]
     },
     "toArray": {
       "signature": "toArray(v)",
@@ -5105,7 +5036,7 @@
     },
     "readCSVMat": {
       "signature": "io.readCSVMat(path, [delim])",
-      "desc": "Reads a CSV file directly into a StringMatrix.",
+      "desc": "Reads a CSV file into a list of lists (one list per row).",
       "examples": ["io.readCSVMat(\"data.csv\")"]
     },
     "parseCSVNum": {
@@ -5375,11 +5306,6 @@
       "signature": "iscomplexmatrix(x)",
       "desc": "Returns true if x is specifically a complexmatrix.",
       "examples": ["iscomplexmatrix([1i, 2i])"]
-    },
-    "isstringmatrix": {
-      "signature": "isstringmatrix(x)",
-      "desc": "Returns true if x is specifically a stringmatrix.",
-      "examples": ["isstringmatrix([\"a\", \"b\"])"]
     },
     "issymmatrix": {
       "signature": "issymmatrix(x)",

@@ -2786,6 +2786,13 @@ std::string VM::buildStackTrace() const {
     return oss.str();
 }
 
+void VM::invalidateJIT() {
+    // 只清入口指针，不清 ExecutableMemory（否则正在执行的 JIT 代码的内存会被释放）。
+    // 旧内存会在重新编译时被新 shared_ptr 覆盖、延迟释放。
+    osrEntryPoints.clear();
+    jitEntryPoints.clear();
+}
+
 void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
     auto& fnDef = compiledFunctions[fnIdx];
     
@@ -7315,6 +7322,15 @@ Value VM::run(int targetFrameDepth) {
                         }
                         callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
+                        // ★ 容器属性被替换时，失效所有 JIT 代码，防止 OSR/函数级 JIT 循环的
+                        // 迭代状态持有旧容器的悬垂引用（关卡转换 replace self.zombies 时触发）。
+                        bool oldIsContainer = false;
+                        auto oldIt = inst->properties.find(keyStr);
+                        if (oldIt != inst->properties.end()) {
+                            oldIsContainer = oldIt->second.val.isObjType(ObjType::LIST) || oldIt->second.val.isObjType(ObjType::DICT);
+                        }
+                        bool newIsContainer = val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT);
+                        if (oldIsContainer || newIsContainer) invalidateJIT();
                         inst->setProperty(keyStr, val);
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
@@ -11266,6 +11282,13 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
             }
             vm->callDunder(obj, setattrMethod, owner, {keyVal, val});
         } else {
+            bool oldIsContainer = false;
+            auto oldIt = inst->properties.find(keyStr);
+            if (oldIt != inst->properties.end()) {
+                oldIsContainer = oldIt->second.val.isObjType(ObjType::LIST) || oldIt->second.val.isObjType(ObjType::DICT);
+            }
+            bool newIsContainer = val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT);
+            if (oldIsContainer || newIsContainer) vm->invalidateJIT();
             inst->setProperty(keyStr, val);
         }
     } else if (obj.isObjType(ObjType::DICT)) {

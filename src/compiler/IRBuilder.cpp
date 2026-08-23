@@ -422,6 +422,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         }
     };
 
+    auto emitTypeAssert = [&](IRNode* valueNode, const std::shared_ptr<Expr>& typeHint, const std::string& name) {
+        if (!typeHint) return;
+        typeHint->accept(*this);
+        IRNode* typeNode = lastValue;
+        
+        IRNode* assertNode = graph->createNode(IROp::AssertType);
+        assertNode->setControl(currentControl);
+        assertNode->addData(valueNode);
+        assertNode->addData(typeNode);
+        assertNode->name = name;
+        currentControl = assertNode;
+    };
+
     if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->setControl(currentControl);
@@ -484,6 +497,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
+            emitTypeAssert(valNode, vp->typeHint, vp->name.lexeme);
             assignVar(vp->name.lexeme, valNode, sym, mod, isExplicitConst);
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
@@ -789,6 +803,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                             currentFunction->upvalues[upvalIdx].isRef = true;
                         }
                     }
+                    emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
                     assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
                 }
                 continue;
@@ -851,6 +866,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
+            emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
             assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
@@ -988,6 +1004,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                                 currentFunction->upvalues[upvalIdx].isRef = true;
                             }
                         }
+                        emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
                         assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
                     }
                     continue;
@@ -1068,6 +1085,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
+            emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
             assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
@@ -1169,6 +1187,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     currentFunction->upvalues[upvalIdx].isRef = true;
                 }
             }
+            emitTypeAssert(restNode, restPat->typeHint, restPat->name.lexeme);
             assignVar(restPat->name.lexeme, restNode, sym, mod, isExplicitConst);
         }
     }
@@ -1716,6 +1735,18 @@ void IRBuilder::visitAssign(Assign* expr) {
     
     if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
         if (valNode->name.empty() && expr->name.lexeme != "_") valNode->name = expr->name.lexeme;
+    }
+    
+    if (expr->typeHint) {
+        expr->typeHint->accept(*this);
+        IRNode* typeNode = lastValue;
+        
+        IRNode* assertNode = graph->createNode(IROp::AssertType);
+        assertNode->setControl(currentControl);
+        assertNode->addData(valNode);
+        assertNode->addData(typeNode);
+        assertNode->name = expr->name.lexeme;
+        currentControl = assertNode;
     }
     
     if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;

@@ -133,6 +133,7 @@ enum class IROp {
     // 类型与断言
     AssertParamType,
     AssertReturnType,
+    AssertType,
     MatchType,
     MatchShape,
     MatchInit,
@@ -253,6 +254,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::RunDefers: return "RunDefers";
         case IROp::AssertParamType: return "AssertParamType";
         case IROp::AssertReturnType: return "AssertReturnType";
+        case IROp::AssertType: return "AssertType";
         case IROp::MatchType: return "MatchType";
         case IROp::MatchShape: return "MatchShape";
         case IROp::MatchInit: return "MatchInit";

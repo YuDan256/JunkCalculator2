@@ -61,13 +61,16 @@ public:
 
     void visitAssign(Assign* expr) override {
         expr->value->accept(*this); Value v = result;
+        Value typeHintVal = Value::none();
+        if (expr->typeHint) { expr->typeHint->accept(*this); typeHintVal = result; }
         result = makeASTNode("Assign", expr->name.line, {
             {"name", Value(expr->name.lexeme)},
             {"value", v},
             {"isRef", Value(expr->isRef)},
             {"isState", Value(expr->isState)},
             {"isLocal", Value(expr->isLocal)},
-            {"isConst", Value(expr->isConst)}
+            {"isConst", Value(expr->isConst)},
+            {"typeHint", typeHintVal}
         });
     }
 
@@ -101,17 +104,23 @@ public:
             return makeASTNode("DynamicAssertPattern", 0, {{"expr", result}});
         }
         if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+            Value typeHintVal = Value::none();
+            if (vp->typeHint) { vp->typeHint->accept(*this); typeHintVal = result; }
             return makeASTNode("VariablePattern", vp->name.line, {
                 {"name", Value(vp->name.lexeme)},
                 {"modifier", Value(static_cast<double>(vp->modifier))},
-                {"isConst", Value(vp->isConst)}
+                {"isConst", Value(vp->isConst)},
+                {"typeHint", typeHintVal}
             });
         }
         if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
+            Value typeHintVal = Value::none();
+            if (rp->typeHint) { rp->typeHint->accept(*this); typeHintVal = result; }
             return makeASTNode("RestPattern", rp->name.line, {
                 {"name", Value(rp->name.lexeme)},
                 {"modifier", Value(static_cast<double>(rp->modifier))},
-                {"isConst", Value(rp->isConst)}
+                {"isConst", Value(rp->isConst)},
+                {"typeHint", typeHintVal}
             });
         }
         if (auto* listp = dynamic_cast<ListPattern*>(pat)) {
@@ -672,10 +681,12 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val, MacroExpandFunc expander
         return std::make_unique<DynamicAssertPattern>(toAST(getProp("expr")));
     } else if (type == "VariablePattern") {
         Token name(TokenType::IDENTIFIER, getProp("name").asString(), 0);
-        return std::make_unique<VariablePattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy());
+        std::shared_ptr<Expr> typeHint = getProp("typeHint").isNone() ? nullptr : std::shared_ptr<Expr>(toAST(getProp("typeHint")).release());
+        return std::make_unique<VariablePattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy(), std::move(typeHint));
     } else if (type == "RestPattern") {
         Token name(TokenType::IDENTIFIER, getProp("name").asString(), 0);
-        return std::make_unique<RestPattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy());
+        std::shared_ptr<Expr> typeHint = getProp("typeHint").isNone() ? nullptr : std::shared_ptr<Expr>(toAST(getProp("typeHint")).release());
+        return std::make_unique<RestPattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy(), std::move(typeHint));
     } else if (type == "ListPattern") {
         std::vector<std::unique_ptr<Pattern>> elements;
         Value elemsVal = getProp("elements");
@@ -791,13 +802,15 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<ContextKeywordExpr>(kind, Token(TokenType::IDENTIFIER, "", line));
     } else if (type == "Assign") {
         auto value = toAST(getProp("value"));
+        std::shared_ptr<Expr> typeHint = getProp("typeHint").isNone() ? nullptr : std::shared_ptr<Expr>(toAST(getProp("typeHint")).release());
         return std::make_unique<Assign>(
             Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
             std::move(value),
             getProp("isRef").truthy(),
             getProp("isState").truthy(),
             getProp("isLocal").truthy(),
-            getProp("isConst").truthy()
+            getProp("isConst").truthy(),
+            std::move(typeHint)
         );
     } else if (type == "Block") {
         return std::make_unique<Block>(getExprList(getProp("statements")));

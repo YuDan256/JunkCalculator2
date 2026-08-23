@@ -148,6 +148,7 @@ enum class OpCode : uint8_t {
     // 类型与断言
     ASSERT_PARAM_TYPE,  // assert_param(R(A), paramIdx = B, nameKst = C) [Ext B, C]
     ASSERT_RETURN_TYPE, // assert_return(R(A)) [Ext]
+    ASSERT_TYPE,        // assert_type(R(A), typeObj = R(B), nameKst = C) [Ext B, C]
     MATCH_TYPE,         // R(A) := match_type(R(B), typeObj = R(C)) [Ext]
     MATCH_SHAPE,        // R(A) := match_shape(R(B), shapeIdx = C) [Ext]
     MATCH_INIT,         // R(A) := match_init(R(B)) [Ext]
@@ -259,6 +260,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::RUN_DEFERS: return "RUN_DEFERS";
         case OpCode::ASSERT_PARAM_TYPE: return "ASSERT_PARAM_TYPE";
         case OpCode::ASSERT_RETURN_TYPE: return "ASSERT_RETURN_TYPE";
+        case OpCode::ASSERT_TYPE: return "ASSERT_TYPE";
         case OpCode::MATCH_TYPE: return "MATCH_TYPE";
         case OpCode::MATCH_SHAPE: return "MATCH_SHAPE";
         case OpCode::MATCH_INIT: return "MATCH_INIT";
@@ -494,6 +496,13 @@ public:
 
             case OpCode::ASSERT_PARAM_TYPE:
                 std::cout << "R(" << a << ") " << b << " " << c;
+                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << constants[c].asString();
+                }
+                break;
+
+            case OpCode::ASSERT_TYPE:
+                std::cout << "R(" << a << ") R(" << b << ") " << c;
                 if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
                     std::cout << "  ; " << constants[c].asString();
                 }

@@ -49,7 +49,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::SetProperty: case IROp::SetPrivate: case IROp::DefinePrivate: case IROp::DefinePrivateConst:
         case IROp::DefineProp: case IROp::DefinePropConst:
         case IROp::GetSuper:
-        case IROp::AssertParamType: case IROp::AssertReturnType:
+        case IROp::AssertParamType: case IROp::AssertReturnType: case IROp::AssertType:
         case IROp::MatchInit:
         case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div: case IROp::IDiv:
         case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:

@@ -62,7 +62,7 @@ public:
                 case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
                 case OpCode::INDEX_GET: case OpCode::ITER_INIT: case OpCode::IN:
                 case OpCode::DICT_APPEND: case OpCode::FORMAT_STRING: case OpCode::BUILD_NAMESPACE:
-                case OpCode::ASSERT_PARAM_TYPE: case OpCode::GET_PROP: case OpCode::GET_PRIVATE:
+                case OpCode::ASSERT_PARAM_TYPE: case OpCode::ASSERT_TYPE: case OpCode::GET_PROP: case OpCode::GET_PRIVATE:
                 case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: case OpCode::SET_PRIVATE:
                 case OpCode::DEFINE_PRIVATE: case OpCode::DEFINE_PRIVATE_CONST:
                 case OpCode::DEFINE_PROP: case OpCode::DEFINE_PROP_CONST: case OpCode::INVOKE:

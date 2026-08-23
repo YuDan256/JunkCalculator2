@@ -175,6 +175,7 @@ void Resolver::visitAssign(Assign* expr) {
         }
     }
 
+    if (expr->typeHint) resolve(expr->typeHint.get());
     resolve(expr->value.get());
 
     if (hidden) {
@@ -564,6 +565,7 @@ void Resolver::visitKeywordArgExpr(KeywordArgExpr* expr) {
 void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod, bool globalConst) {
     if (!pat) return;
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
+        if (vp->typeHint) resolve(vp->typeHint.get());
         if (vp->name.lexeme != "_") {
             ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             bool isConst = vp->isConst || globalConst;
@@ -580,6 +582,7 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
             patternSymbols[pat] = resolveName(vp->name.lexeme);
         }
     } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
+        if (rp->typeHint) resolve(rp->typeHint.get());
         if (rp->name.lexeme != "_") {
             ScopeModifier mod = rp->modifier != ScopeModifier::None ? rp->modifier : globalMod;
             bool isConst = rp->isConst || globalConst;

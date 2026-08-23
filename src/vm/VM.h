@@ -145,8 +145,11 @@ public:
     void execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false);
     void execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall);
 
+    enum class AssertContext { Param, Return, Variable };
+    void assertTypeMatches(const Value& val, const Value& typeObj, AssertContext ctx, const std::string& name);
     void execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx);
     void execAssertReturnType(const Value& val);
+    void execAssertType(const Value& val, const Value& typeObj, uint32_t nameIdx);
 
     std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, bool hasRestParam, Value boundSelf = Value::none());
 
@@ -389,6 +392,7 @@ uint64_t jc2_jit_iter_init(uint64_t iterable_bits, uint32_t c);
 uint64_t jc2_jit_iter_next(uint64_t state_bits);
 uint64_t jc2_jit_is_uninit(uint64_t val_bits);
 void jc2_jit_assert_param_type(uint64_t a_bits, uint32_t b, uint32_t c);
+void jc2_jit_assert_type(uint64_t a_bits, uint64_t b_bits, uint32_t c);
 uint64_t jc2_jit_truthy(uint64_t val_bits);
 uint64_t jc2_jit_invoke(uint64_t* values, const JitInvokeInfo* info);
 uint64_t jc2_jit_super_invoke(uint64_t* values, const JitSuperInvokeInfo* info);

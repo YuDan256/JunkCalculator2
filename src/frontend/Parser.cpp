@@ -510,6 +510,12 @@ namespace jc {
 
         auto expr = ternary();
 
+        // ★ 类型断言：x: int = 10（仅对变量左值）
+        std::shared_ptr<Expr> typeHint = nullptr;
+        if (dynamic_cast<Variable*>(expr.get()) && match({ TokenType::COLON })) {
+            typeHint = std::shared_ptr<Expr>(ternary().release());
+        }
+
         // 处理复合赋值 +=, -= 等...
         if (match({ TokenType::PLUS_ASSIGN, TokenType::MINUS_ASSIGN,
                     TokenType::STAR_ASSIGN, TokenType::SLASH_ASSIGN, TokenType::TILDE_SLASH_ASSIGN,
@@ -540,6 +546,8 @@ namespace jc {
             case TokenType::SHIFT_RIGHT_ASSIGN: baseOp = TokenType::SHIFT_RIGHT; break;
             default: baseOp = TokenType::PLUS; break;
             }
+
+            if (typeHint) throw std::runtime_error("Parser Error: Type assertion cannot be combined with compound assignment.");
 
             auto value = assignment();
 
@@ -583,7 +591,7 @@ namespace jc {
             }
 
             if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {
-                return std::make_unique<Assign>(varExpr->name, std::move(value), isRef, isState, isLocal, isConst);
+                return std::make_unique<Assign>(varExpr->name, std::move(value), isRef, isState, isLocal, isConst, std::move(typeHint));
             }
 
             if (dynamic_cast<UnquoteExpr*>(expr.get())) {
@@ -1928,6 +1936,7 @@ namespace jc {
             props.push_back({"isState", std::make_unique<Literal>(assign->isState ? "true" : "false", false, false, true)});
             props.push_back({"isLocal", std::make_unique<Literal>(assign->isLocal ? "true" : "false", false, false, true)});
             props.push_back({"isConst", std::make_unique<Literal>(assign->isConst ? "true" : "false", false, false, true)});
+            props.push_back({"typeHint", assign->typeHint ? transformQuote(assign->typeHint.get()) : std::make_unique<Literal>("none", false, false, true)});
             return makeASTNodeCall("Assign", assign->name.line, std::move(props));
         }
         if (auto* exprAssign = dynamic_cast<ExprAssign*>(expr)) {
@@ -2001,6 +2010,7 @@ namespace jc {
                 }
                 props.push_back({"modifier", std::make_unique<Literal>(std::to_string(static_cast<int>(vp->modifier)))});
                 props.push_back({"isConst", std::make_unique<Literal>(vp->isConst ? "true" : "false", false, false, true)});
+                props.push_back({"typeHint", vp->typeHint ? transformQuote(vp->typeHint.get()) : std::make_unique<Literal>("none", false, false, true)});
                 return makeASTNodeCall("VariablePattern", vp->name.line, std::move(props));
             }
             if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
@@ -2012,6 +2022,7 @@ namespace jc {
                 }
                 props.push_back({"modifier", std::make_unique<Literal>(std::to_string(static_cast<int>(rp->modifier)))});
                 props.push_back({"isConst", std::make_unique<Literal>(rp->isConst ? "true" : "false", false, false, true)});
+                props.push_back({"typeHint", rp->typeHint ? transformQuote(rp->typeHint.get()) : std::make_unique<Literal>("none", false, false, true)});
                 return makeASTNodeCall("RestPattern", rp->name.line, std::move(props));
             }
             if (auto* listp = dynamic_cast<ListPattern*>(pat)) {
@@ -2646,7 +2657,8 @@ namespace jc {
             } else {
                 name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
             }
-            return std::make_unique<RestPattern>(name, mod, isConst);
+            auto typeHint = parseOptionalTypeHint();
+            return std::make_unique<RestPattern>(name, mod, isConst, std::move(typeHint));
         }
         
         if (hasMod) {
@@ -2657,7 +2669,8 @@ namespace jc {
             } else {
                 name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after modifier.");
             }
-            return std::make_unique<VariablePattern>(name, mod, isConst);
+            auto typeHint = parseOptionalTypeHint();
+            return std::make_unique<VariablePattern>(name, mod, isConst, std::move(typeHint));
         }
         if (match({TokenType::LBRACKET})) {
             std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
@@ -2694,6 +2707,7 @@ namespace jc {
                     
                     if (match({TokenType::ELLIPSIS})) {
                         Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+                        auto typeHint = parseOptionalTypeHint();
                         
                         bool hasRest = false;
                         for (const auto& pat : currentRow) {
@@ -2708,14 +2722,14 @@ namespace jc {
 
                         if (check(TokenType::SEMICOLON) || check(TokenType::RBRACKET)) {
                             if (check(TokenType::RBRACKET) && currentRow.empty() && !rows.empty()) {
-                                restRow = std::make_unique<RestPattern>(name, elemMod, elemConst);
+                                restRow = std::make_unique<RestPattern>(name, elemMod, elemConst, typeHint);
                                 isMatrix = true;
                             } else {
-                                restCol = std::make_unique<RestPattern>(name, elemMod, elemConst);
+                                restCol = std::make_unique<RestPattern>(name, elemMod, elemConst, typeHint);
                             }
                             continue;
                         } else {
-                            currentRow.push_back(std::make_unique<RestPattern>(name, elemMod, elemConst));
+                            currentRow.push_back(std::make_unique<RestPattern>(name, elemMod, elemConst, typeHint));
                             if (!match({TokenType::COMMA})) {
                                 throw std::runtime_error("Parser Error: Expect ',' after pattern.");
                             }
@@ -2773,7 +2787,8 @@ namespace jc {
                 
                 if (match({TokenType::ELLIPSIS})) {
                     Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
-                    rest = std::make_unique<RestPattern>(name, elemMod, elemConst);
+                    auto typeHint = parseOptionalTypeHint();
+                    rest = std::make_unique<RestPattern>(name, elemMod, elemConst, std::move(typeHint));
                     break; // Rest must be last
                 }
                 
@@ -2810,12 +2825,14 @@ namespace jc {
         
         auto expr = call();
         if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-            return std::make_unique<VariablePattern>(var->name, mod, isConst);
+            auto typeHint = parseOptionalTypeHint();
+            return std::make_unique<VariablePattern>(var->name, mod, isConst, std::move(typeHint));
         }
         if (auto* unq = dynamic_cast<UnquoteExpr*>(expr.get())) {
             if (auto* var = dynamic_cast<Variable*>(unq->expr.get())) {
                 Token nameTok(TokenType::IDENTIFIER, "$" + var->name.lexeme, var->name.position, var->name.line);
-                return std::make_unique<VariablePattern>(nameTok, mod, isConst);
+                auto typeHint = parseOptionalTypeHint();
+                return std::make_unique<VariablePattern>(nameTok, mod, isConst, std::move(typeHint));
             }
         }
         if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
@@ -2828,6 +2845,13 @@ namespace jc {
             return std::make_unique<DynamicAssertPattern>(std::move(expr));
         }
         return std::make_unique<LiteralPattern>(std::move(expr));
+    }
+
+    std::shared_ptr<Expr> Parser::parseOptionalTypeHint() {
+        if (match({TokenType::COLON})) {
+            return std::shared_ptr<Expr>(ternary().release());
+        }
+        return nullptr;
     }
 
     std::unique_ptr<Pattern> Parser::parsePattern() {

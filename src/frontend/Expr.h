@@ -158,16 +158,18 @@ namespace jc {
         Token name;
         ScopeModifier modifier;
         bool isConst;
-        explicit VariablePattern(Token name, ScopeModifier modifier = ScopeModifier::None, bool isConst = false) 
-            : name(std::move(name)), modifier(modifier), isConst(isConst) {}
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言
+        explicit VariablePattern(Token name, ScopeModifier modifier = ScopeModifier::None, bool isConst = false, std::shared_ptr<Expr> typeHint = nullptr) 
+            : name(std::move(name)), modifier(modifier), isConst(isConst), typeHint(std::move(typeHint)) {}
     };
 
     struct RestPattern : public Pattern {
         Token name;
         ScopeModifier modifier;
         bool isConst;
-        explicit RestPattern(Token name, ScopeModifier modifier = ScopeModifier::None, bool isConst = false) 
-            : name(std::move(name)), modifier(modifier), isConst(isConst) {}
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言
+        explicit RestPattern(Token name, ScopeModifier modifier = ScopeModifier::None, bool isConst = false, std::shared_ptr<Expr> typeHint = nullptr) 
+            : name(std::move(name)), modifier(modifier), isConst(isConst), typeHint(std::move(typeHint)) {}
     };
 
     struct ListPattern : public Pattern {
@@ -322,8 +324,9 @@ namespace jc {
         bool isState;
         bool isLocal; // ★ 新增
         bool isConst; // ★ 新增
-        Assign(Token name, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false, bool isConst = false)
-            : name(std::move(name)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal), isConst(isConst) {
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言（x: int = 10）
+        Assign(Token name, std::unique_ptr<Expr> value, bool isRef = false, bool isState = false, bool isLocal = false, bool isConst = false, std::shared_ptr<Expr> typeHint = nullptr)
+            : name(std::move(name)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal), isConst(isConst), typeHint(std::move(typeHint)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitAssign(this); }
     };

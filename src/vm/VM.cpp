@@ -1481,6 +1481,38 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
     return false;
 }
 
+void VM::assertTypeMatches(const Value& val, const Value& typeObj, AssertContext ctx, const std::string& name) {
+    std::string subject;
+    bool isReturn = false;
+    if (ctx == AssertContext::Param) subject = "Parameter '" + name + "'";
+    else if (ctx == AssertContext::Return) { subject = "Function '" + name + "'"; isReturn = true; }
+    else subject = "Variable '" + name + "'";
+
+    if (typeObj.isClass()) {
+        ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
+        bool matched = false;
+        if (val.isInstance()) {
+            ObjClass* c = val.asInstance()->classDef;
+            while (c) {
+                if (c == expectedClass) { matched = true; break; }
+                c = c->parent;
+            }
+        }
+        if (!matched) {
+            if (isReturn) throw std::runtime_error("TypeError: Function '" + name + "' expected to return '" + expectedClass->name + "', but returned '" + getTypeName(val) + "'.");
+            throw std::runtime_error("TypeError: " + subject + " expected type '" + expectedClass->name + "', got '" + getTypeName(val) + "'.");
+        }
+        return;
+    }
+
+    if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for type assertion.");
+
+    if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
+        if (isReturn) throw std::runtime_error("TypeError: Function '" + name + "' expected to return '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() + "', but returned '" + getTypeName(val) + "'.");
+        throw std::runtime_error("TypeError: " + subject + " expected type '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() + "', got '" + getTypeName(val) + "'.");
+    }
+}
+
 void VM::execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     if (!currentFrame->closure || !currentFrame->closure->paramTypes) return;
@@ -1488,67 +1520,20 @@ void VM::execAssertParamType(const Value& val, int paramIdx, uint32_t nameIdx) {
     if (paramIdx >= currentFrame->closure->paramTypesCount) return;
     Value typeObj = currentFrame->closure->paramTypes[paramIdx];
     if (typeObj.isNone()) return;
-    
-    if (typeObj.isClass()) {
-        ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
-        bool matched = false;
-        if (val.isInstance()) {
-            ObjClass* c = val.asInstance()->classDef;
-            while (c) {
-                if (c == expectedClass) { matched = true; break; }
-                c = c->parent;
-            }
-        }
-        if (!matched) {
-            const std::string& paramName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
-            throw std::runtime_error("TypeError: Parameter '" + paramName +
-                "' expected type '" + expectedClass->name +
-                "', got '" + getTypeName(val) + "'.");
-        }
-        return;
-    }
-
-    if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for parameter annotation.");
-    
-    if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
-        const std::string& paramName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
-        throw std::runtime_error("TypeError: Parameter '" + paramName +
-            "' expected type '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() +
-            "', got '" + getTypeName(val) + "'.");
-    }
+    const std::string& paramName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
+    assertTypeMatches(val, typeObj, AssertContext::Param, paramName);
 }
 
 void VM::execAssertReturnType(const Value& val) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     if (!currentFrame->closure || currentFrame->closure->returnType.isNone()) return;
-    
-    Value typeObj = currentFrame->closure->returnType;
-    
-    if (typeObj.isClass()) {
-        ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
-        bool matched = false;
-        if (val.isInstance()) {
-            ObjClass* c = val.asInstance()->classDef;
-            while (c) {
-                if (c == expectedClass) { matched = true; break; }
-                c = c->parent;
-            }
-        }
-        if (!matched) {
-            throw std::runtime_error("TypeError: Function '" + currentFrame->function->name +
-                "' expected to return '" + expectedClass->name +
-                "', but returned '" + getTypeName(val) + "'.");
-        }
-        return;
-    }
+    assertTypeMatches(val, currentFrame->closure->returnType, AssertContext::Return, currentFrame->function->name);
+}
 
-    if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for return annotation.");
-    
-    if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
-        throw std::runtime_error("TypeError: Function '" + currentFrame->function->name +
-            "' expected to return '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() +
-            "', but returned '" + getTypeName(val) + "'.");
-    }
+void VM::execAssertType(const Value& val, const Value& typeObj, uint32_t nameIdx) {
+    CallFrame* currentFrame = &frames[frameCount - 1];
+    const std::string& name = currentFrame->function->chunk.constants.data()[nameIdx].asString();
+    assertTypeMatches(val, typeObj, AssertContext::Variable, name);
 }
 
 void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate) {
@@ -7575,6 +7560,13 @@ Value VM::run(int targetFrameDepth) {
                 execAssertReturnType(getReg(a));
                 break;
             }
+            case OpCode::ASSERT_TYPE: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
+                execAssertType(getReg(a), getReg(b), c);
+                break;
+            }
             case OpCode::MATCH_TYPE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
@@ -9993,6 +9985,13 @@ void jc2_jit_assert_param_type(uint64_t a_bits, uint32_t b, uint32_t c) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     vm->execAssertParamType(Value::fromRawBits(a_bits), (int)b, c);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_assert_type(uint64_t a_bits, uint64_t b_bits, uint32_t c) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    vm->execAssertType(Value::fromRawBits(a_bits), Value::fromRawBits(b_bits), c);
     JIT_CALLOUT_CATCH_VOID
 }
 

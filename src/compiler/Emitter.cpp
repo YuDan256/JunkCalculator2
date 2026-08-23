@@ -624,6 +624,14 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::AssertType: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        int b = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
+                        uint32_t nameIdx = chunk.addConstant(Value(node->name));
+                        auto w = buildInstABC(OpCode::ASSERT_TYPE, a, b, nameIdx, OpType::NORMAL, OpType::NORMAL);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::MatchType: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);

@@ -23,7 +23,7 @@ static bool isControlSpine(IROp op) {
         case IROp::SetProperty: case IROp::SetPrivate: case IROp::DefinePrivate: case IROp::DefinePrivateConst:
         case IROp::DefineProp: case IROp::DefinePropConst:
         case IROp::GetSuper:
-        case IROp::AssertParamType: case IROp::AssertReturnType:
+        case IROp::AssertParamType: case IROp::AssertReturnType: case IROp::AssertType:
         case IROp::MatchInit:
         case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
         case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:

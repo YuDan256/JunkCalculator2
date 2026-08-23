@@ -282,7 +282,7 @@ public:
                     case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
                     case OpCode::INDEX_GET: case OpCode::ITER_INIT: case OpCode::IN:
                     case OpCode::DICT_APPEND: case OpCode::FORMAT_STRING: case OpCode::BUILD_NAMESPACE:
-                    case OpCode::ASSERT_PARAM_TYPE: case OpCode::GET_PROP: case OpCode::GET_PRIVATE:
+                    case OpCode::ASSERT_PARAM_TYPE: case OpCode::ASSERT_TYPE: case OpCode::GET_PROP: case OpCode::GET_PRIVATE:
                     case OpCode::TRY_GET_PROP: case OpCode::SET_PROP: case OpCode::SET_PRIVATE:
                     case OpCode::DEFINE_PRIVATE: case OpCode::DEFINE_PRIVATE_CONST:
                     case OpCode::DEFINE_PROP: case OpCode::DEFINE_PROP_CONST: case OpCode::INVOKE:
@@ -1219,6 +1219,15 @@ public:
                         auto bNode = builder_.createInt32Constant(b);
                         auto cNode = builder_.createInt32Constant(c);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_assert_param_type), JITType::Effect, 3, {aVal, bNode, cNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::ASSERT_TYPE: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* aVal = getBoxedRKNode(a);
+                        HIRNode* bVal = getBoxedRKNode(b);
+                        auto cNode = builder_.createInt32Constant(c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_assert_type), JITType::Effect, 3, {aVal, bVal, cNode}, fs);
                         builder_.setCurrentEffect(callout);
                         break;
                     }

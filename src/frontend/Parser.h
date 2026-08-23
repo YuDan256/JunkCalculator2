@@ -61,6 +61,7 @@ namespace jc {
         std::unique_ptr<Expr> transformQuote(Expr* expr); // ★
         std::unique_ptr<Pattern> parsePrimaryPattern(); // ★
         std::unique_ptr<Pattern> parsePattern(); // ★
+        std::shared_ptr<Expr> parseOptionalTypeHint(); // ★ 解析可选类型注解 ':' type
         std::unique_ptr<Expr> parseMatchBody();  // ★
         std::unique_ptr<Expr> classDefExpr();  // ★
         std::unique_ptr<Expr> namespaceExpr(); // ★ 新增

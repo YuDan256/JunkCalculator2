@@ -104,6 +104,7 @@ namespace jc {
     struct MethodCallExpr;     // ★
     struct SuperExpr;
     struct SelfExpr;           // ★
+    struct ContextKeywordExpr; // ★ class/namespace 上下文关键字占位
     struct DestructAssign;     // ★
     struct FStringExpr;
     struct ListCompExpr;       // ★
@@ -243,6 +244,7 @@ namespace jc {
         virtual void visitMethodCallExpr(MethodCallExpr* expr) = 0;
         virtual void visitSuperExpr(SuperExpr* expr) = 0;
         virtual void visitSelfExpr(SelfExpr* expr) = 0;
+        virtual void visitContextKeywordExpr(ContextKeywordExpr* expr) = 0;
         virtual void visitDestructAssign(DestructAssign* expr) = 0;
         virtual void visitFStringExpr(FStringExpr* expr) = 0;
         virtual void visitListCompExpr(ListCompExpr* expr) = 0;
@@ -673,6 +675,16 @@ namespace jc {
     // ★ self
     struct SelfExpr : public Expr {
         void accept(ExprVisitor& visitor) override { visitor.visitSelfExpr(this); }
+    };
+
+    // ★ class / namespace 上下文关键字自引用（内部名 <...> 重写前的占位，走独立 visit 天然豁免 <...> 检查）
+    struct ContextKeywordExpr : public Expr {
+        enum class Kind { Class, Namespace };
+        Kind kind;
+        Token keyword;  // 占行号
+
+        ContextKeywordExpr(Kind k, Token kw) : kind(k), keyword(std::move(kw)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitContextKeywordExpr(this); }
     };
 
     // ★ [a, b, c] = expr

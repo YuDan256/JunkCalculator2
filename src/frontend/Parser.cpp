@@ -1231,19 +1231,19 @@ namespace jc {
             if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
                 return classDefExpr();
             }
-            return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "<class>", previous().position, previous().line));
+            return std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous());
         }
         if (match({ TokenType::NAMESPACE })) {
             if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
                 return namespaceExpr();
             }
-            return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "<namespace>", previous().position, previous().line));
+            return std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Namespace, previous());
         }
         if (match({ TokenType::ENUM })) {
             if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
                 return enumExpr();
             }
-            return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "<enum>", previous().position, previous().line));
+            throw std::runtime_error("Syntax Error: 'enum' cannot be self-referenced; enum members are compile-time constants.");
         }
         if (match({ TokenType::IF }))       return ifExpr();
         if (match({ TokenType::WHILE }))    return whileExpr();
@@ -1825,6 +1825,7 @@ namespace jc {
 
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions(), nullptr, nullptr, &resolver.exprSymbols, &resolver.patternSymbols);
+        fnBuilder.allowInternalNames = true; // 宏定义内部编译使用 <macro_temp_xxx> 等内部名，跳过保留名检查
         fnBuilder.build(assign.get());
 
         IROptimizer::optimize(&fnGraph);

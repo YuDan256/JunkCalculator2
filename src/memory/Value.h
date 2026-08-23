@@ -38,10 +38,7 @@
 namespace jc {
     // VM 内核态隔离墙：内部名统一用 <...> 包裹，用户态（含宏注入）不得引用。
     inline bool isReservedInternalName(const std::string& name) {
-        if (name.size() < 2 || name.front() != '<' || name.back() != '>') return false;
-        // <class>/<namespace>/<enum> 是上下文关键字的内部表示，用户通过关键字合法引用，不属于被隔离的内部名。
-        if (name == "<class>" || name == "<namespace>" || name == "<enum>") return false;
-        return true;
+        return name.size() >= 2 && name.front() == '<' && name.back() == '>';
     }
     class Value;
     std::string setValueKey(const Value& v);

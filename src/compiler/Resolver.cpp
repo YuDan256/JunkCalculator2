@@ -384,6 +384,11 @@ void Resolver::visitMethodCallExpr(MethodCallExpr* expr) {
 void Resolver::visitSuperExpr(SuperExpr* /*expr*/) {}
 void Resolver::visitSelfExpr(SelfExpr* /*expr*/) {}
 
+void Resolver::visitContextKeywordExpr(ContextKeywordExpr* expr) {
+    const char* internal = (expr->kind == ContextKeywordExpr::Kind::Class) ? "<class>" : "<namespace>";
+    exprSymbols[expr] = resolveName(internal);
+}
+
 void Resolver::visitDestructAssign(DestructAssign* expr) {
     std::vector<std::pair<std::string, std::pair<int, ResolvedSym>>> hiddenVars;
 

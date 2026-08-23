@@ -274,6 +274,11 @@ public:
     }
     void visitSuperExpr(SuperExpr*) override { result = makeASTNode("SuperExpr", 0, {}); }
     void visitSelfExpr(SelfExpr*) override { result = makeASTNode("SelfExpr", 0, {}); }
+    void visitContextKeywordExpr(ContextKeywordExpr* expr) override {
+        result = makeASTNode("ContextKeyword", expr->keyword.line, {
+            {"kind", Value(expr->kind == ContextKeywordExpr::Kind::Class ? "Class" : "Namespace")}
+        });
+    }
     void visitFStringExpr(FStringExpr* expr) override {
         ObjList* lits = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard1(lits);
@@ -780,6 +785,10 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         );
     } else if (type == "Variable") {
         return std::make_unique<Variable>(Token(TokenType::IDENTIFIER, getProp("name").asString(), line));
+    } else if (type == "ContextKeyword") {
+        std::string kindStr = getProp("kind").asString();
+        auto kind = (kindStr == "Class") ? ContextKeywordExpr::Kind::Class : ContextKeywordExpr::Kind::Namespace;
+        return std::make_unique<ContextKeywordExpr>(kind, Token(TokenType::IDENTIFIER, "", line));
     } else if (type == "Assign") {
         auto value = toAST(getProp("value"));
         return std::make_unique<Assign>(

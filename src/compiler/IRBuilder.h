@@ -138,6 +138,9 @@ public:
     const std::unordered_map<Expr*, ResolvedSym>* exprSymbols = nullptr;
     const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr;
 
+    // 宏定义等 VM 内部生成的 AST 编译时置 true，跳过 <...> 保留名检查（<macro_temp_xxx> 等）。
+    bool allowInternalNames = false;
+
     explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr, IRBuilder* parent = nullptr, CompiledFunction* currentFunction = nullptr, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols = nullptr, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr);
     void build(Expr* ast);
 
@@ -178,6 +181,7 @@ public:
     void visitMethodCallExpr(MethodCallExpr* expr) override;
     void visitSuperExpr(SuperExpr* expr) override;
     void visitSelfExpr(SelfExpr* expr) override;
+    void visitContextKeywordExpr(ContextKeywordExpr* expr) override;
     void visitDestructAssign(DestructAssign* expr) override;
     void visitFStringExpr(FStringExpr* expr) override;
     void visitListCompExpr(ListCompExpr* expr) override;

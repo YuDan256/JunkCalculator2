@@ -3826,7 +3826,6 @@ Value VM::run(int targetFrameDepth) {
                             getReg(a) = builtinVal;
                         } else {
                             if (name == "<namespace>") throw std::runtime_error("VM Error: 'namespace' accessed outside of context.");
-                            if (name == "<enum>") throw std::runtime_error("VM Error: 'enum' accessed outside of context.");
                             throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
                         }
                     }
@@ -3849,7 +3848,6 @@ Value VM::run(int targetFrameDepth) {
                 const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                 if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
                 if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
-                if (name == "<enum>") throw std::runtime_error("Syntax Error: cannot override context keyword 'enum'.");
                 
                 if (constGlobals.count(name) && op != OpCode::DEFINE_CONST_GLOBAL) {
                     throw std::runtime_error("Runtime Error: Cannot modify const variable '" + name + "'.");
@@ -3890,7 +3888,6 @@ Value VM::run(int targetFrameDepth) {
                 const std::string& name = chunk->constants.data()[bx].asString();
                 if (name == "<class>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'class'.");
                 if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'namespace'.");
-                if (name == "<enum>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'enum'.");
                 if (constGlobals.count(name)) {
                     throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
                 }
@@ -8343,7 +8340,6 @@ void jc2_jit_set_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk) {
     
     if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
     if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
-    if (name == "<enum>") throw std::runtime_error("Syntax Error: cannot override context keyword 'enum'.");
     
     vm->setGlobal(name, val);
     JIT_CALLOUT_CATCH_VOID

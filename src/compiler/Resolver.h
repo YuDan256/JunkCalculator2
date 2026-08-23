@@ -74,6 +74,7 @@ public:
     void visitMethodCallExpr(MethodCallExpr* expr) override;
     void visitSuperExpr(SuperExpr* expr) override;
     void visitSelfExpr(SelfExpr* expr) override;
+    void visitContextKeywordExpr(ContextKeywordExpr* expr) override;
     void visitDestructAssign(DestructAssign* expr) override;
     void visitFStringExpr(FStringExpr* expr) override;
     void visitListCompExpr(ListCompExpr* expr) override;

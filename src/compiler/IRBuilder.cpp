@@ -361,7 +361,7 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
 
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment) {
     auto assignVar = [&](const std::string& name, IRNode* vNode, ResolvedSym sym, ScopeModifier mod, bool isConst) {
-        if (isReservedInternalName(name)) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
+        if (!allowInternalNames && isReservedInternalName(name)) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
         bool isLocal = mod == ScopeModifier::Local;
         if (mod == ScopeModifier::State) {
             IRNode* getVal = readVariable(name, sym);
@@ -1608,7 +1608,7 @@ void IRBuilder::visitBinary(Binary* expr) {
 }
 
 void IRBuilder::visitVariable(Variable* expr) {
-    if (isReservedInternalName(expr->name.lexeme)) {
+    if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) {
         error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     }
     graph->currentLine = expr->name.line;
@@ -1618,7 +1618,7 @@ void IRBuilder::visitVariable(Variable* expr) {
 }
 
 void IRBuilder::visitAssign(Assign* expr) {
-    if (isReservedInternalName(expr->name.lexeme)) {
+    if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) {
         error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     }
     graph->currentLine = expr->name.line;
@@ -2506,8 +2506,10 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
                 auto* dotTarget = static_cast<DotAccess*>(expr->objectExpr.get());
                 bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
                 bool isClassVar = false;
-                if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
-                    if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+                if (auto* ck = dynamic_cast<ContextKeywordExpr*>(dotTarget->object.get())) {
+                    if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
+                } else if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
+                    if (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name) {
                         isClassVar = true;
                     }
                 }
@@ -2528,7 +2530,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
 }
     
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
-    if (isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
@@ -2542,7 +2544,7 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
-    if (isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     if (expr->name.lexeme != "_") {
         auto it = exprSymbols->find(expr);
@@ -2566,7 +2568,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
-    if (isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     
@@ -2593,7 +2595,7 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
 }
     
 void IRBuilder::visitConstDecl(ConstDecl* expr) {
-    if (isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
+    if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     IRNode* uninitNode = graph->createConstant(Value::uninit());
     uninitNode->setControl(currentControl);
@@ -2669,8 +2671,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         if (!classStack.empty()) {
             bool isSelf = dynamic_cast<SelfExpr*>(dot->object.get()) != nullptr;
             bool isClassVar = false;
-            if (auto* objVar = dynamic_cast<Variable*>(dot->object.get())) {
-                if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
+            if (auto* ck = dynamic_cast<ContextKeywordExpr*>(dot->object.get())) {
+                if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
+            } else if (auto* objVar = dynamic_cast<Variable*>(dot->object.get())) {
+                if (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name) {
                     isClassVar = true;
                 }
             }
@@ -2705,8 +2709,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             if (!classStack.empty()) {
                 bool isSelf = dynamic_cast<SelfExpr*>(chainDot->object.get()) != nullptr;
                 bool isClassVar = false;
-                if (auto* objVar = dynamic_cast<Variable*>(chainDot->object.get())) {
-                    if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
+                if (auto* ck = dynamic_cast<ContextKeywordExpr*>(chainDot->object.get())) {
+                    if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
+                } else if (auto* objVar = dynamic_cast<Variable*>(chainDot->object.get())) {
+                    if (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name) {
                         isClassVar = true;
                     }
                 }
@@ -2802,8 +2808,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             auto* dotTarget = static_cast<DotAccess*>(expr->target.get());
             bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
             bool isClassVar = false;
-            if (auto* objVar = dynamic_cast<Variable*>(dotTarget->object.get())) {
-                if (objVar->name.lexeme == "<class>" || (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name)) {
+            if (auto* ck = dynamic_cast<ContextKeywordExpr*>(dotTarget->object.get())) {
+                if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
+            } else if (auto* objVar = dynamic_cast<Variable*>(dotTarget->object.get())) {
+                if (!classStack.back().name.empty() && objVar->name.lexeme == classStack.back().name) {
                     isClassVar = true;
                 }
             }
@@ -3050,6 +3058,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
+        fnBuilder.allowInternalNames = this->allowInternalNames;
         
         fnBuilder.currentReturnTypeHint = expr->returnType;
         fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->hasRestParam, expr->paramIsRef, expr->paramIsConst, expr->paramTypes);
@@ -3530,7 +3539,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     std::unordered_set<std::string> staticMembers;
     
     auto checkRedef = [&](const std::string& name, bool isStatic) {
-        if (isReservedInternalName(name)) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
+        if (!allowInternalNames && isReservedInternalName(name)) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
         if (isStatic) {
             if (staticMembers.count(name)) error("Syntax Error: Static member '" + name + "' is redefined.");
             staticMembers.insert(name);
@@ -3865,7 +3874,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     
 void IRBuilder::visitDotAccess(DotAccess* expr) {
     graph->currentLine = expr->field.line;
-    if (isReservedInternalName(expr->field.lexeme)) {
+    if (!allowInternalNames && isReservedInternalName(expr->field.lexeme)) {
         error(expr->field.line, "Compile Error: Illegal use of reserved internal name '" + expr->field.lexeme + "'.");
     }
     std::string fieldName = expr->field.lexeme;
@@ -3907,8 +3916,10 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
     if (!classStack.empty()) {
         bool isSelf = dynamic_cast<SelfExpr*>(expr->object.get()) != nullptr;
         bool isClassVar = false;
-        if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
-            if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+        if (auto* ck = dynamic_cast<ContextKeywordExpr*>(expr->object.get())) {
+            if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
+        } else if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
+            if (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name) {
                 isClassVar = true;
             }
         }
@@ -3927,7 +3938,7 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
 
 void IRBuilder::visitDotAssign(DotAssign* expr) {
     graph->currentLine = expr->field.line;
-    if (isReservedInternalName(expr->field.lexeme)) {
+    if (!allowInternalNames && isReservedInternalName(expr->field.lexeme)) {
         error(expr->field.line, "Compile Error: Illegal use of reserved internal name '" + expr->field.lexeme + "'.");
     }
     expr->object->accept(*this);
@@ -3944,8 +3955,10 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
     if (!classStack.empty()) {
         bool isSelf = dynamic_cast<SelfExpr*>(expr->object.get()) != nullptr;
         bool isClassVar = false;
-        if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
-            if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+        if (auto* ck = dynamic_cast<ContextKeywordExpr*>(expr->object.get())) {
+            if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
+        } else if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
+            if (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name) {
                 isClassVar = true;
             }
         }
@@ -3965,7 +3978,7 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
 
 void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     graph->currentLine = expr->method.line;
-    if (isReservedInternalName(expr->method.lexeme)) {
+    if (!allowInternalNames && isReservedInternalName(expr->method.lexeme)) {
         error(expr->method.line, "Compile Error: Illegal use of reserved internal name '" + expr->method.lexeme + "'.");
     }
     std::string methodName = expr->method.lexeme;
@@ -4111,8 +4124,10 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     if (!isSuper && !classStack.empty()) {
         bool isSelf = dynamic_cast<SelfExpr*>(expr->object.get()) != nullptr;
         bool isClassVar = false;
-        if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
-            if (var->name.lexeme == "<class>" || (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name)) {
+        if (auto* ck = dynamic_cast<ContextKeywordExpr*>(expr->object.get())) {
+            if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
+        } else if (auto* var = dynamic_cast<Variable*>(expr->object.get())) {
+            if (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name) {
                 isClassVar = true;
             }
         }
@@ -4152,6 +4167,14 @@ void IRBuilder::visitSelfExpr(SelfExpr*) {
     IRNode* node = graph->createValueNode(IROp::GetSelf);
     node->setControl(currentControl);
     lastValue = node;
+}
+
+void IRBuilder::visitContextKeywordExpr(ContextKeywordExpr* expr) {
+    graph->currentLine = expr->keyword.line;
+    const char* internal = (expr->kind == ContextKeywordExpr::Kind::Class) ? "<class>" : "<namespace>";
+    auto it = exprSymbols->find(expr);
+    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+    lastValue = readVariable(internal, sym);
 }
 
 void IRBuilder::visitDestructAssign(DestructAssign* expr) {

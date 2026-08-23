@@ -76,7 +76,6 @@ namespace jc {
     struct ObjBigInt;
     struct ObjFraction;
     struct ObjComplex;
-    struct ObjBaseNum;
     struct ObjRealMatrix;
     struct ObjComplexMatrix;
     struct ObjSymMatrix;
@@ -135,10 +134,6 @@ namespace jc {
     struct ObjComplex : public Obj {
         Complex comp;
         ObjComplex(Complex c) : comp(std::move(c)) { type = ObjType::COMPLEX; }
-    };
-    struct ObjBaseNum : public Obj {
-        BaseNum base;
-        ObjBaseNum(BaseNum b) : base(std::move(b)) { type = ObjType::BASENUM; }
     };
     struct ObjRealMatrix : public Obj {
         RealMatrix mat;
@@ -345,7 +340,6 @@ namespace jc {
             *this = fromObj(GcHeap::get().allocate<ObjBigInt>(std::move(val)));
         }
         Value(Fraction val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjFraction>(std::move(val))); }
-        Value(BaseNum val) : as_bits(QNAN | TAG_NONE) { *this = fromObj(GcHeap::get().allocate<ObjBaseNum>(std::move(val))); }
         Value(SymMatrix val) : as_bits(QNAN | TAG_NONE) {
             if (val.getRows() * val.getCols() == 0) val = SymMatrix(0, 0);
             *this = fromObj(GcHeap::get().allocate<ObjSymMatrix>(std::move(val)));
@@ -374,7 +368,6 @@ namespace jc {
             return Value(f);
         }
 
-        bool isBaseNum() const { return isObjType(ObjType::BASENUM); }
         ObjClosure* asFunction() const;
 
         bool isFunctionClosure() const { return isObjType(ObjType::CLOSURE); }
@@ -395,7 +388,6 @@ namespace jc {
             if (isNumber()) return asNumber();
             if (isObjType(ObjType::BIGINT)) return static_cast<ObjBigInt*>(asObj())->num.toDouble();
             if (isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(asObj())->frac.toDouble();
-            if (isObjType(ObjType::BASENUM)) return static_cast<ObjBaseNum*>(asObj())->base.getValue().toDouble();
             throw std::runtime_error("Type Error: Expected a real number.");
         }
 
@@ -404,7 +396,6 @@ namespace jc {
             if (isNumber()) return Complex(asNumber());
             if (isObjType(ObjType::BIGINT)) return Complex(static_cast<ObjBigInt*>(asObj())->num.toDouble());
             if (isObjType(ObjType::FRACTION)) return Complex(static_cast<ObjFraction*>(asObj())->frac.toDouble());
-            if (isObjType(ObjType::BASENUM)) return Complex(static_cast<ObjBaseNum*>(asObj())->base.getValue().toDouble());
             throw std::runtime_error("Type Error: Expected a number or complex.");
         }
 
@@ -419,7 +410,6 @@ namespace jc {
                 }
                 return BigInt(static_cast<int64_t>(std::round(val)));
             }
-            if (isObjType(ObjType::BASENUM)) return static_cast<ObjBaseNum*>(asObj())->base.getValue();
             if (isObjType(ObjType::FRACTION)) {
                 const auto& f = static_cast<ObjFraction*>(asObj())->frac;
                 if (f.getDen() == BigInt(1)) return f.getNum();
@@ -586,8 +576,6 @@ namespace jc {
                         case BuiltinType::DICT: res += "dict"; break;
                         case BuiltinType::SET: res += "set"; break;
                         case BuiltinType::FRACTION: res += "fraction"; break;
-                        case BuiltinType::COMPLEX: res += "complex"; break;
-                        case BuiltinType::BASENUM: res += "basenum"; break;
                         case BuiltinType::SYMBOLIC: res += "symbolic"; break;
                         case BuiltinType::REALMAT: res += "realmatrix"; break;
                         case BuiltinType::COMPLEXMAT: res += "complexmatrix"; break;
@@ -1159,9 +1147,6 @@ namespace jc {
 
             if (lhs.isSymbolic() || rhs.isSymbolic()) return Value(lhs.asSymbolic() * rhs.asSymbolic());
 
-            if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base * static_cast<ObjBaseNum*>(rhs.asObj())->base);
-            if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base * BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix()));
-            if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()) * static_cast<ObjBaseNum*>(rhs.asObj())->base);
 
             if (lhs.isObjType(ObjType::COMPLEX) || rhs.isObjType(ObjType::COMPLEX)) return Value(lhs.asComplex() * rhs.asComplex());
             
@@ -1229,9 +1214,6 @@ namespace jc {
 
             if (lhs.isSymbolic() || rhs.isSymbolic()) return Value(lhs.asSymbolic() / rhs.asSymbolic());
 
-            if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base / static_cast<ObjBaseNum*>(rhs.asObj())->base);
-            if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base / BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix()));
-            if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()) / static_cast<ObjBaseNum*>(rhs.asObj())->base);
 
             bool lhsIsExactInt = lhs.isBigInt() || lhs.isInt32();
             bool rhsIsExactInt = rhs.isBigInt() || rhs.isInt32();
@@ -1295,9 +1277,6 @@ namespace jc {
                 return Value((rhs.asComplexMatrix() * log(lhs.asComplex())).matExp());
             }
 
-            if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base ^ static_cast<ObjBaseNum*>(rhs.asObj())->base);
-            if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base ^ BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix()));
-            if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()) ^ static_cast<ObjBaseNum*>(rhs.asObj())->base);
 
             bool rhsIsExactInt = false;
             BigInt rhsInt(0);
@@ -1468,9 +1447,6 @@ namespace jc {
                 return Value(res);
             }
 
-            if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base % static_cast<ObjBaseNum*>(rhs.asObj())->base);
-            if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base % BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix()));
-            if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()) % static_cast<ObjBaseNum*>(rhs.asObj())->base);
 
             bool lhsIsExactInt = lhs.isBigInt() || lhs.isInt32();
             bool rhsIsExactInt = rhs.isBigInt() || rhs.isInt32();
@@ -1516,9 +1492,6 @@ namespace jc {
             }
             return Value(res);
         }
-        if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitAnd(static_cast<ObjBaseNum*>(rhs.asObj())->base));
-        if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitAnd(BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix())));
-        if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()).bitAnd(static_cast<ObjBaseNum*>(rhs.asObj())->base));
         
         if (lhs.isInt32() && rhs.isInt32()) return Value::fromInt32(lhs.asInt32() & rhs.asInt32());
         
@@ -1536,9 +1509,6 @@ namespace jc {
     inline Value operator<<(const Value& lhs, const Value& rhs) {
         int shift = static_cast<int>(std::round(rhs.asDouble()));
         if (shift < 0) throw std::runtime_error("Math Error: Negative shift count.");
-        if (lhs.isObjType(ObjType::BASENUM)) {
-            return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.shiftLeft(shift));
-        }
         if (lhs.isInt32()) {
             int32_t v = lhs.asInt32();
             if (v == 0) return Value::fromInt32(0);
@@ -1560,9 +1530,6 @@ namespace jc {
     inline Value operator>>(const Value& lhs, const Value& rhs) {
         int shift = static_cast<int>(std::round(rhs.asDouble()));
         if (shift < 0) throw std::runtime_error("Math Error: Negative shift count.");
-        if (lhs.isObjType(ObjType::BASENUM)) {
-            return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.shiftRight(shift));
-        }
         if (lhs.isInt32()) {
             int32_t v = lhs.asInt32();
             if (shift < 31) return Value::fromInt32(v >> shift);
@@ -1609,9 +1576,6 @@ namespace jc {
             for (const auto& val : s2->elements) { res->add(val); }
             return Value(res);
         }
-        if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitOr(static_cast<ObjBaseNum*>(rhs.asObj())->base));
-        if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitOr(BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix())));
-        if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()).bitOr(static_cast<ObjBaseNum*>(rhs.asObj())->base));
         
         if (lhs.isInt32() && rhs.isInt32()) return Value::fromInt32(lhs.asInt32() | rhs.asInt32());
         
@@ -1645,9 +1609,6 @@ namespace jc {
             }
             return Value(res);
         }
-        if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitXor(static_cast<ObjBaseNum*>(rhs.asObj())->base));
-        if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.bitXor(BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix())));
-        if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()).bitXor(static_cast<ObjBaseNum*>(rhs.asObj())->base));
         
         bool lhsIsInt = lhs.isInt32() || lhs.isBigInt() || lhs.isBool();
         bool rhsIsInt = rhs.isInt32() || rhs.isBigInt() || rhs.isBool();
@@ -1680,7 +1641,6 @@ namespace jc {
             case ObjType::STRING: return "\"" + static_cast<ObjString*>(obj)->str + "\"";
             case ObjType::BIGINT: return static_cast<ObjBigInt*>(obj)->num.toString();
             case ObjType::FRACTION: return static_cast<ObjFraction*>(obj)->frac.toString();
-            case ObjType::BASENUM: return "base(" + static_cast<ObjBaseNum*>(obj)->base.getValue().toString() + ", " + std::to_string(static_cast<ObjBaseNum*>(obj)->base.getRadix()) + ")";
             case ObjType::COMPLEX: {
                 auto formatDouble = [](double v) {
                     std::ostringstream temp;
@@ -1951,7 +1911,6 @@ namespace jc {
             case ObjType::BIGINT:
             case ObjType::FRACTION:
             case ObjType::COMPLEX:
-            case ObjType::BASENUM:
             case ObjType::REAL_MATRIX:
             case ObjType::COMPLEX_MATRIX:
             case ObjType::SYM_MATRIX:
@@ -2043,7 +2002,6 @@ namespace jc {
                 return c.real != 0.0 || c.imag != 0.0;
             }
             case ObjType::FRACTION: return !static_cast<ObjFraction*>(obj)->frac.getNum().isZero();
-            case ObjType::BASENUM: return !static_cast<ObjBaseNum*>(obj)->base.getValue().isZero();
             case ObjType::STRING: return !static_cast<ObjString*>(obj)->str.empty();
             case ObjType::LIST: return !static_cast<ObjList*>(obj)->vec.empty();
             case ObjType::DICT: return !static_cast<ObjDict*>(obj)->elements.empty();
@@ -2109,7 +2067,6 @@ namespace jc {
                 case ObjType::BIGINT: return static_cast<ObjBigInt*>(lobj)->num == static_cast<ObjBigInt*>(robj)->num;
                 case ObjType::COMPLEX: return static_cast<ObjComplex*>(lobj)->comp == static_cast<ObjComplex*>(robj)->comp;
                 case ObjType::FRACTION: return static_cast<ObjFraction*>(lobj)->frac == static_cast<ObjFraction*>(robj)->frac;
-                case ObjType::BASENUM: return static_cast<ObjBaseNum*>(lobj)->base.getValue() == static_cast<ObjBaseNum*>(robj)->base.getValue();
                 case ObjType::SYMBOLIC: return static_cast<ObjSym*>(lobj)->sym == static_cast<ObjSym*>(robj)->sym;
                 case ObjType::REAL_MATRIX: {
                     const auto& a = static_cast<ObjRealMatrix*>(lobj)->mat;
@@ -2265,8 +2222,6 @@ namespace jc {
             if (found) return res.truthy();
         }
 
-        if (lhs.isObjType(ObjType::BASENUM)) return equals(Value(static_cast<ObjBaseNum*>(lhs.asObj())->base.getValue()), rhs);
-        if (rhs.isObjType(ObjType::BASENUM)) return equals(lhs, Value(static_cast<ObjBaseNum*>(rhs.asObj())->base.getValue()));
 
         auto getNumeric = [](const Value& v) -> std::optional<Complex> {
             try {
@@ -2342,7 +2297,6 @@ namespace jc {
             case ObjType::BIGINT: return "int";
             case ObjType::FRACTION: return "fraction";
             case ObjType::COMPLEX: return "complex";
-            case ObjType::BASENUM: return "basenum";
             case ObjType::REAL_MATRIX: return "realmatrix";
             case ObjType::COMPLEX_MATRIX: return "complexmatrix";
             case ObjType::SYM_MATRIX: return "symmatrix";
@@ -2369,10 +2323,6 @@ namespace jc {
     inline Value Value::operator~() const {
         if (isInt32()) return Value::fromInt32(~asInt32());
         if (isBool()) return Value::fromInt32(~(asBool() ? 1 : 0));
-        if (isObjType(ObjType::BASENUM)) {
-            auto& base = static_cast<ObjBaseNum*>(asObj())->base;
-            return Value(BaseNum(-base.getValue() - BigInt(1), base.getRadix()));
-        }
         if (isBigInt()) return Value(-asBigInt() - BigInt(1));
         throw std::runtime_error("Type Error: Bitwise NOT '~' not supported for '" + typeName() + "'.");
     }
@@ -2391,7 +2341,6 @@ namespace jc {
                 case ObjType::BIGINT: return Value(-static_cast<ObjBigInt*>(obj)->num);
                 case ObjType::FRACTION: return Value(-static_cast<ObjFraction*>(obj)->frac);
                 case ObjType::COMPLEX: return Value(-static_cast<ObjComplex*>(obj)->comp);
-                case ObjType::BASENUM: return Value(-static_cast<ObjBaseNum*>(obj)->base);
                 case ObjType::REAL_MATRIX: return Value(-static_cast<ObjRealMatrix*>(obj)->mat);
                 case ObjType::COMPLEX_MATRIX: return Value(-static_cast<ObjComplexMatrix*>(obj)->mat);
                 case ObjType::SYM_MATRIX: return Value(-static_cast<ObjSymMatrix*>(obj)->mat);
@@ -2492,9 +2441,6 @@ namespace jc {
 
             if (lhs.isSymbolic() || rhs.isSymbolic()) return Value(lhs.asSymbolic() + rhs.asSymbolic());
 
-            if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base + static_cast<ObjBaseNum*>(rhs.asObj())->base);
-            if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base + BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix()));
-            if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()) + static_cast<ObjBaseNum*>(rhs.asObj())->base);
 
             if (lhs.isObjType(ObjType::COMPLEX) || rhs.isObjType(ObjType::COMPLEX)) return Value(lhs.asComplex() + rhs.asComplex());
             
@@ -2625,9 +2571,6 @@ namespace jc {
 
             if (lhs.isSymbolic() || rhs.isSymbolic()) return Value(lhs.asSymbolic() - rhs.asSymbolic());
 
-            if (lhs.isObjType(ObjType::BASENUM) && rhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base - static_cast<ObjBaseNum*>(rhs.asObj())->base);
-            if (lhs.isObjType(ObjType::BASENUM)) return Value(static_cast<ObjBaseNum*>(lhs.asObj())->base - BaseNum(rhs.asBigInt(), static_cast<ObjBaseNum*>(lhs.asObj())->base.getRadix()));
-            if (rhs.isObjType(ObjType::BASENUM)) return Value(BaseNum(lhs.asBigInt(), static_cast<ObjBaseNum*>(rhs.asObj())->base.getRadix()) - static_cast<ObjBaseNum*>(rhs.asObj())->base);
 
             if (lhs.isObjType(ObjType::COMPLEX) || rhs.isObjType(ObjType::COMPLEX)) return Value(lhs.asComplex() - rhs.asComplex());
             
@@ -2678,7 +2621,6 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
         case ObjType::BIGINT: os << static_cast<ObjBigInt*>(obj)->num; break;
         case ObjType::FRACTION: os << static_cast<ObjFraction*>(obj)->frac; break;
         case ObjType::COMPLEX: os << static_cast<ObjComplex*>(obj)->comp; break;
-        case ObjType::BASENUM: os << static_cast<ObjBaseNum*>(obj)->base; break;
         case ObjType::REAL_MATRIX: {
             const auto& m = static_cast<ObjRealMatrix*>(obj)->mat;
             if (m.getRows() * m.getCols() == 0) os << "[]";
@@ -2897,9 +2839,6 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             if (c.imag == 0.0) return sipHash24Double(r);
             double i = c.imag; if (i == 0.0) i = 0.0;
             return sipHash24Double(r) ^ (sipHash24Double(i) << 1);
-        }
-        case ObjType::BASENUM: {
-            return ValueHasher{}(Value(static_cast<ObjBaseNum*>(obj)->base.getValue()));
         }
         case ObjType::REAL_MATRIX: {
             const auto& m = static_cast<ObjRealMatrix*>(obj)->mat;

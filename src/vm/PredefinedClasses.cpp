@@ -711,6 +711,191 @@ void registerPredefinedClasses() {
     });
     exceptionClass->properties["__str__"] = {Value(excStr), false, false};
 
+    // --- BaseNum Class (math.BaseNum) ---
+    ObjClass* baseNumClass = GcHeap::get().allocate<ObjClass>();
+    GcObjGuard bnClassGuard(baseNumClass);
+    baseNumClass->name = "BaseNum";
+
+    auto newBaseInstance = [baseNumClass](const BaseNum& b) -> Value {
+        auto inst = GcHeap::get().allocate<ObjInstance>();
+        Value res(inst);
+        GcValueGuard guard(res);
+        inst->classDef = baseNumClass;
+        inst->nativeData = std::make_any<BaseNum>(b);
+        inst->is_frozen = true;
+        return res;
+    };
+
+    auto otherToBase = [baseNumClass](const Value& other, int radix) -> BaseNum {
+        if (other.isInstance() && other.asInstance()->classDef == baseNumClass) {
+            return std::any_cast<BaseNum&>(other.asInstance()->nativeData);
+        }
+        return BaseNum(other.asBigInt(), radix);
+    };
+
+    // <init>(val, r)
+    {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"val", "r"}, std::vector<bool>{false, false}, "<init>", nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            auto inst = self.asInstance();
+            inst->nativeData = std::make_any<BaseNum>(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble()))));
+            inst->is_frozen = true;
+            return self;
+        });
+        baseNumClass->properties["<init>"] = {Value(fn), false, false};
+    }
+
+    // 二元算术/位运算
+    auto bindBin = [&](const std::string& name, const std::function<BaseNum(const BaseNum&, const BaseNum&)>& op) {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"other"}, std::vector<bool>{false}, name, nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([op, baseNumClass](const std::vector<Value>& args) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            BaseNum& a = std::any_cast<BaseNum&>(self.asInstance()->nativeData);
+            const Value& other = args[0];
+            BaseNum b = (other.isInstance() && other.asInstance()->classDef == baseNumClass)
+                ? std::any_cast<BaseNum&>(other.asInstance()->nativeData)
+                : BaseNum(other.asBigInt(), a.getRadix());
+            auto inst = GcHeap::get().allocate<ObjInstance>();
+            Value res(inst);
+            GcValueGuard guard(res);
+            inst->classDef = baseNumClass;
+            inst->nativeData = std::make_any<BaseNum>(op(a, b));
+            inst->is_frozen = true;
+            return res;
+        });
+        baseNumClass->properties[name] = {Value(fn), false, false};
+    };
+
+    bindBin("__add__", [](const BaseNum& a, const BaseNum& b) { return a + b; });
+    bindBin("__sub__", [](const BaseNum& a, const BaseNum& b) { return a - b; });
+    bindBin("__mul__", [](const BaseNum& a, const BaseNum& b) { return a * b; });
+    bindBin("__div__", [](const BaseNum& a, const BaseNum& b) { return a / b; });
+    bindBin("__mod__", [](const BaseNum& a, const BaseNum& b) { return a % b; });
+    bindBin("__pow__", [](const BaseNum& a, const BaseNum& b) { return a ^ b; });
+    bindBin("__bitand__", [](const BaseNum& a, const BaseNum& b) { return a.bitAnd(b); });
+    bindBin("__bitor__", [](const BaseNum& a, const BaseNum& b) { return a.bitOr(b); });
+    bindBin("__bitxor__", [](const BaseNum& a, const BaseNum& b) { return a.bitXor(b); });
+    bindBin("__lshift__", [](const BaseNum& a, const BaseNum& b) { return a.shiftLeft(static_cast<int>(b.getValue().toDouble())); });
+    bindBin("__rshift__", [](const BaseNum& a, const BaseNum& b) { return a.shiftRight(static_cast<int>(b.getValue().toDouble())); });
+
+    // 一元运算
+    auto bindUnary = [&](const std::string& name, const std::function<BaseNum(const BaseNum&)>& op) {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, name, nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([op, baseNumClass](const std::vector<Value>&) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            BaseNum& a = std::any_cast<BaseNum&>(self.asInstance()->nativeData);
+            auto inst = GcHeap::get().allocate<ObjInstance>();
+            Value res(inst);
+            GcValueGuard guard(res);
+            inst->classDef = baseNumClass;
+            inst->nativeData = std::make_any<BaseNum>(op(a));
+            inst->is_frozen = true;
+            return res;
+        });
+        baseNumClass->properties[name] = {Value(fn), false, false};
+    };
+
+    bindUnary("__neg__", [](const BaseNum& a) { return -a; });
+    bindUnary("__bitnot__", [](const BaseNum& a) { return a.bitNot(); });
+
+    // 比较
+    auto bindCmp = [&](const std::string& name, const std::function<bool(const BaseNum&, const BaseNum&)>& op) {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"other"}, std::vector<bool>{false}, name, nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([op, baseNumClass](const std::vector<Value>& args) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            BaseNum& a = std::any_cast<BaseNum&>(self.asInstance()->nativeData);
+            const Value& other = args[0];
+            BaseNum b = (other.isInstance() && other.asInstance()->classDef == baseNumClass)
+                ? std::any_cast<BaseNum&>(other.asInstance()->nativeData)
+                : BaseNum(other.asBigInt(), a.getRadix());
+            return Value(op(a, b));
+        });
+        baseNumClass->properties[name] = {Value(fn), false, false};
+    };
+
+    bindCmp("__eq__", [](const BaseNum& a, const BaseNum& b) { return a.getValue() == b.getValue(); });
+    bindCmp("__lt__", [](const BaseNum& a, const BaseNum& b) { return a.getValue() < b.getValue(); });
+
+    // __str__ / __repr__
+    {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            return Value(std::any_cast<BaseNum&>(self.asInstance()->nativeData).toString());
+        });
+        baseNumClass->properties["__str__"] = {Value(fn), false, false};
+        baseNumClass->properties["__repr__"] = {Value(fn), false, false};
+    }
+
+    // __hash__
+    {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__hash__", nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            return Value(std::any_cast<BaseNum&>(self.asInstance()->nativeData).getValue());
+        });
+        baseNumClass->properties["__hash__"] = {Value(fn), false, false};
+    }
+
+    // 实例方法：changeBase(r) / data() / digits()
+    {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"r"}, std::vector<bool>{false}, "changeBase", nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([baseNumClass](const std::vector<Value>& args) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            BaseNum& a = std::any_cast<BaseNum&>(self.asInstance()->nativeData);
+            auto inst = GcHeap::get().allocate<ObjInstance>();
+            Value res(inst);
+            GcValueGuard guard(res);
+            inst->classDef = baseNumClass;
+            inst->nativeData = std::make_any<BaseNum>(BaseNum(a.getValue(), static_cast<int>(std::round(args[0].asDouble()))));
+            inst->is_frozen = true;
+            return res;
+        });
+        baseNumClass->properties["changeBase"] = {Value(fn), false, false};
+    }
+    {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "data", nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            return Value(std::any_cast<BaseNum&>(self.asInstance()->nativeData).getValue());
+        });
+        baseNumClass->properties["data"] = {Value(fn), false, false};
+    }
+    {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "digits", nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            return Value::fromInt32(static_cast<int32_t>(std::any_cast<BaseNum&>(self.asInstance()->nativeData).digitCount()));
+        });
+        baseNumClass->properties["digits"] = {Value(fn), false, false};
+    }
+    // 类方法：fromString(str, r)
+    {
+        auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"str", "r"}, std::vector<bool>{false, false}, "fromString", nullptr);
+        GcObjGuard g(fn);
+        fn->nativeFn = std::make_any<NativeCallable>([baseNumClass](const std::vector<Value>& args) -> Value {
+            BaseNum b = BaseNum::fromString(args[0].asString(), static_cast<int>(std::round(args[1].asDouble())));
+            auto inst = GcHeap::get().allocate<ObjInstance>();
+            Value res(inst);
+            GcValueGuard guard(res);
+            inst->classDef = baseNumClass;
+            inst->nativeData = std::make_any<BaseNum>(b);
+            inst->is_frozen = true;
+            return res;
+        });
+        baseNumClass->properties["fromString"] = {Value(fn), false, false};
+    }
+
     // 注册到全局
     VM::activeVM->registerBuiltinValue("range", Value(rangeClass));
     VM::activeVM->registerBuiltinValue("__range_iterator", Value(rangeIterClass));
@@ -718,6 +903,7 @@ void registerPredefinedClasses() {
     VM::activeVM->registerBuiltinValue("Token", Value(tokenClass));
     VM::activeVM->registerBuiltinValue("TokenStream", Value(tokenStreamClass));
     VM::activeVM->registerBuiltinValue("Exception", Value(exceptionClass));
+    VM::activeVM->registerBuiltinValue("BaseNum", Value(baseNumClass));
 }
 
 } // namespace jc

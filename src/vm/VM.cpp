@@ -142,7 +142,6 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                         else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
                         else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
                         else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                        else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
                         else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                         else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                         else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
@@ -639,7 +638,6 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
                     else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
                     else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                    else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
                     else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                     else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                     else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
@@ -1409,10 +1407,10 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                 case BuiltinType::ANY: return true;
                 case BuiltinType::INT: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool()) return true; break;
                 case BuiltinType::FLOAT: if (val.isDouble()) return true; break;
-                case BuiltinType::REAL: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || (val.isComplex() && val.asComplex().imag == 0.0)) return true; break;
-                case BuiltinType::NUMBER: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isComplex()) return true; break;
+                case BuiltinType::REAL: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || (val.isComplex() && val.asComplex().imag == 0.0)) return true; break;
+                case BuiltinType::NUMBER: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isComplex()) return true; break;
                 case BuiltinType::WHOLE: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real))) return true; break;
-                case BuiltinType::EXACT: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::BASENUM) || val.isObjType(ObjType::SYMBOLIC)) return true; break;
+                case BuiltinType::EXACT: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::SYMBOLIC)) return true; break;
                 case BuiltinType::STRING: if (val.isString()) return true; break;
                 case BuiltinType::BOOL: if (val.isBool()) return true; break;
                 case BuiltinType::BINARY: {
@@ -1426,7 +1424,6 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                 case BuiltinType::SET: if (val.isObjType(ObjType::SET)) return true; break;
                 case BuiltinType::FRACTION: if (val.isObjType(ObjType::FRACTION)) return true; break;
                 case BuiltinType::COMPLEX: if (val.isObjType(ObjType::COMPLEX)) return true; break;
-                case BuiltinType::BASENUM: if (val.isObjType(ObjType::BASENUM)) return true; break;
                 case BuiltinType::SYMBOLIC: if (val.isObjType(ObjType::SYMBOLIC)) return true; break;
                 case BuiltinType::REALMAT: if (val.isObjType(ObjType::REAL_MATRIX)) return true; break;
                 case BuiltinType::COMPLEXMAT: if (val.isObjType(ObjType::COMPLEX_MATRIX)) return true; break;
@@ -1458,7 +1455,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                 case BuiltinType::HASHABLE: if (val.isHashable()) return true; break;
                 case BuiltinType::NUMERIC: {
                     if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
-                        val.isObjType(ObjType::COMPLEX) || val.isObjType(ObjType::BASENUM)) return true;
+                        val.isObjType(ObjType::COMPLEX)) return true;
                     if (val.isInstance()) {
                         if (findDunder(val, "__add__").first || findDunder(val, "__mul__").first || findDunder(val, "__sub__").first || findDunder(val, "__div__").first || findDunder(val, "__idiv__").first || findDunder(val, "__ldiv__").first) return true;
                     }
@@ -3169,7 +3166,6 @@ VM::VM() {
     builtinValues["set"] = makeType(BuiltinType::SET);
     builtinValues["fraction"] = makeType(BuiltinType::FRACTION);
     builtinValues["complex"] = makeType(BuiltinType::COMPLEX);
-    builtinValues["basenum"] = makeType(BuiltinType::BASENUM);
     builtinValues["symbolic"] = makeType(BuiltinType::SYMBOLIC);
     builtinValues["realmatrix"] = makeType(BuiltinType::REALMAT);
     builtinValues["complexmatrix"] = makeType(BuiltinType::COMPLEXMAT);
@@ -4816,7 +4812,7 @@ Value VM::run(int targetFrameDepth) {
 
                 auto canBeMatrixElement = [](const Value& v) -> bool {
                     return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-                        v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) ||
+                        v.isObjType(ObjType::COMPLEX) ||
                         v.isObjType(ObjType::SYMBOLIC) ||
                         v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
                         v.isObjType(ObjType::SYM_MATRIX);
@@ -4828,7 +4824,7 @@ Value VM::run(int targetFrameDepth) {
                     if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
                     if (!canBeMatrixElement(v)) {
                         hasOther = true;
-                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) || v.isObjType(ObjType::BASENUM)) {
+                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION)) {
                         try { v.asDouble(); } catch (...) { 
                             if (!hasSymbolic) hasOther = true; // 如果有符号，大整数/分数可以直接转为符号，不算 Other
                         }
@@ -7411,7 +7407,7 @@ Value VM::run(int targetFrameDepth) {
 
                 auto canBeMatrixElement = [](const Value& v) -> bool {
                     return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-                           v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) ||
+                           v.isObjType(ObjType::COMPLEX) ||
                            v.isObjType(ObjType::SYMBOLIC) ||
                            v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
                            v.isObjType(ObjType::SYM_MATRIX);
@@ -7423,7 +7419,7 @@ Value VM::run(int targetFrameDepth) {
                     if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
                     if (!canBeMatrixElement(v)) {
                         hasOther = true;
-                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) || v.isObjType(ObjType::BASENUM)) {
+                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION)) {
                         try { v.asDouble(); } catch (...) { 
                             if (!hasSymbolic) hasOther = true; 
                         }
@@ -8133,7 +8129,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
 
     auto canBeMatrixElement = [](const Value& v) -> bool {
         return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-            v.isObjType(ObjType::BASENUM) || v.isObjType(ObjType::COMPLEX) ||
+            v.isObjType(ObjType::COMPLEX) ||
             v.isObjType(ObjType::SYMBOLIC) ||
             v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
             v.isObjType(ObjType::SYM_MATRIX);
@@ -8145,7 +8141,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
         if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
         if (!canBeMatrixElement(v)) {
             hasOther = true;
-        } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) || v.isObjType(ObjType::BASENUM)) {
+        } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION)) {
             try { v.asDouble(); } catch (...) { 
                 if (!hasSymbolic) hasOther = true; 
             }
@@ -8858,7 +8854,6 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                             else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
                                             else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
                                             else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
@@ -8994,7 +8989,6 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                             else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
                                             else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
                                             else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
@@ -9481,7 +9475,6 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                             else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
                                             else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
                                             else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
@@ -9617,7 +9610,6 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                             else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
                                             else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
                                             else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
                                             else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
                                             else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
                                             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;

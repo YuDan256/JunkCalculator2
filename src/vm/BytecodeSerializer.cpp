@@ -109,16 +109,6 @@ void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const st
         writeDouble(os, c.imag);
         return;
     }
-    if (val.isObjType(ObjType::BASENUM)) {
-        write8(os, static_cast<uint8_t>(ConstTag::BASENUM));
-        BaseNum b = static_cast<ObjBaseNum*>(val.asObj())->base;
-        write8(os, static_cast<uint8_t>(b.getRadix()));
-        write8(os, b.getValue().getSign() ? 1 : 0);
-        const auto& raw = b.getValue().getRawData();
-        write32(os, static_cast<uint32_t>(raw.size()));
-        for (uint32_t v : raw) write32(os, v);
-        return;
-    }
     if (val.isObjType(ObjType::REAL_MATRIX)) {
         write8(os, static_cast<uint8_t>(ConstTag::REAL_MATRIX));
         RealMatrix m = val.asRealMatrix();
@@ -183,14 +173,6 @@ Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
             double r = readDouble(is);
             double i = readDouble(is);
             return Value(Complex(r, i));
-        }
-        case ConstTag::BASENUM: {
-            int radix = read8(is);
-            bool sign = read8(is) != 0;
-            uint32_t size = read32(is);
-            std::vector<uint32_t> raw(size);
-            for (uint32_t i = 0; i < size; ++i) raw[i] = read32(is);
-            return Value(BaseNum(BigInt::fromRawData(sign, raw), radix));
         }
         case ConstTag::REAL_MATRIX: {
             uint16_t r = read16(is);

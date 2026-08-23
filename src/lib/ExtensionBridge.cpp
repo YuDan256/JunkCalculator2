@@ -61,7 +61,6 @@ static JC2_ValueHandle host_get_type(JC2_VMContext, JC2_ValueHandle v) {
         else if (val.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
         else if (val.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
         else if (val.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-        else if (val.isObjType(ObjType::BASENUM)) vbt = BuiltinType::BASENUM;
         else if (val.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
         else if (val.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
         else if (val.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;

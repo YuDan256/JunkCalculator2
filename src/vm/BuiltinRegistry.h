@@ -286,7 +286,6 @@ private:
     void registerLinearSolvers();
     void registerVectors();
     void registerNumberTheory();
-    void registerBase();
     void registerStatistics();
     void registerRandom();
     void registerSystemUtils();

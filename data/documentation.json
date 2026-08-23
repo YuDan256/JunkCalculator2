@@ -1227,43 +1227,40 @@
       "    iszero(n)            Is n = 0?"
     ],
     "base": [
-      "═══ Radix Conversion & Bitwise Operations ═══",
+      "═══ Radix Arithmetic (math.BaseNum) ═══",
       "",
-      "  basenum wraps a standard decimal int inside a radix shell (2 to 36+).",
+      "  math.BaseNum wraps a standard decimal int inside a radix shell (2 to 36+).",
+      "  It is a standard class instance (immutable), not a native type.",
       "",
-      "  Conversion Functions",
+      "  Construction",
       "  ──────────────────────",
-      "    base(val, r)         Wrap an integer `val` in a base-`r` display shell.",
-      "                           base(255, 16) → [FF]_16",
-      "    bnum(\"str\", r)       Parse a string directly as base `r`.",
-      "                           • For r ≤ 36: Uses standard alphanumeric characters (0-9, A-Z, a-z).",
-      "                             bnum(\"FF\", 16) → [FF]_16",
-      "                           • For any base: Use underscores to separate base-10 digit blocks.",
-      "                             bnum(\"45_63_2\", 64) → [45_63_2]_64",
-      "    changeBase(v, r)     Re-display an existing basenum in a new base `r`.",
-      "    data(b)              Strip the radix shell → return plain int.",
+      "    math.BaseNum(val, r)            Wrap an integer `val` in a base-`r` shell.",
+      "                                    math.BaseNum(255, 16) → [FF]_16",
+      "    math.BaseNum.fromString(s, r)   Parse a string directly as base `r`.",
+      "                                    • For r ≤ 36: alphanumeric characters (0-9, A-Z, a-z).",
+      "                                      math.BaseNum.fromString(\"FF\", 16) → [FF]_16",
+      "                                    • For any base: underscores separate base-10 blocks.",
+      "                                      math.BaseNum.fromString(\"45_63_2\", 64) → [45_63_2]_64",
+      "",
+      "  Instance Methods",
+      "  ──────────────────────",
+      "    b.changeBase(r)       Return a NEW BaseNum re-displayed in base `r`.",
+      "    b.data()              Return the underlying plain int.",
+      "    b.digits()            Return the digit count in its own base.",
+      "",
+      "  Type Check",
+      "  ──────────────────────",
+      "    isinstance(x, math.BaseNum)     true if x is a BaseNum instance.",
       "",
       "  Arithmetic Assimilation",
       "  ──────────────────────",
-      "    basenums support  +  −  *  /  %  ^  with base assimilation:",
-      "    If one operand is base 10 (or a plain integer), the result inherits the ",
-      "    basenum's radix. Two different non-10 bases cannot be mixed.",
+      "    BaseNum supports  +  −  *  /  %  ^  with base assimilation:",
+      "    If one operand is base 10 (or a plain integer), the result inherits the",
+      "    BaseNum's radix. Two different non-10 bases cannot be mixed.",
       "",
       "  Bitwise Operations",
       "  ──────────────────────",
-      "    Bitwise operators preserve the input type (int or basenum).",
-      "    a & b                AND (Native operator)",
-      "    a | b                OR  (Native operator)",
-      "    a ^^ b               XOR (Native operator)",
-      "    ~a                   NOT (Returns -a - 1)",
-      "    a &= b               Compound AND assignment",
-      "    a |= b               Compound OR assignment",
-      "    a ^^= b              Compound XOR assignment",
-      "    a << b               Shift Left (requires b >= 0)",
-      "    a >> b               Shift Right (requires b >= 0)",
-      "",
-      "    * Note on Shifting: The operators `<<` and `>>` strictly require a non-negative",
-      "      shift count. Shifting supports int, bool, and basenum types."
+      "    Bitwise operators (& | ^^ ~ << >>) work on base-2 BaseNum instances."
     ],
     "type": [
       "═══ First-Class Types & Type Algebra ═══",
@@ -1315,7 +1312,7 @@
       "",
       "    Supported Exact & Union Types: ",
       "      int, whole, double, real, number, exact, string, bool, binary, none_type,",
-      "      list, dict, set, fraction, complex, basenum, symbolic,",
+      "      list, dict, set, fraction, complex, symbolic,",
       "      realmatrix, complexmatrix, symmatrix, matrix, function, class_type, instance, namespace_type, any_type",
       "",
       "    Duck Types / Interfaces (Behavioral Contracts):",
@@ -1323,7 +1320,7 @@
       "      callable    → Matches functions, classes, strings (late-binding), or instances with __call__",
       "      indexable   → Matches lists, dicts, strings, matrices, or instances with __getitem__",
       "      hashable    → Matches immutable types, frozen containers, or instances with __hash__",
-      "      numeric     → Matches numbers, ints, fractions, complex, basenum, or instances with math dunders",
+      "      numeric     → Matches numbers, ints, fractions, complex, or instances with math dunders",
       "",
       "  Callable Types (Constructors)",
       "  ──────────────────────",
@@ -1349,13 +1346,12 @@
       "                        fraction with den=1, or complex with imag=0)",
       "    isdouble(x)         double type specifically?",
       "    isnumeric(x)        Any numeric type? (double, int, fraction, ",
-      "                        complex, basenum, or instance with math dunders)",
-      "    isexact(x)          Any exact numeric type? (int, fraction, basenum, symbolic)",
+      "                        complex, or instance with math dunders)",
+      "    isexact(x)          Any exact numeric type? (int, fraction, symbolic)",
       "    iscomplex(x)        complex type specifically?",
-      "    isreal(x)           Real number? (double, int, fraction, basenum,",
+      "    isreal(x)           Real number? (double, int, fraction,",
       "                        or complex with imaginary part == 0)",
       "    isfrac(x)           fraction type specifically?",
-      "    isbase(x)           basenum type specifically?",
       "    isbinary(x)         Boolean or 0.0/1.0?",
       "",
       "  Container & Duck Type Checks",
@@ -1546,7 +1542,6 @@
       "      Complex                            → Magenta",
       "      Strings                            → Green",
       "      Matrices                           → Yellow/Magenta/Green",
-      "      basenum                            → Bright Cyan",
       "      Functions/Classes                  → Blue",
       "      instances                          → Bright Cyan",
       "      dicts/lists/sets                   → Cyan",
@@ -2305,7 +2300,7 @@
       "    and `frac(1,1)` will all perfectly collide and map to the exact same key!",
       "",
       "    Keys MUST be hashable. Valid keys include:",
-      "      • Numbers (double, int, fraction, complex, basenum)",
+      "      • Numbers (double, int, fraction, complex)",
       "      • Strings and Symbolic Expressions",
       "      • Frozen containers (frozen list, dict, set)",
       "      • Functions, Classes, and Namespaces (hashed by reference)",
@@ -4092,10 +4087,10 @@
     },
     "digits": {
       "signature": "math.digits(n)",
-      "desc": "Returns the number of digits in an integer (base-10) or a basenum (in its respective base).",
+      "desc": "Returns the number of digits in an integer (base-10).",
       "examples": [
         "math.digits(math.factorial(100))",
-        "math.digits(base(255, 16))"
+        "math.BaseNum(255, 16).digits()"
       ]
     },
     "isPrime": {
@@ -4211,35 +4206,6 @@
       "desc": "Returns the n-th Catalan number.",
       "examples": [
         "math.catalan(5)"
-      ]
-    },
-    "base": {
-      "signature": "base(val, r)",
-      "desc": "Wraps an integer in a base-r display shell.",
-      "examples": [
-        "base(255, 16)"
-      ]
-    },
-    "bnum": {
-      "signature": "bnum(str, r)",
-      "desc": "Parses a string directly as a base-r number. For bases <= 36, uses alphanumeric chars (case-insensitive). For any base, use underscores to separate base-10 digit blocks.",
-      "examples": [
-        "bnum(\"FF\", 16)",
-        "bnum(\"45_63_2\", 64)"
-      ]
-    },
-    "changeBase": {
-      "signature": "changeBase(v, r)",
-      "desc": "Re-displays an existing BaseNum in a new base r.",
-      "examples": [
-        "changeBase(base(255, 16), 2)"
-      ]
-    },
-    "data": {
-      "signature": "data(b)",
-      "desc": "Strips the radix shell from a BaseNum, returning a plain int.",
-      "examples": [
-        "data(base(255, 16))"
       ]
     },
     "mean": {
@@ -4412,12 +4378,11 @@
     },
     "len": {
       "signature": "len(x)",
-      "desc": "Returns the length or element count of a string, vector, matrix, dict, list, set, or the number of digits in an integer or basenum.",
+      "desc": "Returns the length or element count of a string, vector, matrix, dict, list, set, or the number of digits in an integer.",
       "examples": [
         "len(\"hello\")",
         "len([1, 2, 3])",
-        "len(12345)",
-        "len(base(255, 16))"
+        "len(12345)"
       ]
     },
     "substr": {
@@ -5277,14 +5242,9 @@
       "desc": "Returns true if x is specifically a fraction type.",
       "examples": ["isfrac(frac(1, 2))"]
     },
-    "isbase": {
-      "signature": "isbase(x)",
-      "desc": "Returns true if x is specifically a basenum type.",
-      "examples": ["isbase(base(255, 16))"]
-    },
     "isexact": {
       "signature": "isexact(x)",
-      "desc": "Returns true if x is an exact numeric type (int, Fraction, BaseNum, SymExpr).",
+      "desc": "Returns true if x is an exact numeric type (int, Fraction, SymExpr).",
       "examples": ["isexact(frac(1, 2))"]
     },
     "isbinary": {

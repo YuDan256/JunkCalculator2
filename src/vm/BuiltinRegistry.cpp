@@ -371,7 +371,6 @@ void BuiltinRegistry::registerAll() {
     registerLinearSolvers();
     registerVectors();
     registerNumberTheory();
-    registerBase();
     registerStatistics();
     registerRandom();
     registerSystemUtils();
@@ -391,6 +390,11 @@ void BuiltinRegistry::registerAll() {
     registerTypeChecks();
     registerSetFunctions();
     registerPredefinedClasses();
+    
+    if (VM::activeVM) {
+        Value baseCls = VM::activeVM->getBuiltinValue("BaseNum");
+        if (!baseCls.isNone()) math_ns->setField("BaseNum", baseCls);
+    }
     
     GcHeap::get().isInitializing = false;
 }
@@ -1754,8 +1758,7 @@ void BuiltinRegistry::registerNumberTheory() {
     regModule(math_ns, "digits", { 1 }, [](const std::vector<Value>& args) -> Value { 
         if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
         if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
-        if (args[0].isObjType(ObjType::BASENUM)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBaseNum*>(args[0].asObj())->base.digitCount()));
-        throw std::runtime_error("Type Error: expects an integer or basenum."); 
+        throw std::runtime_error("Type Error: expects an integer."); 
     }, {"n"});
     regModule(math_ns, "isPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPrime()); }, {"n"});
     regModule(math_ns, "nextPrime", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).nextPrime()); }, {"n"});
@@ -1792,17 +1795,6 @@ void BuiltinRegistry::registerNumberTheory() {
         }
         return Value(d);
     }, {"n"});
-}
-
-// =================================================================
-// [10] 多进制与位运算
-// =================================================================
-void BuiltinRegistry::registerBase() {
-    reg("base", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); }, {"val", "r"});
-    reg("bnum", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) throw std::runtime_error("Type Error: First arg must be a string."); return Value(BaseNum::fromString(args[0].asString(), static_cast<int>(std::round(args[1].asDouble())))); }, {"str", "r"});
-    reg("changeBase", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble())))); }, {"v", "r"});
-    reg("data", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].asBigInt()); }, {"b"});
-
 }
 
 // =================================================================
@@ -2751,8 +2743,7 @@ void BuiltinRegistry::registerStringFunctions() {
         if (args[0].isObjType(ObjType::NAMESPACE)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjNamespace*>(args[0].asObj())->fields.size()));
         if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
         if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
-        if (args[0].isObjType(ObjType::BASENUM)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBaseNum*>(args[0].asObj())->base.digitCount()));
-        throw std::runtime_error("Type Error: len() expects a string, vector, matrix, dict, list, set, namespace, integer, or basenum.");
+        throw std::runtime_error("Type Error: len() expects a string, vector, matrix, dict, list, set, namespace, or integer.");
         }, {"x"});
     reg("length", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
     reg("size", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
@@ -4256,7 +4247,6 @@ void BuiltinRegistry::registerFormatType() {
             else if (v.isObjType(ObjType::SET)) bt = BuiltinType::SET;
             else if (v.isObjType(ObjType::FRACTION)) bt = BuiltinType::FRACTION;
             else if (v.isObjType(ObjType::COMPLEX)) bt = BuiltinType::COMPLEX;
-            else if (v.isObjType(ObjType::BASENUM)) bt = BuiltinType::BASENUM;
             else if (v.isObjType(ObjType::SYMBOLIC)) bt = BuiltinType::SYMBOLIC;
             else if (v.isObjType(ObjType::REAL_MATRIX)) bt = BuiltinType::REALMAT;
             else if (v.isObjType(ObjType::COMPLEX_MATRIX)) bt = BuiltinType::COMPLEXMAT;
@@ -5429,7 +5419,7 @@ void BuiltinRegistry::registerTypeChecks() {
     reg("isnumeric", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& val = args[0];
         if (val.isNumber() || val.isBigInt() || val.isObjType(ObjType::FRACTION) ||
-            val.isComplex() || val.isObjType(ObjType::BASENUM)) return Value(true);
+            val.isComplex()) return Value(true);
         if (val.isInstance()) {
             auto inst = val.asInstance();
             return Value(invokeDunder(inst, DUNDER_ADD).first || invokeDunder(inst, DUNDER_MUL).first ||
@@ -5447,8 +5437,7 @@ void BuiltinRegistry::registerTypeChecks() {
     reg("isreal", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isNumber() ||
             args[0].isBigInt() ||
-            args[0].isObjType(ObjType::FRACTION) ||
-            args[0].isObjType(ObjType::BASENUM))
+            args[0].isObjType(ObjType::FRACTION))
             return Value(true);
         if (args[0].isComplex())
             return Value(args[0].asComplex().imag == 0.0);
@@ -5459,12 +5448,8 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(args[0].isObjType(ObjType::FRACTION));
         }, {"x"});
 
-    reg("isbase", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::BASENUM));
-        }, {"x"});
-
     reg("isexact", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isInt32() || args[0].isBigInt() || args[0].isBool() || args[0].isObjType(ObjType::FRACTION) || args[0].isObjType(ObjType::BASENUM) || args[0].isObjType(ObjType::SYMBOLIC));
+        return Value(args[0].isInt32() || args[0].isBigInt() || args[0].isBool() || args[0].isObjType(ObjType::FRACTION) || args[0].isObjType(ObjType::SYMBOLIC));
         }, {"x"});
 
     reg("isbinary", { 1 }, [](const std::vector<Value>& args) -> Value {

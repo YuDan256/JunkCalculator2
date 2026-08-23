@@ -236,6 +236,9 @@ public:
         return Value::none();
     }
 
+    // 读全局变量，含 builtin 回退；不存在则抛 undefined（state standalone 定义时捕获用）
+    Value getGlobalChecked(const std::string& name);
+
     void setGlobalSlot(uint32_t slot, const Value& val) {
         if (slot < globals.size()) globals[slot] = val;
     }

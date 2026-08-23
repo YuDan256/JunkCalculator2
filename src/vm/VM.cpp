@@ -354,6 +354,15 @@ Value VM::getBuiltinClosure(const std::string& name) {
     return Value::none();
 }
 
+Value VM::getGlobalChecked(const std::string& name) {
+    auto it = globalNames.find(name);
+    if (it != globalNames.end()) return globals[it->second];
+    Value builtinVal = getBuiltinValue(name);
+    if (builtinVal.isNone()) builtinVal = getBuiltinClosure(name);
+    if (!builtinVal.isNone()) return builtinVal;
+    throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+}
+
 ObjUpVal* VM::captureUpvalue(int regIndex) {
     ObjUpVal* prevUpval = nullptr;
     ObjUpVal* upval = openUpvalues;
@@ -3947,7 +3956,7 @@ Value VM::run(int targetFrameDepth) {
                                 if (frame->closure && uv.index < frame->closure->upvalueCount) {
                                     dummy->closed = *(frame->closure->upvalues[uv.index]->location);
                                 } else if (uv.isGlobal) {
-                                    dummy->closed = getGlobal(uv.name);
+                                    dummy->closed = getGlobalChecked(uv.name);
                                 } else {
                                     dummy->closed = Value::none();
                                 }
@@ -11630,7 +11639,7 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
                     if (frame->closure && uv.index < frame->closure->upvalueCount) {
                         dummy->closed = *(frame->closure->upvalues[uv.index]->location);
                     } else if (uv.isGlobal) {
-                        dummy->closed = vm->getGlobal(uv.name);
+                        dummy->closed = vm->getGlobalChecked(uv.name);
                     } else {
                         dummy->closed = Value::none();
                     }

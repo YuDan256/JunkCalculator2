@@ -32,5 +32,5 @@
         "increaseIndentPattern": "\\{\\s*$",
         "decreaseIndentPattern": "^\\s*\\}"
     },
-    "wordPattern": "[a-zA-Z_][a-zA-Z0-9_]*"
+    "wordPattern": "[\\p{L}_][\\p{L}\\p{N}_]*"
 }

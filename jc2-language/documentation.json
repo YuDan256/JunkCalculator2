@@ -168,65 +168,68 @@
     "matrix": {
       "signature": "matrix(rows, cols, [elements...])"
     },
+    "symmatrix": {
+      "signature": "symmatrix(rows, cols, [elements...])"
+    },
     "det": {
-      "signature": "det(A)"
+      "signature": "A.det()"
     },
     "inv": {
-      "signature": "inv(A)"
+      "signature": "A.inv()"
     },
     "trans": {
-      "signature": "trans(A)"
+      "signature": "A.trans()"
     },
     "ctrans": {
-      "signature": "ctrans(A)"
+      "signature": "A.ctrans()"
     },
     "gauss": {
-      "signature": "gauss(A)"
+      "signature": "A.gauss()"
     },
     "rank": {
-      "signature": "rank(A)"
+      "signature": "A.rank()"
     },
     "tr": {
-      "signature": "tr(A)"
+      "signature": "A.tr()"
     },
     "norm": {
-      "signature": "norm(A)"
+      "signature": "A.norm()"
     },
     "cond": {
-      "signature": "cond(A)"
+      "signature": "A.cond()"
     },
     "adj": {
-      "signature": "adj(A)"
+      "signature": "A.adj()"
     },
     "sum": {
-      "signature": "sum(A)"
+      "signature": "A.sum()"
     },
     "prod": {
-      "signature": "prod(A)"
+      "signature": "A.prod()"
     },
     "null": {
-      "signature": "null(A)"
+      "signature": "A.null()"
     },
     "orth": {
-      "signature": "orth(A)"
+      "signature": "A.orth()"
     },
     "mpow": {
-      "signature": "mpow(A, n)"
+      "signature": "A.mpow(n)"
     },
     "row": {
-      "signature": "row(A)"
+      "signature": "A.row()"
     },
     "col": {
-      "signature": "col(A)"
+      "signature": "A.col()"
     },
     "reshape": {
-      "signature": "reshape(A, r, c)"
+      "signature": "A.reshape(r, c)"
     },
-    "integR": {
-      "signature": "integR(A, B)"
+    "hcat": {
+      "signature": "A.hcat(B)"
     },
-    "integC": {
-      "signature": "integC(A, B)"
+    "vcat": {
+      "signature": "A.vcat(B)"
     },
     "id": {
       "signature": "id(n)"
@@ -238,211 +241,184 @@
       "signature": "zeros(r, [c])"
     },
     "eig": {
-      "signature": "eig(A)"
+      "signature": "A.eig()"
     },
     "eigvec": {
-      "signature": "eigvec(A)"
+      "signature": "A.eigvec()"
     },
     "diag": {
-      "signature": "diag(A)"
+      "signature": "A.diag()"
     },
     "lsolve": {
-      "signature": "lsolve(A, b)"
+      "signature": "A.lsolve(b)"
     },
     "lstsq": {
-      "signature": "lstsq(A, b)"
+      "signature": "A.lstsq(b)"
     },
     "dim": {
-      "signature": "dim(v)"
+      "signature": "v.dim()"
     },
     "dot": {
-      "signature": "dot(a, b)"
+      "signature": "a.dot(b)"
     },
     "vnorm": {
-      "signature": "vnorm(v)"
+      "signature": "v.vnorm()"
     },
     "normalize": {
-      "signature": "normalize(v)"
+      "signature": "v.normalize()"
     },
     "cross": {
-      "signature": "cross(a, b)"
+      "signature": "a.cross(b)"
     },
     "angle": {
-      "signature": "angle(a, b)"
+      "signature": "a.angle(b)"
     },
     "sproj": {
-      "signature": "sproj(a, b)"
+      "signature": "a.sproj(b)"
     },
     "vproj": {
-      "signature": "vproj(a, b)"
+      "signature": "a.vproj(b)"
     },
     "triple": {
-      "signature": "triple(a, b, c)"
+      "signature": "a.triple(b, c)"
     },
     "isperp": {
-      "signature": "isperp(a, b)"
+      "signature": "a.isperp(b)"
     },
     "isparallel": {
-      "signature": "isparallel(a, b)"
+      "signature": "a.isparallel(b)"
     },
     "solve": {
-      "signature": "solve(a, b, [c, d, e])"
+      "signature": "math.solve(a, b, [c, d, e]) / math.solve(f, x0) / cas.solve(expr, var)"
     },
     "factorial": {
-      "signature": "factorial(n)"
+      "signature": "math.factorial(n)"
     },
     "fib": {
-      "signature": "fib(n)"
+      "signature": "math.fib(n)"
     },
     "gcd": {
-      "signature": "gcd(a, b)"
+      "signature": "math.gcd(a, b)"
     },
     "lcm": {
-      "signature": "lcm(a, b)"
+      "signature": "math.lcm(a, b)"
     },
     "digits": {
-      "signature": "digits(n)"
+      "signature": "math.digits(n)"
     },
     "isPrime": {
-      "signature": "isPrime(n)"
+      "signature": "math.isPrime(n)"
     },
     "nextPrime": {
-      "signature": "nextPrime(n)"
+      "signature": "math.nextPrime(n)"
     },
     "nthPrime": {
-      "signature": "nthPrime(k)"
+      "signature": "math.nthPrime(k)"
     },
     "primePi": {
-      "signature": "primePi(n)"
+      "signature": "math.primePi(n)"
     },
     "phi": {
-      "signature": "phi(n)"
+      "signature": "math.phi(n)"
     },
     "divisors": {
-      "signature": "divisors(n)"
+      "signature": "math.divisors(n)"
     },
     "sigma": {
-      "signature": "sigma(n, [k])"
+      "signature": "math.sigma(n, [k])"
     },
     "omega": {
-      "signature": "omega(n)"
+      "signature": "math.omega(n)"
     },
     "bigOmega": {
-      "signature": "bigOmega(n)"
+      "signature": "math.bigOmega(n)"
     },
     "mobius": {
-      "signature": "mobius(n)"
+      "signature": "math.mobius(n)"
     },
     "isPerfect": {
-      "signature": "isPerfect(n)"
+      "signature": "math.isPerfect(n)"
     },
     "mod": {
-      "signature": "mod(a, b)"
+      "signature": "math.mod(a, b)"
     },
     "modpow": {
-      "signature": "modpow(a, e, m)"
+      "signature": "math.modpow(a, e, m)"
     },
     "C": {
-      "signature": "C(n, k)"
+      "signature": "math.C(n, k)"
     },
     "A": {
-      "signature": "A(n, k)"
+      "signature": "math.A(n, k)"
     },
     "catalan": {
-      "signature": "catalan(n)"
-    },
-    "base": {
-      "signature": "base(val, r)"
-    },
-    "bnum": {
-      "signature": "bnum(str, r)"
-    },
-    "changeBase": {
-      "signature": "changeBase(v, r)"
-    },
-    "data": {
-      "signature": "data(b)"
-    },
-    "bitand": {
-      "signature": "bitand(a, b)"
-    },
-    "bitor": {
-      "signature": "bitor(a, b)"
-    },
-    "bitxor": {
-      "signature": "bitxor(a, b)"
-    },
-    "bitnot": {
-      "signature": "bitnot(a, [w])"
-    },
-    "bitshift": {
-      "signature": "bitshift(a, n)"
+      "signature": "math.catalan(n)"
     },
     "mean": {
-      "signature": "mean(X) / dist.mean()"
+      "signature": "X.mean() / dist.mean()"
     },
     "var": {
-      "signature": "var(X) / dist.var()"
+      "signature": "X.var() / dist.var()"
     },
     "svar": {
-      "signature": "svar(X)"
+      "signature": "X.svar()"
     },
     "std": {
-      "signature": "std(X) / dist.std()"
+      "signature": "X.std() / dist.std()"
     },
     "sstd": {
-      "signature": "sstd(X)"
+      "signature": "X.sstd()"
     },
     "max": {
-      "signature": "max(X)"
+      "signature": "X.max()"
     },
     "min": {
-      "signature": "min(X)"
+      "signature": "X.min()"
     },
     "span": {
-      "signature": "span(X)"
+      "signature": "X.span()"
     },
     "perc": {
-      "signature": "perc(X, p)"
+      "signature": "X.perc(p)"
     },
     "median": {
-      "signature": "median(X)"
+      "signature": "X.median()"
     },
     "mode": {
-      "signature": "mode(X)"
+      "signature": "X.mode()"
     },
     "cov": {
-      "signature": "cov(X, Y)"
+      "signature": "X.cov(Y)"
     },
     "corr": {
-      "signature": "corr(X, Y)"
+      "signature": "X.corr(Y)"
     },
     "rsq": {
-      "signature": "rsq(X, Y)"
+      "signature": "X.rsq(Y)"
     },
     "regress": {
-      "signature": "regress(X, Y)"
+      "signature": "X.regress(Y)"
     },
     "rand": {
-      "signature": "rand([min, max])"
+      "signature": "random.rand([min, max])"
     },
     "randint": {
-      "signature": "randint(min, max)"
+      "signature": "random.randint(min, max)"
     },
     "randc": {
-      "signature": "randc([min, max])"
+      "signature": "random.randc([min, max])"
     },
     "randmat": {
-      "signature": "randmat(r, c, [min, max])"
+      "signature": "random.randmat(r, c, [min, max])"
     },
     "randimat": {
-      "signature": "randimat(r, c, [min, max])"
+      "signature": "random.randimat(r, c, [min, max])"
     },
     "randcmat": {
-      "signature": "randcmat(r, c, [min, max])"
+      "signature": "random.randcmat(r, c, [min, max])"
     },
     "magic": {
-      "signature": "magic(n)"
+      "signature": "random.magic(n)"
     },
     "str": {
       "signature": "str(x)"
@@ -451,10 +427,10 @@
       "signature": "len(x)"
     },
     "substr": {
-      "signature": "substr(s, start, [length])"
+      "signature": "s.substr(start, [length])"
     },
     "replace": {
-      "signature": "replace(s, old, new)"
+      "signature": "s.replace(old, new)"
     },
     "format": {
       "signature": "format(fmt, ...)"
@@ -463,10 +439,10 @@
       "signature": "type(x)"
     },
     "split": {
-      "signature": "split(s, delim)"
+      "signature": "s.split(delim)"
     },
     "join": {
-      "signature": "join(v, delim)"
+      "signature": "v.join(delim)"
     },
     "list": {
       "signature": "list(...)"
@@ -478,37 +454,37 @@
       "signature": "set(...)"
     },
     "push": {
-      "signature": "push(v, val)"
+      "signature": "v.push(val)"
     },
     "pop": {
-      "signature": "pop(v)"
+      "signature": "v.pop()"
     },
     "map": {
-      "signature": "v.map(f) / map(v, f) / map(f)"
+      "signature": "v.map(f)"
     },
     "filter": {
-      "signature": "v.filter(f) / filter(v, f) / filter(f)"
+      "signature": "v.filter(f)"
     },
     "reduce": {
-      "signature": "v.reduce(f, [init]) / reduce(v, f, [init]) / reduce(f, [init])"
+      "signature": "v.reduce(f, [init])"
     },
     "sort": {
-      "signature": "v.sort([cmp]) / sort(v, [cmp]) / sort(cmp)"
+      "signature": "v.sort([cmp])"
     },
     "keys": {
-      "signature": "keys(d)"
+      "signature": "d.keys()"
     },
     "values": {
-      "signature": "values(d)"
+      "signature": "d.values()"
     },
     "hasKey": {
-      "signature": "hasKey(d, key)"
+      "signature": "d.hasKey(key)"
     },
-    "setUnion": {
-      "signature": "setUnion(a, b)"
+    "union": {
+      "signature": "a.union(b)"
     },
-    "setIntersect": {
-      "signature": "setIntersect(a, b)"
+    "intersect": {
+      "signature": "a.intersect(b)"
     },
     "print": {
       "signature": "print(...)"
@@ -517,61 +493,58 @@
       "signature": "println(...)"
     },
     "readFile": {
-      "signature": "readFile(path)"
+      "signature": "io.readFile(path)"
     },
     "writeFile": {
-      "signature": "writeFile(path, content)"
+      "signature": "io.writeFile(path, content)"
     },
     "readCSV": {
-      "signature": "readCSV(path, [delim])"
-    },
-    "pcall": {
-      "signature": "pcall(f)"
+      "signature": "io.readCSV(path, [delim])"
     },
     "assert": {
       "signature": "assert(cond, [msg])"
     },
     "gc": {
-      "signature": "gc([aggressive])"
+      "signature": "sys.gc([aggressive])"
     },
     "help": {
       "signature": "help([topic])"
     },
     "run": {
-      "signature": "run(path)"
+      "signature": "sys.run(path)"
     },
     "compileFile": {
-      "signature": "compileFile(path)"
+      "signature": "sys.compileFile(path)"
     },
     "compileCode": {
-      "signature": "compileCode(code)"
+      "signature": "sys.compileCode(code)"
     },
     "sym": {
       "signature": "sym(name)"
     },
+    "symbolics": {
+      "signature": "symbolics(names)"
+    },
     "diff": {
-      "signature": "diff(expr, var)"
+      "signature": "cas.diff(expr, var) / math.diff(f, x0)"
     },
     "integ": {
-      "signature": "integ(expr, var, [a, b])"
+      "signature": "cas.integ(expr, var, [a, b]) / math.integ(f, a, b, [n])"
     },
     "limit": {
-      "signature": "limit(expr, var, val, [dir])"
-    },
-    "solveEq": {
-      "signature": "solveEq(expr, var)"
+      "signature": "cas.limit(expr, var, val, [dir]) / math.limit(f, x0, [dir])"
     },
     "expand": {
-      "signature": "expand(expr)"
+      "signature": "cas.expand(expr)"
     },
     "simplify": {
-      "signature": "simplify(expr)"
+      "signature": "cas.simplify(expr)"
     },
     "subs": {
-      "signature": "subs(expr, var, val)"
+      "signature": "cas.subs(expr, var, val)"
     },
     "evalf": {
-      "signature": "evalf(expr)"
+      "signature": "cas.evalf(expr)"
     },
     "clear": {
       "signature": "clear(collection)"
@@ -589,88 +562,88 @@
       "signature": "eval(expr)"
     },
     "charAt": {
-      "signature": "charAt(s, i)"
+      "signature": "s.charAt(i)"
     },
     "upper": {
-      "signature": "upper(s)"
+      "signature": "s.upper()"
     },
     "lower": {
-      "signature": "lower(s)"
+      "signature": "s.lower()"
     },
     "trim": {
-      "signature": "trim(s)"
+      "signature": "s.trim()"
     },
     "find": {
-      "signature": "find(s, sub, [pos])"
+      "signature": "s.find(sub, [pos]) / mat.find(val)"
     },
     "contains": {
-      "signature": "contains(s, sub)"
+      "signature": "s.contains(sub)"
     },
     "repeat": {
-      "signature": "repeat(s, n)"
+      "signature": "s.repeat(n)"
     },
     "concat": {
       "signature": "concat(...)"
     },
     "startsWith": {
-      "signature": "startsWith(s, prefix)"
+      "signature": "s.startsWith(prefix)"
     },
     "endsWith": {
-      "signature": "endsWith(s, suffix)"
+      "signature": "s.endsWith(suffix)"
     },
     "ord": {
-      "signature": "ord(s)"
+      "signature": "s.ord()"
     },
     "chr": {
       "signature": "chr(code)"
     },
     "parseNum": {
-      "signature": "parseNum(s)"
+      "signature": "s.parseNum()"
     },
     "first": {
-      "signature": "first(v)"
+      "signature": "v.first()"
     },
     "last": {
-      "signature": "last(v)"
+      "signature": "v.last()"
     },
     "shift": {
-      "signature": "shift(v)"
+      "signature": "v.shift()"
     },
     "prepend": {
-      "signature": "prepend(v, val)"
+      "signature": "v.prepend(val)"
     },
     "insert": {
-      "signature": "insert(v, idx, val)"
+      "signature": "v.insert(idx, val)"
     },
     "removeAt": {
-      "signature": "removeAt(v, idx)"
+      "signature": "v.removeAt(idx)"
     },
     "slice": {
-      "signature": "slice(v, start, [end])"
+      "signature": "slice([start], [end], [step]) / v.slice(start, [end])"
     },
     "reverse": {
-      "signature": "reverse(v)"
+      "signature": "v.reverse()"
     },
     "flatten": {
-      "signature": "flatten(v)"
+      "signature": "v.flatten()"
     },
     "unique": {
-      "signature": "unique(v)"
+      "signature": "v.unique()"
     },
     "indexOf": {
-      "signature": "indexOf(v, val)"
+      "signature": "v.indexOf(val)"
     },
     "count": {
-      "signature": "count(v, val)"
+      "signature": "v.count(val)"
     },
     "cumsum": {
-      "signature": "cumsum(v)"
+      "signature": "v.cumsum()"
     },
     "cumprod": {
-      "signature": "cumprod(v)"
+      "signature": "v.cumprod()"
     },
     "diffs": {
-      "signature": "diffs(v)"
+      "signature": "v.diffs()"
     },
     "range": {
       "signature": "range([start], end, [step])"
@@ -681,44 +654,14 @@
     "linspace": {
       "signature": "linspace(a, b, n)"
     },
-    "strmat": {
-      "signature": "strmat(r, c, ...)"
+    "merge": {
+      "signature": "d1.merge(d2)"
     },
-    "strvec": {
-      "signature": "strvec(...)"
-    },
-    "strrow": {
-      "signature": "strrow(...)"
-    },
-    "strfill": {
-      "signature": "strfill(str, n)"
-    },
-    "strfind": {
-      "signature": "strfind(mat, str)"
-    },
-    "strjoin": {
-      "signature": "strjoin(mat, delim)"
-    },
-    "strsort": {
-      "signature": "strsort(mat)"
-    },
-    "toStrMat": {
-      "signature": "toStrMat(A)"
-    },
-    "dictSize": {
-      "signature": "dictSize(d)"
-    },
-    "dictMerge": {
-      "signature": "dictMerge(d1, d2)"
-    },
-    "dictPairs": {
-      "signature": "dictPairs(d)"
+    "entries": {
+      "signature": "d.entries()"
     },
     "toList": {
       "signature": "toList(v)"
-    },
-    "toStrVec": {
-      "signature": "toStrVec(v)"
     },
     "toArray": {
       "signature": "toArray(v)"
@@ -732,6 +675,12 @@
     "cat": {
       "signature": "cat(...)"
     },
+    "enumerate": {
+      "signature": "v.enumerate([start=0])"
+    },
+    "groupBy": {
+      "signature": "v.groupBy(f)"
+    },
     "isinstance": {
       "signature": "isinstance(obj, [cls])"
     },
@@ -741,143 +690,140 @@
     "getParent": {
       "signature": "getParent(cls)"
     },
-    "setDiff": {
-      "signature": "setDiff(a, b)"
+    "difference": {
+      "signature": "a.difference(b)"
     },
-    "setSymDiff": {
-      "signature": "setSymDiff(a, b)"
+    "symDiff": {
+      "signature": "a.symDiff(b)"
     },
     "isSubset": {
-      "signature": "isSubset(a, b)"
+      "signature": "a.isSubset(b)"
     },
     "isSuperset": {
-      "signature": "isSuperset(a, b)"
+      "signature": "a.isSuperset(b)"
     },
     "isDisjoint": {
-      "signature": "isDisjoint(a, b)"
+      "signature": "a.isDisjoint(b)"
     },
-    "setProduct": {
-      "signature": "setProduct(a, b)"
+    "cartesian": {
+      "signature": "a.cartesian(b)"
     },
-    "setPow": {
-      "signature": "setPow(s)"
+    "powerSet": {
+      "signature": "s.powerSet()"
     },
     "appendFile": {
-      "signature": "appendFile(path, content)"
+      "signature": "io.appendFile(path, content)"
     },
     "readLines": {
-      "signature": "readLines(path)"
+      "signature": "io.readLines(path)"
     },
     "writeLines": {
-      "signature": "writeLines(path, list)"
+      "signature": "io.writeLines(path, list)"
     },
     "fileExists": {
-      "signature": "fileExists(path)"
+      "signature": "io.fileExists(path)"
     },
     "deleteFile": {
-      "signature": "deleteFile(path)"
+      "signature": "io.deleteFile(path)"
     },
     "fileSize": {
-      "signature": "fileSize(path)"
+      "signature": "io.fileSize(path)"
     },
     "listDir": {
-      "signature": "listDir([path])"
+      "signature": "io.listDir([path])"
     },
     "readCSVMat": {
-      "signature": "readCSVMat(path, [delim])"
+      "signature": "io.readCSVMat(path, [delim])"
     },
     "parseCSVNum": {
-      "signature": "parseCSVNum(path, [delim])"
+      "signature": "io.parseCSVNum(path, [delim])"
     },
     "writeCSV": {
-      "signature": "writeCSV(path, data, [delim])"
+      "signature": "io.writeCSV(path, data, [delim])"
     },
     "RootOf": {
-      "signature": "RootOf(poly, var, k)"
+      "signature": "cas.RootOf(poly, var, k)"
     },
     "RootSum": {
-      "signature": "RootSum(expr, var, poly)"
+      "signature": "cas.RootSum(expr, var, poly)"
     },
     "contract": {
-      "signature": "contract(expr)"
+      "signature": "cas.contract(expr)"
     },
     "trigsimp": {
-      "signature": "trigsimp(expr)"
+      "signature": "cas.trigsimp(expr)"
     },
     "toFunc": {
-      "signature": "toFunc(expr, vars)"
+      "signature": "cas.toFunc(expr, vars)"
     },
     "evalv": {
-      "signature": "evalv(expr)"
+      "signature": "cas.evalv(expr)"
     },
     "replaceRule": {
-      "signature": "replaceRule(expr, pat, tgt)"
+      "signature": "cas.replaceRule(expr, pat, tgt)"
     },
     "polyDiv": {
-      "signature": "polyDiv(A, B, var)"
+      "signature": "cas.polyDiv(A, B, var)"
     },
     "polyGCD": {
-      "signature": "polyGCD(A, B, var)"
+      "signature": "cas.polyGCD(A, B, var)"
     },
     "resultant": {
-      "signature": "resultant(A, B, var)"
+      "signature": "cas.resultant(A, B, var)"
     },
     "factor": {
-      "signature": "factor(expr)"
+      "signature": "cas.factor(expr) / math.factor(n)"
     },
     "factorReal": {
-      "signature": "factorReal(expr)"
+      "signature": "cas.factorReal(expr)"
     },
     "taylor": {
-      "signature": "taylor(expr, var, a, [order])"
+      "signature": "cas.taylor(expr, var, a, [order])"
     },
     "verifyInteg": {
-      "signature": "verifyInteg(expr, var)"
-    },
-    "isError": {
-      "signature": "isError(status)"
+      "signature": "cas.verifyInteg(expr, var)"
     },
     "resetConst": {
-      "signature": "resetConst()"
+      "signature": "sys.resetConst()"
     },
     "resetType": {
-      "signature": "resetType()"
+      "signature": "sys.resetType()"
     },
     "setWorkspace": {
-      "signature": "setWorkspace(path)"
+      "signature": "sys.setWorkspace(path)"
     },
     "getWorkspace": {
-      "signature": "getWorkspace()"
+      "signature": "sys.getWorkspace()"
     },
     "pwd": {
-      "signature": "pwd()"
+      "signature": "sys.pwd()"
     },
     "cls": {
-      "signature": "cls()"
+      "signature": "sys.cls()"
     },
     "breakpoint": {
-      "signature": "breakpoint()"
+      "signature": "sys.breakpoint()"
     },
     "disassemble": {
-      "signature": "disassemble(f)"
+      "signature": "sys.disassemble(f)"
     },
     "buildIndex": {
-      "signature": "buildIndex()"
+      "signature": "sys.buildIndex()"
     },
     "mountPrimes": {
-      "signature": "mountPrimes(path)"
+      "signature": "sys.mountPrimes(path)"
     },
     "extendPrimes": {
-      "signature": "extendPrimes(n)"
+      "signature": "sys.extendPrimes(n)"
     },
     "convertPrimes": {
-      "signature": "convertPrimes(txtPath, binPath)"
+      "signature": "sys.convertPrimes(txtPath, binPath)"
     },
     "verifyPrimes": {
-      "signature": "verifyPrimes()"
+      "signature": "sys.verifyPrimes()"
     },
     "sysinfo": {
-      "signature": "sysinfo()"
+      "signature": "sys.sysinfo()"
     },
     "freeze": {
       "signature": "freeze(obj)"
@@ -888,92 +834,14 @@
     "hash": {
       "signature": "hash(x)"
     },
-    "clone": {
-      "signature": "clone(obj)"
-    },
     "copy": {
-      "signature": "copy(obj)"
-    },
-    "val": {
-      "signature": "val(obj)"
+      "signature": "copy(obj, freeze = none)"
     },
     "symconfig": {
-      "signature": "symconfig([dict_or_default])"
+      "signature": "sys.symconfig([dict_or_default])"
     },
     "setSymLimit": {
-      "signature": "setSymLimit(key, val)"
-    },
-    "isbool": {
-      "signature": "isbool(x)"
-    },
-    "isint": {
-      "signature": "isint(x)"
-    },
-    "iswhole": {
-      "signature": "iswhole(x)"
-    },
-    "isdouble": {
-      "signature": "isdouble(x)"
-    },
-    "isnumeric": {
-      "signature": "isnumeric(x)"
-    },
-    "iscomplex": {
-      "signature": "iscomplex(x)"
-    },
-    "isreal": {
-      "signature": "isreal(x)"
-    },
-    "isfrac": {
-      "signature": "isfrac(x)"
-    },
-    "isbase": {
-      "signature": "isbase(x)"
-    },
-    "isexact": {
-      "signature": "isexact(x)"
-    },
-    "isbinary": {
-      "signature": "isbinary(x)"
-    },
-    "ismatrix": {
-      "signature": "ismatrix(x)"
-    },
-    "isrealmatrix": {
-      "signature": "isrealmatrix(x)"
-    },
-    "iscomplexmatrix": {
-      "signature": "iscomplexmatrix(x)"
-    },
-    "isstringmatrix": {
-      "signature": "isstringmatrix(x)"
-    },
-    "isvector": {
-      "signature": "isvector(x)"
-    },
-    "issquare": {
-      "signature": "issquare(x)"
-    },
-    "islist": {
-      "signature": "islist(x)"
-    },
-    "isdict": {
-      "signature": "isdict(x)"
-    },
-    "isiterable": {
-      "signature": "isiterable(x)"
-    },
-    "iscallable": {
-      "signature": "iscallable(x)"
-    },
-    "isindexable": {
-      "signature": "isindexable(x)"
-    },
-    "ishashable": {
-      "signature": "ishashable(x)"
-    },
-    "isstring": {
-      "signature": "isstring(x)"
+      "signature": "sys.setSymLimit(key, val)"
     },
     "isalpha": {
       "signature": "isalpha(s)"
@@ -996,21 +864,6 @@
     "isempty": {
       "signature": "isempty(x)"
     },
-    "isnone": {
-      "signature": "isnone(x)"
-    },
-    "isfunction": {
-      "signature": "isfunction(x)"
-    },
-    "isclass": {
-      "signature": "isclass(x)"
-    },
-    "isnamespace": {
-      "signature": "isnamespace(x)"
-    },
-    "issymbolic": {
-      "signature": "issymbolic(x)"
-    },
     "isnan": {
       "signature": "isnan(x)"
     },
@@ -1021,7 +874,7 @@
       "signature": "isfinite(x)"
     },
     "isprime": {
-      "signature": "isprime(n)"
+      "signature": "math.isprime(n)"
     },
     "iseven": {
       "signature": "iseven(x)"
@@ -1041,134 +894,131 @@
     "iszero": {
       "signature": "iszero(x)"
     },
-    "isset": {
-      "signature": "isset(x)"
-    },
     "addE": {
-      "signature": "addE(A, B)"
+      "signature": "A.addE(B)"
     },
     "subE": {
-      "signature": "subE(A, B)"
+      "signature": "A.subE(B)"
     },
     "mulE": {
-      "signature": "mulE(A, B)"
+      "signature": "A.mulE(B)"
     },
     "divE": {
-      "signature": "divE(A, B)"
+      "signature": "A.divE(B)"
     },
     "idivE": {
-      "signature": "idivE(A, B)"
+      "signature": "A.idivE(B)"
     },
     "powE": {
-      "signature": "powE(A, B)"
+      "signature": "A.powE(B)"
     },
     "modE": {
-      "signature": "modE(A, B)"
+      "signature": "A.modE(B)"
     },
     "eqE": {
-      "signature": "eqE(A, B)"
+      "signature": "A.eqE(B)"
     },
     "neqE": {
-      "signature": "neqE(A, B)"
+      "signature": "A.neqE(B)"
     },
     "ltE": {
-      "signature": "ltE(A, B)"
+      "signature": "A.ltE(B)"
     },
     "leE": {
-      "signature": "leE(A, B)"
+      "signature": "A.leE(B)"
     },
     "gtE": {
-      "signature": "gtE(A, B)"
+      "signature": "A.gtE(B)"
     },
     "geE": {
-      "signature": "geE(A, B)"
+      "signature": "A.geE(B)"
     },
     "maxE": {
-      "signature": "maxE(A, B)"
+      "signature": "A.maxE(B)"
     },
     "minE": {
-      "signature": "minE(A, B)"
+      "signature": "A.minE(B)"
     },
     "andE": {
-      "signature": "andE(A, B)"
+      "signature": "A.andE(B)"
     },
     "orE": {
-      "signature": "orE(A, B)"
+      "signature": "A.orE(B)"
     },
     "xorE": {
-      "signature": "xorE(A, B)"
+      "signature": "A.xorE(B)"
     },
     "atan2E": {
-      "signature": "atan2E(Y, X)"
+      "signature": "Y.atan2E(X)"
     },
     "hypotE": {
-      "signature": "hypotE(A, B)"
+      "signature": "A.hypotE(B)"
     },
     "whereE": {
-      "signature": "whereE(mask, A, B)"
+      "signature": "mask.whereE(A, B)"
     },
     "perm": {
-      "signature": "perm(A)"
+      "signature": "A.perm()"
     },
     "getElement": {
-      "signature": "getElement(A, r, c)"
+      "signature": "A.getElement(r, c)"
     },
     "setElement": {
-      "signature": "setElement(A, r, c, val)"
+      "signature": "A.setElement(r, c, val)"
     },
     "getR": {
-      "signature": "getR(A, r)"
+      "signature": "A.getR(r)"
     },
     "getC": {
-      "signature": "getC(A, c)"
+      "signature": "A.getC(c)"
     },
     "delR": {
-      "signature": "delR(A, r)"
+      "signature": "A.delR(r)"
     },
     "delC": {
-      "signature": "delC(A, c)"
+      "signature": "A.delC(c)"
     },
     "swapR": {
-      "signature": "swapR(A, r1, r2)"
+      "signature": "A.swapR(r1, r2)"
     },
     "swapC": {
-      "signature": "swapC(A, c1, c2)"
+      "signature": "A.swapC(c1, c2)"
     },
     "multiR": {
-      "signature": "multiR(A, r, scalar)"
+      "signature": "A.multiR(r, scalar)"
     },
     "multiC": {
-      "signature": "multiC(A, c, scalar)"
+      "signature": "A.multiC(c, scalar)"
     },
     "addR": {
-      "signature": "addR(A, r1, r2, scalar)"
+      "signature": "A.addR(r1, r2, scalar)"
     },
     "addC": {
-      "signature": "addC(A, c1, c2, scalar)"
+      "signature": "A.addC(c1, c2, scalar)"
     },
     "sub": {
-      "signature": "sub(A, r, c)"
+      "signature": "A.sub(r, c)"
     },
     "cof": {
-      "signature": "cof(A, r, c)"
+      "signature": "A.cof(r, c)"
     },
     "Acof": {
-      "signature": "Acof(A, r, c)"
+      "signature": "A.Acof(r, c)"
     },
-    "integD": {
-      "signature": "integD(A, B)"
+    "blkdiag": {
+      "signature": "A.blkdiag(B)"
     },
     "qr": {
-      "signature": "qr(A)"
+      "signature": "A.qr()"
     },
     "lu": {
-      "signature": "lu(A)"
+      "signature": "A.lu()"
     },
     "residual": {
-      "signature": "residual(A, x, b)"
+      "signature": "A.residual(x, b)"
     },
     "gcinfo": {
-      "signature": "gcinfo()"
+      "signature": "sys.gcinfo()"
     },
     "bool": {
       "signature": "bool(x)"
@@ -1192,55 +1042,34 @@
       "signature": "input([prompt])"
     },
     "clock": {
-      "signature": "clock()"
+      "signature": "sys.clock()"
     },
     "sleep": {
-      "signature": "sleep(seconds)"
+      "signature": "sys.sleep(seconds)"
     },
     "highlight": {
-      "signature": "highlight(code)"
+      "signature": "sys.highlight(code)"
     },
     "color": {
-      "signature": "color(state)"
-    },
-    "debugInteg": {
-      "signature": "debugInteg(state)"
+      "signature": "sys.color(state)"
     },
     "removeKey": {
-      "signature": "removeKey(d, key)"
+      "signature": "d.removeKey(key)"
     },
     "apply": {
-      "signature": "args.apply(f) / apply(args, f) / apply(f)"
+      "signature": "args.apply(f)"
     },
     "any": {
-      "signature": "v.any(f) / any(v, f) / any(f)"
+      "signature": "v.any(f)"
     },
     "all": {
-      "signature": "v.all(f) / all(v, f) / all(f)"
+      "signature": "v.all(f)"
     },
     "countIf": {
-      "signature": "v.countIf(f) / countIf(v, f) / countIf(f)"
-    },
-    "solveE": {
-      "signature": "solveE(f, x0)"
+      "signature": "v.countIf(f)"
     },
     "table": {
       "signature": "table(f, ...)"
-    },
-    "setAdd": {
-      "signature": "setAdd(s, val)"
-    },
-    "setRemove": {
-      "signature": "setRemove(s, val)"
-    },
-    "setDiscard": {
-      "signature": "setDiscard(s, val)"
-    },
-    "setClear": {
-      "signature": "setClear(s)"
-    },
-    "setPop": {
-      "signature": "setPop(s)"
     },
     "matpow": {
       "signature": "matpow(A, B)"
@@ -1263,6 +1092,9 @@
     "__div__": {
       "signature": "__div__(other)"
     },
+    "__idiv__": {
+      "signature": "__idiv__(other)"
+    },
     "__mod__": {
       "signature": "__mod__(other)"
     },
@@ -1274,6 +1106,9 @@
     },
     "__rmul__": {
       "signature": "__rmul__(other)"
+    },
+    "__ridiv__": {
+      "signature": "__ridiv__(other)"
     },
     "__neg__": {
       "signature": "__neg__()"
@@ -1288,10 +1123,10 @@
       "signature": "__contains__(val)"
     },
     "__getitem__": {
-      "signature": "__getitem__(key)"
+      "signature": "__getitem__(...dims)"
     },
     "__setitem__": {
-      "signature": "__setitem__(key, val)"
+      "signature": "__setitem__(...args)"
     },
     "__str__": {
       "signature": "__str__()"
@@ -1323,6 +1158,12 @@
     "__call__": {
       "signature": "__call__(...)"
     },
+    "__match__": {
+      "signature": "__match__()"
+    },
+    "finalize": {
+      "signature": "finalize()"
+    },
     "gensym": {
       "signature": "gensym([prefix])"
     },
@@ -1330,34 +1171,31 @@
       "signature": "ln(x) / ln(base, x)"
     },
     "rows": {
-      "signature": "rows(A)"
+      "signature": "A.rows()"
     },
     "cols": {
-      "signature": "cols(A)"
+      "signature": "A.cols()"
     },
     "string": {
       "signature": "string(x)"
     },
     "getFields": {
-      "signature": "getFields(d)"
+      "signature": "d.getFields()"
     },
     "has": {
-      "signature": "has(d, key)"
+      "signature": "d.has(key)"
     },
     "hasField": {
-      "signature": "hasField(d, key)"
-    },
-    "size": {
-      "signature": "size(d)"
+      "signature": "d.hasField(key)"
     },
     "debugger": {
-      "signature": "debugger()"
+      "signature": "sys.debugger()"
     },
     "disasm": {
-      "signature": "disasm(f)"
+      "signature": "sys.disasm(f)"
     },
     "loadPrimes": {
-      "signature": "loadPrimes()"
+      "signature": "sys.loadPrimes()"
     }
   },
   "keywords": {

@@ -35,6 +35,14 @@
                     "patterns": [
                         { "include": "#comments" }
                     ]
+                },
+                {
+                    "name": "comment.line.shebang.jc2",
+                    "match": "^#!.*$"
+                },
+                {
+                    "name": "comment.line.directive.jc2",
+                    "match": "^#[A-Za-z_][A-Za-z0-9_]*.*$"
                 }
             ]
         },
@@ -297,6 +305,9 @@
                 { "name": "keyword.operator.pipe.jc2", "match": "\\|>" },
                 { "name": "keyword.operator.arrow.jc2", "match": "=>" },
                 { "name": "keyword.operator.spread.jc2", "match": "\\.\\.\\." },
+                { "name": "keyword.operator.integer-division.jc2", "match": "~/" },
+                { "name": "keyword.operator.shift-assign.jc2", "match": "<<=|>>=" },
+                { "name": "keyword.operator.shift.jc2", "match": "<<|>>" },
                 { "name": "keyword.operator.comparison.jc2", "match": "==|!=|<=|>=|<|>" },
                 { "name": "keyword.operator.logical.jc2", "match": "&&|\\|\\||!" },
                 { "name": "keyword.operator.assignment.jc2", "match": "\\+=|-=|\\*=|/=|%=|\\^\\^=|\\^=|&=|\\|=|=" },

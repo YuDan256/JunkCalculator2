@@ -1,8 +1,8 @@
 {
     "name": "jc2-language",
     "displayName": "JC2 Language Support",
-    "description": "Syntax highlighting and script runner for Junk Calculator 2.5.4.0",
-    "version": "5.4.0",
+    "description": "Syntax highlighting and script runner for Junk Calculator 2.6.0.0",
+    "version": "6.0.0",
     "publisher": "yuliangyang",
     "repository": {
         "type": "git",
@@ -51,6 +51,11 @@
                 "icon": "$(dashboard)"
             },
             {
+                "command": "jc2.runJit",
+                "title": "JC2: Run with JIT",
+                "icon": "$(zap)"
+            },
+            {
                 "command": "jc2.runSelection",
                 "title": "JC2: Run Selection"
             },
@@ -87,9 +92,14 @@
                     "group": "jc2@2"
                 },
                 {
+                    "command": "jc2.runJit",
+                    "when": "editorLangId == jc2",
+                    "group": "jc2@3"
+                },
+                {
                     "command": "jc2.runSelection",
                     "when": "editorLangId == jc2 && editorHasSelection",
-                    "group": "jc2@3"
+                    "group": "jc2@4"
                 }
             ]
         },

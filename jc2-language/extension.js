@@ -95,7 +95,7 @@ function activate(context) {
             const keywords = [
                 'if', 'else', 'while', 'for', 'in', 'is', 'break', 'continue', 'return',
                 'switch', 'case', 'default', 'throw', 'try', 'catch', 'match', 'defer',
-                'class', 'extends', 'const', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'syntax', 'quote', 'enum',
+                'class', 'extends', 'const', 'static', 'state', 'delete', 'ref', 'import', 'local', 'namespace', 'macro', 'syntax', 'quote', 'enum',
                 'true', 'false', 'none', 'PI', 'E', 'ANS', 'self', 'super'
             ];
             for (const kw of keywords) {
@@ -343,6 +343,17 @@ function activate(context) {
             if (!editor || !editor.document.fileName.endsWith('.jc2')) return;
             editor.document.save().then(() => {
                 runFile(editor.document.fileName, path.dirname(editor.document.fileName), "--profile");
+            });
+        })
+    );
+
+    // ★ 新增：JIT 编译执行
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jc2.runJit', () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || !editor.document.fileName.endsWith('.jc2')) return;
+            editor.document.save().then(() => {
+                runFile(editor.document.fileName, path.dirname(editor.document.fileName), "--jit");
             });
         })
     );

@@ -1274,6 +1274,13 @@
       "  Built-in types like `int`, `string`, `list`, and `dict` are globally available",
       "  constants that represent the types themselves.",
       "",
+      "  ★ Type Interning Pool (O(1) Comparisons)",
+      "  ──────────────────────",
+      "    All Type objects in JC2 are globally interned. This means that any two",
+      "    identical types (e.g., `int | string` and `string | int`) will always",
+      "    point to the exact same memory address. This makes type comparisons",
+      "    (`type(x) == int` or `type(x) is int`) blazingly fast O(1) operations.",
+      "",
       "  Type Reflection",
       "  ──────────────────────",
       "    The `type()` function returns the actual Type object, not just a string.",
@@ -1287,7 +1294,7 @@
       "      Type objects smartly overload the `==` operator. Comparing a type object",
       "      to a string still works perfectly:",
       "        type(5) == \"int\"         → true",
-      "        type(5) == int           → true  (O(1) pointer comparison, much faster!)",
+      "        type(5) == int           → true  (O(1) pointer comparison)",
       "",
       "  Type Algebra (Union & Intersection)",
       "  ──────────────────────",
@@ -1306,6 +1313,15 @@
       "      When combining a Type object with a Class definition, the class is",
       "      automatically promoted to a Type object:",
       "        int | Point              → <type 'int | Point'>",
+      "",
+      "  Type Assertions (`in` operator)",
+      "  ──────────────────────",
+      "    The `in` operator natively supports Type objects, acting as a powerful",
+      "    `isinstance` or subset checker:",
+      "      5 in int                 → true  (Value in Type)",
+      "      5 in (int | string)      → true",
+      "      int in (int | string)    → true  (Type in Type subset check)",
+      "      double in int            → false",
       "",
       "  Type Annotations & Assertions",
       "  ──────────────────────",
@@ -5964,11 +5980,13 @@
         "Returns true if 'a' and 'b' point to the exact same memory location (or have the exact same bitwise representation for value types).",
         "Unlike '==', 'is' does NOT perform deep value comparison and does NOT trigger the '__eq__' dunder method.",
         "It is an extremely fast O(1) operation.",
+        "★ Type Interning: All Type objects (like `int`, `string | double`) are globally interned. This means `type(5) is int` is an O(1) pointer comparison, making type assertions blazingly fast.",
         "Note: For Copy-On-Write (COW) types like matrices, 'is' exposes the underlying memory sharing state."
       ],
       "examples": [
         "a = [1, 2]; b = a; a is b  // → true",
         "[1, 2] is [1, 2]           // → false",
+        "type(5) is int             // → true (O(1) interned type comparison)",
         "1 is 1.0                   // → false (different types)"
       ]
     },
@@ -5983,15 +6001,16 @@
         "2. Membership test (operator): Returns true if the value exists",
         "   in the container, false otherwise.",
         "   Supported: arrays, lists, strings, dicts (checks keys), sets,",
-        "   and instances (checks __contains__, then fields, methods, and __getattr__).",
+        "   instances (checks __contains__, then fields, methods, and __getattr__),",
+        "   and Types (acts as an `isinstance` or subset check).",
         "See also: /help for, /help control"
       ],
       "examples": [
         "for (x in range(10)) print(x)",
         "3 in [1, 2, 3]          // → true",
         "\"key\" in {key: 42}      // → true",
-        "\"h\" in \"hello\"          // → true",
-        "\"dist\" in Point(0,0)    // → true"
+        "5 in (int | string)     // → true (Value in Type)",
+        "int in (int | string)   // → true (Type in Type subset check)"
       ]
     },
     "break": {

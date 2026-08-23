@@ -42,13 +42,13 @@ static bool host_is_type(JC2_VMContext, JC2_ValueHandle v) { return from_handle(
 
 static JC2_ValueHandle host_get_type(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
-    ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+    std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
     if (val.isType()) {
-        resTd->types.push_back(BuiltinType::TYPE_DEF);
+        newTypes.push_back(BuiltinType::TYPE_DEF);
     } else if (val.isClass()) {
-        resTd->types.push_back(BuiltinType::CLASS);
+        newTypes.push_back(BuiltinType::CLASS);
     } else if (val.isInstance()) {
-        resTd->types.push_back(val.asInstance()->classDef);
+        newTypes.push_back(val.asInstance()->classDef);
     } else {
         BuiltinType vbt = BuiltinType::ANY;
         if (val.isInt32() || val.isBigInt()) vbt = BuiltinType::INT;
@@ -66,10 +66,10 @@ static JC2_ValueHandle host_get_type(JC2_VMContext, JC2_ValueHandle v) {
         else if (val.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
         else if (val.isFunctionClosure()) vbt = BuiltinType::FUNC;
         else if (val.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
-        resTd->types.push_back(vbt);
+        else if (val.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+        newTypes.push_back(vbt);
     }
-    resTd->normalize();
-    return protect(Value(resTd));
+    return protect(Value(internType(std::move(newTypes))));
 }
 
 static const char* host_type_name(JC2_VMContext, JC2_ValueHandle v, size_t* out_len) {

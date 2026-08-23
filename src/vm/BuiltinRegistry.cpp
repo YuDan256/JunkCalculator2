@@ -2701,7 +2701,13 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto firstFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        if (self.isObjType(ObjType::LIST)) {
+        if (self.isObjType(ObjType::SET)) {
+            auto s = static_cast<ObjSet*>(self.asObj());
+            if (s->elements.empty()) return Value(std::string(""));
+            std::ostringstream setOss;
+            for (size_t i = 0; i < s->elements.size(); ++i) { if (i > 0) setOss << delim; setOss << s->elements[i]; }
+            return Value(setOss.str());
+        } else if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             if (l->vec.empty()) throw std::runtime_error("Runtime Error: first() on empty list.");
             return l->vec[0];
@@ -3212,6 +3218,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->listProto, "join", {"delim"}, joinFn);
     regMethod(VM::activeVM->matrixProto, "join", {"delim"}, joinFn);
     regMethod(VM::activeVM->stringProto, "join", {"delim"}, joinFn);
+    regMethod(VM::activeVM->setProto, "join", {"delim"}, joinFn);
 
     auto applyMathVectorOp = [expectContainer](const Value& val, auto opBody) -> Value {
         if (val.isObjType(ObjType::LIST)) {
@@ -3866,7 +3873,15 @@ void BuiltinRegistry::registerListConversion() {
             return Value(result);
         }
         
-        if (self.isObjType(ObjType::LIST)) {
+        if (self.isObjType(ObjType::SET)) {
+            for (const auto& e : static_cast<ObjSet*>(self.asObj())->elements) {
+                ObjList* pair = GcHeap::get().allocate<ObjList>();
+                pair->vec.push_back(Value::fromInt32(idx++));
+                pair->vec.push_back(e);
+                pair->is_frozen = true;
+                result->vec.push_back(Value(pair));
+            }
+        } else if (self.isObjType(ObjType::LIST)) {
             for (const auto& e : static_cast<ObjList*>(self.asObj())->vec) {
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value::fromInt32(idx++));
@@ -3919,6 +3934,7 @@ void BuiltinRegistry::registerListConversion() {
     regMethod(VM::activeVM->listProto, "enumerate", {"start"}, enumerateFn, 1);
     regMethod(VM::activeVM->matrixProto, "enumerate", {"start"}, enumerateFn, 1);
     regMethod(VM::activeVM->stringProto, "enumerate", {"start"}, enumerateFn, 1);
+    regMethod(VM::activeVM->setProto, "enumerate", {"start"}, enumerateFn, 1);
 
     auto groupByCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: groupBy() requires a single-parameter function.");
@@ -3947,7 +3963,9 @@ void BuiltinRegistry::registerListConversion() {
             return Value(result);
         }
         
-        if (argList.isObjType(ObjType::LIST)) {
+        if (argList.isObjType(ObjType::SET)) {
+            for (const auto& e : static_cast<ObjSet*>(argList.asObj())->elements) processElement(e);
+        } else if (argList.isObjType(ObjType::LIST)) {
             for (const auto& e : static_cast<ObjList*>(argList.asObj())->vec) processElement(e);
         } else if (argList.isObjType(ObjType::REAL_MATRIX)) {
             for (double d : static_cast<ObjRealMatrix*>(argList.asObj())->mat.rawData()) processElement(Value(d));
@@ -3966,6 +3984,7 @@ void BuiltinRegistry::registerListConversion() {
     regMethod(VM::activeVM->listProto, "groupBy", {"f"}, groupByFn);
     regMethod(VM::activeVM->matrixProto, "groupBy", {"f"}, groupByFn);
     regMethod(VM::activeVM->stringProto, "groupBy", {"f"}, groupByFn);
+    regMethod(VM::activeVM->setProto, "groupBy", {"f"}, groupByFn);
 
     reg("cat", {}, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) throw std::runtime_error("Runtime Error: cat() expects at least 1 argument.");
@@ -4119,6 +4138,8 @@ void BuiltinRegistry::registerHigherOrder() {
 
         if (iterable.isObjType(ObjType::LIST)) {
             for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) unpackedList->vec.push_back(e);
+        } else if (iterable.isObjType(ObjType::SET)) {
+            for (const auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) unpackedList->vec.push_back(e);
         } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
             auto& m = static_cast<ObjRealMatrix*>(iterable.asObj())->mat;
             if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: apply() expects 1D vector.");
@@ -4149,11 +4170,22 @@ void BuiltinRegistry::registerHigherOrder() {
     };
     regMethod(VM::activeVM->listProto, "apply", {"f"}, applyFn);
     regMethod(VM::activeVM->matrixProto, "apply", {"f"}, applyFn);
+    regMethod(VM::activeVM->setProto, "apply", {"f"}, applyFn);
 
     auto mapCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: map() requires a single-parameter function.");
 
         Value iterable = argList;
+        if (iterable.isObjType(ObjType::SET)) {
+            ObjSet* setResult = GcHeap::get().allocate<ObjSet>();
+            GcObjGuard setGuard(setResult);
+            for (const auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) {
+                jc::checkInterrupt();
+                setResult->add(safeCallFunction(cl, { e }));
+            }
+            return Value(setResult);
+        }
+
         ObjList* result = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(result);
         if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
@@ -4232,11 +4264,22 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->listProto, "map", {"f"}, mapFn);
     regMethod(VM::activeVM->matrixProto, "map", {"f"}, mapFn);
     regMethod(VM::activeVM->stringProto, "map", {"f"}, mapFn);
+    regMethod(VM::activeVM->setProto, "map", {"f"}, mapFn);
 
     auto filterCore = [this](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: filter() requires a single-parameter function.");
 
         Value iterable = argList;
+        if (iterable.isObjType(ObjType::SET)) {
+            ObjSet* setResult = GcHeap::get().allocate<ObjSet>();
+            GcObjGuard setGuard(setResult);
+            for (const auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) {
+                jc::checkInterrupt();
+                if (safeCallFunction(cl, { e }).truthy()) setResult->add(e);
+            }
+            return Value(setResult);
+        }
+
         ObjList* result = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(result);
         if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
@@ -4284,6 +4327,7 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->listProto, "filter", {"f"}, filterFn);
     regMethod(VM::activeVM->matrixProto, "filter", {"f"}, filterFn);
     regMethod(VM::activeVM->stringProto, "filter", {"f"}, filterFn);
+    regMethod(VM::activeVM->setProto, "filter", {"f"}, filterFn);
 
     auto reduceCore = [this](const Value& argList, ObjClosure* cl, const Value& initVal) -> Value {
         if (!cl->acceptsArgCount(2)) throw std::runtime_error("Runtime Error: reduce() requires a two-parameter function.");
@@ -4304,7 +4348,18 @@ void BuiltinRegistry::registerHigherOrder() {
             return acc;
         }
 
-        if (iterable.isObjType(ObjType::LIST)) {
+        if (iterable.isObjType(ObjType::SET)) {
+            auto s = static_cast<ObjSet*>(iterable.asObj());
+            Value setAcc; size_t startIdx = 0;
+            if (!initVal.isNone()) { setAcc = initVal; }
+            else { if (s->elements.empty()) throw std::runtime_error("Runtime Error: reduce() on empty."); setAcc = s->elements[0]; startIdx = 1; }
+            GcValueGuard setGuard(setAcc);
+            for (size_t i = startIdx; i < s->elements.size(); ++i) { 
+                jc::checkInterrupt(); 
+                setAcc = safeCallFunction(cl, { setAcc, s->elements[i] }); 
+            }
+            return setAcc;
+        } else if (iterable.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(iterable.asObj());
             Value listAcc; size_t startIdx = 0;
             if (!initVal.isNone()) { listAcc = initVal; }
@@ -4343,6 +4398,7 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->listProto, "reduce", {"f", "init"}, reduceFn, 1);
     regMethod(VM::activeVM->matrixProto, "reduce", {"f", "init"}, reduceFn, 1);
     regMethod(VM::activeVM->stringProto, "reduce", {"f", "init"}, reduceFn, 1);
+    regMethod(VM::activeVM->setProto, "reduce", {"f", "init"}, reduceFn, 1);
 
     auto iterateAndCheck = [this](const Value& argList, ObjClosure* cl, auto checkFn) -> Value {
         Value iterable = argList;
@@ -4390,6 +4446,7 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->listProto, "any", {"f"}, anyFn);
     regMethod(VM::activeVM->matrixProto, "any", {"f"}, anyFn);
     regMethod(VM::activeVM->stringProto, "any", {"f"}, anyFn);
+    regMethod(VM::activeVM->setProto, "any", {"f"}, anyFn);
 
     auto allCore = [iterateAndCheck](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: all() requires a single-parameter function.");
@@ -4404,6 +4461,7 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->listProto, "all", {"f"}, allFn);
     regMethod(VM::activeVM->matrixProto, "all", {"f"}, allFn);
     regMethod(VM::activeVM->stringProto, "all", {"f"}, allFn);
+    regMethod(VM::activeVM->setProto, "all", {"f"}, allFn);
 
     auto countIfCore = [](const Value& argList, ObjClosure* cl) -> Value {
         if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: countIf() requires a single-parameter function.");
@@ -4417,6 +4475,8 @@ void BuiltinRegistry::registerHigherOrder() {
         }
         if (argList.isObjType(ObjType::LIST)) {
             for (const auto& e : static_cast<ObjList*>(argList.asObj())->vec) { jc::checkInterrupt(); if (safeCallFunction(cl, { e }).truthy()) c++; }
+        } else if (argList.isObjType(ObjType::SET)) {
+            for (const auto& e : static_cast<ObjSet*>(argList.asObj())->elements) { jc::checkInterrupt(); if (safeCallFunction(cl, { e }).truthy()) c++; }
         } else if (argList.isObjType(ObjType::REAL_MATRIX)) {
             for (const auto& x : static_cast<ObjRealMatrix*>(argList.asObj())->mat.rawData()) { jc::checkInterrupt(); if (safeCallFunction(cl, { Value(x) }).truthy()) c++; }
         } else if (argList.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -4434,6 +4494,7 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->listProto, "countIf", {"f"}, countIfFn);
     regMethod(VM::activeVM->matrixProto, "countIf", {"f"}, countIfFn);
     regMethod(VM::activeVM->stringProto, "countIf", {"f"}, countIfFn);
+    regMethod(VM::activeVM->setProto, "countIf", {"f"}, countIfFn);
 
     auto sortCore = [this](const Value& argList, ObjClosure* cmp) -> Value {
         Value arg = argList;

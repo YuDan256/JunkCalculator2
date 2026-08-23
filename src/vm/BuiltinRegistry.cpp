@@ -4816,56 +4816,6 @@ void BuiltinRegistry::registerFileIO() {
 // =================================================================
 void BuiltinRegistry::registerErrorHandling() {
 
-    reg("pcall", { 1 }, [](const std::vector<Value>& args) -> Value {
-        auto cl = args[0].asFunction();
-        if (!cl->acceptsArgCount(0))
-            throw std::runtime_error("Runtime Error: pcall() expects a zero-parameter function.");
-
-        try {
-            Value result = safeCallFunction(cl, {});
-            GcValueGuard resGuard(result);
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            L->vec.push_back(Value(true)); L->vec.push_back(result);
-            L->is_frozen = true; return Value(L);
-        }
-        catch (const jc::ValueException& ex) {
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            L->vec.push_back(Value(false)); L->vec.push_back(ex.val);
-            L->is_frozen = true; L->is_hashable_cached = true; return Value(L);
-        }
-        catch (const StackTracedException& ex) {
-            // ★ 完美拿到纯净的出错理由字符串！无视底下挂着的多行追踪栈
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            L->vec.push_back(Value(false)); L->vec.push_back(Value(ex.rawMessage));
-            L->is_frozen = true; L->is_hashable_cached = true; return Value(L);
-        }
-        catch (const ErrorSignal& sig) {
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            L->vec.push_back(Value(false)); L->vec.push_back(Value(sig.message));
-            L->is_frozen = true; L->is_hashable_cached = true; return Value(L);
-        }
-        catch (const jc::EngineInterruptError&) {
-            throw; // 强行中断，无视 pcall 拦截
-        }
-        catch (const std::exception& ex) {
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            L->vec.push_back(Value(false)); L->vec.push_back(Value(std::string(ex.what())));
-            L->is_frozen = true; L->is_hashable_cached = true; return Value(L);
-        }
-        }, {"f"});
-
-    reg("isError", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isObjType(ObjType::LIST)) return Value(false);
-        const auto& L = static_cast<ObjList*>(args[0].asObj())->vec;
-        if (L.size() != 2) return Value(false);
-        Value first = L[0];
-        if (first.isBool())
-            return Value(!first.asBool());
-        if (first.isNumber())
-            return Value(first.asDouble() == 0.0);
-        return Value(false);
-        }, {"status"});
-
     reg("assert", { 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
         if (args.size() == 1) {
             if (!args[0].truthy()) throw std::runtime_error("Assertion Failed.");
@@ -5223,174 +5173,7 @@ void BuiltinRegistry::registerSystemShell() {
 // =================================================================
 void BuiltinRegistry::registerTypeChecks() {
 
-    // ═══ 数值类型谓词 ═══
-
-    reg("isbool", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isBool());
-        }, {"x"});
-
-    reg("isint", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isInt32() || args[0].isBigInt() || args[0].isBool()) return Value(true);
-        if (args[0].isObjType(ObjType::FRACTION))
-            return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getDen() == BigInt(1));
-        return Value(false);
-        }, {"x"});
-
-    reg("iswhole", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isInt32() || args[0].isBigInt() || args[0].isBool()) return Value(true);
-        if (args[0].isDouble()) {
-            double v = args[0].asDoubleRaw();
-            return Value(std::isfinite(v) && v == std::floor(v));
-        }
-        if (args[0].isObjType(ObjType::FRACTION))
-            return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.getDen() == BigInt(1));
-        if (args[0].isComplex()) {
-            const auto& c = args[0].asComplex();
-            return Value(c.imag == 0.0 && std::isfinite(c.real) && c.real == std::floor(c.real));
-        }
-        return Value(false);
-        }, {"x"});
-
-    reg("isdouble", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isDouble());
-        }, {"x"});
-
-    reg("isnumeric", { 1 }, [](const std::vector<Value>& args) -> Value {
-        const Value& val = args[0];
-        if (val.isNumber() || val.isBigInt() || val.isObjType(ObjType::FRACTION) ||
-            val.isComplex()) return Value(true);
-        if (val.isInstance()) {
-            auto inst = val.asInstance();
-            return Value(invokeDunder(inst, DUNDER_ADD).first || invokeDunder(inst, DUNDER_MUL).first ||
-                         invokeDunder(inst, DUNDER_SUB).first || invokeDunder(inst, DUNDER_DIV).first || invokeDunder(inst, DUNDER_LDIV).first);
-        }
-        return Value(false);
-        }, {"x"});
-
-    reg("iscomplex", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isComplex()) return Value(true);
-        // double/BigInt/Fraction 在数学意义上也是复数（虚部为 0）
-        return Value(false);
-        }, {"x"});
-
-    reg("isreal", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isNumber() ||
-            args[0].isBigInt() ||
-            args[0].isObjType(ObjType::FRACTION))
-            return Value(true);
-        if (args[0].isComplex())
-            return Value(args[0].asComplex().imag == 0.0);
-        return Value(false);
-        }, {"x"});
-
-    reg("isfrac", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::FRACTION));
-        }, {"x"});
-
-    reg("isexact", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isInt32() || args[0].isBigInt() || args[0].isBool() || args[0].isObjType(ObjType::FRACTION) || args[0].isObjType(ObjType::SYMBOLIC));
-        }, {"x"});
-
-    reg("isbinary", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isBool()) return Value(true);
-        try {
-            double d = args[0].asDouble();
-            if (d == 0.0 || d == 1.0) return Value(true);
-        } catch (...) {}
-        return Value(false);
-        }, {"x"});
-
-    // ═══ 容器类型谓词 ═══
-
-    reg("ismatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::REAL_MATRIX) ||
-            args[0].isObjType(ObjType::COMPLEX_MATRIX) ||
-            args[0].isObjType(ObjType::SYM_MATRIX));
-        }, {"x"});
-
-    reg("isrealmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::REAL_MATRIX));
-        }, {"x"});
-
-    reg("iscomplexmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::COMPLEX_MATRIX));
-        }, {"x"});
-
-    reg("issymmatrix", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::SYM_MATRIX));
-        }, {"x"});
-
-    reg("isvector", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) {
-            const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat;
-            return Value(m.getRows() == 1 || m.getCols() == 1);
-        }
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) {
-            const auto& m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat;
-            return Value(m.getRows() == 1 || m.getCols() == 1);
-        }
-        if (args[0].isObjType(ObjType::SYM_MATRIX)) {
-            const auto& m = static_cast<ObjSymMatrix*>(args[0].asObj())->mat;
-            return Value(m.getRows() == 1 || m.getCols() == 1);
-        }
-        return Value(false);
-        }, {"x"});
-
-    reg("issquare", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::REAL_MATRIX))
-            return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getRows() == static_cast<ObjRealMatrix*>(args[0].asObj())->mat.getCols());
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX))
-            return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getRows() == static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.getCols());
-        if (args[0].isObjType(ObjType::SYM_MATRIX))
-            return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.getRows() == static_cast<ObjSymMatrix*>(args[0].asObj())->mat.getCols());
-        return Value(false);
-        }, {"x"});
-
-    reg("islist", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::LIST));
-        }, {"x"});
-
-    reg("isdict", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::DICT));
-        }, {"x"});
-
-    reg("isiterable", { 1 }, [](const std::vector<Value>& args) -> Value {
-        const Value& val = args[0];
-        if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
-            val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-            val.isObjType(ObjType::SYM_MATRIX)) return Value(true);
-        if (val.isInstance()) {
-            auto inst = val.asInstance();
-            return Value(invokeDunder(inst, DUNDER_ITER).first || invokeDunder(inst, DUNDER_NEXT).first);
-        }
-        return Value(false);
-        }, {"x"});
-
-    reg("iscallable", { 1 }, [](const std::vector<Value>& args) -> Value {
-        const Value& val = args[0];
-        if (val.isFunctionClosure() || val.isClass() || val.isString()) return Value(true);
-        if (val.isInstance()) return Value(invokeDunder(val.asInstance(), DUNDER_CALL).first);
-        return Value(false);
-        }, {"x"});
-
-    reg("isindexable", { 1 }, [](const std::vector<Value>& args) -> Value {
-        const Value& val = args[0];
-        if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
-            val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-            val.isObjType(ObjType::SYM_MATRIX)) return Value(true);
-        if (val.isInstance()) return Value(invokeDunder(val.asInstance(), DUNDER_GETITEM).first);
-        return Value(false);
-        }, {"x"});
-
-    reg("ishashable", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isHashable());
-        }, {"x"});
-
     // ═══ 字符串谓词 ═══
-
-    reg("isstring", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isString());
-        }, {"x"});
 
     reg("isalpha", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
@@ -5465,26 +5248,6 @@ void BuiltinRegistry::registerTypeChecks() {
         }, {"x"});
 
     // ═══ 特殊谓词 ═══
-
-    reg("isnone", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isNone());
-        }, {"x"});
-
-    reg("isfunction", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isFunctionClosure());
-        }, {"x"});
-
-    reg("isclass", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isClass());
-        }, {"x"});
-
-    reg("isnamespace", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::NAMESPACE));
-        }, {"x"});
-
-    reg("issymbolic", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isSymbolic());
-        }, {"x"});
 
     reg("isnan", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isDouble())
@@ -5593,10 +5356,6 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(diff <= tol);
         }
         }, {"a", "b", "rtol", "atol"});
-
-    reg("isset", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return Value(args[0].isObjType(ObjType::SET));
-        }, {"x"});
 }
 
 // =================================================================

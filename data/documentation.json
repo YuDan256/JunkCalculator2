@@ -1358,41 +1358,19 @@
       "    If this happens, use `resetType()` to restore all built-in type objects",
       "    to the global scope.",
       "",
-      "  Numeric Type Checks (Functions)",
+      "  Modern Type Checking (`in` and `==`)",
       "  ──────────────────────",
-      "    isbool(x)           Boolean type specifically?",
-      "    isint(x)            Integer type specifically? (int, or fraction ",
-      "                        with denominator = 1)",
-      "    iswhole(x)          Whole number? (int, integer-valued double, ",
-      "                        fraction with den=1, or complex with imag=0)",
-      "    isdouble(x)         double type specifically?",
-      "    isnumeric(x)        Any numeric type? (double, int, fraction, ",
-      "                        complex, or instance with math dunders)",
-      "    isexact(x)          Any exact numeric type? (int, fraction, symbolic)",
-      "    iscomplex(x)        complex type specifically?",
-      "    isreal(x)           Real number? (double, int, fraction,",
-      "                        or complex with imaginary part == 0)",
-      "    isfrac(x)           fraction type specifically?",
-      "    isbinary(x)         Boolean or 0.0/1.0?",
+      "    JC2 has deprecated legacy `isXXX()` functions in favor of native type objects.",
+      "    Use the `in` operator for duck-typing and unions, or `==` for exact matches:",
       "",
-      "  Container & Duck Type Checks",
-      "  ──────────────────────",
-      "    ismatrix(x)         Any matrix? (real, complex, or symbolic)",
-      "    isrealmatrix(x)     realmatrix specifically?",
-      "    iscomplexmatrix(x)  complexmatrix specifically?",
-      "    issymmatrix(x)      symmatrix specifically?",
-      "    isvector(x)         Row vector (1×N) or column vector (N×1)?",
-      "    issquare(x)         Square matrix (N×N)?",
-      "    islist(x)           list type?",
-      "    isdict(x)           dict type?",
-      "    isiterable(x)       Supports for-in loop? (has __iter__ or __next__)",
-      "    iscallable(x)       Can be called like a function? (has __call__)",
-      "    isindexable(x)      Supports bracket indexing? (has __getitem__)",
-      "    ishashable(x)       Can be used as a dict key or set element?",
+      "      x in numeric          // Is x any numeric type?",
+      "      x in iterable         // Can x be used in a for-in loop?",
+      "      x in (int | double)   // Is x an int or double?",
+      "      type(x) == list       // Is x exactly a list?",
+      "      type(x) == string     // Is x exactly a string?",
       "",
-      "  String Predicates",
+      "  String & Value Predicates",
       "  ──────────────────────",
-      "    isstring(x)         Is x a string type?",
       "    isalpha(s)          All characters alphabetic? (\"abc\" → true)",
       "    isdigit(s)          All characters digits? (\"123\" → true)",
       "    isalnum(s)          All characters alphanumeric? (\"abc123\" → true)",
@@ -1402,15 +1380,10 @@
       "    isempty(x)          Empty string, empty list, empty dict,",
       "                        or zero-dimension matrix?",
       "",
-      "  Special Type Checks",
+      "  Special Checks",
       "  ──────────────────────",
-      "    isnone(x)           Is x the none value?",
-      "    isfunction(x)       Is x a function or closure?",
-      "    isclass(x)          Is x a class definition?",
-      "    isnamespace(x)      Is x a namespace?",
       "    isinstance(x)       Is x an instance of any class? (1 arg)",
       "    isinstance(x, C)    Is x an instance of class C or its subclass? (2 args)",
-      "    issymbolic(x)       Is x a symbolic expression?",
       "    hash(x)             Returns the native hash value of x (throws if unhashable).",
       "",
       "  Floating-Point Checks",
@@ -2373,9 +2346,6 @@
       "    discard(s, val)                 Remove element (silent if absent)",
       "    clear(s)                        Remove all elements",
       "    s.pop()                         Remove & return an arbitrary element",
-      "    ",
-      "    (Note: legacy functions setAdd, setRemove, setDiscard, setClear ",
-      "     are still supported).",
       "",
       "  Set Algebra (returns NEW set)",
       "  ──────────────────────",
@@ -3235,17 +3205,6 @@
       "    You can trigger `throw e` inside a catch block to bubble unhandled errors up.",
       "    Control flow signals (`break`, `continue`, and `return`) pass through ",
       "    `try`/`catch` boundaries completely unaffected.",
-      "",
-      "  Protected Call (pcall)",
-      "  ──────────────────────",
-      "    `pcall(f)` provides a functional alternative to `try`/`catch`.",
-      "    It executes a zero-argument function `f` and captures the result safely into a list.",
-      "",
-      "    Returns `@[1, result]` on success.",
-      "    Returns `@[0, errorMsg]` on failure.",
-      "",
-      "      status = pcall(riskyFunc)",
-      "      isError(status)       → true if error, false if success",
       "",
       "  Assertions",
       "  ──────────────────────",
@@ -4584,13 +4543,6 @@
         "io.readCSV(\"data.csv\")"
       ]
     },
-    "pcall": {
-      "signature": "pcall(f)",
-      "desc": "Executes a zero-argument function safely. Returns @[1, result] on success, @[0, errorMsg] on failure.",
-      "examples": [
-        "pcall(() => 1 / 0)"
-      ]
-    },
     "assert": {
       "signature": "assert(cond, [msg])",
       "desc": "Throws an error if the condition is falsy.",
@@ -5105,11 +5057,6 @@
       "desc": "Verifies if the derivative of the integral matches the original expression.",
       "examples": ["cas.verifyInteg(x^2, x)"]
     },
-    "isError": {
-      "signature": "isError(status)",
-      "desc": "Returns true if the pcall status array indicates an error.",
-      "examples": ["isError(pcall(f))"]
-    },
     "resetConst": {
       "signature": "sys.resetConst()",
       "desc": "Restores system constants PI, E, i, I.",
@@ -5213,121 +5160,6 @@
       "desc": "Sets a specific CAS limit.",
       "examples": ["sys.setSymLimit(\"maxDepth\", 10)"]
     },
-    "isbool": {
-      "signature": "isbool(x)",
-      "desc": "Returns true if x is a boolean (true or false).",
-      "examples": ["isbool(true)"]
-    },
-    "isint": {
-      "signature": "isint(x)",
-      "desc": "Returns true if x is an exact integer type (int, or Fraction with den=1).",
-      "examples": ["isint(42)"]
-    },
-    "iswhole": {
-      "signature": "iswhole(x)",
-      "desc": "Returns true if x is a whole number (int, integer-valued double, Fraction with den=1, or Complex with imag=0).",
-      "examples": ["iswhole(3.0)"]
-    },
-    "isdouble": {
-      "signature": "isdouble(x)",
-      "desc": "Returns true if x is a double.",
-      "examples": ["isdouble(3.14)"]
-    },
-    "isnumeric": {
-      "signature": "isnumeric(x)",
-      "desc": "Returns true if x is any numeric type (including instances with math dunders).",
-      "examples": ["isnumeric(1+2i)"]
-    },
-    "iscomplex": {
-      "signature": "iscomplex(x)",
-      "desc": "Returns true if x is specifically a complex type.",
-      "examples": ["iscomplex(1+2i)"]
-    },
-    "isreal": {
-      "signature": "isreal(x)",
-      "desc": "Returns true if x is a real number (imaginary part is 0).",
-      "examples": ["isreal(42)"]
-    },
-    "isfrac": {
-      "signature": "isfrac(x)",
-      "desc": "Returns true if x is specifically a fraction type.",
-      "examples": ["isfrac(frac(1, 2))"]
-    },
-    "isexact": {
-      "signature": "isexact(x)",
-      "desc": "Returns true if x is an exact numeric type (int, Fraction, SymExpr).",
-      "examples": ["isexact(frac(1, 2))"]
-    },
-    "isbinary": {
-      "signature": "isbinary(x)",
-      "desc": "Returns true if x is a boolean or 0.0/1.0.",
-      "examples": ["isbinary(1.0)"]
-    },
-    "ismatrix": {
-      "signature": "ismatrix(x)",
-      "desc": "Returns true if x is any matrix type.",
-      "examples": ["ismatrix([1, 2])"]
-    },
-    "isrealmatrix": {
-      "signature": "isrealmatrix(x)",
-      "desc": "Returns true if x is specifically a realmatrix.",
-      "examples": ["isrealmatrix([1, 2])"]
-    },
-    "iscomplexmatrix": {
-      "signature": "iscomplexmatrix(x)",
-      "desc": "Returns true if x is specifically a complexmatrix.",
-      "examples": ["iscomplexmatrix([1i, 2i])"]
-    },
-    "issymmatrix": {
-      "signature": "issymmatrix(x)",
-      "desc": "Returns true if x is specifically a symmatrix.",
-      "examples": ["issymmatrix(symmatrix(2, 2))"]
-    },
-    "isvector": {
-      "signature": "isvector(x)",
-      "desc": "Returns true if x is a 1D row or column vector.",
-      "examples": ["isvector([1, 2, 3])"]
-    },
-    "issquare": {
-      "signature": "issquare(x)",
-      "desc": "Returns true if x is a square matrix.",
-      "examples": ["issquare([1, 2; 3, 4])"]
-    },
-    "islist": {
-      "signature": "islist(x)",
-      "desc": "Returns true if x is a list.",
-      "examples": ["islist(list(1, 2))"]
-    },
-    "isdict": {
-      "signature": "isdict(x)",
-      "desc": "Returns true if x is a dict.",
-      "examples": ["isdict({a: 1})"]
-    },
-    "isiterable": {
-      "signature": "isiterable(x)",
-      "desc": "Returns true if x supports for-in loops (has __iter__ or __next__).",
-      "examples": ["isiterable([1, 2])"]
-    },
-    "iscallable": {
-      "signature": "iscallable(x)",
-      "desc": "Returns true if x can be called like a function (has __call__).",
-      "examples": ["iscallable(sin)"]
-    },
-    "isindexable": {
-      "signature": "isindexable(x)",
-      "desc": "Returns true if x supports bracket indexing (has __getitem__).",
-      "examples": ["isindexable([1, 2])"]
-    },
-    "ishashable": {
-      "signature": "ishashable(x)",
-      "desc": "Returns true if x can be used as a Dict key or Set element.",
-      "examples": ["ishashable(\"key\")"]
-    },
-    "isstring": {
-      "signature": "isstring(x)",
-      "desc": "Returns true if x is a string.",
-      "examples": ["isstring(\"hello\")"]
-    },
     "isalpha": {
       "signature": "isalpha(s)",
       "desc": "Returns true if all characters in s are alphabetic.",
@@ -5362,31 +5194,6 @@
       "signature": "isempty(x)",
       "desc": "Returns true if the string, list, dict, or matrix is empty.",
       "examples": ["isempty(\"\")"]
-    },
-    "isnone": {
-      "signature": "isnone(x)",
-      "desc": "Returns true if x is the none value.",
-      "examples": ["isnone(none)"]
-    },
-    "isfunction": {
-      "signature": "isfunction(x)",
-      "desc": "Returns true if x is a function or closure.",
-      "examples": ["isfunction(sin)"]
-    },
-    "isclass": {
-      "signature": "isclass(x)",
-      "desc": "Returns true if x is a class definition.",
-      "examples": ["isclass(Point)"]
-    },
-    "isnamespace": {
-      "signature": "isnamespace(x)",
-      "desc": "Returns true if x is a namespace.",
-      "examples": ["isnamespace(Math)"]
-    },
-    "issymbolic": {
-      "signature": "issymbolic(x)",
-      "desc": "Returns true if x is a Symbolic Expression.",
-      "examples": ["issymbolic(sym(\"x\"))"]
     },
     "isnan": {
       "signature": "isnan(x)",
@@ -5437,11 +5244,6 @@
       "signature": "iszero(x)",
       "desc": "Returns true if x is equal to zero.",
       "examples": ["iszero(0)"]
-    },
-    "isset": {
-      "signature": "isset(x)",
-      "desc": "Returns true if x is a set.",
-      "examples": ["isset(@{1})"]
     },
     "addE": {
       "signature": "A.addE(B)",

@@ -15,10 +15,10 @@ test_latex_eval() = {
 test_latex_eval()
 
 test_latex_compile() = {
-    f = latex.compile(r"x^2 + y", ["x", "y"])
+    f = latex.compile(r"x^2 + y", @["x", "y"])
     assert(abs(f(2, 3) - 7.0) < 1e-5, "compile failed")
     
-    f2 = latex.compile(r"\frac{a}{b}", ["a", "b"])
+    f2 = latex.compile(r"\frac{a}{b}", @["a", "b"])
     assert(abs(f2(10, 2) - 5.0) < 1e-5, "compile frac failed")
 }
 test_latex_compile()

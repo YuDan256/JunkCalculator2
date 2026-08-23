@@ -3,7 +3,7 @@ test_closure_caching() = {
     make_calc(f) = {
         state cache
         return (x) => {
-            key = freeze([f,x])
+            key = freeze(@[f,x])
             if(key in cache) return cache[key]
             res = f(x)
             cache[key] = res

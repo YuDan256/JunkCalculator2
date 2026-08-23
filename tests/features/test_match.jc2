@@ -65,7 +65,7 @@ test_deep() = {
         {"users": [{id, name}, ..._]} => str(id) + ":" + name,
         _ => "Fail"
     }
-    payload = {"users": [{"id": 101, "name": "Admin"}, {"id": 102, "name": "Guest"}]}
+    payload = {"users": @[{"id": 101, "name": "Admin"}, {"id": 102, "name": "Guest"}]}
     assert(f(payload) == "101:Admin", "Deep nesting failed")
 }
 test_deep()

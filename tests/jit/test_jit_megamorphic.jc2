@@ -4,7 +4,7 @@ test_megamorphic() = {
     m = [1, 2; 3, 4]
     s = "A"
     b = 10^30
-    c = base(0, 2) // 使用 BaseNum 确保触发超态位运算回退
+    c = BaseNum(0, 2) // 使用 BaseNum 确保触发超态位运算回退
     
     n = 0
     while (n < 2000) {
@@ -24,7 +24,7 @@ test_megamorphic() = {
         b = b ~/ 2
         
         // 4. Bitwise (Megamorphic Bitwise)
-        c = base(n, 2)
+        c = BaseNum(n, 2)
         c = (c | 0b1010) & 0b1111
         c = c ^^ 0b0101
         

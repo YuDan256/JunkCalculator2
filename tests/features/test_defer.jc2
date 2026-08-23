@@ -61,7 +61,7 @@ test_defer_exception_unwinding()
 
 test_defer_with_macros() = {
     macro with_log(msg, body) = {
-        return [
+        return @[
             quote res.push("start_" + $msg),
             quote defer res.push("end_" + $msg),
             body

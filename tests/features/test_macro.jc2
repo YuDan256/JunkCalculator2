@@ -290,7 +290,7 @@ test_macro_deletion()
 test_macro_splicing() = {
     macro declare_two() = {
         // 返回一个 List，实现多语句平铺注入（不引入作用域）
-        return [
+        return @[
             quote local splice_a = 100,
             quote local splice_b = 200
         ]

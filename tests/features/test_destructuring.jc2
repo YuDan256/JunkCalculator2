@@ -84,8 +84,8 @@ test_comprehension() = {
     comp_res = [x * y for ([x, y] in [1, 2; 3, 4; 5, 6])]
     assert(comp_res == [2, 12, 30], "List Comprehension Destructuring Failed")
 
-    comp_dict = [k + str(v) for ({k, v} in [{k: "X", v: 1}, {k: "Y", v: 2}])]
-    assert(comp_dict == ["X1", "Y2"], "List Comprehension Dict Destructuring Failed")
+    comp_dict = @[k + str(v) for ({k, v} in @[{k: "X", v: 1}, {k: "Y", v: 2}])]
+    assert(comp_dict == @["X1", "Y2"], "List Comprehension Dict Destructuring Failed")
 }
 test_comprehension()
 

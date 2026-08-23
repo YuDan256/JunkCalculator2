@@ -50,7 +50,7 @@ test_nested_closures() = {
         state shared = 0
         inc() = { ref shared += 1; return shared }
         dec() = { ref shared -= 1; return shared }
-        return [inc, dec]
+        return @[inc, dec]
     }
     [f_inc, f_dec] = make_shared()
     assert(f_inc() == 1, "shared inc 1")

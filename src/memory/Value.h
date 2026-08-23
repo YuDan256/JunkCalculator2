@@ -100,6 +100,10 @@ namespace jc {
     inline std::unordered_map<std::string, ObjString*> g_internedStrings;
     ObjString* internString(const std::string& str);
 
+    struct ObjTypeDef;
+    inline std::unordered_map<std::string, ObjTypeDef*> g_internedTypes;
+    ObjTypeDef* internType(std::vector<std::variant<BuiltinType, ObjClass*>> types);
+
     // =======================================================
     // Obj 派生类定义
     // =======================================================
@@ -547,7 +551,11 @@ namespace jc {
 
     struct ObjTypeDef : public Obj {
         std::vector<std::variant<BuiltinType, ObjClass*>> types;
+        mutable std::string cached_name;
         ObjTypeDef() { type = ObjType::TYPE_DEF; }
+        ~ObjTypeDef() override {
+            if (!cached_name.empty()) g_internedTypes.erase(cached_name);
+        }
         
         void normalize() {
             std::sort(types.begin(), types.end(), [](const auto& a, const auto& b) {
@@ -558,7 +566,7 @@ namespace jc {
             types.erase(std::unique(types.begin(), types.end()), types.end());
         }
 
-        std::string name() const {
+        static std::string computeName(const std::vector<std::variant<BuiltinType, ObjClass*>>& types) {
             if (types.empty()) return "Never";
             std::string res = "";
             for (size_t i = 0; i < types.size(); ++i) {
@@ -606,7 +614,34 @@ namespace jc {
             }
             return res;
         }
+
+        std::string name() const {
+            if (!cached_name.empty()) return cached_name;
+            cached_name = computeName(types);
+            return cached_name;
+        }
     };
+
+    inline ObjTypeDef* internType(std::vector<std::variant<BuiltinType, ObjClass*>> types) {
+        std::sort(types.begin(), types.end(), [](const auto& a, const auto& b) {
+            if (a.index() != b.index()) return a.index() < b.index();
+            if (std::holds_alternative<BuiltinType>(a)) return std::get<BuiltinType>(a) < std::get<BuiltinType>(b);
+            return std::get<ObjClass*>(a) < std::get<ObjClass*>(b);
+        });
+        types.erase(std::unique(types.begin(), types.end()), types.end());
+        
+        std::string res = ObjTypeDef::computeName(types);
+        auto it = g_internedTypes.find(res);
+        if (it != g_internedTypes.end()) {
+            return it->second;
+        }
+        
+        ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+        td->types = std::move(types);
+        td->cached_name = res;
+        g_internedTypes[res] = td;
+        return td;
+    }
 
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
@@ -1466,23 +1501,20 @@ namespace jc {
         auto promoteToType = [](const Value& v) -> ObjTypeDef* {
             if (v.isType()) return static_cast<ObjTypeDef*>(v.asObj());
             if (v.isClass()) {
-                ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
-                td->types.push_back(static_cast<ObjClass*>(v.asObj()));
-                return td;
+                return internType({static_cast<ObjClass*>(v.asObj())});
             }
             return nullptr;
         };
         ObjTypeDef* lType = promoteToType(lhs);
         ObjTypeDef* rType = promoteToType(rhs);
         if (lType && rType) {
-            ObjTypeDef* res = GcHeap::get().allocate<ObjTypeDef>();
+            std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
             for (const auto& t : lType->types) {
                 if (std::find(rType->types.begin(), rType->types.end(), t) != rType->types.end()) {
-                    res->types.push_back(t);
+                    newTypes.push_back(t);
                 }
             }
-            res->normalize();
-            return Value(res);
+            return Value(internType(std::move(newTypes)));
         }
 
         if (lhs.isObjType(ObjType::SET) && rhs.isObjType(ObjType::SET)) {
@@ -1556,20 +1588,16 @@ namespace jc {
         auto promoteToType = [](const Value& v) -> ObjTypeDef* {
             if (v.isType()) return static_cast<ObjTypeDef*>(v.asObj());
             if (v.isClass()) {
-                ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
-                td->types.push_back(static_cast<ObjClass*>(v.asObj()));
-                return td;
+                return internType({static_cast<ObjClass*>(v.asObj())});
             }
             return nullptr;
         };
         ObjTypeDef* lType = promoteToType(lhs);
         ObjTypeDef* rType = promoteToType(rhs);
         if (lType && rType) {
-            ObjTypeDef* res = GcHeap::get().allocate<ObjTypeDef>();
-            res->types = lType->types;
-            res->types.insert(res->types.end(), rType->types.begin(), rType->types.end());
-            res->normalize();
-            return Value(res);
+            std::vector<std::variant<BuiltinType, ObjClass*>> newTypes = lType->types;
+            newTypes.insert(newTypes.end(), rType->types.begin(), rType->types.end());
+            return Value(internType(std::move(newTypes)));
         }
 
         if (lhs.isObjType(ObjType::SET) && rhs.isObjType(ObjType::SET)) {
@@ -2170,15 +2198,8 @@ namespace jc {
                     auto b = static_cast<ObjSlice*>(robj);
                     return a->start == b->start && a->end == b->end && a->step == b->step;
                 }
-                case ObjType::TYPE_DEF: {
-                    auto a = static_cast<ObjTypeDef*>(lobj);
-                    auto b = static_cast<ObjTypeDef*>(robj);
-                    if (a->types.size() != b->types.size()) return false;
-                    for (size_t i = 0; i < a->types.size(); ++i) {
-                        if (a->types[i] != b->types[i]) return false;
-                    }
-                    return true;
-                }
+                case ObjType::TYPE_DEF:
+                    return false; // Pointer equality already checked
                 case ObjType::SUPER_PROXY: {
                     auto sp1 = static_cast<ObjSuper*>(lobj);
                     auto sp2 = static_cast<ObjSuper*>(robj);

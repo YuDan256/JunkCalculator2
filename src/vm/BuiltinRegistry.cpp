@@ -4067,13 +4067,13 @@ void BuiltinRegistry::registerFormatType() {
 
     reg("type", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
-        ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
+        std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
         if (v.isType()) {
-            td->types.push_back(BuiltinType::TYPE_DEF);
+            newTypes.push_back(BuiltinType::TYPE_DEF);
         } else if (v.isClass()) {
-            td->types.push_back(BuiltinType::CLASS);
+            newTypes.push_back(BuiltinType::CLASS);
         } else if (v.isInstance()) {
-            td->types.push_back(v.asInstance()->classDef);
+            newTypes.push_back(v.asInstance()->classDef);
         } else {
             BuiltinType bt = BuiltinType::ANY;
             if (v.isInt32() || v.isBigInt()) bt = BuiltinType::INT;
@@ -4092,10 +4092,10 @@ void BuiltinRegistry::registerFormatType() {
             else if (v.isObjType(ObjType::SYM_MATRIX)) bt = BuiltinType::SYMMAT;
             else if (v.isFunctionClosure()) bt = BuiltinType::FUNC;
             else if (v.isObjType(ObjType::NAMESPACE)) bt = BuiltinType::NAMESPACE;
-            td->types.push_back(bt);
+            else if (v.isObjType(ObjType::SLICE)) bt = BuiltinType::SLICE;
+            newTypes.push_back(bt);
         }
-        td->normalize();
-        return Value(td);
+        return Value(internType(std::move(newTypes)));
         }, {"x"});
 }
 

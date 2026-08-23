@@ -127,13 +127,13 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                 if (bt == BuiltinType::TYPE_DEF) {
                     if (argc != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
                     Value v = args[0];
-                    ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                    std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
                     if (v.isType()) {
-                        resTd->types.push_back(BuiltinType::TYPE_DEF);
+                        newTypes.push_back(BuiltinType::TYPE_DEF);
                     } else if (v.isClass()) {
-                        resTd->types.push_back(BuiltinType::CLASS);
+                        newTypes.push_back(BuiltinType::CLASS);
                     } else if (v.isInstance()) {
-                        resTd->types.push_back(v.asInstance()->classDef);
+                        newTypes.push_back(v.asInstance()->classDef);
                     } else {
                         BuiltinType vbt = BuiltinType::ANY;
                         if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
@@ -153,10 +153,9 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                         else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                         else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
                         else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                        resTd->types.push_back(vbt);
+                        newTypes.push_back(vbt);
                     }
-                    resTd->normalize();
-                    Value res(resTd);
+                    Value res(internType(std::move(newTypes)));
                     VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
                     return res.as_bits;
                 } else {
@@ -623,13 +622,13 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (kwArgc > 0) throw std::runtime_error("TypeError: type() does not accept keyword arguments.");
                 if (argc != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
                 Value v = registers[currentFrame->registerBase + calleeReg + 1];
-                ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
+                std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
                 if (v.isType()) {
-                    resTd->types.push_back(BuiltinType::TYPE_DEF);
+                    newTypes.push_back(BuiltinType::TYPE_DEF);
                 } else if (v.isClass()) {
-                    resTd->types.push_back(BuiltinType::CLASS);
+                    newTypes.push_back(BuiltinType::CLASS);
                 } else if (v.isInstance()) {
-                    resTd->types.push_back(v.asInstance()->classDef);
+                    newTypes.push_back(v.asInstance()->classDef);
                 } else {
                     BuiltinType vbt = BuiltinType::ANY;
                     if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
@@ -649,10 +648,9 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                     else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
                     else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                    resTd->types.push_back(vbt);
+                    newTypes.push_back(vbt);
                 }
-                resTd->normalize();
-                registers[currentFrame->registerBase + dstReg] = Value(resTd);
+                registers[currentFrame->registerBase + dstReg] = Value(internType(std::move(newTypes)));
                 return;
             } else {
                 std::string name = td->name();
@@ -3120,6 +3118,13 @@ VM::VM() {
                 ++it;
             }
         }
+        for (auto it = g_internedTypes.begin(); it != g_internedTypes.end(); ) {
+            if (!it->second->isMarked) {
+                it = g_internedTypes.erase(it);
+            } else {
+                ++it;
+            }
+        }
     };
 
     GcHeap::get().hasFinalizerCallback = [this](Obj* obj) -> bool {
@@ -3150,9 +3155,7 @@ VM::VM() {
     };
 
     auto makeType = [](BuiltinType bt) {
-        ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
-        td->types.push_back(bt);
-        return Value(td);
+        return Value(internType({bt}));
     };
     builtinValues["any_type"] = makeType(BuiltinType::ANY);
     builtinValues["int"] = makeType(BuiltinType::INT);
@@ -6154,6 +6157,20 @@ Value VM::run(int targetFrameDepth) {
                             }
                             if (found) break;
                         }
+                    }
+                } else if (haystack.isType()) {
+                    auto td = static_cast<ObjTypeDef*>(haystack.asObj());
+                    if (needle.isType()) {
+                        auto nd = static_cast<ObjTypeDef*>(needle.asObj());
+                        found = true;
+                        for (const auto& t : nd->types) {
+                            if (std::find(td->types.begin(), td->types.end(), t) == td->types.end()) {
+                                found = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        found = checkValueType(needle, td);
                     }
                 } else if (haystack.isInstance()) {
                     auto [method, owner] = findDunder(haystack, DUNDER_CONTAINS);

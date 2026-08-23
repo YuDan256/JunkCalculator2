@@ -180,7 +180,7 @@ class Raycaster3D extends engine.GameEngine {
             
             for (k = 0; k < 6; k += 1) {
                 i1 = random.randint(0, 3); i2 = random.randint(0, 3)
-                [dirs[i2], dirs[i1]] = [dirs[i1], dirs[i2]]// Destructuring swap
+                [dirs[i2], dirs[i1]] = @[dirs[i1], dirs[i2]]// Destructuring swap
             }
             
             moved = false

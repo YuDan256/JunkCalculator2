@@ -125,6 +125,7 @@ void Resolver::hoistBlock(Block* block) {
             else declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, false);
         } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
             checkExplicitDecl(locDecl, locDecl->name.lexeme);
+            exprSymbols[locDecl] = resolveName(locDecl->name.lexeme);  // 捕获外层符号（declareVariable 之前）
             declareVariable(locDecl->name.lexeme, VarScope::Local, locDecl->isConst, true);
         } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
             checkExplicitDecl(stateDecl, stateDecl->name.lexeme);
@@ -255,14 +256,24 @@ void Resolver::visitIndexAssign(IndexAssign* expr) {
     resolve(expr->value.get());
 }
 
-void Resolver::visitLocalDecl(LocalDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true); }
+void Resolver::visitLocalDecl(LocalDecl* expr) {
+    checkExplicitDecl(expr, expr->name.lexeme);
+    // 外层符号已在 hoistBlock 中存入 exprSymbols（在 declareVariable 之前），此处不再重复解析
+    declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true);
+    if (expr->typeHint) resolve(expr->typeHint.get());
+}
 void Resolver::visitRefDecl(RefDecl* expr) {
     checkExplicitDecl(expr, expr->name.lexeme);
     ResolvedSym existing = resolveName(expr->name.lexeme);
     declareVariable(expr->name.lexeme, existing.scope, expr->isConst, true);
     exprSymbols[expr] = resolveName(expr->name.lexeme);
+    if (expr->typeHint) resolve(expr->typeHint.get());
 }
-void Resolver::visitStateDecl(StateDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::State, expr->isConst); }
+void Resolver::visitStateDecl(StateDecl* expr) {
+    checkExplicitDecl(expr, expr->name.lexeme);
+    declareVariable(expr->name.lexeme, VarScope::State, expr->isConst);
+    if (expr->typeHint) resolve(expr->typeHint.get());
+}
 void Resolver::visitConstDecl(ConstDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, true, false); }
 
 void Resolver::visitDeleteExpr(DeleteExpr* /*expr*/) {}

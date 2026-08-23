@@ -605,9 +605,9 @@ namespace jc {
 
         if (isLocal || isRef || isState || isConst) {
             if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-                if (isLocal) expr = std::make_unique<LocalDecl>(var->name, isConst);
-                else if (isRef) expr = std::make_unique<RefDecl>(var->name, isConst);
-                else if (isState) expr = std::make_unique<StateDecl>(var->name, isConst);
+                if (isLocal) expr = std::make_unique<LocalDecl>(var->name, isConst, std::move(typeHint));
+                else if (isRef) expr = std::make_unique<RefDecl>(var->name, isConst, std::move(typeHint));
+                else if (isState) expr = std::make_unique<StateDecl>(var->name, isConst, std::move(typeHint));
                 else if (isConst) expr = std::make_unique<ConstDecl>(var->name);
             } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
                 assign->isLocal = isLocal;

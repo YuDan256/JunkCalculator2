@@ -3946,6 +3946,8 @@ Value VM::run(int targetFrameDepth) {
                             } else {
                                 if (frame->closure && uv.index < frame->closure->upvalueCount) {
                                     dummy->closed = *(frame->closure->upvalues[uv.index]->location);
+                                } else if (uv.isGlobal) {
+                                    dummy->closed = getGlobal(uv.name);
                                 } else {
                                     dummy->closed = Value::none();
                                 }
@@ -11627,6 +11629,8 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
                 } else {
                     if (frame->closure && uv.index < frame->closure->upvalueCount) {
                         dummy->closed = *(frame->closure->upvalues[uv.index]->location);
+                    } else if (uv.isGlobal) {
+                        dummy->closed = vm->getGlobal(uv.name);
                     } else {
                         dummy->closed = Value::none();
                     }

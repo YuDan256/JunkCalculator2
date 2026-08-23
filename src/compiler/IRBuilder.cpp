@@ -2563,10 +2563,30 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
     if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
-    IRNode* uninitNode = graph->createConstant(Value::uninit());
-    uninitNode->setControl(currentControl);
-    declareVariable(expr->name.lexeme, uninitNode);
+    
+    // 捕获外层 x（作为初值），外层符号由 Resolver 存入 exprSymbols；无外层时 readVariable 落到 GetGlobal，运行时报 undefined
+    IRNode* capturedNode;
+    if (expr->name.lexeme == "_") {
+        capturedNode = graph->createConstant(Value::uninit());
+        capturedNode->setControl(currentControl);
+    } else {
+        auto it = exprSymbols->find(expr);
+        ResolvedSym outerSym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+        capturedNode = readVariable(expr->name.lexeme, outerSym);
+    }
+    declareVariable(expr->name.lexeme, capturedNode);
+    
     if (expr->name.lexeme != "_") {
+        if (expr->typeHint) {
+            expr->typeHint->accept(*this);
+            IRNode* typeNode = lastValue;
+            IRNode* assertNode = graph->createNode(IROp::AssertType);
+            assertNode->setControl(currentControl);
+            assertNode->addData(capturedNode);
+            assertNode->addData(typeNode);
+            assertNode->name = expr->name.lexeme;
+            currentControl = assertNode;
+        }
         currentLocalVars.insert(expr->name.lexeme);
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
@@ -2590,6 +2610,18 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
             checkNode->name = expr->name.lexeme;
             checkNode->setControl(currentControl);
             currentControl = checkNode;
+        }
+        
+        if (expr->typeHint) {
+            IRNode* outerVal = readVariable(expr->name.lexeme, sym);
+            expr->typeHint->accept(*this);
+            IRNode* typeNode = lastValue;
+            IRNode* assertNode = graph->createNode(IROp::AssertType);
+            assertNode->setControl(currentControl);
+            assertNode->addData(outerVal);
+            assertNode->addData(typeNode);
+            assertNode->name = expr->name.lexeme;
+            currentControl = assertNode;
         }
         
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
@@ -2618,6 +2650,19 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
             currentFunction->upvalues.push_back(uv);
         } else {
             currentFunction->upvalues[upvalIdx].isCapturedState = true;
+        }
+        if (expr->typeHint) {
+            ResolvedSym stateSym;
+            stateSym.scope = VarScope::State;
+            IRNode* stateVal = readVariable(expr->name.lexeme, stateSym);
+            expr->typeHint->accept(*this);
+            IRNode* typeNode = lastValue;
+            IRNode* assertNode = graph->createNode(IROp::AssertType);
+            assertNode->setControl(currentControl);
+            assertNode->addData(stateVal);
+            assertNode->addData(typeNode);
+            assertNode->name = expr->name.lexeme;
+            currentControl = assertNode;
         }
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }

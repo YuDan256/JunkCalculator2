@@ -334,8 +334,9 @@ namespace jc {
     struct LocalDecl : public Expr {
         Token name;
         bool isConst;
-        explicit LocalDecl(Token name, bool isConst = false) 
-            : name(std::move(name)), isConst(isConst) {}
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言（local x: int）
+        explicit LocalDecl(Token name, bool isConst = false, std::shared_ptr<Expr> typeHint = nullptr) 
+            : name(std::move(name)), isConst(isConst), typeHint(std::move(typeHint)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitLocalDecl(this); }
     };
 
@@ -437,14 +438,16 @@ namespace jc {
     struct RefDecl : public Expr {
         Token name;
         bool isConst;
-        explicit RefDecl(Token name, bool isConst = false) : name(std::move(name)), isConst(isConst) {}
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言（ref x: int）
+        explicit RefDecl(Token name, bool isConst = false, std::shared_ptr<Expr> typeHint = nullptr) : name(std::move(name)), isConst(isConst), typeHint(std::move(typeHint)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitRefDecl(this); }
     };
 
     struct StateDecl : public Expr {
         Token name;
         bool isConst;
-        explicit StateDecl(Token name, bool isConst = false) : name(std::move(name)), isConst(isConst) {}
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言（state x: int）
+        explicit StateDecl(Token name, bool isConst = false, std::shared_ptr<Expr> typeHint = nullptr) : name(std::move(name)), isConst(isConst), typeHint(std::move(typeHint)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitStateDecl(this); }
     };
 

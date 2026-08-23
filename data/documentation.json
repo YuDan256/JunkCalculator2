@@ -185,6 +185,7 @@
       "   Arithmetic Operators",
       "  ──────────────────────",
       "    +  -  *  /          Standard four operations",
+      "    ~/                  Integer division (truncating toward zero)  7 ~/ 2 → 3",
       "    \\                   Left division: a\\b ≡ b / a (Scalars) or inv(a) * b (Matrices)",
       "    ^                   Power             2^10 → 1024 (NOT bitwise XOR!)",
       "    %                   Truncated modulo  (-7) % 3 → -1",

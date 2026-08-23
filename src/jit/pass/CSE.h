@@ -54,9 +54,6 @@ private:
             case HIROp::AddI32:
             case HIROp::SubI32:
             case HIROp::MulI32:
-            case HIROp::DivI32:
-            case HIROp::IDivI32:
-            case HIROp::ModI32:
             case HIROp::BitAndI32:
             case HIROp::BitOrI32:
             case HIROp::BitXorI32:
@@ -68,9 +65,6 @@ private:
             case HIROp::AddF64:
             case HIROp::SubF64:
             case HIROp::MulF64:
-            case HIROp::DivF64:
-            case HIROp::IDivF64:
-            case HIROp::ModF64:
             case HIROp::NegF64:
             case HIROp::SqrtF64:
             case HIROp::SinF64:

@@ -689,6 +689,27 @@ private:
             case LIROpcode::DivF64: {
                 const LIROperand& dst = inst->defs()[0];
                 const LIROperand& src = inst->uses()[1];
+                
+                if (inst->hasBailoutId()) {
+                    needsDeoptTrampoline_ = true;
+                    registerStackMap(inst);
+                    
+                    // 检查除零 (与 0.0 比较)
+                    masm_.pxor(xmm5, xmm5);
+                    if (src.isPhysicalXMM()) {
+                        masm_.ucomisd(src.pregXMM(), xmm5);
+                    } else {
+                        masm_.movsd(xmm4, getStackOperand(src.slot()));
+                        masm_.ucomisd(xmm4, xmm5);
+                    }
+                    Label notZero;
+                    masm_.jcc(Condition::NotEqual, notZero); // ZF=0 说明不等于 0.0
+                    masm_.jcc(Condition::Parity, notZero);   // PF=1 说明是 NaN (NaN / NaN = NaN，不抛异常)
+                    masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
+                    masm_.jmp(deoptTrampolineLabel_);
+                    masm_.bind(notZero);
+                }
+                
                 if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
                     masm_.divsd(dst.pregXMM(), src.pregXMM());
                 } else if (dst.isPhysicalXMM() && src.isStackSlot()) {

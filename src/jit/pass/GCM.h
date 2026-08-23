@@ -76,6 +76,10 @@ private:
             case HIROp::StoreGlobal:
             case HIROp::StoreField:
             case HIROp::StoreRegister:
+            case HIROp::DivI32:
+            case HIROp::IDivI32:
+            case HIROp::ModI32:
+            case HIROp::DivF64:
             case HIROp::GuardIsInt32:
             case HIROp::GuardIsDouble:
             case HIROp::GuardIsBool:

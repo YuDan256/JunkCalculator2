@@ -517,7 +517,7 @@ public:
                             
                             setLocalSync(a, builder_.createBoxInt32(opNode));
                             
-                        } else if (fb == 0x02 && op != OpCode::POW && op != OpCode::LDIV) { // Monomorphic Double (纯 64 位浮点数)
+                        } else if (fb == 0x02 && (op == OpCode::ADD || op == OpCode::SUB || op == OpCode::MUL || op == OpCode::DIV)) { // Monomorphic Double (纯 64 位浮点数)
                             auto fs = captureFrameState(currentIp);
                             auto guardL = builder_.createGuardIsDouble(lhs, fs);
                             auto guardR = builder_.createGuardIsDouble(rhs, fs);
@@ -528,9 +528,7 @@ public:
                             if (op == OpCode::ADD) opNode = builder_.createAddF64(unboxL, unboxR);
                             else if (op == OpCode::SUB) opNode = builder_.createSubF64(unboxL, unboxR);
                             else if (op == OpCode::MUL) opNode = builder_.createMulF64(unboxL, unboxR);
-                            else if (op == OpCode::DIV) opNode = builder_.createDivF64(unboxL, unboxR);
-                            else if (op == OpCode::IDIV) opNode = builder_.createIDivF64(unboxL, unboxR);
-                            else if (op == OpCode::MOD) opNode = builder_.createModF64(unboxL, unboxR);
+                            else if (op == OpCode::DIV) opNode = builder_.createDivF64(unboxL, unboxR, fs);
                             
                             setLocalSync(a, builder_.createBoxDouble(opNode));
                         } else {

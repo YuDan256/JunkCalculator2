@@ -144,7 +144,7 @@ enum class LIROpcode : uint16_t {
     AddI32, SubI32, MulI32, DivI32, IDivI32, ModI32,
     AndI32, OrI32, XorI32, ShlI32, ShrI32, SarI32,
     NegI32, NotI32,
-    AddF64, SubF64, MulF64, DivF64, IDivF64, ModF64,
+    AddF64, SubF64, MulF64, DivF64,
     NegF64,
     SqrtF64, SinF64, CosF64, AbsF64, FloorF64, CeilF64, RoundF64, TruncF64,
     CmpI32, Cmp64, TestI32, CmpF64,
@@ -186,8 +186,6 @@ inline std::string to_string(LIROpcode op) {
         case LIROpcode::SubF64: return "SubF64";
         case LIROpcode::MulF64: return "MulF64";
         case LIROpcode::DivF64: return "DivF64";
-        case LIROpcode::IDivF64: return "IDivF64";
-        case LIROpcode::ModF64: return "ModF64";
         case LIROpcode::NegF64: return "NegF64";
         case LIROpcode::SqrtF64: return "SqrtF64";
         case LIROpcode::SinF64: return "SinF64";

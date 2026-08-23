@@ -150,8 +150,7 @@ private:
             case HIROp::AddF64:
             case HIROp::SubF64:
             case HIROp::MulF64:
-            case HIROp::DivF64:
-            case HIROp::ModF64: {
+            case HIROp::DivF64: {
                 if (node->inputs().size() < 2) return nullptr;
                 auto lhs = dynamic_cast<DoubleConstantNode*>(node->inputs()[0]);
                 auto rhs = dynamic_cast<DoubleConstantNode*>(node->inputs()[1]);
@@ -163,8 +162,9 @@ private:
                         case HIROp::AddF64: return builder_.createDoubleConstant(l + r);
                         case HIROp::SubF64: return builder_.createDoubleConstant(l - r);
                         case HIROp::MulF64: return builder_.createDoubleConstant(l * r);
-                        case HIROp::DivF64: return builder_.createDoubleConstant(l / r);
-                        case HIROp::ModF64: return builder_.createDoubleConstant(std::fmod(l, r));
+                        case HIROp::DivF64: 
+                            if (r != 0.0) return builder_.createDoubleConstant(l / r);
+                            break;
                         default: break;
                     }
                 }

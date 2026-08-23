@@ -90,8 +90,6 @@ enum class HIROp : uint16_t {
     SubF64,
     MulF64,
     DivF64,
-    IDivF64,
-    ModF64,
     NegF64,
     SqrtF64,
     SinF64,
@@ -211,8 +209,6 @@ inline std::string to_string(HIROp op) {
         case HIROp::SubF64: return "SubF64";
         case HIROp::MulF64: return "MulF64";
         case HIROp::DivF64: return "DivF64";
-        case HIROp::IDivF64: return "IDivF64";
-        case HIROp::ModF64: return "ModF64";
         case HIROp::NegF64: return "NegF64";
         case HIROp::SqrtF64: return "SqrtF64";
         case HIROp::SinF64: return "SinF64";

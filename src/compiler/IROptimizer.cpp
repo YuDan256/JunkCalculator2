@@ -51,6 +51,13 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::GetSuper:
         case IROp::AssertParamType: case IROp::AssertReturnType:
         case IROp::MatchInit:
+        case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div: case IROp::IDiv:
+        case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:
+        case IROp::Eq: case IROp::Neq: case IROp::Lt: case IROp::Le:
+        case IROp::Gt: case IROp::Ge:
+        case IROp::Not: case IROp::Neg: case IROp::ToBool:
+        case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
+        case IROp::Shl: case IROp::Shr:
         case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
         case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
         case IROp::Method: case IROp::MethodPrivate: case IROp::MethodConst: case IROp::MethodPrivateConst:
@@ -127,12 +134,7 @@ bool IROptimizer::eliminateCommonSubexpressions(IRGraph* graph) {
     
     auto isPure = [](IROp op) {
         switch (op) {
-            case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div: case IROp::IDiv:
-            case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:
-            case IROp::Eq: case IROp::Neq: case IROp::Lt: case IROp::Le:
-            case IROp::Gt: case IROp::Ge: case IROp::Is: case IROp::Not: case IROp::Neg:
-            case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
-            case IROp::Shl: case IROp::Shr: case IROp::ToBool: case IROp::IsUninit:
+            case IROp::Is: case IROp::IsUninit:
                 return true;
             default: return false;
         }

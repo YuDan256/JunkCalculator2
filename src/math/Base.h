@@ -258,14 +258,12 @@ namespace jc {
         }
 
         BaseNum shiftLeft(int shift) const {
-            if (radix != 2) throw std::runtime_error("Base Error: Shift only defined for base 2.");
-            BigInt mul = BigInt(2).pow(shift);
-            return BaseNum(data * mul, 2);
+            if (shift < 0) throw std::runtime_error("Base Error: Negative shift count.");
+            return BaseNum(data * BigInt(radix).pow(shift), radix);
         }
         BaseNum shiftRight(int shift) const {
-            if (radix != 2) throw std::runtime_error("Base Error: Shift only defined for base 2.");
-            BigInt div = BigInt(2).pow(shift);
-            return BaseNum(data / div, 2);
+            if (shift < 0) throw std::runtime_error("Base Error: Negative shift count.");
+            return BaseNum(data / BigInt(radix).pow(shift), radix);
         }
 
         int digitCount() const {

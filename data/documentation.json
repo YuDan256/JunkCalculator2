@@ -1260,7 +1260,12 @@
       "",
       "  Bitwise Operations",
       "  ──────────────────────",
-      "    Bitwise operators (& | ^^ ~ << >>) work on base-2 BaseNum instances."
+      "    Bitwise operators (& | ^^ ~) work only on base-2 BaseNum instances.",
+      "",
+      "  Shifts (radix-based)",
+      "  ──────────────────────",
+      "    b << n    Multiply by radix^n — append n zeros in the current base.",
+      "    b >> n    Divide by radix^n, truncating toward zero."
     ],
     "type": [
       "═══ First-Class Types & Type Algebra ═══",

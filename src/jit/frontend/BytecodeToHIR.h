@@ -236,7 +236,13 @@ public:
                 }
             } else {
                 builder_.setCurrentControl(entryControls[0]);
-                int predId = block.predecessors.empty() ? -1 : block.predecessors[0];
+                int predId = -1;
+                if (!block.predecessors.empty()) {
+                    for (int p : block.predecessors) {
+                        if (blockExitStates_.count(p)) { predId = p; break; }
+                    }
+                    if (predId == -1) predId = block.predecessors[0];
+                }
                 if (block.id == 0 || (isOSR_ && block.startIp == osrLoopHeaderIp_)) predId = -1;
                 
                 if (blockExitStates_.count(predId)) {

@@ -898,7 +898,7 @@ void registerPredefinedClasses() {
 
     // 注册到全局
     VM::activeVM->registerBuiltinValue("range", Value(rangeClass));
-    VM::activeVM->registerBuiltinValue("__range_iterator", Value(rangeIterClass));
+    VM::activeVM->registerBuiltinValue("<range_iterator>", Value(rangeIterClass));
     VM::activeVM->registerBuiltinValue("ASTNode", Value(astNodeClass));
     VM::activeVM->registerBuiltinValue("Token", Value(tokenClass));
     VM::activeVM->registerBuiltinValue("TokenStream", Value(tokenStreamClass));

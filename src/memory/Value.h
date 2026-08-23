@@ -36,6 +36,13 @@
 #include "SipHash.h"
 
 namespace jc {
+    // VM 内核态隔离墙：内部名统一用 <...> 包裹，用户态（含宏注入）不得引用。
+    inline bool isReservedInternalName(const std::string& name) {
+        if (name.size() < 2 || name.front() != '<' || name.back() != '>') return false;
+        // <class>/<namespace>/<enum> 是上下文关键字的内部表示，用户通过关键字合法引用，不属于被隔离的内部名。
+        if (name == "<class>" || name == "<namespace>" || name == "<enum>") return false;
+        return true;
+    }
     class Value;
     std::string setValueKey(const Value& v);
 
@@ -2743,7 +2750,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
                 std::map<std::string, PropertyDescriptor> sorted_props(inst->properties.begin(), inst->properties.end());
                 for (const auto& [k, prop] : sorted_props) {
                     if (prop.is_local) continue;
-                    if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+                    if (isReservedInternalName(k)) continue;
 
                     if (!first) os << ", ";
                     if (prop.is_const) os << "const ";

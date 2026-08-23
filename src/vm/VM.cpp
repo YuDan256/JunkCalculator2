@@ -89,6 +89,10 @@ extern bool g_enableJit;
         return; \
     }
 
+static std::string manglePrivate(uint64_t classId, const std::string& name) {
+    return "<" + std::to_string(classId) + "::" + name + ">";
+}
+
 namespace jc {
 
 uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
@@ -1571,7 +1575,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
             
-            std::string mangledName = std::to_string(owner->classId) + "::" + methodName;
+            std::string mangledName = manglePrivate(owner->classId, methodName);
             auto it = inst->properties.find(mangledName);
             if (it != inst->properties.end()) {
                 Value fv = it->second.val;
@@ -1605,7 +1609,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
             
-            std::string mangledName = std::to_string(owner->classId) + "::" + methodName;
+            std::string mangledName = manglePrivate(owner->classId, methodName);
             auto it = owner->properties.find(mangledName);
             if (it != owner->properties.end()) {
                 Value fv = it->second.val;
@@ -5107,7 +5111,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     if (dims == 1 && args[0].isString()) {
                         std::string keyStr = args[0].asString();
-                        if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+                        if (isReservedInternalName(keyStr)) {
                             if (noThrow) result = Value::uninit();
                             else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
                             getReg(a) = result;
@@ -5116,7 +5120,7 @@ Value VM::run(int targetFrameDepth) {
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         bool foundPrivate = false;
                         if (ctxOwner) {
-                            std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                            std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
                             auto it = inst->properties.find(mangledName);
                             if (it != inst->properties.end()) {
                                 result = it->second.val;
@@ -5256,14 +5260,14 @@ Value VM::run(int targetFrameDepth) {
                             else throw std::runtime_error("VM Error: Class static field keys must be strings.");
                         } else {
                             std::string key = idx.asString();
-                            if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
+                            if (isReservedInternalName(key)) {
                                 if (noThrow) result = Value::uninit();
                                 else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
                             } else {
                                 bool foundStatic = false;
                                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                                 if (ctxOwner) {
-                                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                                    std::string mangledName = manglePrivate(ctxOwner->classId, key);
                                     auto it = ctxOwner->properties.find(mangledName);
                                     if (it != ctxOwner->properties.end()) {
                                         if (it->second.val.isFunctionClosure()) {
@@ -5453,13 +5457,13 @@ Value VM::run(int targetFrameDepth) {
                     }
                     if (dims == 1 && args[0].isString()) {
                         std::string keyStr = args[0].asString();
-                        if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+                        if (isReservedInternalName(keyStr)) {
                             throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
                         }
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         bool foundPrivate = false;
                         if (ctxOwner) {
-                            std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                            std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
                             auto it = inst->properties.find(mangledName);
                             if (it != inst->properties.end()) {
                                 if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
@@ -5682,14 +5686,14 @@ Value VM::run(int targetFrameDepth) {
                         auto cls = static_cast<ObjClass*>(obj.asObj());
                         if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
                         std::string key = idx.asString();
-                        if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
+                        if (isReservedInternalName(key)) {
                             throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
                         }
                         
                         bool found = false;
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         if (ctxOwner) {
-                            std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                            std::string mangledName = manglePrivate(ctxOwner->classId, key);
                             auto it = ctxOwner->properties.find(mangledName);
                             if (it != ctxOwner->properties.end()) {
                                 if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
@@ -5905,7 +5909,7 @@ Value VM::run(int targetFrameDepth) {
                         if (destructFlag) {
                             for (const auto& [key, prop] : cls->properties) {
                                 if (prop.is_local || seen.count(key)) continue;
-                                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                                if (isReservedInternalName(key)) continue;
                                 seen.insert(key);
                                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                                 pair->vec.push_back(Value(key));
@@ -5916,7 +5920,7 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             for (const auto& [key, prop] : cls->properties) {
                                 if (prop.is_local || seen.count(key)) continue;
-                                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                                if (isReservedInternalName(key)) continue;
                                 seen.insert(key);
                                 elements->vec.push_back(Value(key));
                             }
@@ -5933,7 +5937,7 @@ Value VM::run(int targetFrameDepth) {
                     if (destructFlag) {
                         for (const auto& [key, prop] : inst->properties) {
                             if (prop.is_local) continue;
-                            if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                            if (isReservedInternalName(key)) continue;
                             ObjList* pair = GcHeap::get().allocate<ObjList>();
                             pair->vec.push_back(Value(key));
                             pair->vec.push_back(prop.val);
@@ -5943,7 +5947,7 @@ Value VM::run(int targetFrameDepth) {
                     } else {
                         for (const auto& [key, prop] : inst->properties) {
                             if (prop.is_local) continue;
-                            if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                            if (isReservedInternalName(key)) continue;
                             elements->vec.push_back(Value(key));
                         }
                     }
@@ -6164,7 +6168,7 @@ Value VM::run(int targetFrameDepth) {
                             std::string key = needle.asString();
                             ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                             if (ctxOwner) {
-                                std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                                std::string mangledName = manglePrivate(ctxOwner->classId, key);
                                 if (inst->properties.find(mangledName) != inst->properties.end()) {
                                     found = true;
                                 }
@@ -6259,7 +6263,7 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST) {
                         fn->is_local = true;
                         fn->owner_class = cls;
-                        std::string mangledName = std::to_string(cls ? cls->classId : 0) + "::" + methodName;
+                        std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
                         if (cls) cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true};
                     } else {
                         if (cls) cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false};
@@ -6297,7 +6301,7 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    std::string mangledName = std::to_string(owner->classId) + "::" + keyVal.asString();
+                    std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     auto it = inst->properties.find(mangledName);
                     if (it != inst->properties.end()) {
                         getReg(a) = it->second.val;
@@ -6347,7 +6351,7 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    std::string mangledName = std::to_string(owner->classId) + "::" + keyVal.asString();
+                    std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     auto it = owner->properties.find(mangledName);
                     if (it != owner->properties.end()) {
                         if (it->second.val.isFunctionClosure()) {
@@ -7152,7 +7156,7 @@ Value VM::run(int targetFrameDepth) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
                     
-                    std::string mangledName = std::to_string(owner->classId) + "::" + keyVal.asString();
+                    std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     auto it = inst->properties.find(mangledName);
                     if (op == OpCode::SET_PRIVATE) {
                         if (it == inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
@@ -7168,13 +7172,13 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::SET_PRIVATE) {
                         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
-                        std::string mangledName = std::to_string(owner->classId) + "::" + keyStr;
+                        std::string mangledName = manglePrivate(owner->classId, keyStr);
                         auto it = owner->properties.find(mangledName);
                         if (it == owner->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
                         if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + keyStr + "'.");
                         it->second.val = val;
                     } else {
-                        std::string mangledName = std::to_string(cls->classId) + "::" + keyStr;
+                        std::string mangledName = manglePrivate(cls->classId, keyStr);
                         auto it = cls->properties.find(mangledName);
                         if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' already defined.");
                         if (cls) cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
@@ -7339,7 +7343,7 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     for (const auto& [k, prop] : inst->properties) {
                         if (prop.is_local) continue;
-                        if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+                        if (isReservedInternalName(k)) continue;
                         if (excludeKeys.count(k)) continue;
                         restDict->set(Value(k), prop.val);
                     }
@@ -7354,7 +7358,7 @@ Value VM::run(int targetFrameDepth) {
                     while (cls) {
                         for (const auto& [k, prop] : cls->properties) {
                             if (prop.is_local) continue;
-                            if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+                            if (isReservedInternalName(k)) continue;
                             if (excludeKeys.count(k)) continue;
                             if (restDict->keyMap.find(Value(k)) == restDict->keyMap.end()) {
                                 restDict->set(Value(k), prop.val);
@@ -9810,7 +9814,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
             if (destructFlag) {
                 for (const auto& [key, prop] : cls->properties) {
                     if (prop.is_local || seen.count(key)) continue;
-                    if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                    if (isReservedInternalName(key)) continue;
                     seen.insert(key);
                     ObjList* pair = GcHeap::get().allocate<ObjList>();
                     pair->vec.push_back(Value(key));
@@ -9821,7 +9825,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
             } else {
                 for (const auto& [key, prop] : cls->properties) {
                     if (prop.is_local || seen.count(key)) continue;
-                    if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                    if (isReservedInternalName(key)) continue;
                     seen.insert(key);
                     elements->vec.push_back(Value(key));
                 }
@@ -9838,7 +9842,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
         if (destructFlag) {
             for (const auto& [key, prop] : inst->properties) {
                 if (prop.is_local) continue;
-                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                if (isReservedInternalName(key)) continue;
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value(key));
                 pair->vec.push_back(prop.val);
@@ -9848,7 +9852,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
         } else {
             for (const auto& [key, prop] : inst->properties) {
                 if (prop.is_local) continue;
-                if (key == "<init>" || key == "<finalize>" || key.find("::") != std::string::npos) continue;
+                if (isReservedInternalName(key)) continue;
                 elements->vec.push_back(Value(key));
             }
         }
@@ -10069,7 +10073,7 @@ bool VM::opIn(Value needle, Value haystack) {
                 std::string key = needle.asString();
                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                 if (ctxOwner) {
-                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                    std::string mangledName = manglePrivate(ctxOwner->classId, key);
                     if (inst->properties.find(mangledName) != inst->properties.end()) {
                         found = true;
                     }
@@ -10180,14 +10184,14 @@ uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t
             }
         } else if (dims == 1 && args[0].isString()) {
             std::string keyStr = args[0].asString();
-            if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+            if (isReservedInternalName(keyStr)) {
                 if (noThrow) result = Value::uninit();
                 else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
             } else {
                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                 bool foundPrivate = false;
                 if (ctxOwner) {
-                    std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                    std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
                     auto it = inst->properties.find(mangledName);
                     if (it != inst->properties.end()) {
                         result = it->second.val;
@@ -10320,14 +10324,14 @@ uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t
                 else throw std::runtime_error("VM Error: Class static field keys must be strings.");
             } else {
                 std::string key = idx.asString();
-                if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
+                if (isReservedInternalName(key)) {
                     if (noThrow) result = Value::uninit();
                     else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
                 } else {
                     bool foundStatic = false;
                     ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (ctxOwner) {
-                        std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                        std::string mangledName = manglePrivate(ctxOwner->classId, key);
                         auto it = ctxOwner->properties.find(mangledName);
                         if (it != ctxOwner->properties.end()) {
                             if (it->second.val.isFunctionClosure()) {
@@ -10514,13 +10518,13 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
             vm->callDunder(obj, setitemMethod, owner, args);
         } else if (dims == 1 && args[0].isString()) {
             std::string keyStr = args[0].asString();
-            if (keyStr.find("::") != std::string::npos || keyStr == "<init>" || keyStr == "<finalize>") {
+            if (isReservedInternalName(keyStr)) {
                 throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
             }
             ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
             bool foundPrivate = false;
             if (ctxOwner) {
-                std::string mangledName = std::to_string(ctxOwner->classId) + "::" + keyStr;
+                std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
                 auto it = inst->properties.find(mangledName);
                 if (it != inst->properties.end()) {
                     if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
@@ -10736,14 +10740,14 @@ uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t
             auto cls = static_cast<ObjClass*>(obj.asObj());
             if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
             std::string key = idx.asString();
-            if (key.find("::") != std::string::npos || key == "<init>" || key == "<finalize>") {
+            if (isReservedInternalName(key)) {
                 throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
             }
             
             bool found = false;
             ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
             if (ctxOwner) {
-                std::string mangledName = std::to_string(ctxOwner->classId) + "::" + key;
+                std::string mangledName = manglePrivate(ctxOwner->classId, key);
                 auto it = ctxOwner->properties.find(mangledName);
                 if (it != ctxOwner->properties.end()) {
                     if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
@@ -11160,7 +11164,7 @@ uint64_t jc2_jit_dict_rest(uint64_t obj_bits, uint64_t exclude_bits) {
         auto inst = obj.asInstance();
         for (const auto& [k, prop] : inst->properties) {
             if (prop.is_local) continue;
-            if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+            if (isReservedInternalName(k)) continue;
             if (excludeKeys.count(k)) continue;
             restDict->set(Value(k), prop.val);
         }
@@ -11175,7 +11179,7 @@ uint64_t jc2_jit_dict_rest(uint64_t obj_bits, uint64_t exclude_bits) {
         while (cls) {
             for (const auto& [k, prop] : cls->properties) {
                 if (prop.is_local) continue;
-                if (k == "<init>" || k == "<finalize>" || k.find("::") != std::string::npos) continue;
+                if (isReservedInternalName(k)) continue;
                 if (excludeKeys.count(k)) continue;
                 if (restDict->keyMap.find(Value(k)) == restDict->keyMap.end()) {
                     restDict->set(Value(k), prop.val);

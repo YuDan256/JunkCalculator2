@@ -433,7 +433,7 @@ void registerPredefinedClasses() {
         std::string lexeme = tokInst->properties["lexeme"].val.asString();
         
         TokenType tType = stringToTokenType(typeStr);
-        if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
+        if (tType != TokenType::IDENTIFIER && tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
             tType != TokenType::NEWLINE && tType != TokenType::END_OF_FILE && tType != TokenType::ERROR) {
             jc::Lexer testLexer(lexeme, "");
             auto testTokens = testLexer.tokenize();
@@ -472,7 +472,7 @@ void registerPredefinedClasses() {
         std::string lexeme = tokInst->properties["lexeme"].val.asString();
         
         TokenType tType = stringToTokenType(typeStr);
-        if (tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
+        if (tType != TokenType::IDENTIFIER && tType != TokenType::STRING && tType != TokenType::FSTRING && tType != TokenType::RSTRING &&
             tType != TokenType::NEWLINE && tType != TokenType::END_OF_FILE && tType != TokenType::ERROR) {
             jc::Lexer testLexer(lexeme, "");
             auto testTokens = testLexer.tokenize();

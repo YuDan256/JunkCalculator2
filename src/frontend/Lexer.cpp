@@ -173,6 +173,29 @@ namespace jc {
             directives.push_back({directiveName, args, line});
             break;
         }
+        case '`': {
+            // 反引号标识符：`任意内容` 作为标识符名（lexeme 为内容，不含反引号）
+            int contentStart = current;
+            while (!isAtEnd() && peek() != '`' && peek() != '\n') advance();
+            if (isAtEnd() || peek() == '\n') {
+                // 未闭合：回退，只报反引号本身为 ERROR，让后续内容（如 '}'）正常 lex
+                current = contentStart;
+                emitError("Unterminated quoted identifier.");
+                break;
+            }
+            std::string content = source.substr(contentStart, current - contentStart);
+            if (content.empty()) {
+                emitError("Empty quoted identifier.");
+                break;
+            }
+            if (content[0] == '$') {
+                emitError("Quoted identifier cannot start with '$'.");
+                break;
+            }
+            advance(); // consume closing backtick
+            tokens.emplace_back(TokenType::IDENTIFIER, content, contentStart, line);
+            break;
+        }
         case '.':
             if (match('.') && match('.')) {
                 addToken(TokenType::ELLIPSIS);

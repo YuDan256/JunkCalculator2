@@ -128,7 +128,7 @@ namespace jc {
                         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
                             if (var->name.lexeme == "_") {
                                 isPartial = true;
-                                Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
+                                Token phTok(TokenType::IDENTIFIER, "__ph_" + std::to_string(phCount++), var->name.line);
                                 phParams.push_back(phTok);
                                 phDefaults.push_back(nullptr);
                                 arg = std::make_unique<Variable>(phTok);
@@ -796,7 +796,7 @@ namespace jc {
                         if (auto* var = dynamic_cast<Variable*>(arg.get())) {
                             if (var->name.lexeme == "_") {
                                 isPartial = true;
-                                Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
+                                Token phTok(TokenType::IDENTIFIER, "__ph_" + std::to_string(phCount++), var->name.line);
                                 phParams.push_back(phTok);
                                 phDefaults.push_back(nullptr);
                                 arg = std::make_unique<Variable>(phTok);
@@ -855,7 +855,7 @@ namespace jc {
                     if (auto* var = dynamic_cast<Variable*>(arg.get())) {
                         if (var->name.lexeme == "_") {
                             isPartial = true;
-                            Token phTok(TokenType::IDENTIFIER, "<ph>_" + std::to_string(phCount++), var->name.line);
+                            Token phTok(TokenType::IDENTIFIER, "__ph_" + std::to_string(phCount++), var->name.line);
                             phParams.push_back(phTok);
                             phDefaults.push_back(nullptr);
                             arg = std::make_unique<Variable>(phTok);

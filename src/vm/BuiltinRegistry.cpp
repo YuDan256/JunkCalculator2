@@ -2701,13 +2701,7 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto firstFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        if (self.isObjType(ObjType::SET)) {
-            auto s = static_cast<ObjSet*>(self.asObj());
-            if (s->elements.empty()) return Value(std::string(""));
-            std::ostringstream setOss;
-            for (size_t i = 0; i < s->elements.size(); ++i) { if (i > 0) setOss << delim; setOss << s->elements[i]; }
-            return Value(setOss.str());
-        } else if (self.isObjType(ObjType::LIST)) {
+        if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             if (l->vec.empty()) throw std::runtime_error("Runtime Error: first() on empty list.");
             return l->vec[0];
@@ -3181,7 +3175,13 @@ void BuiltinRegistry::registerArrayFunctions() {
         })) {
             return Value(oss.str());
         }
-        if (self.isObjType(ObjType::LIST)) {
+        if (self.isObjType(ObjType::SET)) {
+            auto s = static_cast<ObjSet*>(self.asObj());
+            if (s->elements.empty()) return Value(std::string(""));
+            std::ostringstream setOss;
+            for (size_t i = 0; i < s->elements.size(); ++i) { if (i > 0) setOss << delim; setOss << s->elements[i]; }
+            return Value(setOss.str());
+        } else if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             if (l->vec.empty()) return Value(std::string(""));
             bool allStrings = true; size_t totalLen = 0;

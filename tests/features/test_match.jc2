@@ -11,8 +11,8 @@ test_literal()
 
 test_guard() = {
     f(val) = match(val) {
-        n if (isint(n)) => "Int: " + str(n),
-        s if (isstring(s)) => "Str: " + s,
+        n if (type(n) == int) => "Int: " + str(n),
+        s if (type(s) == string) => "Str: " + s,
         _ => "Other"
     }
     assert(f(42) == "Int: 42", "Guard int failed")

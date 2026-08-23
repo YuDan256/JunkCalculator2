@@ -81,6 +81,7 @@ test_anonymous_class_and_self_ref() = {
 test_anonymous_class_and_self_ref()
 
 test_access_control() = {
+    throws(f) = { try { f(); return false } catch (e) { return true } }
     class Account {
         const id = 12345
         local balance = 0
@@ -110,27 +111,27 @@ test_access_control() = {
     
     // Public const
     assert(acc.id == 12345, "Public const read failed")
-    assert(isError(pcall(() => acc.id = 54321)), "Public const should be read-only")
+    assert(throws(() => acc.id = 54321), "Public const should be read-only")
     
     // Private instance field
     assert(acc.get_balance() == 100, "Private field internal read failed")
     acc.test_reflection()
-    assert(isError(pcall(() => acc.balance)), "Private field should be invisible externally")
+    assert(throws(() => acc.balance), "Private field should be invisible externally")
     acc.balance = 200
     assert(acc.balance == 200, "Public property can shadow private name externally")
     assert(acc.get_balance() == 100, "Private field remains unaffected by public shadowing")
     
     // Private instance method
     assert(acc.get_helper() == 200, "Private method internal call failed")
-    assert(isError(pcall(() => acc.helper())), "Private method should be invisible externally")
+    assert(throws(() => acc.helper()), "Private method should be invisible externally")
     
     // Static const
     assert(Account.MIN == 0, "Static const read failed")
-    assert(isError(pcall(() => Account.MIN = 1)), "Static const should be read-only")
+    assert(throws(() => Account.MIN = 1), "Static const should be read-only")
     
     // Static private const
     assert(Account.get_max() == 999, "Static private const internal read failed")
-    assert(isError(pcall(() => Account.MAX)), "Static private const should be invisible externally")
+    assert(throws(() => Account.MAX), "Static private const should be invisible externally")
     
     // Static method tearing
     f = Account.get_max
@@ -139,6 +140,7 @@ test_access_control() = {
 test_access_control()
 
 test_private_inheritance() = {
+    throws(f) = { try { f(); return false } catch (e) { return true } }
     class Parent {
         local secret = 42
         local hidden() = 100
@@ -152,7 +154,7 @@ test_private_inheritance() = {
     
     c = Child()
     assert(c.get_secret() == 42, "Parent method should access its own private field")
-    assert(isError(pcall(() => c.try_access())), "Child should not access parent's private field")
-    assert(isError(pcall(() => c.try_call())), "Child should not access parent's private method")
+    assert(throws(() => c.try_access()), "Child should not access parent's private field")
+    assert(throws(() => c.try_call()), "Child should not access parent's private method")
 }
 test_private_inheritance()

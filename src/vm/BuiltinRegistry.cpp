@@ -2043,8 +2043,8 @@ void BuiltinRegistry::registerSystemUtils() {
         if (args.size() == 1 && args[0].isString()) {
             prefix = args[0].asString();
         }
-        // ★ 使用尖括号包裹，生成词法上“非法”但 VM 合法的绝对安全标识符
-        std::string uniqueName = "<" + prefix + "_" + std::to_string(counter++) + ">";
+        // ★ 用 '#' 连接，生成词法上非法的绝对安全标识符（'#' 会触发词法错误，用户源码完全写不出）
+        std::string uniqueName = prefix + "#" + std::to_string(counter++);
         
         auto clsVal = VM::activeVM->getBuiltinValue("ASTNode");
         if (!clsVal.isClass()) throw std::runtime_error("ASTNode class not found");

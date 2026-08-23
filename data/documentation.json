@@ -1,7 +1,7 @@
 {
   "topics": {
     "main": [
-      "=================== Junk Calculator 2.5.4.0 — Help ===================",
+      "=================== Junk Calculator 2.6.0.0 — Help ===================",
       "",
       "  Session Commands",
       "  ────────────────────────────────────────────────────────────────────",
@@ -48,6 +48,11 @@
       "    JunkCalculator2 -c in.jc2 -s       Compile and strip debug info (line numbers)",
       "    JunkCalculator2 script.jc2 -d      Run with bytecode disassembly output",
       "    JunkCalculator2 script.jc2 --ir    Run with IR graph printing",
+      "    JunkCalculator2 script.jc2 --hir   Run with HIR graph printing",
+      "    JunkCalculator2 script.jc2 --mc    Run with machine code disassembly output",
+      "    JunkCalculator2 script.jc2 --jit   Run with JIT compilation enabled",
+      "    JunkCalculator2 script.jc2 --profile  Run with execution profiler",
+      "    JunkCalculator2 script.jc2 --debug Run with interactive step-debugger",
       "    JunkCalculator2 -d                 REPL with bytecode disassembly",
       "    JunkCalculator2 --ir               REPL with IR graph printing",
       "    JunkCalculator2 -e \"expr\"          Evaluate expression and exit",
@@ -163,6 +168,12 @@
       "    /* text */           Multi-line comments. Can span multiple lines.",
       "                         Multi-line comments can also be nested!",
       "                         Works in expressions, blocks, functions, and scripts.",
+      "",
+      "  Compiler Directives & Shebang",
+      "  ──────────────────────",
+      "    #directive           Compiler/VM directive (must start the line).",
+      "    #!/usr/bin/env jc2   Shebang: the '!' directive is registered as a no-op,",
+      "                         letting scripts declare their interpreter on line 1.",
       "",
       "  Identifiers & UTF-8",
       "  ──────────────────────",

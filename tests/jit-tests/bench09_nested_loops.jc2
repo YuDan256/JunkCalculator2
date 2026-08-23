@@ -1,0 +1,15 @@
+// JIT benchmark: nested hot loops (multi-level OSR candidates)
+f(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        j = 0
+        while (j < 100) {
+            s += i + j
+            j += 1
+        }
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(f(30000)))

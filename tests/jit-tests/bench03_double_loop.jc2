@@ -1,0 +1,11 @@
+// JIT benchmark: floating-point hot loop
+f(n) = {
+    s = 0.0
+    i = 0
+    while (i < n) {
+        s += sqrt(i + 1.0)
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(f(3000000)))

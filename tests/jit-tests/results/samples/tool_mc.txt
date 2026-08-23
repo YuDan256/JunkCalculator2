@@ -1,0 +1,201 @@
+--- OSR Machine Code [fn=f osrIp=2] (Size: 800 bytes) ---
+0000: 55                       push rbp
+0001: 48 8B EC                 movq rbp, rsp
+0004: 53                       push rbx
+0005: 41 54                    push r12
+0007: 41 55                    push r13
+0009: 41 56                    push r14
+000b: 41 57                    push r15
+000d: 57                       push rdi
+000e: 56                       push rsi
+000f: 48 83 EC 20              sub rsp, 32
+0013: 48 83 E4 F0              and rsp, -16
+0017: 4C 8B F1                 movq r14, rcx
+001a: 4D 8B 06                 movq r8, [r14]
+001d: 49 8B 76 08              movq rsi, [r14+0x8]
+0021: 4D 8B 66 10              movq r12, [r14+0x10]
+0025: 4D 8B 6E 18              movq r13, [r14+0x18]
+0029: BB 01 00 00 00           mov ebx, 0x1
+002e: 44 8B CB                 mov r9d, rbx
+0031: 49 BB 00 00 00 00 01 00 FC 7F  movabs r11, 0x7ffc000100000000
+003b: 4D 0B CB                 or r9, r11
+003e: E9 00 00 00 00           jmp +0x0
+0043: 4D 8B DC                 movq r11, r12
+0046: 49 BA 00 00 00 00 FF FF FF FF  movabs r10, 0xffffffff00000000
+0050: 4D 23 DA                 and r11, r10
+0053: 49 BA 00 00 00 00 01 00 FC 7F  movabs r10, 0x7ffc000100000000
+005d: 4D 3B DA                 cmp r11, r10
+0060: 0F 84 0B 00 00 00        je +0xb
+0066: 41 BA 00 00 00 00        mov r10d, 0x0
+006c: E9 DF 01 00 00           jmp +0x1df
+0071: 41 8B D4                 mov edx, r12
+0074: 8B D2                    mov edx, rdx
+0076: 4D 8B D8                 movq r11, r8
+0079: 49 BA 00 00 00 00 FF FF FF FF  movabs r10, 0xffffffff00000000
+0083: 4D 23 DA                 and r11, r10
+0086: 49 BA 00 00 00 00 01 00 FC 7F  movabs r10, 0x7ffc000100000000
+0090: 4D 3B DA                 cmp r11, r10
+0093: 0F 84 0B 00 00 00        je +0xb
+0099: 41 BA 00 00 00 00        mov r10d, 0x0
+009f: E9 AC 01 00 00           jmp +0x1ac
+00a4: 41 8B C8                 mov ecx, r8
+00a7: 8B C9                    mov ecx, rcx
+00a9: 3B D1                    cmp edx, rcx
+00ab: 0F 9C C0                 setl rax
+00ae: 83 E0 01                 and rax, 1
+00b1: 44 8B F8                 mov r15d, rax
+00b4: 49 BB 02 00 00 00 00 00 FC 7F  movabs r11, 0x7ffc000000000002
+00be: 4D 03 FB                 add r15, r11
+00c1: 4D 8B DF                 movq r11, r15
+00c4: 49 BA FE FF FF FF FF FF FF FF  movabs r10, 0xfffffffffffffffe
+00ce: 4D 23 DA                 and r11, r10
+00d1: 49 BA 02 00 00 00 00 00 FC 7F  movabs r10, 0x7ffc000000000002
+00db: 4D 3B DA                 cmp r11, r10
+00de: 0F 84 0B 00 00 00        je +0xb
+00e4: 41 BA 01 00 00 00        mov r10d, 0x1
+00ea: E9 61 01 00 00           jmp +0x161
+00ef: 41 8B DF                 mov ebx, r15
+00f2: 83 E3 01                 and rbx, 1
+00f5: 85 DB                    test rbx, ebx
+00f7: 0F 85 05 00 00 00        jne +0x5
+00fd: E9 05 00 00 00           jmp +0x5
+0102: E9 05 00 00 00           jmp +0x5
+0107: E9 30 01 00 00           jmp +0x130
+010c: 4D 8B DD                 movq r11, r13
+010f: 49 BA 00 00 00 00 FF FF FF FF  movabs r10, 0xffffffff00000000
+0119: 4D 23 DA                 and r11, r10
+011c: 49 BA 00 00 00 00 01 00 FC 7F  movabs r10, 0x7ffc000100000000
+0126: 4D 3B DA                 cmp r11, r10
+0129: 0F 84 0B 00 00 00        je +0xb
+012f: 41 BA 02 00 00 00        mov r10d, 0x2
+0135: E9 16 01 00 00           jmp +0x116
+013a: 4D 8B DC                 movq r11, r12
+013d: 49 BA 00 00 00 00 FF FF FF FF  movabs r10, 0xffffffff00000000
+0147: 4D 23 DA                 and r11, r10
+014a: 49 BA 00 00 00 00 01 00 FC 7F  movabs r10, 0x7ffc000100000000
+0154: 4D 3B DA                 cmp r11, r10
+0157: 0F 84 0B 00 00 00        je +0xb
+015d: 41 BA 02 00 00 00        mov r10d, 0x2
+0163: E9 E8 00 00 00           jmp +0xe8
+0168: 41 8B D5                 mov edx, r13
+016b: 8B D2                    mov edx, rdx
+016d: 41 8B CC                 mov ecx, r12
+0170: 8B C9                    mov ecx, rcx
+0172: 48 8B C2                 movq rax, rdx
+0175: 44 8B D8                 mov r11d, rax
+0178: 03 C1                    add eax, rcx
+017a: 0F 81 0E 00 00 00        jno +0xe
+0180: 41 8B C3                 mov eax, r11
+0183: 41 BA 02 00 00 00        mov r10d, 0x2
+0189: E9 C2 00 00 00           jmp +0xc2
+018e: 8B F8                    mov edi, rax
+0190: 49 BB 00 00 00 00 01 00 FC 7F  movabs r11, 0x7ffc000100000000
+019a: 49 0B FB                 or rdi, r11
+019d: 4D 8B DC                 movq r11, r12
+01a0: 49 BA 00 00 00 00 FF FF FF FF  movabs r10, 0xffffffff00000000
+01aa: 4D 23 DA                 and r11, r10
+01ad: 49 BA 00 00 00 00 01 00 FC 7F  movabs r10, 0x7ffc000100000000
+01b7: 4D 3B DA                 cmp r11, r10
+01ba: 0F 84 0B 00 00 00        je +0xb
+01c0: 41 BA 03 00 00 00        mov r10d, 0x3
+01c6: E9 85 00 00 00           jmp +0x85
+01cb: 4D 8B D9                 movq r11, r9
+01ce: 49 BA 00 00 00 00 FF FF FF FF  movabs r10, 0xffffffff00000000
+01d8: 4D 23 DA                 and r11, r10
+01db: 49 BA 00 00 00 00 01 00 FC 7F  movabs r10, 0x7ffc000100000000
+01e5: 4D 3B DA                 cmp r11, r10
+01e8: 0F 84 0B 00 00 00        je +0xb
+01ee: 41 BA 03 00 00 00        mov r10d, 0x3
+01f4: E9 57 00 00 00           jmp +0x57
+01f9: 41 8B DC                 mov ebx, r12
+01fc: 8B DB                    mov ebx, rbx
+01fe: 41 8B D1                 mov edx, r9
+0201: 8B D2                    mov edx, rdx
+0203: 48 8B CB                 movq rcx, rbx
+0206: 44 8B D9                 mov r11d, rcx
+0209: 03 CA                    add ecx, rdx
+020b: 0F 81 0E 00 00 00        jno +0xe
+0211: 41 8B CB                 mov ecx, r11
+0214: 41 BA 03 00 00 00        mov r10d, 0x3
+021a: E9 31 00 00 00           jmp +0x31
+021f: 8B C1                    mov eax, rcx
+0221: 49 BB 00 00 00 00 01 00 FC 7F  movabs r11, 0x7ffc000100000000
+022b: 49 0B C3                 or rax, r11
+022e: 49 8B F7                 movq rsi, r15
+0231: 4C 8B E0                 movq r12, rax
+0234: 4C 8B EF                 movq r13, rdi
+0237: E9 07 FE FF FF           jmp +0xfffffe07
+023c: 49 8B C5                 movq rax, r13
+023f: 48 8D 65 C8              lea rsp, [rbp-0x38]
+0243: 5E                       pop rsi
+0244: 5F                       pop rdi
+0245: 41 5F                    pop r15
+0247: 41 5E                    pop r14
+0249: 41 5D                    pop r13
+024b: 41 5C                    pop r12
+024d: 5B                       pop rbx
+024e: 5D                       pop rbp
+024f: C3                       ret
+0250: 41 57                    push r15
+0252: 41 56                    push r14
+0254: 41 55                    push r13
+0256: 41 54                    push r12
+0258: 41 53                    push r11
+025a: 41 52                    push r10
+025c: 41 51                    push r9
+025e: 41 50                    push r8
+0260: 57                       push rdi
+0261: 56                       push rsi
+0262: 55                       push rbp
+0263: 48 83 EC 08              sub rsp, 8
+0267: 53                       push rbx
+0268: 52                       push rdx
+0269: 51                       push rcx
+026a: 50                       push rax
+026b: 48 81 EC 80 00 00 00     sub rsp, 0x80
+0272: F2 0F 11 04 24           movsd [rsp], xmm0
+0277: F2 0F 11 4C 24 08        movsd [rsp+0x8], xmm1
+027d: F2 0F 11 54 24 10        movsd [rsp+0x10], xmm2
+0283: F2 0F 11 5C 24 18        movsd [rsp+0x18], xmm3
+0289: F2 0F 11 64 24 20        movsd [rsp+0x20], xmm4
+028f: F2 0F 11 6C 24 28        movsd [rsp+0x28], xmm5
+0295: F2 0F 11 74 24 30        movsd [rsp+0x30], xmm6
+029b: F2 0F 11 7C 24 38        movsd [rsp+0x38], xmm7
+02a1: F2 44 0F 11 44 24 40     movsd [rsp+0x40], xmm8
+02a8: F2 44 0F 11 4C 24 48     movsd [rsp+0x48], xmm9
+02af: F2 44 0F 11 54 24 50     movsd [rsp+0x50], xmm10
+02b6: F2 44 0F 11 5C 24 58     movsd [rsp+0x58], xmm11
+02bd: F2 44 0F 11 64 24 60     movsd [rsp+0x60], xmm12
+02c4: F2 44 0F 11 6C 24 68     movsd [rsp+0x68], xmm13
+02cb: F2 44 0F 11 74 24 70     movsd [rsp+0x70], xmm14
+02d2: F2 44 0F 11 7C 24 78     movsd [rsp+0x78], xmm15
+02d9: 48 8B CC                 movq rcx, rsp
+02dc: 49 8B D2                 movq rdx, r10
+02df: 4C 8B DC                 movq r11, rsp
+02e2: 48 83 E4 F0              and rsp, -16
+02e6: 48 83 EC 20              sub rsp, 32
+02ea: 48 B8 80 D6 F0 A8 F7 7F 00 00  movabs rax, 0x7ff7a8f0d680
+02f4: FF D0                    call rax
+02f6: 49 8B E3                 movq rsp, r11
+02f9: 48 81 C4 80 00 00 00     add rsp, 0x80
+0300: 48 81 C4 80 00 00 00     add rsp, 0x80
+0307: 48 8D 65 C8              lea rsp, [rbp-0x38]
+030b: 5E                       pop rsi
+030c: 5F                       pop rdi
+030d: 41 5F                    pop r15
+030f: 41 5E                    pop r14
+0311: 41 5D                    pop r13
+0313: 41 5C                    pop r12
+0315: 5B                       pop rbx
+0316: 5D                       pop rbp
+0317: C3                       ret
+0318: 00                       db 0x0
+0319: 00                       db 0x0
+031a: 00                       db 0x0
+031b: 00                       db 0x0
+031c: 00                       db 0x0
+031d: 00                       db 0x0
+031e: 00                       db 0x0
+031f: 00                       db 0x0
+
+RESULT 1999999000000

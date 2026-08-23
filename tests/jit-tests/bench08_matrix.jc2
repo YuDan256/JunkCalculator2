@@ -1,0 +1,13 @@
+// JIT benchmark: matrix multiply inside a loop (native callout path)
+f(n) = {
+    A = [1.0, 2.0; 3.0, 4.0]
+    s = 0.0
+    i = 0
+    while (i < n) {
+        B = A * A
+        s += B[0, 0]
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(f(150000)))

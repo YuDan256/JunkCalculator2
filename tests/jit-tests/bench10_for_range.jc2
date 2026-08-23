@@ -1,0 +1,9 @@
+// JIT benchmark: for-in over range() (iterator protocol)
+f(n) = {
+    s = 0
+    for (i in range(n)) {
+        s += i
+    }
+    s
+}
+println("RESULT " + str(f(10000000)))

@@ -1,0 +1,14 @@
+// JIT benchmark: one callsite dispatches between two functions
+f(x) = x + 1
+g2(x) = x * 2
+h(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        fn = if (i % 2 == 0) { f } else { g2 }
+        s += fn(i)
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(h(1000000)))

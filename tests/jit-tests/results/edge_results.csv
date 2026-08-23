@@ -1,0 +1,8 @@
+"Edge","ExitInt","ExitJit","StdoutEq","Pass"
+"edge01_type_switch.jc2","0","0","True","True"
+"edge02_int64_overflow.jc2","0","0","True","True"
+"edge03_exception_loop.jc2","0","0","True","True"
+"edge04_recursion.jc2","0","0","True","True"
+"edge05_closure_state.jc2","0","0","True","True"
+"edge06_complex_loop.jc2","0","0","True","True"
+"edge07_fstring_loop.jc2","0","0","True","True"

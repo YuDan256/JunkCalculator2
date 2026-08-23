@@ -1,0 +1,12 @@
+### p1_nojit_basic | exit=0
+false
+### p2_jit_hotloop | exit=0
+false
+### p3_jit_hotfunc_calls | exit=0
+false
+### p4_typefb_hotloop | exit=0
+@[0, 0, 1, 8, 145, 1, 0, 0]
+### p5_typefb_hotfunc | exit=0
+@[145, 0]
+### p6_typefb_poly | exit=0
+@[1, 0]

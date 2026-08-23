@@ -227,6 +227,9 @@ namespace jc {
                     stmts.push_back(std::move(expr));
                 }
                 
+                if (!isAtEnd() && check(TokenType::ERROR)) {
+                    advance();  // 触发 "Lexer Error"（如 Unexpected character）
+                }
                 if (!isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
                     throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
                 }

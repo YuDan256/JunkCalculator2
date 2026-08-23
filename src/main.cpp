@@ -125,10 +125,19 @@ bool g_showNone = false;
 bool g_silentRepl = false;
 bool g_enableJit = false;
 
+// ★ 消费编译器/VM 指令（行首 # 开头）。注册表：'!' 是 Shebang，no-op。
+static void processDirectives(const std::vector<jc::Directive>& directives) {
+    for (const auto& d : directives) {
+        if (d.name == "!") continue;  // Shebang，no-op
+        throw std::runtime_error("Compile Error: Unknown directive '#" + d.name + "'.");
+    }
+}
+
 // ★ 执行一段任意多行/单行代码的统一接口
 jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool isFile = false) {
     jc::Lexer lexer(code, sourceFile);                       // ★
     auto tokens = lexer.tokenize();
+    processDirectives(lexer.directives);
     jc::Parser parser(tokens, sourceFile);                   // ★
     auto ast = parser.parse();
     
@@ -594,6 +603,7 @@ int main(int argc, char* argv[]) {
         try {
             jc::Lexer lexer(code, resolvedPath);
             auto tokens = lexer.tokenize();
+            processDirectives(lexer.directives);
             jc::Parser parser(tokens, resolvedPath);
             auto ast = parser.parse();
             

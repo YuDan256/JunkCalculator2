@@ -7,6 +7,12 @@
 
 namespace jc {
 
+    struct Directive {
+        std::string name;  // 指令名（如 "!" 或 "pragma"）
+        std::string args;  // 指令名后的原始内容（到行尾）
+        int line = 0;
+    };
+
     class Lexer {
     private:
         std::string source;         // 要解析的原始字符串
@@ -47,6 +53,8 @@ namespace jc {
         void emitError(const std::string& msg);
 
     public:
+        std::vector<Directive> directives;  // 收集到的编译器/VM 指令（行首 # 开头）
+
         explicit Lexer(std::string source, std::string sourceFile = "");
 
         // 启动词法分析的主入口

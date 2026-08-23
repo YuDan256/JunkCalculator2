@@ -140,6 +140,39 @@ namespace jc {
         case ':': addToken(TokenType::COLON); break;       // ★
         case '@': addToken(TokenType::AT); break;          // ★
         case '$': addToken(TokenType::DOLLAR); break;      // ★
+        case '#': {
+            // 只认行首的 #（前面只有空白），用于编译器/VM 指令和 Shebang
+            bool atLineStart = true;
+            for (int i = start - 1; i >= 0; --i) {
+                char prev = source[i];
+                if (prev == '\n') break;
+                if (prev != ' ' && prev != '\t' && prev != '\r') { atLineStart = false; break; }
+            }
+            if (!atLineStart) {
+                emitError("Unexpected character '#'.");
+                while (!isAtEnd() && peek() != '\n') advance();
+                break;
+            }
+            std::string directiveName;
+            if (peek() == '!') {
+                advance();
+                directiveName = "!";
+            } else if (utf8::isIdentifierStart(static_cast<unsigned char>(peek()))) {
+                int nameStart = current;
+                while (utf8::isIdentifierPart(static_cast<unsigned char>(peek()))) advance();
+                directiveName = source.substr(nameStart, current - nameStart);
+            } else {
+                emitError("Unexpected character '#'.");
+                while (!isAtEnd() && peek() != '\n') advance();
+                break;
+            }
+            std::string args;
+            while (!isAtEnd() && peek() != '\n') {
+                args += advance();
+            }
+            directives.push_back({directiveName, args, line});
+            break;
+        }
         case '.':
             if (match('.') && match('.')) {
                 addToken(TokenType::ELLIPSIS);

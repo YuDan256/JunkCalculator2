@@ -2124,86 +2124,17 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value(BigInt(static_cast<int64_t>(h)));
         }, {"x"});
 
-    reg("clone", { 1 }, [](const std::vector<Value>& args) -> Value {
-        std::map<const void*, Value> visited;
-        std::function<Value(const Value&)> deepCopy = [&](const Value& v) -> Value {
-            if (v.isObjType(ObjType::LIST)) {
-                auto l = static_cast<ObjList*>(v.asObj());
-                if (visited.count(l)) return visited[l];
-                ObjList* newList = GcHeap::get().allocate<ObjList>();
-                GcObjGuard guard(newList);
-                Value newVal(newList);
-                visited[l] = newVal;
-                for (const auto& e : l->vec) {
-                    newList->vec.push_back(deepCopy(e));
-                }
-                return newVal;
-            }
-            if (v.isObjType(ObjType::DICT)) {
-                auto d = static_cast<ObjDict*>(v.asObj());
-                if (visited.count(d)) return visited[d];
-                ObjDict* newDict = GcHeap::get().allocate<ObjDict>();
-                GcObjGuard guard(newDict);
-                Value newVal(newDict);
-                visited[d] = newVal;
-                for (const auto& [k, val] : d->elements) {
-                    Value newK = deepCopy(k);
-                    Value newV = deepCopy(val);
-                    newDict->keyMap[newK] = newDict->elements.size();
-                    newDict->elements.push_back({newK, newV});
-                }
-                return newVal;
-            }
-            if (v.isObjType(ObjType::SET)) {
-                auto s = static_cast<ObjSet*>(v.asObj());
-                if (visited.count(s)) return visited[s];
-                ObjSet* newSet = GcHeap::get().allocate<ObjSet>();
-                GcObjGuard guard(newSet);
-                Value newVal(newSet);
-                visited[s] = newVal;
-                for (const auto& val : s->elements) {
-                    Value newV = deepCopy(val);
-                    newSet->keys.insert(newV);
-                    newSet->elements.push_back(newV);
-                }
-                return newVal;
-            }
-            if (v.isInstance()) {
-                auto inst = v.asInstance();
-                if (visited.count(inst)) return visited[inst];
-                ObjInstance* newInst = GcHeap::get().allocate<ObjInstance>();
-                GcObjGuard guard(newInst);
-                newInst->classDef = inst->classDef;
-                newInst->nativeData = inst->nativeData;
-                Value newVal(newInst);
-                visited[inst] = newVal;
-                for (const auto& [k, prop] : inst->properties) {
-                    newInst->properties[k] = {deepCopy(prop.val), prop.is_const, prop.is_local};
-                }
-                return newVal;
-            }
-            if (v.isObjType(ObjType::NAMESPACE)) {
-                auto ns = static_cast<ObjNamespace*>(v.asObj());
-                if (visited.count(ns)) return visited[ns];
-                ObjNamespace* newNs = GcHeap::get().allocate<ObjNamespace>();
-                GcObjGuard guard(newNs);
-                newNs->name = ns->name;
-                Value newVal(newNs);
-                visited[ns] = newVal;
-                for (const auto& [k, field] : ns->fields) {
-                    auto uv = GcHeap::get().allocate<ObjUpVal>();
-                    uv->closed = deepCopy(*(field.upval->location));
-                    uv->location = &uv->closed;
-                    newNs->fields[k] = { uv, field.isConst };
-                }
-                return newVal;
-            }
-            return v;
+    reg("copy", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
+        // freeze 三态：none = 保留原冻结状态（默认），true = 强制冻结，false = 强制不冻结
+        int freezeMode = 0; // 0 = none, 1 = freeze, 2 = unfreeze
+        if (args.size() >= 2 && args[1].isBool()) {
+            freezeMode = args[1].truthy() ? 1 : 2;
+        }
+        auto setFrozen = [&](bool& frozen, bool srcFrozen) {
+            if (freezeMode == 1) frozen = true;
+            else if (freezeMode == 2) frozen = false;
+            else frozen = srcFrozen;
         };
-        return deepCopy(args[0]);
-        }, {"obj"});
-
-    reg("copy", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::map<const void*, Value> visited;
         std::function<Value(const Value&)> deepCopyExact = [&](const Value& v) -> Value {
             if (v.isObjType(ObjType::LIST)) {
@@ -2216,8 +2147,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 for (const auto& e : l->vec) {
                     newList->vec.push_back(deepCopyExact(e));
                 }
-                newList->is_frozen = l->is_frozen;
-                newList->is_hashable_cached = l->is_hashable_cached;
+                setFrozen(newList->is_frozen, l->is_frozen);
                 return newVal;
             }
             if (v.isObjType(ObjType::DICT)) {
@@ -2233,8 +2163,7 @@ void BuiltinRegistry::registerSystemUtils() {
                     newDict->keyMap[newK] = newDict->elements.size();
                     newDict->elements.push_back({newK, newV});
                 }
-                newDict->is_frozen = d->is_frozen;
-                newDict->is_hashable_cached = d->is_hashable_cached;
+                setFrozen(newDict->is_frozen, d->is_frozen);
                 return newVal;
             }
             if (v.isObjType(ObjType::SET)) {
@@ -2249,8 +2178,7 @@ void BuiltinRegistry::registerSystemUtils() {
                     newSet->keys.insert(newV);
                     newSet->elements.push_back(newV);
                 }
-                newSet->is_frozen = s->is_frozen;
-                newSet->is_hashable_cached = s->is_hashable_cached;
+                setFrozen(newSet->is_frozen, s->is_frozen);
                 return newVal;
             }
             if (v.isInstance()) {
@@ -2265,8 +2193,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 for (const auto& [k, prop] : inst->properties) {
                     newInst->properties[k] = {deepCopyExact(prop.val), prop.is_const, prop.is_local};
                 }
-                newInst->is_frozen = inst->is_frozen;
-                newInst->is_hashable_cached = inst->is_hashable_cached;
+                setFrozen(newInst->is_frozen, inst->is_frozen);
                 return newVal;
             }
             if (v.isObjType(ObjType::NAMESPACE)) {
@@ -2283,101 +2210,13 @@ void BuiltinRegistry::registerSystemUtils() {
                     uv->location = &uv->closed;
                     newNs->fields[k] = { uv, field.isConst };
                 }
-                newNs->is_frozen = ns->is_frozen;
+                setFrozen(newNs->is_frozen, ns->is_frozen);
                 return newVal;
             }
             return v;
         };
         return deepCopyExact(args[0]);
-        }, {"obj"});
-
-    reg("val", { 1 }, [](const std::vector<Value>& args) -> Value {
-        std::map<const void*, Value> visited;
-        std::function<Value(const Value&)> deepCopyAndFreeze = [&](const Value& v) -> Value {
-            if (v.isObjType(ObjType::LIST)) {
-                auto l = static_cast<ObjList*>(v.asObj());
-                if (visited.count(l)) return visited[l];
-                ObjList* newList = GcHeap::get().allocate<ObjList>();
-                GcObjGuard guard(newList);
-                Value newVal(newList);
-                visited[l] = newVal;
-                for (const auto& e : l->vec) {
-                    newList->vec.push_back(deepCopyAndFreeze(e));
-                }
-                newList->is_frozen = true;
-                newList->is_hashable_cached = true;
-                return newVal;
-            }
-            if (v.isObjType(ObjType::DICT)) {
-                auto d = static_cast<ObjDict*>(v.asObj());
-                if (visited.count(d)) return visited[d];
-                ObjDict* newDict = GcHeap::get().allocate<ObjDict>();
-                GcObjGuard guard(newDict);
-                Value newVal(newDict);
-                visited[d] = newVal;
-                for (const auto& [k, val] : d->elements) {
-                    Value newK = deepCopyAndFreeze(k);
-                    Value newV = deepCopyAndFreeze(val);
-                    newDict->keyMap[newK] = newDict->elements.size();
-                    newDict->elements.push_back({newK, newV});
-                }
-                newDict->is_frozen = true;
-                newDict->is_hashable_cached = true;
-                return newVal;
-            }
-            if (v.isObjType(ObjType::SET)) {
-                auto s = static_cast<ObjSet*>(v.asObj());
-                if (visited.count(s)) return visited[s];
-                ObjSet* newSet = GcHeap::get().allocate<ObjSet>();
-                GcObjGuard guard(newSet);
-                Value newVal(newSet);
-                visited[s] = newVal;
-                for (const auto& val : s->elements) {
-                    Value newV = deepCopyAndFreeze(val);
-                    newSet->keys.insert(newV);
-                    newSet->elements.push_back(newV);
-                }
-                newSet->is_frozen = true;
-                newSet->is_hashable_cached = true;
-                return newVal;
-            }
-            if (v.isInstance()) {
-                auto inst = v.asInstance();
-                if (visited.count(inst)) return visited[inst];
-                ObjInstance* newInst = GcHeap::get().allocate<ObjInstance>();
-                GcObjGuard guard(newInst);
-                newInst->classDef = inst->classDef;
-                newInst->nativeData = inst->nativeData;
-                Value newVal(newInst);
-                visited[inst] = newVal;
-                for (const auto& [k, prop] : inst->properties) {
-                    newInst->properties[k] = {deepCopyAndFreeze(prop.val), prop.is_const, prop.is_local};
-                }
-                newInst->is_frozen = true;
-                newInst->is_hashable_cached = true;
-                return newVal;
-            }
-            if (v.isObjType(ObjType::NAMESPACE)) {
-                auto ns = static_cast<ObjNamespace*>(v.asObj());
-                if (visited.count(ns)) return visited[ns];
-                ObjNamespace* newNs = GcHeap::get().allocate<ObjNamespace>();
-                GcObjGuard guard(newNs);
-                newNs->name = ns->name;
-                Value newVal(newNs);
-                visited[ns] = newVal;
-                for (const auto& [k, field] : ns->fields) {
-                    auto uv = GcHeap::get().allocate<ObjUpVal>();
-                    uv->closed = deepCopyAndFreeze(*(field.upval->location));
-                    uv->location = &uv->closed;
-                    newNs->fields[k] = { uv, field.isConst };
-                }
-                newNs->is_frozen = true;
-                return newVal;
-            }
-            return v;
-        };
-        return deepCopyAndFreeze(args[0]);
-        }, {"obj"});
+        }, {"obj", "freeze"});
 
     regModule(sys_ns, "symconfig", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {

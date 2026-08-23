@@ -854,28 +854,27 @@ public:
                         bool noThrow = (c & 0x80) != 0;
                         int dims = c & 0x7F;
                         auto fs = captureFrameState(currentIp);
-                        // 值 callout：直接传 obj 和索引的值，避免读 stale 的物理寄存器（同 IS_UNINIT 修复）
-                        HIRNode* objVal = getBoxedRKNode(b);
-                        HIRNode* a0Val = (dims > 0) ? getBoxedRKNode(b + 1) : builder_.createNoneConstant();
-                        HIRNode* a1Val = (dims > 1) ? getBoxedRKNode(b + 2) : builder_.createNoneConstant();
                         auto dimsNode = builder_.createInt32Constant(dims);
                         auto noThrowNode = builder_.createInt32Constant(noThrow ? 1 : 0);
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_get), JITType::TaggedValue, 5, {objVal, a0Val, a1Val, dimsNode, noThrowNode}, fs);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_get), JITType::TaggedValue, 2, {dimsNode, noThrowNode}, fs);
+                        callout->addInput(getBoxedRKNode(b)); // obj
+                        for (int i = 0; i < dims; ++i) {
+                            callout->addInput(getBoxedRKNode(b + 1 + i));
+                        }
                         setLocalSync(a, callout);
                         break;
                     }
                     case OpCode::INDEX_SET: {
                         int dims = c;
                         auto fs = captureFrameState(currentIp);
-                        // 值 callout：直接传 obj、索引、val 的值，避免读 stale 的物理寄存器。
-                        // copy-on-write 产生的新矩阵通过返回值 + setLocalSync 回传（callout 内部不再写回物理寄存器）。
-                        HIRNode* objVal = getBoxedRKNode(a);
-                        HIRNode* a0Val = (dims > 0) ? getBoxedRKNode(a + 1) : builder_.createNoneConstant();
-                        HIRNode* a1Val = (dims > 1) ? getBoxedRKNode(a + 2) : builder_.createNoneConstant();
-                        HIRNode* valVal = getBoxedRKNode(a + c + 1);
                         auto dimsNode = builder_.createInt32Constant(dims);
                         auto objRegNode = builder_.createInt32Constant(registerOffset_ + a);
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_set), JITType::TaggedValue, 6, {objVal, a0Val, a1Val, valVal, dimsNode, objRegNode}, fs);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_index_set), JITType::TaggedValue, 2, {dimsNode, objRegNode}, fs);
+                        callout->addInput(getBoxedRKNode(a)); // obj
+                        for (int i = 0; i < dims; ++i) {
+                            callout->addInput(getBoxedRKNode(a + 1 + i));
+                        }
+                        callout->addInput(getBoxedRKNode(a + c + 1)); // val
                         setLocalSync(a, callout);
                         break;
                     }

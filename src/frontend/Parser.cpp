@@ -916,7 +916,7 @@ namespace jc {
                 if (check(TokenType::COLON)) indices.push_back(parseSliceArg());
                 else indices.push_back(parseSliceArg());
 
-                if (match({ TokenType::COMMA })) {
+                while (match({ TokenType::COMMA })) {
                     while (match({ TokenType::NEWLINE })) {}
                     if (check(TokenType::RBRACKET)) throw std::runtime_error("Syntax Error: Missing index expression after comma.");
                     indices.push_back(parseSliceArg());

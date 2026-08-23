@@ -10172,16 +10172,17 @@ uint64_t jc2_jit_match_type(uint64_t b_bits, uint64_t c_bits) {
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t dims, uint32_t noThrow) {
+uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
 
-    Value obj = Value::fromRawBits(obj_bits);
+    Value obj = Value::fromRawBits(values[0]);
     std::vector<Value> args;
     args.reserve(dims);
-    if (dims > 0) args.push_back(Value::fromRawBits(a0));
-    if (dims > 1) args.push_back(Value::fromRawBits(a1));
+    for (uint32_t i = 0; i < dims; ++i) {
+        args.push_back(Value::fromRawBits(values[1 + i]));
+    }
 
     Value result;
 
@@ -10508,19 +10509,20 @@ uint64_t jc2_jit_index_get(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint32_t
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_index_set(uint64_t obj_bits, uint64_t a0, uint64_t a1, uint64_t val_bits, uint32_t dims, uint32_t objReg) {
+uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     Value* regs = vm->getRegisters();
     int base = frame->registerBase;
 
-    Value obj = Value::fromRawBits(obj_bits);
-    Value val = Value::fromRawBits(val_bits);
+    Value obj = Value::fromRawBits(values[0]);
+    Value val = Value::fromRawBits(values[dims + 1]);
     std::vector<Value> args;
     args.reserve(dims);
-    if (dims > 0) args.push_back(Value::fromRawBits(a0));
-    if (dims > 1) args.push_back(Value::fromRawBits(a1));
+    for (uint32_t i = 0; i < dims; ++i) {
+        args.push_back(Value::fromRawBits(values[1 + i]));
+    }
 
     if (obj.isInstance()) {
         auto inst = obj.asInstance();

@@ -1,4 +1,5 @@
 #include "Resolver.h"
+#include <set>
 
 namespace jc {
 
@@ -529,6 +530,37 @@ void Resolver::visitSequenceExpr(SequenceExpr* expr) {
 void Resolver::visitMatchExpr(MatchExpr* expr) {
     resolve(expr->subject.get());
     for (auto& b : expr->branches) {
+        if (b.patterns.size() > 1) {
+            auto collectVars = [](Pattern* p, std::set<std::string>& out, auto& self) -> void {
+                if (!p) return;
+                if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
+                    if (vp->name.lexeme != "_" && !vp->name.lexeme.empty()) out.insert(vp->name.lexeme);
+                } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
+                    if (rp->name.lexeme != "_" && !rp->name.lexeme.empty()) out.insert(rp->name.lexeme);
+                } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
+                    for (auto& e : lp->elements) self(e.get(), out, self);
+                    if (lp->rest) self(lp->rest.get(), out, self);
+                } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
+                    for (auto& row : mp->rows) for (auto& e : row) self(e.get(), out, self);
+                    if (mp->restRow) self(mp->restRow.get(), out, self);
+                } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+                    for (auto& e : dp->entries) self(e.second.get(), out, self);
+                    if (dp->rest) self(dp->rest.get(), out, self);
+                } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
+                    self(defp->inner.get(), out, self);
+                }
+            };
+            std::set<std::string> baseVars;
+            bool first = true;
+            for (auto& p : b.patterns) {
+                std::set<std::string> vars;
+                collectVars(p.get(), vars, collectVars);
+                if (first) { baseVars = std::move(vars); first = false; }
+                else if (vars != baseVars) {
+                    throw std::runtime_error("Compile Error: In a comma-separated (or) pattern, every alternative must bind the same set of variables.");
+                }
+            }
+        }
         beginScope();
         for (auto& p : b.patterns) resolvePattern(p.get(), false, ScopeModifier::Local, false);
         if (b.guard) resolve(b.guard.get());

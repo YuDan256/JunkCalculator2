@@ -3848,6 +3848,7 @@ void BuiltinRegistry::registerIntrospection() {
     reg("iscallable", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
         if (v.isFunctionClosure() || v.isClass() || v.isString()) return Value(true);
+        if (v.isType()) { if (static_cast<ObjTypeDef*>(v.asObj())->converter) return Value(true); }
         if (v.isInstance()) { if (helpers::hasDunder(v, "__call__")) return Value(true); }
         return Value(false);
     }, {"obj"});

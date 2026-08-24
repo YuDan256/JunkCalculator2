@@ -585,7 +585,7 @@ namespace jc {
         }
 
         static std::string computeName(const std::vector<std::variant<BuiltinType, ObjClass*>>& types) {
-            if (types.empty()) return "Never";
+            if (types.empty()) return "never";
             std::string res = "";
             for (size_t i = 0; i < types.size(); ++i) {
                 if (i > 0) res += " | ";

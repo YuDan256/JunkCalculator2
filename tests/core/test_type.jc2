@@ -24,7 +24,7 @@ test_type_algebra() = {
     assert(I == int, "Intersection should simplify to int")
     
     E = int & string
-    assert(str(E) == "<type 'Never'>", "Empty intersection should be Never")
+    assert(str(E) == "<type 'never'>", "Empty intersection should be never")
     
     class Point {}
     C = int | Point

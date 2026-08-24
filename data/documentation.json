@@ -2723,6 +2723,7 @@
       "    Membership:",
       "      __contains__(x)   Called by:  x in obj",
       "                        (If not defined, 'in' checks fields, methods, and __getattr__ by default)",
+      "      __subsets__(x)    Called by:  obj <: x   (subset / subclass test)",
       "",
       "    Indexing & Dynamic Attributes:",
       "      __getitem__(...dims)         Called by:  obj[i, j, ...]. Dims can be ints, strings, or slice objects.",
@@ -5722,6 +5723,11 @@
       "signature": "__contains__(val)",
       "desc": "Dunder method: Overloads the 'in' operator (val in self).",
       "examples": ["__contains__(v) = v in self.items"]
+    },
+    "__subsets__": {
+      "signature": "__subsets__(other)",
+      "desc": "Dunder method: Overloads the subset operator (<:). Called as self <: other; return a truthy value if self is a subset of other.",
+      "examples": ["__subsets__(o) = self.items <: o.items"]
     },
     "__getitem__": {
       "signature": "__getitem__(...dims)",

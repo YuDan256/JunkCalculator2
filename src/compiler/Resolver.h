@@ -112,7 +112,7 @@ private:
     ResolvedSym resolveName(const std::string& name);
     
     void hoistBlock(Block* block);
-    void resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false);
+    void resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool skipRedecl = false);
 };
 
 } // namespace jc

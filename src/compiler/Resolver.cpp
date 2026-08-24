@@ -562,7 +562,9 @@ void Resolver::visitMatchExpr(MatchExpr* expr) {
             }
         }
         beginScope();
-        for (auto& p : b.patterns) resolvePattern(p.get(), false, ScopeModifier::Local, false);
+        for (size_t i = 0; i < b.patterns.size(); ++i) {
+            resolvePattern(b.patterns[i].get(), false, ScopeModifier::Local, false, i > 0);
+        }
         if (b.guard) resolve(b.guard.get());
         resolve(b.body.get());
         endScope();
@@ -612,14 +614,14 @@ void Resolver::visitKeywordArgExpr(KeywordArgExpr* expr) {
     resolve(expr->value.get());
 }
 
-void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod, bool globalConst) {
+void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod, bool globalConst, bool skipRedecl) {
     if (!pat) return;
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
         if (vp->typeHint) resolve(vp->typeHint.get());
         if (vp->name.lexeme != "_") {
             ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             bool isConst = vp->isConst || globalConst;
-            if (mod != ScopeModifier::None || isConst) {
+            if ((mod != ScopeModifier::None || isConst) && !skipRedecl) {
                 checkExplicitDecl(vp, vp->name.lexeme);
             }
             VarScope scope = VarScope::Local;
@@ -636,7 +638,7 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
         if (rp->name.lexeme != "_") {
             ScopeModifier mod = rp->modifier != ScopeModifier::None ? rp->modifier : globalMod;
             bool isConst = rp->isConst || globalConst;
-            if (mod != ScopeModifier::None || isConst) {
+            if ((mod != ScopeModifier::None || isConst) && !skipRedecl) {
                 checkExplicitDecl(rp, rp->name.lexeme);
             }
             VarScope scope = VarScope::Local;
@@ -649,18 +651,18 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
             patternSymbols[pat] = resolveName(rp->name.lexeme);
         }
     } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
-        for (auto& e : lp->elements) resolvePattern(e.get(), isAssignment, globalMod, globalConst);
-        if (lp->rest) resolvePattern(lp->rest.get(), isAssignment, globalMod, globalConst);
+        for (auto& e : lp->elements) resolvePattern(e.get(), isAssignment, globalMod, globalConst, skipRedecl);
+        if (lp->rest) resolvePattern(lp->rest.get(), isAssignment, globalMod, globalConst, skipRedecl);
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
         for (auto& row : mp->rows) {
-            for (auto& e : row) resolvePattern(e.get(), isAssignment, globalMod, globalConst);
+            for (auto& e : row) resolvePattern(e.get(), isAssignment, globalMod, globalConst, skipRedecl);
         }
-        if (mp->restRow) resolvePattern(mp->restRow.get(), isAssignment, globalMod, globalConst);
+        if (mp->restRow) resolvePattern(mp->restRow.get(), isAssignment, globalMod, globalConst, skipRedecl);
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
-        for (auto& e : dp->entries) resolvePattern(e.second.get(), isAssignment, globalMod, globalConst);
-        if (dp->rest) resolvePattern(dp->rest.get(), isAssignment, globalMod, globalConst);
+        for (auto& e : dp->entries) resolvePattern(e.second.get(), isAssignment, globalMod, globalConst, skipRedecl);
+        if (dp->rest) resolvePattern(dp->rest.get(), isAssignment, globalMod, globalConst, skipRedecl);
     } else if (auto* defp = dynamic_cast<DefaultPattern*>(pat)) {
-        resolvePattern(defp->inner.get(), isAssignment, globalMod, globalConst);
+        resolvePattern(defp->inner.get(), isAssignment, globalMod, globalConst, skipRedecl);
         resolve(defp->defaultExpr.get());
     } else if (auto* ep = dynamic_cast<ExprPattern*>(pat)) {
         resolve(ep->expr.get());

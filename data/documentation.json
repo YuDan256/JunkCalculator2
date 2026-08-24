@@ -2820,7 +2820,7 @@
       "    In an or-pattern (comma-separated alternatives), every alternative must",
       "    bind the SAME set of variable names; otherwise it is a compile error.",
       "      [a, b], [c, d] => ...        // ✗ error: different variable sets (a,b vs c,d)",
-      "      x: int, x: string => ...      // ✗ error: 'x' redeclared in the same scope",
+      "      x: int, x: string => str(x)  // ✓ ok: same variable, matches int or string",
       "",
       "  2. Variable Binding & Dynamic Expression Assertions",
       "  ──────────────────────",

@@ -752,13 +752,13 @@ namespace jc {
 
     std::unique_ptr<Expr> Parser::as() {
         auto expr = call();
-        if (match({ TokenType::AS })) {
+        while (match({ TokenType::AS })) {
             Token asTok = previous();
             auto typeHint = std::shared_ptr<Expr>(call().release());
             std::string nameStr = "";
             if (auto* var = dynamic_cast<Variable*>(expr.get())) nameStr = var->name.lexeme;
             Token nameTok(TokenType::IDENTIFIER, nameStr, asTok.position, asTok.line);
-            return std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
+            expr = std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
         }
         return expr;
     }

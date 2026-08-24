@@ -1384,6 +1384,7 @@
       "        x as int == 1         ≡  (x as int) == 1",
       "        x as int | string     ≡  (x as int) | string",
       "      Union types need parentheses:  x as (int | string).",
+      "      Chained `as` is left-associative: x as int as string ≡ (x as int) as string.",
       "",
       "    Standalone Declarations Capture the Outer Variable, Then Assert:",
       "      local x: int   ≡  local x = x  +  assert x is int   (undefined outer → runtime error)",

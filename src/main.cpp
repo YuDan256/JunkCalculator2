@@ -1104,8 +1104,6 @@ int main(int argc, char* argv[]) {
                 } else if (result.isObjType(jc::ObjType::COMPLEX_MATRIX)) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_MAGENTA);
                     isTopLevelMatrix = true;
-                    typeColor = jc::col(jc::Ansi::BRIGHT_GREEN);
-                    isTopLevelMatrix = true;
                 } else if (result.isObjType(jc::ObjType::SYM_MATRIX)) {
                     typeColor = jc::col(jc::Ansi::WHITE);
                     isTopLevelMatrix = true;

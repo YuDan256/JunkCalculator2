@@ -45,7 +45,7 @@ namespace jc {
         DOLLAR,              // ★ 新增：$
 
         // --- 控制流关键字 ---     // ★ 新增
-        IF, ELSE, WHILE, FOR, IN, IS,
+        IF, ELSE, WHILE, FOR, IN, IS, AS,
         BREAK, CONTINUE,
         RETURN,
         LOCAL, REF, STATE,
@@ -174,6 +174,7 @@ namespace jc {
         case TokenType::FOR:           return "FOR";              // ★
         case TokenType::IN:            return "IN";
         case TokenType::IS:            return "IS";
+        case TokenType::AS:            return "AS";
         case TokenType::BREAK:         return "BREAK";            // ★
         case TokenType::CONTINUE:      return "CONTINUE";         // ★
         case TokenType::RETURN:        return "RETURN";           // ★
@@ -275,6 +276,7 @@ namespace jc {
         if (s == "FOR") return TokenType::FOR;
         if (s == "IN") return TokenType::IN;
         if (s == "IS") return TokenType::IS;
+        if (s == "AS") return TokenType::AS;
         if (s == "BREAK") return TokenType::BREAK;
         if (s == "CONTINUE") return TokenType::CONTINUE;
         if (s == "RETURN") return TokenType::RETURN;
@@ -343,6 +345,7 @@ namespace jc {
         if (s == "<=") return TokenType::LESS_EQUAL;
         if (s == "in") return TokenType::IN;
         if (s == "is") return TokenType::IS;
+        if (s == "as") return TokenType::AS;
         if (s == "...") return TokenType::ELLIPSIS;
         if (s == "$") return TokenType::DOLLAR;
         return TokenType::IDENTIFIER;

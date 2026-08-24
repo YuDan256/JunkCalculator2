@@ -640,24 +640,35 @@ namespace jc {
             }
         }
 
-        // ★ 裸类型断言表达式：x: int（求值 x + 断言类型，值 = x）
+        // ★ 裸类型注解（无 '='/声明）已无意义，报错；求值断言用 'as'
         if (typeHint) {
-            auto* var = dynamic_cast<Variable*>(expr.get());
-            Token nameTok = var ? var->name : Token(TokenType::IDENTIFIER, "<expr>", 0, 0);
-            return std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
+            throw std::runtime_error("Parser Error: Type annotation must be followed by '=' or a declaration. Use 'as' for a value assertion (e.g. 'x as int').");
         }
 
         return expr;
     }
 
-    std::unique_ptr<Expr> Parser::comparison() {
+    std::unique_ptr<Expr> Parser::asExpr() {
         auto expr = bitwiseOr();
+        if (match({ TokenType::AS })) {
+            Token asTok = previous();
+            auto typeHint = std::shared_ptr<Expr>(ternary().release());
+            std::string nameStr = "<expr>";
+            if (auto* var = dynamic_cast<Variable*>(expr.get())) nameStr = var->name.lexeme;
+            Token nameTok(TokenType::IDENTIFIER, nameStr, asTok.position, asTok.line);
+            return std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
+        }
+        return expr;
+    }
+
+    std::unique_ptr<Expr> Parser::comparison() {
+        auto expr = asExpr();
         if (match({ TokenType::EQUAL, TokenType::BANG_EQUAL,
                     TokenType::LESS, TokenType::LESS_EQUAL,
                     TokenType::GREATER, TokenType::GREATER_EQUAL,
                     TokenType::IN, TokenType::IS })) {
             Token op = previous();
-            auto right = bitwiseOr();
+            auto right = asExpr();
             
             if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                 check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
@@ -679,7 +690,7 @@ namespace jc {
                                TokenType::GREATER, TokenType::GREATER_EQUAL,
                                TokenType::IN, TokenType::IS })) {
                     Token nextOp = previous();
-                    auto nextRight = bitwiseOr();
+                    auto nextRight = asExpr();
                     
                     if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                         check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||

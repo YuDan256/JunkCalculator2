@@ -203,7 +203,7 @@
         },
         "keywords": {
             "patterns": [
-                { "name": "keyword.control.jc2", "match": "\\b(if|else|while|for|in|is|break|continue|return|switch|case|default|throw|try|catch|match|defer)\\b" },
+                { "name": "keyword.control.jc2", "match": "\\b(if|else|while|for|in|is|as|break|continue|return|switch|case|default|throw|try|catch|match|defer)\\b" },
                 { "name": "keyword.declaration.jc2", "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum|static)\\b" }
             ]
         },

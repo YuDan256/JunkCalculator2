@@ -24,6 +24,7 @@ namespace jc {
         {"delete",   TokenType::DELETE},
         {"in",       TokenType::IN},
         {"is",       TokenType::IS},
+        {"as",       TokenType::AS},
         {"throw",    TokenType::THROW},        // ★
         {"try",      TokenType::TRY},          // ★
         {"catch",    TokenType::CATCH},         // ★

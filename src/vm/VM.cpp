@@ -1495,7 +1495,7 @@ void VM::assertTypeMatches(const Value& val, const Value& typeObj, AssertContext
     bool isReturn = false;
     if (ctx == AssertContext::Param) subject = "Parameter '" + name + "'";
     else if (ctx == AssertContext::Return) { subject = "Function '" + name + "'"; isReturn = true; }
-    else subject = "Variable '" + name + "'";
+    else subject = name.empty() ? std::string("Expression") : "Variable '" + name + "'";
 
     if (typeObj.isClass()) {
         ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());

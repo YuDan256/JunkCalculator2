@@ -653,7 +653,7 @@ namespace jc {
         if (match({ TokenType::AS })) {
             Token asTok = previous();
             auto typeHint = std::shared_ptr<Expr>(ternary().release());
-            std::string nameStr = "<expr>";
+            std::string nameStr = "";
             if (auto* var = dynamic_cast<Variable*>(expr.get())) nameStr = var->name.lexeme;
             Token nameTok(TokenType::IDENTIFIER, nameStr, asTok.position, asTok.line);
             return std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));

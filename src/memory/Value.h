@@ -552,9 +552,22 @@ namespace jc {
     struct ObjTypeDef : public Obj {
         std::vector<std::variant<BuiltinType, ObjClass*>> types;
         mutable std::string cached_name;
+        std::string identity_key;  // ★ interning 键：按指针/枚举值，区分同名类
         ObjTypeDef() { type = ObjType::TYPE_DEF; }
         ~ObjTypeDef() override {
-            if (!cached_name.empty()) g_internedTypes.erase(cached_name);
+            if (!identity_key.empty()) g_internedTypes.erase(identity_key);
+        }
+
+        static std::string computeIdentityKey(const std::vector<std::variant<BuiltinType, ObjClass*>>& types) {
+            std::string res = "";
+            for (const auto& t : types) {
+                if (std::holds_alternative<BuiltinType>(t)) {
+                    res += "b:" + std::to_string(static_cast<int>(std::get<BuiltinType>(t))) + ";";
+                } else {
+                    res += "c:" + std::to_string(reinterpret_cast<uintptr_t>(std::get<ObjClass*>(t))) + ";";
+                }
+            }
+            return res;
         }
         
         void normalize() {
@@ -630,16 +643,17 @@ namespace jc {
         });
         types.erase(std::unique(types.begin(), types.end()), types.end());
         
-        std::string res = ObjTypeDef::computeName(types);
-        auto it = g_internedTypes.find(res);
+        std::string key = ObjTypeDef::computeIdentityKey(types);
+        auto it = g_internedTypes.find(key);
         if (it != g_internedTypes.end()) {
             return it->second;
         }
         
         ObjTypeDef* td = GcHeap::get().allocate<ObjTypeDef>();
         td->types = std::move(types);
-        td->cached_name = res;
-        g_internedTypes[res] = td;
+        td->identity_key = key;
+        td->cached_name = ObjTypeDef::computeName(td->types);
+        g_internedTypes[key] = td;
         return td;
     }
 
@@ -2079,8 +2093,6 @@ namespace jc {
         if (lhs.isUninit() || rhs.isUninit()) return false;
 
         // 同类型快速通道
-        if (lhs.isType() && rhs.isString()) return static_cast<ObjTypeDef*>(lhs.asObj())->name() == rhs.asString();
-        if (rhs.isType() && lhs.isString()) return static_cast<ObjTypeDef*>(rhs.asObj())->name() == lhs.asString();
         if (lhs.isType() && rhs.isClass()) {
             auto td = static_cast<ObjTypeDef*>(lhs.asObj());
             return td->types.size() == 1 && std::holds_alternative<ObjClass*>(td->types[0]) && std::get<ObjClass*>(td->types[0]) == static_cast<ObjClass*>(rhs.asObj());
@@ -2903,7 +2915,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             return seed;
         }
         case ObjType::SYMBOLIC: return sipHash24String(static_cast<ObjSym*>(obj)->sym.toString());
-        case ObjType::TYPE_DEF: return sipHash24String(static_cast<ObjTypeDef*>(obj)->name());
+        case ObjType::TYPE_DEF: { const void* p = obj; return static_cast<size_t>(sipHash24(&p, sizeof(p))); }
         case ObjType::SLICE: {
             auto slice = static_cast<ObjSlice*>(obj);
             size_t h1 = sipHash24Double(static_cast<double>(slice->start));

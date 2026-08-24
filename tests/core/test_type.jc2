@@ -4,9 +4,9 @@ test_type_reflection() = {
     assert(type("hello") == string, "type('hello') should be string")
     assert(type(int) == type, "type(int) should be type")
     
-    // 向后兼容性：类型对象与字符串的直接比较
-    assert(type(5) == "int", "type(5) == 'int' should work")
-    assert("int" == type(5), "'int' == type(5) should work")
+    // 类型查询用 in 运算符（type == string 已废除）
+    assert(5 in int, "5 in int should work")
+    assert(!("hello" in int), "'hello' should not be in int")
     
     class Point {}
     p = Point()

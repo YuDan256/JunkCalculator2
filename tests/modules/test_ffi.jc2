@@ -25,7 +25,7 @@ test_ffi_real_call() = {
         // Test 1: Math function (f64)
         // double pow(double x, double y)
         c_pow = lib.bind("pow", "f64", "f64", "f64")
-        assert(type(c_pow) == "FFIFunction", "bind should return FFIFunction")
+        assert(isinstance(c_pow, ffi.FFIFunction), "bind should return FFIFunction")
         
         res = c_pow(2.0, 10.0)
         assert(res == 1024.0, "FFI pow(2.0, 10.0) failed")

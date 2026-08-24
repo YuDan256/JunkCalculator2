@@ -11,10 +11,10 @@ test_window_basic() = {
         win.setCursorPos(50, 50)
         
         ev = win.pollEvent()
-        assert(ev == none || type(ev) == "dict", "pollEvent should return none or dict")
+        assert(ev == none || ev in dict, "pollEvent should return none or dict")
         
         key_state = win.isKeyDown("A")
-        assert(type(key_state) == "bool", "isKeyDown should return bool")
+        assert(key_state in bool, "isKeyDown should return bool")
         
     } catch (e) {
         // 兼容非 Win32 平台：如果抛出平台不支持的错误，则视为测试通过

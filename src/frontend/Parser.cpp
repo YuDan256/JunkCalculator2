@@ -1889,12 +1889,8 @@ namespace jc {
             auto varExpr2 = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, varName, line));
             auto varExpr3 = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, varName, line));
             
-            std::vector<std::unique_ptr<Expr>> typeArgs;
-            typeArgs.push_back(std::move(varExpr1));
-            auto typeCall = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "type", line), std::move(typeArgs));
-            
-            auto strLit = std::make_unique<Literal>("string", true);
-            auto cond = std::make_unique<Binary>(std::move(typeCall), Token(TokenType::EQUAL, "==", line), std::move(strLit));
+            auto strLit = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "string", line));
+            auto cond = std::make_unique<Binary>(std::move(varExpr1), Token(TokenType::IN, "in", line), std::move(strLit));
             
             auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr3), Token(TokenType::IDENTIFIER, "name", line));
             
@@ -1975,11 +1971,8 @@ namespace jc {
             auto varExpr2 = std::make_unique<Variable>(tmpParam);
             auto varExpr3 = std::make_unique<Variable>(tmpParam);
             
-            std::vector<std::unique_ptr<Expr>> typeArgs;
-            typeArgs.push_back(std::move(varExpr1));
-            auto typeCall = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "type", 0), std::move(typeArgs));
-            auto strLit = std::make_unique<Literal>("string", true);
-            auto cond = std::make_unique<Binary>(std::move(typeCall), Token(TokenType::EQUAL, "==", 0), std::move(strLit));
+            auto strLit = std::make_unique<Variable>(Token(TokenType::IDENTIFIER, "string", 0));
+            auto cond = std::make_unique<Binary>(std::move(varExpr1), Token(TokenType::IN, "in", 0), std::move(strLit));
             auto nameAccess = std::make_unique<DotAccess>(std::move(varExpr3), Token(TokenType::IDENTIFIER, "name", 0));
             auto ternary = std::make_unique<IfExpr>(std::move(cond), std::move(varExpr2), std::move(nameAccess));
             

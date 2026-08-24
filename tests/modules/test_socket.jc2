@@ -5,15 +5,15 @@ test_socket_server_client() = {
     
     // 1. 启动本地服务器
     srv = socket.server("127.0.0.1", port)
-    assert(type(srv) == "Socket", "Server should return a Socket instance")
+    assert(isinstance(srv, socket.Socket), "Server should return a Socket instance")
     
     // 2. 客户端连接
     cli = socket.connect("127.0.0.1", port)
-    assert(type(cli) == "Socket", "Client should return a Socket instance")
+    assert(isinstance(cli, socket.Socket), "Client should return a Socket instance")
     
     // 3. 服务器接受连接 (因为客户端已连接，这里不会阻塞)
     conn = srv.accept()
-    assert(type(conn) == "Socket", "Accept should return a Socket instance")
+    assert(isinstance(conn, socket.Socket), "Accept should return a Socket instance")
     
     // 4. 发送与接收数据
     sent_bytes = cli.send("hello socket")

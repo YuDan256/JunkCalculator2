@@ -1,0 +1,13 @@
+// JIT benchmark: dict lookup + string conversion (callout-heavy)
+d = {a: 1, b: 2, c: 3}
+h(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        s += d["a"]
+        t = str(i)
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(h(1000000)))

@@ -1,0 +1,12 @@
+Profiler enabled.
+[JIT] OSR Compilation successful for loop header IP: 2
+[JIT] Executing OSR machine code from IP: 2
+[JIT] OSR Deoptimized! Falling back to interpreter at IP: 4
+RESULT 1999999000000
+
+[96m=== Profiler Results ===[0m
+Function                           Calls          Insts      Total(ms)       Self(ms)
+-------------------------------------------------------------------------------------
+f                                      1        9677323        547.683        547.683
+<script>                               1             19        547.755          0.073
+-------------------------------------------------------------------------------------

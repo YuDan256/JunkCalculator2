@@ -1,0 +1,14 @@
+// Edge: loop variable changes int -> double mid-loop (deopt path)
+f(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        s += i
+        i += 1
+        if (i == 2500000) {
+            i = i + 0.5
+        }
+    }
+    s
+}
+println("RESULT " + str(f(5000000)))

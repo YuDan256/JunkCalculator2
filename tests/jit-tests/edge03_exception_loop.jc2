@@ -1,0 +1,18 @@
+// Edge: exceptions thrown periodically inside a hot loop
+f(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        try {
+            if (i % 100000 == 0) {
+                throw "boom"
+            }
+            s += i
+        } catch (e) {
+            s += 1
+        }
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(f(2000000)))

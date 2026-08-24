@@ -1,0 +1,20 @@
+// Edge: closure mutates captured upvalue from a hot loop
+mk() = {
+    x = 0
+    fn() = {
+        x += 1
+        x
+    }
+    fn
+}
+g = mk()
+h(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        s += g()
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(h(1000000)))

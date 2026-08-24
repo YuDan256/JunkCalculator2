@@ -1,0 +1,12 @@
+// JIT benchmark: monomorphic function callsite from a hot loop
+g(x) = x * x
+h(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        s += g(i)
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(h(2000000)))

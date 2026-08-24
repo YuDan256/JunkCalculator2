@@ -1,0 +1,11 @@
+// JIT benchmark: accumulator grows beyond int32 -> guard/deopt path
+f(n) = {
+    s = 0
+    i = 0
+    while (i < n) {
+        s += i
+        i += 1
+    }
+    s
+}
+println("RESULT " + str(f(10000000)))

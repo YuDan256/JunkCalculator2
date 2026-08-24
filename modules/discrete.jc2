@@ -7,7 +7,7 @@
 // │ 1. COMBINATORICS                                       │
 // └────────────────────────────────────────────────────────┘
 
-permutations(arr: any_type) -> list = {
+permutations(arr: any) -> list = {
     n = arr.len()
     if (n <= 1) return @[arr]
     res = @[]
@@ -24,7 +24,7 @@ permutations(arr: any_type) -> list = {
     return res
 }
 
-combinations(arr: any_type, k: int | double) -> list = {
+combinations(arr: any, k: int | double) -> list = {
     k = round(k)
     if (k == 0) return @[@[]]
     if (arr.len() < k) return @[]
@@ -48,7 +48,7 @@ combinations(arr: any_type, k: int | double) -> list = {
 // └────────────────────────────────────────────────────────┘
 
 class Prop {
-    init(tp: string, a: any_type, b: any_type) = {
+    init(tp: string, a: any, b: any) = {
         self.tp = tp
         self.a = a    
         self.b = b    
@@ -155,7 +155,7 @@ class Prop {
         return "(" + str(self.a) + opStr + str(self.b) + ")"
     }
 
-    __eq__(other: any_type) -> bool = {
+    __eq__(other: any) -> bool = {
         if (!other.isinstance(Prop)) return false
         if (self.tp != other.tp) return false
         if (self.tp == "var" || self.tp == "not") return self.a == other.a
@@ -170,7 +170,7 @@ Var(name: string) -> Prop = return Prop("var", name, "null")
 // └────────────────────────────────────────────────────────┘
 
 class Relation {
-    init(S: set, pairs: any_type = none) = {
+    init(S: set, pairs: any = none) = {
         self.S = S
         self.R = set()
         self._pt = "List"
@@ -182,11 +182,11 @@ class Relation {
         }
     }
 
-    _mp(a: any_type, b: any_type) -> any_type = return self._pt == "List" ? @[a, b] : [a, b]
+    _mp(a: any, b: any) -> any = return self._pt == "List" ? @[a, b] : [a, b]
 
     // ── Public Facing API (Safe CRUD) ──
 
-    addPair(a: any_type, b: any_type) = { 
+    addPair(a: any, b: any) = { 
         if (!(a in self.S) || !(b in self.S)) {
             throw f"Relation Error: Both elements '{a}' and '{b}' must exist in the base set S."
         }
@@ -194,7 +194,7 @@ class Relation {
         return self 
     }
 
-    removePair(a: any_type, b: any_type) = {
+    removePair(a: any, b: any) = {
         self.R.discard(self._mp(a, b))
         return self
     }
@@ -204,8 +204,8 @@ class Relation {
         return self
     }
     
-    hasPair(a: any_type, b: any_type) -> bool = return self._mp(a, b) in self.R
-    __call__(a: any_type, b: any_type) -> bool = return self.hasPair(a, b)
+    hasPair(a: any, b: any) -> bool = return self._mp(a, b) in self.R
+    __call__(a: any, b: any) -> bool = return self.hasPair(a, b)
 
     // ── Property Tests ──
     isReflexive() -> bool = {
@@ -323,7 +323,7 @@ class Relation {
     }
 
     // ── Dunder Methods ──
-    __contains__(pair: any_type) -> bool = return pair in self.R
+    __contains__(pair: any) -> bool = return pair in self.R
     __len__() -> int                = return self.R.len()
     __str__() -> string             = return f"Relation(|S|={self.S.len()}, |R|={self.R.len()})"
 }
@@ -340,12 +340,12 @@ class Graph {
     }
 
     // ── Construction & Erasure (CRUD API) ──
-    addVertex(v: any_type) = {
+    addVertex(v: any) = {
         if (!self.adj.hasKey(v)) self.adj[v] = @[]
         return self
     }
 
-    removeVertex(v: any_type) = {
+    removeVertex(v: any) = {
         if (!self.adj.hasKey(v)) return self
         self.adj.discard(v) 
         
@@ -365,7 +365,7 @@ class Graph {
         return self
     }
 
-    addEdge(u: any_type, v: any_type, w: any_type = 1) = {
+    addEdge(u: any, v: any, w: any = 1) = {
         self.addVertex(u); self.addVertex(v)
         
         self.adj[u].push(@[v, w])
@@ -374,7 +374,7 @@ class Graph {
         return self
     }
 
-    removeEdge(u: any_type, v: any_type) = {
+    removeEdge(u: any, v: any) = {
         removed = false
         if (self.adj.hasKey(u)) {
             new_u = @[]
@@ -404,24 +404,24 @@ class Graph {
     // ── Queries ──
     vertices() -> list           = return self.adj.keys().toList()
     edgeCount() -> int           = return self._ec
-    hasVertex(v: any_type) -> bool    = return self.adj.hasKey(v)
+    hasVertex(v: any) -> bool    = return self.adj.hasKey(v)
 
-    hasEdge(u: any_type, v: any_type) -> bool = {
+    hasEdge(u: any, v: any) -> bool = {
         if (!self.adj.hasKey(u)) return false
         for (e in self.adj[u]) { if (e[0] == v) return true }
         return false
     }
     
-    __call__(u: any_type, v: any_type) -> bool = return self.hasEdge(u, v)
+    __call__(u: any, v: any) -> bool = return self.hasEdge(u, v)
 
-    getWeight(u: any_type, v: any_type) -> any_type = {
+    getWeight(u: any, v: any) -> any = {
         if (self.adj.hasKey(u)) {
             for (e in self.adj[u]) { if (e[0] == v) return e[1] }
         }
         return none
     }
 
-    neighbors(v: any_type) -> list = {
+    neighbors(v: any) -> list = {
         if (!self.adj.hasKey(v)) return @[]
         return self.adj[v].map((e) => e[0])
     }
@@ -434,11 +434,11 @@ class Graph {
         return res
     }
 
-    outDegree(v: any_type) -> int = {
+    outDegree(v: any) -> int = {
         return self.adj.hasKey(v) ? self.adj[v].len() : 0
     }
 
-    inDegree(v: any_type) -> int = {
+    inDegree(v: any) -> int = {
         c = 0
         for (k in self.adj.keys()) {
             for (e in self.adj[k]) { if (e[0] == v) c += 1 }
@@ -447,7 +447,7 @@ class Graph {
     }
 
     // ── Traversals ──
-    bfs(start: any_type) -> list = {
+    bfs(start: any) -> list = {
         visited = set(start); q = @[start]; res = @[]
         while (q.len() > 0) {
             curr = q.shift(); res.push(curr)
@@ -460,9 +460,9 @@ class Graph {
         return res
     }
 
-    dfs(start: any_type) -> list = {
+    dfs(start: any) -> list = {
         visited = set(); res = @[]
-        _go(v: any_type) = {
+        _go(v: any) = {
             if (v in visited) return none
             visited.add(v); res.push(v)
             if (self.adj.hasKey(v)) {
@@ -474,7 +474,7 @@ class Graph {
     }
 
     // ── Path Algorithms ──
-    findPath(start: any_type, end: any_type) -> list = {
+    findPath(start: any, end: any) -> list = {
         if (start == end) return @[start]
         
         visited = set(start); q = @[@[start]]
@@ -491,7 +491,7 @@ class Graph {
             return @[]
         }
 
-        dijkstra(start: any_type) -> dict = {
+        dijkstra(start: any) -> dict = {
             vs = self.adj.keys().toList()
             dist = dict(); prev = dict()
             for (v in vs) dist[v] = none
@@ -520,7 +520,7 @@ class Graph {
             return {dist: dist, prev: prev}
         }
 
-        shortestPath(start: any_type, end: any_type) -> dict = {
+        shortestPath(start: any, end: any) -> dict = {
         r = self.dijkstra(start)
         if (r.dist[end].isnone()) return {path: @[], dist: none}
         
@@ -539,7 +539,7 @@ class Graph {
 
         if (self.directed) {
             color = dict(); for (v in vs) color[v] = 0
-            _visit(v: any_type) = {
+            _visit(v: any) = {
                 if (found[0]) return none
                 color[v] = 1
                 if (self.adj.hasKey(v)) {
@@ -553,7 +553,7 @@ class Graph {
             for (v in vs) { if (color[v] == 0) _visit(v) }
         } else {
             visited = set()
-            _visit(v: any_type, parent: any_type) = {
+            _visit(v: any, parent: any) = {
                 if (found[0]) return none
                 visited.add(v)
                 if (self.adj.hasKey(v)) {
@@ -617,7 +617,7 @@ class Graph {
         return comps
     }
 
-    __contains__(v: any_type) -> bool = return self.hasVertex(v)
+    __contains__(v: any) -> bool = return self.hasVertex(v)
     __len__() -> int             = return self.adj.keys().len()
     __str__() -> string          = return f"<Graph({self.directed ? 'directed' : 'undirected'}) V={len(self)} E={self._ec}>"
 }

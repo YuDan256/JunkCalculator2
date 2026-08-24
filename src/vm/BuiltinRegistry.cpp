@@ -4954,7 +4954,8 @@ void BuiltinRegistry::registerSystemShell() {
 
     regModule(sys_ns, "resetType", { 0 }, [](const std::vector<Value>&) -> Value {
         if (VM::activeVM) {
-            VM::activeVM->setGlobal("any_type", VM::activeVM->getBuiltinValue("any_type"));
+            VM::activeVM->setGlobal("any", VM::activeVM->getBuiltinValue("any"));
+            VM::activeVM->setGlobal("never", VM::activeVM->getBuiltinValue("never"));
             VM::activeVM->setGlobal("int", VM::activeVM->getBuiltinValue("int"));
             VM::activeVM->setGlobal("double", VM::activeVM->getBuiltinValue("double"));
             VM::activeVM->setGlobal("real", VM::activeVM->getBuiltinValue("real"));

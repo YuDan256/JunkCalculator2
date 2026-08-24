@@ -11,7 +11,7 @@ class Stack {
         self.data = @[]
     }
     
-    push(item: any_type) = {
+    push(item: any) = {
         self.data.push(item)
         return self
     }
@@ -39,7 +39,7 @@ class Queue {
         self.data = @[]
     }
     
-    enqueue(item: any_type) = {
+    enqueue(item: any) = {
         self.data.push(item)
         return self
     }
@@ -67,8 +67,8 @@ class Deque {
         self.data = @[]
     }
     
-    pushRight(item: any_type) = { self.data.push(item); return self }
-    pushLeft(item: any_type)  = { self.data.prepend(item); return self }
+    pushRight(item: any) = { self.data.push(item); return self }
+    pushLeft(item: any)  = { self.data.prepend(item); return self }
     
     popRight() = {
         if (self.isEmpty()) throw "IndexError: popRight from empty Deque"
@@ -94,15 +94,15 @@ class DefaultDict {
         self.factory = defaultFactory
     }
     
-    __getitem__(key: any_type) = {
+    __getitem__(key: any) = {
         if (!self.data.hasKey(key)) {
             self.data[key] = self.factory()
         }
         return self.data[key]
     }
     
-    __setitem__(key: any_type, val: any_type) = { self.data[key] = val }
-    __contains__(key: any_type) -> bool  = return self.data.hasKey(key)
+    __setitem__(key: any, val: any) = { self.data[key] = val }
+    __contains__(key: any) -> bool  = return self.data.hasKey(key)
     
     keys() -> list   = return self.data.keys()
     values() -> list = return self.data.values()
@@ -112,12 +112,12 @@ class DefaultDict {
 // ─── Counter (Frequency Hash Map) ─────────────────────────────
 
 class Counter {
-    init(iterable: any_type = none) = {
+    init(iterable: any = none) = {
         self.data = dict()
         if (iterable != none) self.update(iterable)
     }
     
-    update(iterable: any_type) = {
+    update(iterable: any) = {
         for (item in iterable) {
             if (self.data.hasKey(item)) { self.data[item] += 1 } 
             else { self.data[item] = 1 }
@@ -125,7 +125,7 @@ class Counter {
         return self
     }
     
-    get(key: any_type) -> int = {
+    get(key: any) -> int = {
         return self.data.hasKey(key) ? self.data[key] : 0
     }
     
@@ -147,7 +147,7 @@ class PriorityQueue {
         self.cmp = cmp   
     }
     
-    push(item: any_type) = {
+    push(item: any) = {
         self.data.push(item)
         self._siftUp(self.data.len() - 1)
         return self
@@ -213,7 +213,7 @@ class PriorityQueue {
 // ─── TreeNode & Binary Search Tree (BST) ──────────────────────
 
 class TreeNode {
-    init(val: any_type) = {
+    init(val: any) = {
         self.val = val
         self.left = none
         self.right = none
@@ -226,7 +226,7 @@ class BST {
         self._size = 0
     }
     
-    insert(val: any_type) = {
+    insert(val: any) = {
         if (self.root == none) {
             self.root = TreeNode(val)
             self._size += 1
@@ -236,7 +236,7 @@ class BST {
         return self
     }
     
-    _insertNode(node: TreeNode, val: any_type) = {
+    _insertNode(node: TreeNode, val: any) = {
         if (val < node.val) {
             if (node.left == none) { node.left = TreeNode(val); self._size += 1 } 
             else { self._insertNode(node.left, val) }
@@ -246,7 +246,7 @@ class BST {
         }
     }
     
-    contains(val: any_type) -> bool = {
+    contains(val: any) -> bool = {
         curr = self.root
         while (curr != none) {
             if (val == curr.val) return true
@@ -264,7 +264,7 @@ class BST {
         return result
     }
     
-    _inorderTraversal(node: any_type, res: list) = {
+    _inorderTraversal(node: any, res: list) = {
         if (node != none) {
             self._inorderTraversal(node.left, res)
             res.push(node.val)

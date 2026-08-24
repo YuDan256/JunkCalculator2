@@ -3116,7 +3116,8 @@ VM::VM() {
     auto makeType = [](BuiltinType bt) {
         return Value(internType({bt}));
     };
-    builtinValues["any_type"] = makeType(BuiltinType::ANY);
+    builtinValues["any"] = makeType(BuiltinType::ANY);
+    builtinValues["never"] = Value(internType({}));
     builtinValues["int"] = makeType(BuiltinType::INT);
     builtinValues["double"] = makeType(BuiltinType::FLOAT);
     builtinValues["real"] = Value(internType({BuiltinType::INT, BuiltinType::FLOAT, BuiltinType::FRACTION, BuiltinType::BOOL}));
@@ -10126,10 +10127,15 @@ Value VM::opIsSubset(Value a, Value b) {
             return callDunder(a, method, owner, {b});
         }
     }
-    // 2. 类型子集（集合子集 + ANY 特判 + class 子类）
-    if (a.isType() && b.isType()) {
-        auto ta = static_cast<ObjTypeDef*>(a.asObj());
-        auto tb = static_cast<ObjTypeDef*>(b.asObj());
+    // 2. 类型子集（Class 自动提升为 typedef，集合子集 + ANY 特判 + class 子类）
+    auto promoteToType = [](const Value& v) -> ObjTypeDef* {
+        if (v.isType()) return static_cast<ObjTypeDef*>(v.asObj());
+        if (v.isClass()) return internType({static_cast<ObjClass*>(v.asObj())});
+        return nullptr;
+    };
+    ObjTypeDef* ta = promoteToType(a);
+    ObjTypeDef* tb = promoteToType(b);
+    if (ta && tb) {
         for (const auto& t : ta->types) {
             bool covered = false;
             for (const auto& u : tb->types) {
@@ -10148,17 +10154,7 @@ Value VM::opIsSubset(Value a, Value b) {
         }
         return Value(true);
     }
-    // 3. 类子类：S <: R（S 是 R 的子类）
-    if (a.isClass() && b.isClass()) {
-        ObjClass* ca = static_cast<ObjClass*>(a.asObj());
-        ObjClass* cb = static_cast<ObjClass*>(b.asObj());
-        while (ca) {
-            if (ca == cb) return Value(true);
-            ca = ca->parent;
-        }
-        return Value(false);
-    }
-    // 4. 集合子集
+    // 3. 集合子集
     if (a.isObjType(ObjType::SET) && b.isObjType(ObjType::SET)) {
         auto sa = static_cast<ObjSet*>(a.asObj());
         auto sb = static_cast<ObjSet*>(b.asObj());

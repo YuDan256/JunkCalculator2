@@ -15,7 +15,7 @@ class HttpResponse {
         self.raw = raw           
     }
 
-    json() -> any_type = {
+    json() -> any = {
         import json
         return json.parse(self.body)
     }

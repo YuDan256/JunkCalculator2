@@ -122,6 +122,11 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
 
         if (callee.isType()) {
             ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
+            if (td->converter) {
+                Value res = td->converter(args);
+                VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                return res.as_bits;
+            }
             if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                 BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                 if (bt == BuiltinType::TYPE_DEF) {
@@ -158,12 +163,6 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                     Value res(internType(std::move(newTypes)));
                     VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
                     return res.as_bits;
-                } else {
-                    if (td->converter) {
-                        Value res = td->converter(args);
-                        VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
-                        return res.as_bits;
-                    }
                 }
             }
             throw std::runtime_error("TypeError: This type object is not callable.");
@@ -650,6 +649,12 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
 
     if (callee.isType()) {
         ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
+        if (td->converter) {
+            pendingCallRefs.clear();
+            registers[currentFrame->registerBase + dstReg] = 
+                callTypeConverter(td, argc - 2 * kwArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1]);
+            return;
+        }
         if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
             BuiltinType bt = std::get<BuiltinType>(td->types[0]);
             if (bt == BuiltinType::TYPE_DEF) {
@@ -686,13 +691,6 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 }
                 registers[currentFrame->registerBase + dstReg] = Value(internType(std::move(newTypes)));
                 return;
-            } else {
-                if (td->converter) {
-                    pendingCallRefs.clear();
-                    registers[currentFrame->registerBase + dstReg] = 
-                        callTypeConverter(td, argc - 2 * kwArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1]);
-                    return;
-                }
             }
         }
         throw std::runtime_error("TypeError: This type object is not callable.");
@@ -3334,6 +3332,38 @@ VM::VM() {
             sliceObj->end = end;
             sliceObj->step = step;
             return Value(sliceObj);
+        });
+
+        bind("matrix", {}, {"rows", "cols", "...elements"}, [](const std::vector<Value>& args) -> Value {
+            if (args.size() < 2)
+                throw std::runtime_error("Runtime Error: matrix(rows, cols [, ...]) expects at least 2 args.");
+            int r = static_cast<int>(std::round(args[0].asDouble()));
+            int c = static_cast<int>(std::round(args[1].asDouble()));
+            if (r <= 0 || c <= 0)
+                throw std::runtime_error("Runtime Error: matrix() dimensions must be positive.");
+            if (static_cast<int>(args.size()) == 2)
+                return Value(RealMatrix(r, c));
+            int total = r * c;
+            if (static_cast<int>(args.size()) - 2 != total)
+                throw std::runtime_error("Runtime Error: matrix() element count mismatch: "
+                    "expected " + std::to_string(total) + ", got " +
+                    std::to_string(args.size() - 2) + ".");
+            bool hasComplex = false;
+            for (int i = 2; i < static_cast<int>(args.size()); ++i) {
+                if (args[i].isComplex()) hasComplex = true;
+            }
+            if (hasComplex) {
+                std::vector<Complex> flat;
+                flat.reserve(total);
+                for (int i = 0; i < total; ++i)
+                    flat.push_back(args[i + 2].asComplex());
+                return Value(ComplexMatrix(r, c, flat));
+            }
+            std::vector<double> flat;
+            flat.reserve(total);
+            for (int i = 0; i < total; ++i)
+                flat.push_back(args[i + 2].asDouble());
+            return Value(RealMatrix(r, c, flat));
         });
     }
 
@@ -9006,6 +9036,9 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                             
                             if (gVal.isType()) {
                                 ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->converter) {
+                                    return td->converter(fullArgs);
+                                }
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
@@ -9038,10 +9071,6 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         }
                                         resTd->normalize();
                                         return Value(resTd);
-                                    } else {
-                                        if (td->converter) {
-                                            return td->converter(fullArgs);
-                                        }
                                     }
                                 }
                                 throw std::runtime_error("TypeError: This type object is not callable.");
@@ -9139,6 +9168,9 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                             
                             if (gVal.isType()) {
                                 ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->converter) {
+                                    return td->converter(fullArgs);
+                                }
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
@@ -9171,10 +9203,6 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         }
                                         resTd->normalize();
                                         return Value(resTd);
-                                    } else {
-                                        if (td->converter) {
-                                            return td->converter(fullArgs);
-                                        }
                                     }
                                 }
                                 throw std::runtime_error("TypeError: This type object is not callable.");
@@ -9625,6 +9653,9 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                             
                             if (gVal.isType()) {
                                 ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->converter) {
+                                    return td->converter(fullArgs);
+                                }
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
@@ -9657,10 +9688,6 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         }
                                         resTd->normalize();
                                         return Value(resTd);
-                                    } else {
-                                        if (td->converter) {
-                                            return td->converter(fullArgs);
-                                        }
                                     }
                                 }
                                 throw std::runtime_error("TypeError: This type object is not callable.");
@@ -9758,6 +9785,9 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                             
                             if (gVal.isType()) {
                                 ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
+                                if (td->converter) {
+                                    return td->converter(fullArgs);
+                                }
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
@@ -9790,10 +9820,6 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         }
                                         resTd->normalize();
                                         return Value(resTd);
-                                    } else {
-                                        if (td->converter) {
-                                            return td->converter(fullArgs);
-                                        }
                                     }
                                 }
                                 throw std::runtime_error("TypeError: This type object is not callable.");

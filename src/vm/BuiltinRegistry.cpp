@@ -448,48 +448,6 @@ void BuiltinRegistry::registerMath() {
     reg("pi", { 0 }, [](const std::vector<Value>&) -> Value { return Value(3.14159265358979323846); }, {});
     reg("e", { 0 }, [](const std::vector<Value>&) -> Value { return Value(2.71828182845904523536); }, {});
     reg("i", { 0 }, [](const std::vector<Value>&) -> Value { return Value(Complex(0.0, 1.0)); }, {});
-    reg("matrix", {}, [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 2)
-            throw std::runtime_error("Runtime Error: matrix(rows, cols [, ...]) expects at least 2 args.");
-        int r = static_cast<int>(std::round(args[0].asDouble()));
-        int c = static_cast<int>(std::round(args[1].asDouble()));
-        if (r <= 0 || c <= 0)
-            throw std::runtime_error("Runtime Error: matrix() dimensions must be positive.");
-
-        // 无元素 → 零矩阵
-        if (static_cast<int>(args.size()) == 2)
-            return Value(RealMatrix(r, c));
-
-        int total = r * c;
-        if (static_cast<int>(args.size()) - 2 != total)
-            throw std::runtime_error("Runtime Error: matrix() element count mismatch: "
-                "expected " + std::to_string(total) + ", got " +
-                std::to_string(args.size() - 2) + ".");
-
-        // 类型检测
-        bool hasComplex = false;
-        for (int i = 2; i < static_cast<int>(args.size()); ++i) {
-            if (args[i].isComplex())
-                hasComplex = true;
-        }
-
-        if (hasComplex) {
-            // ComplexMatrix
-            std::vector<Complex> flat;
-            flat.reserve(total);
-            for (int i = 0; i < total; ++i)
-                flat.push_back(args[i + 2].asComplex());
-            return Value(ComplexMatrix(r, c, flat));
-        }
-
-        // RealMatrix
-        std::vector<double> flat;
-        flat.reserve(total);
-        for (int i = 0; i < total; ++i)
-            flat.push_back(args[i + 2].asDouble());
-        return Value(RealMatrix(r, c, flat));
-        }, {"rows", "cols", "...elements"});
-
     regMath("sin", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSin());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matSin());

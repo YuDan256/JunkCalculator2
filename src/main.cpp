@@ -457,6 +457,53 @@ int main(int argc, char* argv[]) {
         }
         throw std::runtime_error("VM Error: Invalid closure in callback.");
     };
+    jc::helpers::callValueCallback = [](const jc::Value& callee, const std::vector<jc::Value>& args) -> jc::Value {
+        if (callee.isFunctionClosure()) {
+            return jc::helpers::callFunctionCallback(callee.asFunction(), args);
+        }
+        if (callee.isType()) {
+            jc::ObjTypeDef* td = static_cast<jc::ObjTypeDef*>(callee.asObj());
+            if (td->converter) return td->converter(args);
+            throw std::runtime_error("TypeError: This type object is not callable.");
+        }
+        if (callee.isClass()) {
+            jc::ObjClass* cls = static_cast<jc::ObjClass*>(callee.asObj());
+            if (cls->native_allocator) return cls->native_allocator(args);
+            auto instance = jc::GcHeap::get().allocate<jc::ObjInstance>();
+            jc::Value res(instance);
+            jc::GcValueGuard guard(res);
+            instance->classDef = cls;
+            jc::ObjClosure* initMethod = nullptr;
+            auto c = cls;
+            while (c) {
+                auto it = c->properties.find("<init>");
+                if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                    initMethod = it->second.val.asFunction();
+                    break;
+                }
+                c = c->parent;
+            }
+            if (initMethod) {
+                if (initMethod->isBytecode()) {
+                    vm.callVMFunction(initMethod->compiledFnIndex, args, initMethod, res, jc::Value(cls));
+                } else if (initMethod->isNative()) {
+                    jc::helpers::nativeSelfStack.push_back(res);
+                    jc::helpers::nativeClassStack.push_back(jc::Value(cls));
+                    auto& fn = std::any_cast<jc::NativeCallable&>(initMethod->nativeFn);
+                    fn(args);
+                    jc::helpers::nativeSelfStack.pop_back();
+                    jc::helpers::nativeClassStack.pop_back();
+                }
+            }
+            return res;
+        }
+        if (callee.isInstance()) {
+            auto [method, owner] = vm.findDunder(callee, "__call__");
+            if (method) return vm.callDunder(callee, method, owner, args);
+            throw std::runtime_error("TypeError: Instance is not callable (no __call__).");
+        }
+        throw std::runtime_error("VM Error: Value is not callable.");
+    };
     jc::helpers::resolvePathCallback = [exeDir](const std::string& path) -> std::string {
         namespace fs = std::filesystem;
         fs::path p(path);

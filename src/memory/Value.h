@@ -21,6 +21,7 @@
 #include <map>
 #include <unordered_map>
 #include <functional>
+#include <set>
 #include "../math/Complex.h"
 #include "../math/Matrix.h"
 #include "../math/BigInt.h"
@@ -553,6 +554,10 @@ namespace jc {
         std::vector<std::variant<BuiltinType, ObjClass*>> types;
         mutable std::string cached_name;
         std::string identity_key;  // ★ interning 键：按指针/枚举值，区分同名类
+        // ★ 可调用类型的转换回调（call/invoke 直接调用，不再查同名函数）
+        std::function<Value(const std::vector<Value>&)> converter;
+        std::set<int> converterArity;
+        std::vector<std::string> converterParamNames;
         ObjTypeDef() { type = ObjType::TYPE_DEF; }
         ~ObjTypeDef() override {
             if (!identity_key.empty()) g_internedTypes.erase(identity_key);

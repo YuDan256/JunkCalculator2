@@ -159,11 +159,10 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                     VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
                     return res.as_bits;
                 } else {
-                    std::string name = td->name();
-                    auto nIt = VM::activeVM->getNativeBuiltins().find(name);
-                    if (nIt != VM::activeVM->getNativeBuiltins().end()) {
-                        callee = VM::activeVM->getBuiltinClosure(name);
-                        continue;
+                    if (td->converter) {
+                        Value res = td->converter(args);
+                        VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+                        return res.as_bits;
                     }
                 }
             }
@@ -581,6 +580,32 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
     return alignedArgs;
 }
 
+Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* argsBase) {
+    std::vector<Value> args;
+    if (kwArgc > 0) {
+        if (td->converterParamNames.empty()) {
+            throw std::runtime_error("TypeError: This type object does not support keyword arguments.");
+        }
+        args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, false, Value::none());
+    } else {
+        args.reserve(posArgc);
+        for (int i = 0; i < posArgc; ++i) args.push_back(argsBase[i]);
+    }
+    if (!td->converterArity.empty()) {
+        int actual = 0;
+        for (const auto& a : args) if (!a.isUninit()) actual++;
+        if (td->converterArity.find(actual) == td->converterArity.end()) {
+            std::string expected;
+            for (auto aIt = td->converterArity.begin(); aIt != td->converterArity.end(); ++aIt) {
+                if (aIt != td->converterArity.begin()) expected += " or ";
+                expected += std::to_string(*aIt);
+            }
+            throw std::runtime_error("Runtime Error: Function '" + td->name() + "' expects " + expected + " arguments, got " + std::to_string(actual) + ".");
+        }
+    }
+    return td->converter(args);
+}
+
 void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     Value callee = registers[currentFrame->registerBase + calleeReg];
@@ -662,33 +687,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 registers[currentFrame->registerBase + dstReg] = Value(internType(std::move(newTypes)));
                 return;
             } else {
-                std::string name = td->name();
-                auto nIt = nativeBuiltins.find(name);
-                if (nIt != nativeBuiltins.end()) {
-                    if (kwArgc > 0) {
-                        callee = getBuiltinClosure(name);
-                    } else {
-                        auto ait = builtinArity.find(name);
-                        if (ait != builtinArity.end() && !ait->second.empty()) {
-                            if (ait->second.find(argc) == ait->second.end()) {
-                                std::string expected;
-                                for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
-                                    if (aIt != ait->second.begin()) expected += " or ";
-                                    expected += std::to_string(*aIt);
-                                }
-                                throw std::runtime_error("Runtime Error: Function '" + name + 
-                                    "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
-                            }
-                        }
-                        std::vector<Value> args;
-                        args.reserve(argc);
-                        for (int i = 0; i < argc; ++i) {
-                            args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
-                        }
-                        pendingCallRefs.clear();
-                        registers[currentFrame->registerBase + dstReg] = nIt->second(args);
-                        return;
-                    }
+                if (td->converter) {
+                    pendingCallRefs.clear();
+                    registers[currentFrame->registerBase + dstReg] = 
+                        callTypeConverter(td, argc - 2 * kwArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1]);
+                    return;
                 }
             }
         }
@@ -3142,6 +3145,197 @@ VM::VM() {
     builtinValues["namespace_type"] = makeType(BuiltinType::NAMESPACE);
     builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
     builtinValues["slice"] = makeType(BuiltinType::SLICE);
+
+    // ===== 可调用类型的转换回调（call/invoke 直接调用，不再查同名函数）=====
+    {
+        auto evalIfSym = [this](Value v) -> Value {
+            if (v.isSymbolic()) {
+                auto it = nativeBuiltins.find("evalf");
+                if (it != nativeBuiltins.end()) return it->second({v});
+            }
+            return v;
+        };
+        auto bind = [this](const std::string& name, std::set<int> arity, std::vector<std::string> params,
+                           std::function<Value(const std::vector<Value>&)> fn) {
+            ObjTypeDef* td = static_cast<ObjTypeDef*>(builtinValues[name].asObj());
+            td->converter = std::move(fn);
+            td->converterArity = std::move(arity);
+            td->converterParamNames = std::move(params);
+        };
+
+        bind("int", {1}, {"x"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
+            Value val = evalIfSym(args[0]);
+            // 截断取整（向零方向）
+            if (val.isObjType(ObjType::BIGINT) || val.isInt32())
+                return val;
+            if (val.isObjType(ObjType::FRACTION)) {
+                const auto& f = static_cast<ObjFraction*>(val.asObj())->frac;
+                return Value(f.getNum() / f.getDen());
+            }
+            if (val.isComplex()) {
+                const auto& c = val.asComplex();
+                if (!Tol::isEq(c.imag, 0.0))
+                    throw std::runtime_error("Type Error: Cannot convert complex with nonzero imaginary part to int.");
+                return Value(BigInt(static_cast<int64_t>(std::trunc(c.real))));
+            }
+            if (val.isDouble()) {
+                double v = val.asDoubleRaw();
+                if (!std::isfinite(v))
+                    throw std::runtime_error("Type Error: Cannot convert non-finite value to int.");
+                return Value(BigInt(static_cast<int64_t>(std::trunc(v))));
+            }
+            if (val.isString()) {
+                std::string s = val.asString();
+                size_t start = s.find_first_not_of(" \t\r\n");
+                if (start != std::string::npos) {
+                    size_t end = s.find_last_not_of(" \t\r\n");
+                    std::string trimmed = s.substr(start, end - start + 1);
+                    int radix = 10;
+                    bool neg = false;
+                    size_t p = 0;
+                    if (trimmed[0] == '-' || trimmed[0] == '+') {
+                        neg = (trimmed[0] == '-');
+                        p = 1;
+                    }
+                    if (trimmed.size() > p + 1 && trimmed[p] == '0') {
+                        char c = static_cast<char>(std::tolower(static_cast<unsigned char>(trimmed[p + 1])));
+                        if (c == 'x') { radix = 16; p += 2; }
+                        else if (c == 'b') { radix = 2; p += 2; }
+                        else if (c == 'o') { radix = 8; p += 2; }
+                    }
+                    try {
+                        if (radix != 10) {
+                            std::string numPart = trimmed.substr(p);
+                            if (numPart.empty()) throw std::runtime_error("empty");
+                            BigInt res = BaseNum::fromString(numPart, radix).getValue();
+                            return Value(neg ? -res : res);
+                        }
+                        return Value(BigInt(trimmed));
+                    } catch (...) {}
+                }
+                throw std::runtime_error("Type Error: Cannot parse '" + val.asString() + "' as integer.");
+            }
+            return Value(val.asBigInt());
+        });
+
+        bind("double", {1}, {"x"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
+            Value val = evalIfSym(args[0]);
+            if (val.isComplex()) {
+                const auto& c = val.asComplex();
+                if (!Tol::isEq(c.imag, 0.0))
+                    throw std::runtime_error("Type Error: Cannot convert complex with nonzero imaginary part to double.");
+                return Value(c.real);
+            }
+            return Value(val.asDouble());
+        });
+
+        bind("complex", {1, 2}, {"real", "imag"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
+            if (args.size() == 1) {
+                Value val = evalIfSym(args[0]);
+                if (val.isComplex())
+                    return val;
+                return Value(Complex(val.asDouble(), 0.0));
+            }
+            return Value(Complex(evalIfSym(args[0]).asDouble(), evalIfSym(args[1]).asDouble()));
+        });
+
+        bind("bool", {1}, {"x"}, [this](const std::vector<Value>& args) -> Value {
+            return Value(evaluateTruthiness(args[0]));
+        });
+
+        bind("string", {1}, {"x"}, [this](const std::vector<Value>& args) -> Value {
+            if (args[0].isInstance()) {
+                auto [d, owner] = findDunder(args[0], DUNDER_STR);
+                if (d) return callDunder(args[0], d, owner, {});
+            }
+            if (args[0].isString()) return args[0];
+            std::ostringstream oss; oss << args[0]; return Value(oss.str());
+        });
+
+        bind("list", {}, {"...elements"}, [](const std::vector<Value>& args) -> Value {
+            ObjList* L = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(L);
+            for (const auto& a : args) L->vec.push_back(a);
+            return Value(L);
+        });
+
+        bind("dict", {}, {"...pairs"}, [](const std::vector<Value>& args) -> Value {
+            if (args.size() % 2 != 0) throw std::runtime_error("Runtime Error: dict() expects even number of arguments.");
+            ObjDict* d = GcHeap::get().allocate<ObjDict>();
+            GcObjGuard guard(d);
+            for (size_t i = 0; i < args.size(); i += 2) {
+                d->keyMap[args[i]] = d->elements.size();
+                d->elements.push_back({args[i], args[i + 1]});
+            }
+            return Value(d);
+        });
+
+        bind("set", {}, {"...elements"}, [](const std::vector<Value>& args) -> Value {
+            ObjSet* s = GcHeap::get().allocate<ObjSet>();
+            GcObjGuard guard(s);
+            for (const auto& a : args) {
+                if (s->keys.find(a) == s->keys.end()) {
+                    s->keys.insert(a);
+                    s->elements.push_back(a);
+                }
+            }
+            return Value(s);
+        });
+
+        bind("symmatrix", {}, {"rows", "cols", "...elements"}, [](const std::vector<Value>& args) -> Value {
+            if (args.size() < 2)
+                throw std::runtime_error("Runtime Error: symmatrix(rows, cols [, ...]) expects at least 2 args.");
+            int r = static_cast<int>(std::round(args[0].asDouble()));
+            int c = static_cast<int>(std::round(args[1].asDouble()));
+            if (r <= 0 || c <= 0)
+                throw std::runtime_error("Runtime Error: symmatrix() dimensions must be positive.");
+            if (static_cast<int>(args.size()) == 2)
+                return Value(SymMatrix(r, c));
+            int total = r * c;
+            if (static_cast<int>(args.size()) - 2 != total)
+                throw std::runtime_error("Runtime Error: symmatrix() element count mismatch: "
+                    "expected " + std::to_string(total) + ", got " +
+                    std::to_string(args.size() - 2) + ".");
+            std::vector<SymExpr> flat;
+            flat.reserve(total);
+            for (int i = 0; i < total; ++i) {
+                flat.push_back(args[i + 2].asSymbolic());
+            }
+            return Value(SymMatrix(r, c, flat));
+        });
+
+        bind("slice", {0, 1, 2, 3}, {"start", "end", "step"}, [](const std::vector<Value>& args) -> Value {
+            auto checkArg = [](const Value& v, const std::string& name) -> int {
+                if (v.isNone()) return ObjSlice::SLICE_NONE;
+                if (!v.isNumber() && !v.isBigInt()) {
+                    throw std::runtime_error("Type Error: slice " + name + " must be a number or none.");
+                }
+                int64_t val64 = 0;
+                if (v.isInt32()) {
+                    val64 = v.asInt32();
+                } else if (v.isDouble()) {
+                    val64 = static_cast<int64_t>(std::round(v.asDouble()));
+                } else {
+                    try {
+                        val64 = v.asBigInt().toInt64();
+                    } catch (...) {
+                        throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
+                    }
+                }
+                if (val64 > 2147483647LL || val64 < -2147483647LL) {
+                    throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
+                }
+                return static_cast<int>(val64);
+            };
+            int start = args.size() > 0 ? checkArg(args[0], "start") : ObjSlice::SLICE_NONE;
+            int end = args.size() > 1 ? checkArg(args[1], "end") : ObjSlice::SLICE_NONE;
+            int step = args.size() > 2 ? checkArg(args[2], "step") : ObjSlice::SLICE_NONE;
+            ObjSlice* sliceObj = GcHeap::get().allocate<ObjSlice>();
+            sliceObj->start = start;
+            sliceObj->end = end;
+            sliceObj->step = step;
+            return Value(sliceObj);
+        });
+    }
 
     listProto = GcHeap::get().allocate<ObjClass>();
     listProto->name = "List";
@@ -8845,10 +9039,8 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         resTd->normalize();
                                         return Value(resTd);
                                     } else {
-                                        std::string name = td->name();
-                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
-                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
-                                            return nIt->second(fullArgs);
+                                        if (td->converter) {
+                                            return td->converter(fullArgs);
                                         }
                                     }
                                 }
@@ -8980,10 +9172,8 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         resTd->normalize();
                                         return Value(resTd);
                                     } else {
-                                        std::string name = td->name();
-                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
-                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
-                                            return nIt->second(fullArgs);
+                                        if (td->converter) {
+                                            return td->converter(fullArgs);
                                         }
                                     }
                                 }
@@ -9468,10 +9658,8 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         resTd->normalize();
                                         return Value(resTd);
                                     } else {
-                                        std::string name = td->name();
-                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
-                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
-                                            return nIt->second(fullArgs);
+                                        if (td->converter) {
+                                            return td->converter(fullArgs);
                                         }
                                     }
                                 }
@@ -9603,10 +9791,8 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         resTd->normalize();
                                         return Value(resTd);
                                     } else {
-                                        std::string name = td->name();
-                                        auto nIt = VM::activeVM->getNativeBuiltins().find(name);
-                                        if (nIt != VM::activeVM->getNativeBuiltins().end()) {
-                                            return nIt->second(fullArgs);
+                                        if (td->converter) {
+                                            return td->converter(fullArgs);
                                         }
                                     }
                                 }

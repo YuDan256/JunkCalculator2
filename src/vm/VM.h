@@ -153,6 +153,9 @@ public:
 
     std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, bool hasRestParam, Value boundSelf = Value::none());
 
+    // 直接调用可调用类型（TypeDef）的 converter：arity 检查 + kwarg 对齐 + 调 converter
+    Value callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* argsBase);
+
     std::string getTypeName(const Value& val);
 
 public:

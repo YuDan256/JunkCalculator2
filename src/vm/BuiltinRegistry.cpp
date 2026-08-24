@@ -448,100 +448,6 @@ void BuiltinRegistry::registerMath() {
     reg("pi", { 0 }, [](const std::vector<Value>&) -> Value { return Value(3.14159265358979323846); }, {});
     reg("e", { 0 }, [](const std::vector<Value>&) -> Value { return Value(2.71828182845904523536); }, {});
     reg("i", { 0 }, [](const std::vector<Value>&) -> Value { return Value(Complex(0.0, 1.0)); }, {});
-    reg("complex", { 1, 2 }, [this](const std::vector<Value>& args) -> Value {
-        auto evalIfSym = [this](Value v) {
-            if (v.isSymbolic()) {
-                auto it = builtins.find("evalf");
-                if (it != builtins.end()) return it->second({v});
-            }
-            return v;
-        };
-        if (args.size() == 1) {
-            Value val = evalIfSym(args[0]);
-            // complex(x) → Complex(x, 0) 或保留已有复数
-            if (val.isComplex())
-                return val;
-            return Value(Complex(val.asDouble(), 0.0));
-        }
-        // complex(a, b) → Complex(a, b)
-        return Value(Complex(evalIfSym(args[0]).asDouble(), evalIfSym(args[1]).asDouble()));
-        }, {"real", "imag"});
-
-    reg("double", { 1 }, [this](const std::vector<Value>& args) -> Value {
-        Value val = args[0];
-        if (val.isSymbolic()) {
-            auto it = builtins.find("evalf");
-            if (it != builtins.end()) val = it->second({val});
-        }
-        // 任意数值类型 → double（复数仅虚部为 0 时允许）
-        if (val.isComplex()) {
-            const auto& c = val.asComplex();
-            if (!Tol::isEq(c.imag, 0.0))
-                throw std::runtime_error("Type Error: Cannot convert complex with nonzero imaginary part to double.");
-            return Value(c.real);
-        }
-        return Value(val.asDouble());
-        }, {"x"});
-
-    reg("int", { 1 }, [this](const std::vector<Value>& args) -> Value {
-        Value val = args[0];
-        if (val.isSymbolic()) {
-            auto it = builtins.find("evalf");
-            if (it != builtins.end()) val = it->second({val});
-        }
-        // 截断取整（向零方向）
-        if (val.isObjType(ObjType::BIGINT) || val.isInt32())
-            return val;
-        if (val.isObjType(ObjType::FRACTION)) {
-            const auto& f = static_cast<ObjFraction*>(val.asObj())->frac;
-            return Value(f.getNum() / f.getDen());  // BigInt 除法自动截断
-        }
-        if (val.isComplex()) {
-            const auto& c = val.asComplex();
-            if (!Tol::isEq(c.imag, 0.0))
-                throw std::runtime_error("Type Error: Cannot convert complex with nonzero imaginary part to int.");
-            return Value(BigInt(static_cast<int64_t>(std::trunc(c.real))));
-        }
-        if (val.isDouble()) {
-            double v = val.asDoubleRaw();
-            if (!std::isfinite(v))
-                throw std::runtime_error("Type Error: Cannot convert non-finite value to int.");
-            return Value(BigInt(static_cast<int64_t>(std::trunc(v))));
-        }
-        if (val.isString()) {
-            std::string s = val.asString();
-            size_t start = s.find_first_not_of(" \t\r\n");
-            if (start != std::string::npos) {
-                size_t end = s.find_last_not_of(" \t\r\n");
-                std::string trimmed = s.substr(start, end - start + 1);
-                int radix = 10;
-                bool neg = false;
-                size_t p = 0;
-                if (trimmed[0] == '-' || trimmed[0] == '+') {
-                    neg = (trimmed[0] == '-');
-                    p = 1;
-                }
-                if (trimmed.size() > p + 1 && trimmed[p] == '0') {
-                    char c = static_cast<char>(std::tolower(static_cast<unsigned char>(trimmed[p + 1])));
-                    if (c == 'x') { radix = 16; p += 2; }
-                    else if (c == 'b') { radix = 2; p += 2; }
-                    else if (c == 'o') { radix = 8; p += 2; }
-                }
-                try {
-                    if (radix != 10) {
-                        std::string numPart = trimmed.substr(p);
-                        if (numPart.empty()) throw std::runtime_error("empty");
-                        BigInt res = BaseNum::fromString(numPart, radix).getValue();
-                        return Value(neg ? -res : res);
-                    }
-                    return Value(BigInt(trimmed));
-                } catch (...) {}
-            }
-            throw std::runtime_error("Type Error: Cannot parse '" + val.asString() + "' as integer.");
-        }
-        return Value(val.asBigInt());
-        }, {"x"});
-
     reg("matrix", {}, [](const std::vector<Value>& args) -> Value {
         if (args.size() < 2)
             throw std::runtime_error("Runtime Error: matrix(rows, cols [, ...]) expects at least 2 args.");
@@ -582,31 +488,6 @@ void BuiltinRegistry::registerMath() {
         for (int i = 0; i < total; ++i)
             flat.push_back(args[i + 2].asDouble());
         return Value(RealMatrix(r, c, flat));
-        }, {"rows", "cols", "...elements"});
-
-    reg("symmatrix", {}, [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 2)
-            throw std::runtime_error("Runtime Error: symmatrix(rows, cols [, ...]) expects at least 2 args.");
-        int r = static_cast<int>(std::round(args[0].asDouble()));
-        int c = static_cast<int>(std::round(args[1].asDouble()));
-        if (r <= 0 || c <= 0)
-            throw std::runtime_error("Runtime Error: symmatrix() dimensions must be positive.");
-
-        if (static_cast<int>(args.size()) == 2)
-            return Value(SymMatrix(r, c));
-
-        int total = r * c;
-        if (static_cast<int>(args.size()) - 2 != total)
-            throw std::runtime_error("Runtime Error: symmatrix() element count mismatch: "
-                "expected " + std::to_string(total) + ", got " +
-                std::to_string(args.size() - 2) + ".");
-
-        std::vector<SymExpr> flat;
-        flat.reserve(total);
-        for (int i = 0; i < total; ++i) {
-            flat.push_back(args[i + 2].asSymbolic());
-        }
-        return Value(SymMatrix(r, c, flat));
         }, {"rows", "cols", "...elements"});
 
     regMath("sin", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
@@ -978,19 +859,19 @@ void BuiltinRegistry::registerFraction() {
 // [4] 多项式求解
 // =================================================================
 void BuiltinRegistry::registerPolySolver() {
-    auto evalFunc = [](ObjClosure* cl, double x) -> double {
-        return safeCallFunction(cl, { Value(x) }).asDouble();
+    auto evalFunc = [](const Value& f, double x) -> double {
+        return safeCallValue(f, { Value(x) }).asDouble();
     };
 
     regModule(math_ns, "solve", { 2, 3, 4, 5 }, [evalFunc](const std::vector<Value>& args) -> Value {
-        if (args[0].isFunctionClosure()) {
+        if (isCallableValue(args[0])) {
             if (args.size() != 2) throw std::runtime_error("Math Error: solve(f, x0) expects exactly 2 arguments.");
-            auto cl = args[0].asFunction(); double x = args[1].asDouble(); double h = 1e-5;
+            Value f = args[0]; double x = args[1].asDouble(); double h = 1e-5;
             for (int i = 0; i < 1000; ++i) {
                 jc::checkInterrupt();
-                double y = evalFunc(cl, x);
+                double y = evalFunc(f, x);
                 if (Tol::clean(y, std::max(1.0, std::abs(x)), 1e7) == 0.0) return Value(x);
-                double df = (evalFunc(cl, x + h) - evalFunc(cl, x - h)) / (2 * h);
+                double df = (evalFunc(f, x + h) - evalFunc(f, x - h)) / (2 * h);
                 if (df == 0.0) x += 1e-4; else x -= y / df;
             }
             throw std::runtime_error("Math Error: Equation solver did not converge.");
@@ -2361,15 +2242,6 @@ void BuiltinRegistry::registerControlFlow() {
         }
         std::cout << std::endl; return Value::none();
         }, {"...args"});
-    reg("bool", { 1 }, [](const std::vector<Value>& args) -> Value {
-        // ★ Dunder 钩子: __bool__
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
-            auto [found, result] = invokeDunder(inst, DUNDER_BOOL, {});
-            if (found) return Value(result.truthy());
-        }
-        return Value(args[0].truthy());
-        }, {"x"});
     reg("not", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(!args[0].truthy()); }, {"x"});
     reg("and", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() && args[1].truthy()); }, {"a", "b"});
     reg("or", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() || args[1].truthy()); }, {"a", "b"});
@@ -2563,8 +2435,6 @@ void BuiltinRegistry::registerStringFunctions() {
         if (args[0].isString()) return args[0];
         std::ostringstream oss; oss << args[0]; return Value(oss.str());
         }, {"x"});
-    reg("string", builtinArity["str"], builtins["str"], builtinParamNames["str"]);
-
     reg("len", { 1 }, [](const std::vector<Value>& args) -> Value {
         // ★ Dunder 钩子: __len__
         if (args[0].isInstance()) {
@@ -2662,39 +2532,6 @@ void BuiltinRegistry::registerStringFunctions() {
 // [17] 数组引擎
 // =================================================================
 void BuiltinRegistry::registerArrayFunctions() {
-    reg("slice", { 0, 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
-        auto checkArg = [](const Value& v, const std::string& name) -> int {
-            if (v.isNone()) return ObjSlice::SLICE_NONE;
-            if (!v.isNumber() && !v.isBigInt()) {
-                throw std::runtime_error("Type Error: slice " + name + " must be a number or none.");
-            }
-            int64_t val64 = 0;
-            if (v.isInt32()) {
-                val64 = v.asInt32();
-            } else if (v.isDouble()) {
-                val64 = static_cast<int64_t>(std::round(v.asDouble()));
-            } else {
-                try {
-                    val64 = v.asBigInt().toInt64();
-                } catch (...) {
-                    throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
-                }
-            }
-            if (val64 > 2147483647LL || val64 < -2147483647LL) {
-                throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
-            }
-            return static_cast<int>(val64);
-        };
-        int start = args.size() > 0 ? checkArg(args[0], "start") : ObjSlice::SLICE_NONE;
-        int end = args.size() > 1 ? checkArg(args[1], "end") : ObjSlice::SLICE_NONE;
-        int step = args.size() > 2 ? checkArg(args[2], "step") : ObjSlice::SLICE_NONE;
-        ObjSlice* sliceObj = GcHeap::get().allocate<ObjSlice>();
-        sliceObj->start = start;
-        sliceObj->end = end;
-        sliceObj->step = step;
-        return Value(sliceObj);
-    }, {"start", "end", "step"});
-
     auto expectContainer = [](const std::string& name) -> Value {
         throw std::runtime_error("Type Error: " + name + "() expects a List or a Matrix (Real/Complex/String).");
         };
@@ -3395,17 +3232,6 @@ void BuiltinRegistry::registerArrayFunctions() {
 // [19] Dict / Instance 属性大一统透视 API
 // =================================================================
 void BuiltinRegistry::registerDictFunctions() {
-    reg("dict", {}, [](const std::vector<Value>& args) -> Value { 
-        if (args.size() % 2 != 0) throw std::runtime_error("Runtime Error: dict() expects even number of arguments."); 
-        ObjDict* d = GcHeap::get().allocate<ObjDict>();
-        GcObjGuard guard(d);
-        for (size_t i = 0; i < args.size(); i += 2) { 
-            d->keyMap[args[i]] = d->elements.size(); 
-            d->elements.push_back({args[i], args[i + 1]}); 
-        } 
-        return Value(d); 
-    }, {"...pairs"});
-
     auto keysFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::NAMESPACE)) {
@@ -3615,8 +3441,6 @@ void BuiltinRegistry::registerDictFunctions() {
 // [20] List & Conversion
 // =================================================================
 void BuiltinRegistry::registerListConversion() {
-    reg("list", {}, [](const std::vector<Value>& args) -> Value { ObjList* L = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(L); for (const auto& a : args) L->vec.push_back(a); return Value(L); }, {"...elements"});
-
     reg("toList", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
         if (arg.isObjType(ObjType::LIST)) return arg;
@@ -3936,15 +3760,15 @@ void BuiltinRegistry::registerListConversion() {
     regMethod(VM::activeVM->stringProto, "enumerate", {"start"}, enumerateFn, 1);
     regMethod(VM::activeVM->setProto, "enumerate", {"start"}, enumerateFn, 1);
 
-    auto groupByCore = [this](const Value& argList, ObjClosure* cl) -> Value {
-        if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: groupBy() requires a single-parameter function.");
+    auto groupByCore = [this](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: groupBy() requires a single-parameter function.");
         
         ObjDict* result = GcHeap::get().allocate<ObjDict>();
         GcObjGuard guard(result);
         
         auto processElement = [&](const Value& val) {
             jc::checkInterrupt();
-            Value key = safeCallFunction(cl, { val });
+            Value key = safeCallValue(f, { val });
             auto it = result->keyMap.find(key);
             if (it != result->keyMap.end()) {
                 static_cast<ObjList*>(result->elements[it->second].second.asObj())->vec.push_back(val);
@@ -3979,7 +3803,7 @@ void BuiltinRegistry::registerListConversion() {
 
     auto groupByFn = [groupByCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return groupByCore(self, args[0].asFunction());
+        return groupByCore(self, args[0]);
     };
     regMethod(VM::activeVM->listProto, "groupBy", {"f"}, groupByFn);
     regMethod(VM::activeVM->matrixProto, "groupBy", {"f"}, groupByFn);
@@ -4151,7 +3975,7 @@ void BuiltinRegistry::registerFormatType() {
 
 void BuiltinRegistry::registerHigherOrder() {
 
-    auto applyCore = [this](const Value& argList, ObjClosure* cl) -> Value {
+    auto applyCore = [this](const Value& argList, const Value& f) -> Value {
         ObjList* unpackedList = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(unpackedList);
         
@@ -4160,7 +3984,7 @@ void BuiltinRegistry::registerHigherOrder() {
             unpackedList->vec.push_back(nextVal);
             return true;
         })) {
-            return safeCallFunction(cl, unpackedList->vec);
+            return safeCallValue(f, unpackedList->vec);
         }
 
         if (iterable.isObjType(ObjType::LIST)) {
@@ -4188,19 +4012,19 @@ void BuiltinRegistry::registerHigherOrder() {
             throw std::runtime_error("Type Error: apply() expects a function and an iterable argument list/vector.");
         }
         
-        return safeCallFunction(cl, unpackedList->vec);
+        return safeCallValue(f, unpackedList->vec);
     };
 
     auto applyFn = [applyCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return applyCore(self, args[0].asFunction());
+        return applyCore(self, args[0]);
     };
     regMethod(VM::activeVM->listProto, "apply", {"f"}, applyFn);
     regMethod(VM::activeVM->matrixProto, "apply", {"f"}, applyFn);
     regMethod(VM::activeVM->setProto, "apply", {"f"}, applyFn);
 
-    auto mapCore = [this](const Value& argList, ObjClosure* cl) -> Value {
-        if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: map() requires a single-parameter function.");
+    auto mapCore = [this](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: map() requires a single-parameter function.");
 
         Value iterable = argList;
         if (iterable.isObjType(ObjType::SET)) {
@@ -4208,7 +4032,7 @@ void BuiltinRegistry::registerHigherOrder() {
             GcObjGuard setGuard(setResult);
             for (const auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) {
                 jc::checkInterrupt();
-                setResult->add(safeCallFunction(cl, { e }));
+                setResult->add(safeCallValue(f, { e }));
             }
             return Value(setResult);
         }
@@ -4217,7 +4041,7 @@ void BuiltinRegistry::registerHigherOrder() {
         GcObjGuard guard(result);
         if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
             jc::checkInterrupt();
-            result->vec.push_back(safeCallFunction(cl, { nextVal }));
+            result->vec.push_back(safeCallValue(f, { nextVal }));
             return true;
         })) {
             return Value(result);
@@ -4228,7 +4052,7 @@ void BuiltinRegistry::registerHigherOrder() {
             GcObjGuard listGuard(listResult);
             for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
                 jc::checkInterrupt();
-                listResult->vec.push_back(safeCallFunction(cl, { e }));
+                listResult->vec.push_back(safeCallValue(f, { e }));
             }
             return Value(listResult);
         } else if (iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -4252,7 +4076,7 @@ void BuiltinRegistry::registerHigherOrder() {
 
             for (size_t i = 0; i < flatVals.size(); ++i) {
                 jc::checkInterrupt();
-                Value y = safeCallFunction(cl, { flatVals[i] });
+                Value y = safeCallValue(f, { flatVals[i] });
                 if (i == 0) {
                     if (y.isComplex()) hasComp = true;
                     else if (!y.isNumber() && !y.isBigInt() && !y.isObjType(ObjType::FRACTION)) typeConflict = true;
@@ -4274,7 +4098,7 @@ void BuiltinRegistry::registerHigherOrder() {
             if (typeConflict) {
                 for (size_t i = fallback->vec.size(); i < flatVals.size(); ++i) {
                     jc::checkInterrupt();
-                    fallback->vec.push_back(safeCallFunction(cl, { flatVals[i] }));
+                    fallback->vec.push_back(safeCallValue(f, { flatVals[i] }));
                 }
                 return Value(fallback);
             }
@@ -4286,15 +4110,15 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto mapFn = [mapCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return mapCore(self, args[0].asFunction());
+        return mapCore(self, args[0]);
     };
     regMethod(VM::activeVM->listProto, "map", {"f"}, mapFn);
     regMethod(VM::activeVM->matrixProto, "map", {"f"}, mapFn);
     regMethod(VM::activeVM->stringProto, "map", {"f"}, mapFn);
     regMethod(VM::activeVM->setProto, "map", {"f"}, mapFn);
 
-    auto filterCore = [this](const Value& argList, ObjClosure* cl) -> Value {
-        if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: filter() requires a single-parameter function.");
+    auto filterCore = [this](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: filter() requires a single-parameter function.");
 
         Value iterable = argList;
         if (iterable.isObjType(ObjType::SET)) {
@@ -4302,7 +4126,7 @@ void BuiltinRegistry::registerHigherOrder() {
             GcObjGuard setGuard(setResult);
             for (const auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { e }).truthy()) setResult->add(e);
+                if (safeCallValue(f, { e }).truthy()) setResult->add(e);
             }
             return Value(setResult);
         }
@@ -4311,7 +4135,7 @@ void BuiltinRegistry::registerHigherOrder() {
         GcObjGuard guard(result);
         if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
             jc::checkInterrupt();
-            if (safeCallFunction(cl, { nextVal }).truthy()) result->vec.push_back(nextVal);
+            if (safeCallValue(f, { nextVal }).truthy()) result->vec.push_back(nextVal);
             return true;
         })) {
             return Value(result);
@@ -4322,14 +4146,14 @@ void BuiltinRegistry::registerHigherOrder() {
             GcObjGuard listGuard(listResult);
             for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { e }).truthy()) listResult->vec.push_back(e);
+                if (safeCallValue(f, { e }).truthy()) listResult->vec.push_back(e);
             }
             return Value(listResult);
         } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
             std::vector<double> matResult;
             for (const auto& x : static_cast<ObjRealMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { Value(x) }).truthy()) matResult.push_back(x);
+                if (safeCallValue(f, { Value(x) }).truthy()) matResult.push_back(x);
             }
             int n = static_cast<int>(matResult.size());
             if (n == 0) return Value(RealMatrix(1, 0));
@@ -4338,7 +4162,7 @@ void BuiltinRegistry::registerHigherOrder() {
             std::vector<Complex> matResult;
             for (const auto& x : static_cast<ObjComplexMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
-                if (safeCallFunction(cl, { Value(x) }).truthy()) matResult.push_back(x);
+                if (safeCallValue(f, { Value(x) }).truthy()) matResult.push_back(x);
             }
             int n = static_cast<int>(matResult.size());
             if (n == 0) return Value(ComplexMatrix(1, 0));
@@ -4349,15 +4173,15 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto filterFn = [filterCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return filterCore(self, args[0].asFunction());
+        return filterCore(self, args[0]);
     };
     regMethod(VM::activeVM->listProto, "filter", {"f"}, filterFn);
     regMethod(VM::activeVM->matrixProto, "filter", {"f"}, filterFn);
     regMethod(VM::activeVM->stringProto, "filter", {"f"}, filterFn);
     regMethod(VM::activeVM->setProto, "filter", {"f"}, filterFn);
 
-    auto reduceCore = [this](const Value& argList, ObjClosure* cl, const Value& initVal) -> Value {
-        if (!cl->acceptsArgCount(2)) throw std::runtime_error("Runtime Error: reduce() requires a two-parameter function.");
+    auto reduceCore = [this](const Value& argList, const Value& f, const Value& initVal) -> Value {
+        if (!callableAcceptsArgCount(f, 2)) throw std::runtime_error("Runtime Error: reduce() requires a two-parameter function.");
 
         Value iterable = argList;
         Value acc;
@@ -4368,7 +4192,7 @@ void BuiltinRegistry::registerHigherOrder() {
         if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
             jc::checkInterrupt();
             if (first) { acc = nextVal; first = false; }
-            else acc = safeCallFunction(cl, { acc, nextVal });
+            else acc = safeCallValue(f, { acc, nextVal });
             return true;
         })) {
             if (first) throw std::runtime_error("Runtime Error: reduce() on empty.");
@@ -4383,7 +4207,7 @@ void BuiltinRegistry::registerHigherOrder() {
             GcValueGuard setGuard(setAcc);
             for (size_t i = startIdx; i < s->elements.size(); ++i) { 
                 jc::checkInterrupt(); 
-                setAcc = safeCallFunction(cl, { setAcc, s->elements[i] }); 
+                setAcc = safeCallValue(f, { setAcc, s->elements[i] }); 
             }
             return setAcc;
         } else if (iterable.isObjType(ObjType::LIST)) {
@@ -4394,7 +4218,7 @@ void BuiltinRegistry::registerHigherOrder() {
             GcValueGuard listGuard(listAcc);
             for (size_t i = startIdx; i < l->vec.size(); ++i) { 
                 jc::checkInterrupt(); 
-                listAcc = safeCallFunction(cl, { listAcc, l->vec[i] }); 
+                listAcc = safeCallValue(f, { listAcc, l->vec[i] }); 
             }
             return listAcc;
         } else if (iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -4410,7 +4234,7 @@ void BuiltinRegistry::registerHigherOrder() {
             GcValueGuard matGuard(matAcc);
             for (size_t i = startIdx; i < flatVals.size(); ++i) { 
                 jc::checkInterrupt(); 
-                matAcc = safeCallFunction(cl, { matAcc, flatVals[i] }); 
+                matAcc = safeCallValue(f, { matAcc, flatVals[i] }); 
             }
             return matAcc;
         }
@@ -4420,19 +4244,19 @@ void BuiltinRegistry::registerHigherOrder() {
     auto reduceFn = [reduceCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         Value initVal = args.size() == 2 ? args[1] : Value::none();
-        return reduceCore(self, args[0].asFunction(), initVal);
+        return reduceCore(self, args[0], initVal);
     };
     regMethod(VM::activeVM->listProto, "reduce", {"f", "init"}, reduceFn, 1);
     regMethod(VM::activeVM->matrixProto, "reduce", {"f", "init"}, reduceFn, 1);
     regMethod(VM::activeVM->stringProto, "reduce", {"f", "init"}, reduceFn, 1);
     regMethod(VM::activeVM->setProto, "reduce", {"f", "init"}, reduceFn, 1);
 
-    auto iterateAndCheck = [this](const Value& argList, ObjClosure* cl, auto checkFn) -> Value {
+    auto iterateAndCheck = [this](const Value& argList, const Value& f, auto checkFn) -> Value {
         Value iterable = argList;
         bool found = false;
         if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
             jc::checkInterrupt();
-            if (checkFn(safeCallFunction(cl, { nextVal }).truthy())) {
+            if (checkFn(safeCallValue(f, { nextVal }).truthy())) {
                 found = true;
                 return false; // break
             }
@@ -4443,17 +4267,17 @@ void BuiltinRegistry::registerHigherOrder() {
         if (iterable.isObjType(ObjType::LIST)) {
             for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) {
                 jc::checkInterrupt();
-                if (checkFn(safeCallFunction(cl, { e }).truthy())) return Value(true);
+                if (checkFn(safeCallValue(f, { e }).truthy())) return Value(true);
             }
         } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
             for (const auto& x : static_cast<ObjRealMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
-                if (checkFn(safeCallFunction(cl, { Value(x) }).truthy())) return Value(true);
+                if (checkFn(safeCallValue(f, { Value(x) }).truthy())) return Value(true);
             }
         } else if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
             for (const auto& x : static_cast<ObjComplexMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
-                if (checkFn(safeCallFunction(cl, { Value(x) }).truthy())) return Value(true);
+                if (checkFn(safeCallValue(f, { Value(x) }).truthy())) return Value(true);
             }
         } else {
             throw std::runtime_error("Type Error: expects a vector/list.");
@@ -4461,53 +4285,53 @@ void BuiltinRegistry::registerHigherOrder() {
         return Value(false);
     };
 
-    auto anyCore = [iterateAndCheck](const Value& argList, ObjClosure* cl) -> Value {
-        if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: any() requires a single-parameter function.");
-        return iterateAndCheck(argList, cl, [](bool res) { return res; });
+    auto anyCore = [iterateAndCheck](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: any() requires a single-parameter function.");
+        return iterateAndCheck(argList, f, [](bool res) { return res; });
     };
 
     auto anyFn = [anyCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return anyCore(self, args[0].asFunction());
+        return anyCore(self, args[0]);
     };
     regMethod(VM::activeVM->listProto, "any", {"f"}, anyFn);
     regMethod(VM::activeVM->matrixProto, "any", {"f"}, anyFn);
     regMethod(VM::activeVM->stringProto, "any", {"f"}, anyFn);
     regMethod(VM::activeVM->setProto, "any", {"f"}, anyFn);
 
-    auto allCore = [iterateAndCheck](const Value& argList, ObjClosure* cl) -> Value {
-        if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: all() requires a single-parameter function.");
-        Value res = iterateAndCheck(argList, cl, [](bool res) { return !res; });
+    auto allCore = [iterateAndCheck](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: all() requires a single-parameter function.");
+        Value res = iterateAndCheck(argList, f, [](bool res) { return !res; });
         return Value(!res.asBool());
     };
 
     auto allFn = [allCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return allCore(self, args[0].asFunction());
+        return allCore(self, args[0]);
     };
     regMethod(VM::activeVM->listProto, "all", {"f"}, allFn);
     regMethod(VM::activeVM->matrixProto, "all", {"f"}, allFn);
     regMethod(VM::activeVM->stringProto, "all", {"f"}, allFn);
     regMethod(VM::activeVM->setProto, "all", {"f"}, allFn);
 
-    auto countIfCore = [](const Value& argList, ObjClosure* cl) -> Value {
-        if (!cl->acceptsArgCount(1)) throw std::runtime_error("Runtime Error: countIf() requires a single-parameter function.");
+    auto countIfCore = [](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: countIf() requires a single-parameter function.");
         int c = 0;
         if (helpers::iterateIterable(argList, [&](const Value& nextVal) {
             jc::checkInterrupt();
-            if (safeCallFunction(cl, { nextVal }).truthy()) c++;
+            if (safeCallValue(f, { nextVal }).truthy()) c++;
             return true;
         })) {
             return Value::fromInt32(c);
         }
         if (argList.isObjType(ObjType::LIST)) {
-            for (const auto& e : static_cast<ObjList*>(argList.asObj())->vec) { jc::checkInterrupt(); if (safeCallFunction(cl, { e }).truthy()) c++; }
+            for (const auto& e : static_cast<ObjList*>(argList.asObj())->vec) { jc::checkInterrupt(); if (safeCallValue(f, { e }).truthy()) c++; }
         } else if (argList.isObjType(ObjType::SET)) {
-            for (const auto& e : static_cast<ObjSet*>(argList.asObj())->elements) { jc::checkInterrupt(); if (safeCallFunction(cl, { e }).truthy()) c++; }
+            for (const auto& e : static_cast<ObjSet*>(argList.asObj())->elements) { jc::checkInterrupt(); if (safeCallValue(f, { e }).truthy()) c++; }
         } else if (argList.isObjType(ObjType::REAL_MATRIX)) {
-            for (const auto& x : static_cast<ObjRealMatrix*>(argList.asObj())->mat.rawData()) { jc::checkInterrupt(); if (safeCallFunction(cl, { Value(x) }).truthy()) c++; }
+            for (const auto& x : static_cast<ObjRealMatrix*>(argList.asObj())->mat.rawData()) { jc::checkInterrupt(); if (safeCallValue(f, { Value(x) }).truthy()) c++; }
         } else if (argList.isObjType(ObjType::COMPLEX_MATRIX)) {
-            for (const auto& x : static_cast<ObjComplexMatrix*>(argList.asObj())->mat.rawData()) { jc::checkInterrupt(); if (safeCallFunction(cl, { Value(x) }).truthy()) c++; }
+            for (const auto& x : static_cast<ObjComplexMatrix*>(argList.asObj())->mat.rawData()) { jc::checkInterrupt(); if (safeCallValue(f, { Value(x) }).truthy()) c++; }
         } else {
             throw std::runtime_error("Type Error: countIf() expects a vector/list.");
         }
@@ -4516,14 +4340,14 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto countIfFn = [countIfCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return countIfCore(self, args[0].asFunction());
+        return countIfCore(self, args[0]);
     };
     regMethod(VM::activeVM->listProto, "countIf", {"f"}, countIfFn);
     regMethod(VM::activeVM->matrixProto, "countIf", {"f"}, countIfFn);
     regMethod(VM::activeVM->stringProto, "countIf", {"f"}, countIfFn);
     regMethod(VM::activeVM->setProto, "countIf", {"f"}, countIfFn);
 
-    auto sortCore = [this](const Value& argList, ObjClosure* cmp) -> Value {
+    auto sortCore = [this](const Value& argList, const Value& cmp) -> Value {
         Value arg = argList;
         if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
             ObjList* L = GcHeap::get().allocate<ObjList>();
@@ -4534,23 +4358,23 @@ void BuiltinRegistry::registerHigherOrder() {
             });
             arg = Value(L);
         }
-        if (cmp) {
-            if (!cmp->acceptsArgCount(2)) throw std::runtime_error("Runtime Error: sort() comparator must be a 2-parameter function.");
+        if (!cmp.isNone()) {
+            if (!callableAcceptsArgCount(cmp, 2)) throw std::runtime_error("Runtime Error: sort() comparator must be a 2-parameter function.");
             if (arg.isObjType(ObjType::LIST)) {
                 ObjList* L = GcHeap::get().allocate<ObjList>();
                 GcObjGuard guard(L);
                 L->vec = static_cast<ObjList*>(arg.asObj())->vec;
                 std::stable_sort(L->vec.begin(), L->vec.end(), [&](const Value& a, const Value& b) {
-                    return safeCallFunction(cmp, { a, b }).truthy();
+                    return safeCallValue(cmp, { a, b }).truthy();
                 });
                 return Value(L);
             } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
                 auto f = static_cast<ObjRealMatrix*>(arg.asObj())->mat.rawData();
-                std::stable_sort(f.begin(), f.end(), [&](const auto& a, const auto& b) { return safeCallFunction(cmp, { Value(a), Value(b) }).truthy(); });
+                std::stable_sort(f.begin(), f.end(), [&](const auto& a, const auto& b) { return safeCallValue(cmp, { Value(a), Value(b) }).truthy(); });
                 return Value(RealMatrix(1, static_cast<int>(f.size()), f));
             } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
                 auto f = static_cast<ObjComplexMatrix*>(arg.asObj())->mat.rawData();
-                std::stable_sort(f.begin(), f.end(), [&](const auto& a, const auto& b) { return safeCallFunction(cmp, { Value(a), Value(b) }).truthy(); });
+                std::stable_sort(f.begin(), f.end(), [&](const auto& a, const auto& b) { return safeCallValue(cmp, { Value(a), Value(b) }).truthy(); });
                 return Value(ComplexMatrix(1, static_cast<int>(f.size()), f));
             }
             throw std::runtime_error("Type Error: sort() expects a vector or list.");
@@ -4573,7 +4397,7 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto sortFn = [sortCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        ObjClosure* cmp = args.size() == 1 ? args[0].asFunction() : nullptr;
+        Value cmp = args.size() == 1 ? args[0] : Value::none();
         return sortCore(self, cmp);
     };
     regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortFn, 1);
@@ -4588,37 +4412,37 @@ void BuiltinRegistry::registerHigherOrder() {
 void BuiltinRegistry::registerCalculus() {
 
     // 通用 eval 辅助：调用单参数函数 f(x)
-    auto evalFunc = [](ObjClosure* cl, double x) -> double {
-        return safeCallFunction(cl, { Value(x) }).asDouble();
+    auto evalFunc = [](const Value& f, double x) -> double {
+        return safeCallValue(f, { Value(x) }).asDouble();
         };
 
     regModule(math_ns, "diff", { 2 }, [evalFunc](const std::vector<Value>& args) -> Value {
-        auto cl = args[0].asFunction();
+        Value f = args[0];
         double x = args[1].asDouble();
         double h = 1e-4;
-        double d = (-evalFunc(cl, x + 2 * h) + 8 * evalFunc(cl, x + h)
-            - 8 * evalFunc(cl, x - h) + evalFunc(cl, x - 2 * h)) / (12 * h);
+        double d = (-evalFunc(f, x + 2 * h) + 8 * evalFunc(f, x + h)
+            - 8 * evalFunc(f, x - h) + evalFunc(f, x - 2 * h)) / (12 * h);
         return Value(d);
         }, {"f", "x0"});
 
     regModule(math_ns, "integ", { 3, 4 }, [evalFunc](const std::vector<Value>& args) -> Value {
-        auto cl = args[0].asFunction();
+        Value f = args[0];
         double a = args[1].asDouble(), b = args[2].asDouble();
         int n = (args.size() == 4) ? static_cast<int>(std::round(args[3].asDouble())) : 100000;
         if (n <= 0 || n % 2 != 0) n = 100000;
-        double h = (b - a) / n, s = evalFunc(cl, a) + evalFunc(cl, b);
-        for (int i = 1; i < n; i += 2) { jc::checkInterrupt(); s += 4 * evalFunc(cl, a + i * h); }
-        for (int i = 2; i < n - 1; i += 2) { jc::checkInterrupt(); s += 2 * evalFunc(cl, a + i * h); }
+        double h = (b - a) / n, s = evalFunc(f, a) + evalFunc(f, b);
+        for (int i = 1; i < n; i += 2) { jc::checkInterrupt(); s += 4 * evalFunc(f, a + i * h); }
+        for (int i = 2; i < n - 1; i += 2) { jc::checkInterrupt(); s += 2 * evalFunc(f, a + i * h); }
         return Value(s * h / 3.0);
         }, {"f", "a", "b", "n"});
 
     regModule(math_ns, "limit", { 2, 3 }, [evalFunc](const std::vector<Value>& args) -> Value {
-        auto cl = args[0].asFunction();
+        Value f = args[0];
         double x0 = args[1].asDouble();
         double h = 1e-7;
         
         auto safeEval = [&](double x) -> double {
-            try { return evalFunc(cl, x); }
+            try { return evalFunc(f, x); }
             catch (const jc::EngineInterruptError&) { throw; }
             catch (...) { return std::numeric_limits<double>::quiet_NaN(); }
         };
@@ -4655,19 +4479,13 @@ void BuiltinRegistry::registerCalculus() {
 
     reg("table", {}, [](const std::vector<Value>& args) -> Value {
         if (args.size() < 2) throw std::runtime_error("Runtime Error: table() expects at least 2 arguments.");
-        auto cl = args[0].asFunction();
-        int k = static_cast<int>(cl->paramNames.size());
-        // ★ 如果参数名为空（VM 闭包可能如此），从 arity 推断
-        if (k == 0 && cl->isNative()) {
-            // 尝试从 maxArgs 推断
-            k = cl->maxArgs();
-            if (k == 0) k = 1; // 默认单参数
-        }
+        Value f = args[0];
+        int k = callableParamCount(f);
 
         auto evalRow = [&](const std::vector<Value>& rowArgs,
             std::vector<double>& res_d, std::vector<Complex>& res_c, bool& hasComplex) {
                 jc::checkInterrupt();
-                Value y_val = safeCallFunction(cl, rowArgs);
+                Value y_val = safeCallValue(f, rowArgs);
                 if (!hasComplex) {
                     try { res_d.push_back(y_val.asDouble()); }
                     catch (...) { hasComplex = true; for (double d : res_d) res_c.push_back(Complex(d)); res_c.push_back(y_val.asComplex()); }
@@ -5170,7 +4988,7 @@ void BuiltinRegistry::registerSystemShell() {
     regModule(sys_ns, "imgPlot", { 7, 8 }, [](const std::vector<Value>& args) -> Value {
         auto inst = args[0].asInstance();
         auto& im = std::any_cast<std::shared_ptr<Image>&>(inst->nativeData);
-        auto fn_actual = args[1].asFunction();
+        auto fn_actual = args[1];
         double xMin = args[2].asDouble(), xMax = args[3].asDouble();
         double yMin = args[4].asDouble(), yMax = args[5].asDouble();
         Color c = Color::parse(args[6].asString());
@@ -5182,7 +5000,7 @@ void BuiltinRegistry::registerSystemShell() {
             jc::checkInterrupt();
             double x = xMin + (static_cast<double>(px) / plotW) * (xMax - xMin);
             double y = 0;
-            try { y = helpers::safeCallFunction(fn_actual, { Value(x) }).asDouble(); }
+            try { y = helpers::safeCallValue(fn_actual, { Value(x) }).asDouble(); }
             catch (const jc::EngineInterruptError&) { throw; }
             catch (...) { prevPx = -1; prevPy = -1; continue; }
             int screenX = im->mapPlotX(x, xMin, xMax);
@@ -5446,18 +5264,6 @@ void BuiltinRegistry::registerTypeChecks() {
 void BuiltinRegistry::registerSetFunctions() {
 
     // ═══ 构造 ═══
-    reg("set", {}, [](const std::vector<Value>& args) -> Value {
-        ObjSet* s = GcHeap::get().allocate<ObjSet>();
-        GcObjGuard guard(s);
-        for (const auto& a : args) {
-            if (s->keys.find(a) == s->keys.end()) {
-                s->keys.insert(a);
-                s->elements.push_back(a);
-            }
-        }
-        return Value(s);
-        }, {"...elements"});
-
     reg("toSet", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::SET)) return args[0];
         ObjSet* s = GcHeap::get().allocate<ObjSet>();

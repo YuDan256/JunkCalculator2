@@ -117,6 +117,55 @@ namespace helpers {
         if (callFunctionCallback) return callFunctionCallback(cl, args);
         return callClosure(cl, args);  // 降级到 nativeFn 直调
     }
+    // 安全调用任意可调用值（函数/类型/类/带 __call__ 的实例）：优先用回调，降级到闭包直调
+    inline std::function<Value(const Value&, const std::vector<Value>&)> callValueCallback = nullptr;
+    inline Value safeCallValue(const Value& callee,
+        const std::vector<Value>& args) {
+        if (callValueCallback) return callValueCallback(callee, args);
+        if (callee.isFunctionClosure()) return callClosure(callee.asFunction(), args);
+        throw std::runtime_error("Runtime Error: Value is not callable.");
+    }
+    // 判断可调用值是否接受指定参数个数（函数按 closure 判定；可调用类型按 converterArity；类/__call__ 实例宽松放行）
+    inline bool callableAcceptsArgCount(const Value& callee, int n) {
+        if (callee.isFunctionClosure()) return callee.asFunction()->acceptsArgCount(n);
+        if (callee.isType()) {
+            ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
+            if (td->converterArity.empty()) return true;
+            return td->converterArity.count(n) > 0;
+        }
+        return true;
+    }
+    // 判断一个值是否可调用（函数/可调用类型/类/带 __call__ 的实例）
+    inline bool isCallableValue(const Value& callee) {
+        if (callee.isFunctionClosure()) return true;
+        if (callee.isType()) return static_cast<ObjTypeDef*>(callee.asObj())->converter ? true : false;
+        if (callee.isClass()) return true;
+        if (callee.isInstance()) {
+            auto c = callee.asInstance()->classDef;
+            while (c) { if (c->properties.count("__call__")) return true; c = c->parent; }
+        }
+        return false;
+    }
+    // 推断可调用值的参数个数（table() 用：函数看 paramNames/arity，可调用类型看 converterParamNames/Arity）
+    inline int callableParamCount(const Value& callee) {
+        if (callee.isFunctionClosure()) {
+            ObjClosure* cl = callee.asFunction();
+            int k = static_cast<int>(cl->paramNames.size());
+            if (k == 0 && cl->isNative()) { k = cl->maxArgs(); if (k == 0) k = 1; }
+            return k;
+        }
+        if (callee.isType()) {
+            ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
+            if (!td->converterParamNames.empty()) {
+                int k = static_cast<int>(td->converterParamNames.size());
+                if (td->converterParamNames.back().substr(0, 3) == "...") k--;
+                return k;
+            }
+            if (td->converterArity.empty()) return 1;
+            return *td->converterArity.rbegin();
+        }
+        return 1;
+    }
     // 安全路径解析：优先用回调，降级到当前目录拼接
     inline std::string safeResolvePath(const std::string& path) {
         if (resolvePathCallback) return resolvePathCallback(path);

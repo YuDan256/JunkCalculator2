@@ -530,6 +530,37 @@ void Resolver::visitSequenceExpr(SequenceExpr* expr) {
 void Resolver::visitMatchExpr(MatchExpr* expr) {
     resolve(expr->subject.get());
     for (auto& b : expr->branches) {
+        auto checkSelfRedecl = [](Pattern* p, std::set<std::string>& seen, auto& self) -> void {
+            if (!p) return;
+            if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
+                if (vp->name.lexeme != "_" && !vp->name.lexeme.empty()) {
+                    if (!seen.insert(vp->name.lexeme).second) {
+                        throw std::runtime_error("SyntaxError: Variable '" + vp->name.lexeme + "' has already been declared in this pattern.");
+                    }
+                }
+            } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
+                if (rp->name.lexeme != "_" && !rp->name.lexeme.empty()) {
+                    if (!seen.insert(rp->name.lexeme).second) {
+                        throw std::runtime_error("SyntaxError: Variable '" + rp->name.lexeme + "' has already been declared in this pattern.");
+                    }
+                }
+            } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
+                for (auto& e : lp->elements) self(e.get(), seen, self);
+                if (lp->rest) self(lp->rest.get(), seen, self);
+            } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
+                for (auto& row : mp->rows) for (auto& e : row) self(e.get(), seen, self);
+                if (mp->restRow) self(mp->restRow.get(), seen, self);
+            } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+                for (auto& e : dp->entries) self(e.second.get(), seen, self);
+                if (dp->rest) self(dp->rest.get(), seen, self);
+            } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
+                self(defp->inner.get(), seen, self);
+            }
+        };
+        for (auto& p : b.patterns) {
+            std::set<std::string> seen;
+            checkSelfRedecl(p.get(), seen, checkSelfRedecl);
+        }
         if (b.patterns.size() > 1) {
             auto collectVars = [](Pattern* p, std::set<std::string>& out, auto& self) -> void {
                 if (!p) return;

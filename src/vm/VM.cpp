@@ -3348,9 +3348,18 @@ VM::VM() {
                 throw std::runtime_error("Runtime Error: matrix() element count mismatch: "
                     "expected " + std::to_string(total) + ", got " +
                     std::to_string(args.size() - 2) + ".");
+            bool hasSymbolic = false;
             bool hasComplex = false;
             for (int i = 2; i < static_cast<int>(args.size()); ++i) {
-                if (args[i].isComplex()) hasComplex = true;
+                if (args[i].isSymbolic()) hasSymbolic = true;
+                else if (args[i].isComplex()) hasComplex = true;
+            }
+            if (hasSymbolic) {
+                std::vector<SymExpr> flat;
+                flat.reserve(total);
+                for (int i = 0; i < total; ++i)
+                    flat.push_back(args[i + 2].asSymbolic());
+                return Value(SymMatrix(r, c, flat));
             }
             if (hasComplex) {
                 std::vector<Complex> flat;

@@ -4933,15 +4933,39 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         IRNode* branchSuccessMerge = graph->createNode(IROp::Merge);
         IRNode* nextBranchMerge = graph->createNode(IROp::Merge);
         
+        std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> patEnvs;
         for (auto& pat : branch.patterns) {
             IRNode* patFailMerge = graph->createNode(IROp::Merge);
             
+            auto envBefore = envStack;
             buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false, false);
             
+            patEnvs.push_back(envStack);
             branchSuccessMerge->addData(currentControl);
             currentControl = patFailMerge;
+            envStack = envBefore;
         }
         nextBranchMerge->addData(currentControl);
+        
+        if (branch.patterns.size() > 1) {
+            // 多 pattern（or-pattern）：同名变量的绑定可能来自不同 IR 节点，需 phi 合并
+            size_t branchScope = envStack.size() - 1;
+            std::unordered_set<std::string> patVars;
+            for (auto& pEnv : patEnvs) {
+                for (auto& pair : pEnv[branchScope]) patVars.insert(pair.first);
+            }
+            for (auto& name : patVars) {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(branchSuccessMerge);
+                for (auto& pEnv : patEnvs) {
+                    phi->addData(pEnv[branchScope].count(name) ? pEnv[branchScope].at(name) : graph->createConstant(Value::none()));
+                }
+                phi->name = name;
+                envStack[branchScope][name] = phi;
+            }
+        } else if (!patEnvs.empty()) {
+            envStack = patEnvs[0];
+        }
         
         currentControl = branchSuccessMerge;
         if (branch.guard) {

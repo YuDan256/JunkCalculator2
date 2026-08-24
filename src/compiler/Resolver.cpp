@@ -193,6 +193,11 @@ void Resolver::visitAssign(Assign* expr) {
     exprSymbols[expr] = resolveName(expr->name.lexeme);
 }
 
+void Resolver::visitTypeAssertExpr(TypeAssertExpr* expr) {
+    resolve(expr->value.get());      // value 是 Variable，走 visitVariable → resolveName（含 upvalue 检测）
+    resolve(expr->typeHint.get());
+}
+
 void Resolver::visitBinary(Binary* expr) {
     resolve(expr->left.get());
     resolve(expr->right.get());

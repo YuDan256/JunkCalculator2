@@ -649,6 +649,16 @@ public:
             {"value", val}
         });
     }
+
+    void visitTypeAssertExpr(TypeAssertExpr* expr) override {
+        expr->value->accept(*this); Value val = result;
+        expr->typeHint->accept(*this); Value hint = result;
+        result = makeASTNode("TypeAssertExpr", expr->name.line, {
+            {"name", Value(expr->name.lexeme)},
+            {"value", val},
+            {"typeHint", hint}
+        });
+    }
 };
 
 Value AST_to_JC2(Expr* expr) {
@@ -1136,6 +1146,13 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
             toAST(getProp("keyExpr")),
             toAST(getProp("valueExpr")),
             std::move(clauses)
+        );
+    } else if (type == "TypeAssertExpr") {
+        Token nameTok(TokenType::IDENTIFIER, getProp("name").asString(), line);
+        return std::make_unique<TypeAssertExpr>(
+            std::move(nameTok),
+            toAST(getProp("value")),
+            std::shared_ptr<Expr>(toAST(getProp("typeHint")).release())
         );
     } else if (type == "MatchExpr") {
         std::vector<MatchBranch> branches;

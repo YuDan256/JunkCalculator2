@@ -640,6 +640,13 @@ namespace jc {
             }
         }
 
+        // ★ 裸类型断言表达式：x: int（求值 x + 断言类型，值 = x）
+        if (typeHint) {
+            auto* var = dynamic_cast<Variable*>(expr.get());
+            Token nameTok = var ? var->name : Token(TokenType::IDENTIFIER, "<expr>", 0, 0);
+            return std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
+        }
+
         return expr;
     }
 
@@ -1926,6 +1933,13 @@ namespace jc {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"name", std::make_unique<Literal>(var->name.lexeme, true)});
             return makeASTNodeCall("Variable", var->name.line, std::move(props));
+        }
+        if (auto* ta = dynamic_cast<TypeAssertExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"name", std::make_unique<Literal>(ta->name.lexeme, true)});
+            props.push_back({"value", transformQuote(ta->value.get())});
+            props.push_back({"typeHint", transformQuote(ta->typeHint.get())});
+            return makeASTNodeCall("TypeAssertExpr", ta->name.line, std::move(props));
         }
         if (auto* assign = dynamic_cast<Assign*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;

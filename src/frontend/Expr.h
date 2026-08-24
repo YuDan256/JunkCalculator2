@@ -115,6 +115,7 @@ namespace jc {
     struct SliceExpr;        // ★ 新增
     struct SequenceExpr;
     struct MatchExpr;
+    struct TypeAssertExpr;   // ★ 类型断言表达式（x: int 求值+断言）
     struct GroupingExpr;     // ★ 新增
     struct MacroDefExpr;     // ★ 新增
     struct MacroCallExpr;    // ★ 新增
@@ -265,6 +266,7 @@ namespace jc {
         virtual void visitExprAssign(ExprAssign* expr) = 0;
         virtual void visitDeferExpr(DeferExpr* expr) = 0;
         virtual void visitKeywordArgExpr(KeywordArgExpr* expr) = 0;
+        virtual void visitTypeAssertExpr(TypeAssertExpr* expr) = 0;
     };
 
     struct Expr {
@@ -329,6 +331,15 @@ namespace jc {
             : name(std::move(name)), value(std::move(value)), isRef(isRef), isState(isState), isLocal(isLocal), isConst(isConst), typeHint(std::move(typeHint)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitAssign(this); }
+    };
+
+    struct TypeAssertExpr : public Expr {
+        Token name;                        // 变量名（错误信息用）
+        std::unique_ptr<Expr> value;       // 被求值的表达式（Parser 保证是 Variable）
+        std::shared_ptr<Expr> typeHint;    // 类型表达式
+        TypeAssertExpr(Token name, std::unique_ptr<Expr> value, std::shared_ptr<Expr> typeHint)
+            : name(std::move(name)), value(std::move(value)), typeHint(std::move(typeHint)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitTypeAssertExpr(this); }
     };
 
     struct LocalDecl : public Expr {

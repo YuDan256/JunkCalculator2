@@ -93,6 +93,7 @@ public:
     void visitExprAssign(ExprAssign* expr) override;
     void visitDeferExpr(DeferExpr* expr) override;
     void visitKeywordArgExpr(KeywordArgExpr* expr) override;
+    void visitTypeAssertExpr(TypeAssertExpr* expr) override;
 
 private:
     struct Scope {

@@ -1658,6 +1658,23 @@ void IRBuilder::visitVariable(Variable* expr) {
     lastValue = readVariable(expr->name.lexeme, sym);
 }
 
+void IRBuilder::visitTypeAssertExpr(TypeAssertExpr* expr) {
+    expr->value->accept(*this);
+    IRNode* valueNode = lastValue;
+
+    expr->typeHint->accept(*this);
+    IRNode* typeNode = lastValue;
+
+    IRNode* assertNode = graph->createNode(IROp::AssertType);
+    assertNode->setControl(currentControl);
+    assertNode->addData(valueNode);
+    assertNode->addData(typeNode);
+    assertNode->name = expr->name.lexeme;
+    currentControl = assertNode;
+
+    lastValue = valueNode;  // 断言通过后，表达式值 = x
+}
+
 void IRBuilder::visitAssign(Assign* expr) {
     if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) {
         error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");

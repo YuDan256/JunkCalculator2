@@ -426,7 +426,29 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         if (!typeHint) return;
         typeHint->accept(*this);
         IRNode* typeNode = lastValue;
-        
+
+        if (!isAssignment) {
+            // match 模式：类型守卫，类型不匹配时跳 failMerge（试下一个分支），而非抛错
+            IRNode* matchNode = graph->createValueNode(IROp::MatchType);
+            matchNode->setControl(currentControl);
+            matchNode->addData(valueNode);
+            matchNode->addData(typeNode);
+
+            IRNode* ifNode = graph->createNode(IROp::If);
+            ifNode->setControl(currentControl);
+            ifNode->addData(matchNode);
+
+            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            ifTrue->setControl(ifNode);
+
+            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            ifFalse->setControl(ifNode);
+            failMerge->addData(ifFalse);
+
+            currentControl = ifTrue;
+            return;
+        }
+
         IRNode* assertNode = graph->createNode(IROp::AssertType);
         assertNode->setControl(currentControl);
         assertNode->addData(valueNode);

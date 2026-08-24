@@ -39,7 +39,7 @@ enum class IROp {
 
     // 算术与逻辑运算
     Add, Sub, Mul, Div, IDiv, Mod, Pow, LeftDivide,
-    Eq, Neq, Lt, Le, Gt, Ge, Is,
+    Eq, Neq, Lt, Le, Gt, Ge, Is, IsSubset,
     Not, Neg, ToBool,
     BitAnd, BitOr, BitXor, BitNot, Shl, Shr,
     
@@ -175,6 +175,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::Gt: return "Gt";
         case IROp::Ge: return "Ge";
         case IROp::Is: return "Is";
+        case IROp::IsSubset: return "IsSubset";
         case IROp::Not: return "Not";
         case IROp::Neg: return "Neg";
         case IROp::ToBool: return "ToBool";

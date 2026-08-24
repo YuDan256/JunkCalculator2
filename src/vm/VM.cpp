@@ -1269,6 +1269,7 @@ static const std::string DUNDER_NEXT = "__next__";
 static const std::string DUNDER_STR = "__str__";
 static const std::string DUNDER_BOOL = "__bool__";
 static const std::string DUNDER_CONTAINS = "__contains__";
+static const std::string DUNDER_SUBSET = "__subsets__";
 
 std::pair<ObjClosure*, ObjClass*> VM::findDunder(const Value& val, const std::string& name) {
     if (!val.isInstance()) return {nullptr, nullptr};
@@ -1416,19 +1417,10 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
             BuiltinType bt = std::get<BuiltinType>(t);
             switch (bt) {
                 case BuiltinType::ANY: return true;
-                case BuiltinType::INT: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool()) return true; break;
+                case BuiltinType::INT: if (val.isInt32() || val.isObjType(ObjType::BIGINT)) return true; break;
                 case BuiltinType::FLOAT: if (val.isDouble()) return true; break;
-                case BuiltinType::REAL: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || (val.isComplex() && val.asComplex().imag == 0.0)) return true; break;
-                case BuiltinType::NUMBER: if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) || val.isComplex()) return true; break;
-                case BuiltinType::WHOLE: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || (val.isDouble() && std::isfinite(val.asDoubleRaw()) && val.asDoubleRaw() == std::floor(val.asDoubleRaw())) || (val.isObjType(ObjType::FRACTION) && static_cast<ObjFraction*>(val.asObj())->frac.getDen() == BigInt(1)) || (val.isComplex() && val.asComplex().imag == 0.0 && std::isfinite(val.asComplex().real) && val.asComplex().real == std::floor(val.asComplex().real))) return true; break;
-                case BuiltinType::EXACT: if (val.isInt32() || val.isObjType(ObjType::BIGINT) || val.isBool() || val.isObjType(ObjType::FRACTION) || val.isObjType(ObjType::SYMBOLIC)) return true; break;
                 case BuiltinType::STRING: if (val.isString()) return true; break;
                 case BuiltinType::BOOL: if (val.isBool()) return true; break;
-                case BuiltinType::BINARY: {
-                    if (val.isBool()) return true;
-                    try { double d = val.asDouble(); if (d == 0.0 || d == 1.0) return true; } catch (...) {}
-                    break;
-                }
                 case BuiltinType::NONE_TYPE: if (val.isNone()) return true; break;
                 case BuiltinType::LIST: if (val.isObjType(ObjType::LIST)) return true; break;
                 case BuiltinType::DICT: if (val.isObjType(ObjType::DICT)) return true; break;
@@ -1439,39 +1431,10 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
                 case BuiltinType::REALMAT: if (val.isObjType(ObjType::REAL_MATRIX)) return true; break;
                 case BuiltinType::COMPLEXMAT: if (val.isObjType(ObjType::COMPLEX_MATRIX)) return true; break;
                 case BuiltinType::SYMMAT: if (val.isObjType(ObjType::SYM_MATRIX)) return true; break;
-                case BuiltinType::MATRIX: if (val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) return true; break;
                 case BuiltinType::FUNC: if (val.isFunctionClosure()) return true; break;
                 case BuiltinType::CLASS: if (val.isClass()) return true; break;
                 case BuiltinType::INSTANCE: if (val.isInstance()) return true; break;
                 case BuiltinType::NAMESPACE: if (val.isObjType(ObjType::NAMESPACE)) return true; break;
-                case BuiltinType::ITERABLE: {
-                    if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isObjType(ObjType::SET) ||
-                        val.isString() || val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                        val.isObjType(ObjType::SYM_MATRIX)) return true;
-                    if (val.isInstance()) { if (findDunder(val, "__iter__").first || findDunder(val, "__next__").first) return true; }
-                    break;
-                }
-                case BuiltinType::CALLABLE: {
-                    if (val.isFunctionClosure() || val.isClass() || val.isString()) return true;
-                    if (val.isInstance()) { if (findDunder(val, "__call__").first != nullptr) return true; }
-                    break;
-                }
-                case BuiltinType::INDEXABLE: {
-                    if (val.isObjType(ObjType::LIST) || val.isObjType(ObjType::DICT) || val.isString() ||
-                        val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) ||
-                        val.isObjType(ObjType::SYM_MATRIX)) return true;
-                    if (val.isInstance()) { if (findDunder(val, "__getitem__").first != nullptr) return true; }
-                    break;
-                }
-                case BuiltinType::HASHABLE: if (val.isHashable()) return true; break;
-                case BuiltinType::NUMERIC: {
-                    if (val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION) ||
-                        val.isObjType(ObjType::COMPLEX)) return true;
-                    if (val.isInstance()) {
-                        if (findDunder(val, "__add__").first || findDunder(val, "__mul__").first || findDunder(val, "__sub__").first || findDunder(val, "__div__").first || findDunder(val, "__idiv__").first || findDunder(val, "__ldiv__").first) return true;
-                    }
-                    break;
-                }
                 case BuiltinType::TYPE_DEF: if (val.isType()) return true; break;
                 case BuiltinType::SLICE: if (val.isObjType(ObjType::SLICE)) return true; break;
                 case BuiltinType::CUSTOM_CLASS: break;
@@ -1624,7 +1587,9 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
     else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
     else if (obj.isString()) objBt = BuiltinType::STRING;
-    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+    else if (obj.isObjType(ObjType::REAL_MATRIX)) objBt = BuiltinType::REALMAT;
+    else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) objBt = BuiltinType::COMPLEXMAT;
+    else if (obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::SYMMAT;
 
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
@@ -1645,7 +1610,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     else if (objBt == BuiltinType::DICT) nativeProto = dictProto;
     else if (objBt == BuiltinType::SET) nativeProto = setProto;
     else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
-    else if (objBt == BuiltinType::MATRIX) nativeProto = matrixProto;
+    else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = matrixProto;
 
     if (nativeProto) {
         auto it = nativeProto->properties.find(methodName);
@@ -3154,13 +3119,11 @@ VM::VM() {
     builtinValues["any_type"] = makeType(BuiltinType::ANY);
     builtinValues["int"] = makeType(BuiltinType::INT);
     builtinValues["double"] = makeType(BuiltinType::FLOAT);
-    builtinValues["real"] = makeType(BuiltinType::REAL);
-    builtinValues["number"] = makeType(BuiltinType::NUMBER);
-    builtinValues["whole"] = makeType(BuiltinType::WHOLE);
-    builtinValues["exact"] = makeType(BuiltinType::EXACT);
+    builtinValues["real"] = Value(internType({BuiltinType::INT, BuiltinType::FLOAT, BuiltinType::FRACTION, BuiltinType::BOOL}));
+    builtinValues["number"] = Value(internType({BuiltinType::INT, BuiltinType::FLOAT, BuiltinType::FRACTION, BuiltinType::COMPLEX, BuiltinType::BOOL}));
+    builtinValues["exact"] = Value(internType({BuiltinType::INT, BuiltinType::FRACTION, BuiltinType::SYMBOLIC, BuiltinType::BOOL}));
     builtinValues["string"] = makeType(BuiltinType::STRING);
     builtinValues["bool"] = makeType(BuiltinType::BOOL);
-    builtinValues["binary"] = makeType(BuiltinType::BINARY);
     builtinValues["none_type"] = makeType(BuiltinType::NONE_TYPE);
     builtinValues["list"] = makeType(BuiltinType::LIST);
     builtinValues["dict"] = makeType(BuiltinType::DICT);
@@ -3171,16 +3134,11 @@ VM::VM() {
     builtinValues["realmatrix"] = makeType(BuiltinType::REALMAT);
     builtinValues["complexmatrix"] = makeType(BuiltinType::COMPLEXMAT);
     builtinValues["symmatrix"] = makeType(BuiltinType::SYMMAT);
-    builtinValues["matrix"] = makeType(BuiltinType::MATRIX);
+    builtinValues["matrix"] = Value(internType({BuiltinType::REALMAT, BuiltinType::COMPLEXMAT, BuiltinType::SYMMAT}));
     builtinValues["function"] = makeType(BuiltinType::FUNC);
     builtinValues["class_type"] = makeType(BuiltinType::CLASS);
     builtinValues["instance"] = makeType(BuiltinType::INSTANCE);
     builtinValues["namespace_type"] = makeType(BuiltinType::NAMESPACE);
-    builtinValues["iterable"] = makeType(BuiltinType::ITERABLE);
-    builtinValues["callable"] = makeType(BuiltinType::CALLABLE);
-    builtinValues["indexable"] = makeType(BuiltinType::INDEXABLE);
-    builtinValues["hashable"] = makeType(BuiltinType::HASHABLE);
-    builtinValues["numeric"] = makeType(BuiltinType::NUMERIC);
     builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
     builtinValues["slice"] = makeType(BuiltinType::SLICE);
 
@@ -6156,18 +6114,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (haystack.isType()) {
                     auto td = static_cast<ObjTypeDef*>(haystack.asObj());
-                    if (needle.isType()) {
-                        auto nd = static_cast<ObjTypeDef*>(needle.asObj());
-                        found = true;
-                        for (const auto& t : nd->types) {
-                            if (std::find(td->types.begin(), td->types.end(), t) == td->types.end()) {
-                                found = false;
-                                break;
-                            }
-                        }
-                    } else {
-                        found = checkValueType(needle, td);
-                    }
+                    found = checkValueType(needle, td);  // 包含：needle 是 td 类型的值
                 } else if (haystack.isInstance()) {
                     auto [method, owner] = findDunder(haystack, DUNDER_CONTAINS);
                     if (method) {
@@ -6445,7 +6392,9 @@ Value VM::run(int targetFrameDepth) {
                 else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
                 else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
                 else if (obj.isString()) objBt = BuiltinType::STRING;
-                else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+                else if (obj.isObjType(ObjType::REAL_MATRIX)) objBt = BuiltinType::REALMAT;
+                else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) objBt = BuiltinType::COMPLEXMAT;
+                else if (obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::SYMMAT;
 
                 if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
                     auto rawMethod = ic.cachedMethod;
@@ -6569,7 +6518,7 @@ Value VM::run(int targetFrameDepth) {
                     else if (objBt == BuiltinType::DICT) nativeProto = dictProto;
                     else if (objBt == BuiltinType::SET) nativeProto = setProto;
                     else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
-                    else if (objBt == BuiltinType::MATRIX) nativeProto = matrixProto;
+                    else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = matrixProto;
 
                     if (nativeProto) {
                         auto it = nativeProto->properties.find(field);
@@ -7602,6 +7551,13 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
+            case OpCode::IS_SUBSET: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
+                getReg(a) = opIsSubset(getReg(b), getReg(c));
+                break;
+            }
             case OpCode::MATCH_INIT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
@@ -8554,7 +8510,9 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
     else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
     else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
     else if (obj.isString()) objBt = BuiltinType::STRING;
-    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+    else if (obj.isObjType(ObjType::REAL_MATRIX)) objBt = BuiltinType::REALMAT;
+    else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) objBt = BuiltinType::COMPLEXMAT;
+    else if (obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::SYMMAT;
 
     if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
         auto rawMethod = ic.cachedMethod;
@@ -8678,7 +8636,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
         else if (objBt == BuiltinType::DICT) nativeProto = vm->dictProto;
         else if (objBt == BuiltinType::SET) nativeProto = vm->setProto;
         else if (objBt == BuiltinType::STRING) nativeProto = vm->stringProto;
-        else if (objBt == BuiltinType::MATRIX) nativeProto = vm->matrixProto;
+        else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = vm->matrixProto;
 
         if (nativeProto) {
             auto it = nativeProto->properties.find(field);
@@ -9175,7 +9133,9 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
     else if (obj.isObjType(ObjType::DICT)) objBt = BuiltinType::DICT;
     else if (obj.isObjType(ObjType::SET)) objBt = BuiltinType::SET;
     else if (obj.isString()) objBt = BuiltinType::STRING;
-    else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::MATRIX;
+    else if (obj.isObjType(ObjType::REAL_MATRIX)) objBt = BuiltinType::REALMAT;
+    else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) objBt = BuiltinType::COMPLEXMAT;
+    else if (obj.isObjType(ObjType::SYM_MATRIX)) objBt = BuiltinType::SYMMAT;
 
     if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
         auto rawMethod = ic.cachedMethod;
@@ -9299,7 +9259,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
         else if (objBt == BuiltinType::DICT) nativeProto = vm->dictProto;
         else if (objBt == BuiltinType::SET) nativeProto = vm->setProto;
         else if (objBt == BuiltinType::STRING) nativeProto = vm->stringProto;
-        else if (objBt == BuiltinType::MATRIX) nativeProto = vm->matrixProto;
+        else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = vm->matrixProto;
 
         if (nativeProto) {
             auto it = nativeProto->properties.find(field);
@@ -10131,6 +10091,8 @@ bool VM::opIn(Value needle, Value haystack) {
                 }
             }
         }
+    } else if (haystack.isType()) {
+        found = checkValueType(needle, static_cast<ObjTypeDef*>(haystack.asObj()));  // 包含：needle 是类型的值
     } else {
         throw std::runtime_error("VM Error: 'in' requires a string, list, dict, set, matrix, or instance.");
     }
@@ -10156,6 +10118,58 @@ Value VM::opMatchType(Value val, Value typeVal) {
     }
 }
 
+Value VM::opIsSubset(Value a, Value b) {
+    // 1. dunder 重载：a.__subsets__(b)
+    if (a.isInstance()) {
+        auto [method, owner] = findDunder(a, DUNDER_SUBSET);
+        if (method) {
+            return callDunder(a, method, owner, {b});
+        }
+    }
+    // 2. 类型子集（集合子集 + ANY 特判 + class 子类）
+    if (a.isType() && b.isType()) {
+        auto ta = static_cast<ObjTypeDef*>(a.asObj());
+        auto tb = static_cast<ObjTypeDef*>(b.asObj());
+        for (const auto& t : ta->types) {
+            bool covered = false;
+            for (const auto& u : tb->types) {
+                if (std::holds_alternative<BuiltinType>(t) && std::holds_alternative<BuiltinType>(u)) {
+                    BuiltinType bt = std::get<BuiltinType>(t);
+                    BuiltinType bu = std::get<BuiltinType>(u);
+                    if (bu == BuiltinType::ANY || bt == bu) { covered = true; break; }
+                } else if (std::holds_alternative<ObjClass*>(t) && std::holds_alternative<ObjClass*>(u)) {
+                    ObjClass* ca = std::get<ObjClass*>(t);
+                    ObjClass* cb = std::get<ObjClass*>(u);
+                    while (ca) { if (ca == cb) { covered = true; break; } ca = ca->parent; }
+                    if (covered) break;
+                }
+            }
+            if (!covered) return Value(false);
+        }
+        return Value(true);
+    }
+    // 3. 类子类：S <: R（S 是 R 的子类）
+    if (a.isClass() && b.isClass()) {
+        ObjClass* ca = static_cast<ObjClass*>(a.asObj());
+        ObjClass* cb = static_cast<ObjClass*>(b.asObj());
+        while (ca) {
+            if (ca == cb) return Value(true);
+            ca = ca->parent;
+        }
+        return Value(false);
+    }
+    // 4. 集合子集
+    if (a.isObjType(ObjType::SET) && b.isObjType(ObjType::SET)) {
+        auto sa = static_cast<ObjSet*>(a.asObj());
+        auto sb = static_cast<ObjSet*>(b.asObj());
+        for (const auto& k : sa->keys) {
+            if (sb->keys.find(k) == sb->keys.end()) return Value(false);
+        }
+        return Value(true);
+    }
+    throw std::runtime_error("TypeError: '<:' requires types, classes, sets, or an instance with __subsets__.");
+}
+
 uint64_t jc2_jit_in(uint64_t b_bits, uint64_t c_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
@@ -10178,6 +10192,14 @@ uint64_t jc2_jit_match_type(uint64_t b_bits, uint64_t c_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value result = vm->opMatchType(Value::fromRawBits(b_bits), Value::fromRawBits(c_bits));
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_is_subset(uint64_t b_bits, uint64_t c_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value result = vm->opIsSubset(Value::fromRawBits(b_bits), Value::fromRawBits(c_bits));
     return result.as_bits;
     JIT_CALLOUT_CATCH
 }

@@ -24,7 +24,8 @@ permutations(arr: any_type) -> list = {
     return res
 }
 
-combinations(arr: any_type, k: whole) -> list = {
+combinations(arr: any_type, k: int | double) -> list = {
+    k = round(k)
     if (k == 0) return @[@[]]
     if (arr.len() < k) return @[]
     if (arr.len() == k) return @[arr.toList()]
@@ -625,7 +626,8 @@ class Graph {
 // │ 5. STANDALONE TRUTH TABLE                              │
 // └────────────────────────────────────────────────────────┘
 
-truthTable(n: whole, fn: function) -> list = {
+truthTable(n: int | double, fn: function) -> list = {
+    n = round(n)
     total = 2 ^ n; res_list = @[]
     for (i in range(total)) {
         vars = zeros(1, n)
@@ -635,7 +637,8 @@ truthTable(n: whole, fn: function) -> list = {
     return res_list
 }
 
-printTruthTable(n: whole, fn: function) = {
+printTruthTable(n: int | double, fn: function) = {
+    n = round(n)
     total = 2 ^ n
     println(f"\nTruth Table ({n} variables):")
     println("-" * (n * 7 + 10))

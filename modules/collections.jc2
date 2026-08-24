@@ -129,7 +129,8 @@ class Counter {
         return self.data.hasKey(key) ? self.data[key] : 0
     }
     
-    mostCommon(n: whole = 1) -> list = {
+    mostCommon(n: int | double = 1) -> list = {
+        n = round(n)
         L = @[]
         for ([k, v] in self.data) L.push([k, v])
         sorted = L.sort((a, b) => a[1] > b[1])
@@ -174,7 +175,8 @@ class PriorityQueue {
     isEmpty() -> bool = return self.data.len() == 0
     size() -> int     = return self.data.len()
 
-    _siftUp(idx: whole) = {
+    _siftUp(idx: int | double) = {
+        idx = round(idx)
         while (idx > 0) {
             parent = idiv(idx - 1, 2)
             if (self.cmp(self.data[idx], self.data[parent])) {
@@ -186,7 +188,8 @@ class PriorityQueue {
         }
     }
     
-    _siftDown(idx: whole) = {
+    _siftDown(idx: int | double) = {
+        idx = round(idx)
         n = self.data.len()
         while (true) {
             left = 2 * idx + 1

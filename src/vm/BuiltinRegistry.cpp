@@ -4053,6 +4053,33 @@ void BuiltinRegistry::registerIntrospection() {
         while (c) { if (c == cls) return Value(true); c = c->parent; }
         return Value(false);
         }, {"obj", "cls"});    
+    reg("isiterable", { 1 }, [](const std::vector<Value>& args) -> Value {
+        Value v = args[0];
+        if (v.isObjType(ObjType::LIST) || v.isObjType(ObjType::DICT) || v.isObjType(ObjType::SET) ||
+            v.isString() || v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) ||
+            v.isObjType(ObjType::SYM_MATRIX)) return Value(true);
+        if (v.isInstance()) {
+            if (helpers::hasDunder(v, "__iter__") || helpers::hasDunder(v, "__next__")) return Value(true);
+        }
+        return Value(false);
+    }, {"obj"});
+    reg("iscallable", { 1 }, [](const std::vector<Value>& args) -> Value {
+        Value v = args[0];
+        if (v.isFunctionClosure() || v.isClass() || v.isString()) return Value(true);
+        if (v.isInstance()) { if (helpers::hasDunder(v, "__call__")) return Value(true); }
+        return Value(false);
+    }, {"obj"});
+    reg("isindexable", { 1 }, [](const std::vector<Value>& args) -> Value {
+        Value v = args[0];
+        if (v.isObjType(ObjType::LIST) || v.isObjType(ObjType::DICT) || v.isString() ||
+            v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) ||
+            v.isObjType(ObjType::SYM_MATRIX)) return Value(true);
+        if (v.isInstance()) { if (helpers::hasDunder(v, "__getitem__")) return Value(true); }
+        return Value(false);
+    }, {"obj"});
+    reg("ishashable", { 1 }, [](const std::vector<Value>& args) -> Value {
+        try { return Value(args[0].isHashable()); } catch (...) { return Value(false); }
+    }, {"obj"});
     reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) throw std::runtime_error("Type Error: getClass() expects an instance."); return Value(args[0].asInstance()->classDef); }, {"obj"});
     reg("getParent", { 1 }, [](const std::vector<Value>& args) -> Value { ObjClass* cls = nullptr; if (args[0].isClass()) cls=static_cast<ObjClass*>(args[0].asObj()); else if (args[0].isInstance()) cls=args[0].asInstance()->classDef; else throw std::runtime_error("Type Error: getParent() expects a class or instance."); if (!cls->parent) return Value::none(); return Value(cls->parent); }, {"cls"});
 }
@@ -4932,11 +4959,9 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("double", VM::activeVM->getBuiltinValue("double"));
             VM::activeVM->setGlobal("real", VM::activeVM->getBuiltinValue("real"));
             VM::activeVM->setGlobal("number", VM::activeVM->getBuiltinValue("number"));
-            VM::activeVM->setGlobal("whole", VM::activeVM->getBuiltinValue("whole"));
             VM::activeVM->setGlobal("exact", VM::activeVM->getBuiltinValue("exact"));
             VM::activeVM->setGlobal("string", VM::activeVM->getBuiltinValue("string"));
             VM::activeVM->setGlobal("bool", VM::activeVM->getBuiltinValue("bool"));
-            VM::activeVM->setGlobal("binary", VM::activeVM->getBuiltinValue("binary"));
             VM::activeVM->setGlobal("none_type", VM::activeVM->getBuiltinValue("none_type"));
             VM::activeVM->setGlobal("list", VM::activeVM->getBuiltinValue("list"));
             VM::activeVM->setGlobal("dict", VM::activeVM->getBuiltinValue("dict"));
@@ -4954,11 +4979,6 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("class_type", VM::activeVM->getBuiltinValue("class_type"));
             VM::activeVM->setGlobal("instance", VM::activeVM->getBuiltinValue("instance"));
             VM::activeVM->setGlobal("namespace_type", VM::activeVM->getBuiltinValue("namespace_type"));
-            VM::activeVM->setGlobal("iterable", VM::activeVM->getBuiltinValue("iterable"));
-            VM::activeVM->setGlobal("callable", VM::activeVM->getBuiltinValue("callable"));
-            VM::activeVM->setGlobal("indexable", VM::activeVM->getBuiltinValue("indexable"));
-            VM::activeVM->setGlobal("hashable", VM::activeVM->getBuiltinValue("hashable"));
-            VM::activeVM->setGlobal("numeric", VM::activeVM->getBuiltinValue("numeric"));
             VM::activeVM->setGlobal("type", VM::activeVM->getBuiltinValue("type"));
             VM::activeVM->setGlobal("slice", VM::activeVM->getBuiltinValue("slice"));
         }

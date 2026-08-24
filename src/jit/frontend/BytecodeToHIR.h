@@ -291,7 +291,7 @@ public:
                     case OpCode::GET_SUPER: case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
                     case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST:
                     case OpCode::METHOD_PRIVATE_CONST: case OpCode::CALL: case OpCode::TAIL_CALL:
-                    case OpCode::MATCH_SHAPE: case OpCode::MATCH_TYPE:
+                    case OpCode::MATCH_SHAPE: case OpCode::MATCH_TYPE: case OpCode::IS_SUBSET:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                         if (c == ESCAPE_NORMAL_8) c = fetchExtra();
@@ -1246,6 +1246,12 @@ public:
                     case OpCode::MATCH_TYPE: {
                         auto fs = captureFrameState(currentIp);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_match_type), JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::IS_SUBSET: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_is_subset), JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
                         setLocalSync(a, callout);
                         break;
                     }

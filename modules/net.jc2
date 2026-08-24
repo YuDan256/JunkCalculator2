@@ -8,9 +8,9 @@ import socket
 // ─── Socket Object (Client) ───────────────────────────────────
 
 class TcpSocket {
-    init(host: string, port: whole) = {
+    init(host: string, port: int | double) = {
         self.host = host
-        self.port = port
+        self.port = round(port)
         self.sock = none
     }
 
@@ -32,7 +32,8 @@ class TcpSocket {
         return self
     }
 
-    recv(max_bytes: whole = 4096) -> string = {
+    recv(max_bytes: int | double = 4096) -> string = {
+        max_bytes = round(max_bytes)
         if (self.sock.isnone()) throw "Network Error: Socket is not connected!"
         return self.sock.recv(max_bytes)
     }
@@ -43,9 +44,9 @@ class TcpSocket {
 // ─── Server Object (Daemon) ───────────────────────────────────
 
 class TcpServer {
-    init(host: string, port: whole) = {
+    init(host: string, port: int | double) = {
         self.host = host
-        self.port = port
+        self.port = round(port)
         self.sock = none
     }
 

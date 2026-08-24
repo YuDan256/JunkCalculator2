@@ -138,6 +138,7 @@ enum class OpCode : uint8_t {
     ITER_INIT,      // R(A) := Iter(R(B), destruct = C)
     ITER_NEXT,      // R(A) := Next(R(B)). Returns uninit if exhausted.
     IN,             // R(A) := R(B) in R(C)
+    IS_SUBSET,      // R(A) := R(B) <: R(C)（子集：支持 dunder/type/set）
 
     // 模块导入
     IMPORT,         // R(A) := import(R(B))
@@ -255,6 +256,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::ITER_INIT: return "ITER_INIT";
         case OpCode::ITER_NEXT: return "ITER_NEXT";
         case OpCode::IN: return "IN";
+        case OpCode::IS_SUBSET: return "IS_SUBSET";
         case OpCode::IMPORT: return "IMPORT";
         case OpCode::DEFER: return "DEFER";
         case OpCode::RUN_DEFERS: return "RUN_DEFERS";
@@ -523,7 +525,7 @@ public:
                 }
                 break;
 
-            case OpCode::MATCH_TYPE:
+            case OpCode::MATCH_TYPE: case OpCode::IS_SUBSET:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 break;
 

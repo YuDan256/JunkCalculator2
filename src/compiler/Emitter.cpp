@@ -639,6 +639,13 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::IsSubset: {
+                        int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
+                        auto w = buildInstABC(OpCode::IS_SUBSET, node->physicalReg, b, c, OpType::NORMAL, OpType::NORMAL);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::MatchShape: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         uint32_t shapeIdx = chunk.addShapePattern(node->payload1, node->payload2, node->payload3, node->payload4, static_cast<uint8_t>(node->payload5));

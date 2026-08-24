@@ -71,7 +71,7 @@ public:
                 case OpCode::GET_SUPER: case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
                 case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST:
                 case OpCode::METHOD_PRIVATE_CONST: case OpCode::CALL: case OpCode::TAIL_CALL:
-                case OpCode::MATCH_SHAPE: case OpCode::MATCH_TYPE:
+                case OpCode::MATCH_SHAPE: case OpCode::MATCH_TYPE: case OpCode::IS_SUBSET:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();
                     if (b == ESCAPE_NORMAL_8) fetchExtra();
                     if (c == ESCAPE_NORMAL_8) fetchExtra();

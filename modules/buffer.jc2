@@ -19,7 +19,7 @@ class ByteBuffer {
     // ─── Cursor & State Control ───
 
     seek(p: int)         = { self.pos = p }
-    skip(n: whole)         = { self.pos = self.pos + n }
+    skip(n: int | double)  = { self.pos = self.pos + round(n) }
     isEnd() -> bool      = return self.pos >= self.size
     tell() -> int        = return self.pos
     length() -> int      = return self.size
@@ -33,31 +33,36 @@ class ByteBuffer {
         return self
     }
 
-    writeU8(v: whole) -> ByteBuffer = { 
+    writeU8(v: int | double) -> ByteBuffer = { 
+        v = round(v)
         self.buf.set(self.pos, v, "u8")
         self.pos = self.pos + 1
         return self 
     }
 
-    writeI16(v: whole) -> ByteBuffer = { 
+    writeI16(v: int | double) -> ByteBuffer = { 
+        v = round(v)
         self.buf.set(self.pos, v, "i16")
         self.pos = self.pos + 2
         return self 
     }
 
-    writeI32(v: whole) -> ByteBuffer = { 
+    writeI32(v: int | double) -> ByteBuffer = { 
+        v = round(v)
         self.buf.set(self.pos, v, "i32")
         self.pos = self.pos + 4
         return self 
     }
 
-    writeI64(v: whole) -> ByteBuffer = { 
+    writeI64(v: int | double) -> ByteBuffer = { 
+        v = round(v)
         self.buf.set(self.pos, v, "i64")
         self.pos = self.pos + 8
         return self 
     }
 
-    writeU64(v: whole) -> ByteBuffer = { 
+    writeU64(v: int | double) -> ByteBuffer = { 
+        v = round(v)
         self.buf.set(self.pos, v, "u64")
         self.pos = self.pos + 8
         return self 
@@ -71,7 +76,8 @@ class ByteBuffer {
 
     // ─── Sequential Readers (Auto-advancing cursor) ───
 
-    readStr(n: whole) -> string = {
+    readStr(n: int | double) -> string = {
+        n = round(n)
         s = self.buf.get(self.pos, "str", n)
         self.pos = self.pos + n
         return s
@@ -114,7 +120,7 @@ class ByteBuffer {
 
 // ─── Global Factory API ───────────────────────────────────────
 
-alloc(size: whole) -> ByteBuffer        = return ByteBuffer(bytes.alloc(size))
+alloc(size: int | double) -> ByteBuffer = return ByteBuffer(bytes.alloc(round(size)))
 fromFile(path: string) -> ByteBuffer  = return ByteBuffer(bytes.readFile(path))
 
 // ─── Dynamic Help Registry ────────────────────────────────────

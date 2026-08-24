@@ -163,6 +163,7 @@ public:
     bool checkValueType(const Value& val, ObjTypeDef* td);
     bool opIn(Value needle, Value haystack);
     Value opMatchType(Value val, Value typeVal);
+    Value opIsSubset(Value a, Value b);
     Value opIterInit(Value iterable, uint8_t destructFlag);
     Value opIterNext(Value stateVal);
     Value importModule(const std::string& name) { return execImport(name); }
@@ -391,6 +392,7 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg);
 uint64_t jc2_jit_in(uint64_t b_bits, uint64_t c_bits);
 uint64_t jc2_jit_import(uint64_t b_bits);
 uint64_t jc2_jit_match_type(uint64_t b_bits, uint64_t c_bits);
+uint64_t jc2_jit_is_subset(uint64_t b_bits, uint64_t c_bits);
 uint64_t jc2_jit_iter_init(uint64_t iterable_bits, uint32_t c);
 uint64_t jc2_jit_iter_next(uint64_t state_bits);
 uint64_t jc2_jit_is_uninit(uint64_t val_bits);

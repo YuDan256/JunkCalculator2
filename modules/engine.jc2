@@ -6,10 +6,10 @@ import window
 import sys
 
 class GameEngine {
-    init(title: string = "JC2 Game", width: whole = 800, height: whole = 600, fps: whole = 60) = {
-        self.width = width
-        self.height = height
-        self.fps = fps
+    init(title: string = "JC2 Game", width: int | double = 800, height: int | double = 600, fps: int | double = 60) = {
+        self.width = round(width)
+        self.height = round(height)
+        self.fps = round(fps)
         self.frame_time = 1.0 / fps
         
         self.im = image.img(width, height)
@@ -25,8 +25,8 @@ class GameEngine {
     // ─── Event Callbacks ───
     onKeyDown(key: string) = {}
     onKeyUp(key: string)   = {}
-    onMouseDown(x: any_type, y: any_type, btn: whole) = {}
-    onMouseUp(x: any_type, y: any_type, btn: whole)   = {}
+    onMouseDown(x: any_type, y: any_type, btn: int | double) = {}
+    onMouseUp(x: any_type, y: any_type, btn: int | double)   = {}
     onMouseMove(x: any_type, y: any_type)           = {}
 
     // ─── Utilities ───

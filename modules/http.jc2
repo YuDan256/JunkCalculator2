@@ -8,8 +8,8 @@ import net
 // ─── Response Class ───────────────────────────────────────────
 
 class HttpResponse {
-    init(status: whole, headers: dict, body: string, raw: string) = {
-        self.status = status     
+    init(status: int | double, headers: dict, body: string, raw: string) = {
+        self.status = round(status)     
         self.headers = headers   
         self.body = body         
         self.raw = raw           

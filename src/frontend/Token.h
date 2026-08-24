@@ -14,7 +14,7 @@ namespace jc {
         PLUS, MINUS, STAR, SLASH, CARET, BACKSLASH, PERCENT,
 
         // --- 比较与赋值运算符 ---
-        ASSIGN, EQUAL, BANG_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL, 
+        ASSIGN, EQUAL, BANG_EQUAL, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL, SUBSET, 
         
         ARROW, PIPE, RIGHT_ARROW,
         SHIFT_LEFT, SHIFT_RIGHT,
@@ -146,6 +146,7 @@ namespace jc {
         case TokenType::GREATER_EQUAL: return "GREATER_EQUAL(>=)";
         case TokenType::LESS:          return "LESS(<)";
         case TokenType::LESS_EQUAL:    return "LESS_EQUAL(<=)";
+        case TokenType::SUBSET:         return "SUBSET(<:)";
         case TokenType::LPAREN:        return "LPAREN( ( )";
         case TokenType::RPAREN:        return "RPAREN( ) )";
         case TokenType::LBRACKET:      return "LBRACKET( [ )";
@@ -248,6 +249,7 @@ namespace jc {
         if (s == "GREATER_EQUAL") return TokenType::GREATER_EQUAL;
         if (s == "LESS") return TokenType::LESS;
         if (s == "LESS_EQUAL") return TokenType::LESS_EQUAL;
+        if (s == "SUBSET") return TokenType::SUBSET;
         if (s == "LPAREN") return TokenType::LPAREN;
         if (s == "RPAREN") return TokenType::RPAREN;
         if (s == "LBRACKET") return TokenType::LBRACKET;
@@ -343,6 +345,7 @@ namespace jc {
         if (s == ">=") return TokenType::GREATER_EQUAL;
         if (s == "<") return TokenType::LESS;
         if (s == "<=") return TokenType::LESS_EQUAL;
+        if (s == "<:") return TokenType::SUBSET;
         if (s == "in") return TokenType::IN;
         if (s == "is") return TokenType::IS;
         if (s == "as") return TokenType::AS;

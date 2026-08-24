@@ -648,27 +648,14 @@ namespace jc {
         return expr;
     }
 
-    std::unique_ptr<Expr> Parser::asExpr() {
-        auto expr = bitwiseOr();
-        if (match({ TokenType::AS })) {
-            Token asTok = previous();
-            auto typeHint = std::shared_ptr<Expr>(ternary().release());
-            std::string nameStr = "";
-            if (auto* var = dynamic_cast<Variable*>(expr.get())) nameStr = var->name.lexeme;
-            Token nameTok(TokenType::IDENTIFIER, nameStr, asTok.position, asTok.line);
-            return std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
-        }
-        return expr;
-    }
-
     std::unique_ptr<Expr> Parser::comparison() {
-        auto expr = asExpr();
+        auto expr = bitwiseOr();
         if (match({ TokenType::EQUAL, TokenType::BANG_EQUAL,
                     TokenType::LESS, TokenType::LESS_EQUAL,
                     TokenType::GREATER, TokenType::GREATER_EQUAL,
                     TokenType::IN, TokenType::IS, TokenType::SUBSET })) {
             Token op = previous();
-            auto right = asExpr();
+            auto right = bitwiseOr();
             
             if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                 check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
@@ -690,7 +677,7 @@ namespace jc {
                                TokenType::GREATER, TokenType::GREATER_EQUAL,
                                TokenType::IN, TokenType::IS, TokenType::SUBSET })) {
                     Token nextOp = previous();
-                    auto nextRight = asExpr();
+                    auto nextRight = bitwiseOr();
                     
                     if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                         check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
@@ -763,8 +750,21 @@ namespace jc {
         return power();
     }
 
-    std::unique_ptr<Expr> Parser::power() {
+    std::unique_ptr<Expr> Parser::as() {
         auto expr = call();
+        if (match({ TokenType::AS })) {
+            Token asTok = previous();
+            auto typeHint = std::shared_ptr<Expr>(call().release());
+            std::string nameStr = "";
+            if (auto* var = dynamic_cast<Variable*>(expr.get())) nameStr = var->name.lexeme;
+            Token nameTok(TokenType::IDENTIFIER, nameStr, asTok.position, asTok.line);
+            return std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
+        }
+        return expr;
+    }
+
+    std::unique_ptr<Expr> Parser::power() {
+        auto expr = as();
         if (match({ TokenType::CARET })) {
             Token op = previous();
             auto right = unary();

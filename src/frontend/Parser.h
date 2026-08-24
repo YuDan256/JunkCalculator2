@@ -36,7 +36,6 @@ namespace jc {
         std::unique_ptr<Expr> logicalOr();
         std::unique_ptr<Expr> logicalAnd();
         std::unique_ptr<Expr> comparison();
-        std::unique_ptr<Expr> asExpr();
         std::unique_ptr<Expr> bitwiseOr();
         std::unique_ptr<Expr> bitwiseXor();
         std::unique_ptr<Expr> bitwiseAnd();
@@ -45,6 +44,7 @@ namespace jc {
         std::unique_ptr<Expr> multiplication();
         std::unique_ptr<Expr> power();
         std::unique_ptr<Expr> unary();
+        std::unique_ptr<Expr> as();
         std::unique_ptr<Expr> call();
         std::unique_ptr<Expr> primary();
         std::unique_ptr<Expr> ternary();

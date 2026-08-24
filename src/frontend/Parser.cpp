@@ -241,7 +241,7 @@ namespace jc {
                     VM::activeVM->cleanupComptimeGlobals(0);
                 }
             }
-            if (stmts.empty()) return std::make_unique<Literal>("0");
+            if (stmts.empty()) return std::make_unique<Literal>("none", false, false, true);
             return std::make_unique<Block>(std::move(stmts));
         }
         catch (const std::exception& e) {

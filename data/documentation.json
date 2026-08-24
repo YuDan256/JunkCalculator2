@@ -1349,6 +1349,8 @@
       "",
       "    Single-Shot Type Assertions (assignment / destructuring / declarations):",
       "      x: int = 10                  Assert the assigned value is int",
+      "      d.a: string = 1              Property assignment with type assertion",
+      "      A[i]: int = 5                Indexed assignment with type assertion",
       "      [a: int, b: string] = data   Assert each destructured binding",
       "      {key: var: type} = dict      Dict destructuring requires the full form",
       "      local x: int = 10            Assert on a scoped assignment",

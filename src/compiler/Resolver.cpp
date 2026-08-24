@@ -259,6 +259,7 @@ void Resolver::visitIndexAssign(IndexAssign* expr) {
         for (auto& idx : chain) resolve(idx.get());
     }
     resolve(expr->value.get());
+    if (expr->typeHint) resolve(expr->typeHint.get());
 }
 
 void Resolver::visitLocalDecl(LocalDecl* expr) {
@@ -391,6 +392,7 @@ void Resolver::visitDotAccess(DotAccess* expr) {
 void Resolver::visitDotAssign(DotAssign* expr) {
     resolve(expr->object.get());
     resolve(expr->value.get());
+    if (expr->typeHint) resolve(expr->typeHint.get());
 }
 
 void Resolver::visitMethodCallExpr(MethodCallExpr* expr) {

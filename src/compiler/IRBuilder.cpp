@@ -2597,6 +2597,18 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         }
         lastValue = valNode;
     }
+
+    if (expr->typeHint) {
+        expr->typeHint->accept(*this);
+        IRNode* typeNode = lastValue;
+        IRNode* assertNode = graph->createNode(IROp::AssertType);
+        assertNode->setControl(currentControl);
+        assertNode->addData(valNode);
+        assertNode->addData(typeNode);
+        assertNode->name = expr->name.lexeme;
+        currentControl = assertNode;
+        lastValue = valNode;
+    }
 }
     
 void IRBuilder::visitLocalDecl(LocalDecl* expr) {
@@ -4088,6 +4100,18 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
     node->addData(valNode);
     node->name = expr->field.lexeme;
     currentControl = node;
+
+    if (expr->typeHint) {
+        expr->typeHint->accept(*this);
+        IRNode* typeNode = lastValue;
+        IRNode* assertNode = graph->createNode(IROp::AssertType);
+        assertNode->setControl(currentControl);
+        assertNode->addData(valNode);
+        assertNode->addData(typeNode);
+        assertNode->name = expr->field.lexeme;
+        currentControl = assertNode;
+    }
+
     lastValue = valNode;
 }
 

@@ -513,9 +513,9 @@ namespace jc {
 
         auto expr = ternary();
 
-        // ★ 类型断言：x: int = 10（仅对变量左值）
+        // ★ 类型断言：x: int = 10、d.a: string = 1、A[i]: int = 5（对任意赋值目标）
         std::shared_ptr<Expr> typeHint = nullptr;
-        if (dynamic_cast<Variable*>(expr.get()) && match({ TokenType::COLON })) {
+        if ((dynamic_cast<Variable*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get()) || dynamic_cast<IndexAccess*>(expr.get())) && match({ TokenType::COLON })) {
             typeHint = std::shared_ptr<Expr>(ternary().release());
         }
 
@@ -571,7 +571,7 @@ namespace jc {
 
             if (auto* dotExpr = dynamic_cast<DotAccess*>(expr.get())) {
                 if (isLocal || isRef || isState || isConst) throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' cannot be applied to object properties.");
-                return std::make_unique<DotAssign>(std::move(dotExpr->object), std::move(dotExpr->field), std::move(value));
+                return std::make_unique<DotAssign>(std::move(dotExpr->object), std::move(dotExpr->field), std::move(value), std::move(typeHint));
             }
 
             if (auto* indexExpr = dynamic_cast<IndexAccess*>(expr.get())) {
@@ -586,10 +586,10 @@ namespace jc {
                 std::reverse(chain.begin(), chain.end());
                 auto* varExpr = dynamic_cast<Variable*>(currentIA->object.get());
                 if (varExpr) {
-                    return std::make_unique<IndexAssign>(varExpr->name, std::move(chain), std::move(value));
+                    return std::make_unique<IndexAssign>(varExpr->name, std::move(chain), std::move(value), std::move(typeHint));
                 }
                 else {
-                    return std::make_unique<IndexAssign>(std::move(currentIA->object), std::move(chain), std::move(value));
+                    return std::make_unique<IndexAssign>(std::move(currentIA->object), std::move(chain), std::move(value), std::move(typeHint));
                 }
             }
 
@@ -2151,6 +2151,7 @@ namespace jc {
                 props.push_back({"field", std::make_unique<Literal>(dotAssign->field.lexeme, true)});
             }
             props.push_back({"value", transformQuote(dotAssign->value.get())});
+            props.push_back({"typeHint", dotAssign->typeHint ? transformQuote(dotAssign->typeHint.get()) : std::make_unique<Literal>("none", false, false, true)});
             return makeASTNodeCall("DotAssign", dotAssign->field.line, std::move(props));
         }
         if (auto* mcall = dynamic_cast<MethodCallExpr*>(expr)) {
@@ -2183,6 +2184,7 @@ namespace jc {
             props.push_back({"indexChain", std::move(chainList)});
             
             props.push_back({"value", transformQuote(idxAssign->value.get())});
+            props.push_back({"typeHint", idxAssign->typeHint ? transformQuote(idxAssign->typeHint.get()) : std::make_unique<Literal>("none", false, false, true)});
             return makeASTNodeCall("IndexAssign", idxAssign->name.line, std::move(props));
         }
         if (auto* mat = dynamic_cast<MatrixNode*>(expr)) {

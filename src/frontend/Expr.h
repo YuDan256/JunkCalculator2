@@ -476,20 +476,21 @@ namespace jc {
         std::unique_ptr<Expr> objectExpr;  // ★ 非空时表示根是表达式（如 self.data）
         std::vector<std::vector<std::unique_ptr<Expr>>> indexChain;
         std::unique_ptr<Expr> value;
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言（A[i]: int = 5）
 
         // 原始构造函数（Variable 根）
         IndexAssign(Token name, std::vector<std::vector<std::unique_ptr<Expr>>> indexChain,
-            std::unique_ptr<Expr> value)
+            std::unique_ptr<Expr> value, std::shared_ptr<Expr> typeHint = nullptr)
             : name(std::move(name)), objectExpr(nullptr),
-            indexChain(std::move(indexChain)), value(std::move(value)) {
+            indexChain(std::move(indexChain)), value(std::move(value)), typeHint(std::move(typeHint)) {
         }
 
         // ★ 新构造函数（表达式根，如 self.data[i,j] = v）
         IndexAssign(std::unique_ptr<Expr> objectExpr,
             std::vector<std::vector<std::unique_ptr<Expr>>> indexChain,
-            std::unique_ptr<Expr> value)
+            std::unique_ptr<Expr> value, std::shared_ptr<Expr> typeHint = nullptr)
             : name(Token(TokenType::IDENTIFIER, "", 0)), objectExpr(std::move(objectExpr)),
-            indexChain(std::move(indexChain)), value(std::move(value)) {
+            indexChain(std::move(indexChain)), value(std::move(value)), typeHint(std::move(typeHint)) {
         }
 
         bool hasObjectExpr() const { return objectExpr != nullptr; }
@@ -666,8 +667,9 @@ namespace jc {
         std::unique_ptr<Expr> object;
         Token field;
         std::unique_ptr<Expr> value;
-        DotAssign(std::unique_ptr<Expr> object, Token field, std::unique_ptr<Expr> value)
-            : object(std::move(object)), field(std::move(field)), value(std::move(value)) {
+        std::shared_ptr<Expr> typeHint;  // ★ 类型断言（d.a: string = 1）
+        DotAssign(std::unique_ptr<Expr> object, Token field, std::unique_ptr<Expr> value, std::shared_ptr<Expr> typeHint = nullptr)
+            : object(std::move(object)), field(std::move(field)), value(std::move(value)), typeHint(std::move(typeHint)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitDotAssign(this); }
     };

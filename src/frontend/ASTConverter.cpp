@@ -232,8 +232,10 @@ public:
         GcObjGuard guard(chain);
         for (auto& level : expr->indexChain) chain->vec.push_back(makeExprListT(level));
         expr->value->accept(*this); Value valExpr = result;
+        Value typeHintVal = Value::none();
+        if (expr->typeHint) { expr->typeHint->accept(*this); typeHintVal = result; }
         result = makeASTNode("IndexAssign", expr->name.line, {
-            {"name", Value(expr->name.lexeme)}, {"objectExpr", objExpr}, {"indexChain", Value(chain)}, {"value", valExpr}
+            {"name", Value(expr->name.lexeme)}, {"objectExpr", objExpr}, {"indexChain", Value(chain)}, {"value", valExpr}, {"typeHint", typeHintVal}
         });
     }
     void visitLocalDecl(LocalDecl* expr) override { result = makeASTNode("LocalDecl", expr->name.line, {{"name", Value(expr->name.lexeme)}, {"isConst", Value(expr->isConst)}}); }
@@ -275,7 +277,9 @@ public:
         expr->object->accept(*this); Value obj = result;
         GcValueGuard objGuard(obj);
         expr->value->accept(*this); Value val = result;
-        result = makeASTNode("DotAssign", expr->field.line, {{"object", obj}, {"field", Value(expr->field.lexeme)}, {"value", val}});
+        Value typeHintVal = Value::none();
+        if (expr->typeHint) { expr->typeHint->accept(*this); typeHintVal = result; }
+        result = makeASTNode("DotAssign", expr->field.line, {{"object", obj}, {"field", Value(expr->field.lexeme)}, {"value", val}, {"typeHint", typeHintVal}});
     }
     void visitMethodCallExpr(MethodCallExpr* expr) override {
         expr->object->accept(*this); Value obj = result;
@@ -859,8 +863,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         if (chainVal.isObjType(ObjType::LIST)) {
             for (const auto& levelVal : static_cast<ObjList*>(chainVal.asObj())->vec) chain.push_back(getExprList(levelVal));
         }
-        if (objExpr) return std::make_unique<IndexAssign>(std::move(objExpr), std::move(chain), std::move(valExpr));
-        return std::make_unique<IndexAssign>(name, std::move(chain), std::move(valExpr));
+        std::shared_ptr<Expr> typeHint(toAST(getProp("typeHint")).release());
+        if (objExpr) return std::make_unique<IndexAssign>(std::move(objExpr), std::move(chain), std::move(valExpr), std::move(typeHint));
+        return std::make_unique<IndexAssign>(name, std::move(chain), std::move(valExpr), std::move(typeHint));
     } else if (type == "LocalDecl") {
         return std::make_unique<LocalDecl>(Token(TokenType::IDENTIFIER, getProp("name").asString(), line), getProp("isConst").truthy());
     } else if (type == "RefDecl") {
@@ -887,7 +892,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
     } else if (type == "DotAccess") {
         return std::make_unique<DotAccess>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line));
     } else if (type == "DotAssign") {
-        return std::make_unique<DotAssign>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line), toAST(getProp("value")));
+        return std::make_unique<DotAssign>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line), toAST(getProp("value")), std::shared_ptr<Expr>(toAST(getProp("typeHint")).release()));
     } else if (type == "MethodCallExpr") {
         return std::make_unique<MethodCallExpr>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("method").asString(), line), getExprList(getProp("arguments")));
     } else if (type == "SuperExpr") {

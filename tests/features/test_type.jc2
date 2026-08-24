@@ -1,0 +1,197 @@
+// 多种类型断言的统一测试（赋值 / 属性 / 索引 / 解构 / 声明 / match 守卫 / as / in / 参数返回）
+
+// ============ 变量赋值断言 ============
+test_assign_var() = {
+    x: int = 10
+    assert(x == 10, "Variable assignment with int assertion should succeed")
+    y: int | string = "hi"
+    assert(y == "hi", "Union type assertion should succeed")
+}
+test_assign_var()
+
+test_assign_var_fail() = {
+    try {
+        x: int = "hi"
+        assert(false, "Should throw when assigning string to int")
+    } catch (e) {
+        assert("expected type" in str(e.message), "Wrong error for variable assertion: " + str(e.message))
+    }
+}
+test_assign_var_fail()
+
+// ============ 属性赋值断言 ============
+test_assign_prop() = {
+    d = {a: 1}
+    d.a: int = 5
+    assert(d.a == 5, "Property assignment with int assertion should succeed")
+}
+test_assign_prop()
+
+test_assign_prop_fail() = {
+    try {
+        d = {a: 1}
+        d.a: string = 1
+        assert(false, "Should throw when assigning int to string-typed property")
+    } catch (e) {
+        assert("expected type" in str(e.message), "Wrong error for property assertion: " + str(e.message))
+    }
+}
+test_assign_prop_fail()
+
+// ============ 索引赋值断言 ============
+test_assign_index() = {
+    A = [1, 2, 3]
+    A[0]: int = 10
+    assert(A[0] == 10, "Index assignment with int assertion should succeed")
+}
+test_assign_index()
+
+test_assign_index_fail() = {
+    try {
+        A = [1, 2, 3]
+        A[0]: string = 1
+        assert(false, "Should throw when assigning int to string-typed index")
+    } catch (e) {
+        assert("expected type" in str(e.message), "Wrong error for index assertion: " + str(e.message))
+    }
+}
+test_assign_index_fail()
+
+// ============ 解构断言 ============
+test_destruct_assert() = {
+    [a: int, b: string] = @[1, "hi"]
+    assert(a == 1 && b == "hi", "Destructuring with type assertions should succeed")
+}
+test_destruct_assert()
+
+test_destruct_assert_fail() = {
+    try {
+        [a: int, b: int] = @[1, "hi"]
+        assert(false, "Should throw when destructuring string into int")
+    } catch (e) {
+        assert("expected type" in str(e.message), "Wrong error for destructuring assertion: " + str(e.message))
+    }
+}
+test_destruct_assert_fail()
+
+// ============ dict 解构断言 ============
+test_dict_assert() = {
+    d = {a: 1, b: "x"}
+    {a: av: int, b: bv: string} = d
+    assert(av == 1 && bv == "x", "Dict destructuring with type assertions should succeed")
+}
+test_dict_assert()
+
+// ============ 独立声明断言 ============
+test_local_decl() = {
+    local x: int = 10
+    assert(x == 10, "local decl with type assertion should succeed")
+}
+test_local_decl()
+
+test_state_decl() = {
+    state s: int = 5
+    assert(s == 5, "state decl with type assertion should succeed")
+}
+test_state_decl()
+
+test_ref_decl() = {
+    outer = 42
+    f() = {
+        ref outer: int
+        return outer
+    }
+    assert(f() == 42, "ref decl with type assertion should succeed")
+}
+test_ref_decl()
+
+// ============ match 类型守卫 ============
+test_match_guard() = {
+    r = match (5) {
+        n: int => "int",
+        _ => "other"
+    }
+    assert(r == "int", "match guard should match int")
+    r2 = match ("hi") {
+        n: int => "int",
+        _ => "other"
+    }
+    assert(r2 == "other", "match guard should fall through on non-int")
+}
+test_match_guard()
+
+// ============ as 表达式断言 ============
+test_as_assert() = {
+    x = 5
+    assert((x as int) == 5, "as assertion should return the value")
+    assert(((3 + 4) as int) == 7, "as on arbitrary expression should work")
+    d = {a: 1}
+    assert((d.a as int) == 1, "as on property should work")
+}
+test_as_assert()
+
+test_as_assert_fail() = {
+    try {
+        x = "hi"
+        x as int
+        assert(false, "Should throw when as-asserting string as int")
+    } catch (e) {
+        assert("expected type" in str(e.message), "Wrong error for as assertion: " + str(e.message))
+    }
+}
+test_as_assert_fail()
+
+// ============ in 类型查询 ============
+test_in_query() = {
+    assert(5 in int, "5 should be in int")
+    assert(!("hi" in int), "\"hi\" should not be in int")
+    assert(5 in (int | string), "5 should be in union")
+}
+test_in_query()
+
+// ============ 参数与返回类型断言 ============
+test_param_assert() = {
+    f(x: int) = x * 2
+    assert(f(5) == 10, "param assertion should succeed")
+}
+test_param_assert()
+
+test_param_assert_fail() = {
+    try {
+        f(x: int) = x * 2
+        f("hi")
+        assert(false, "Should throw when passing string to int param")
+    } catch (e) {
+        assert("expected type" in str(e.message), "Wrong error for param assertion: " + str(e.message))
+    }
+}
+test_param_assert_fail()
+
+test_return_assert() = {
+    f() -> int = 5
+    assert(f() == 5, "return assertion should succeed")
+}
+test_return_assert()
+
+test_return_assert_fail() = {
+    try {
+        f() -> int = "hi"
+        f()
+        assert(false, "Should throw when returning string from int function")
+    } catch (e) {
+        assert("expected to return" in str(e.message), "Wrong error for return assertion: " + str(e.message))
+    }
+}
+test_return_assert_fail()
+
+// ============ 裸注解报错 ============
+test_bare_annotation_error() = {
+    try {
+        eval("x: int")
+        assert(false, "Should throw on bare annotation without assignment")
+    } catch (e) {
+        msg = str(e.message)
+        assert("Use 'as'" in msg || "Type annotation" in msg, "Wrong error for bare annotation: " + msg)
+    }
+}
+test_bare_annotation_error()

@@ -3348,7 +3348,7 @@
       "    If the pattern match fails, the error is automatically re-thrown!",
       "      try {",
       "          throw {code: 404, msg: \"Not Found\"}",
-      "      } catch ({code, msg}) {",
+      "      } catch ({message: {code, msg}}) {",
       "          print(f\"Error {code}: {msg}\")",
       "      }",
       "",
@@ -6422,7 +6422,7 @@
       ],
       "examples": [
         "try { error(\"oops\") } catch (e) { print(e) }",
-        "try { throw {code: 404} } catch ({code}) { print(code) }"
+        "try { throw {code: 404} } catch ({message: {code}}) { print(code) }"
       ]
     },
     "throw": {

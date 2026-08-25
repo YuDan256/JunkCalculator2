@@ -4381,7 +4381,13 @@ void BuiltinRegistry::registerHigherOrder() {
             jc::checkInterrupt();
             Value pairVal = makeDictPair(k, v);
             GcValueGuard pairGuard(pairVal);
-            result->set(k, safeCallValue(f, { pairVal }));
+            Value newPair = safeCallValue(f, { pairVal });
+            GcValueGuard newPairGuard(newPair);
+            if (!newPair.isObjType(ObjType::LIST) || static_cast<ObjList*>(newPair.asObj())->vec.size() != 2) {
+                throw std::runtime_error("Type Error: map() callback must return a @[key, value] pair.");
+            }
+            const auto& np = static_cast<ObjList*>(newPair.asObj())->vec;
+            result->set(np[0], np[1]);
         }
         return Value(result);
     };

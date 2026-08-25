@@ -230,6 +230,26 @@ static void* host_get_native_data(JC2_VMContext, JC2_ValueHandle instance) {
     return nullptr;
 }
 
+static void host_set_buffer_data(JC2_VMContext, JC2_ValueHandle instance, void* data, size_t size) {
+    Value val = from_handle(instance);
+    if (val.isInstance()) {
+        auto inst = val.asInstance();
+        inst->c_bufferData = data;
+        inst->c_bufferSize = size;
+    }
+}
+
+static void* host_get_buffer_data(JC2_VMContext, JC2_ValueHandle instance, size_t* out_size) {
+    Value val = from_handle(instance);
+    if (val.isInstance()) {
+        auto inst = val.asInstance();
+        if (out_size) *out_size = inst->c_bufferSize;
+        return inst->c_bufferData;
+    }
+    if (out_size) *out_size = 0;
+    return nullptr;
+}
+
 static void host_register_help(JC2_VMContext, const char* topic, const char* help_text) {
     jc::DynamicHelp[topic] = help_text;
 }
@@ -781,6 +801,8 @@ static const JC2_HostAPI host_api = {
     host_bind_method,
     host_set_native_data,
     host_get_native_data,
+    host_set_buffer_data,
+    host_get_buffer_data,
     host_register_help,
     host_register_function_help,
     host_register_function,

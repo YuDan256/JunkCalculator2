@@ -21,7 +21,7 @@ extern "C" {
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
 #define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
-#define JC2_EXT_VERSION 3
+#define JC2_EXT_VERSION 4
 
 #define JC2_SLICE_NONE (-2147483647 - 1)
 
@@ -88,6 +88,10 @@ typedef struct JC2_HostAPI {
     void (*set_native_data)(JC2_VMContext ctx, JC2_ValueHandle instance, void* data, JC2_NativeDestructor dtor);
     /* 提取绑定的原生指针 */
     void* (*get_native_data)(JC2_VMContext ctx, JC2_ValueHandle instance);
+    
+    /* --- 官方 Buffer 协议 (Buffer Protocol) --- */
+    void (*set_buffer_data)(JC2_VMContext ctx, JC2_ValueHandle instance, void* data, size_t size);
+    void* (*get_buffer_data)(JC2_VMContext ctx, JC2_ValueHandle instance, size_t* out_size);
     
     /* --- 模块注册 (Module Registration) --- */
     void (*register_help)(JC2_VMContext ctx, const char* topic, const char* help_text);

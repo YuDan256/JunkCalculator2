@@ -181,6 +181,7 @@ Value read_memory(const uint8_t* ptr, const FFITypeDesc& t) {
             StructInstanceData* data = new StructInstanceData{t.layout, std::vector<uint8_t>(t.size)};
             std::memcpy(data->memory.data(), ptr, t.size);
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_buffer_data(data->memory.data(), t.size);
             return inst.get_handle();
         }
         default: return Value();
@@ -313,9 +314,20 @@ public:
             case FFIType::U32:
             case FFIType::I64:
             case FFIType::U64:
-            case FFIType::POINTER:
-                val64 = extract_u64(args[i]);
+            case FFIType::POINTER: {
+                if (args[i].is_none()) {
+                    val64 = 0;
+                } else {
+                    size_t bsize = 0;
+                    void* bdata = args[i].get_buffer_data(&bsize);
+                    if (bdata) {
+                        val64 = reinterpret_cast<uint64_t>(bdata);
+                    } else {
+                        val64 = extract_u64(args[i]);
+                    }
+                }
                 break;
+            }
             case FFIType::F32: {
                 float f = static_cast<float>(args[i].as_double());
                 std::memcpy(&val64, &f, sizeof(float));
@@ -356,6 +368,7 @@ public:
             Instance inst(*g_structInstClass);
             StructInstanceData* data = new StructInstanceData{retType.layout, ret_struct_mem};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_buffer_data(data->memory.data(), retType.size);
             return inst.get_handle();
         }
 
@@ -388,6 +401,7 @@ public:
             StructInstanceData* data = new StructInstanceData{retType.layout, std::vector<uint8_t>(retType.size, 0)};
             std::memcpy(data->memory.data(), &out_i, retType.size);
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_buffer_data(data->memory.data(), retType.size);
             return inst.get_handle();
         }
         default: return Value();
@@ -573,7 +587,12 @@ JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
         throw_error("ffi.readMemory requires address and type.");
         return Value().get_handle();
     }
-    uint64_t addr = std::stoull(Value(argv[0]).to_string());
+    uint64_t addr = 0;
+    size_t bsize = 0;
+    void* bdata = Value(argv[0]).get_buffer_data(&bsize);
+    if (bdata) addr = reinterpret_cast<uint64_t>(bdata);
+    else addr = std::stoull(Value(argv[0]).to_string());
+    
     FFITypeDesc t;
     try {
         t = parseType(Value(argv[1]));
@@ -590,7 +609,12 @@ JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* a
         throw_error("ffi.writeMemory requires address, type, and value.");
         return Value().get_handle();
     }
-    uint64_t addr = std::stoull(Value(argv[0]).to_string());
+    uint64_t addr = 0;
+    size_t bsize = 0;
+    void* bdata = Value(argv[0]).get_buffer_data(&bsize);
+    if (bdata) addr = reinterpret_cast<uint64_t>(bdata);
+    else addr = std::stoull(Value(argv[0]).to_string());
+    
     FFITypeDesc t;
     try {
         t = parseType(Value(argv[1]));
@@ -657,17 +681,10 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
         g_execPool->deallocate(d->thunk_memory);
         delete d;
     });
+    inst.set_buffer_data(thunk, 0);
     
     inst.freeze();
     return inst.get_handle();
-}
-
-JC2_ValueHandle callback_address(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
-    (void)ctx; (void)argc; (void)user_data;
-    Instance self(argv[0]);
-    CallbackData* data = self.get_native_data<CallbackData>();
-    uint64_t addr = reinterpret_cast<uint64_t>(data->thunk_memory);
-    return BigInt(std::to_string(addr)).get_handle();
 }
 
 JC2_ValueHandle struct_layout_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -749,14 +766,6 @@ JC2_ValueHandle struct_inst_setattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
     }
     throw_error("Struct has no field '" + key + "'.");
     return Value().get_handle();
-}
-
-JC2_ValueHandle struct_inst_address(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
-    (void)ctx; (void)argc; (void)user_data;
-    Instance self(argv[0]);
-    StructInstanceData* data = self.get_native_data<StructInstanceData>();
-    uint64_t addr = reinterpret_cast<uint64_t>(data->memory.data());
-    return BigInt(std::to_string(addr)).get_handle();
 }
 
 JC2_ValueHandle struct_inst_str(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -918,11 +927,9 @@ int jc2_init(jc2::Module& mod) {
 
     g_structInstClass->bind_method("__getattr__", struct_inst_getattr, 1, 1, false, {"key"});
     g_structInstClass->bind_method("__setattr__", struct_inst_setattr, 2, 2, false, {"key", "val"});
-    g_structInstClass->bind_method("address", struct_inst_address, 0, 0, false);
     g_structInstClass->bind_method("__str__", struct_inst_str, 0, 0, false);
     
     g_callbackClass->set_allocator(callback_alloc);
-    g_callbackClass->bind_method("address", callback_address, 0, 0, false);
     
     mod.register_value("FFILibrary", *g_libClass);
     mod.register_value("FFIFunction", *g_funcClass);
@@ -957,11 +964,11 @@ int jc2_init(jc2::Module& mod) {
         "  ──────────────────────\n"
         "    The \"pointer\" type represents a 64-bit memory address (void*, int*, etc.).\n"
         "    In JC2, pointers are passed and returned as standard integers.\n"
-        "    To pass memory to C/C++, use the `buffer` module to allocate memory,\n"
-        "    get its raw address, and read/write the results:\n"
-        "      import buffer\n"
-        "      buf = buffer.alloc(1024)       // Allocate 1KB memory\n"
-        "      c_func(buf.address())          // Pass raw address to C\n"
+        "    To pass memory to C/C++, use the `bytes` module to allocate memory,\n"
+        "    and pass the buffer object directly to the C function:\n"
+        "      import bytes\n"
+        "      buf = bytes.alloc(1024)        // Allocate 1KB memory\n"
+        "      c_func(buf)                    // Pass buffer object directly to C!\n"
         "      buf.seek(0)\n"
         "      print(buf.readI32())           // Read data modified by C\n\n"
         "  5. Structs (By Value & Pointer)\n"
@@ -972,17 +979,17 @@ int jc2_init(jc2::Module& mod) {
         "      p = Point()\n"
         "      p.x = 100\n"
         "      c_func(p)              // Pass struct by value\n"
-        "      c_func_ptr(p.address()) // Pass struct by pointer\n\n"
+        "      c_func_ptr(p)          // Pass struct by pointer (auto-extracted!)\n\n"
         "  6. Callbacks (C calling JC2)\n"
         "  ──────────────────────\n"
         "    You can pass JC2 functions to C as function pointers using `ffi.Callback`.\n"
         "      my_cmp(a, b) = a > b ? 1 : (a < b ? -1 : 0)\n"
         "      cb = ffi.Callback(my_cmp, \"i32\", \"i32\", \"i32\")\n"
-        "      c_qsort(arr, len, 4, cb.address())\n\n"
+        "      c_qsort(arr, len, 4, cb)\n\n"
         "  Example\n"
         "  ──────────────────────\n"
         "    import ffi\n"
-        "    import buffer\n"
+        "    import bytes\n"
         "    libc = ffi.FFILibrary(\"msvcrt.dll\")\n"
         "    \n"
         "    // double pow(double base, double exp);\n"
@@ -995,17 +1002,16 @@ int jc2_init(jc2::Module& mod) {
         "    \n"
         "    // Pointers & Buffer: void* memset(void* dest, int ch, size_t count);\n"
         "    c_memset = libc.bind(\"memset\", \"pointer\", \"pointer\", \"i32\", \"u64\")\n"
-        "    buf = buffer.alloc(10)\n"
-        "    c_memset(buf.address(), 255, buf.length())\n"
+        "    buf = bytes.alloc(10)\n"
+        "    c_memset(buf, 255, buf.len())\n"
+        "    buf.seek(0)\n"
         "    print(buf.readU8())      // -> 255"
     );
     
     mod.register_function_help("ffi.FFILibrary", "ffi.FFILibrary(path)", "Loads a native dynamic library (.dll) into memory.", "lib = ffi.FFILibrary(\"msvcrt.dll\")");
     mod.register_function_help("FFILibrary.bind", "lib.bind(func_name, ret_type, [arg_types...])", "Binds a C function from the loaded library with the specified return type and argument types.", "puts = lib.bind(\"puts\", \"i32\", \"string\")");
     mod.register_function_help("ffi.Struct", "ffi.Struct(layout_dict)", "Defines a C-compatible struct layout with automatic memory alignment and padding.", "Point = ffi.Struct({x: \"i32\", y: \"i32\"})\np = Point()");
-    mod.register_function_help("StructInstance.address", "inst.address()", "Returns the raw 64-bit memory address (pointer) of the struct instance, useful for passing to C functions.", "ptr = p.address()");
     mod.register_function_help("ffi.Callback", "ffi.Callback(func, ret_type, [arg_types...])", "Wraps a JC2 function into a C-compatible function pointer.", "cb = ffi.Callback(my_func, \"i32\", \"i32\", \"i32\")");
-    mod.register_function_help("Callback.address", "cb.address()", "Returns the raw 64-bit memory address (pointer) of the callback thunk.", "ptr = cb.address()");
     mod.register_function_help("ffi.readMemory", "ffi.readMemory(address, type)", "Reads a value of the specified FFI type from a raw memory address.", "val = ffi.readMemory(ptr, \"i32\")");
     mod.register_function_help("ffi.writeMemory", "ffi.writeMemory(address, type, value)", "Writes a value of the specified FFI type to a raw memory address.", "ffi.writeMemory(ptr, \"i32\", 42)");
     

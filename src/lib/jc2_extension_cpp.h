@@ -89,6 +89,14 @@ public:
         return static_cast<T*>(Env::api->get_native_data(Env::ctx, handle));
     }
 
+    void set_buffer_data(void* data, size_t size) {
+        Env::api->set_buffer_data(Env::ctx, handle, data, size);
+    }
+
+    void* get_buffer_data(size_t* out_size = nullptr) const {
+        return Env::api->get_buffer_data(Env::ctx, handle, out_size);
+    }
+
     void freeze() const {
         Env::api->freeze_object(Env::ctx, handle);
     }

@@ -659,6 +659,8 @@ namespace jc {
         void* c_nativeData = nullptr;
         void (*c_nativeDtor)(void*) = nullptr;
         Value (*c_nativeNext)(ObjInstance*) = nullptr;
+        void* c_bufferData = nullptr;
+        size_t c_bufferSize = 0;
         bool is_frozen = false;
         bool is_finalized = false;
         mutable bool is_hashable_cached = false;
@@ -920,6 +922,8 @@ namespace jc {
         }
         c_nativeData = nullptr;
         c_nativeDtor = nullptr;
+        c_bufferData = nullptr;
+        c_bufferSize = 0;
         properties.clear();
     }
 

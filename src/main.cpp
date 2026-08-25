@@ -855,9 +855,13 @@ int main(int argc, char* argv[]) {
         bool inStr = false, isMulti = false;
         checkInputState(input, braces, parens, brackets, inStr, isMulti, commentNesting);
 
+        // 以 / 或 // 开头（命令/注释）且不在任何括号里时，不开启续行模式（否则 /help in 会被 "in" 误判为续行）
+        bool slashInput = !input.empty() && input[0] == '/';
+        bool openBrackets = braces > 0 || parens > 0 || brackets > 0;
+
         bool inputAborted = false;
         bool isEof = false;
-        while (braces > 0 || parens > 0 || brackets > 0 || (inStr && isMulti) || commentNesting > 0 || (!inStr && commentNesting == 0 && endsWithContinuation(input))) {
+        while (!(slashInput && !openBrackets) && (braces > 0 || parens > 0 || brackets > 0 || (inStr && isMulti) || commentNesting > 0 || (!inStr && commentNesting == 0 && endsWithContinuation(input)))) {
             std::string line;
             if (!g_quiet) std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "...  " << jc::col(jc::Ansi::RESET);
             if (!std::getline(std::cin, line)) {

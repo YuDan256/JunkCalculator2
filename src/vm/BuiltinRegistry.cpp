@@ -4363,6 +4363,154 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->matrixProto, "sort", {"cmp"}, sortFn, 1);
     regMethod(VM::activeVM->stringProto, "sort", {"cmp"}, sortFn, 1);
 
+    // ==== dict 高阶函数（pair 优先：map/filter/reduce/any/all/countIf 回调收 @[k,v] frozen list）====
+    auto makeDictPair = [](const Value& k, const Value& v) -> Value {
+        ObjList* pair = GcHeap::get().allocate<ObjList>();
+        pair->vec.push_back(k);
+        pair->vec.push_back(v);
+        pair->is_frozen = true;
+        return Value(pair);
+    };
+
+    auto dictMapCore = [this, makeDictPair](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: map() requires a single-parameter function.");
+        ObjDict* d = static_cast<ObjDict*>(argList.asObj());
+        ObjDict* result = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard resultGuard(result);
+        for (const auto& [k, v] : d->elements) {
+            jc::checkInterrupt();
+            Value pairVal = makeDictPair(k, v);
+            GcValueGuard pairGuard(pairVal);
+            result->set(k, safeCallValue(f, { pairVal }));
+        }
+        return Value(result);
+    };
+    auto dictMapFn = [dictMapCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return dictMapCore(self, args[0]);
+    };
+    regMethod(VM::activeVM->dictProto, "map", {"f"}, dictMapFn);
+
+    auto dictMapValuesCore = [this](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: mapValues() requires a single-parameter function.");
+        ObjDict* d = static_cast<ObjDict*>(argList.asObj());
+        ObjDict* result = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard resultGuard(result);
+        for (const auto& [k, v] : d->elements) {
+            jc::checkInterrupt();
+            result->set(k, safeCallValue(f, { v }));
+        }
+        return Value(result);
+    };
+    auto dictMapValuesFn = [dictMapValuesCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return dictMapValuesCore(self, args[0]);
+    };
+    regMethod(VM::activeVM->dictProto, "mapValues", {"f"}, dictMapValuesFn);
+
+    auto dictMapKeysCore = [this](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: mapKeys() requires a single-parameter function.");
+        ObjDict* d = static_cast<ObjDict*>(argList.asObj());
+        ObjDict* result = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard resultGuard(result);
+        for (const auto& [k, v] : d->elements) {
+            jc::checkInterrupt();
+            result->set(safeCallValue(f, { k }), v);
+        }
+        return Value(result);
+    };
+    auto dictMapKeysFn = [dictMapKeysCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return dictMapKeysCore(self, args[0]);
+    };
+    regMethod(VM::activeVM->dictProto, "mapKeys", {"f"}, dictMapKeysFn);
+
+    auto dictFilterCore = [this, makeDictPair](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: filter() requires a single-parameter function.");
+        ObjDict* d = static_cast<ObjDict*>(argList.asObj());
+        ObjDict* result = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard resultGuard(result);
+        for (const auto& [k, v] : d->elements) {
+            jc::checkInterrupt();
+            Value pairVal = makeDictPair(k, v);
+            GcValueGuard pairGuard(pairVal);
+            if (safeCallValue(f, { pairVal }).truthy()) result->set(k, v);
+        }
+        return Value(result);
+    };
+    auto dictFilterFn = [dictFilterCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return dictFilterCore(self, args[0]);
+    };
+    regMethod(VM::activeVM->dictProto, "filter", {"f"}, dictFilterFn);
+
+    auto dictReduceCore = [this, makeDictPair](const Value& argList, const Value& f, const Value& initVal) -> Value {
+        if (!callableAcceptsArgCount(f, 2)) throw std::runtime_error("Runtime Error: reduce() requires a two-parameter function.");
+        ObjDict* d = static_cast<ObjDict*>(argList.asObj());
+        Value acc;
+        bool first = true;
+        if (!initVal.isNone()) { acc = initVal; first = false; }
+        GcValueGuard guard(acc);
+        for (const auto& [k, v] : d->elements) {
+            jc::checkInterrupt();
+            Value pairVal = makeDictPair(k, v);
+            GcValueGuard pairGuard(pairVal);
+            if (first) { acc = pairVal; first = false; }
+            else acc = safeCallValue(f, { acc, pairVal });
+        }
+        if (first) throw std::runtime_error("Runtime Error: reduce() on empty.");
+        return acc;
+    };
+    auto dictReduceFn = [dictReduceCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        Value initVal = args.size() == 2 ? args[1] : Value::none();
+        return dictReduceCore(self, args[0], initVal);
+    };
+    regMethod(VM::activeVM->dictProto, "reduce", {"f", "init"}, dictReduceFn, 1);
+
+    auto dictAnyAllCore = [this, makeDictPair](const Value& argList, const Value& f, auto checkFn) -> Value {
+        ObjDict* d = static_cast<ObjDict*>(argList.asObj());
+        bool found = false;
+        for (const auto& [k, v] : d->elements) {
+            jc::checkInterrupt();
+            Value pairVal = makeDictPair(k, v);
+            GcValueGuard pairGuard(pairVal);
+            if (checkFn(safeCallValue(f, { pairVal }).truthy())) { found = true; break; }
+        }
+        return Value(found);
+    };
+
+    auto dictAnyFn = [dictAnyAllCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return dictAnyAllCore(self, args[0], [](bool res) { return res; });
+    };
+    regMethod(VM::activeVM->dictProto, "any", {"f"}, dictAnyFn);
+
+    auto dictAllFn = [dictAnyAllCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        Value res = dictAnyAllCore(self, args[0], [](bool res) { return !res; });
+        return Value(!res.asBool());
+    };
+    regMethod(VM::activeVM->dictProto, "all", {"f"}, dictAllFn);
+
+    auto dictCountIfCore = [this, makeDictPair](const Value& argList, const Value& f) -> Value {
+        if (!callableAcceptsArgCount(f, 1)) throw std::runtime_error("Runtime Error: countIf() requires a single-parameter function.");
+        ObjDict* d = static_cast<ObjDict*>(argList.asObj());
+        int c = 0;
+        for (const auto& [k, v] : d->elements) {
+            jc::checkInterrupt();
+            Value pairVal = makeDictPair(k, v);
+            GcValueGuard pairGuard(pairVal);
+            if (safeCallValue(f, { pairVal }).truthy()) c++;
+        }
+        return Value::fromInt32(c);
+    };
+    auto dictCountIfFn = [dictCountIfCore](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return dictCountIfCore(self, args[0]);
+    };
+    regMethod(VM::activeVM->dictProto, "countIf", {"f"}, dictCountIfFn);
+
 }
 
 // =================================================================

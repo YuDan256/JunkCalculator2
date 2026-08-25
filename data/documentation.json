@@ -1313,10 +1313,8 @@
       "      type(int)                → <type 'type'>   (The type of a type is 'type'!)",
       "",
       "    ★ Type Comparison:",
-      "      Type objects compare by identity (interning). Comparing a type object",
-      "      to a string no longer works; use the `in` operator for type queries.",
+      "      Type objects compare by identity (interning).",
       "        type(5) == int           → true  (O(1) pointer comparison)",
-      "        type(5) == \"int\"         → false (use `5 in int` instead)",
       "",
       "  Type Algebra (Union & Intersection)",
       "  ──────────────────────",
@@ -5963,16 +5961,14 @@
         "   in the container, false otherwise.",
         "   Supported: arrays, lists, strings, dicts (checks keys), sets,",
         "   instances (checks __contains__, then fields, methods, and __getattr__),",
-        "   and Types (acts as an `isinstance` / value-in-type check; use `<:` for",
-        "   type subset).",
+        "   and Types (acts as an `isinstance` / value-in-type check).",
         "See also: /help for, /help control"
       ],
       "examples": [
         "for (x in range(10)) print(x)",
         "3 in [1, 2, 3]          // → true",
         "\"key\" in {key: 42}      // → true",
-        "5 in (int | string)     // → true (Value in Type)",
-        "int <: (int | string)   // → true (type subset uses <:, not in)"
+        "5 in (int | string)     // → true (Value in Type)"
       ]
     },
     "break": {

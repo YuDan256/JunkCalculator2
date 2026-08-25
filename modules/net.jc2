@@ -3,7 +3,7 @@
 // Pure, Zero-Dependency Socket Engine (Client & Server)
 // ═══════════════════════════════════════════════════════════════
 
-import socket
+const local import socket
 
 // ─── Socket Object (Client) ───────────────────────────────────
 
@@ -74,7 +74,7 @@ class TcpServer {
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 
-import sys
+const local import sys
 try {
     sys.register_help("net", r"DOC(
 ═══ Network (Standard Library) ═══

@@ -490,8 +490,9 @@ class Graph {
             }
             return @[]
         }
+    }
 
-        dijkstra(start: any) -> dict = {
+    dijkstra(start: any) -> dict = {
             vs = self.adj.keys().toList()
             dist = dict(); prev = dict()
             for (v in vs) dist[v] = none
@@ -661,7 +662,7 @@ printTruthTable(n: int | double, fn: function) = {
 // │ 6. HELP TEXT REGISTRATION                              │
 // └────────────────────────────────────────────────────────┘
 
-import sys
+const local import sys
 try {
     sys.register_help("discrete", r"DOC(
 ═══ Discrete Mathematics Standard Library ═══

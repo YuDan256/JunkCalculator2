@@ -3,7 +3,7 @@
 // Object-Oriented Memory Driver (Powered by Native 'bytes' module)
 // ═══════════════════════════════════════════════════════════════
 
-import bytes
+const local import bytes
 
 // ─── Byte Buffer Object ───────────────────────────────────────
 
@@ -125,7 +125,7 @@ fromFile(path: string) -> ByteBuffer  = return ByteBuffer(bytes.readFile(path))
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 
-import sys
+const local import sys
 try {
     sys.register_help("buffer", r"DOC(
 ═══ Binary Buffer (Standard Library) ═══

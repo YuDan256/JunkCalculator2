@@ -3,7 +3,7 @@
 // Built with strict JC2 Lexer / Scope standards
 // ═══════════════════════════════════════════════════════════════
 
-import net
+const local import net
 
 // ─── Response Class ───────────────────────────────────────────
 
@@ -16,7 +16,7 @@ class HttpResponse {
     }
 
     json() -> any = {
-        import json
+        const import json
         return json.parse(self.body)
     }
 
@@ -125,7 +125,7 @@ http_get(url: string) -> HttpResponse = {
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 
-import sys
+const local import sys
 try {
     sys.register_help("http", r"DOC(
 ═══ HTTP Client (Standard Library) ═══

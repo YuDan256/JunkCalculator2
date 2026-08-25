@@ -276,7 +276,7 @@ class BST {
 
 // ─── Dynamic Help Registry ────────────────────────────────────
 
-import sys
+const local import sys
 try {
     sys.register_help("collections", r"DOC(
 ═══ Collections (Standard Library) ═══

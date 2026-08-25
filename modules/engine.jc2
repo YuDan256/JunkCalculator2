@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════
 // engine.jc2 — Object-Oriented Game Framework for JC2
 // ═══════════════════════════════════════════════════════════════
-import image
-import window
-import sys
+const local import image
+const local import window
+const local import sys
 
 class GameEngine {
     init(title: string = "JC2 Game", width: int | double = 800, height: int | double = 600, fps: int | double = 60) = {

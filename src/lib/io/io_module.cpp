@@ -154,6 +154,161 @@ METHOD(next) {
     return file_readLine(nullptr, argc, argv, nullptr);
 }
 
+static std::vector<std::vector<std::string>> parseCSV(const std::string& path, char delim) {
+    std::ifstream file(path);
+    if (!file.is_open()) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
+    std::vector<std::vector<std::string>> rows;
+    std::vector<std::string> current_row;
+    std::string current_field;
+    bool in_quotes = false;
+    char c;
+    while (file.get(c)) {
+        if (in_quotes) {
+            if (c == '"') {
+                if (file.peek() == '"') {
+                    current_field += '"';
+                    file.get(); // consume second quote
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                current_field += c;
+            }
+        } else {
+            if (c == '"') {
+                in_quotes = true;
+            } else if (c == delim) {
+                current_row.push_back(current_field);
+                current_field.clear();
+            } else if (c == '\n') {
+                current_row.push_back(current_field);
+                current_field.clear();
+                rows.push_back(current_row);
+                current_row.clear();
+            } else if (c != '\r') {
+                current_field += c;
+            }
+        }
+    }
+    if (!current_field.empty() || !current_row.empty()) {
+        current_row.push_back(current_field);
+        rows.push_back(current_row);
+    }
+    return rows;
+}
+
+JC2_ValueHandle io_readCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1) jc2::throw_error("Type Error: io.readCSV expects a path.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    char delim = ',';
+    if (argc >= 2) {
+        std::string d = jc2::Value(argv[1]).as_string();
+        if (!d.empty()) delim = d[0];
+    }
+    auto rowsData = parseCSV(path, delim);
+    jc2::List rows;
+    for (const auto& row : rowsData) {
+        jc2::List rowList;
+        for (const auto& s : row) rowList.push_back(jc2::Value(s));
+        rowList.freeze();
+        rows.push_back(jc2::Value(rowList.get_handle()));
+    }
+    return rows.get_handle();
+}
+
+JC2_ValueHandle io_parseCSVNum(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1) jc2::throw_error("Type Error: io.parseCSVNum expects a path.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    char delim = ',';
+    if (argc >= 2) {
+        std::string d = jc2::Value(argv[1]).as_string();
+        if (!d.empty()) delim = d[0];
+    }
+    auto rowsData = parseCSV(path, delim);
+    if (rowsData.empty()) return jc2::RealMatrix(0, 0).get_handle();
+    
+    size_t maxCols = 0;
+    for (const auto& row : rowsData) if (row.size() > maxCols) maxCols = row.size();
+    
+    jc2::RealMatrix mat(static_cast<int>(rowsData.size()), static_cast<int>(maxCols));
+    for (size_t i = 0; i < rowsData.size(); ++i) {
+        for (size_t j = 0; j < maxCols; ++j) {
+            double val = 0.0;
+            if (j < rowsData[i].size() && !rowsData[i][j].empty()) {
+                try { val = std::stod(rowsData[i][j]); } catch (...) {}
+            }
+            mat.set(static_cast<int>(i), static_cast<int>(j), val);
+        }
+    }
+    return mat.get_handle();
+}
+
+JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 2) jc2::throw_error("Type Error: io.writeCSV expects path and data.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::string delim = ",";
+    if (argc >= 3) delim = jc2::Value(argv[2]).as_string();
+    
+    std::ofstream file(path);
+    if (!file.is_open()) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
+    
+    jc2::Value data = jc2::Value(argv[1]);
+    
+    auto escapeCSV = [&](const std::string& s) {
+        if (s.find(delim) != std::string::npos || s.find('"') != std::string::npos || s.find('\n') != std::string::npos || s.find('\r') != std::string::npos) {
+            std::string res = "\"";
+            for (char c : s) {
+                if (c == '"') res += "\"\"";
+                else res += c;
+            }
+            res += "\"";
+            return res;
+        }
+        return s;
+    };
+
+    if (data.is_real_matrix()) {
+        jc2::RealMatrix m(data.get_handle());
+        for (int i = 0; i < m.rows(); ++i) {
+            for (int j = 0; j < m.cols(); ++j) {
+                if (j > 0) file << delim;
+                file << m.get(i, j);
+            }
+            file << "\n";
+        }
+    } else if (data.is_complex_matrix()) {
+        jc2::ComplexMatrix m(data.get_handle());
+        for (int i = 0; i < m.rows(); ++i) {
+            for (int j = 0; j < m.cols(); ++j) {
+                if (j > 0) file << delim;
+                double r = m.get_real(i, j), im = m.get_imag(i, j);
+                if (im == 0) file << r;
+                else if (r == 0) file << im << "i";
+                else file << r << (im > 0 ? "+" : "") << im << "i";
+            }
+            file << "\n";
+        }
+    } else if (data.is_list()) {
+        jc2::List l = jc2::List(data.get_handle());
+        for (size_t i = 0; i < l.size(); ++i) {
+            jc2::Value row = l.get(i);
+            if (row.is_list()) {
+                jc2::List rowList(row.get_handle());
+                for (size_t j = 0; j < rowList.size(); ++j) {
+                    if (j > 0) file << delim;
+                    file << escapeCSV(rowList.get(j).to_string());
+                }
+            } else {
+                file << escapeCSV(row.to_string());
+            }
+            file << "\n";
+        }
+    } else {
+        jc2::throw_error("Type Error: writeCSV expects a matrix or list.");
+    }
+    return jc2::Value::none().get_handle();
+}
+
 JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc < 1) jc2::throw_error("Type Error: io.stat expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
@@ -282,6 +437,10 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function("rename", io_rename, 2, 2, false, {"old_path", "new_path"});
     mod.register_function("exists", io_exists, 1, 1, false, {"path"});
     mod.register_function("listDir", io_listDir, 0, 1, false, {"path"});
+    mod.register_function("readCSV", io_readCSV, 1, 2, false, {"path", "delim"});
+    mod.register_function("readCSVMat", io_readCSV, 1, 2, false, {"path", "delim"});
+    mod.register_function("parseCSVNum", io_parseCSVNum, 1, 2, false, {"path", "delim"});
+    mod.register_function("writeCSV", io_writeCSV, 2, 3, false, {"path", "data", "delim"});
 
     mod.register_help("io",
         "═══ Industrial I/O Engine — Native Module ═══\n\n"
@@ -320,10 +479,18 @@ int jc2_init(jc2::Module& mod) {
         "    io.remove(path)               Deletes a file or empty directory.\n"
         "    io.rename(old, new)           Renames or moves a file/directory.\n"
         "    io.exists(path)               Returns true if the path exists.\n"
-        "    io.listDir([path])            Returns a list of filenames in the directory.\n"
+        "    io.listDir([path])            Returns a list of filenames in the directory.\n\n"
+        "  Industrial CSV Engine (RFC 4180)\n"
+        "  ──────────────────────\n"
+        "    io.readCSV(path, [delim])     Reads a CSV into a list of lists of strings.\n"
+        "    io.parseCSVNum(path, [delim]) Reads a CSV directly into a RealMatrix (fast numeric parsing).\n"
+        "    io.writeCSV(path, data, [d])  Writes a matrix or list of lists to a CSV file.\n"
     );
 
     mod.register_function_help("io.open", "io.open(path, [mode])", "Opens a file and returns a File stream instance.", "f = io.open(\"data.txt\", \"r\")");
+    mod.register_function_help("io.readCSV", "io.readCSV(path, [delim])", "Reads a CSV file into a list of lists of strings.", "data = io.readCSV(\"data.csv\")");
+    mod.register_function_help("io.parseCSVNum", "io.parseCSVNum(path, [delim])", "Reads a CSV file directly into a RealMatrix.", "mat = io.parseCSVNum(\"data.csv\")");
+    mod.register_function_help("io.writeCSV", "io.writeCSV(path, data, [delim])", "Writes a matrix or list to a CSV file.", "io.writeCSV(\"out.csv\", mat)");
     mod.register_function_help("io.stat", "io.stat(path)", "Returns a dictionary with file metadata.", "info = io.stat(\"data.txt\")");
     mod.register_function_help("io.mkdir", "io.mkdir(path, [recursive])", "Creates a directory.", "io.mkdir(\"new_folder\")");
     mod.register_function_help("io.remove", "io.remove(path)", "Deletes a file or empty directory.", "io.remove(\"old.txt\")");

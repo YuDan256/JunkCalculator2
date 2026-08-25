@@ -855,8 +855,9 @@ int main(int argc, char* argv[]) {
         bool inStr = false, isMulti = false;
         checkInputState(input, braces, parens, brackets, inStr, isMulti, commentNesting);
 
-        // 以 / 或 // 开头（命令/注释）且不在任何括号里时，不开启续行模式（否则 /help in 会被 "in" 误判为续行）
-        bool slashInput = !input.empty() && input[0] == '/';
+        // 以 / 或 // 开头（命令/单行注释）且不在任何括号里时，不开启续行模式（否则 /help in 会被 "in" 误判为续行）。
+        // 注意：/* 是多行注释开头，仍需续行等待 */。
+        bool slashInput = !input.empty() && input[0] == '/' && !(input.length() >= 2 && input[1] == '*');
         bool openBrackets = braces > 0 || parens > 0 || brackets > 0;
 
         bool inputAborted = false;

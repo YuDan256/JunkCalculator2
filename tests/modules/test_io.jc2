@@ -6,9 +6,10 @@ test_io_filesystem() = {
     dir_name = "test_io_temp_dir"
     renamed_dir = "test_io_temp_dir_renamed"
     
-    // 确保初始状态干净
-    if (io.exists(dir_name)) io.remove(dir_name)
-    if (io.exists(renamed_dir)) io.remove(renamed_dir)
+    defer {
+        if (io.exists(dir_name)) io.remove(dir_name)
+        if (io.exists(renamed_dir)) io.remove(renamed_dir)
+    }
     
     // 创建目录
     io.mkdir(dir_name)
@@ -33,6 +34,7 @@ test_io_filesystem()
 // 2. 测试文本流读写与迭代 (Text Stream & Iteration)
 test_io_text_stream() = {
     file_name = "test_io_text.txt"
+    defer if (io.exists(file_name)) io.remove(file_name)
     
     // 写入
     f_out = io.open(file_name, "w")
@@ -70,14 +72,13 @@ test_io_text_stream() = {
     f_in3.seek(pos)
     assert(f_in3.readLine() == "Line 2", "io.seek(pos) failed")
     f_in3.close()
-    
-    io.remove(file_name)
 }
 test_io_text_stream()
 
 // 3. 测试零拷贝二进制读写 (Zero-Copy Binary I/O)
 test_io_binary_buffer() = {
     file_name = "test_io_binary.bin"
+    defer if (io.exists(file_name)) io.remove(file_name)
     
     // 准备二进制数据
     b_out = bytes.alloc(4)
@@ -98,8 +99,6 @@ test_io_binary_buffer() = {
     // 验证数据
     b_in.seek(0)
     assert(b_in.readStr(4) == "ABCD", "io.readBuf() read incorrect binary data")
-    
-    io.remove(file_name)
 }
 test_io_binary_buffer()
 
@@ -107,6 +106,10 @@ test_io_binary_buffer()
 test_io_csv() = {
     csv_name = "test_io_data.csv"
     mat_name = "test_io_mat.csv"
+    defer {
+        if (io.exists(csv_name)) io.remove(csv_name)
+        if (io.exists(mat_name)) io.remove(mat_name)
+    }
     
     // 写入复杂 CSV (包含逗号和换行符)
     data = @[
@@ -128,9 +131,6 @@ test_io_csv() = {
     
     parsed_mat = io.parseCSVNum(mat_name)
     assert(parsed_mat[0, 0] == 1.5 && parsed_mat[1, 1] == 4.5, "io.parseCSVNum() failed to parse matrix correctly")
-    
-    io.remove(csv_name)
-    io.remove(mat_name)
 }
 test_io_csv()
 

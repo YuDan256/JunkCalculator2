@@ -123,17 +123,24 @@ METHOD(writeBuf) {
 METHOD(seek) {
     GET_SELF;
     if (argc < 2) jc2::throw_error("Type Error: seek expects an offset.");
-    long long offset = std::stoll(jc2::Value(argv[1]).to_string());
+    long long offset = 0;
+    if (jc2::Value(argv[1]).is_double() || jc2::Value(argv[1]).is_int()) {
+        offset = static_cast<long long>(std::round(jc2::Value(argv[1]).as_double()));
+    } else {
+        offset = std::stoll(jc2::Value(argv[1]).to_string());
+    }
     int origin = 0;
     if (argc >= 3) origin = static_cast<int>(std::round(jc2::Value(argv[2]).as_double()));
     
-    std::ios_base::seekdir dir = std::ios_base::beg;
-    if (origin == 1) dir = std::ios_base::cur;
-    else if (origin == 2) dir = std::ios_base::end;
-    
     stream.clear();
-    stream.seekg(offset, dir);
-    stream.seekp(offset, dir);
+    if (origin == 0) {
+        stream.seekg(static_cast<std::streampos>(offset));
+        stream.seekp(static_cast<std::streampos>(offset));
+    } else {
+        std::ios_base::seekdir dir = (origin == 1) ? std::ios_base::cur : std::ios_base::end;
+        stream.seekg(static_cast<std::streamoff>(offset), dir);
+        stream.seekp(static_cast<std::streamoff>(offset), dir);
+    }
     return argv[0];
 }
 

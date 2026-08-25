@@ -3,6 +3,119 @@
 #include <string>
 #include <algorithm>
 #include <filesystem>
+#include <sstream>
+#include <cstring>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
+
+static std::string decode_to_utf8(const std::string& raw, const std::string& enc) {
+    if (raw.empty()) return "";
+    std::string lower_enc = enc;
+    std::transform(lower_enc.begin(), lower_enc.end(), lower_enc.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
+
+    if (lower_enc == "utf-8" || lower_enc == "utf8") {
+        // 自动探测并静默剥离 UTF-8 BOM 头
+        if (raw.size() >= 3 && (unsigned char)raw[0] == 0xEF && (unsigned char)raw[1] == 0xBB && (unsigned char)raw[2] == 0xBF) {
+            return raw.substr(3);
+        }
+        return raw;
+    }
+    
+#ifdef _WIN32
+    if (lower_enc == "ansi" || lower_enc == "gbk" || lower_enc == "system") {
+        int wlen = MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), NULL, 0);
+        if (wlen <= 0) return raw;
+        std::wstring wstr(wlen, 0);
+        MultiByteToWideChar(CP_ACP, 0, raw.data(), (int)raw.size(), &wstr[0], wlen);
+        
+        int u8len = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), NULL, 0, NULL, NULL);
+        if (u8len <= 0) return raw;
+        std::string u8str(u8len, 0);
+        WideCharToMultiByte(CP_UTF8, 0, wstr.data(), (int)wstr.size(), &u8str[0], u8len, NULL, NULL);
+        return u8str;
+    }
+    if (lower_enc == "utf-16le" || lower_enc == "utf-16") {
+        size_t offset = 0;
+        if (raw.size() >= 2 && (unsigned char)raw[0] == 0xFF && (unsigned char)raw[1] == 0xFE) offset = 2;
+        int wlen = (int)(raw.size() - offset) / 2;
+        if (wlen <= 0) return "";
+        const wchar_t* wptr = reinterpret_cast<const wchar_t*>(raw.data() + offset);
+        
+        int u8len = WideCharToMultiByte(CP_UTF8, 0, wptr, wlen, NULL, 0, NULL, NULL);
+        if (u8len <= 0) return "";
+        std::string u8str(u8len, 0);
+        WideCharToMultiByte(CP_UTF8, 0, wptr, wlen, &u8str[0], u8len, NULL, NULL);
+        return u8str;
+    }
+    if (lower_enc == "utf-16be") {
+        size_t offset = 0;
+        if (raw.size() >= 2 && (unsigned char)raw[0] == 0xFE && (unsigned char)raw[1] == 0xFF) offset = 2;
+        int wlen = (int)(raw.size() - offset) / 2;
+        if (wlen <= 0) return "";
+        std::wstring wstr(wlen, 0);
+        const uint8_t* bptr = reinterpret_cast<const uint8_t*>(raw.data() + offset);
+        for (int i = 0; i < wlen; ++i) {
+            wstr[i] = (bptr[i*2] << 8) | bptr[i*2+1];
+        }
+        int u8len = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), wlen, NULL, 0, NULL, NULL);
+        if (u8len <= 0) return "";
+        std::string u8str(u8len, 0);
+        WideCharToMultiByte(CP_UTF8, 0, wstr.data(), wlen, &u8str[0], u8len, NULL, NULL);
+        return u8str;
+    }
+#endif
+    return raw;
+}
+
+static std::string encode_from_utf8(const std::string& u8str, const std::string& enc) {
+    if (u8str.empty()) return "";
+    std::string lower_enc = enc;
+    std::transform(lower_enc.begin(), lower_enc.end(), lower_enc.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
+
+    if (lower_enc == "utf-8" || lower_enc == "utf8") return u8str;
+
+#ifdef _WIN32
+    if (lower_enc == "ansi" || lower_enc == "gbk" || lower_enc == "system") {
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, u8str.data(), (int)u8str.size(), NULL, 0);
+        if (wlen <= 0) return u8str;
+        std::wstring wstr(wlen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, u8str.data(), (int)u8str.size(), &wstr[0], wlen);
+        
+        int alen = WideCharToMultiByte(CP_ACP, 0, wstr.data(), (int)wstr.size(), NULL, 0, NULL, NULL);
+        if (alen <= 0) return u8str;
+        std::string astr(alen, 0);
+        WideCharToMultiByte(CP_ACP, 0, wstr.data(), (int)wstr.size(), &astr[0], alen, NULL, NULL);
+        return astr;
+    }
+    if (lower_enc == "utf-16le" || lower_enc == "utf-16") {
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, u8str.data(), (int)u8str.size(), NULL, 0);
+        if (wlen <= 0) return "";
+        std::wstring wstr(wlen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, u8str.data(), (int)u8str.size(), &wstr[0], wlen);
+        
+        std::string res(wlen * 2, 0);
+        std::memcpy(&res[0], wstr.data(), wlen * 2);
+        return res;
+    }
+    if (lower_enc == "utf-16be") {
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, u8str.data(), (int)u8str.size(), NULL, 0);
+        if (wlen <= 0) return "";
+        std::wstring wstr(wlen, 0);
+        MultiByteToWideChar(CP_UTF8, 0, u8str.data(), (int)u8str.size(), &wstr[0], wlen);
+        
+        std::string res(wlen * 2, 0);
+        for (int i = 0; i < wlen; ++i) {
+            res[i*2] = (wstr[i] >> 8) & 0xFF;
+            res[i*2+1] = wstr[i] & 0xFF;
+        }
+        return res;
+    }
+#endif
+    return u8str;
+}
 
 static std::filesystem::path to_path(const std::string& utf8_str) {
     return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
@@ -18,6 +131,7 @@ static jc2::Class* g_fileClass = nullptr;
 struct FileContext {
     std::fstream stream;
     bool is_open = false;
+    std::string encoding = "utf-8";
 };
 
 static FileContext* getFile(const jc2::Value& val) {
@@ -39,30 +153,63 @@ METHOD(read) {
     if (argc == 1) {
         // Read all remaining
         std::string content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-        return jc2::Value(content).get_handle();
+        return jc2::Value(decode_to_utf8(content, ctx->encoding)).get_handle();
     } else {
         size_t size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
         std::string buf(size, '\0');
         stream.read(&buf[0], size);
         buf.resize(stream.gcount());
-        return jc2::Value(buf).get_handle();
+        return jc2::Value(decode_to_utf8(buf, ctx->encoding)).get_handle();
     }
 }
 
 METHOD(readLine) {
     GET_SELF;
-    std::string line;
-    if (std::getline(stream, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        return jc2::Value(line).get_handle();
+    std::string lower_enc = ctx->encoding;
+    std::transform(lower_enc.begin(), lower_enc.end(), lower_enc.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
+    
+    if (lower_enc == "utf-16le" || lower_enc == "utf-16") {
+        std::string raw;
+        char c[2];
+        while (stream.read(c, 2)) {
+            raw.push_back(c[0]);
+            raw.push_back(c[1]);
+            if (c[0] == '\n' && c[1] == '\0') break;
+        }
+        if (raw.empty()) return jc2::Value().get_handle();
+        std::string decoded = decode_to_utf8(raw, ctx->encoding);
+        if (!decoded.empty() && decoded.back() == '\n') decoded.pop_back();
+        if (!decoded.empty() && decoded.back() == '\r') decoded.pop_back();
+        return jc2::Value(decoded).get_handle();
+    } else if (lower_enc == "utf-16be") {
+        std::string raw;
+        char c[2];
+        while (stream.read(c, 2)) {
+            raw.push_back(c[0]);
+            raw.push_back(c[1]);
+            if (c[0] == '\0' && c[1] == '\n') break;
+        }
+        if (raw.empty()) return jc2::Value().get_handle();
+        std::string decoded = decode_to_utf8(raw, ctx->encoding);
+        if (!decoded.empty() && decoded.back() == '\n') decoded.pop_back();
+        if (!decoded.empty() && decoded.back() == '\r') decoded.pop_back();
+        return jc2::Value(decoded).get_handle();
+    } else {
+        std::string line;
+        if (std::getline(stream, line)) {
+            std::string decoded = decode_to_utf8(line, ctx->encoding);
+            if (!decoded.empty() && decoded.back() == '\r') decoded.pop_back();
+            return jc2::Value(decoded).get_handle();
+        }
+        return jc2::Value().get_handle();
     }
-    return jc2::Value().get_handle();
 }
 
 METHOD(write) {
     GET_SELF;
     std::string content = jc2::Value(argv[1]).to_string();
-    stream.write(content.data(), content.size());
+    std::string encoded = encode_from_utf8(content, ctx->encoding);
+    stream.write(encoded.data(), encoded.size());
     return argv[0]; // return self for chaining
 }
 
@@ -170,20 +317,25 @@ METHOD(next) {
     return file_readLine(nullptr, argc, argv, nullptr);
 }
 
-static std::vector<std::vector<std::string>> parseCSV(const std::string& path, char delim) {
+static std::vector<std::vector<std::string>> parseCSV(const std::string& path, char delim, const std::string& encoding) {
     std::ifstream file(to_path(path), std::ios::binary);
     if (!file.is_open()) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
+    
+    std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    content = decode_to_utf8(content, encoding);
+    
     std::vector<std::vector<std::string>> rows;
     std::vector<std::string> current_row;
     std::string current_field;
     bool in_quotes = false;
-    char c;
-    while (file.get(c)) {
+    
+    for (size_t i = 0; i < content.size(); ++i) {
+        char c = content[i];
         if (in_quotes) {
             if (c == '"') {
-                if (file.peek() == '"') {
+                if (i + 1 < content.size() && content[i+1] == '"') {
                     current_field += '"';
-                    file.get(); // consume second quote
+                    ++i; // consume second quote
                 } else {
                     in_quotes = false;
                 }
@@ -221,7 +373,10 @@ JC2_ValueHandle io_readCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*
         std::string d = jc2::Value(argv[1]).as_string();
         if (!d.empty()) delim = d[0];
     }
-    auto rowsData = parseCSV(path, delim);
+    std::string encoding = "utf-8";
+    if (argc >= 3) encoding = jc2::Value(argv[2]).as_string();
+    
+    auto rowsData = parseCSV(path, delim, encoding);
     jc2::List rows;
     for (const auto& row : rowsData) {
         jc2::List rowList;
@@ -240,7 +395,10 @@ JC2_ValueHandle io_parseCSVNum(JC2_VMContext, int argc, JC2_ValueHandle* argv, v
         std::string d = jc2::Value(argv[1]).as_string();
         if (!d.empty()) delim = d[0];
     }
-    auto rowsData = parseCSV(path, delim);
+    std::string encoding = "utf-8";
+    if (argc >= 3) encoding = jc2::Value(argv[2]).as_string();
+    
+    auto rowsData = parseCSV(path, delim, encoding);
     if (rowsData.empty()) return jc2::RealMatrix(0, 0).get_handle();
     
     size_t maxCols = 0;
@@ -264,11 +422,14 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string delim = ",";
     if (argc >= 3) delim = jc2::Value(argv[2]).as_string();
+    std::string encoding = "utf-8";
+    if (argc >= 4) encoding = jc2::Value(argv[3]).as_string();
     
     std::ofstream file(to_path(path), std::ios::binary);
     if (!file.is_open()) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
     
     jc2::Value data = jc2::Value(argv[1]);
+    std::ostringstream oss;
     
     auto escapeCSV = [&](const std::string& s) {
         if (s.find(delim) != std::string::npos || s.find('"') != std::string::npos || s.find('\n') != std::string::npos || s.find('\r') != std::string::npos) {
@@ -287,22 +448,22 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
         jc2::RealMatrix m(data.get_handle());
         for (int i = 0; i < m.rows(); ++i) {
             for (int j = 0; j < m.cols(); ++j) {
-                if (j > 0) file << delim;
-                file << m.get(i, j);
+                if (j > 0) oss << delim;
+                oss << m.get(i, j);
             }
-            file << "\r\n";
+            oss << "\r\n";
         }
     } else if (data.is_complex_matrix()) {
         jc2::ComplexMatrix m(data.get_handle());
         for (int i = 0; i < m.rows(); ++i) {
             for (int j = 0; j < m.cols(); ++j) {
-                if (j > 0) file << delim;
+                if (j > 0) oss << delim;
                 double r = m.get_real(i, j), im = m.get_imag(i, j);
-                if (im == 0) file << r;
-                else if (r == 0) file << im << "i";
-                else file << r << (im > 0 ? "+" : "") << im << "i";
+                if (im == 0) oss << r;
+                else if (r == 0) oss << im << "i";
+                else oss << r << (im > 0 ? "+" : "") << im << "i";
             }
-            file << "\r\n";
+            oss << "\r\n";
         }
     } else if (data.is_list()) {
         jc2::List l = jc2::List(data.get_handle());
@@ -311,17 +472,21 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
             if (row.is_list()) {
                 jc2::List rowList(row.get_handle());
                 for (size_t j = 0; j < rowList.size(); ++j) {
-                    if (j > 0) file << delim;
-                    file << escapeCSV(rowList.get(j).to_string());
+                    if (j > 0) oss << delim;
+                    oss << escapeCSV(rowList.get(j).to_string());
                 }
             } else {
-                file << escapeCSV(row.to_string());
+                oss << escapeCSV(row.to_string());
             }
-            file << "\r\n";
+            oss << "\r\n";
         }
     } else {
         jc2::throw_error("Type Error: writeCSV expects a matrix or list.");
     }
+    
+    std::string encoded = encode_from_utf8(oss.str(), encoding);
+    file.write(encoded.data(), encoded.size());
+    
     return jc2::Value::none().get_handle();
 }
 
@@ -399,6 +564,8 @@ JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string mode = "r";
     if (argc >= 2) mode = jc2::Value(argv[1]).as_string();
+    std::string encoding = "utf-8";
+    if (argc >= 3) encoding = jc2::Value(argv[2]).as_string();
 
     // 强制所有模式在底层都以 binary 模式打开，避免 Windows 下 \r\n 自动转换导致 seek/tell 游标错位
     std::ios_base::openmode ios_mode = std::ios::binary;
@@ -411,6 +578,7 @@ JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     else jc2::throw_error("IO Error: Unsupported mode '" + mode + "'.");
 
     auto ctx = new FileContext();
+    ctx->encoding = encoding;
     ctx->stream.open(to_path(path), ios_mode);
     if (!ctx->stream.is_open()) {
         delete ctx;
@@ -444,17 +612,17 @@ int jc2_init(jc2::Module& mod) {
     g_fileClass->bind_method("__iter__", file_iter, 0, 0, false);
     g_fileClass->bind_method("__next__", file_next, 0, 0, false);
 
-    mod.register_function("open", io_open, 1, 2, false, {"path", "mode"});
+    mod.register_function("open", io_open, 1, 3, false, {"path", "mode", "encoding"});
     mod.register_function("stat", io_stat, 1, 1, false, {"path"});
     mod.register_function("mkdir", io_mkdir, 1, 2, false, {"path", "recursive"});
     mod.register_function("remove", io_remove, 1, 1, false, {"path"});
     mod.register_function("rename", io_rename, 2, 2, false, {"old_path", "new_path"});
     mod.register_function("exists", io_exists, 1, 1, false, {"path"});
     mod.register_function("listDir", io_listDir, 0, 1, false, {"path"});
-    mod.register_function("readCSV", io_readCSV, 1, 2, false, {"path", "delim"});
-    mod.register_function("readCSVMat", io_readCSV, 1, 2, false, {"path", "delim"});
-    mod.register_function("parseCSVNum", io_parseCSVNum, 1, 2, false, {"path", "delim"});
-    mod.register_function("writeCSV", io_writeCSV, 2, 3, false, {"path", "data", "delim"});
+    mod.register_function("readCSV", io_readCSV, 1, 3, false, {"path", "delim", "encoding"});
+    mod.register_function("readCSVMat", io_readCSV, 1, 3, false, {"path", "delim", "encoding"});
+    mod.register_function("parseCSVNum", io_parseCSVNum, 1, 3, false, {"path", "delim", "encoding"});
+    mod.register_function("writeCSV", io_writeCSV, 2, 4, false, {"path", "data", "delim", "encoding"});
 
     mod.register_help("io",
         "═══ Industrial I/O Engine — Native Module ═══\n\n"
@@ -463,9 +631,9 @@ int jc2_init(jc2::Module& mod) {
         "  \n"
         "  File Streams (Text & Basic)\n"
         "  ──────────────────────\n"
-        "    file = io.open(path, [mode])  Opens a file and returns a File instance.\n"
+        "    file = io.open(path, [mode], [enc]) Opens a file and returns a File instance.\n"
         "                                  Modes: \"r\", \"w\", \"a\", \"rb\", \"wb\", \"ab\", \"r+\", \"w+\", \"a+\".\n"
-        "                                  Default mode is \"r\".\n\n"
+        "                                  Encodings: \"utf-8\" (default), \"ansi\" (GBK), \"utf-16le\", \"utf-16be\".\n\n"
         "    file.read([size])             Reads `size` characters/bytes. If omitted, reads to EOF.\n"
         "    file.readLine()               Reads a single line. Returns `none` at EOF.\n"
         "    file.write(content)           Writes content to the file.\n"
@@ -496,15 +664,15 @@ int jc2_init(jc2::Module& mod) {
         "    io.listDir([path])            Returns a list of filenames in the directory.\n\n"
         "  Industrial CSV Engine (RFC 4180)\n"
         "  ──────────────────────\n"
-        "    io.readCSV(path, [delim])     Reads a CSV into a list of lists of strings.\n"
-        "    io.parseCSVNum(path, [delim]) Reads a CSV directly into a RealMatrix (fast numeric parsing).\n"
-        "    io.writeCSV(path, data, [d])  Writes a matrix or list of lists to a CSV file.\n"
+        "    io.readCSV(path, [delim], [enc])     Reads a CSV into a list of lists of strings.\n"
+        "    io.parseCSVNum(path, [delim], [enc]) Reads a CSV directly into a RealMatrix (fast numeric parsing).\n"
+        "    io.writeCSV(path, data, [d], [enc])  Writes a matrix or list of lists to a CSV file.\n"
     );
 
-    mod.register_function_help("io.open", "io.open(path, [mode])", "Opens a file and returns a File stream instance.", "f = io.open(\"data.txt\", \"r\")");
-    mod.register_function_help("io.readCSV", "io.readCSV(path, [delim])", "Reads a CSV file into a list of lists of strings.", "data = io.readCSV(\"data.csv\")");
-    mod.register_function_help("io.parseCSVNum", "io.parseCSVNum(path, [delim])", "Reads a CSV file directly into a RealMatrix.", "mat = io.parseCSVNum(\"data.csv\")");
-    mod.register_function_help("io.writeCSV", "io.writeCSV(path, data, [delim])", "Writes a matrix or list to a CSV file.", "io.writeCSV(\"out.csv\", mat)");
+    mod.register_function_help("io.open", "io.open(path, [mode], [encoding])", "Opens a file and returns a File stream instance.", "f = io.open(\"data.txt\", \"r\", \"ansi\")");
+    mod.register_function_help("io.readCSV", "io.readCSV(path, [delim], [encoding])", "Reads a CSV file into a list of lists of strings.", "data = io.readCSV(\"data.csv\", \",\", \"ansi\")");
+    mod.register_function_help("io.parseCSVNum", "io.parseCSVNum(path, [delim], [encoding])", "Reads a CSV file directly into a RealMatrix.", "mat = io.parseCSVNum(\"data.csv\")");
+    mod.register_function_help("io.writeCSV", "io.writeCSV(path, data, [delim], [encoding])", "Writes a matrix or list to a CSV file.", "io.writeCSV(\"out.csv\", mat)");
     mod.register_function_help("io.stat", "io.stat(path)", "Returns a dictionary with file metadata.", "info = io.stat(\"data.txt\")");
     mod.register_function_help("io.mkdir", "io.mkdir(path, [recursive])", "Creates a directory.", "io.mkdir(\"new_folder\")");
     mod.register_function_help("io.remove", "io.remove(path)", "Deletes a file or empty directory.", "io.remove(\"old.txt\")");

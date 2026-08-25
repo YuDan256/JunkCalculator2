@@ -153,3 +153,49 @@ test_io_exceptions() = {
     }
 }
 test_io_exceptions()
+
+// 6. 测试文件编码 (File Encoding)
+test_io_encoding() = {
+    file_name = "test_io_encoding.txt"
+    defer if (io.exists(file_name)) io.remove(file_name)
+
+    // 测试 ANSI (GBK)
+    f_ansi = io.open(file_name, "w", "ansi")
+    f_ansi.write("你好，世界！")
+    f_ansi.close()
+    
+    f_ansi_in = io.open(file_name, "r", "ansi")
+    assert(f_ansi_in.read() == "你好，世界！", "ANSI (GBK) encoding read/write failed")
+    f_ansi_in.close()
+
+    // 测试 UTF-16LE
+    f_u16le = io.open(file_name, "w", "utf-16le")
+    f_u16le.write("Hello UTF-16LE")
+    f_u16le.close()
+
+    f_u16le_in = io.open(file_name, "r", "utf-16le")
+    assert(f_u16le_in.read() == "Hello UTF-16LE", "UTF-16LE encoding read/write failed")
+    f_u16le_in.close()
+
+    // 测试 UTF-16BE
+    f_u16be = io.open(file_name, "w", "utf-16be")
+    f_u16be.write("Hello UTF-16BE")
+    f_u16be.close()
+
+    f_u16be_in = io.open(file_name, "r", "utf-16be")
+    assert(f_u16be_in.read() == "Hello UTF-16BE", "UTF-16BE encoding read/write failed")
+    f_u16be_in.close()
+
+    // 测试 UTF-8 BOM 自动剥离
+    b_out = bytes.alloc(11)
+    b_out.writeU8(0xEF).writeU8(0xBB).writeU8(0xBF) // 写入 UTF-8 BOM
+    b_out.writeStr("BOM test")
+    f_bom = io.open(file_name, "wb")
+    f_bom.writeBuf(b_out)
+    f_bom.close()
+
+    f_bom_in = io.open(file_name, "r", "utf-8")
+    assert(f_bom_in.read() == "BOM test", "UTF-8 BOM stripping failed")
+    f_bom_in.close()
+}
+test_io_encoding()

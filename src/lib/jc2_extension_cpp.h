@@ -374,8 +374,9 @@ public:
     }
 };
 
-inline void throw_error(const std::string& msg) {
+[[noreturn]] inline void throw_error(const std::string& msg) {
     Env::api->throw_error(Env::ctx, msg.c_str());
+    throw std::runtime_error(msg);
 }
 
 } // namespace jc2

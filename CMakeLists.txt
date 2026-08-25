@@ -117,6 +117,11 @@ add_library(bytes SHARED "src/lib/bytes/bytes_module.cpp")
 target_include_directories(bytes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(bytes PROPERTIES PREFIX "") # Output bytes.dll instead of libbytes.dll
 
+# ★ Build IO Module as a standalone DLL
+add_library(io SHARED "src/lib/io/io_module.cpp")
+target_include_directories(io PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+set_target_properties(io PROPERTIES PREFIX "") # Output io.dll instead of libio.dll
+
 # ★ Build FFI Module as a standalone DLL
 add_library(ffi SHARED "src/lib/ffi/ffi_module.cpp")
 target_include_directories(ffi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -164,7 +169,7 @@ if(WIN32)
 endif()
 
 # ★ Output libraries directly to the lib/ directory
-set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex)
+set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io)
 foreach(mod ${JC2_LIBS})
     set_target_properties(${mod} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"

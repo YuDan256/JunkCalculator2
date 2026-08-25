@@ -46,7 +46,7 @@ METHOD(readLine) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         return jc2::Value(line).get_handle();
     }
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
 }
 
 METHOD(write) {
@@ -63,7 +63,85 @@ METHOD(close) {
         ctx->stream.close();
         ctx->is_open = false;
     }
-    return jc2::Value::none().get_handle();
+    return jc2::Value().get_handle();
+}
+
+METHOD(readBuf) {
+    GET_SELF;
+    if (argc < 2) jc2::throw_error("Type Error: readBuf expects a buffer object.");
+    size_t bsize = 0;
+    void* bdata = jc2::Value(argv[1]).get_buffer_data(&bsize);
+    if (!bdata) jc2::throw_error("Type Error: Expected a valid buffer object (e.g., from bytes module).");
+
+    size_t read_size = bsize;
+    if (argc >= 3) {
+        read_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
+        if (read_size > bsize) jc2::throw_error("IO Error: Requested read size exceeds buffer capacity.");
+    }
+    size_t offset = 0;
+    if (argc >= 4) {
+        offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_double()));
+        if (offset + read_size > bsize) jc2::throw_error("IO Error: Read offset + size exceeds buffer capacity.");
+    }
+
+    stream.read(static_cast<char*>(bdata) + offset, read_size);
+    return jc2::Value(static_cast<double>(stream.gcount())).get_handle();
+}
+
+METHOD(writeBuf) {
+    GET_SELF;
+    if (argc < 2) jc2::throw_error("Type Error: writeBuf expects a buffer object.");
+    size_t bsize = 0;
+    void* bdata = jc2::Value(argv[1]).get_buffer_data(&bsize);
+    if (!bdata) jc2::throw_error("Type Error: Expected a valid buffer object (e.g., from bytes module).");
+
+    size_t write_size = bsize;
+    if (argc >= 3) {
+        write_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
+        if (write_size > bsize) jc2::throw_error("IO Error: Requested write size exceeds buffer capacity.");
+    }
+    size_t offset = 0;
+    if (argc >= 4) {
+        offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_double()));
+        if (offset + write_size > bsize) jc2::throw_error("IO Error: Write offset + size exceeds buffer capacity.");
+    }
+
+    stream.write(static_cast<const char*>(bdata) + offset, write_size);
+    return argv[0];
+}
+
+METHOD(seek) {
+    GET_SELF;
+    if (argc < 2) jc2::throw_error("Type Error: seek expects an offset.");
+    long long offset = std::stoll(jc2::Value(argv[1]).to_string());
+    int origin = 0;
+    if (argc >= 3) origin = static_cast<int>(std::round(jc2::Value(argv[2]).as_double()));
+    
+    std::ios_base::seekdir dir = std::ios_base::beg;
+    if (origin == 1) dir = std::ios_base::cur;
+    else if (origin == 2) dir = std::ios_base::end;
+    
+    stream.clear();
+    stream.seekg(offset, dir);
+    stream.seekp(offset, dir);
+    return argv[0];
+}
+
+METHOD(tell) {
+    GET_SELF;
+    if (stream.tellg() != -1) return jc2::Value(static_cast<double>(stream.tellg())).get_handle();
+    return jc2::Value(static_cast<double>(stream.tellp())).get_handle();
+}
+
+METHOD(flush) {
+    GET_SELF;
+    stream.flush();
+    return argv[0];
+}
+
+METHOD(isEOF) {
+    GET_SELF;
+    return jc2::Value(stream.eof()).get_handle();
 }
 
 METHOD(iter) {
@@ -117,6 +195,12 @@ int jc2_init(jc2::Module& mod) {
     g_fileClass->bind_method("read", file_read, 0, 1, false, {"size"});
     g_fileClass->bind_method("readLine", file_readLine, 0, 0, false);
     g_fileClass->bind_method("write", file_write, 1, 1, false, {"content"});
+    g_fileClass->bind_method("readBuf", file_readBuf, 1, 3, false, {"buf", "size", "offset"});
+    g_fileClass->bind_method("writeBuf", file_writeBuf, 1, 3, false, {"buf", "size", "offset"});
+    g_fileClass->bind_method("seek", file_seek, 1, 2, false, {"offset", "origin"});
+    g_fileClass->bind_method("tell", file_tell, 0, 0, false);
+    g_fileClass->bind_method("flush", file_flush, 0, 0, false);
+    g_fileClass->bind_method("isEOF", file_isEOF, 0, 0, false);
     g_fileClass->bind_method("close", file_close, 0, 0, false);
     g_fileClass->bind_method("__iter__", file_iter, 0, 0, false);
     g_fileClass->bind_method("__next__", file_next, 0, 0, false);
@@ -128,7 +212,7 @@ int jc2_init(jc2::Module& mod) {
         "  Requires: import io\n\n"
         "  The `io` module provides high-performance, object-oriented file streams.\n"
         "  \n"
-        "  File Streams\n"
+        "  File Streams (Text & Basic)\n"
         "  ──────────────────────\n"
         "    file = io.open(path, [mode])  Opens a file and returns a File instance.\n"
         "                                  Modes: \"r\", \"w\", \"a\", \"rb\", \"wb\", \"ab\", \"r+\", \"w+\", \"a+\".\n"
@@ -137,6 +221,16 @@ int jc2_init(jc2::Module& mod) {
         "    file.readLine()               Reads a single line. Returns `none` at EOF.\n"
         "    file.write(content)           Writes content to the file.\n"
         "    file.close()                  Closes the file handle. (Auto-closed by GC if forgotten).\n\n"
+        "  Zero-Copy Binary I/O (Buffer Protocol)\n"
+        "  ──────────────────────\n"
+        "    file.readBuf(buf, [sz], [off])  Reads directly into a `bytes` buffer. Returns bytes read.\n"
+        "    file.writeBuf(buf, [sz], [off]) Writes directly from a `bytes` buffer to the file.\n\n"
+        "  Cursor & State Control\n"
+        "  ──────────────────────\n"
+        "    file.seek(offset, [origin])   Moves the file cursor. Origin: 0 (beg), 1 (cur), 2 (end).\n"
+        "    file.tell()                   Returns the current cursor position.\n"
+        "    file.flush()                  Flushes the output buffer to disk.\n"
+        "    file.isEOF()                  Returns true if the end of the file has been reached.\n\n"
         "  Iteration\n"
         "  ──────────────────────\n"
         "    File instances are iterable! You can loop over them line-by-line:\n"
@@ -149,6 +243,10 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("File.read", "file.read([size])", "Reads characters from the file. Reads all remaining if size is omitted.", "content = f.read()");
     mod.register_function_help("File.readLine", "file.readLine()", "Reads a single line from the file. Returns none at EOF.", "line = f.readLine()");
     mod.register_function_help("File.write", "file.write(content)", "Writes a string to the file.", "f.write(\"Hello\")");
+    mod.register_function_help("File.readBuf", "file.readBuf(buf, [size], [offset])", "Reads binary data directly into a buffer object (zero-copy).", "f.readBuf(buf)");
+    mod.register_function_help("File.writeBuf", "file.writeBuf(buf, [size], [offset])", "Writes binary data directly from a buffer object (zero-copy).", "f.writeBuf(buf)");
+    mod.register_function_help("File.seek", "file.seek(offset, [origin])", "Moves the file cursor. Origin: 0 (beg), 1 (cur), 2 (end).", "f.seek(0)");
+    mod.register_function_help("File.tell", "file.tell()", "Returns the current cursor position.", "pos = f.tell()");
     mod.register_function_help("File.close", "file.close()", "Closes the file stream.", "f.close()");
 
     return 0;

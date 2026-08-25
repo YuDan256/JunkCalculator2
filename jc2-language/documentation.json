@@ -216,6 +216,18 @@
     "mpow": {
       "signature": "A.mpow(n)"
     },
+    "charPoly": {
+      "signature": "A.charPoly(var)"
+    },
+    "kron": {
+      "signature": "A.kron(B)"
+    },
+    "jacobian": {
+      "signature": "A.jacobian(vars)"
+    },
+    "hessian": {
+      "signature": "A.hessian(vars)"
+    },
     "row": {
       "signature": "A.row()"
     },
@@ -861,6 +873,18 @@
     "islower": {
       "signature": "islower(s)"
     },
+    "iscallable": {
+      "signature": "iscallable(x)"
+    },
+    "ishashable": {
+      "signature": "ishashable(x)"
+    },
+    "isindexable": {
+      "signature": "isindexable(x)"
+    },
+    "isiterable": {
+      "signature": "isiterable(x)"
+    },
     "isempty": {
       "signature": "isempty(x)"
     },
@@ -1053,6 +1077,9 @@
     "color": {
       "signature": "sys.color(state)"
     },
+    "imgPlot": {
+      "signature": "sys.imgPlot(inst, f, xMin, xMax, yMin, yMax, color, [thick])"
+    },
     "removeKey": {
       "signature": "d.removeKey(key)"
     },
@@ -1122,6 +1149,9 @@
     "__contains__": {
       "signature": "__contains__(val)"
     },
+    "__subsets__": {
+      "signature": "__subsets__(other)"
+    },
     "__getitem__": {
       "signature": "__getitem__(...dims)"
     },
@@ -1178,6 +1208,15 @@
     },
     "string": {
       "signature": "string(x)"
+    },
+    "length": {
+      "signature": "length(x)"
+    },
+    "size": {
+      "signature": "size(x)"
+    },
+    "append": {
+      "signature": "v.append(val)"
     },
     "getFields": {
       "signature": "d.getFields()"

@@ -1201,8 +1201,8 @@
     "int": [
       "═══ Arbitrary-Precision Integers & Number Theory ═══",
       "",
-      "  Every integer literal in JC2 is parsed natively as a base-10⁹ int.",
-      "  It can grow to millions of digits. Memory is your only limit.",
+      "  Every integer literal in JC2 is parsed natively as an arbitrary-precision int",
+      "  (base 2³² limbs). It can grow to millions of digits. Memory is your only limit.",
       "",
       "  Radix Literals",
       "  ──────────────────────",

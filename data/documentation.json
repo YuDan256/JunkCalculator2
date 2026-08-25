@@ -2330,14 +2330,14 @@
       "    discard(d, \"key\")                   Removes the key (silent if absent)",
       "    clear(d)                            Erases all entries",
       "",
-      "    len(d) / d.dictSize() / d.size()    Number of key-value entries",
+      "    len(d) / d.size()                  Number of key-value entries",
       "    type(d)                             Returns <type 'dict'> (a type object)",
       "    d.hasKey(\"key\") / d.has(\"key\")      Returns true if the key exists",
       "    d.removeKey(\"key\")                  Removes the key (throws error if absent)",
       "    d.keys()                            Returns all keys as a list",
       "    d.values()                          Returns all values as a list",
-      "    d.dictPairs()                       Returns a list of @[key, value] pairs",
-      "    d1.dictMerge(d2)                    Merges d2 into d1 (mutates d1 in-place)",
+      "    d.entries()                         Returns a list of @[key, value] pairs",
+      "    d1.merge(d2)                        Merges d2 into d1 (mutates d1 in-place)",
       "    d1 + d2                             Returns a NEW dict merging d1 and d2 (right side overwrites left on key conflict)",
       "    d - keys                            Returns a NEW dict with specified keys removed. 'keys' can be a set, list, or dict.",
       "",
@@ -2424,21 +2424,21 @@
       "",
       "  Set Algebra (returns NEW set)",
       "  ──────────────────────",
-      "    a.setUnion(b)                   a ∪ b  — all elements in either set",
-      "    a.setIntersect(b)               a ∩ b  — elements in both sets",
-      "    a.setDiff(b)                    a \\ b  — elements in a but not in b",
-      "    a.setSymDiff(b)                 a △ b  — elements in exactly one set",
+      "    a.union(b)                      a ∪ b  — all elements in either set",
+      "    a.intersect(b)                  a ∩ b  — elements in both sets",
+      "    a.difference(b)                 a \\ b  — elements in a but not in b",
+      "    a.symDiff(b)                    a △ b  — elements in exactly one set",
       "    ",
-      "    a.setProduct(b)                 a × b  — Cartesian product (returns set of lists)",
-      "    s.setPow()                      P(s)   — Powerset (set of all subsets, max 20 elems)",
+      "    a.cartesian(b)                  a × b  — Cartesian product (returns set of lists)",
+      "    s.powerSet()                    P(s)   — Powerset (set of all subsets, max 20 elems)",
       "",
       "    Operator Shortcuts (and Compound Assignments)",
       "  ──────────────────────",
-      "    a | b                           Union (same as setUnion)",
-      "    a & b                           Intersection (same as setIntersect)",
-      "    a - b                           Difference (same as setDiff)",
-      "    a ^^ b                          Symmetric Difference (same as setSymDiff)",
-      "    a * b                           Cartesian product (same as setProduct)",
+      "    a | b                           Union (same as union)",
+      "    a & b                           Intersection (same as intersect)",
+      "    a - b                           Difference (same as difference)",
+      "    a ^^ b                          Symmetric Difference (same as symDiff)",
+      "    a * b                           Cartesian product (same as cartesian)",
       "    a |= b                          In-place union (a = a | b)",
       "    a &= b                          In-place intersection (a = a & b)",
       "    a ^^= b                         In-place symmetric difference (a = a ^^ b)",
@@ -2485,8 +2485,8 @@
       "    `@{1.0, int(1), frac(1,1)}` will result in a set with exactly ONE element.",
       "",
       "    Elements MUST be hashable. Unfrozen containers will throw a TypeError ",
-      "    if inserted. Built-in functions that generate nested sets (like setPow ",
-      "    or setProduct) automatically freeze their inner containers.",
+      "    if inserted. Built-in functions that generate nested sets (like powerSet ",
+      "    or cartesian) automatically freeze their inner containers.",
       "    Functions and namespaces are always hashable. Class instances are only hashable if frozen or if they define __hash__.",
       "",
       "    freeze(s)               Locks the set permanently.",
@@ -2514,7 +2514,7 @@
       "    a & b                           → @{2, 3}",
       "    a - b                           → @{1}",
       "    a * @{\"x\", \"y\"}                   → @{@[1, \"x\"], @[1, \"y\"], ... @[3, \"y\"]}",
-      "    @{1, 2}.setPow()                → @{@{}, @{1}, @{2}, @{1, 2}}",
+      "    @{1, 2}.powerSet()              → @{@{}, @{1}, @{2}, @{1, 2}}",
       "",
       "    chars = toSet(\"abracadabra\")    → @{\"a\", \"b\", \"c\", \"d\", \"r\"}",
       "    3 in a                          → true",
@@ -3953,6 +3953,34 @@
         "[1, 1; 0, 1].mpow(10)"
       ]
     },
+    "charPoly": {
+      "signature": "A.charPoly(var)",
+      "desc": "Returns the characteristic polynomial of a square matrix in the given variable.",
+      "examples": [
+        "[1, 2; 3, 4].charPoly(\"x\")"
+      ]
+    },
+    "kron": {
+      "signature": "A.kron(B)",
+      "desc": "Returns the Kronecker product of two matrices.",
+      "examples": [
+        "[1, 2].kron([3, 4])"
+      ]
+    },
+    "jacobian": {
+      "signature": "A.jacobian(vars)",
+      "desc": "Returns the Jacobian matrix of a symbolic matrix with respect to a list of variables.",
+      "examples": [
+        "M.jacobian([\"x\", \"y\"])"
+      ]
+    },
+    "hessian": {
+      "signature": "A.hessian(vars)",
+      "desc": "Returns the Hessian matrix of a scalar symbolic function with respect to a list of variables.",
+      "examples": [
+        "M.hessian([\"x\", \"y\"])"
+      ]
+    },
     "row": {
       "signature": "A.row()",
       "desc": "Returns the number of rows in a matrix.",
@@ -4458,6 +4486,7 @@
     "len": {
       "signature": "len(x)",
       "desc": "Returns the length or element count of a string, vector, matrix, dict, list, set, or the number of digits in an integer.",
+      "aliases": ["length", "size"],
       "examples": [
         "len(\"hello\")",
         "len([1, 2, 3])",
@@ -4531,6 +4560,7 @@
     "push": {
       "signature": "v.push(val)",
       "desc": "Appends a value to the end of a list or array.",
+      "aliases": ["append"],
       "examples": [
         "[1, 2].push(3)"
       ]
@@ -5289,6 +5319,26 @@
       "desc": "Returns true if all alphabetic characters in s are lowercase.",
       "examples": ["islower(\"abc\")"]
     },
+    "iscallable": {
+      "signature": "iscallable(x)",
+      "desc": "Returns true if x is callable (function, class, callable type, or instance with __call__).",
+      "examples": ["iscallable(int)"]
+    },
+    "ishashable": {
+      "signature": "ishashable(x)",
+      "desc": "Returns true if x is hashable (usable as a dict key or set element).",
+      "examples": ["ishashable(@{1, 2})"]
+    },
+    "isindexable": {
+      "signature": "isindexable(x)",
+      "desc": "Returns true if x supports indexing (list, dict, string, matrix, or instance with __getitem__).",
+      "examples": ["isindexable(@[1, 2])"]
+    },
+    "isiterable": {
+      "signature": "isiterable(x)",
+      "desc": "Returns true if x is iterable (list, dict, set, string, matrix, or instance with __iter__/__next__).",
+      "examples": ["isiterable(@[1, 2])"]
+    },
     "isempty": {
       "signature": "isempty(x)",
       "desc": "Returns true if the string, list, dict, or matrix is empty.",
@@ -5608,6 +5658,11 @@
       "signature": "sys.color(state)",
       "desc": "Enables (\"on\") or disables (\"off\") REPL syntax highlighting.",
       "examples": ["sys.color(\"on\")"]
+    },
+    "imgPlot": {
+      "signature": "sys.imgPlot(inst, f, xMin, xMax, yMin, yMax, color, [thick])",
+      "desc": "Plots a function f(x) onto an image instance over the given x range.",
+      "examples": ["sys.imgPlot(im, f, 0, 10, -1, 1, \"red\")"]
     },
     "removeKey": {
       "signature": "d.removeKey(key)",

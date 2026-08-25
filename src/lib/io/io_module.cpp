@@ -490,6 +490,50 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
     return jc2::Value::none().get_handle();
 }
 
+JC2_ValueHandle io_readFile(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)user_data;
+    if (argc < 1) jc2::throw_error("Type Error: io.readFile expects a path.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::string encoding = "utf-8";
+    if (argc >= 2) encoding = jc2::Value(argv[1]).as_string();
+
+    std::ifstream file(to_path(path), std::ios::binary | std::ios::ate);
+    if (!file.is_open()) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::string content(static_cast<size_t>(size), '\0');
+    if (file.read(&content[0], size)) {
+        return jc2::Value(decode_to_utf8(content, encoding)).get_handle();
+    }
+    jc2::throw_error("IO Error: Failed to read file.");
+    return jc2::Value().get_handle();
+}
+
+JC2_ValueHandle io_writeFile(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)user_data;
+    if (argc < 2) jc2::throw_error("Type Error: io.writeFile expects path and content.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::string content = jc2::Value(argv[1]).to_string();
+    std::string encoding = "utf-8";
+    if (argc >= 3) encoding = jc2::Value(argv[2]).as_string();
+
+    std::ofstream file(to_path(path), std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
+    std::string encoded = encode_from_utf8(content, encoding);
+    file.write(encoded.data(), encoded.size());
+    return jc2::Value::none().get_handle();
+}
+
+JC2_ValueHandle io_copy(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 2) jc2::throw_error("Type Error: io.copy expects source and destination paths.");
+    std::string src = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::string dst = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
+    std::error_code ec;
+    std::filesystem::copy(to_path(src), to_path(dst), std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) jc2::throw_error("IO Error: Cannot copy '" + src + "' to '" + dst + "'.");
+    return jc2::Value::none().get_handle();
+}
+
 JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc < 1) jc2::throw_error("Type Error: io.stat expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
@@ -613,10 +657,13 @@ int jc2_init(jc2::Module& mod) {
     g_fileClass->bind_method("__next__", file_next, 0, 0, false);
 
     mod.register_function("open", io_open, 1, 3, false, {"path", "mode", "encoding"});
+    mod.register_function("readFile", io_readFile, 1, 2, false, {"path", "encoding"});
+    mod.register_function("writeFile", io_writeFile, 2, 3, false, {"path", "content", "encoding"});
     mod.register_function("stat", io_stat, 1, 1, false, {"path"});
     mod.register_function("mkdir", io_mkdir, 1, 2, false, {"path", "recursive"});
     mod.register_function("remove", io_remove, 1, 1, false, {"path"});
     mod.register_function("rename", io_rename, 2, 2, false, {"old_path", "new_path"});
+    mod.register_function("copy", io_copy, 2, 2, false, {"src", "dst"});
     mod.register_function("exists", io_exists, 1, 1, false, {"path"});
     mod.register_function("listDir", io_listDir, 0, 1, false, {"path"});
     mod.register_function("readCSV", io_readCSV, 1, 3, false, {"path", "delim", "encoding"});
@@ -629,6 +676,10 @@ int jc2_init(jc2::Module& mod) {
         "  Requires: import io\n\n"
         "  The `io` module provides high-performance, object-oriented file streams.\n"
         "  \n"
+        "  Quick I/O (One-Shot)\n"
+        "  ──────────────────────\n"
+        "    io.readFile(path, [enc])      Reads the entire file into a string.\n"
+        "    io.writeFile(path, str, [enc]) Writes a string to the file (overwrites).\n\n"
         "  File Streams (Text & Basic)\n"
         "  ──────────────────────\n"
         "    file = io.open(path, [mode], [enc]) Opens a file and returns a File instance.\n"
@@ -660,6 +711,7 @@ int jc2_init(jc2::Module& mod) {
         "    io.mkdir(path, [recursive])   Creates a directory. Set recursive=true to create parent dirs.\n"
         "    io.remove(path)               Deletes a file or empty directory.\n"
         "    io.rename(old, new)           Renames or moves a file/directory.\n"
+        "    io.copy(src, dst)             Copies a file.\n"
         "    io.exists(path)               Returns true if the path exists.\n"
         "    io.listDir([path])            Returns a list of filenames in the directory.\n\n"
         "  Industrial CSV Engine (RFC 4180)\n"
@@ -669,6 +721,8 @@ int jc2_init(jc2::Module& mod) {
         "    io.writeCSV(path, data, [d], [enc])  Writes a matrix or list of lists to a CSV file.\n"
     );
 
+    mod.register_function_help("io.readFile", "io.readFile(path, [encoding])", "Reads the entire contents of a file into a string.", "txt = io.readFile(\"data.txt\")");
+    mod.register_function_help("io.writeFile", "io.writeFile(path, content, [encoding])", "Writes a string to a file, overwriting existing content.", "io.writeFile(\"out.txt\", \"Hello\")");
     mod.register_function_help("io.open", "io.open(path, [mode], [encoding])", "Opens a file and returns a File stream instance.", "f = io.open(\"data.txt\", \"r\", \"ansi\")");
     mod.register_function_help("io.readCSV", "io.readCSV(path, [delim], [encoding])", "Reads a CSV file into a list of lists of strings.", "data = io.readCSV(\"data.csv\", \",\", \"ansi\")");
     mod.register_function_help("io.parseCSVNum", "io.parseCSVNum(path, [delim], [encoding])", "Reads a CSV file directly into a RealMatrix.", "mat = io.parseCSVNum(\"data.csv\")");
@@ -677,6 +731,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("io.mkdir", "io.mkdir(path, [recursive])", "Creates a directory.", "io.mkdir(\"new_folder\")");
     mod.register_function_help("io.remove", "io.remove(path)", "Deletes a file or empty directory.", "io.remove(\"old.txt\")");
     mod.register_function_help("io.rename", "io.rename(old_path, new_path)", "Renames or moves a file or directory.", "io.rename(\"a.txt\", \"b.txt\")");
+    mod.register_function_help("io.copy", "io.copy(src, dst)", "Copies a file to a new destination.", "io.copy(\"a.txt\", \"b.txt\")");
     mod.register_function_help("io.exists", "io.exists(path)", "Returns true if the file or directory exists.", "io.exists(\"data.txt\")");
     mod.register_function_help("io.listDir", "io.listDir([path])", "Returns a list of filenames in the specified directory.", "files = io.listDir(\".\")");
     mod.register_function_help("File.read", "file.read([size])", "Reads characters from the file. Reads all remaining if size is omitted.", "content = f.read()");

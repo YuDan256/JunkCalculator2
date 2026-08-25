@@ -348,14 +348,12 @@ private:
     void registerHigherOrder();
     void registerCalculus();        // ★ Phase 2
     void registerCAS();             // ★ CAS
-    void registerFileIO();          // ★ Phase 2
     void registerErrorHandling();   // ★ Phase 2
     void registerSystemShell();
     void registerTypeChecks();
     void registerSetFunctions();
 
     ObjNamespace* sys_ns = nullptr;
-    ObjNamespace* io_ns = nullptr;
     ObjNamespace* cas_ns = nullptr;
     ObjNamespace* math_ns = nullptr;
     ObjNamespace* random_ns = nullptr;

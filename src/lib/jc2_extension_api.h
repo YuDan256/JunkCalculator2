@@ -21,7 +21,7 @@ extern "C" {
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
 #define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
-#define JC2_EXT_VERSION 4
+#define JC2_EXT_VERSION 5
 
 #define JC2_SLICE_NONE (-2147483647 - 1)
 
@@ -127,6 +127,7 @@ typedef struct JC2_HostAPI {
     JC2_ValueHandle (*dict_keys)(JC2_VMContext ctx, JC2_ValueHandle dict);
     JC2_ValueHandle (*get_global)(JC2_VMContext ctx, const char* name);
     JC2_ValueHandle (*to_string)(JC2_VMContext ctx, JC2_ValueHandle v);
+    JC2_ValueHandle (*resolve_path)(JC2_VMContext ctx, const char* path);
     
     /* --- 矩阵操作 (Matrix Operations) --- */
     JC2_ValueHandle (*make_real_matrix)(JC2_VMContext ctx, int rows, int cols);

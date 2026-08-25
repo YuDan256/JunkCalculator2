@@ -349,14 +349,12 @@ void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::
 
 void BuiltinRegistry::registerAll() {
     sys_ns = GcHeap::get().allocate<ObjNamespace>(); sys_ns->name = "sys";
-    io_ns = GcHeap::get().allocate<ObjNamespace>(); io_ns->name = "io";
     cas_ns = GcHeap::get().allocate<ObjNamespace>(); cas_ns->name = "cas";
     math_ns = GcHeap::get().allocate<ObjNamespace>(); math_ns->name = "math";
     random_ns = GcHeap::get().allocate<ObjNamespace>(); random_ns->name = "random";
 
     if (VM::activeVM) {
         VM::activeVM->injectModule("sys", Value(sys_ns));
-        VM::activeVM->injectModule("io", Value(io_ns));
         VM::activeVM->injectModule("cas", Value(cas_ns));
         VM::activeVM->injectModule("math", Value(math_ns));
         VM::activeVM->injectModule("random", Value(random_ns));
@@ -384,7 +382,6 @@ void BuiltinRegistry::registerAll() {
     registerHigherOrder();
     registerCalculus();        // ★ Phase 2
     registerCAS();             // ★ CAS
-    registerFileIO();          // ★ Phase 2
     registerErrorHandling();   // ★ Phase 2
     registerSystemShell();
     registerTypeChecks();
@@ -4651,183 +4648,6 @@ void BuiltinRegistry::registerCalculus() {
         }
         throw std::runtime_error("Runtime Error: Argument count mismatch.");
         }, {"f", "...args"});
-}
-
-// =================================================================
-// [Phase 2] 文件 I/O 引擎
-// =================================================================
-void BuiltinRegistry::registerFileIO() {
-
-    regModule(io_ns, "readFile", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: readFile() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::ifstream file(path);
-        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
-        std::ostringstream oss; oss << file.rdbuf(); file.close();
-        return Value(oss.str());
-        }, {"path"});
-
-    regModule(io_ns, "writeFile", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: writeFile() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::string content;
-        if (args[1].isString()) content = args[1].asString();
-        else { std::ostringstream oss; oss << args[1]; content = oss.str(); }
-        std::ofstream file(path);
-        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot write to file '" + path + "'.");
-        file << content; file.close();
-        return Value::none();
-        }, {"path", "content"});
-
-    regModule(io_ns, "appendFile", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: appendFile() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::string content;
-        if (args[1].isString()) content = args[1].asString();
-        else { std::ostringstream oss; oss << args[1]; content = oss.str(); }
-        std::ofstream file(path, std::ios::app);
-        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot append to file '" + path + "'.");
-        file << content; file.close();
-        return Value::none();
-        }, {"path", "content"});
-
-    regModule(io_ns, "readLines", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: readLines() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::ifstream file(path);
-        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
-        ObjList* L = GcHeap::get().allocate<ObjList>(); std::string line;
-        GcObjGuard guard(L);
-        while (std::getline(file, line)) {
-            jc::checkInterrupt();
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            L->vec.push_back(Value(line));
-        }
-        file.close(); return Value(L);
-        }, {"path"});
-
-    regModule(io_ns, "writeLines", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: writeLines() expects a string path.");
-        if (!args[1].isObjType(ObjType::LIST))
-            throw std::runtime_error("Type Error: writeLines() expects a List.");
-        std::string path = safeResolvePath(args[0].asString());
-        const auto& L = static_cast<ObjList*>(args[1].asObj())->vec;
-        std::ofstream file(path);
-        if (!file.is_open()) throw std::runtime_error("IO Error: Cannot write to file '" + path + "'.");
-        for (const auto& v : L) {
-            if (v.isString()) file << v.asString() << "\n";
-            else file << v << "\n";
-        }
-        file.close(); return Value::none();
-        }, {"path", "list"});
-
-    regModule(io_ns, "fileExists", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: fileExists() expects a string path.");
-        return Value(std::filesystem::exists(safeResolvePath(args[0].asString())));
-        }, {"path"});
-
-    regModule(io_ns, "deleteFile", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: deleteFile() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        if (!std::filesystem::exists(path))
-            throw std::runtime_error("IO Error: File '" + path + "' does not exist.");
-        std::filesystem::remove(path);
-        return Value::none();
-        }, {"path"});
-
-    regModule(io_ns, "fileSize", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString())
-            throw std::runtime_error("Type Error: fileSize() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        if (!std::filesystem::exists(path))
-            throw std::runtime_error("IO Error: File '" + path + "' does not exist.");
-        return Value(BigInt(static_cast<int64_t>(std::filesystem::file_size(path))));
-        }, {"path"});
-
-    regModule(io_ns, "listDir", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
-        std::string dir;
-        if (args.size() == 1) {
-            if (!args[0].isString())
-                throw std::runtime_error("Type Error: listDir() expects a string path.");
-            dir = safeResolvePath(args[0].asString());
-        }
-        else {
-            dir = std::filesystem::current_path().string();
-        }
-        if (!std::filesystem::exists(dir))
-            throw std::runtime_error("IO Error: Directory '" + dir + "' does not exist.");
-        ObjList* L = GcHeap::get().allocate<ObjList>();
-        GcObjGuard guard(L);
-        for (const auto& entry : std::filesystem::directory_iterator(dir))
-            L->vec.push_back(Value(entry.path().filename().string()));
-        return Value(L);
-        }, {"path"});
-
-    // --- CSV ---
-    regModule(io_ns, "readCSV", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) throw std::runtime_error("Type Error: readCSV() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::string delim = ",";
-        if (args.size() == 2) { if (!args[1].isString()) throw std::runtime_error("Type Error: readCSV() delimiter must be a string."); delim = args[1].asString(); }
-        std::ifstream file(path); if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
-        ObjList* rows = GcHeap::get().allocate<ObjList>(); std::string line;
-        GcObjGuard guard(rows);
-        while (std::getline(file, line)) { jc::checkInterrupt(); if (!line.empty() && line.back() == '\r') line.pop_back(); ObjList* row = GcHeap::get().allocate<ObjList>(); GcObjGuard rowGuard(row); size_t pos = 0, found; while ((found = line.find(delim, pos)) != std::string::npos) { row->vec.push_back(Value(line.substr(pos, found - pos))); pos = found + delim.size(); } row->vec.push_back(Value(line.substr(pos))); row->is_frozen = true; rows->vec.push_back(Value(row)); }
-        file.close(); return Value(rows);
-        }, {"path", "delim"});
-
-    regModule(io_ns, "readCSVMat", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) throw std::runtime_error("Type Error: readCSVMat() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::string delim = ",";
-        if (args.size() == 2) { if (!args[1].isString()) throw std::runtime_error("Type Error: readCSVMat() delimiter must be a string."); delim = args[1].asString(); }
-        std::ifstream file(path); if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
-        std::vector<std::vector<std::string>> rowsData; std::string line; size_t maxCols = 0;
-        while (std::getline(file, line)) { jc::checkInterrupt(); if (!line.empty() && line.back() == '\r') line.pop_back(); std::vector<std::string> row; size_t pos = 0, found; while ((found = line.find(delim, pos)) != std::string::npos) { row.push_back(line.substr(pos, found - pos)); pos = found + delim.size(); } row.push_back(line.substr(pos)); if (row.size() > maxCols) maxCols = row.size(); rowsData.push_back(row); }
-        file.close();
-        ObjList* result = GcHeap::get().allocate<ObjList>();
-        GcObjGuard guard(result);
-        for (auto& row : rowsData) {
-            ObjList* rowList = GcHeap::get().allocate<ObjList>();
-            for (auto& s : row) rowList->vec.push_back(Value(s));
-            result->vec.push_back(Value(rowList));
-        }
-        return Value(result);
-        }, {"path", "delim"});
-
-    regModule(io_ns, "parseCSVNum", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) throw std::runtime_error("Type Error: parseCSVNum() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::string delim = ",";
-        if (args.size() == 2) { if (!args[1].isString()) throw std::runtime_error("Type Error: parseCSVNum() delimiter must be a string."); delim = args[1].asString(); }
-        std::ifstream file(path); if (!file.is_open()) throw std::runtime_error("IO Error: Cannot open file '" + path + "'.");
-        std::vector<std::vector<double>> rowsData; std::string line; size_t maxCols = 0;
-        while (std::getline(file, line)) { jc::checkInterrupt(); if (!line.empty() && line.back() == '\r') line.pop_back(); if (line.empty()) continue; std::vector<double> row; size_t pos = 0, found; while ((found = line.find(delim, pos)) != std::string::npos) { try { row.push_back(std::stod(line.substr(pos, found - pos))); } catch (...) { row.push_back(0.0); } pos = found + delim.size(); } try { row.push_back(std::stod(line.substr(pos))); } catch (...) { row.push_back(0.0); } if (row.size() > maxCols) maxCols = row.size(); rowsData.push_back(row); }
-        file.close(); if (rowsData.empty()) return Value(RealMatrix(0, 0));
-        std::vector<double> flat; for (auto& row : rowsData) { row.resize(maxCols, 0.0); flat.insert(flat.end(), row.begin(), row.end()); }
-        return Value(RealMatrix(static_cast<int>(rowsData.size()), static_cast<int>(maxCols), flat));
-        }, {"path", "delim"});
-
-    regModule(io_ns, "writeCSV", { 2, 3 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) throw std::runtime_error("Type Error: writeCSV() expects a string path.");
-        std::string path = safeResolvePath(args[0].asString());
-        std::string delim = ",";
-        if (args.size() == 3) { if (!args[2].isString()) throw std::runtime_error("Type Error: writeCSV() delimiter must be a string."); delim = args[2].asString(); }
-        std::ofstream file(path); if (!file.is_open()) throw std::runtime_error("IO Error: Cannot write to file '" + path + "'.");
-        if (args[1].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << Value(m(i, j)); } file << "\n"; } }
-        else if (args[1].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << m(i, j); } file << "\n"; } }
-        else if (args[1].isObjType(ObjType::SYM_MATRIX)) { const auto& m = static_cast<ObjSymMatrix*>(args[1].asObj())->mat; for (int i = 0; i < m.getRows(); ++i) { for (int j = 0; j < m.getCols(); ++j) { if (j > 0) file << delim; file << m(i, j).toString(); } file << "\n"; } }
-        else if (args[1].isObjType(ObjType::LIST)) { for (const auto& e : static_cast<ObjList*>(args[1].asObj())->vec) { file << e << "\n"; } }
-        else throw std::runtime_error("Type Error: writeCSV() expects a matrix or list.");
-        file.close(); return Value::none();
-        }, {"path", "data", "delim"});
 }
 
 // =================================================================

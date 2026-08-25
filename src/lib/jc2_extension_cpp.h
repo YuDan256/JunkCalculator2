@@ -9,10 +9,14 @@
 
 namespace jc2 {
 
+class Value;
+
 class Env {
 public:
     static inline JC2_VMContext ctx = nullptr;
     static inline const JC2_HostAPI* api = nullptr;
+
+    static std::string resolve_path(const std::string& path);
 };
 
 class Value {
@@ -101,6 +105,12 @@ public:
         Env::api->freeze_object(Env::ctx, handle);
     }
 };
+
+inline std::string Env::resolve_path(const std::string& path) {
+    JC2_ValueHandle h = api->resolve_path(ctx, path.c_str());
+    Value v(h);
+    return v.as_string();
+}
 
 class Type : public Value {
 public:

@@ -761,6 +761,10 @@ static JC2_ValueHandle host_to_string(JC2_VMContext, JC2_ValueHandle v) {
     return protect(Value(std::string(oss.str())));
 }
 
+static JC2_ValueHandle host_resolve_path(JC2_VMContext, const char* path) {
+    return protect(Value(jc::helpers::safeResolvePath(path)));
+}
+
 static JC2_ValueHandle host_call_function(JC2_VMContext, JC2_ValueHandle func, int argc, JC2_ValueHandle* argv) {
     Value f = from_handle(func);
     if (!f.isFunctionClosure()) return Value::none().as_bits;
@@ -827,6 +831,7 @@ static const JC2_HostAPI host_api = {
     host_dict_keys,
     host_get_global,
     host_to_string,
+    host_resolve_path,
     host_make_real_matrix,
     host_real_matrix_get,
     host_real_matrix_set,

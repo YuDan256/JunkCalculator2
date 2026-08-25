@@ -93,7 +93,7 @@
       "    token       Syntax Macros & Lexical Token Manipulation",
       "    ast         ASTNode Types and Fields Reference",
       "    error       Error handling (try/catch/throw/pcall)",
-      "    fileio      File I/O (read, write, CSV, directory)",
+      "    io          Industrial I/O Engine (File streams, CSV, etc.)",
       "    import      Code reuse (import modules and libraries)",
       "",
       "  Language Keywords (type \"/help <keyword>\")",
@@ -3363,43 +3363,6 @@
       "    assert(cond, \"msg\")           Throws custom message if falsy",
       "    assert(\"name\", got, expected) Throws detailed mismatch error if got != expected"
     ],
-    "fileio": [
-      "═══ File I/O ═══",
-      "",
-      "  Text Files",
-      "  ──────────────────────",
-      "    io.readFile(path)           Reads the entire file into a single string.",
-      "    io.writeFile(path, content) Writes a string to the file (overwrites existing).",
-      "    io.appendFile(path, content) Appends a string to the end of the file.",
-      "    io.readLines(path)          Reads the file line-by-line into a list of strings.",
-      "    io.writeLines(path, list)   Writes a list of elements as separate lines.",
-      "",
-      "  CSV Files (Data Analysis)",
-      "  ──────────────────────",
-      "    io.readCSV(path, delim)     Reads a CSV into a list of lists.",
-      "    io.readCSVMat(path, delim)  Reads a CSV into a list of lists (one per row).",
-      "    io.parseCSVNum(path, delim) Reads a CSV into a mathematical realmatrix.",
-      "    io.writeCSV(path, data, delim) Writes a matrix or list out to a CSV file.",
-      "",
-      "  Path Resolution (Script-Centric)",
-      "  ──────────────────────",
-      "    JC2 resolves all relative file paths based on the location of the ",
-      "    CURRENTLY EXECUTING script, not the terminal's working directory.",
-      "",
-      "    If `C:/project/src/main.jc2` calls `io.readFile(\"data.txt\")`, it will",
-      "    look for `C:/project/src/data.txt`. This allows you to build standalone,",
-      "    portable JC2 packages and modules that bundle their own data files.",
-      "",
-      "    If you are typing interactively in the REPL, relative paths resolve",
-      "    from the directory where you launched the executable.",
-      "",
-      "  File System Operations",
-      "  ──────────────────────",
-      "    io.fileExists(path)         Returns true if the file/folder exists, false otherwise.",
-      "    io.fileSize(path)           Returns the physical file size in bytes.",
-      "    io.deleteFile(path)         Permanently deletes the specified file.",
-      "    io.listDir(path)            Returns a list of filenames in the specified directory."
-    ],
     "import": [
       "═══ Import (Code Reuse & Native Modules) ═══",
       "",
@@ -4711,27 +4674,6 @@
         "println(\"Hello\", 42)"
       ]
     },
-    "readFile": {
-      "signature": "io.readFile(path)",
-      "desc": "Reads the entire contents of a file into a string.",
-      "examples": [
-        "io.readFile(\"data.txt\")"
-      ]
-    },
-    "writeFile": {
-      "signature": "io.writeFile(path, content)",
-      "desc": "Writes a string to a file, overwriting existing content.",
-      "examples": [
-        "io.writeFile(\"out.txt\", \"Hello\")"
-      ]
-    },
-    "readCSV": {
-      "signature": "io.readCSV(path, [delim])",
-      "desc": "Reads a CSV file into a list of lists.",
-      "examples": [
-        "io.readCSV(\"data.csv\")"
-      ]
-    },
     "assert": {
       "signature": "assert(cond, [msg])",
       "desc": "Throws an error if the condition is falsy.",
@@ -5125,56 +5067,6 @@
       "signature": "s.powerSet()",
       "desc": "Returns the powerset of s (set of all subsets).",
       "examples": ["@{1, 2}.powerSet()"]
-    },
-    "appendFile": {
-      "signature": "io.appendFile(path, content)",
-      "desc": "Appends a string to the end of a file.",
-      "examples": ["io.appendFile(\"log.txt\", \"Error\\n\")"]
-    },
-    "readLines": {
-      "signature": "io.readLines(path)",
-      "desc": "Reads a file line-by-line into a List of strings.",
-      "examples": ["io.readLines(\"data.txt\")"]
-    },
-    "writeLines": {
-      "signature": "io.writeLines(path, list)",
-      "desc": "Writes a List of elements as separate lines to a file.",
-      "examples": ["io.writeLines(\"out.txt\", myList)"]
-    },
-    "fileExists": {
-      "signature": "io.fileExists(path)",
-      "desc": "Returns true if the file or directory exists, false otherwise.",
-      "examples": ["io.fileExists(\"data.txt\")"]
-    },
-    "deleteFile": {
-      "signature": "io.deleteFile(path)",
-      "desc": "Permanently deletes the specified file.",
-      "examples": ["io.deleteFile(\"temp.txt\")"]
-    },
-    "fileSize": {
-      "signature": "io.fileSize(path)",
-      "desc": "Returns the physical file size in bytes.",
-      "examples": ["io.fileSize(\"data.txt\")"]
-    },
-    "listDir": {
-      "signature": "io.listDir([path])",
-      "desc": "Returns a List of filenames in the specified directory.",
-      "examples": ["io.listDir(\"./data\")"]
-    },
-    "readCSVMat": {
-      "signature": "io.readCSVMat(path, [delim])",
-      "desc": "Reads a CSV file into a list of lists (one list per row).",
-      "examples": ["io.readCSVMat(\"data.csv\")"]
-    },
-    "parseCSVNum": {
-      "signature": "io.parseCSVNum(path, [delim])",
-      "desc": "Reads a CSV file into a mathematical RealMatrix.",
-      "examples": ["io.parseCSVNum(\"data.csv\")"]
-    },
-    "writeCSV": {
-      "signature": "io.writeCSV(path, data, [delim])",
-      "desc": "Writes a Matrix or List out to a CSV file.",
-      "examples": ["io.writeCSV(\"out.csv\", M)"]
     },
     "RootOf": {
       "signature": "cas.RootOf(poly, var, k)",

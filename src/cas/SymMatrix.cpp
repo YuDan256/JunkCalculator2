@@ -137,10 +137,10 @@ namespace jc {
                 if (terms.empty()) {
                     result(i, j) = SymExpr(BigInt(0));
                 } else if (terms.size() == 1) {
-                    result(i, j) = simplifyCore(expand_core(SymExpr(terms[0]), SymConfig::maxExpandTerms));
+                    result(i, j) = jc::simplify(expand_core(SymExpr(terms[0]), SymConfig::maxExpandTerms));
                 } else {
                     SymExpr sumExpr(new SymAdd(std::move(terms)));
-                    result(i, j) = simplifyCore(expand_core(sumExpr, SymConfig::maxExpandTerms));
+                    result(i, j) = jc::simplify(expand_core(sumExpr, SymConfig::maxExpandTerms));
                 }
             }
         }
@@ -364,7 +364,7 @@ namespace jc {
         }
 
         SymExpr det = M[n - 1][n - 1].toSymExpr();
-        if (sign == -1) det = simplifyCore(-det);
+        if (sign == -1) det = jc::simplify(-det);
         return jc::simplify(det);
     }
 
@@ -405,7 +405,7 @@ namespace jc {
             return res;
         }
         if (rows == 2) {
-            SymExpr det = simplifyCore(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
+            SymExpr det = jc::simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
             if (isSymZero(det)) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
             SymMatrix res(2, 2);
             res(0, 0) = jc::simplify((*this)(1, 1) / det);
@@ -565,9 +565,9 @@ namespace jc {
                 ns(j, free_var_idx) = SymExpr(BigInt(1));
                 for (int i = 0; i < r; ++i) {
                     int p_col = pivot_cols[i];
-                    SymExpr num = simplifyCore(-M[i][j].toSymExpr());
+                    SymExpr num = jc::simplify(-M[i][j].toSymExpr());
                     SymExpr den = M[i][p_col].toSymExpr();
-                    ns(p_col, free_var_idx) = simplifyCore(num / den);
+                    ns(p_col, free_var_idx) = jc::simplify(num / den);
                 }
                 free_var_idx++;
             }
@@ -584,14 +584,14 @@ namespace jc {
             SymMatrix u = v;
             for (int k = 0; k < j; ++k) {
                 SymMatrix uk = res.getCol(k);
-                SymExpr num = simplifyCore(expand_core((v.transpose() * uk)(0, 0), SymConfig::maxExpandTerms));
-                SymExpr den = simplifyCore(expand_core((uk.transpose() * uk)(0, 0), SymConfig::maxExpandTerms));
+                SymExpr num = jc::simplify(expand_core((v.transpose() * uk)(0, 0), SymConfig::maxExpandTerms));
+                SymExpr den = jc::simplify(expand_core((uk.transpose() * uk)(0, 0), SymConfig::maxExpandTerms));
                 if (!isSymZero(den)) {
-                    u = u - uk * simplifyCore(num / den);
+                    u = u - uk * jc::simplify(num / den);
                 }
             }
             for (int i = 0; i < rows; ++i) {
-                res(i, j) = simplifyCore(u(i, 0));
+                res(i, j) = jc::simplify(u(i, 0));
             }
         }
         return res;
@@ -652,13 +652,13 @@ namespace jc {
         for (const auto& val : data) {
             sum = sum + val * val;
         }
-        return simplifyCore(sum ^ SymExpr(Fraction(1, 2)));
+        return jc::simplify(sum ^ SymExpr(Fraction(1, 2)));
     }
 
     SymExpr SymMatrix::condition() const {
         if (rows != cols) throw std::invalid_argument("SymMatrix Error: Condition number requires a square matrix.");
         SymMatrix inv = inverse();
-        return simplifyCore(norm() * inv.norm());
+        return jc::simplify(norm() * inv.norm());
     }
 
     SymExpr SymMatrix::permanent() const {
@@ -688,9 +688,9 @@ namespace jc {
             }
             
             if ((n - set_size) % 2 != 0) {
-                perm = simplifyCore(expand_core(perm - prod, SymConfig::maxExpandTerms));
+                perm = jc::simplify(expand_core(perm - prod, SymConfig::maxExpandTerms));
             } else {
-                perm = simplifyCore(expand_core(perm + prod, SymConfig::maxExpandTerms));
+                perm = jc::simplify(expand_core(perm + prod, SymConfig::maxExpandTerms));
             }
         }
         return perm;
@@ -752,10 +752,10 @@ namespace jc {
             checkInterrupt();
             if (isSymZero(U(i, i))) throw std::runtime_error("SymMatrix Error: LU decomposition failed due to zero pivot.");
             for (int j = i + 1; j < n; ++j) {
-                SymExpr factor = simplifyCore(U(j, i) / U(i, i));
+                SymExpr factor = jc::simplify(U(j, i) / U(i, i));
                 L(j, i) = factor;
                 for (int k = i; k < n; ++k) {
-                    U(j, k) = simplifyCore(U(j, k) - factor * U(i, k));
+                    U(j, k) = jc::simplify(U(j, k) - factor * U(i, k));
                 }
             }
         }
@@ -774,17 +774,17 @@ namespace jc {
             SymMatrix u = v;
             for (int k = 0; k < j; ++k) {
                 SymMatrix ek = e_vecs[k];
-                SymExpr r_kj = simplifyCore((ek.transpose() * v)(0, 0));
+                SymExpr r_kj = jc::simplify((ek.transpose() * v)(0, 0));
                 R(k, j) = r_kj;
                 u = u - ek * r_kj;
             }
-            SymExpr norm_u = u.norm();
+            SymExpr norm_u = jc::simplify(u.norm());
             if (isSymZero(norm_u)) {
                 e_vecs.push_back(u);
                 R(j, j) = SymExpr(BigInt(0));
             } else {
                 SymMatrix ej = u / norm_u;
-                for(int r = 0; r < rows; ++r) ej(r, 0) = simplifyCore(ej(r, 0));
+                for(int r = 0; r < rows; ++r) ej(r, 0) = jc::simplify(ej(r, 0));
                 e_vecs.push_back(ej);
                 R(j, j) = norm_u;
             }
@@ -868,7 +868,7 @@ namespace jc {
                 if (isSymZero(a_ij)) continue; // 稀疏优化
                 for (int k = 0; k < other.rows; ++k) {
                     for (int l = 0; l < other.cols; ++l) {
-                        res(i * other.rows + k, j * other.cols + l) = jc::simplifyCore(a_ij * other(k, l));
+                        res(i * other.rows + k, j * other.cols + l) = jc::simplify(a_ij * other(k, l));
                     }
                 }
             }

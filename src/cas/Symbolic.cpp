@@ -933,10 +933,6 @@ namespace jc {
                                     prodConst = Fraction(p.getNum() / BigInt(bInt), p.getDen());
                                     data.exp = casAdd(data.exp, BigInt(1));
                                     extracted = true;
-                                } else if ((p.getDen() % BigInt(bInt)).isZero()) {
-                                    prodConst = Fraction(p.getNum(), p.getDen() / BigInt(bInt));
-                                    data.exp = casAdd(data.exp, BigInt(-1));
-                                    extracted = true;
                                 }
                             }
                             if (!extracted) break;
@@ -1129,7 +1125,7 @@ namespace jc {
                             if (!q.isZero()) {
                                 SymExpr term = SymExpr(p) ^ SymExpr(q);
                                 if (outside.isOne()) outside = term;
-                                else outside = SymExpr::makeMul(std::vector<SymNode*>{outside.ptr, term.ptr});
+                                else outside = outside * term;
                             }
                             if (!r.isZero()) {
                                 BigInt pr(1);
@@ -1145,7 +1141,7 @@ namespace jc {
                         SymExpr fracSym(Fraction(BigInt(1), n_den));
                         SymExpr powPart(new SymPow(insideSym.ptr, fracSym.ptr));
                         if (res.isOne()) res = powPart;
-                        else res = SymExpr::makeMul(std::vector<SymNode*>{res.ptr, powPart.ptr});
+                        else res = res * powPart;
                     }
                     
                     if (isNeg) {
@@ -1158,7 +1154,7 @@ namespace jc {
                         
                         auto multiplyRes = [&](SymExpr factor) {
                             if (res.isOne()) res = factor;
-                            else res = SymExpr::makeMul(std::vector<SymNode*>{factor.ptr, res.ptr});
+                            else res = factor * res;
                         };
 
                         if (!(q_neg % BigInt(2)).isZero()) {
@@ -1250,7 +1246,7 @@ namespace jc {
                     if (!q.isZero() && !r.isZero()) {
                         SymExpr part1 = a ^ SymExpr(q);
                         SymExpr part2 = a ^ SymExpr(Fraction(r, n_den));
-                        return SymExpr::makeMul(std::vector<SymNode*>{part1.ptr, part2.ptr});
+                        return part1 * part2;
                     }
                 }
             }

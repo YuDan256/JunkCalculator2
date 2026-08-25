@@ -3481,7 +3481,15 @@
       "    • Error propagation: Errors inside an imported file abort the import.",
       "    • Encapsulation: All definitions are strictly isolated inside the returned namespace.",
       "    • Private Variables: Inside a .jc2 module, variables declared with `local` ",
-      "      are strictly private and will NOT be exported to the final namespace."
+      "      are strictly private and will NOT be exported to the final namespace.",
+      "",
+      "  ★ Do NOT freeze an imported namespace:",
+      "    Imported namespaces are global singletons. Calling `freeze(import \"lib\")`",
+      "    permanently locks the shared singleton, so every other importer (including",
+      "    the end user) receives the same frozen namespace and can no longer modify it.",
+      "    To keep a private, locked copy without polluting downstream users, copy it:",
+      "      const local lib = copy(import \"lib\", true)",
+      "    This deep-copies the namespace and freezes only your own copy."
     ]
   },
   "functions": {

@@ -5697,18 +5697,21 @@ Value VM::run(int targetFrameDepth) {
                             using ElemType = std::decay_t<decltype(m(0,0))>;
                             
                             if (!range.isSlice) {
-                                ElemType scalarVal{};
-                                if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
-                                else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
-                                else if constexpr (std::is_same_v<ElemType, std::string>) {
-                                    if (val.isString()) scalarVal = val.asString();
-                                    else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
-                                } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
-                                    scalarVal = val.asSymbolic();
-                                }
+                                auto getScalarVal = [&]() -> ElemType {
+                                    ElemType sv{};
+                                    if constexpr (std::is_same_v<ElemType, double>) sv = val.asDouble();
+                                    else if constexpr (std::is_same_v<ElemType, Complex>) sv = val.asComplex();
+                                    else if constexpr (std::is_same_v<ElemType, std::string>) {
+                                        if (val.isString()) sv = val.asString();
+                                        else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; sv = oss.str(); }
+                                    } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                                        sv = val.asSymbolic();
+                                    }
+                                    return sv;
+                                };
                                 
-                                if (m.getRows() == 1) m(0, range.scalarIdx) = scalarVal;
-                                else if (m.getCols() == 1) m(range.scalarIdx, 0) = scalarVal;
+                                if (m.getRows() == 1) m(0, range.scalarIdx) = getScalarVal();
+                                else if (m.getCols() == 1) m(range.scalarIdx, 0) = getScalarVal();
                                 else {
                                     bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                                     if (isRhsMat) {
@@ -5741,7 +5744,8 @@ Value VM::run(int targetFrameDepth) {
                                             }
                                         }
                                     } else {
-                                        for (int j = 0; j < m.getCols(); ++j) m(range.scalarIdx, j) = scalarVal;
+                                        ElemType sv = getScalarVal();
+                                        for (int j = 0; j < m.getCols(); ++j) m(range.scalarIdx, j) = sv;
                                     }
                                 }
                             } else {
@@ -10831,18 +10835,21 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
                 using ElemType = std::decay_t<decltype(m(0,0))>;
                 
                 if (!range.isSlice) {
-                    ElemType scalarVal{};
-                    if constexpr (std::is_same_v<ElemType, double>) scalarVal = val.asDouble();
-                    else if constexpr (std::is_same_v<ElemType, Complex>) scalarVal = val.asComplex();
-                    else if constexpr (std::is_same_v<ElemType, std::string>) {
-                        if (val.isString()) scalarVal = val.asString();
-                        else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; scalarVal = oss.str(); }
-                    } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
-                        scalarVal = val.asSymbolic();
-                    }
+                    auto getScalarVal = [&]() -> ElemType {
+                        ElemType sv{};
+                        if constexpr (std::is_same_v<ElemType, double>) sv = val.asDouble();
+                        else if constexpr (std::is_same_v<ElemType, Complex>) sv = val.asComplex();
+                        else if constexpr (std::is_same_v<ElemType, std::string>) {
+                            if (val.isString()) sv = val.asString();
+                            else { std::ostringstream oss; if (val.isUninit()) oss << "Uninitialized"; else oss << val; sv = oss.str(); }
+                        } else if constexpr (std::is_same_v<ElemType, SymExpr>) {
+                            sv = val.asSymbolic();
+                        }
+                        return sv;
+                    };
                     
-                    if (m.getRows() == 1) m(0, range.scalarIdx) = scalarVal;
-                    else if (m.getCols() == 1) m(range.scalarIdx, 0) = scalarVal;
+                    if (m.getRows() == 1) m(0, range.scalarIdx) = getScalarVal();
+                    else if (m.getCols() == 1) m(range.scalarIdx, 0) = getScalarVal();
                     else {
                         bool isRhsMat = val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX);
                         if (isRhsMat) {
@@ -10875,7 +10882,8 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
                                 }
                             }
                         } else {
-                            for (int j = 0; j < m.getCols(); ++j) m(range.scalarIdx, j) = scalarVal;
+                            ElemType sv = getScalarVal();
+                            for (int j = 0; j < m.getCols(); ++j) m(range.scalarIdx, j) = sv;
                         }
                     }
                 } else {

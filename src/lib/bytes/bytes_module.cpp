@@ -7,6 +7,11 @@
 #include <string>
 #include <cmath>
 #include <algorithm>
+#include <filesystem>
+
+static std::filesystem::path to_path(const std::string& utf8_str) {
+    return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
+}
 
 static jc2::Class* g_bytesClass = nullptr;
 
@@ -66,7 +71,7 @@ METHOD(writeFile) {
     GET_SELF;
     if (!jc2::Value(argv[1]).is_string()) jc2::throw_error("Type Error: expects string path.");
     std::string path = jc2::Value(argv[1]).as_string();
-    std::ofstream f(path, std::ios::binary);
+    std::ofstream f(to_path(path), std::ios::binary);
     if (!f) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
     f.write(reinterpret_cast<const char*>(buf.data()), buf.size());
     return jc2::Value().get_handle();
@@ -242,7 +247,7 @@ FUNC(readFile) {
     (void)argc;
     if (!jc2::Value(argv[0]).is_string()) jc2::throw_error("Type Error: expects string path.");
     std::string path = jc2::Value(argv[0]).as_string();
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    std::ifstream f(to_path(path), std::ios::binary | std::ios::ate);
     if (!f) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
     std::streamsize size = f.tellg();
     f.seekg(0, std::ios::beg);

@@ -170,9 +170,13 @@ namespace helpers {
     inline std::string safeResolvePath(const std::string& path) {
         if (resolvePathCallback) return resolvePathCallback(path);
         namespace fs = std::filesystem;
-        fs::path p(path);
-        if (p.is_absolute()) return p.string();
-        return fs::weakly_canonical(fs::current_path() / p).string();
+        fs::path p(reinterpret_cast<const char8_t*>(path.c_str()));
+        if (p.is_absolute()) {
+            auto u8str = p.u8string();
+            return std::string(u8str.begin(), u8str.end());
+        }
+        auto u8str = fs::weakly_canonical(fs::current_path() / p).u8string();
+        return std::string(u8str.begin(), u8str.end());
     }
 
     // ═══ Dunder 调用机制（VM/Evaluator 通过回调注入 self 绑定）═══

@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <functional>
 #include <set>
+#include <filesystem>
 #include "../math/Complex.h"
 #include "../math/Matrix.h"
 #include "../math/BigInt.h"

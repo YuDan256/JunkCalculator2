@@ -34,12 +34,17 @@
 #include <cstdlib>              // ★ std::system
 
 namespace jc {
+    inline std::filesystem::path to_path(const std::string& utf8_str) {
+        return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
+    }
+
     // 替代 Evaluator 中的路径状态
     static std::string g_workspacePath = "";
     // 获取当前路径
     static std::string g_cwd() {
         if (!helpers::g_scriptDirStack.empty()) return helpers::g_scriptDirStack.back();
-        return std::filesystem::current_path().string();
+        auto u8str = std::filesystem::current_path().u8string();
+        return std::string(u8str.begin(), u8str.end());
     }
 
     // =================================================================
@@ -4745,22 +4750,32 @@ void BuiltinRegistry::registerSystemShell() {
         }
         else {
             namespace fs = std::filesystem;
-            fs::path dir(p);
-            if (!dir.is_absolute()) dir = fs::path(g_cwd()) / dir;
+            fs::path dir = to_path(p);
+            if (!dir.is_absolute()) dir = to_path(g_cwd()) / dir;
             if (!fs::exists(dir)) fs::create_directories(dir);
-            g_workspacePath = fs::weakly_canonical(dir).string();
+            auto u8str = fs::weakly_canonical(dir).u8string();
+            g_workspacePath = std::string(u8str.begin(), u8str.end());
         }
         std::cout << "[System] Workspace set to: " << (g_workspacePath.empty() ? "./data" : g_workspacePath) << std::endl;
         return Value::none();
         }, {"path"});
 
     regModule(sys_ns, "getWorkspace", { 0 }, [](const std::vector<Value>&) -> Value {
-        return Value(g_workspacePath.empty() ? (std::filesystem::current_path() / "data").string() : g_workspacePath);
+        if (g_workspacePath.empty()) {
+            auto u8str = (std::filesystem::current_path() / "data").u8string();
+            return Value(std::string(u8str.begin(), u8str.end()));
+        }
+        return Value(g_workspacePath);
         }, {});
 
     regModule(sys_ns, "pwd", { 0 }, [](const std::vector<Value>&) -> Value {
         std::cout << "  Script dir:    " << g_cwd() << std::endl;
-        std::cout << "  Workspace dir: " << (g_workspacePath.empty() ? (std::filesystem::current_path() / "data").string() : g_workspacePath) << std::endl;
+        std::string ws = g_workspacePath;
+        if (ws.empty()) {
+            auto u8str = (std::filesystem::current_path() / "data").u8string();
+            ws = std::string(u8str.begin(), u8str.end());
+        }
+        std::cout << "  Workspace dir: " << ws << std::endl;
         return Value::none();
         }, {});
 
@@ -4776,10 +4791,10 @@ void BuiltinRegistry::registerSystemShell() {
     regModule(sys_ns, "run", { 1 }, [](const std::vector<Value>& args) -> Value {
         std::string filepath = args[0].asString();
         std::string resolved = helpers::safeResolvePath(filepath);
-        if (!std::filesystem::exists(resolved)) resolved = helpers::safeResolvePath(filepath + ".jc2");
-        if (!std::filesystem::exists(resolved)) throw std::runtime_error("IO Error: Cannot open script '" + filepath + "'.");
+        if (!std::filesystem::exists(to_path(resolved))) resolved = helpers::safeResolvePath(filepath + ".jc2");
+        if (!std::filesystem::exists(to_path(resolved))) throw std::runtime_error("IO Error: Cannot open script '" + filepath + "'.");
 
-        std::ifstream file(resolved);
+        std::ifstream file(to_path(resolved));
         if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read script.");
         std::string code, line;
         while (std::getline(file, line)) code += line + "\n";
@@ -4847,10 +4862,10 @@ void BuiltinRegistry::registerSystemShell() {
         if (!args[0].isString()) throw std::runtime_error("Type Error: compileFile() expects a string path.");
         std::string filepath = args[0].asString();
         std::string resolved = helpers::safeResolvePath(filepath);
-        if (!std::filesystem::exists(resolved)) resolved = helpers::safeResolvePath(filepath + ".jc2");
-        if (!std::filesystem::exists(resolved)) throw std::runtime_error("IO Error: Cannot open script '" + filepath + "'.");
+        if (!std::filesystem::exists(to_path(resolved))) resolved = helpers::safeResolvePath(filepath + ".jc2");
+        if (!std::filesystem::exists(to_path(resolved))) throw std::runtime_error("IO Error: Cannot open script '" + filepath + "'.");
 
-        std::ifstream file(resolved);
+        std::ifstream file(to_path(resolved));
         if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read script.");
         std::string code, line;
         while (std::getline(file, line)) code += line + "\n";

@@ -34,6 +34,16 @@
 #include <filesystem>
 #include <fstream>
 
+namespace jc {
+    inline std::filesystem::path to_path(const std::string& utf8_str) {
+        return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
+    }
+    inline std::string from_path(const std::filesystem::path& p) {
+        auto u8str = p.u8string();
+        return std::string(u8str.begin(), u8str.end());
+    }
+}
+
 extern bool g_showIR;
 extern bool g_showHIR;
 extern bool g_showMachineCode;
@@ -2128,7 +2138,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
 }
 
 Value VM::execImport(const std::string& name) {
-    std::string baseName = std::filesystem::path(name).stem().string();
+    std::string baseName = from_path(to_path(name).stem());
 
     if (loadedModules.count(name)) {
         return loadedModules[name];
@@ -2152,35 +2162,35 @@ Value VM::execImport(const std::string& name) {
 
     // 1. 优先查找 <exe_dir>/lib/ 下的原生库
 #if defined(_WIN32)
-    char exePath[MAX_PATH];
-    if (GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
-        std::string modPath = (std::filesystem::path(exePath).parent_path() / "lib" / nativeName).string();
-        if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
+    wchar_t exePath[MAX_PATH];
+    if (GetModuleFileNameW(NULL, exePath, MAX_PATH)) {
+        std::string modPath = from_path(std::filesystem::path(exePath).parent_path() / "lib" / to_path(nativeName));
+        if (std::filesystem::is_regular_file(to_path(modPath))) resolved = modPath;
     }
 #else
     char exePath[4096];
     ssize_t count = readlink("/proc/self/exe", exePath, 4096);
     if (count != -1) {
-        std::string modPath = (std::filesystem::path(std::string(exePath, count)).parent_path() / "lib" / nativeName).string();
-        if (std::filesystem::is_regular_file(modPath)) resolved = modPath;
+        std::string modPath = from_path(std::filesystem::path(std::string(exePath, count)).parent_path() / "lib" / to_path(nativeName));
+        if (std::filesystem::is_regular_file(to_path(modPath))) resolved = modPath;
     }
 #endif
 
     // 2. 其次查找当前目录下的原生库
     if (resolved.empty()) {
         std::string localModPath = helpers::safeResolvePath(nativeName);
-        if (std::filesystem::is_regular_file(localModPath)) resolved = localModPath;
+        if (std::filesystem::is_regular_file(to_path(localModPath))) resolved = localModPath;
     }
 
     // 3. 查找 .jcb 字节码
     std::string jcbPath = "";
     if (resolved.empty()) {
         std::string p = helpers::safeResolvePath(name);
-        if (std::filesystem::path(p).extension() == ".jcb" && std::filesystem::is_regular_file(p)) {
+        if (from_path(to_path(p).extension()) == ".jcb" && std::filesystem::is_regular_file(to_path(p))) {
             jcbPath = p;
         } else {
             p = helpers::safeResolvePath(name + ".jcb");
-            if (std::filesystem::is_regular_file(p)) jcbPath = p;
+            if (std::filesystem::is_regular_file(to_path(p))) jcbPath = p;
         }
     }
 
@@ -2188,11 +2198,11 @@ Value VM::execImport(const std::string& name) {
     std::string jc2Path = "";
     if (resolved.empty() && jcbPath.empty()) {
         std::string p = helpers::safeResolvePath(name);
-        if (std::filesystem::path(p).extension() == ".jc2" && std::filesystem::is_regular_file(p)) {
+        if (from_path(to_path(p).extension()) == ".jc2" && std::filesystem::is_regular_file(to_path(p))) {
             jc2Path = p;
         } else {
             p = helpers::safeResolvePath(name + ".jc2");
-            if (std::filesystem::is_regular_file(p)) jc2Path = p;
+            if (std::filesystem::is_regular_file(to_path(p))) jc2Path = p;
         }
     }
 
@@ -2207,9 +2217,9 @@ Value VM::execImport(const std::string& name) {
     std::string executePath;
 
     if (!resolved.empty()) {
-        std::string ext = std::filesystem::path(resolved).extension().string();
+        std::string ext = from_path(to_path(resolved).extension());
 #if defined(_WIN32)
-        HMODULE handle = LoadLibraryA(resolved.c_str());
+        HMODULE handle = LoadLibraryW(to_path(resolved).wstring().c_str());
         if (!handle) { loadedModules.erase(name); throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "'."); }
         auto init_fn = (JC2_ExtensionInitFunc)GetProcAddress(handle, "jc2_extension_init");
 #else
@@ -2316,7 +2326,7 @@ Value VM::execImport(const std::string& name) {
     }
 
     if (!modFn && !jc2Path.empty()) {
-        std::ifstream file(jc2Path);
+        std::ifstream file(to_path(jc2Path));
         if (!file.is_open()) { loadedModules.erase(name); throw std::runtime_error("IO Error: Cannot read module script."); }
         std::string code, line;
         while (std::getline(file, line)) code += line + "\n";
@@ -2395,7 +2405,7 @@ Value VM::execImport(const std::string& name) {
     profileFrameStart(&newFrame);
     frames[frameCount++] = newFrame;
 
-    std::string scriptDir = std::filesystem::path(executePath).parent_path().string();
+    std::string scriptDir = from_path(to_path(executePath).parent_path());
     helpers::g_scriptDirStack.push_back(scriptDir);
     Value nsVal;
     try {
@@ -2433,7 +2443,7 @@ Value VM::execImport(const std::string& name) {
 }
 
 void VM::execCompileTimeImport(const std::string& name) {
-    std::string baseName = std::filesystem::path(name).stem().string();
+    std::string baseName = from_path(to_path(name).stem());
 
     if (loadedModules.count(name)) {
         return;
@@ -2442,15 +2452,15 @@ void VM::execCompileTimeImport(const std::string& name) {
     std::string resolved = "";
     
     resolved = helpers::safeResolvePath(name);
-    if (!std::filesystem::is_regular_file(resolved)) {
+    if (!std::filesystem::is_regular_file(to_path(resolved))) {
         resolved = helpers::safeResolvePath(name + ".jc2");
     }
 
-    if (resolved.empty() || !std::filesystem::is_regular_file(resolved)) {
+    if (resolved.empty() || !std::filesystem::is_regular_file(to_path(resolved))) {
         throw std::runtime_error("VM Error: Cannot find compile-time module '" + name + "'.");
     }
 
-    std::ifstream file(resolved);
+    std::ifstream file(to_path(resolved));
     if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read compile-time module script.");
     std::string code, line;
     while (std::getline(file, line)) code += line + "\n";
@@ -2526,7 +2536,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     profileFrameStart(&newFrame);
     frames[frameCount++] = newFrame;
 
-    std::string scriptDir = std::filesystem::path(resolved).parent_path().string();
+    std::string scriptDir = from_path(to_path(resolved).parent_path());
     helpers::g_scriptDirStack.push_back(scriptDir);
     Value nsVal;
     try {
@@ -2730,7 +2740,7 @@ std::string VM::buildStackTrace() const {
             std::string srcFile = f.function ? f.function->sourceFile : "";
             if (srcFile.empty()) fnName = "REPL";
             else {
-                try { fnName = std::filesystem::path(srcFile).filename().string(); }
+                try { fnName = from_path(to_path(srcFile).filename()); }
                 catch (...) { fnName = srcFile; }
             }
             oss << "  at [Line " << line << "] in " << fnName << "\n";

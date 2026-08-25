@@ -4,6 +4,15 @@
 #include <algorithm>
 #include <filesystem>
 
+static std::filesystem::path to_path(const std::string& utf8_str) {
+    return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
+}
+
+static std::string from_path(const std::filesystem::path& p) {
+    auto u8str = p.u8string();
+    return std::string(u8str.begin(), u8str.end());
+}
+
 static jc2::Class* g_fileClass = nullptr;
 
 struct FileContext {
@@ -155,7 +164,7 @@ METHOD(next) {
 }
 
 static std::vector<std::vector<std::string>> parseCSV(const std::string& path, char delim) {
-    std::ifstream file(path);
+    std::ifstream file(to_path(path));
     if (!file.is_open()) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
     std::vector<std::vector<std::string>> rows;
     std::vector<std::string> current_row;
@@ -249,7 +258,7 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
     std::string delim = ",";
     if (argc >= 3) delim = jc2::Value(argv[2]).as_string();
     
-    std::ofstream file(path);
+    std::ofstream file(to_path(path));
     if (!file.is_open()) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
     
     jc2::Value data = jc2::Value(argv[1]);
@@ -313,14 +322,14 @@ JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc < 1) jc2::throw_error("Type Error: io.stat expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
-    auto st = std::filesystem::status(path, ec);
+    auto st = std::filesystem::status(to_path(path), ec);
     if (ec || !std::filesystem::exists(st)) jc2::throw_error("IO Error: Cannot stat path '" + path + "'.");
     
     jc2::Dict d;
     d.set(jc2::Value("is_dir"), jc2::Value(std::filesystem::is_directory(st)));
     d.set(jc2::Value("is_file"), jc2::Value(std::filesystem::is_regular_file(st)));
     if (std::filesystem::is_regular_file(st)) {
-        d.set(jc2::Value("size"), jc2::Value(static_cast<double>(std::filesystem::file_size(path, ec))));
+        d.set(jc2::Value("size"), jc2::Value(static_cast<double>(std::filesystem::file_size(to_path(path), ec))));
     } else {
         d.set(jc2::Value("size"), jc2::Value(0.0));
     }
@@ -333,8 +342,8 @@ JC2_ValueHandle io_mkdir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
     bool recursive = false;
     if (argc >= 2) recursive = jc2::Value(argv[1]).truthy();
     std::error_code ec;
-    if (recursive) std::filesystem::create_directories(path, ec);
-    else std::filesystem::create_directory(path, ec);
+    if (recursive) std::filesystem::create_directories(to_path(path), ec);
+    else std::filesystem::create_directory(to_path(path), ec);
     if (ec) jc2::throw_error("IO Error: Cannot create directory '" + path + "'.");
     return jc2::Value::none().get_handle();
 }
@@ -343,7 +352,7 @@ JC2_ValueHandle io_remove(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
     if (argc < 1) jc2::throw_error("Type Error: io.remove expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
-    std::filesystem::remove(path, ec);
+    std::filesystem::remove(to_path(path), ec);
     if (ec) jc2::throw_error("IO Error: Cannot remove '" + path + "'.");
     return jc2::Value::none().get_handle();
 }
@@ -353,7 +362,7 @@ JC2_ValueHandle io_rename(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
     std::string old_p = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string new_p = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
     std::error_code ec;
-    std::filesystem::rename(old_p, new_p, ec);
+    std::filesystem::rename(to_path(old_p), to_path(new_p), ec);
     if (ec) jc2::throw_error("IO Error: Cannot rename '" + old_p + "' to '" + new_p + "'.");
     return jc2::Value::none().get_handle();
 }
@@ -362,18 +371,18 @@ JC2_ValueHandle io_exists(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
     if (argc < 1) jc2::throw_error("Type Error: io.exists expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
-    return jc2::Value(std::filesystem::exists(path, ec)).get_handle();
+    return jc2::Value(std::filesystem::exists(to_path(path), ec)).get_handle();
 }
 
 JC2_ValueHandle io_listDir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string path = jc2::Env::resolve_path(argc >= 1 ? jc2::Value(argv[0]).as_string() : ".");
     std::error_code ec;
-    if (!std::filesystem::exists(path, ec) || !std::filesystem::is_directory(path, ec)) {
+    if (!std::filesystem::exists(to_path(path), ec) || !std::filesystem::is_directory(to_path(path), ec)) {
         jc2::throw_error("IO Error: Directory '" + path + "' does not exist.");
     }
     jc2::List l;
-    for (const auto& entry : std::filesystem::directory_iterator(path, ec)) {
-        l.push_back(jc2::Value(entry.path().filename().string()));
+    for (const auto& entry : std::filesystem::directory_iterator(to_path(path), ec)) {
+        l.push_back(jc2::Value(from_path(entry.path().filename())));
     }
     return l.get_handle();
 }
@@ -397,7 +406,7 @@ JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     else jc2::throw_error("IO Error: Unsupported mode '" + mode + "'.");
 
     auto ctx = new FileContext();
-    ctx->stream.open(path, ios_mode);
+    ctx->stream.open(to_path(path), ios_mode);
     if (!ctx->stream.is_open()) {
         delete ctx;
         jc2::throw_error("IO Error: Cannot open file '" + path + "'.");

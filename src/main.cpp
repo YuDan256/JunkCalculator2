@@ -28,6 +28,15 @@
 
 namespace jc {
     std::atomic<bool> g_isWaitingForInput{ false };
+
+    inline std::filesystem::path to_path(const std::string& utf8_str) {
+        return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
+    }
+
+    inline std::string from_path(const std::filesystem::path& p) {
+        auto u8str = p.u8string();
+        return std::string(u8str.begin(), u8str.end());
+    }
 }
 
 // 信号处理
@@ -96,12 +105,12 @@ static bool endsWithContinuation(const std::string& line) {
 std::string getExecutableDir() {
     namespace fs = std::filesystem;
 #ifdef _WIN32
-    char buf[2048];
-    if (GetModuleFileNameA(nullptr, buf, sizeof(buf))) {
-        return fs::path(buf).parent_path().string();
+    wchar_t buf[2048];
+    if (GetModuleFileNameW(nullptr, buf, 2048)) {
+        return jc::from_path(fs::path(buf).parent_path());
     }
 #endif
-    return fs::current_path().string();
+    return jc::from_path(fs::current_path());
 }
 
 void printHelp() {
@@ -176,23 +185,23 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
 
 void runScript(const std::string& filepath, bool isImport = false) {
     std::string resolvedPath = jc::helpers::safeResolvePath(filepath);
-    if (!std::filesystem::exists(resolvedPath)) {
+    if (!std::filesystem::exists(jc::to_path(resolvedPath))) {
         std::string jcbPath = jc::helpers::safeResolvePath(filepath + ".jcb");
-        if (std::filesystem::exists(jcbPath)) {
+        if (std::filesystem::exists(jc::to_path(jcbPath))) {
             resolvedPath = jcbPath;
         } else {
             resolvedPath = jc::helpers::safeResolvePath(filepath + ".jc2");
         }
     }
-    if (!std::filesystem::exists(resolvedPath)) {
+    if (!std::filesystem::exists(jc::to_path(resolvedPath))) {
         std::cerr << "   IO Error: Cannot open script '" << filepath << "'." << std::endl;
         return;
     }
 
-    std::string ext = std::filesystem::path(resolvedPath).extension().string();
+    std::string ext = jc::from_path(jc::to_path(resolvedPath).extension());
     if (ext == ".jcb") {
         bool fallbackToSource = false;
-        jc::helpers::g_scriptDirStack.push_back(std::filesystem::path(resolvedPath).parent_path().string());
+        jc::helpers::g_scriptDirStack.push_back(jc::from_path(jc::to_path(resolvedPath).parent_path()));
         try {
             auto modFn = jc::BytecodeSerializer::loadJCB(resolvedPath, &vm);
             int fnIdx = static_cast<int>(vm.getCompiledFunctions().size()) - 1;
@@ -222,8 +231,8 @@ void runScript(const std::string& filepath, bool isImport = false) {
         jc::helpers::g_scriptDirStack.pop_back();
         
         if (fallbackToSource) {
-            std::string jc2Path = std::filesystem::path(resolvedPath).replace_extension(".jc2").string();
-            if (std::filesystem::exists(jc2Path)) {
+            std::string jc2Path = jc::from_path(jc::to_path(resolvedPath).replace_extension(".jc2"));
+            if (std::filesystem::exists(jc::to_path(jc2Path))) {
                 resolvedPath = jc2Path;
             } else {
                 std::cerr << "   VM Error: Bytecode version mismatch and source file not found for '" << resolvedPath << "'." << std::endl;
@@ -234,7 +243,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
         }
     }
 
-    std::ifstream file(resolvedPath);
+    std::ifstream file(jc::to_path(resolvedPath));
     if (!file.is_open()) {
         std::cerr << "   IO Error: Cannot open script '" << filepath << "'." << std::endl;
         return;
@@ -246,7 +255,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
     file.close();
 
     jc::helpers::g_scriptDirStack.push_back(
-        std::filesystem::path(resolvedPath).parent_path().string());
+        jc::from_path(jc::to_path(resolvedPath).parent_path()));
 
     try {
         // ★ 将 resolvedPath 传进虚拟机
@@ -277,9 +286,9 @@ void saveWorkspace(const std::string& filename) {
     jc::BuiltinRegistry reg; reg.registerAll();
     std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
 
-    fs::path dir(wp);
+    fs::path dir = jc::to_path(wp);
     if (!fs::exists(dir)) fs::create_directories(dir);
-    std::ofstream out((dir / (filename + ".jc2")).string());
+    std::ofstream out(dir / jc::to_path(filename + ".jc2"));
 
     int count = 0;
     auto globals = vm.getGlobals();
@@ -290,7 +299,7 @@ void saveWorkspace(const std::string& filename) {
         count++;
     }
     out.close();
-    std::cout << "   Saved " << count << " variables to " << (dir / (filename + ".jc2")).string() << std::endl;
+    std::cout << "   Saved " << count << " variables to " << jc::from_path(dir / jc::to_path(filename + ".jc2")) << std::endl;
 }
 
 void loadWorkspace(const std::string& filename) {
@@ -299,8 +308,8 @@ void loadWorkspace(const std::string& filename) {
     jc::BuiltinRegistry reg; reg.registerAll();
     std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
 
-    std::string path = (fs::path(wp) / (filename + ".jc2")).string();
-    if (!fs::exists(path)) { std::cerr << "   IO Error: Workspace not found.\n"; return; }
+    std::string path = jc::from_path(jc::to_path(wp) / jc::to_path(filename + ".jc2"));
+    if (!fs::exists(jc::to_path(path))) { std::cerr << "   IO Error: Workspace not found.\n"; return; }
 
     vm.clearGlobals();
     runScript(path);
@@ -308,16 +317,16 @@ void loadWorkspace(const std::string& filename) {
 
 int runTestSuite(const std::string& testPath, const std::string& exeDir) {
     namespace fs = std::filesystem;
-    fs::path targetPath = testPath.empty() ? fs::path(exeDir) / "tests" : fs::path(testPath);
+    fs::path targetPath = testPath.empty() ? jc::to_path(exeDir) / "tests" : jc::to_path(testPath);
 
     if (!fs::exists(targetPath) || !fs::is_directory(targetPath)) {
-        std::cerr << jc::col(jc::Ansi::BRIGHT_RED) << "Test Error: Directory not found -> " << targetPath.string() << jc::col(jc::Ansi::RESET) << std::endl;
+        std::cerr << jc::col(jc::Ansi::BRIGHT_RED) << "Test Error: Directory not found -> " << jc::from_path(targetPath) << jc::col(jc::Ansi::RESET) << std::endl;
         return 1;
     }
 
     std::cout << jc::col(jc::Ansi::BRIGHT_CYAN) << "=========================================\n"
               << "JC2 Test Suite Started\n"
-              << "Target: " << targetPath.string() << "\n"
+              << "Target: " << jc::from_path(targetPath) << "\n"
               << "=========================================\n" << jc::col(jc::Ansi::RESET);
 
     int total = 0;
@@ -328,7 +337,7 @@ int runTestSuite(const std::string& testPath, const std::string& exeDir) {
     // 收集所有测试文件以保证顺序稳定
     std::vector<fs::path> testFiles;
     for (const auto& entry : fs::recursive_directory_iterator(targetPath)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".jc2") {
+        if (entry.is_regular_file() && jc::from_path(entry.path().extension()) == ".jc2") {
             testFiles.push_back(entry.path());
         }
     }
@@ -336,8 +345,8 @@ int runTestSuite(const std::string& testPath, const std::string& exeDir) {
 
     for (const auto& path : testFiles) {
         total++;
-        std::string filepath = path.string();
-        std::string filename = path.filename().string();
+        std::string filepath = jc::from_path(path);
+        std::string filename = jc::from_path(path.filename());
 
         // Reset Environment
         vm.clearGlobals();
@@ -350,7 +359,7 @@ int runTestSuite(const std::string& testPath, const std::string& exeDir) {
 
         std::cout << jc::col(jc::Ansi::BRIGHT_BLUE) << "\n[TEST] Running " << filename << "..." << jc::col(jc::Ansi::RESET) << std::endl;
 
-        std::ifstream file(filepath);
+        std::ifstream file(path);
         if (!file.is_open()) {
             std::cout << jc::col(jc::Ansi::BRIGHT_RED) << "  -> [FAIL] (IO Error)" << jc::col(jc::Ansi::RESET) << std::endl;
             failed++;
@@ -362,7 +371,7 @@ int runTestSuite(const std::string& testPath, const std::string& exeDir) {
         while (std::getline(file, line)) code += line + "\n";
         file.close();
 
-        jc::helpers::g_scriptDirStack.push_back(path.parent_path().string());
+        jc::helpers::g_scriptDirStack.push_back(jc::from_path(path.parent_path()));
 
         try {
             evalCode(code, filepath, true);
@@ -627,18 +636,18 @@ int main(int argc, char* argv[]) {
     // 如果有 --compile 参数，则执行编译并退出
     if (compileMode) {
         if (compileOutput.empty()) {
-            std::filesystem::path p(compileInput);
+            std::filesystem::path p = jc::to_path(compileInput);
             p.replace_extension(".jcb");
-            compileOutput = p.string();
+            compileOutput = jc::from_path(p);
         }
         std::string resolvedPath = jc::helpers::safeResolvePath(compileInput);
-        if (!std::filesystem::exists(resolvedPath))
+        if (!std::filesystem::exists(jc::to_path(resolvedPath)))
             resolvedPath = jc::helpers::safeResolvePath(compileInput + ".jc2");
-        if (!std::filesystem::exists(resolvedPath)) {
+        if (!std::filesystem::exists(jc::to_path(resolvedPath))) {
             std::cerr << "IO Error: Cannot open script '" << compileInput << "'." << std::endl;
             return 1;
         }
-        std::ifstream file(resolvedPath);
+        std::ifstream file(jc::to_path(resolvedPath));
         if (!file.is_open()) {
             std::cerr << "IO Error: Cannot open script '" << compileInput << "'." << std::endl;
             return 1;
@@ -657,7 +666,7 @@ int main(int argc, char* argv[]) {
             auto& fns = vm.getCompiledFunctions();
             int startIndex = static_cast<int>(fns.size());
             
-            std::string baseName = std::filesystem::path(resolvedPath).stem().string();
+            std::string baseName = jc::from_path(jc::to_path(resolvedPath).stem());
             std::unique_ptr<jc::NamespaceDecl> nsDecl;
             jc::Expr* targetAst = ast.get();
             

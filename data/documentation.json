@@ -2396,7 +2396,7 @@
       "  ──────────────────────",
       "    Callbacks receive an @[k, v] pair (frozen list), matching `for ([k, v] in d)`.",
       "",
-      "    d.map(f)             → f 返回 @[new_k, new_v]，结果 {new_k: new_v}",
+      "    d.map(f)             → f returns @[new_k, new_v], result {new_k: new_v}",
       "    d.mapValues(f)       → {k: f(v)}           apply f to each value only",
       "    d.mapKeys(f)         → {f(k): v}           apply f to each key only",
       "    d.filter(f)          → keep pairs where f(@[k, v]) is truthy",

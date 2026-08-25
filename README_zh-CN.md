@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.6.0.0
+# Junk Calculator 2.6.1.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.0.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.1.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -73,41 +73,30 @@
 
 ---
 
-## v2.6.0.0 版本更新说明
+## v2.6.1.0 版本更新说明
 
-### JIT 编译器（全新）
-- **即时编译器 (JIT)**：从零实现了完整的 JIT 编译流水线：可执行内存分配、宏汇编器、带类型特化的字节码到 HIR 提升、LIR 指令选择、图着色寄存器分配，以及 x86-64 机器码生成。
-- **自适应优化**：运行时类型剖析驱动类型守卫、内联缓存、函数内联，以及针对多态调用点的 callout 回退。整数运算发射溢出检查并支持去优化。
-- **栈上替换 (OSR)**：热点循环原地编译，通过 OSR 入口切换执行，配合基于栈映射的去优化实现精确状态恢复。
-- **配套工具**：内置 x86-64 反汇编器（`--mc`）、HIR 图打印（`--hir`），以及 `--jit` 命令行开关（默认关闭）。
+### 类型系统
+- **`any` 与 `never`**：顶端类型 `any_type` 简化为 `any`，同时新增底端类型 `never`（空类型，不含任何值），补齐类型格的两个端点——`any` 接受一切，`never` 拒绝一切。空类型现以小写 `never` 呈现。
+- **`<:` 中的类提升**：子集运算符右侧的类现在自动提升为其 typedef，`A <: MyClass` 无需显式类型转换即可直接使用。
+- **TypeDef 转换器**：可调用类型（`int`、`float`、`string`、`matrix`、`dict`、`list`、`set`、`complex`、`bool`、`fraction`）将转换器直接挂在 typedef 上，移除了六处基于字符串的名字查找 hack。
+- **`matrix()` 恢复**：动态矩阵构建通过联合类型转换器恢复，转换器检查提前到单元素判断之前，并支持自动符号检测（`hasSymbolic` → `asSymbolic`）。
+- **`__subsets__`**：`<:` 子集运算符现通过 `__subsets__` dunder 分发，与其他协议一并文档化。
 
-### 语言核心
-- **关键字参数**：命名参数可用 `f(b=5, a=3)` 调用。原生函数暴露参数名，`...rest` 参数只收集多余的位置参数。
-- **原型链 (Prototype Chain)**：容器方法迁移到 `List`、`Matrix`、`String`、`Dict`、`Set` 原型上，支持 UFCS 风格管道，如 `data |> .sort() |> .unique()`。
-- **内置命名空间**：`sys`、`io`、`cas`、`math`、`random` 注入为原生命名空间，取代散落的全局函数。
-- **一等切片对象**：`slice(start, end, step)` 对象，配合多维索引（`A[i, j]`）与多维切片（`A[1:3, 2:4]`），`__getitem__` 直接接收 slice 对象。
-- **生命周期与匹配协议**：`finalize()` 析构钩子（取代 `__del__`），以及 `__match__()` 协议支持自定义模式匹配视图。
-- **递归宏**：宏现在可在 `quote` 块内递归调用自身，用于 AST 遍历与变换。
-- **类型断言**：赋值、解构与独立声明上的单次运行时断言（`x: int = 10`、`[a: int, b: string] = data`、`local x: int`）。
-- **编译器指令与 Shebang**：`#` 引入行级编译器/VM 指令；`#!/usr/bin/env jc2` Shebang 通过 no-op 的 `!` 指令识别。
-- **整数除法**：新增 `~/` 运算符（向零截断），支持 `__idiv__` 重载。
-- **新内置函数**：容器上的 `enumerate` 与 `groupBy`。
+### Dict 高阶函数
+- **`map` / `filter` / `reduce` / `any` / `all` / `countIf`**：`Dict` 补齐完整的高阶函数套件。回调统一接收 `@[k, v]` pair（frozen list），与 `for ([k, v] in d)`、`entries()` 一致。
+- **完整映射 `map`**：`d.map(f)` 令 `f` 返回 `@[new_k, new_v]`，产生 `{new_k: new_v}`——键和值都能重映射，等价于 Python 的 `dict(map(...))` 或 Rust 的 `map().collect()`。
+- **单边简写**：`mapKeys(f)`、`mapValues(f)` 只映射一边，对应 Ruby 的 `transform_keys` / `transform_values`。
+- **GC 安全**：pair 参数与结果字典分别用 `GcValueGuard`/`GcObjGuard` 固定，因为容器靠标记存活、不靠引用计数。
 
-### CAS 引擎
-- **多项式核心重写**：稀疏多项式引擎（`SparsePoly`）与多元引擎（`MultiPoly`），64 位结构化哈希，Arena 分配器取代 `shared_ptr`，以及针对性的 GCD/factorReal 优化。
-- **高级算法**：Buchberger 的 LCM 准则、子结式 PRS，以及原生 64 位 Cantor-Zassenhaus 因式分解快速路径。
-- **符号矩阵 (`SymMatrix`)**：精确符号线性代数，涵盖 LU、QR、对角化、charPoly、特征值/特征向量、矩阵指数、Jacobian、Hessian、Kronecker 积、零空间、秩、范数及逐元素积分。
+### 语义
+- **`as` 作为后缀断言**：`as` 现位于 `call` 与 `power` 之间，对两个操作数都应用 `call()`，并左结合（`a as int as double` == `(a as int) as double`）。
+- **or-pattern 一致性**：绑定不同变量名的 or-pattern 在编译期报错，跨分支的同名绑定通过 phi 节点合并，guard 作用于整个 or-pattern。
 
-### API 现代化
-- **移除废弃 API**：删除 `isXXX` 类型谓词与 `pcall`，改用 `isinstance`、一等类型对象与 `try/catch`。
-- **统一深拷贝**：`copy(obj, freeze)` 三态冻结标志（`none`/`true`/`false`），取代 `clone`/`val`。
-- **`BaseNum` 降级**：`basenum` 现为 `math.BaseNum` 类，支持基数移位。
-- **严格矩阵字面量**：异构字面量需用 `@[...]`；普通 `[...]` 构造同质矩阵。`StringMatrix` 类型已移除。
-- **类型对象驻留 (Interning)**：类型对象全局驻留，使 `type(5) is int` 成为 O(1) 指针比较。
-
-### 内存与 GC
-- **终结器 (Finalizer)**：GC 调用 `finalize()`，保证每个对象生命周期内恰好执行一次。
-- **Use-After-Free 修复**：解决长跑脚本（zombie 场景）暴露的 GC use-after-free 缺陷。
+### 修复
+- 矩阵 1D 索引赋值（`A[1] = [1, 2]`）不再对值强制 `asDouble`。
+- REPL 不再对斜杠前缀命令（`/help`、`//`）续行，并保持 `/*` 多行注释开启。
+- 空程序求值为 `none`，而非 `0`。
+- BigInt 布局文档改为 base 2³² limb。
 
 ---
 

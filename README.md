@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.6.0.0
+# Junk Calculator 2.6.1.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.0.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.1.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -73,41 +73,30 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.6.0.0
+## What's New in v2.6.1.0
 
-### JIT Compiler (New)
-- **Just-In-Time Compiler**: A complete JIT pipeline built from scratch: executable memory allocation, a macro assembler, bytecode-to-HIR lifting with type specialization, LIR instruction selection, graph-coloring register allocation, and x86-64 machine code generation.
-- **Adaptive Optimization**: Runtime type profiling feeds type guards, inline caches, function inlining, and callout fallbacks for megamorphic call sites. Integer arithmetic emits overflow checks with deoptimization.
-- **On-Stack Replacement (OSR)**: Hot loops compile in place and swap execution through OSR entries, with stack-map based deoptimization for precise state recovery.
-- **Tooling**: A built-in x86-64 disassembler (`--mc`), HIR graph printing (`--hir`), and the `--jit` command-line flag (off by default).
+### Type System
+- **`any` and `never`**: The top type `any_type` is shortened to `any`, and a new bottom type `never` (the empty type holding no values) completes the type lattice — `any` accepts everything, `never` accepts nothing. The empty type now renders as lowercase `never`.
+- **Class Promotion in `<:`**: A class on the right of the subset operator auto-promotes to its typedef, so `A <: MyClass` works directly without an explicit type conversion.
+- **TypeDef Converters**: Callable types (`int`, `float`, `string`, `matrix`, `dict`, `list`, `set`, `complex`, `bool`, `fraction`) now carry their converter on the typedef itself, eliminating the string-based name-lookup hack across six call sites.
+- **`matrix()` Restoration**: Dynamic matrix construction works again via a union-type converter whose converter check runs before the single-element path, with automatic symbolic detection (`hasSymbolic` → `asSymbolic`).
+- **`__subsets__`**: The `<:` subset operator now dispatches through a `__subsets__` dunder, documented alongside the other protocols.
 
-### Language Core
-- **Keyword Arguments**: Named parameters callable as `f(b=5, a=3)`. Native functions expose parameter names, and `...rest` parameters only collect excess positional arguments.
-- **Prototype Chain**: Container methods migrated onto `List`, `Matrix`, `String`, `Dict`, and `Set` prototypes, enabling UFCS-style pipelines like `data |> .sort() |> .unique()`.
-- **Built-in Namespaces**: `sys`, `io`, `cas`, `math`, and `random` injected as native namespaces, replacing scattered global functions.
-- **First-Class Slices**: `slice(start, end, step)` objects with multi-dimensional indexing (`A[i, j]`) and slicing (`A[1:3, 2:4]`), where `__getitem__` receives slice objects.
-- **Lifecycle & Matching Protocols**: `finalize()` destructor hook (replacing `__del__`), and the `__match__()` protocol for custom pattern-matching views.
-- **Recursive Macros**: Macros may now call themselves inside `quote` blocks for AST traversal and transformation.
-- **Type Assertions**: Single-shot runtime assertions on assignment, destructuring, and standalone declarations (`x: int = 10`, `[a: int, b: string] = data`, `local x: int`).
-- **Compiler Directives & Shebang**: `#` introduces line-level compiler/VM directives; `#!/usr/bin/env jc2` shebangs are recognized via a no-op `!` directive.
-- **Integer Division**: New `~/` operator (truncating toward zero) with `__idiv__` overload.
-- **New Builtins**: `enumerate` and `groupBy` on containers.
+### Dict Higher-Order Functions
+- **`map` / `filter` / `reduce` / `any` / `all` / `countIf`**: `Dict` gains the full higher-order suite. Callbacks receive an `@[k, v]` pair (a frozen list), matching `for ([k, v] in d)` and `entries()`.
+- **Full-mapping `map`**: `d.map(f)` lets `f` return `@[new_k, new_v]`, producing `{new_k: new_v}` — both keys and values are remappable, like Python's `dict(map(...))` or Rust's `map().collect()`.
+- **Single-side shorthands**: `mapKeys(f)` and `mapValues(f)` map only one side, mirroring Ruby's `transform_keys` / `transform_values`.
+- **GC safety**: Pair arguments and result dicts are pinned with `GcValueGuard`/`GcObjGuard`, since containers survive by marking, not reference counts.
 
-### CAS Engine
-- **Polynomial Core Rewrite**: Sparse polynomial engine (`SparsePoly`) and multivariate engine (`MultiPoly`) with 64-bit structured hashes, an arena allocator replacing `shared_ptr`, and targeted GCD/factorReal optimizations.
-- **Advanced Algorithms**: Buchberger's LCM criterion, Subresultant PRS, and a native 64-bit Cantor-Zassenhaus factorization fast path.
-- **Symbolic Matrices (`SymMatrix`)**: Exact symbolic linear algebra including LU, QR, diagonalization, charPoly, eigenvalues/eigenvectors, matrix exponential, Jacobian, Hessian, Kronecker products, nullspace, rank, norm, and element-wise integration.
+### Semantics
+- **`as` as a postfix assertion**: `as` now sits between `call` and `power`, applying `call()` to both operands, and chains left-associatively (`a as int as double` == `(a as int) as double`).
+- **Or-pattern consistency**: or-patterns binding different variable names are rejected at compile time, while same-named bindings across alternatives merge through phi nodes, and a guard applies to the whole or-pattern.
 
-### API Modernization
-- **Deprecated APIs Removed**: `isXXX` type predicates and `pcall` removed in favor of `isinstance`, first-class type objects, and `try/catch`.
-- **Unified Deep Copy**: `copy(obj, freeze)` with a three-state freeze flag (`none`/`true`/`false`), replacing `clone`/`val`.
-- **`BaseNum` Demotion**: `basenum` is now a `math.BaseNum` class supporting radix-based shifts.
-- **Strict Matrix Literals**: Heterogeneous literals require `@[...]`; plain `[...]` constructs homogeneous matrices. The `StringMatrix` type was removed.
-- **Type Interning**: Type objects are globally interned, making `type(5) is int` an O(1) pointer comparison.
-
-### Memory & GC
-- **Finalizers**: `finalize()` is invoked by the GC with exactly-once semantics.
-- **Use-After-Free Fixes**: Resolved GC use-after-free defects surfaced by long-running scripts (zombie scenarios).
+### Fixes
+- Matrix 1D index assignment (`A[1] = [1, 2]`) no longer forces `asDouble` on the value.
+- REPL no longer continues on slash-prefixed commands (`/help`, `//`), and keeps `/*` multiline comments open.
+- An empty program evaluates to `none`, not `0`.
+- BigInt layout documented as base 2³² limbs.
 
 ---
 

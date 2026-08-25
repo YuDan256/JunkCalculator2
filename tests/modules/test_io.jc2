@@ -57,9 +57,11 @@ test_io_text_stream() = {
     
     // 迭代器协议
     lines = list()
-    for (line in io.open(file_name, "r")) {
+    f_iter = io.open(file_name, "r")
+    for (line in f_iter) {
         lines.push(line)
     }
+    f_iter.close()
     assert(len(lines) == 3, "File iterator failed to yield correct number of lines")
     assert(lines[0] == "Line 1" && lines[2] == "Line 3", "File iterator yielded wrong content")
     

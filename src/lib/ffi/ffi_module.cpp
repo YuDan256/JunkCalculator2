@@ -730,6 +730,7 @@ JC2_ValueHandle struct_layout_call(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     Instance inst(*g_structInstClass);
     StructInstanceData* data = new StructInstanceData{layout, std::vector<uint8_t>(layout->size, 0)};
     inst.set_native_data(data, [](void* ptr) { delete static_cast<StructInstanceData*>(ptr); });
+    inst.set_buffer_data(data->memory.data(), layout->size);
     return inst.get_handle();
 }
 

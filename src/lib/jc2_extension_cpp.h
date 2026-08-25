@@ -32,6 +32,8 @@ public:
 
     JC2_ValueHandle get_handle() const { return handle; }
 
+    static Value none() { return Value(); }
+
     bool is_none() const { return Env::api->is_none(Env::ctx, handle); }
     bool is_bool() const { return Env::api->is_bool(Env::ctx, handle); }
     bool is_int() const { return Env::api->is_int(Env::ctx, handle); }
@@ -72,6 +74,7 @@ public:
     }
 
     bool as_bool() const { return Env::api->as_bool(Env::ctx, handle); }
+    bool truthy() const { return as_bool(); }
     int32_t as_int() const { return Env::api->as_int(Env::ctx, handle); }
     double as_double() const { return Env::api->as_double(Env::ctx, handle); }
     std::string as_string() const {

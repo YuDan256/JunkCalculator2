@@ -2,6 +2,7 @@
 #include <fstream>
 #include <string>
 #include <algorithm>
+#include <filesystem>
 
 static jc2::Class* g_fileClass = nullptr;
 
@@ -153,6 +154,75 @@ METHOD(next) {
     return file_readLine(nullptr, argc, argv, nullptr);
 }
 
+JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1) jc2::throw_error("Type Error: io.stat expects a path.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::error_code ec;
+    auto st = std::filesystem::status(path, ec);
+    if (ec || !std::filesystem::exists(st)) jc2::throw_error("IO Error: Cannot stat path '" + path + "'.");
+    
+    jc2::Dict d;
+    d.set(jc2::Value("is_dir"), jc2::Value(std::filesystem::is_directory(st)));
+    d.set(jc2::Value("is_file"), jc2::Value(std::filesystem::is_regular_file(st)));
+    if (std::filesystem::is_regular_file(st)) {
+        d.set(jc2::Value("size"), jc2::Value(static_cast<double>(std::filesystem::file_size(path, ec))));
+    } else {
+        d.set(jc2::Value("size"), jc2::Value(0.0));
+    }
+    return d.get_handle();
+}
+
+JC2_ValueHandle io_mkdir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1) jc2::throw_error("Type Error: io.mkdir expects a path.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    bool recursive = false;
+    if (argc >= 2) recursive = jc2::Value(argv[1]).truthy();
+    std::error_code ec;
+    if (recursive) std::filesystem::create_directories(path, ec);
+    else std::filesystem::create_directory(path, ec);
+    if (ec) jc2::throw_error("IO Error: Cannot create directory '" + path + "'.");
+    return jc2::Value::none().get_handle();
+}
+
+JC2_ValueHandle io_remove(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1) jc2::throw_error("Type Error: io.remove expects a path.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    if (ec) jc2::throw_error("IO Error: Cannot remove '" + path + "'.");
+    return jc2::Value::none().get_handle();
+}
+
+JC2_ValueHandle io_rename(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 2) jc2::throw_error("Type Error: io.rename expects old and new paths.");
+    std::string old_p = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::string new_p = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
+    std::error_code ec;
+    std::filesystem::rename(old_p, new_p, ec);
+    if (ec) jc2::throw_error("IO Error: Cannot rename '" + old_p + "' to '" + new_p + "'.");
+    return jc2::Value::none().get_handle();
+}
+
+JC2_ValueHandle io_exists(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1) jc2::throw_error("Type Error: io.exists expects a path.");
+    std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    std::error_code ec;
+    return jc2::Value(std::filesystem::exists(path, ec)).get_handle();
+}
+
+JC2_ValueHandle io_listDir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    std::string path = jc2::Env::resolve_path(argc >= 1 ? jc2::Value(argv[0]).as_string() : ".");
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec) || !std::filesystem::is_directory(path, ec)) {
+        jc2::throw_error("IO Error: Directory '" + path + "' does not exist.");
+    }
+    jc2::List l;
+    for (const auto& entry : std::filesystem::directory_iterator(path, ec)) {
+        l.push_back(jc2::Value(entry.path().filename().string()));
+    }
+    return l.get_handle();
+}
+
 JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc < 1) jc2::throw_error("Type Error: io.open expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
@@ -206,6 +276,12 @@ int jc2_init(jc2::Module& mod) {
     g_fileClass->bind_method("__next__", file_next, 0, 0, false);
 
     mod.register_function("open", io_open, 1, 2, false, {"path", "mode"});
+    mod.register_function("stat", io_stat, 1, 1, false, {"path"});
+    mod.register_function("mkdir", io_mkdir, 1, 2, false, {"path", "recursive"});
+    mod.register_function("remove", io_remove, 1, 1, false, {"path"});
+    mod.register_function("rename", io_rename, 2, 2, false, {"old_path", "new_path"});
+    mod.register_function("exists", io_exists, 1, 1, false, {"path"});
+    mod.register_function("listDir", io_listDir, 0, 1, false, {"path"});
 
     mod.register_help("io",
         "═══ Industrial I/O Engine — Native Module ═══\n\n"
@@ -236,10 +312,24 @@ int jc2_init(jc2::Module& mod) {
         "    File instances are iterable! You can loop over them line-by-line:\n"
         "      for (line in io.open(\"data.txt\")) {\n"
         "          print(line)\n"
-        "      }\n"
+        "      }\n\n"
+        "  Filesystem Operations\n"
+        "  ──────────────────────\n"
+        "    io.stat(path)                 Returns a dict with file metadata (size, is_dir, is_file).\n"
+        "    io.mkdir(path, [recursive])   Creates a directory. Set recursive=true to create parent dirs.\n"
+        "    io.remove(path)               Deletes a file or empty directory.\n"
+        "    io.rename(old, new)           Renames or moves a file/directory.\n"
+        "    io.exists(path)               Returns true if the path exists.\n"
+        "    io.listDir([path])            Returns a list of filenames in the directory.\n"
     );
 
     mod.register_function_help("io.open", "io.open(path, [mode])", "Opens a file and returns a File stream instance.", "f = io.open(\"data.txt\", \"r\")");
+    mod.register_function_help("io.stat", "io.stat(path)", "Returns a dictionary with file metadata.", "info = io.stat(\"data.txt\")");
+    mod.register_function_help("io.mkdir", "io.mkdir(path, [recursive])", "Creates a directory.", "io.mkdir(\"new_folder\")");
+    mod.register_function_help("io.remove", "io.remove(path)", "Deletes a file or empty directory.", "io.remove(\"old.txt\")");
+    mod.register_function_help("io.rename", "io.rename(old_path, new_path)", "Renames or moves a file or directory.", "io.rename(\"a.txt\", \"b.txt\")");
+    mod.register_function_help("io.exists", "io.exists(path)", "Returns true if the file or directory exists.", "io.exists(\"data.txt\")");
+    mod.register_function_help("io.listDir", "io.listDir([path])", "Returns a list of filenames in the specified directory.", "files = io.listDir(\".\")");
     mod.register_function_help("File.read", "file.read([size])", "Reads characters from the file. Reads all remaining if size is omitted.", "content = f.read()");
     mod.register_function_help("File.readLine", "file.readLine()", "Reads a single line from the file. Returns none at EOF.", "line = f.readLine()");
     mod.register_function_help("File.write", "file.write(content)", "Writes a string to the file.", "f.write(\"Hello\")");

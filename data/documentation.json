@@ -1410,7 +1410,7 @@
       "      the value's type or value.",
       "",
       "      `as` binds tighter than every binary operator (only looser than the",
-      "      postfix `.`/`[]`/`()`/`++`), swallowing the nearest postfix expression",
+      "      postfix `.`/`[]`/`()`), swallowing the nearest postfix expression",
       "      on the left and a postfix expression (the type) on the right:",
       "        a + b as int          ≡  a + (b as int)",
       "        x as int == 1         ≡  (x as int) == 1",
@@ -5880,7 +5880,7 @@
     "__next__": {
       "signature": "__next__()",
       "desc": "Dunder method: Returns the next value in an iteration, or none to stop.",
-      "examples": ["__next__() = { if (self.idx >= len(self.data)) return none; return self.data[self.idx++] }"]
+      "examples": ["__next__() = { if (self.idx >= len(self.data)) return none; local v = self.data[self.idx]; self.idx = self.idx + 1; return v }"]
     },
     "__getattr__": {
       "signature": "__getattr__(key)",
@@ -6024,6 +6024,27 @@
         "3 in [1, 2, 3]          // → true",
         "\"key\" in {key: 42}      // → true",
         "5 in (int | string)     // → true (Value in Type)"
+      ]
+    },
+    "as": {
+      "signature": "expr as Type  |  expr as (Type1 | Type2)",
+      "desc": [
+        "Postfix type assertion operator.",
+        "Checks that the left operand's type matches the right type, throwing if it does not.",
+        "`as` is an ASSERTION, not a conversion: it never changes the value or its type.",
+        "",
+        "`as` binds tighter than every binary operator (only looser than the",
+        "postfix `.`/`[]`/`()`), swallowing the nearest postfix expression on the left:",
+        "  a + b as int          ≡  a + (b as int)",
+        "  x as int == 1         ≡  (x as int) == 1",
+        "Union types need parentheses:  x as (int | string).",
+        "Chained `as` is left-associative: x as int as string ≡ (x as int) as string.",
+        "See also: /help type"
+      ],
+      "examples": [
+        "x as int              // asserts x is int, else throws",
+        "value as (int | string)",
+        "a as int as double    // ≡ (a as int) as double"
       ]
     },
     "break": {

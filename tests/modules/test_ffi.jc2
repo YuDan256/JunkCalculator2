@@ -1,5 +1,5 @@
 import ffi
-import buffer
+import bytes
 
 test_ffi_load_error() = {
     try {
@@ -40,16 +40,17 @@ test_ffi_real_call() = {
         // void *memset(void *dest, int c, size_t count)
         c_memset = lib.bind("memset", "pointer", "pointer", "i32", "u64")
         
-        buf = buffer.alloc(10)
-        c_memset(buf.address(), 255, buf.length())
+        buf = bytes.alloc(10)
+        c_memset(buf, 255, buf.len())
         
+        buf.seek(0)
         assert(buf.readU8() == 255, "FFI memset failed to modify buffer start")
         buf.seek(9)
         assert(buf.readU8() == 255, "FFI memset failed to modify buffer end")
 
         // Test readMemory / writeMemory
-        ffi.writeMemory(buf.address(), "i32", 123456789)
-        assert(ffi.readMemory(buf.address(), "i32") == 123456789, "ffi.readMemory/writeMemory failed")
+        ffi.writeMemory(buf, "i32", 123456789)
+        assert(ffi.readMemory(buf, "i32") == 123456789, "ffi.readMemory/writeMemory failed")
 
         // Test 4: Variadic function
         // int printf(const char *format, ...)
@@ -67,7 +68,7 @@ test_ffi_real_call() = {
         assert(p.y == 20, "Struct getattr failed")
         
         // Test passing struct pointer to memset
-        c_memset(p.address(), 0, 8)
+        c_memset(p, 0, 8)
         assert(p.x == 0, "Struct memory modification failed")
         assert(p.y == 0, "Struct memory modification failed")
 
@@ -96,8 +97,8 @@ test_ffi_real_call() = {
         p1 = Point(); p1.x = 50; p1.y = 50
         p2 = Point(); p2.x = 150; p2.y = 50
         
-        assert(PtInRect(r.address(), p1) != 0, "PtInRect should return true for p1")
-        assert(PtInRect(r.address(), p2) == 0, "PtInRect should return false for p2")
+        assert(PtInRect(r, p1) != 0, "PtInRect should return true for p1")
+        assert(PtInRect(r, p2) == 0, "PtInRect should return false for p2")
     } catch (e) {
         print("Warning: user32.dll not found or failed, skipping PtInRect test.")
     }
@@ -106,7 +107,7 @@ test_ffi_real_call() = {
     if (lib != none) {
         c_qsort = lib.bind("qsort", "void", "pointer", "u64", "u64", "pointer")
         
-        arr_buf = buffer.alloc(16) // 4 ints
+        arr_buf = bytes.alloc(16) // 4 ints
         arr_buf.writeI32(40)
         arr_buf.writeI32(10)
         arr_buf.writeI32(30)
@@ -124,7 +125,7 @@ test_ffi_real_call() = {
         
         // Reset buffer cursor to 0 before passing its address to C
         arr_buf.seek(0)
-        c_qsort(arr_buf.address(), 4, 4, cb.address())
+        c_qsort(arr_buf, 4, 4, cb)
         
         arr_buf.seek(0)
         assert(arr_buf.readI32() == 10, "qsort callback failed")

@@ -1,0 +1,153 @@
+import io
+import bytes
+
+// 1. 测试文件系统 API (Filesystem)
+test_io_filesystem() = {
+    dir_name = "test_io_temp_dir"
+    renamed_dir = "test_io_temp_dir_renamed"
+    
+    // 确保初始状态干净
+    if (io.exists(dir_name)) io.remove(dir_name)
+    if (io.exists(renamed_dir)) io.remove(renamed_dir)
+    
+    // 创建目录
+    io.mkdir(dir_name)
+    assert(io.exists(dir_name), "io.mkdir failed to create directory")
+    
+    // 获取元数据
+    info = io.stat(dir_name)
+    assert(info.is_dir == true, "io.stat is_dir should be true")
+    assert(info.is_file == false, "io.stat is_file should be false")
+    
+    // 重命名
+    io.rename(dir_name, renamed_dir)
+    assert(!io.exists(dir_name), "io.rename failed to remove old directory")
+    assert(io.exists(renamed_dir), "io.rename failed to create new directory")
+    
+    // 删除
+    io.remove(renamed_dir)
+    assert(!io.exists(renamed_dir), "io.remove failed to delete directory")
+}
+test_io_filesystem()
+
+// 2. 测试文本流读写与迭代 (Text Stream & Iteration)
+test_io_text_stream() = {
+    file_name = "test_io_text.txt"
+    
+    // 写入
+    f_out = io.open(file_name, "w")
+    f_out.write("Line 1\nLine 2\nLine 3")
+    f_out.close()
+    
+    // 全部读取
+    f_in1 = io.open(file_name, "r")
+    content = f_in1.read()
+    assert(content == "Line 1\nLine 2\nLine 3", "io.read() failed to read full content")
+    f_in1.close()
+    
+    // 逐行读取
+    f_in2 = io.open(file_name, "r")
+    assert(f_in2.readLine() == "Line 1", "io.readLine() failed on line 1")
+    assert(f_in2.readLine() == "Line 2", "io.readLine() failed on line 2")
+    assert(f_in2.readLine() == "Line 3", "io.readLine() failed on line 3")
+    assert(f_in2.readLine() == none, "io.readLine() should return none at EOF")
+    f_in2.close()
+    
+    // 迭代器协议
+    lines = list()
+    for (line in io.open(file_name, "r")) {
+        lines.push(line)
+    }
+    assert(len(lines) == 3, "File iterator failed to yield correct number of lines")
+    assert(lines[0] == "Line 1" && lines[2] == "Line 3", "File iterator yielded wrong content")
+    
+    // 游标控制
+    f_in3 = io.open(file_name, "r")
+    line1 = f_in3.readLine()
+    pos = f_in3.tell()
+    f_in3.seek(0)
+    assert(f_in3.readLine() == "Line 1", "io.seek(0) failed")
+    f_in3.seek(pos)
+    assert(f_in3.readLine() == "Line 2", "io.seek(pos) failed")
+    f_in3.close()
+    
+    io.remove(file_name)
+}
+test_io_text_stream()
+
+// 3. 测试零拷贝二进制读写 (Zero-Copy Binary I/O)
+test_io_binary_buffer() = {
+    file_name = "test_io_binary.bin"
+    
+    // 准备二进制数据
+    b_out = bytes.alloc(4)
+    b_out.writeU8(65).writeU8(66).writeU8(67).writeU8(68) // "ABCD"
+    
+    // 写入文件
+    f_out = io.open(file_name, "wb")
+    f_out.writeBuf(b_out)
+    f_out.close()
+    
+    // 读取文件
+    b_in = bytes.alloc(4)
+    f_in = io.open(file_name, "rb")
+    read_count = f_in.readBuf(b_in)
+    assert(read_count == 4, "io.readBuf() returned wrong byte count")
+    f_in.close()
+    
+    // 验证数据
+    b_in.seek(0)
+    assert(b_in.readStr(4) == "ABCD", "io.readBuf() read incorrect binary data")
+    
+    io.remove(file_name)
+}
+test_io_binary_buffer()
+
+// 4. 测试工业级 CSV 引擎 (RFC 4180 CSV Engine)
+test_io_csv() = {
+    csv_name = "test_io_data.csv"
+    mat_name = "test_io_mat.csv"
+    
+    // 写入复杂 CSV (包含逗号和换行符)
+    data = @[
+        @["Name", "Description"],
+        @["Alice", "Hello, World!"],
+        @["Bob", "Line 1\nLine 2"]
+    ]
+    io.writeCSV(csv_name, data)
+    
+    // 读取并验证转义解析
+    parsed = io.readCSV(csv_name)
+    assert(len(parsed) == 3, "io.readCSV() parsed wrong number of rows")
+    assert(parsed[1][1] == "Hello, World!", "io.readCSV() failed to parse comma inside quotes")
+    assert(parsed[2][1] == "Line 1\nLine 2", "io.readCSV() failed to parse newline inside quotes")
+    
+    // 矩阵极速读写
+    mat = [1.5, 2.5; 3.5, 4.5]
+    io.writeCSV(mat_name, mat)
+    
+    parsed_mat = io.parseCSVNum(mat_name)
+    assert(parsed_mat[0, 0] == 1.5 && parsed_mat[1, 1] == 4.5, "io.parseCSVNum() failed to parse matrix correctly")
+    
+    io.remove(csv_name)
+    io.remove(mat_name)
+}
+test_io_csv()
+
+// 5. 测试异常处理 (Exceptions)
+test_io_exceptions() = {
+    try {
+        io.open("this_file_absolutely_does_not_exist_12345.txt", "r")
+        assert(false, "Should throw IO Error for non-existent file")
+    } catch (e) {
+        assert("Cannot open" in e.message, "Wrong error message thrown for missing file")
+    }
+    
+    try {
+        io.stat("missing_dir_999")
+        assert(false, "Should throw IO Error for stat on missing path")
+    } catch (e) {
+        assert("Cannot stat" in e.message, "Wrong error message thrown for stat")
+    }
+}
+test_io_exceptions()

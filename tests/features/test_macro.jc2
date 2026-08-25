@@ -309,12 +309,14 @@ test_comptime_import() = {
                "    new_name = make_prefix(name.value)\n" +
                "    return quote local $new_name = 42\n" +
                "}\n"
-    io.writeFile("temp_macro_lib.jc2", lib_code)
+    f = io.open("temp_macro_lib.jc2", "w")
+    f.write(lib_code)
+    f.close()
     
     // 在编译期导入该库，并调用宏
     res = eval("import @temp_macro_lib\n@generate_var(\"test\")\nPREFIX_test")
     assert(res == 42, "Compile-time import and execution failed")
     
-    io.deleteFile("temp_macro_lib.jc2")
+    io.remove("temp_macro_lib.jc2")
 }
 test_comptime_import()

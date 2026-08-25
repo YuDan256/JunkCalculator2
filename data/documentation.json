@@ -5963,7 +5963,8 @@
         "   in the container, false otherwise.",
         "   Supported: arrays, lists, strings, dicts (checks keys), sets,",
         "   instances (checks __contains__, then fields, methods, and __getattr__),",
-        "   and Types (acts as an `isinstance` or subset check).",
+        "   and Types (acts as an `isinstance` / value-in-type check; use `<:` for",
+        "   type subset).",
         "See also: /help for, /help control"
       ],
       "examples": [
@@ -5971,7 +5972,7 @@
         "3 in [1, 2, 3]          // → true",
         "\"key\" in {key: 42}      // → true",
         "5 in (int | string)     // → true (Value in Type)",
-        "int in (int | string)   // → true (Type in Type subset check)"
+        "int <: (int | string)   // → true (type subset uses <:, not in)"
       ]
     },
     "break": {

@@ -3040,8 +3040,10 @@ namespace jc {
         case SymType::MUL: {
             auto mul = static_cast<SymMul*>(expr.ptr);
             SymExpr expArg(BigInt(0));
-            SymExpr otherFactors(BigInt(1));
             int expCount = 0;
+            
+            std::map<SymNode*, std::vector<SymNode*>> powGroups;
+            std::vector<SymNode*> otherFactorsList;
 
             for (auto& arg : mul->args) {
                 SymExpr factor = contract(SymExpr(arg));
@@ -3071,22 +3073,46 @@ namespace jc {
                     expArg = expArg + (SymExpr(expNode->args[0]) * coeff);
                 }
                 else {
-                    otherFactors = otherFactors * factor;
+                    if (factor.ptr->getType() == SymType::POW) {
+                        auto powN = static_cast<SymPow*>(factor.ptr);
+                        powGroups[powN->exp].push_back(powN->base);
+                    } else {
+                        otherFactorsList.push_back(factor.ptr);
+                    }
                 }
             }
 
-            if (expCount > 1) {
-                SymExpr combinedExp(new SymFunc(
-                    "exp",
-                    std::vector<SymNode*>{expArg.ptr}));
-                return otherFactors * combinedExp;
+            SymExpr rebuilt(BigInt(1));
+            if (expCount > 0) {
+                SymExpr combinedExp(new SymFunc("exp", std::vector<SymNode*>{expArg.ptr}));
+                rebuilt = combinedExp;
+            }
+            
+            bool powCombined = false;
+            for (auto& kv : powGroups) {
+                if (kv.second.size() > 1) {
+                    SymExpr combinedBase(BigInt(1));
+                    for (auto& b : kv.second) combinedBase = combinedBase * SymExpr(b);
+                    rebuilt = rebuilt * (combinedBase ^ SymExpr(kv.first));
+                    powCombined = true;
+                } else {
+                    rebuilt = rebuilt * (SymExpr(kv.second[0]) ^ SymExpr(kv.first));
+                }
+            }
+            
+            for (auto& f : otherFactorsList) {
+                rebuilt = rebuilt * SymExpr(f);
             }
 
-            // 没有足够的 exp 可合并，重建乘法节点
-            SymExpr rebuilt(BigInt(1));
+            if (expCount > 1 || powCombined) {
+                return rebuilt;
+            }
+
+            // 没有足够的项可合并，重建乘法节点
+            SymExpr origRebuilt(BigInt(1));
             for (auto& arg : mul->args)
-                rebuilt = rebuilt * contract(SymExpr(arg));
-            return rebuilt;
+                origRebuilt = origRebuilt * contract(SymExpr(arg));
+            return origRebuilt;
         }
 
         case SymType::POW: {

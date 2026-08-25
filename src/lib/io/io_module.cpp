@@ -171,7 +171,7 @@ METHOD(next) {
 }
 
 static std::vector<std::vector<std::string>> parseCSV(const std::string& path, char delim) {
-    std::ifstream file(to_path(path));
+    std::ifstream file(to_path(path), std::ios::binary);
     if (!file.is_open()) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
     std::vector<std::vector<std::string>> rows;
     std::vector<std::string> current_row;
@@ -265,7 +265,7 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
     std::string delim = ",";
     if (argc >= 3) delim = jc2::Value(argv[2]).as_string();
     
-    std::ofstream file(to_path(path));
+    std::ofstream file(to_path(path), std::ios::binary);
     if (!file.is_open()) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
     
     jc2::Value data = jc2::Value(argv[1]);
@@ -290,7 +290,7 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
                 if (j > 0) file << delim;
                 file << m.get(i, j);
             }
-            file << "\n";
+            file << "\r\n";
         }
     } else if (data.is_complex_matrix()) {
         jc2::ComplexMatrix m(data.get_handle());
@@ -302,7 +302,7 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
                 else if (r == 0) file << im << "i";
                 else file << r << (im > 0 ? "+" : "") << im << "i";
             }
-            file << "\n";
+            file << "\r\n";
         }
     } else if (data.is_list()) {
         jc2::List l = jc2::List(data.get_handle());
@@ -317,7 +317,7 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
             } else {
                 file << escapeCSV(row.to_string());
             }
-            file << "\n";
+            file << "\r\n";
         }
     } else {
         jc2::throw_error("Type Error: writeCSV expects a matrix or list.");
@@ -400,16 +400,14 @@ JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string mode = "r";
     if (argc >= 2) mode = jc2::Value(argv[1]).as_string();
 
-    std::ios_base::openmode ios_mode = (std::ios_base::openmode)0;
-    if (mode == "r") ios_mode = std::ios::in;
-    else if (mode == "w") ios_mode = std::ios::out | std::ios::trunc;
-    else if (mode == "a") ios_mode = std::ios::out | std::ios::app;
-    else if (mode == "rb") ios_mode = std::ios::in | std::ios::binary;
-    else if (mode == "wb") ios_mode = std::ios::out | std::ios::trunc | std::ios::binary;
-    else if (mode == "ab") ios_mode = std::ios::out | std::ios::app | std::ios::binary;
-    else if (mode == "r+") ios_mode = std::ios::in | std::ios::out;
-    else if (mode == "w+") ios_mode = std::ios::in | std::ios::out | std::ios::trunc;
-    else if (mode == "a+") ios_mode = std::ios::in | std::ios::out | std::ios::app;
+    // 强制所有模式在底层都以 binary 模式打开，避免 Windows 下 \r\n 自动转换导致 seek/tell 游标错位
+    std::ios_base::openmode ios_mode = std::ios::binary;
+    if (mode == "r" || mode == "rb") ios_mode |= std::ios::in;
+    else if (mode == "w" || mode == "wb") ios_mode |= std::ios::out | std::ios::trunc;
+    else if (mode == "a" || mode == "ab") ios_mode |= std::ios::out | std::ios::app;
+    else if (mode == "r+") ios_mode |= std::ios::in | std::ios::out;
+    else if (mode == "w+") ios_mode |= std::ios::in | std::ios::out | std::ios::trunc;
+    else if (mode == "a+") ios_mode |= std::ios::in | std::ios::out | std::ios::app;
     else jc2::throw_error("IO Error: Unsupported mode '" + mode + "'.");
 
     auto ctx = new FileContext();

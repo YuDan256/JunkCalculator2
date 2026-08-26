@@ -229,14 +229,15 @@ METHOD(toBase64) {
     std::string res;
     size_t i = 0;
     while (i < buf.size()) {
+        size_t old_i = i;
         uint32_t octet_a = i < buf.size() ? buf[i++] : 0;
         uint32_t octet_b = i < buf.size() ? buf[i++] : 0;
         uint32_t octet_c = i < buf.size() ? buf[i++] : 0;
         uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
         res.push_back(b64_chars[(triple >> 18) & 0x3F]);
         res.push_back(b64_chars[(triple >> 12) & 0x3F]);
-        res.push_back(i > buf.size() + 1 ? '=' : b64_chars[(triple >> 6) & 0x3F]);
-        res.push_back(i > buf.size() ? '=' : b64_chars[triple & 0x3F]);
+        res.push_back((i - old_i) > 1 ? b64_chars[(triple >> 6) & 0x3F] : '=');
+        res.push_back((i - old_i) > 2 ? b64_chars[triple & 0x3F] : '=');
     }
     return jc2::Value(res).get_handle();
 }

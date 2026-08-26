@@ -116,12 +116,16 @@ static bool host_as_bool(JC2_VMContext, JC2_ValueHandle v) { return from_handle(
 static int32_t host_as_int(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
     if (val.isInt32()) return val.asInt32();
+    if (val.isBigInt()) return static_cast<int32_t>(val.asBigInt().toInt64());
     if (val.isDouble()) return static_cast<int32_t>(val.asDoubleRaw());
     if (val.isBool()) return val.asBool() ? 1 : 0;
-    // 如果不是基本数字类型，asDouble() 会执行严格的类型检查并抛出异常
     return static_cast<int32_t>(val.asDouble());
 }
-static double host_as_double(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).asDouble(); }
+static double host_as_double(JC2_VMContext, JC2_ValueHandle v) {
+    Value val = from_handle(v);
+    if (val.isBigInt()) return std::stod(val.asBigInt().toString());
+    return val.asDouble();
+}
 static const char* host_as_string(JC2_VMContext, JC2_ValueHandle v, size_t* out_len) {
     Value val = from_handle(v);
     if (!val.isString()) return nullptr;

@@ -10,7 +10,9 @@
 #define NOMINMAX
 #include <windows.h>
 #else
-#error "FFI module currently only supports Windows x64."
+#include <dlfcn.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #endif
 
 using namespace jc2;
@@ -24,19 +26,21 @@ class ExecutableMemory {
 public:
     ExecutableMemory(size_t sz) : size(sz) {
 #ifdef _WIN32
-        // 申请可读、可写、可执行的内存页
         memory = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+#else
+        memory = mmap(nullptr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (memory == MAP_FAILED) memory = nullptr;
+#endif
         if (!memory) {
             throw std::runtime_error("FFI Error: Failed to allocate executable memory.");
         }
-#endif
     }
 
     ~ExecutableMemory() {
 #ifdef _WIN32
-        if (memory) {
-            VirtualFree(memory, 0, MEM_RELEASE);
-        }
+        if (memory) VirtualFree(memory, 0, MEM_RELEASE);
+#else
+        if (memory) munmap(memory, size);
 #endif
     }
 
@@ -57,12 +61,17 @@ class ExecutableMemoryPool {
         Page() {
 #ifdef _WIN32
             memory = VirtualAlloc(nullptr, PAGE_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (!memory) throw std::runtime_error("FFI Error: Failed to allocate executable memory page.");
+#else
+            memory = mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (memory == MAP_FAILED) memory = nullptr;
 #endif
+            if (!memory) throw std::runtime_error("FFI Error: Failed to allocate executable memory page.");
         }
         ~Page() {
 #ifdef _WIN32
             if (memory) VirtualFree(memory, 0, MEM_RELEASE);
+#else
+            if (memory) munmap(memory, PAGE_SIZE);
 #endif
         }
     };
@@ -409,6 +418,202 @@ public:
     }
 };
 
+const uint8_t sysv64_trampoline_code[] = {
+    0x55, 0x48, 0x89, 0xE5, 0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57,
+    0x49, 0x89, 0xFC, 0x49, 0x89, 0xF5, 0x49, 0x89, 0xD6, 0x4D, 0x89, 0xCF,
+    0x4C, 0x89, 0xC0, 0x48, 0x85, 0xC0, 0x74, 0x16, 0x48, 0x29, 0xC4, 0x48,
+    0x83, 0xE4, 0xF0, 0x48, 0x89, 0xE7, 0x48, 0x89, 0xCE, 0x48, 0x89, 0xC1,
+    0xF3, 0x48, 0xA4, 0x4C, 0x89, 0xF2, 0xF2, 0x0F, 0x10, 0x02, 0xF2, 0x0F,
+    0x10, 0x4A, 0x08, 0xF2, 0x0F, 0x10, 0x52, 0x10, 0xF2, 0x0F, 0x10, 0x5A,
+    0x18, 0xF2, 0x0F, 0x10, 0x62, 0x20, 0xF2, 0x0F, 0x10, 0x6A, 0x28, 0xF2,
+    0x0F, 0x10, 0x72, 0x30, 0xF2, 0x0F, 0x10, 0x7A, 0x38, 0x4C, 0x89, 0xEE,
+    0x48, 0x8B, 0x3E, 0x48, 0x8B, 0x56, 0x10, 0x48, 0x8B, 0x4E, 0x18, 0x4C,
+    0x8B, 0x46, 0x20, 0x4C, 0x8B, 0x4E, 0x28, 0x48, 0x8B, 0x76, 0x08, 0xB0,
+    0x08, 0x41, 0xFF, 0xD4, 0x41, 0x48, 0x89, 0x07, 0xF2, 0x41, 0x0F, 0x11,
+    0x47, 0x08, 0x48, 0x8D, 0x65, 0xE0, 0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D,
+    0x41, 0x5C, 0x5D, 0xC3
+};
+
+class SysV64ABIHandler : public ABIHandler {
+    ExecutableMemory execMem;
+    typedef void (*TrampolineFunc)(void* func, const uint64_t* gprs, const double* xmms, const void* stack_data, size_t stack_size, void* out_ret);
+    TrampolineFunc trampoline;
+
+    uint64_t extract_u64(const Value& v) {
+        if (v.is_bigint()) return std::stoull(v.to_string());
+        if (v.is_int()) return static_cast<uint64_t>(static_cast<int64_t>(v.as_int()));
+        return static_cast<uint64_t>(static_cast<int64_t>(v.as_double()));
+    }
+
+public:
+    SysV64ABIHandler() : execMem(sizeof(sysv64_trampoline_code)) {
+        std::memcpy(execMem.get(), sysv64_trampoline_code, sizeof(sysv64_trampoline_code));
+        trampoline = reinterpret_cast<TrampolineFunc>(execMem.get());
+    }
+
+    Value invoke(void* func, const std::vector<Value>& args, const std::vector<FFITypeDesc>& types, FFITypeDesc retType) override {
+        bool hidden_ret = false;
+        std::vector<uint8_t> ret_struct_mem;
+        if (retType.type == FFIType::STRUCT && retType.size > 16) {
+            hidden_ret = true;
+            ret_struct_mem.resize(retType.size);
+        }
+
+        size_t argc = args.size();
+        std::vector<uint64_t> gprs;
+        std::vector<double> xmms;
+        std::vector<uint64_t> stack_data;
+        std::vector<std::vector<uint8_t>> temp_structs;
+
+        if (hidden_ret) {
+            gprs.push_back(reinterpret_cast<uint64_t>(ret_struct_mem.data()));
+        }
+
+        for (size_t i = 0; i < argc; ++i) {
+            uint64_t val64 = 0;
+            FFIType current_type;
+            FFITypeDesc current_desc;
+            
+            if (i < types.size()) {
+                current_desc = types[i];
+                current_type = current_desc.type;
+            } else {
+                if (args[i].is_bigint() || args[i].is_int()) { current_type = FFIType::I64; current_desc = {FFIType::I64, 8, 8, nullptr}; }
+                else if (args[i].is_double()) { current_type = FFIType::F64; current_desc = {FFIType::F64, 8, 8, nullptr}; }
+                else if (args[i].is_string()) { current_type = FFIType::STRING; current_desc = {FFIType::STRING, 8, 8, nullptr}; }
+                else if (args[i].is_instance() && args[i].get_native_data<StructInstanceData>()) {
+                    StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
+                    current_type = FFIType::STRUCT;
+                    current_desc = {FFIType::STRUCT, sdata->layout->size, sdata->layout->align, sdata->layout};
+                }
+                else throw std::runtime_error("FFI Error: Unsupported variadic argument type.");
+            }
+
+            bool is_float = (current_type == FFIType::F32 || current_type == FFIType::F64);
+            
+            if (current_type == FFIType::STRUCT) {
+                StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
+                if (!sdata || sdata->layout != current_desc.layout) throw std::runtime_error("FFI Error: Struct type mismatch.");
+                if (current_desc.size <= 16) {
+                    uint64_t part1 = 0, part2 = 0;
+                    std::memcpy(&part1, sdata->memory.data(), std::min((size_t)8, current_desc.size));
+                    if (gprs.size() < 6) gprs.push_back(part1); else stack_data.push_back(part1);
+                    if (current_desc.size > 8) {
+                        std::memcpy(&part2, sdata->memory.data() + 8, current_desc.size - 8);
+                        if (gprs.size() < 6) gprs.push_back(part2); else stack_data.push_back(part2);
+                    }
+                    continue;
+                } else {
+                    size_t slots = (current_desc.size + 7) / 8;
+                    const uint64_t* ptr = reinterpret_cast<const uint64_t*>(sdata->memory.data());
+                    for (size_t j = 0; j < slots; ++j) stack_data.push_back(ptr[j]);
+                    continue;
+                }
+            }
+
+            switch (current_type) {
+            case FFIType::I8:
+            case FFIType::U8:
+            case FFIType::I16:
+            case FFIType::U16:
+            case FFIType::I32:
+            case FFIType::U32:
+            case FFIType::I64:
+            case FFIType::U64:
+            case FFIType::POINTER: {
+                if (args[i].is_none()) {
+                    val64 = 0;
+                } else {
+                    size_t bsize = 0;
+                    void* bdata = args[i].get_buffer_data(&bsize);
+                    if (bdata) val64 = reinterpret_cast<uint64_t>(bdata);
+                    else val64 = extract_u64(args[i]);
+                }
+                break;
+            }
+            case FFIType::F32: {
+                float f = static_cast<float>(args[i].as_double());
+                std::memcpy(&val64, &f, sizeof(float));
+                break;
+            }
+            case FFIType::F64: {
+                double d = args[i].as_double();
+                std::memcpy(&val64, &d, sizeof(double));
+                break;
+            }
+            case FFIType::STRING:
+                val64 = reinterpret_cast<uint64_t>(args[i].as_c_str());
+                break;
+            default:
+                throw std::runtime_error("FFI Error: Unsupported argument type.");
+            }
+
+            if (is_float) {
+                if (xmms.size() < 8) {
+                    double dval;
+                    std::memcpy(&dval, &val64, 8);
+                    xmms.push_back(dval);
+                } else {
+                    stack_data.push_back(val64);
+                }
+            } else {
+                if (gprs.size() < 6) {
+                    gprs.push_back(val64);
+                } else {
+                    stack_data.push_back(val64);
+                }
+            }
+        }
+
+        while (gprs.size() < 6) gprs.push_back(0);
+        while (xmms.size() < 8) xmms.push_back(0.0);
+
+        struct { uint64_t i; double d; } out_ret = {0, 0.0};
+
+        trampoline(func, gprs.data(), xmms.data(), stack_data.data(), stack_data.size() * 8, &out_ret);
+
+        if (hidden_ret) {
+            Instance inst(*g_structInstClass);
+            StructInstanceData* data = new StructInstanceData{retType.layout, ret_struct_mem};
+            inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_buffer_data(data->memory.data(), retType.size);
+            return inst.get_handle();
+        }
+
+        switch (retType.type) {
+        case FFIType::VOID_TYPE: return Value();
+        case FFIType::I8: return Value(static_cast<int32_t>(static_cast<int8_t>(out_ret.i)));
+        case FFIType::U8: return Value(static_cast<int32_t>(static_cast<uint8_t>(out_ret.i)));
+        case FFIType::I16: return Value(static_cast<int32_t>(static_cast<int16_t>(out_ret.i)));
+        case FFIType::U16: return Value(static_cast<int32_t>(static_cast<uint16_t>(out_ret.i)));
+        case FFIType::I32: return Value(static_cast<int32_t>(out_ret.i));
+        case FFIType::U32: return BigInt(std::to_string(static_cast<uint32_t>(out_ret.i)));
+        case FFIType::I64: return BigInt(std::to_string(static_cast<int64_t>(out_ret.i)));
+        case FFIType::U64:
+        case FFIType::POINTER: return BigInt(std::to_string(out_ret.i));
+        case FFIType::F32: {
+            float f;
+            std::memcpy(&f, &out_ret.d, sizeof(float));
+            return Value(static_cast<double>(f));
+        }
+        case FFIType::F64: return Value(out_ret.d);
+        case FFIType::STRING: {
+            if (out_ret.i == 0) return Value();
+            return Value(reinterpret_cast<const char*>(out_ret.i));
+        }
+        case FFIType::STRUCT: {
+            Instance inst(*g_structInstClass);
+            StructInstanceData* data = new StructInstanceData{retType.layout, std::vector<uint8_t>(retType.size, 0)};
+            std::memcpy(data->memory.data(), &out_ret.i, std::min((size_t)8, retType.size));
+            inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_buffer_data(data->memory.data(), retType.size);
+            return inst.get_handle();
+        }
+        default: return Value();
+        }
+    }
+};
+
 // ============================================================================
 // 4. 回调系统 (CallbackData & Thunk)
 // ============================================================================
@@ -419,7 +624,7 @@ struct CallbackData {
     void* thunk_memory;
 };
 
-extern "C" void generic_callback_handler(CallbackData* data, uint64_t* regs_space, uint64_t* stack_space, uint64_t* out_int, double* out_double) {
+extern "C" void generic_callback_handler(CallbackData* data, uint64_t* gpr_space, double* xmm_space, uint64_t* stack_space, uint64_t* out_int, double* out_double) {
     *out_int = 0;
     *out_double = 0.0;
     try {
@@ -427,19 +632,41 @@ extern "C" void generic_callback_handler(CallbackData* data, uint64_t* regs_spac
         size_t arg_count = data->arg_types.size();
         args.reserve(arg_count);
 
+#ifndef _WIN32
+        size_t gpr_idx = 0;
+        size_t xmm_idx = 0;
+        size_t stack_idx = 0;
+#endif
+
         for (size_t i = 0; i < arg_count; ++i) {
             uint64_t raw_val = 0;
             const auto& t = data->arg_types[i];
             
+#ifdef _WIN32
             if (i < 4) {
                 if (t.type == FFIType::F32 || t.type == FFIType::F64) {
-                    raw_val = regs_space[i + 4]; // Read from XMM area
+                    std::memcpy(&raw_val, &xmm_space[i], 8);
                 } else {
-                    raw_val = regs_space[i]; // Read from GPR area
+                    raw_val = gpr_space[i];
                 }
             } else {
                 raw_val = stack_space[i - 4];
             }
+#else
+            if (t.type == FFIType::F32 || t.type == FFIType::F64) {
+                if (xmm_idx < 8) {
+                    std::memcpy(&raw_val, &xmm_space[xmm_idx++], 8);
+                } else {
+                    raw_val = stack_space[stack_idx++];
+                }
+            } else {
+                if (gpr_idx < 6) {
+                    raw_val = gpr_space[gpr_idx++];
+                } else {
+                    raw_val = stack_space[stack_idx++];
+                }
+            }
+#endif
 
             switch (t.type) {
                 case FFIType::I8: args.push_back(Value(static_cast<int32_t>(static_cast<int8_t>(raw_val)))); break;
@@ -544,26 +771,55 @@ extern "C" void generic_callback_handler(CallbackData* data, uint64_t* regs_spac
     }
 }
 
-const uint8_t callback_thunk_template[] = {
-    0x55, 0x48, 0x89, 0xE5, 0x48, 0x81, 0xEC, 0xA0, 0x00, 0x00, 
-    0x00, 0x48, 0x89, 0x4D, 0xB0, 0x48, 0x89, 0x55, 0xB8, 0x4C, 
-    0x89, 0x45, 0xC0, 0x4C, 0x89, 0x4D, 0xC8, 0xF2, 0x0F, 0x11, 
-    0x45, 0xD0, 0xF2, 0x0F, 0x11, 0x4D, 0xD8, 0xF2, 0x0F, 0x11, 
-    0x55, 0xE0, 0xF2, 0x0F, 0x11, 0x5D, 0xE8, 0x48, 0xB9, 
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // CallbackData* at offset 49
-    0x48, 0x8D, 0x55, 0xB0, 0x4C, 0x8D, 0x45, 0x30, 0x4C, 0x8D, 
-    0x4D, 0xF0, 0x48, 0x8D, 0x45, 0xF8, 0x48, 0x89, 0x44, 0x24, 
-    0x20, 0x48, 0xB8, 
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // generic_callback_handler at offset 80
-    0xFF, 0xD0, 0x48, 0x8B, 0x45, 0xF0, 0xF2, 0x0F, 0x10, 0x45, 
-    0xF8, 0x48, 0x89, 0xEC, 0x5D, 0xC3
+const uint8_t win64_callback_thunk_template[] = {
+    0x55, 0x48, 0x89, 0xE5, 0x48, 0x81, 0xEC, 0xA0, 0x00, 0x00, 0x00, 0x48,
+    0x89, 0x4D, 0xB0, 0x48, 0x89, 0x55, 0xB8, 0x4C, 0x89, 0x45, 0xC0, 0x4C,
+    0x89, 0x4D, 0xC8, 0xF2, 0x0F, 0x11, 0x45, 0xD0, 0xF2, 0x0F, 0x11, 0x4D,
+    0xD8, 0xF2, 0x0F, 0x11, 0x55, 0xE0, 0xF2, 0x0F, 0x11, 0x5D, 0xE8, 0x48,
+    0xB9,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // data_ptr at offset 49
+    0x48, 0x8D, 0x55, 0xB0, 0x4C, 0x8D, 0x45, 0xD0, 0x4C, 0x8D, 0x4D, 0x30,
+    0x48, 0x8D, 0x45, 0xF0, 0x48, 0x89, 0x44, 0x24, 0x20, 0x48, 0x8D, 0x45,
+    0xF8, 0x48, 0x89, 0x44, 0x24, 0x28, 0x48, 0xB8,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // handler_ptr at offset 89
+    0xFF, 0xD0, 0x48, 0x8B, 0x45, 0xF0, 0xF2, 0x0F, 0x10, 0x45, 0xF8, 0x48,
+    0x89, 0xEC, 0x5D, 0xC3
+};
+
+const uint8_t sysv64_callback_thunk_template[] = {
+    0x55, 0x48, 0x89, 0xE5, 0x48, 0x81, 0xEC, 0x90, 0x00, 0x00, 0x00, 0x48,
+    0x89, 0x3C, 0x24, 0x48, 0x89, 0x74, 0x24, 0x08, 0x48, 0x89, 0x54, 0x24,
+    0x10, 0x48, 0x89, 0x4C, 0x24, 0x18, 0x4C, 0x89, 0x44, 0x24, 0x20, 0x4C,
+    0x89, 0x4C, 0x24, 0x28, 0xF2, 0x0F, 0x11, 0x44, 0x24, 0x30, 0xF2, 0x0F,
+    0x11, 0x4C, 0x24, 0x38, 0xF2, 0x0F, 0x11, 0x54, 0x24, 0x40, 0xF2, 0x0F,
+    0x11, 0x5C, 0x24, 0x48, 0xF2, 0x0F, 0x11, 0x64, 0x24, 0x50, 0xF2, 0x0F,
+    0x11, 0x6C, 0x24, 0x58, 0xF2, 0x0F, 0x11, 0x74, 0x24, 0x60, 0xF2, 0x0F,
+    0x11, 0x7C, 0x24, 0x68, 0x48, 0xBF,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // data_ptr at offset 88
+    0x48, 0x89, 0xE6, 0x48, 0x8D, 0x54, 0x24, 0x30, 0x48, 0x8D, 0x4D, 0x10,
+    0x4C, 0x8D, 0x44, 0x24, 0x70, 0x4C, 0x8D, 0x4C, 0x24, 0x78, 0x48, 0xB8,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // handler_ptr at offset 119
+    0xFF, 0xD0, 0x48, 0x8B, 0x44, 0x24, 0x70, 0xF2, 0x0F, 0x10, 0x44, 0x24,
+    0x78, 0xC9, 0xC3
 };
 
 // ============================================================================
 // 5. JC2 绑定层 (FFILibrary & FFIFunction)
 // ============================================================================
+#ifdef _WIN32
+typedef HMODULE LibHandle;
+#define LOAD_LIB(path) LoadLibraryA(path)
+#define GET_PROC(handle, name) GetProcAddress(handle, name)
+#define FREE_LIB(handle) FreeLibrary(handle)
+#else
+typedef void* LibHandle;
+#define LOAD_LIB(path) dlopen(path, RTLD_LAZY)
+#define GET_PROC(handle, name) dlsym(handle, name)
+#define FREE_LIB(handle) dlclose(handle)
+#endif
+
 struct LibraryData {
-    HMODULE handle;
+    LibHandle handle;
 };
 
 struct FunctionData {
@@ -654,15 +910,21 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
     }
     
     void* thunk = g_execPool->allocate();
-    std::memcpy(thunk, callback_thunk_template, sizeof(callback_thunk_template));
     
     CallbackData* data = new CallbackData{func, ret_type, arg_types, thunk};
     
     uint64_t data_ptr = reinterpret_cast<uint64_t>(data);
     uint64_t handler_ptr = reinterpret_cast<uint64_t>(&generic_callback_handler);
     
+#ifdef _WIN32
+    std::memcpy(thunk, win64_callback_thunk_template, sizeof(win64_callback_thunk_template));
     std::memcpy(static_cast<uint8_t*>(thunk) + 49, &data_ptr, 8);
-    std::memcpy(static_cast<uint8_t*>(thunk) + 80, &handler_ptr, 8);
+    std::memcpy(static_cast<uint8_t*>(thunk) + 89, &handler_ptr, 8);
+#else
+    std::memcpy(thunk, sysv64_callback_thunk_template, sizeof(sysv64_callback_thunk_template));
+    std::memcpy(static_cast<uint8_t*>(thunk) + 88, &data_ptr, 8);
+    std::memcpy(static_cast<uint8_t*>(thunk) + 119, &handler_ptr, 8);
+#endif
     
     Instance inst(*g_callbackClass);
     inst.set("func", func); // Prevent GC of the closure
@@ -776,7 +1038,7 @@ JC2_ValueHandle lib_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
         throw_error("FFILibrary requires a string path.");
     }
     std::string path = Value(argv[0]).as_string();
-    HMODULE handle = LoadLibraryA(path.c_str());
+    LibHandle handle = LOAD_LIB(path.c_str());
     if (!handle) {
         throw_error("FFI Error: Failed to load library '" + path + "'.");
     }
@@ -785,7 +1047,7 @@ JC2_ValueHandle lib_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     LibraryData* data = new LibraryData{handle};
     inst.set_native_data(data, [](void* ptr) {
         LibraryData* d = static_cast<LibraryData*>(ptr);
-        if (d->handle) FreeLibrary(d->handle);
+        if (d->handle) FREE_LIB(d->handle);
         delete d;
     });
     
@@ -806,7 +1068,7 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
     }
     
     std::string func_name = Value(argv[1]).as_string();
-    void* func_ptr = (void*)GetProcAddress(data->handle, func_name.c_str());
+    void* func_ptr = (void*)GET_PROC(data->handle, func_name.c_str());
     if (!func_ptr) {
         throw_error("FFI Error: Function '" + func_name + "' not found.");
     }
@@ -883,7 +1145,11 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
 // 模块初始化入口
 // ============================================================================
 int jc2_init(jc2::Module& mod) {
+#ifdef _WIN32
     g_abiHandler = std::make_unique<Win64ABIHandler>();
+#else
+    g_abiHandler = std::make_unique<SysV64ABIHandler>();
+#endif
     g_execPool = std::make_unique<ExecutableMemoryPool>();
     
     g_libClass = std::make_unique<Class>("FFILibrary");
@@ -919,7 +1185,7 @@ int jc2_init(jc2::Module& mod) {
         "  Requires: import \"ffi\"\n\n"
         "  The FFI module allows JC2 to dynamically load native C/C++ dynamic\n"
         "  libraries (.dll) and call their functions directly at runtime, with\n"
-        "  zero third-party dependencies. (Currently supports Windows x64 ABI).\n\n"
+        "  zero third-party dependencies. (Supports Windows x64 and POSIX SysV ABI).\n\n"
         "  1. Loading a Library\n"
         "  ──────────────────────\n"
         "    lib = ffi.FFILibrary(\"msvcrt.dll\")\n\n"

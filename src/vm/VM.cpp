@@ -5671,7 +5671,7 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                     } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-                        throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setItem(i, x) / setSlice(s, x) to get a new matrix.");
+                        throw std::runtime_error("Runtime Error: Matrices are immutable. Use setItem(i, x) / setSlice(sr, sc, x) to get a new matrix.");
                     } else if (obj.isObjType(ObjType::DICT)) {
                         if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
                         auto dict = static_cast<ObjDict*>(obj.asObj());
@@ -5738,7 +5738,7 @@ Value VM::run(int targetFrameDepth) {
                     Value rowIdx = args[0];
                     Value colIdx = args[1];
                     if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-                        throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setSlice(s, x) to get a new matrix.");
+                        throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setSlice(sr, sc, x) to get a new matrix.");
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 2D index set.");
                     }
@@ -10480,7 +10480,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                 }
             }
         } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-            throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setItem(i, x) / setSlice(s, x) to get a new matrix.");
+            throw std::runtime_error("Runtime Error: Matrices are immutable. Use setItem(i, x) / setSlice(sr, sc, x) to get a new matrix.");
         } else if (obj.isObjType(ObjType::DICT)) {
             if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
             auto dict = static_cast<ObjDict*>(obj.asObj());
@@ -10547,7 +10547,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
         Value rowIdx = args[0];
         Value colIdx = args[1];
         if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-            throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setSlice(s, x) to get a new matrix.");
+            throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setSlice(sr, sc, x) to get a new matrix.");
         } else {
             throw std::runtime_error("VM Error: Unsupported 2D index set.");
         }

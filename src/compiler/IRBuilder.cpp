@@ -609,7 +609,6 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     }
                 }
 
-                IRNode* finalNode = nullptr;
                 {
                     std::vector<std::vector<IRNode*>> allIndices;
                     for (size_t i = 0; i < chain.size(); ++i) {
@@ -630,7 +629,6 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         setIdx->addData(valNode);
                         setIdx->payload1 = static_cast<uint32_t>(allIndices[0].size());
                         currentControl = setIdx;
-                        finalNode = setIdx;
                     } else {
                         std::vector<IRNode*> chainObjs;
                         chainObjs.push_back(objNode);
@@ -652,32 +650,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                         setNode->addData(valNode);
                         setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
                         currentControl = setNode;
-                        finalNode = setNode;
-                    
-                        for (int level = depth - 2; level >= 0; --level) {
-                            IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
-                            backSetNode->setControl(currentControl);
-                            backSetNode->addData(chainObjs[level]);
-                            for (auto* iNode : allIndices[level]) backSetNode->addData(iNode);
-                            backSetNode->addData(finalNode);
-                            backSetNode->payload1 = static_cast<uint32_t>(allIndices[level].size());
-                            currentControl = backSetNode;
-                            finalNode = backSetNode;
-                        }
                     }
-                }
-                
-                if (auto* var = dynamic_cast<Variable*>(chain[0]->object.get())) {
-                    auto it = exprSymbols->find(var);
-                    ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-                    writeVariable(var->name.lexeme, finalNode, sym, false, false);
-                } else if (dotParentNode) {
-                    IRNode* setProp = graph->createValueNode(IROp::SetProperty);
-                    setProp->setControl(currentControl);
-                    setProp->addData(dotParentNode);
-                    setProp->addData(finalNode);
-                    setProp->name = dotPropName;
-                    currentControl = setProp;
                 }
             } else {
                 error("Syntax Error: Invalid L-value in destructuring assignment.");
@@ -2513,13 +2486,18 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
     int depth = static_cast<int>(expr->indexChain.size());
     if (depth == 1) {
         if (dotParentNode) {
-            // 字段索引赋值：FieldIndexSet（VM 内部按引用/值语义决定是否写回，引用类型不写回）
-            IRNode* node = graph->createValueNode(IROp::FieldIndexSet);
+            // 字段索引赋值：GetProperty 取字段 + IndexSet 原地改（引用类型原地改，矩阵报错）
+            IRNode* getProp = graph->createValueNode(IROp::GetProperty);
+            getProp->setControl(currentControl);
+            getProp->addData(dotParentNode);
+            getProp->name = dotPropName;
+            currentControl = getProp;
+            
+            IRNode* node = graph->createValueNode(IROp::IndexSet);
             node->setControl(currentControl);
-            node->addData(dotParentNode);
+            node->addData(getProp);
             for (auto* idx : indicesTmp[0]) node->addData(idx);
             node->addData(valNode);
-            node->name = dotPropName;
             node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
             currentControl = node;
         } else {
@@ -2530,12 +2508,6 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
             node->addData(valNode);
             node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
             currentControl = node;
-            
-            if (!expr->hasObjectExpr()) {
-                auto it = exprSymbols->find(expr);
-                ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-                writeVariable(expr->name.lexeme, node, sym, false, false);
-            }
         }
         lastValue = valNode;
     } else {
@@ -2560,47 +2532,6 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         setNode->payload1 = static_cast<uint32_t>(indicesTmp[depth - 1].size());
         currentControl = setNode;
         
-        IRNode* finalNode = setNode;
-        for (int level = depth - 2; level >= 0; --level) {
-            IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
-            backSetNode->setControl(currentControl);
-            backSetNode->addData(chainObjs[level]);
-            for (auto* idx : indicesTmp[level]) backSetNode->addData(idx);
-            backSetNode->addData(finalNode);
-            backSetNode->payload1 = static_cast<uint32_t>(indicesTmp[level].size());
-            currentControl = backSetNode;
-            finalNode = backSetNode;
-        }
-        
-        if (!expr->hasObjectExpr()) {
-            auto it = exprSymbols->find(expr);
-            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(expr->name.lexeme, finalNode, sym, false, false);
-        } else if (dotParentNode) {
-            IROp setOp = IROp::SetProperty;
-            if (!classStack.empty()) {
-                auto* dotTarget = static_cast<DotAccess*>(expr->objectExpr.get());
-                bool isSelf = dynamic_cast<SelfExpr*>(dotTarget->object.get()) != nullptr;
-                bool isClassVar = false;
-                if (auto* ck = dynamic_cast<ContextKeywordExpr*>(dotTarget->object.get())) {
-                    if (ck->kind == ContextKeywordExpr::Kind::Class) isClassVar = true;
-                } else if (auto* var = dynamic_cast<Variable*>(dotTarget->object.get())) {
-                    if (!classStack.back().name.empty() && var->name.lexeme == classStack.back().name) {
-                        isClassVar = true;
-                    }
-                }
-                if ((isSelf || isClassVar) && classStack.back().privateMembers.count(dotPropName)) {
-                    setOp = IROp::SetPrivate;
-                }
-            }
-
-            IRNode* setProp = graph->createValueNode(setOp);
-            setProp->setControl(currentControl);
-            setProp->addData(dotParentNode);
-            setProp->addData(finalNode);
-            setProp->name = dotPropName;
-            currentControl = setProp;
-        }
         lastValue = valNode;
     }
 
@@ -2961,7 +2892,6 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         currentControl = setProp;
     } else if (dynamic_cast<IndexAccess*>(expr->target.get())) {
         int depth = static_cast<int>(chain.size());
-        IRNode* finalNode = nullptr;
         if (depth == 1) {
             IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
             setIdx->setControl(currentControl);
@@ -2970,7 +2900,6 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             setIdx->addData(opNode);
             setIdx->payload1 = static_cast<uint32_t>(indices.size());
             currentControl = setIdx;
-            finalNode = setIdx;
         } else {
             std::vector<IRNode*> chainObjs;
             chainObjs.push_back(objNode);
@@ -3002,31 +2931,6 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             setNode->addData(opNode);
             setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
             currentControl = setNode;
-            finalNode = setNode;
-            
-            for (int level = depth - 2; level >= 0; --level) {
-                IRNode* backSetNode = graph->createValueNode(IROp::IndexSet);
-                backSetNode->setControl(currentControl);
-                backSetNode->addData(chainObjs[level]);
-                for (auto* idx : allIndices[level]) backSetNode->addData(idx);
-                backSetNode->addData(finalNode);
-                backSetNode->payload1 = static_cast<uint32_t>(allIndices[level].size());
-                currentControl = backSetNode;
-                finalNode = backSetNode;
-            }
-        }
-        
-        if (auto* rootVar = dynamic_cast<Variable*>(chain[0]->object.get())) {
-            auto it = exprSymbols->find(rootVar);
-            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(rootVar->name.lexeme, finalNode, sym, expr->isLocal, false);
-        } else if (dotParentNode) {
-            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
-            setProp->setControl(currentControl);
-            setProp->addData(dotParentNode);
-            setProp->addData(finalNode);
-            setProp->name = dotPropName;
-            currentControl = setProp;
         }
     }
 

@@ -497,13 +497,6 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         }
                         break;
                     }
-                    case IROp::FieldIndexSet: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
-                        uint32_t icIdx = chunk.addInlineCache(chunk.addConstant(Value(node->name)));
-                        auto set = buildInstABC(OpCode::FIELD_INDEX_SET, spillBase, icIdx, static_cast<int>(node->payload1));
-                        inst.words.insert(inst.words.end(), set.begin(), set.end());
-                        break;
-                    }
                     case IROp::BuildSlice: {
                         int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
                         auto build = buildInstABC(OpCode::BUILD_SLICE, node->physicalReg, spillBase, 0);
@@ -925,7 +918,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                           inst.node->op == IROp::BuildList || inst.node->op == IROp::BuildDict ||
                           inst.node->op == IROp::BuildSet || inst.node->op == IROp::ConcatStrings ||
                           inst.node->op == IROp::BuildMatrix || inst.node->op == IROp::IndexGet ||
-                          inst.node->op == IROp::IndexSet || inst.node->op == IROp::FieldIndexSet || inst.node->op == IROp::BuildSlice ||
+                          inst.node->op == IROp::IndexSet || inst.node->op == IROp::BuildSlice ||
                           inst.node->op == IROp::BuildNamespace ||
                           inst.node->op == IROp::MatchInit)) {
             int argsCount = static_cast<int>(inst.node->dataInputs.size());

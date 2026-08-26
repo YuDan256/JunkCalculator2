@@ -82,12 +82,6 @@ public:
                     if (c == ESCAPE_NORMAL_8) fetchExtra();
                     break;
 
-                case OpCode::FIELD_INDEX_SET:
-                    if (a == ESCAPE_NORMAL_8) fetchExtra();
-                    if (b == ESCAPE_NORMAL_8) fetchExtra();
-                    if (c == ESCAPE_NORMAL_8) fetchExtra();
-                    break;
-
                 case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::UNM: case OpCode::NOT:
                 case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::LIST_APPEND:
                 case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:

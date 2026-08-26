@@ -105,7 +105,7 @@ static std::string manglePrivate(uint64_t classId, const std::string& name) {
 
 namespace jc {
 
-// 核心索引赋值（定义在下方 JIT callout 区域；解释器 FIELD_INDEX_SET 也复用）
+// 核心索引赋值（定义在下方 JIT callout 区域；解释器 INDEX_SET 也复用）
 static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value val);
 
 uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
@@ -5747,36 +5747,6 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
-            case OpCode::FIELD_INDEX_SET: {
-                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
-                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
-                
-                int dims = c;
-                uint64_t objBits = getReg(a).as_bits;
-                Value val = getReg(a + c + 1);
-                
-                std::vector<Value> args;
-                args.reserve(dims);
-                for (int i = 0; i < dims; ++i) {
-                    args.push_back(getReg(a + 1 + i));
-                }
-                
-                // 1. 获取字段当前值（复用 JIT get_prop 逻辑）
-                uint64_t fieldBits = jc2_jit_get_prop(objBits, b, chunk);
-                Value fieldVal = Value::fromRawBits(fieldBits);
-                GcValueGuard fieldGuard(fieldVal);
-                
-                // 2. 索引赋值（原地改或 COW）
-                Value result = vmIndexSetCore(this, fieldVal, args, val);
-                GcValueGuard resultGuard(result);
-                
-                // 3. COW 产生新对象才写回
-                if (result.as_bits != fieldVal.as_bits) {
-                    jc2_jit_set_prop(objBits, result.as_bits, b, chunk);
-                }
-                break;
-            }
             case OpCode::ITER_INIT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
@@ -10632,27 +10602,6 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
     vm->getCurrentFrame()->jitReturnSlot = result;
     return result.as_bits;
     JIT_CALLOUT_CATCH
-}
-
-// FIELD_INDEX_SET 的 JIT callout：obj.field[indices] = val。
-// 引用类型原地改不写回；矩阵 COW 产生新对象才写回。
-void jc2_jit_field_index_set(uint64_t* values, uint32_t dims, uint32_t icIdx, const Chunk* chunk) {
-    JIT_CALLOUT_TRY
-    VM* vm = VM::activeVM;
-    uint64_t objBits = values[0];
-    Value val = Value::fromRawBits(values[dims + 1]);
-    std::vector<Value> args;
-    args.reserve(dims);
-    for (uint32_t i = 0; i < dims; ++i) {
-        args.push_back(Value::fromRawBits(values[1 + i]));
-    }
-    uint64_t fieldBits = jc2_jit_get_prop(objBits, icIdx, chunk);
-    Value fieldVal = Value::fromRawBits(fieldBits);
-    Value result = vmIndexSetCore(vm, fieldVal, args, val);
-    if (result.as_bits != fieldVal.as_bits) {
-        jc2_jit_set_prop(objBits, result.as_bits, icIdx, chunk);
-    }
-    JIT_CALLOUT_CATCH_VOID
 }
 
 uint64_t jc2_jit_truthy(uint64_t val_bits) {

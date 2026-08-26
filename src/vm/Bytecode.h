@@ -120,7 +120,6 @@ enum class OpCode : uint8_t {
     DICT_APPEND,    // R(A)[R(B)] = R(C)
     INDEX_GET,      // R(A) := R(B)[R(B+1)...R(B+C)] [Ext A, B, C]
     INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(A+C+1) [Ext A, C]
-    FIELD_INDEX_SET,// R(A).field[icIdx=B][R(A+1)...R(A+C)] := R(A+C+1) [Ext A, B, C]
     BUILD_SLICE,    // R(A) := slice(start=R(B), end=R(B+1), step=R(B+2)) [Ext B]
 
     // 字符串操作
@@ -246,7 +245,6 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::DICT_APPEND: return "DICT_APPEND";
         case OpCode::INDEX_GET: return "INDEX_GET";
         case OpCode::INDEX_SET: return "INDEX_SET";
-        case OpCode::FIELD_INDEX_SET: return "FIELD_INDEX_SET";
         case OpCode::BUILD_SLICE: return "BUILD_SLICE";
         case OpCode::STRINGIFY: return "STRINGIFY";
         case OpCode::CONCAT_STRINGS: return "CONCAT_STRINGS";
@@ -482,16 +480,6 @@ public:
             case OpCode::ITER_INIT: case OpCode::IN: case OpCode::MATCH_SHAPE:
             case OpCode::DICT_APPEND:
                 std::cout << "R(" << a << ") " << b << " " << c;
-                break;
-
-            case OpCode::FIELD_INDEX_SET:
-                std::cout << "R(" << a << ") " << b << " " << c;
-                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(inlineCaches.size())) {
-                    int nameIdx = inlineCaches[b].nameIdx;
-                    if (nameIdx < static_cast<int>(constants.size())) {
-                        std::cout << "  ; " << constants[nameIdx].asString();
-                    }
-                }
                 break;
 
             case OpCode::FORMAT_STRING:

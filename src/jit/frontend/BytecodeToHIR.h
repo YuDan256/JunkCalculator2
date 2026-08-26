@@ -302,6 +302,12 @@ public:
                         if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                         break;
 
+                    case OpCode::FIELD_INDEX_SET:
+                        if (a == ESCAPE_NORMAL_8) a = fetchExtra();
+                        if (b == ESCAPE_NORMAL_8) b = fetchExtra();
+                        if (c == ESCAPE_NORMAL_8) c = fetchExtra();
+                        break;
+
                     case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::UNM: case OpCode::NOT:
                     case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::LIST_APPEND:
                     case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
@@ -876,6 +882,20 @@ public:
                         }
                         callout->addInput(getBoxedRKNode(a + c + 1)); // val
                         setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::FIELD_INDEX_SET: {
+                        int dims = c;
+                        auto fs = captureFrameState(currentIp);
+                        auto dimsNode = builder_.createInt32Constant(dims);
+                        auto icIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_field_index_set), JITType::Effect, 3, {dimsNode, icIdxNode, chunkNode}, fs);
+                        callout->addInput(getBoxedRKNode(a)); // obj
+                        for (int i = 0; i < dims; ++i) {
+                            callout->addInput(getBoxedRKNode(a + 1 + i));
+                        }
+                        callout->addInput(getBoxedRKNode(a + c + 1)); // val
                         break;
                     }
                     case OpCode::BUILD_MATRIX: {

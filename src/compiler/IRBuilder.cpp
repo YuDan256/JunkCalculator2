@@ -2512,25 +2512,30 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
 
     int depth = static_cast<int>(expr->indexChain.size());
     if (depth == 1) {
-        IRNode* node = graph->createValueNode(IROp::IndexSet);
-        node->setControl(currentControl);
-        node->addData(rootObjNode);
-        for (auto* idx : indicesTmp[0]) node->addData(idx);
-        node->addData(valNode);
-        node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
-        currentControl = node;
-        
-        if (!expr->hasObjectExpr()) {
-            auto it = exprSymbols->find(expr);
-            ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-            writeVariable(expr->name.lexeme, node, sym, false, false);
-        } else if (dotParentNode) {
-            IRNode* setProp = graph->createValueNode(IROp::SetProperty);
-            setProp->setControl(currentControl);
-            setProp->addData(dotParentNode);
-            setProp->addData(node);
-            setProp->name = dotPropName;
-            currentControl = setProp;
+        if (dotParentNode) {
+            // 字段索引赋值：FieldIndexSet（VM 内部按引用/值语义决定是否写回，引用类型不写回）
+            IRNode* node = graph->createValueNode(IROp::FieldIndexSet);
+            node->setControl(currentControl);
+            node->addData(dotParentNode);
+            for (auto* idx : indicesTmp[0]) node->addData(idx);
+            node->addData(valNode);
+            node->name = dotPropName;
+            node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
+            currentControl = node;
+        } else {
+            IRNode* node = graph->createValueNode(IROp::IndexSet);
+            node->setControl(currentControl);
+            node->addData(rootObjNode);
+            for (auto* idx : indicesTmp[0]) node->addData(idx);
+            node->addData(valNode);
+            node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
+            currentControl = node;
+            
+            if (!expr->hasObjectExpr()) {
+                auto it = exprSymbols->find(expr);
+                ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+                writeVariable(expr->name.lexeme, node, sym, false, false);
+            }
         }
         lastValue = valNode;
     } else {

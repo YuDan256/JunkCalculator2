@@ -105,6 +105,9 @@ static std::string manglePrivate(uint64_t classId, const std::string& name) {
 
 namespace jc {
 
+// 核心索引赋值（定义在下方 JIT callout 区域；解释器 FIELD_INDEX_SET 也复用）
+static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value val);
+
 uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
     JIT_CALLOUT_TRY
     (void)current_regs;
@@ -6033,6 +6036,36 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
+            case OpCode::FIELD_INDEX_SET: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
+                
+                int dims = c;
+                uint64_t objBits = getReg(a).as_bits;
+                Value val = getReg(a + c + 1);
+                
+                std::vector<Value> args;
+                args.reserve(dims);
+                for (int i = 0; i < dims; ++i) {
+                    args.push_back(getReg(a + 1 + i));
+                }
+                
+                // 1. 获取字段当前值（复用 JIT get_prop 逻辑）
+                uint64_t fieldBits = jc2_jit_get_prop(objBits, b, chunk);
+                Value fieldVal = Value::fromRawBits(fieldBits);
+                GcValueGuard fieldGuard(fieldVal);
+                
+                // 2. 索引赋值（原地改或 COW）
+                Value result = vmIndexSetCore(this, fieldVal, args, val);
+                GcValueGuard resultGuard(result);
+                
+                // 3. COW 产生新对象才写回
+                if (result.as_bits != fieldVal.as_bits) {
+                    jc2_jit_set_prop(objBits, result.as_bits, b, chunk);
+                }
+                break;
+            }
             case OpCode::ITER_INIT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
@@ -10772,21 +10805,9 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
-    JIT_CALLOUT_TRY
-    VM* vm = VM::activeVM;
-    CallFrame* frame = vm->getCurrentFrame();
-    Value* regs = vm->getRegisters();
-    int base = frame->registerBase;
-
-    Value obj = Value::fromRawBits(values[0]);
-    Value val = Value::fromRawBits(values[dims + 1]);
-    std::vector<Value> args;
-    args.reserve(dims);
-    for (uint32_t i = 0; i < dims; ++i) {
-        args.push_back(Value::fromRawBits(values[1 + i]));
-    }
-
+// 核心索引赋值：对 obj 做 args[i] = val。原地改（引用类型）或 COW（矩阵，更新 obj 引用）。
+// 不写寄存器，返回结果 obj（原地或 COW 新对象）。
+static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value val) {
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
         inst->checkModify();
@@ -10794,12 +10815,12 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
         if (setitemMethod) {
             args.push_back(val);
             vm->callDunder(obj, setitemMethod, owner, args);
-        } else if (dims == 1 && args[0].isString()) {
+        } else if (args.size() == 1 && args[0].isString()) {
             std::string keyStr = args[0].asString();
             if (isReservedInternalName(keyStr)) {
                 throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
             }
-            ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+            ObjClass* ctxOwner = vm->getCurrentFrame()->classContext.isClass() ? static_cast<ObjClass*>(vm->getCurrentFrame()->classContext.asObj()) : nullptr;
             bool foundPrivate = false;
             if (ctxOwner) {
                 std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
@@ -10821,7 +10842,7 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
         } else {
             throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __setitem__.");
         }
-    } else if (dims == 1) {
+    } else if (args.size() == 1) {
         Value idx = args[0];
         if (obj.isObjType(ObjType::LIST)) {
             auto list = static_cast<ObjList*>(obj.asObj());
@@ -10991,15 +11012,12 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
             if (obj.isObjType(ObjType::REAL_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
                 processMatSet(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
             } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                 processMatSet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
             } else {
                 if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
                 processMatSet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
             }
         } else if (obj.isObjType(ObjType::DICT)) {
             if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
@@ -11027,7 +11045,7 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
             }
             
             bool found = false;
-            ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+            ObjClass* ctxOwner = vm->getCurrentFrame()->classContext.isClass() ? static_cast<ObjClass*>(vm->getCurrentFrame()->classContext.asObj()) : nullptr;
             if (ctxOwner) {
                 std::string mangledName = manglePrivate(ctxOwner->classId, key);
                 auto it = ctxOwner->properties.find(mangledName);
@@ -11063,7 +11081,7 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
         } else {
             throw std::runtime_error("VM Error: Unsupported 1D index set.");
         }
-    } else if (dims == 2) {
+    } else if (args.size() == 2) {
         Value rowIdx = args[0];
         Value colIdx = args[1];
         if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
@@ -11145,15 +11163,12 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
             if (obj.isObjType(ObjType::REAL_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(RealMatrix(static_cast<ObjRealMatrix*>(obj.asObj())->mat));
                 processMatSet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
             } else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) {
                 if (obj.asObj()->refCount > 2) obj = Value(ComplexMatrix(static_cast<ObjComplexMatrix*>(obj.asObj())->mat));
                 processMatSet2D(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
             } else {
                 if (obj.asObj()->refCount > 2) obj = Value(SymMatrix(static_cast<ObjSymMatrix*>(obj.asObj())->mat));
                 processMatSet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
-                regs[base + objReg] = obj;
             }
         } else {
             throw std::runtime_error("VM Error: Unsupported 2D index set.");
@@ -11162,9 +11177,46 @@ uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
         throw std::runtime_error("VM Error: Unsupported index dimensionality.");
     }
     
-    vm->getCurrentFrame()->jitReturnSlot = obj;
-    return obj.as_bits;
+    return obj;
+}
+
+uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value obj = Value::fromRawBits(values[0]);
+    Value val = Value::fromRawBits(values[dims + 1]);
+    std::vector<Value> args;
+    args.reserve(dims);
+    for (uint32_t i = 0; i < dims; ++i) {
+        args.push_back(Value::fromRawBits(values[1 + i]));
+    }
+    Value result = vmIndexSetCore(vm, obj, args, val);
+    CallFrame* frame = vm->getCurrentFrame();
+    vm->getRegisters()[frame->registerBase + objReg] = result;
+    vm->getCurrentFrame()->jitReturnSlot = result;
+    return result.as_bits;
     JIT_CALLOUT_CATCH
+}
+
+// FIELD_INDEX_SET 的 JIT callout：obj.field[indices] = val。
+// 引用类型原地改不写回；矩阵 COW 产生新对象才写回。
+void jc2_jit_field_index_set(uint64_t* values, uint32_t dims, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    uint64_t objBits = values[0];
+    Value val = Value::fromRawBits(values[dims + 1]);
+    std::vector<Value> args;
+    args.reserve(dims);
+    for (uint32_t i = 0; i < dims; ++i) {
+        args.push_back(Value::fromRawBits(values[1 + i]));
+    }
+    uint64_t fieldBits = jc2_jit_get_prop(objBits, icIdx, chunk);
+    Value fieldVal = Value::fromRawBits(fieldBits);
+    Value result = vmIndexSetCore(vm, fieldVal, args, val);
+    if (result.as_bits != fieldVal.as_bits) {
+        jc2_jit_set_prop(objBits, result.as_bits, icIdx, chunk);
+    }
+    JIT_CALLOUT_CATCH_VOID
 }
 
 uint64_t jc2_jit_truthy(uint64_t val_bits) {

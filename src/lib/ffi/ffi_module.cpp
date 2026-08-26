@@ -118,6 +118,7 @@ struct FFITypeDesc {
     size_t size;
     size_t align;
     StructLayoutData* layout;
+    std::vector<size_t> array_dims;
 };
 
 struct StructField {
@@ -134,41 +135,103 @@ struct StructLayoutData {
 
 struct StructInstanceData {
     StructLayoutData* layout;
-    std::vector<uint8_t> memory;
+    std::shared_ptr<std::vector<uint8_t>> shared_mem;
+    uint8_t* base_ptr;
+};
+
+struct FFIArrayViewData {
+    FFITypeDesc desc;
+    std::shared_ptr<std::vector<uint8_t>> shared_mem;
+    uint8_t* base_ptr;
 };
 
 extern std::unique_ptr<Class> g_structInstClass;
+extern std::unique_ptr<Class> g_arrayViewClass;
+std::vector<std::unique_ptr<StructLayoutData>> g_anonymousLayouts;
 
 // 将字符串或结构体布局解析为底层类型描述
 FFITypeDesc parseType(const Value& v) {
-        if (v.is_string()) {
-            std::string t = v.as_string();
-            if (t == "void") return { FFIType::VOID_TYPE, 0, 1, nullptr };
-            if (t == "i8") return { FFIType::I8, 1, 1, nullptr };
-            if (t == "u8") return { FFIType::U8, 1, 1, nullptr };
-            if (t == "i16") return { FFIType::I16, 2, 2, nullptr };
-            if (t == "u16") return { FFIType::U16, 2, 2, nullptr };
-            if (t == "i32") return { FFIType::I32, 4, 4, nullptr };
-            if (t == "u32") return { FFIType::U32, 4, 4, nullptr };
-            if (t == "i64") return { FFIType::I64, 8, 8, nullptr };
-            if (t == "u64") return { FFIType::U64, 8, 8, nullptr };
-            if (t == "f32") return { FFIType::F32, 4, 4, nullptr };
-            if (t == "f64") return { FFIType::F64, 8, 8, nullptr };
-            if (t == "pointer") return { FFIType::POINTER, 8, 8, nullptr };
-            if (t == "string") return { FFIType::STRING, 8, 8, nullptr };
-            if (t == "...") return { FFIType::VARIADIC, 0, 1, nullptr };
-            throw std::runtime_error("FFI Error: Unsupported type '" + t + "'.");
+    if (v.is_dict()) {
+        Dict d(v.get_handle());
+        StructLayoutData* layout = new StructLayoutData();
+        List keys = d.keys();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            Value k = keys.get(i);
+            Value val = d.get(k);
+            FFITypeDesc t = parseType(val);
+            size_t field_align = t.align;
+            size_t offset = (layout->size + field_align - 1) & ~(field_align - 1);
+            layout->fields.push_back({k.as_string(), t, offset});
+            layout->size = offset + t.size;
+            layout->align = std::max(layout->align, field_align);
         }
-        if (v.is_instance()) {
-            StructLayoutData* layout = v.get_native_data<StructLayoutData>();
-            if (layout) {
-                return { FFIType::STRUCT, layout->size, layout->align, layout };
-            }
+        if (layout->align > 0) layout->size = (layout->size + layout->align - 1) & ~(layout->align - 1);
+        g_anonymousLayouts.push_back(std::unique_ptr<StructLayoutData>(layout));
+        return { FFIType::STRUCT, layout->size, layout->align, layout, {} };
+    }
+    if (v.is_list()) {
+        List l(v.get_handle());
+        if (l.size() < 2) throw std::runtime_error("FFI Error: Array type list must have at least 2 elements [type, dim1, ...].");
+        FFITypeDesc desc = parseType(l.get(0));
+        for (size_t i = 1; i < l.size(); ++i) {
+            desc.array_dims.push_back(l.get(i).as_int());
         }
-        throw std::runtime_error("FFI Error: Invalid type descriptor.");
+        size_t total_elements = 1;
+        for (size_t d : desc.array_dims) total_elements *= d;
+        desc.size *= total_elements;
+        return desc;
+    }
+    if (v.is_string()) {
+        std::string t = v.as_string();
+        std::vector<size_t> dims;
+        while (!t.empty() && t.back() == ']') {
+            size_t open_idx = t.find_last_of('[');
+            if (open_idx == std::string::npos) break;
+            std::string dim_str = t.substr(open_idx + 1, t.size() - open_idx - 2);
+            dims.insert(dims.begin(), std::stoull(dim_str));
+            t = t.substr(0, open_idx);
+        }
+        FFITypeDesc desc;
+        if (t == "void") desc = { FFIType::VOID_TYPE, 0, 1, nullptr, {} };
+        else if (t == "i8") desc = { FFIType::I8, 1, 1, nullptr, {} };
+        else if (t == "u8") desc = { FFIType::U8, 1, 1, nullptr, {} };
+        else if (t == "i16") desc = { FFIType::I16, 2, 2, nullptr, {} };
+        else if (t == "u16") desc = { FFIType::U16, 2, 2, nullptr, {} };
+        else if (t == "i32") desc = { FFIType::I32, 4, 4, nullptr, {} };
+        else if (t == "u32") desc = { FFIType::U32, 4, 4, nullptr, {} };
+        else if (t == "i64") desc = { FFIType::I64, 8, 8, nullptr, {} };
+        else if (t == "u64") desc = { FFIType::U64, 8, 8, nullptr, {} };
+        else if (t == "f32") desc = { FFIType::F32, 4, 4, nullptr, {} };
+        else if (t == "f64") desc = { FFIType::F64, 8, 8, nullptr, {} };
+        else if (t == "pointer") desc = { FFIType::POINTER, 8, 8, nullptr, {} };
+        else if (t == "string") desc = { FFIType::STRING, 8, 8, nullptr, {} };
+        else if (t == "...") desc = { FFIType::VARIADIC, 0, 1, nullptr, {} };
+        else throw std::runtime_error("FFI Error: Unsupported type '" + t + "'.");
+
+        if (!dims.empty()) {
+            size_t total_elements = 1;
+            for (size_t d : dims) total_elements *= d;
+            desc.size *= total_elements;
+            desc.array_dims = dims;
+        }
+        return desc;
+    }
+    if (v.is_instance()) {
+        StructLayoutData* layout = v.get_native_data<StructLayoutData>();
+        if (layout) {
+            return { FFIType::STRUCT, layout->size, layout->align, layout, {} };
+        }
+    }
+    throw std::runtime_error("FFI Error: Invalid type descriptor.");
 }
 
-Value read_memory(const uint8_t* ptr, const FFITypeDesc& t) {
+Value read_memory(std::shared_ptr<std::vector<uint8_t>> shared_mem, uint8_t* ptr, const FFITypeDesc& t) {
+    if (!t.array_dims.empty()) {
+        Instance inst(*g_arrayViewClass);
+        FFIArrayViewData* data = new FFIArrayViewData{t, shared_mem, ptr};
+        inst.set_native_data(data, [](void* p) { delete static_cast<FFIArrayViewData*>(p); });
+        return inst.get_handle();
+    }
     switch (t.type) {
         case FFIType::I8: return Value(static_cast<int32_t>(*reinterpret_cast<const int8_t*>(ptr)));
         case FFIType::U8: return Value(static_cast<int32_t>(*reinterpret_cast<const uint8_t*>(ptr)));
@@ -187,10 +250,9 @@ Value read_memory(const uint8_t* ptr, const FFITypeDesc& t) {
         }
         case FFIType::STRUCT: {
             Instance inst(*g_structInstClass);
-            StructInstanceData* data = new StructInstanceData{t.layout, std::vector<uint8_t>(t.size)};
-            std::memcpy(data->memory.data(), ptr, t.size);
+            StructInstanceData* data = new StructInstanceData{t.layout, shared_mem, ptr};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
-            inst.set_buffer_data(data->memory.data(), t.size);
+            inst.set_buffer_data(ptr, t.size);
             return inst.get_handle();
         }
         default: return Value();
@@ -214,7 +276,7 @@ void write_memory(uint8_t* ptr, const FFITypeDesc& t, const Value& v) {
         case FFIType::STRUCT: {
             StructInstanceData* data = v.get_native_data<StructInstanceData>();
             if (!data || data->layout != t.layout) throw std::runtime_error("FFI Error: Struct type mismatch.");
-            std::memcpy(ptr, data->memory.data(), t.size);
+            std::memcpy(ptr, data->base_ptr, t.size);
             break;
         }
         default: break;
@@ -354,9 +416,9 @@ public:
                 StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
                 if (!sdata || sdata->layout != current_desc.layout) throw std::runtime_error("FFI Error: Struct type mismatch.");
                 if (current_desc.size == 1 || current_desc.size == 2 || current_desc.size == 4 || current_desc.size == 8) {
-                    std::memcpy(&val64, sdata->memory.data(), current_desc.size);
+                    std::memcpy(&val64, sdata->base_ptr, current_desc.size);
                 } else {
-                    temp_structs.push_back(sdata->memory);
+                    temp_structs.push_back(std::vector<uint8_t>(sdata->base_ptr, sdata->base_ptr + current_desc.size));
                     val64 = reinterpret_cast<uint64_t>(temp_structs.back().data());
                 }
                 break;
@@ -375,9 +437,10 @@ public:
 
         if (hidden_ret) {
             Instance inst(*g_structInstClass);
-            StructInstanceData* data = new StructInstanceData{retType.layout, ret_struct_mem};
+            auto shared = std::make_shared<std::vector<uint8_t>>(ret_struct_mem);
+            StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
-            inst.set_buffer_data(data->memory.data(), retType.size);
+            inst.set_buffer_data(data->base_ptr, retType.size);
             return inst.get_handle();
         }
 
@@ -407,10 +470,11 @@ public:
         }
         case FFIType::STRUCT: {
             Instance inst(*g_structInstClass);
-            StructInstanceData* data = new StructInstanceData{retType.layout, std::vector<uint8_t>(retType.size, 0)};
-            std::memcpy(data->memory.data(), &out_i, retType.size);
+            auto shared = std::make_shared<std::vector<uint8_t>>(retType.size, static_cast<uint8_t>(0));
+            std::memcpy(shared->data(), &out_i, retType.size);
+            StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
-            inst.set_buffer_data(data->memory.data(), retType.size);
+            inst.set_buffer_data(data->base_ptr, retType.size);
             return inst.get_handle();
         }
         default: return Value();
@@ -496,16 +560,16 @@ public:
                 if (!sdata || sdata->layout != current_desc.layout) throw std::runtime_error("FFI Error: Struct type mismatch.");
                 if (current_desc.size <= 16) {
                     uint64_t part1 = 0, part2 = 0;
-                    std::memcpy(&part1, sdata->memory.data(), std::min((size_t)8, current_desc.size));
+                    std::memcpy(&part1, sdata->base_ptr, std::min((size_t)8, current_desc.size));
                     if (gprs.size() < 6) gprs.push_back(part1); else stack_data.push_back(part1);
                     if (current_desc.size > 8) {
-                        std::memcpy(&part2, sdata->memory.data() + 8, current_desc.size - 8);
+                        std::memcpy(&part2, sdata->base_ptr + 8, current_desc.size - 8);
                         if (gprs.size() < 6) gprs.push_back(part2); else stack_data.push_back(part2);
                     }
                     continue;
                 } else {
                     size_t slots = (current_desc.size + 7) / 8;
-                    const uint64_t* ptr = reinterpret_cast<const uint64_t*>(sdata->memory.data());
+                    const uint64_t* ptr = reinterpret_cast<const uint64_t*>(sdata->base_ptr);
                     for (size_t j = 0; j < slots; ++j) stack_data.push_back(ptr[j]);
                     continue;
                 }
@@ -574,9 +638,10 @@ public:
 
         if (hidden_ret) {
             Instance inst(*g_structInstClass);
-            StructInstanceData* data = new StructInstanceData{retType.layout, ret_struct_mem};
+            auto shared = std::make_shared<std::vector<uint8_t>>(ret_struct_mem);
+            StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
-            inst.set_buffer_data(data->memory.data(), retType.size);
+            inst.set_buffer_data(data->base_ptr, retType.size);
             return inst.get_handle();
         }
 
@@ -603,10 +668,11 @@ public:
         }
         case FFIType::STRUCT: {
             Instance inst(*g_structInstClass);
-            StructInstanceData* data = new StructInstanceData{retType.layout, std::vector<uint8_t>(retType.size, 0)};
-            std::memcpy(data->memory.data(), &out_ret.i, std::min((size_t)8, retType.size));
+            auto shared = std::make_shared<std::vector<uint8_t>>(retType.size, static_cast<uint8_t>(0));
+            std::memcpy(shared->data(), &out_ret.i, std::min((size_t)8, retType.size));
+            StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
-            inst.set_buffer_data(data->memory.data(), retType.size);
+            inst.set_buffer_data(data->base_ptr, retType.size);
             return inst.get_handle();
         }
         default: return Value();
@@ -698,14 +764,16 @@ extern "C" void generic_callback_handler(CallbackData* data, uint64_t* gpr_space
                 case FFIType::STRUCT: {
                     if (t.size <= 8) {
                         Instance inst(*g_structInstClass);
-                        StructInstanceData* sdata = new StructInstanceData{t.layout, std::vector<uint8_t>(t.size, 0)};
-                        std::memcpy(sdata->memory.data(), &raw_val, t.size);
+                        auto shared = std::make_shared<std::vector<uint8_t>>(t.size, static_cast<uint8_t>(0));
+                        std::memcpy(shared->data(), &raw_val, t.size);
+                        StructInstanceData* sdata = new StructInstanceData{t.layout, shared, shared->data()};
                         inst.set_native_data(sdata, [](void* p) { delete static_cast<StructInstanceData*>(p); });
                         args.push_back(inst.get_handle());
                     } else {
                         Instance inst(*g_structInstClass);
-                        StructInstanceData* sdata = new StructInstanceData{t.layout, std::vector<uint8_t>(t.size, 0)};
-                        std::memcpy(sdata->memory.data(), reinterpret_cast<void*>(raw_val), t.size);
+                        auto shared = std::make_shared<std::vector<uint8_t>>(t.size, static_cast<uint8_t>(0));
+                        std::memcpy(shared->data(), reinterpret_cast<void*>(raw_val), t.size);
+                        StructInstanceData* sdata = new StructInstanceData{t.layout, shared, shared->data()};
                         inst.set_native_data(sdata, [](void* p) { delete static_cast<StructInstanceData*>(p); });
                         args.push_back(inst.get_handle());
                     }
@@ -758,7 +826,7 @@ extern "C" void generic_callback_handler(CallbackData* data, uint64_t* gpr_space
                 case FFIType::STRUCT: {
                     StructInstanceData* sdata = result.get_native_data<StructInstanceData>();
                     if (sdata && sdata->layout == data->ret_type.layout && data->ret_type.size <= 8) {
-                        std::memcpy(&val64, sdata->memory.data(), data->ret_type.size);
+                        std::memcpy(&val64, sdata->base_ptr, data->ret_type.size);
                         *out_int = val64;
                     }
                     break;
@@ -835,6 +903,7 @@ std::unique_ptr<Class> g_libClass;
 std::unique_ptr<Class> g_funcClass;
 std::unique_ptr<Class> g_structLayoutClass;
 std::unique_ptr<Class> g_structInstClass;
+std::unique_ptr<Class> g_arrayViewClass;
 std::unique_ptr<Class> g_callbackClass;
 
 JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -854,7 +923,7 @@ JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
     } catch (const std::exception& e) {
         throw_error(e.what());
     }
-    return read_memory(reinterpret_cast<const uint8_t*>(addr), t).get_handle();
+    return read_memory(nullptr, reinterpret_cast<uint8_t*>(addr), t).get_handle();
 }
 
 JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -979,9 +1048,10 @@ JC2_ValueHandle struct_layout_call(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     Instance self(argv[0]);
     StructLayoutData* layout = self.get_native_data<StructLayoutData>();
     Instance inst(*g_structInstClass);
-    StructInstanceData* data = new StructInstanceData{layout, std::vector<uint8_t>(layout->size, 0)};
+    auto shared = std::make_shared<std::vector<uint8_t>>(layout->size, static_cast<uint8_t>(0));
+    StructInstanceData* data = new StructInstanceData{layout, shared, shared->data()};
     inst.set_native_data(data, [](void* ptr) { delete static_cast<StructInstanceData*>(ptr); });
-    inst.set_buffer_data(data->memory.data(), layout->size);
+    inst.set_buffer_data(data->base_ptr, layout->size);
     return inst.get_handle();
 }
 
@@ -992,7 +1062,7 @@ JC2_ValueHandle struct_inst_getattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
     StructInstanceData* data = self.get_native_data<StructInstanceData>();
     for (const auto& f : data->layout->fields) {
         if (f.name == key) {
-            return read_memory(data->memory.data() + f.offset, f.type).get_handle();
+            return read_memory(data->shared_mem, data->base_ptr + f.offset, f.type).get_handle();
         }
     }
     throw_error("Struct has no field '" + key + "'.");
@@ -1007,7 +1077,7 @@ JC2_ValueHandle struct_inst_setattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
     for (const auto& f : data->layout->fields) {
         if (f.name == key) {
             try {
-                write_memory(data->memory.data() + f.offset, f.type, val);
+                write_memory(data->base_ptr + f.offset, f.type, val);
                 return Value().get_handle();
             } catch (const std::exception& e) {
                 throw_error(e.what());
@@ -1024,10 +1094,122 @@ JC2_ValueHandle struct_inst_str(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
     std::string res = "Struct {";
     for (size_t i = 0; i < data->layout->fields.size(); ++i) {
         const auto& f = data->layout->fields[i];
-        res += f.name + ": " + read_memory(data->memory.data() + f.offset, f.type).to_string();
+        res += f.name + ": " + read_memory(data->shared_mem, data->base_ptr + f.offset, f.type).to_string();
         if (i < data->layout->fields.size() - 1) res += ", ";
     }
     res += "}";
+    return Value(res).get_handle();
+}
+
+JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)user_data;
+    Instance self(argv[0]);
+    FFIArrayViewData* data = self.get_native_data<FFIArrayViewData>();
+
+    if (argc == 2 && Value(argv[1]).is_slice()) {
+        Slice s(argv[1]);
+        int start = s.start();
+        int end = s.end();
+        int step = s.step();
+        if (step != 1 && step != Slice::NONE) throw_error("FFI Error: Array view slicing only supports step=1.");
+        size_t dim0 = data->desc.array_dims[0];
+        if (start == Slice::NONE) start = 0;
+        if (end == Slice::NONE) end = static_cast<int>(dim0);
+        if (start < 0) start += static_cast<int>(dim0);
+        if (end < 0) end += static_cast<int>(dim0);
+        start = std::max(0, std::min(start, (int)dim0));
+        end = std::max(0, std::min(end, (int)dim0));
+        size_t new_len = (end > start) ? (end - start) : 0;
+
+        FFITypeDesc new_desc = data->desc;
+        new_desc.array_dims[0] = new_len;
+        size_t sub_size = new_desc.size / dim0;
+        new_desc.size = sub_size * new_len;
+
+        Instance inst(*g_arrayViewClass);
+        FFIArrayViewData* new_data = new FFIArrayViewData{new_desc, data->shared_mem, data->base_ptr + start * sub_size};
+        inst.set_native_data(new_data, [](void* p) { delete static_cast<FFIArrayViewData*>(p); });
+        return inst.get_handle();
+    }
+
+    size_t num_indices = argc - 1;
+    if (num_indices > data->desc.array_dims.size()) throw_error("FFI Error: Too many indices for array view.");
+
+    size_t flat_offset = 0;
+    size_t current_stride = data->desc.size;
+
+    for (size_t i = 0; i < num_indices; ++i) {
+        size_t dim_size = data->desc.array_dims[i];
+        current_stride /= dim_size;
+        int idx = Value(argv[i + 1]).as_int();
+        if (idx < 0) idx += static_cast<int>(dim_size);
+        if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error("FFI Error: Array index out of bounds.");
+        flat_offset += idx * current_stride;
+    }
+
+    FFITypeDesc sub_desc = data->desc;
+    sub_desc.array_dims.erase(sub_desc.array_dims.begin(), sub_desc.array_dims.begin() + num_indices);
+    sub_desc.size = current_stride;
+
+    return read_memory(data->shared_mem, data->base_ptr + flat_offset, sub_desc).get_handle();
+}
+
+JC2_ValueHandle array_view_setitem(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)user_data;
+    Instance self(argv[0]);
+    FFIArrayViewData* data = self.get_native_data<FFIArrayViewData>();
+
+    Value val(argv[argc - 1]);
+    size_t num_indices = argc - 2;
+
+    if (num_indices == 1 && Value(argv[1]).is_slice()) {
+        throw_error("FFI Error: Slice assignment not yet supported on FFI arrays.");
+    }
+
+    if (num_indices > data->desc.array_dims.size()) throw_error("FFI Error: Too many indices for array view.");
+
+    size_t flat_offset = 0;
+    size_t current_stride = data->desc.size;
+
+    for (size_t i = 0; i < num_indices; ++i) {
+        size_t dim_size = data->desc.array_dims[i];
+        current_stride /= dim_size;
+        int idx = Value(argv[i + 1]).as_int();
+        if (idx < 0) idx += static_cast<int>(dim_size);
+        if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error("FFI Error: Array index out of bounds.");
+        flat_offset += idx * current_stride;
+    }
+
+    FFITypeDesc sub_desc = data->desc;
+    sub_desc.array_dims.erase(sub_desc.array_dims.begin(), sub_desc.array_dims.begin() + num_indices);
+    sub_desc.size = current_stride;
+
+    if (!sub_desc.array_dims.empty()) {
+        throw_error("FFI Error: Cannot assign to a multi-dimensional sub-array directly.");
+    }
+
+    write_memory(data->base_ptr + flat_offset, sub_desc, val);
+    return Value().get_handle();
+}
+
+JC2_ValueHandle array_view_len(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)argc; (void)user_data;
+    Instance self(argv[0]);
+    FFIArrayViewData* data = self.get_native_data<FFIArrayViewData>();
+    if (data->desc.array_dims.empty()) return Value(0).get_handle();
+    return Value(static_cast<int32_t>(data->desc.array_dims[0])).get_handle();
+}
+
+JC2_ValueHandle array_view_str(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
+    (void)ctx; (void)argc; (void)user_data;
+    Instance self(argv[0]);
+    FFIArrayViewData* data = self.get_native_data<FFIArrayViewData>();
+    std::string res = "FFIArrayView(";
+    for (size_t i = 0; i < data->desc.array_dims.size(); ++i) {
+        res += std::to_string(data->desc.array_dims[i]);
+        if (i < data->desc.array_dims.size() - 1) res += "x";
+    }
+    res += ")";
     return Value(res).get_handle();
 }
 
@@ -1156,6 +1338,7 @@ int jc2_init(jc2::Module& mod) {
     g_funcClass = std::make_unique<Class>("FFIFunction");
     g_structLayoutClass = std::make_unique<Class>("StructLayout");
     g_structInstClass = std::make_unique<Class>("StructInstance");
+    g_arrayViewClass = std::make_unique<Class>("FFIArrayView");
     g_callbackClass = std::make_unique<Class>("Callback");
     
     g_libClass->set_allocator(lib_alloc);
@@ -1170,6 +1353,11 @@ int jc2_init(jc2::Module& mod) {
     g_structInstClass->bind_method("__setattr__", struct_inst_setattr, 2, 2, false, {"key", "val"});
     g_structInstClass->bind_method("__str__", struct_inst_str, 0, 0, false);
     
+    g_arrayViewClass->bind_method("__getitem__", array_view_getitem, 1, 16777215, true);
+    g_arrayViewClass->bind_method("__setitem__", array_view_setitem, 2, 16777215, true);
+    g_arrayViewClass->bind_method("__len__", array_view_len, 0, 0, false);
+    g_arrayViewClass->bind_method("__str__", array_view_str, 0, 0, false);
+
     g_callbackClass->set_allocator(callback_alloc);
     
     mod.register_value("FFILibrary", *g_libClass);
@@ -1216,7 +1404,7 @@ int jc2_init(jc2::Module& mod) {
         "      c_func(buf)                    // Pass buffer object directly to C!\n"
         "      buf.seek(0)\n"
         "      print(buf.readI32())           // Read data modified by C\n\n"
-        "  5. Structs (By Value & Pointer)\n"
+        "  5. Structs & Inline Arrays\n"
         "  ──────────────────────\n"
         "    You can define C-compatible structs using `ffi.Struct`.\n"
         "    It automatically handles memory alignment and padding.\n"
@@ -1225,6 +1413,16 @@ int jc2_init(jc2::Module& mod) {
         "      p.x = 100\n"
         "      c_func(p)              // Pass struct by value\n"
         "      c_func_ptr(p)          // Pass struct by pointer (auto-extracted!)\n\n"
+        "    Anonymous Nested Structs & Arrays:\n"
+        "      Data = ffi.Struct({\n"
+        "          rect: {x: \"i32\", y: \"i32\"}, // Anonymous nested struct\n"
+        "          matrix: \"f32[4][4]\",        // Multi-dimensional inline array\n"
+        "          points: [Point, 10]         // Array of structs\n"
+        "      })\n"
+        "      d = Data()\n"
+        "      d.matrix[1, 2] = 3.14         // Zero-copy multi-dimensional access!\n"
+        "      row = d.matrix[1]             // Returns a 1D sub-array view\n"
+        "      row[2] = 3.14                 // Modifies the exact same memory\n\n"
         "  6. Callbacks (C calling JC2)\n"
         "  ──────────────────────\n"
         "    You can pass JC2 functions to C as function pointers using `ffi.Callback`.\n"

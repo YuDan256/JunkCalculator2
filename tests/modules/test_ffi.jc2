@@ -135,3 +135,62 @@ test_ffi_real_call() = {
     }
 }
 test_ffi_real_call()
+
+test_ffi_complex_structs_and_arrays() = {
+    // 1. Anonymous Nested Structs
+    Nested = ffi.Struct({
+        inner: {a: "i32", b: "i32"},
+        val: "f64"
+    })
+    n = Nested()
+    n.inner.a = 10
+    n.inner.b = 20
+    n.val = 3.14
+    assert(n.inner.a == 10, "Nested struct a")
+    assert(n.inner.b == 20, "Nested struct b")
+    assert(abs(n.val - 3.14) < 1e-5, "Nested struct val")
+
+    // 2. Inline Arrays (1D)
+    ArrStruct = ffi.Struct({
+        data: "i32[5]"
+    })
+    a = ArrStruct()
+    assert(len(a.data) == 5, "Array len")
+    a.data[0] = 100
+    a.data[4] = 200
+    assert(a.data[0] == 100, "Array get 0")
+    assert(a.data[4] == 200, "Array get 4")
+
+    // 3. Inline Arrays (Multi-dimensional) & Sub-array views
+    MatStruct = ffi.Struct({
+        mat: "f32[3][3]"
+    })
+    m = MatStruct()
+    m.mat[1, 1] = 99.5
+    assert(abs(m.mat[1, 1] - 99.5) < 1e-5, "2D array get")
+    
+    row = m.mat[1]
+    assert(len(row) == 3, "Sub-array len")
+    assert(abs(row[1] - 99.5) < 1e-5, "Sub-array get")
+    
+    row[2] = 88.5
+    assert(abs(m.mat[1, 2] - 88.5) < 1e-5, "Sub-array modifies original")
+
+    // 4. Struct Arrays
+    Point = ffi.Struct({x: "i32", y: "i32"})
+    Poly = ffi.Struct({
+        points: [Point, 4]
+    })
+    poly = Poly()
+    poly.points[2].x = 42
+    poly.points[2].y = 84
+    assert(poly.points[2].x == 42, "Struct array modify x")
+    assert(poly.points[2].y == 84, "Struct array modify y")
+    
+    // 5. Array Slicing
+    slice_view = a.data[1:4]
+    assert(len(slice_view) == 3, "Slice len")
+    slice_view[0] = 777 // modifies a.data[1]
+    assert(a.data[1] == 777, "Slice modifies original")
+}
+test_ffi_complex_structs_and_arrays()

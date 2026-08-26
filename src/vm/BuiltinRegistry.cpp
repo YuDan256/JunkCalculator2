@@ -1193,6 +1193,76 @@ void BuiltinRegistry::registerMatrixOps() {
     };
     regMethod(VM::activeVM->matrixProto, "getElement", {"r", "c"}, getElementFn);
 
+    // 1D 索引读取（对应 setItem）；2D 矩阵返回第 i 行
+    auto getItemFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int i = static_cast<int>(std::round(args[0].asDouble()));
+        auto normIdx = [&](int n) { if (i < 0) i += n; if (i < 0 || i >= n) throw std::runtime_error("Runtime Error: getItem() index out of bounds."); };
+        if (self.isObjType(ObjType::REAL_MATRIX)) {
+            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
+            if (m.getRows() == 1) { normIdx(m.getCols()); return Value(m(0, i)); }
+            if (m.getCols() == 1) { normIdx(m.getRows()); return Value(m(i, 0)); }
+            normIdx(m.getRows());
+            return Value(m.getRow(i));
+        }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
+            if (m.getRows() == 1) { normIdx(m.getCols()); return Value(m(0, i)); }
+            if (m.getCols() == 1) { normIdx(m.getRows()); return Value(m(i, 0)); }
+            normIdx(m.getRows());
+            return Value(m.getRow(i));
+        }
+        if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto& m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
+            if (m.getRows() == 1) { normIdx(m.getCols()); return Value(m(0, i)); }
+            if (m.getCols() == 1) { normIdx(m.getRows()); return Value(m(i, 0)); }
+            normIdx(m.getRows());
+            return Value(m.getRow(i));
+        }
+        throw std::runtime_error("Type Error: getItem() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "getItem", {"i"}, getItemFn);
+
+    // 2D 切片读取（对应 setSlice）；切片返回视图（Matrix 零拷贝）
+    auto getSliceFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        Value srVal = args[0], scVal = args[1];
+        auto doSlice = [&](const auto& m) -> Value {
+            int rows = m.getRows(), cols = m.getCols();
+            auto parseIdx = [](const Value& v, int n, SliceInfo& si, bool& isSlice) -> int {
+                if (v.isSlice()) {
+                    si = static_cast<ObjSlice*>(v.asObj())->compute(n);
+                    isSlice = true;
+                    return 0;
+                }
+                int idx = static_cast<int>(std::round(v.asDouble()));
+                if (idx < 0) idx += n;
+                if (idx < 0 || idx >= n) throw std::runtime_error("Runtime Error: getSlice() index out of bounds.");
+                isSlice = false;
+                return idx;
+            };
+            SliceInfo srInfo, scInfo;
+            bool srIsSlice = false, scIsSlice = false;
+            int srScalar = parseIdx(srVal, rows, srInfo, srIsSlice);
+            int scScalar = parseIdx(scVal, cols, scInfo, scIsSlice);
+            if (!srIsSlice && !scIsSlice) {
+                return Value(m(srScalar, scScalar));
+            }
+            int rStart = srIsSlice ? srInfo.start : srScalar;
+            int rStep = srIsSlice ? srInfo.step : 1;
+            int rCount = srIsSlice ? srInfo.count : 1;
+            int cStart = scIsSlice ? scInfo.start : scScalar;
+            int cStep = scIsSlice ? scInfo.step : 1;
+            int cCount = scIsSlice ? scInfo.count : 1;
+            return Value(m.view(rStart, rStep, rCount, cStart, cStep, cCount));
+        };
+        if (self.isObjType(ObjType::REAL_MATRIX)) return doSlice(static_cast<ObjRealMatrix*>(self.asObj())->mat);
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return doSlice(static_cast<ObjComplexMatrix*>(self.asObj())->mat);
+        if (self.isObjType(ObjType::SYM_MATRIX)) return doSlice(static_cast<ObjSymMatrix*>(self.asObj())->mat);
+        throw std::runtime_error("Type Error: getSlice() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "getSlice", {"sr", "sc"}, getSliceFn);
+
     auto setElementFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
@@ -1235,41 +1305,75 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto setSliceFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        if (!args[0].isSlice()) throw std::runtime_error("Type Error: setSlice() expects a slice as the first argument.");
-        ObjSlice* sl = static_cast<ObjSlice*>(args[0].asObj());
-        Value val = args[1];
-        auto doSlice = [&](auto& m, auto toElem) {
-            int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
-            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: setSlice() on a 2D matrix.");
-            SliceInfo si = sl->compute(n);
-            auto setAt = [&](int idx, auto v) { if (m.getRows() == 1) m(0, idx) = v; else m(idx, 0) = v; };
-            if (val.isObjType(ObjType::LIST)) {
+        Value srVal = args[0], scVal = args[1], val = args[2];
+        auto doSlice = [&](auto& m, auto toElem, auto asMat) {
+            int rows = m.getRows(), cols = m.getCols();
+            
+            auto parseIdx = [](const Value& v, int n, SliceInfo& si, bool& isSlice) -> int {
+                if (v.isSlice()) {
+                    si = static_cast<ObjSlice*>(v.asObj())->compute(n);
+                    isSlice = true;
+                    return 0;
+                }
+                int idx = static_cast<int>(std::round(v.asDouble()));
+                if (idx < 0) idx += n;
+                if (idx < 0 || idx >= n) throw std::runtime_error("Runtime Error: setSlice() index out of bounds.");
+                isSlice = false;
+                return idx;
+            };
+            
+            SliceInfo srInfo, scInfo;
+            bool srIsSlice = false, scIsSlice = false;
+            int srScalar = parseIdx(srVal, rows, srInfo, srIsSlice);
+            int scScalar = parseIdx(scVal, cols, scInfo, scIsSlice);
+            
+            int dstR = srIsSlice ? srInfo.count : 1;
+            int dstC = scIsSlice ? scInfo.count : 1;
+            
+            auto setAt = [&](int r, int c, auto v) {
+                m(srIsSlice ? srInfo.start + r * srInfo.step : srScalar,
+                  scIsSlice ? scInfo.start + c * scInfo.step : scScalar) = v;
+            };
+            
+            if (val.isObjType(ObjType::REAL_MATRIX) || val.isObjType(ObjType::COMPLEX_MATRIX) || val.isObjType(ObjType::SYM_MATRIX)) {
+                auto src = asMat(val);
+                if (src.getRows() != dstR || src.getCols() != dstC)
+                    throw std::runtime_error("Runtime Error: setSlice() size mismatch.");
+                for (int r = 0; r < dstR; ++r)
+                    for (int c = 0; c < dstC; ++c)
+                        setAt(r, c, src(r, c));
+            } else if (val.isObjType(ObjType::LIST)) {
                 const auto& vec = static_cast<ObjList*>(val.asObj())->vec;
-                if (static_cast<int>(vec.size()) != si.count) throw std::runtime_error("Runtime Error: setSlice() size mismatch.");
-                for (int k = 0; k < si.count; ++k) setAt(si.start + k * si.step, toElem(vec[k]));
+                if (static_cast<int>(vec.size()) != dstR * dstC)
+                    throw std::runtime_error("Runtime Error: setSlice() size mismatch.");
+                for (int r = 0; r < dstR; ++r)
+                    for (int c = 0; c < dstC; ++c)
+                        setAt(r, c, toElem(vec[r * dstC + c]));
             } else {
                 auto sv = toElem(val);
-                for (int k = 0; k < si.count; ++k) setAt(si.start + k * si.step, sv);
+                for (int r = 0; r < dstR; ++r)
+                    for (int c = 0; c < dstC; ++c)
+                        setAt(r, c, sv);
             }
         };
         if (self.isObjType(ObjType::REAL_MATRIX)) {
             RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            doSlice(m, [](const Value& v) { return v.asDouble(); });
+            doSlice(m, [](const Value& v) { return v.asDouble(); }, [](const Value& v) { return v.asRealMatrix(); });
             return Value(m);
         }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
             ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            doSlice(m, [](const Value& v) { return v.asComplex(); });
+            doSlice(m, [](const Value& v) { return v.asComplex(); }, [](const Value& v) { return v.asComplexMatrix(); });
             return Value(m);
         }
         if (self.isObjType(ObjType::SYM_MATRIX)) {
             SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
-            doSlice(m, [](const Value& v) { return v.asSymbolic(); });
+            doSlice(m, [](const Value& v) { return v.asSymbolic(); }, [](const Value& v) { return v.asSymMatrix(); });
             return Value(m);
         }
         throw std::runtime_error("Type Error: setSlice() requires a matrix.");
     };
-    regMethod(VM::activeVM->matrixProto, "setSlice", {"s", "x"}, setSliceFn);
+    regMethod(VM::activeVM->matrixProto, "setSlice", {"sr", "sc", "v"}, setSliceFn);
 
     // 行列操作（简写宏化）
     #define ROW_COL_OP_PROTO(NAME, BODY) \

@@ -715,6 +715,12 @@
       "    A = [1, 2; 3, 4]            2×2 matrix",
       "    B = [1, 2, 3]               1×3 row vector",
       "    v = [1; 2; 3]               3×1 column vector",
+      "    L = @[1, 2, 3]              list (use @[] for lists)",
+      "    N = @[@[1, 2], @[3, 4]]     nested list",
+      "    ",
+      "    ★ `[]` builds a MATRIX, `@[]` builds a LIST:",
+      "      [1, 2, 3]    → realmatrix (1×3)      @[1, 2, 3]    → list",
+      "      [1, 2; 3, 4] → 2×2 matrix           @[1, 2; 3, 4] → list of lists",
       "    ",
       "    Elements may be expressions:  [sin(PI), 2*i; 0, 1]",
       "    Any complex element auto-promotes the whole matrix to complexmatrix.",
@@ -766,8 +772,10 @@
       "",
       "    A.getElement(r, c)         Function form of A[r,c]",
       "    A.setElement(r, c, val)    Return new matrix with element changed",
+      "    A.getItem(i)               Return 1D element (or row i of a 2D matrix)",
       "    A.setItem(i, val)          Return new matrix with 1D element changed",
-      "    A.setSlice(s, val)         Return new matrix with slice replaced",
+      "    A.getSlice(sr, sc)         Return sub-matrix A[sr, sc] (zero-copy view)",
+      "    A.setSlice(sr, sc, val)    Return new matrix with sub-matrix A[sr, sc] replaced",
       "",
       "  Row / Column Operations",
       "  ──────────────────────",
@@ -780,7 +788,7 @@
       "    To change a matrix, use the pure methods below and reassign:",
       "",
       "    Pure (returns a NEW matrix — reassign to keep):",
-      "      getElement / setElement / setItem / setSlice,",
+      "      getElement / setElement / getItem / setItem / getSlice / setSlice,",
       "      getR / getC / delR / delC,",
       "      swapR / swapC / multiR / multiC / addR / addC,",
       "      trans / ctrans / gauss / reshape,  hcat / vcat / blkdiag,",
@@ -789,7 +797,7 @@
       "    Reassign to keep the result:",
       "      A = A.swapR(0, 1)",
       "      A = A.setItem(0, 10)",
-      "      A = A.setSlice(1:3, [9, 9])",
+      "      A = A.setSlice(1:3, 0:3, [9, 9])",
       "",
       "  Concatenation & Block Matrix Assembly",
       "  ──────────────────────",
@@ -5467,15 +5475,25 @@
       "desc": "Returns a new matrix with the element at row r and column c set to val.",
       "examples": ["A.setElement(0, 1, 99)"]
     },
+    "getItem": {
+      "signature": "A.getItem(i)",
+      "desc": "Returns the 1D element at index i (row/column vector), or row i for a 2D matrix.",
+      "examples": ["A.getItem(0)"]
+    },
     "setItem": {
       "signature": "A.setItem(i, val)",
       "desc": "Returns a new matrix with the 1D element at index i set to val (row/column vector).",
       "examples": ["A.setItem(0, 99)"]
     },
+    "getSlice": {
+      "signature": "A.getSlice(sr, sc)",
+      "desc": "Returns the sub-matrix A[sr, sc] (slices or indices). Slices return zero-copy views.",
+      "examples": ["A.getSlice(1:3, 1:3)"]
+    },
     "setSlice": {
-      "signature": "A.setSlice(slice, val)",
-      "desc": "Returns a new matrix with the slice replaced by val (scalar or list).",
-      "examples": ["A.setSlice(1:3, [7, 8])"]
+      "signature": "A.setSlice(sr, sc, val)",
+      "desc": "Returns a new matrix with the sub-matrix A[sr, sc] replaced by val (scalar, matrix, or list).",
+      "examples": ["A.setSlice(1:3, 1:3, [9, 8; 7, 6])"]
     },
     "getR": {
       "signature": "A.getR(r)",

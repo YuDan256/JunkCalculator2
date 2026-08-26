@@ -2885,7 +2885,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         case ObjType::REAL_MATRIX: {
             auto om = static_cast<ObjRealMatrix*>(obj);
             if (om->has_cached_hash) return om->cached_hash;
-            const auto& raw = om->mat.rawData();
+            auto raw = om->mat.rawData();
             size_t sz = raw.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x2E6A8F1D4C3B7950ULL;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
@@ -2900,7 +2900,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         case ObjType::COMPLEX_MATRIX: {
             auto om = static_cast<ObjComplexMatrix*>(obj);
             if (om->has_cached_hash) return om->cached_hash;
-            const auto& raw = om->mat.rawData();
+            auto raw = om->mat.rawData();
             size_t sz = raw.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x4D7A1F8E2B5C6039ULL;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
@@ -2917,7 +2917,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         case ObjType::SYM_MATRIX: {
             auto om = static_cast<ObjSymMatrix*>(obj);
             if (om->has_cached_hash) return om->cached_hash;
-            const auto& raw = om->mat.rawData();
+            auto raw = om->mat.rawData();
             size_t sz = raw.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x9A2B3C4D5E6F7081ULL;
             for (size_t idx = 0; idx < raw.size(); ++idx) {

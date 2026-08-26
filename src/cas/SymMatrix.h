@@ -31,6 +31,9 @@ namespace jc {
         SymExpr& operator()(int row, int col);
         const SymExpr& operator()(int row, int col) const;
 
+        // 切片：SymMatrix 返回拷贝（符号矩阵不加 stride）
+        SymMatrix view(int rStart, int rStep, int rCount, int cStart, int cStep, int cCount) const;
+
         // --- 零等价探测器 ---
         // 专门用于矩阵消元、求逆时的安全零判定
         static bool isSymZero(const SymExpr& expr);

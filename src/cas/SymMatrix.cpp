@@ -32,6 +32,14 @@ namespace jc {
         throw std::out_of_range("SymMatrix Error: Index out of bounds.");
     }
 
+    SymMatrix SymMatrix::view(int rStart, int rStep, int rCount, int cStart, int cStep, int cCount) const {
+        SymMatrix result(rCount, cCount);
+        for (int i = 0; i < rCount; ++i)
+            for (int j = 0; j < cCount; ++j)
+                result(i, j) = (*this)(rStart + i * rStep, cStart + j * cStep);
+        return result;
+    }
+
     // ==========================================
     // 零等价探测器 (Zero Equivalence)
     // ==========================================

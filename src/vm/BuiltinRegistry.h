@@ -31,7 +31,7 @@ namespace helpers {
         if (v.isObjType(ObjType::REAL_MATRIX))
             return static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData();
         if (v.isObjType(ObjType::COMPLEX_MATRIX)) {
-            const auto& cd = static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData();
+            auto cd = static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData();
             std::vector<double> r(cd.size());
             for (size_t i = 0; i < cd.size(); ++i) {
                 if (std::abs(cd[i].imag) > 1e-15)
@@ -78,7 +78,7 @@ namespace helpers {
         if (v.isObjType(ObjType::REAL_MATRIX))
             return static_cast<ObjRealMatrix*>(v.asObj())->mat.rawData();
         if (v.isObjType(ObjType::COMPLEX_MATRIX)) {
-            const auto& cd = static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData();
+            auto cd = static_cast<ObjComplexMatrix*>(v.asObj())->mat.rawData();
             std::vector<double> r(cd.size());
             for (size_t i = 0; i < cd.size(); ++i) {
                 if (!Tol::isEq(cd[i].imag, 0.0))

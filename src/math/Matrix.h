@@ -6,6 +6,7 @@
 #include <cmath>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -20,66 +21,153 @@ namespace jc {
     private:
         int rows;
         int cols;
-        std::vector<T> data; // 极致连续的一维内存，装 T
+        int row_stride;   // 行步长（连续矩阵 == cols）
+        int col_stride;   // 列步长（连续矩阵 == 1）
+        int offset;       // data 起始偏移
+        std::shared_ptr<T[]> data; // 共享底层（视图共享同一块）
+
+        // 视图构造（内部：切片共享底层 buffer，零拷贝）
+        Matrix(std::shared_ptr<T[]> d, int r, int c, int rs, int cs, int off)
+            : rows(r), cols(c), row_stride(rs), col_stride(cs), offset(off), data(std::move(d)) {}
 
     public:
         // --- 构造函数 ---
-        Matrix(int r, int c) : rows(r), cols(c), data(r* c, T(0)) {}
+        Matrix(int r, int c) : rows(r), cols(c), row_stride(c), col_stride(1), offset(0),
+            data(std::make_shared<T[]>(static_cast<size_t>(r) * c)) {}
 
         Matrix(int r, int c, const std::vector<T>& flat_data)
-            : rows(r), cols(c), data(flat_data) {
+            : rows(r), cols(c), row_stride(c), col_stride(1), offset(0),
+              data(std::make_shared<T[]>(static_cast<size_t>(r) * c)) {
             if (flat_data.size() != static_cast<size_t>(r * c)) {
                 throw std::invalid_argument("Matrix Error: Data size does not match dimensions.");
             }
+            std::copy(flat_data.begin(), flat_data.end(), data.get());
         }
 
-        Matrix(T num) : rows(1), cols(1), data(1, num) {}
-        Matrix() : rows(0), cols(0), data() {}
+        Matrix(T num) : rows(1), cols(1), row_stride(1), col_stride(1), offset(0),
+            data(std::make_shared<T[]>(1)) { data[0] = num; }
+        Matrix() : rows(0), cols(0), row_stride(0), col_stride(1), offset(0), data(nullptr) {}
+
+        // 拷贝构造：物化成连续矩阵（连续源走 memcpy 快路径）
+        Matrix(const Matrix& other) : rows(other.rows), cols(other.cols),
+            row_stride(other.cols), col_stride(1), offset(0),
+            data(std::make_shared<T[]>(static_cast<size_t>(other.rows) * other.cols)) {
+            if (other.offset == 0 && other.row_stride == other.cols && other.col_stride == 1) {
+                std::copy(other.data.get(), other.data.get() + static_cast<size_t>(rows) * cols, data.get());
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        data[i * cols + j] = other(i, j);
+            }
+        }
+
+        // 拷贝赋值：物化成连续矩阵
+        Matrix& operator=(const Matrix& other) {
+            if (this == &other) return *this;
+            rows = other.rows; cols = other.cols;
+            row_stride = other.cols; col_stride = 1; offset = 0;
+            data = std::make_shared<T[]>(static_cast<size_t>(rows) * cols);
+            if (other.offset == 0 && other.row_stride == other.cols && other.col_stride == 1) {
+                std::copy(other.data.get(), other.data.get() + static_cast<size_t>(rows) * cols, data.get());
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        data[i * cols + j] = other(i, j);
+            }
+            return *this;
+        }
 
         // --- 基础访问 ---
         int getRows() const { return rows; }
         int getCols() const { return cols; }
         bool isNumber() const { return rows == 1 && cols == 1; }
 
+        // 是否连续（用于 rawData / 快路径判断）
+        bool isContiguous() const {
+            return offset == 0 && row_stride == cols && col_stride == 1;
+        }
+
+        // 切片视图：行 [rStart, rStep, rCount]，列 [cStart, cStep, cCount]
+        // 零拷贝共享底层 buffer；rStep/cStep 可为负（反向）
+        Matrix view(int rStart, int rStep, int rCount, int cStart, int cStep, int cCount) const {
+            return Matrix(data, rCount, cCount,
+                          row_stride * rStep, col_stride * cStep,
+                          offset + rStart * row_stride + cStart * col_stride);
+        }
+
         T& operator()(int row, int col) {
-            if (row >= 0 && row < rows && col >= 0 && col < cols) return data[row * cols + col];
+            if (row >= 0 && row < rows && col >= 0 && col < cols) return data[offset + row * row_stride + col * col_stride];
             throw std::out_of_range("Matrix Error: Index out of bounds.");
         }
 
         const T& operator()(int row, int col) const {
-            if (row >= 0 && row < rows && col >= 0 && col < cols) return data[row * cols + col];
+            if (row >= 0 && row < rows && col >= 0 && col < cols) return data[offset + row * row_stride + col * col_stride];
             throw std::out_of_range("Matrix Error: Index out of bounds.");
         }
 
         // ==== 惊艳的高速数学运算 (纯模板推导) ====
 
         Matrix operator+(const Matrix& other) const {
-            if (isNumber() && other.isNumber()) return Matrix(data[0] + other.data[0]);
+            if (isNumber() && other.isNumber()) return Matrix((*this)(0, 0) + other(0, 0));
             if (rows != other.rows || cols != other.cols) throw std::invalid_argument("Matrix Error: Dimensions mismatch (+).");
 
             Matrix result(rows, cols);
-            for (size_t i = 0; i < data.size(); ++i) result.data[i] = data[i] + other.data[i];
+            if (isContiguous() && other.isContiguous()) {
+                const T* a = data.get();
+                const T* b = other.data.get();
+                T* c = result.data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) c[i] = a[i] + b[i];
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result(i, j) = (*this)(i, j) + other(i, j);
+            }
             return result;
         }
 
         Matrix operator-(const Matrix& other) const {
-            if (isNumber() && other.isNumber()) return Matrix(data[0] - other.data[0]);
+            if (isNumber() && other.isNumber()) return Matrix((*this)(0, 0) - other(0, 0));
             if (rows != other.rows || cols != other.cols) throw std::invalid_argument("Matrix Error: Dimensions mismatch (-).");
 
             Matrix result(rows, cols);
-            for (size_t i = 0; i < data.size(); ++i) result.data[i] = data[i] - other.data[i];
+            if (isContiguous() && other.isContiguous()) {
+                const T* a = data.get();
+                const T* b = other.data.get();
+                T* c = result.data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) c[i] = a[i] - b[i];
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result(i, j) = (*this)(i, j) - other(i, j);
+            }
             return result;
         }
 
         Matrix operator-() const {
             Matrix result(rows, cols);
-            for (size_t i = 0; i < data.size(); ++i) result.data[i] = -data[i];
+            if (isContiguous()) {
+                const T* a = data.get();
+                T* c = result.data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) c[i] = -a[i];
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result(i, j) = -(*this)(i, j);
+            }
             return result;
         }
 
         Matrix operator*(T scalar) const {
             Matrix result(rows, cols);
-            for (size_t i = 0; i < data.size(); ++i) result.data[i] = data[i] * scalar;
+            if (isContiguous()) {
+                const T* a = data.get();
+                T* c = result.data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) c[i] = a[i] * scalar;
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result(i, j) = (*this)(i, j) * scalar;
+            }
             return result;
         }
 
@@ -91,20 +179,38 @@ namespace jc {
             // 对于泛型 T，如果 T 是 double，比较 0.0；如果是 Complex，比较它是否为零 (需确认 Complex 有 == 重载)
             if (scalar == T(0)) throw std::runtime_error("Matrix Error: Division by zero.");
             Matrix result(rows, cols);
-            for (size_t i = 0; i < data.size(); ++i) result.data[i] = data[i] / scalar;
+            if (isContiguous()) {
+                const T* a = data.get();
+                T* c = result.data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) c[i] = a[i] / scalar;
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result(i, j) = (*this)(i, j) / scalar;
+            }
             return result;
         }
 
         // 基础 O(N^3) 乘法 (i-k-j 缓存优化 + 稀疏跳跃)
+        // 用 raw pointer + stride 直接访问，连续矩阵与视图性能一致
         static Matrix multiplyBase(const Matrix& A, const Matrix& B) {
             Matrix result(A.rows, B.cols);
+            const T* a = A.data.get() + A.offset;
+            const T* b = B.data.get() + B.offset;
+            T* c = result.data.get();
+            int ars = A.row_stride, acs = A.col_stride;
+            int brs = B.row_stride, bcs = B.col_stride;
+            int cc = result.cols;
             for (int i = 0; i < A.rows; ++i) {
                 checkInterrupt();
+                const T* arow = a + i * ars;
+                T* crow = c + i * cc;
                 for (int k = 0; k < A.cols; ++k) {
-                    T r = A(i, k);
+                    T r = arow[k * acs];
                     if (isEssentiallyZero(r)) continue; // ★ 稀疏优化：若乘数为0，直接跳过整行遍历，大幅加速稀疏/对角矩阵
+                    const T* brow = b + k * brs;
                     for (int j = 0; j < B.cols; ++j) {
-                        result(i, j) = result(i, j) + r * B(k, j);
+                        crow[j] = crow[j] + r * brow[j * bcs];
                     }
                 }
             }
@@ -322,8 +428,8 @@ namespace jc {
 
         // 智能矩阵乘法入口
         Matrix operator*(const Matrix& other) const {
-            if (rows == 1 && cols == 1) return other * data[0];
-            if (other.rows == 1 && other.cols == 1) return (*this) * other.data[0];
+            if (rows == 1 && cols == 1) return other * (*this)(0, 0);
+            if (other.rows == 1 && other.cols == 1) return (*this) * other(0, 0);
             if (cols != other.rows) throw std::invalid_argument("Matrix Error: Cols must equal rows (*).");
 
             int minDim = std::min({rows, cols, other.cols});
@@ -333,35 +439,42 @@ namespace jc {
             if (minDim > 64 && maxDim < minDim * 4) {
                 int n = maxDim;
 
+                // Strassen 假设 col_stride == 1（行内连续）；列步长视图先物化
+                const Matrix* A = this;
+                const Matrix* B = &other;
+                Matrix A_mat, B_mat;
+                if (col_stride != 1) { A_mat = Matrix(*this); A = &A_mat; }
+                if (other.col_stride != 1) { B_mat = Matrix(other); B = &B_mat; }
+
                 // ★ 延迟分配：不要无条件初始化 n*n 的矩阵，否则会破坏方阵的零拷贝初衷
                 Matrix A_pad, B_pad;
-                bool needPadA = (rows != n || cols != n);
-                bool needPadB = (other.rows != n || other.cols != n);
+                bool needPadA = (A->rows != n || A->cols != n);
+                bool needPadB = (B->rows != n || B->cols != n);
                 
-                const T* ptrA = data.data();
-                int strideA = cols;
+                const T* ptrA = A->data.get() + A->offset;
+                int strideA = A->row_stride;
                 if (needPadA) {
                     A_pad = Matrix(n, n);
-                    for (int i = 0; i < rows; ++i)
-                        for (int j = 0; j < cols; ++j)
-                            A_pad(i, j) = (*this)(i, j);
-                    ptrA = A_pad.data.data();
+                    for (int i = 0; i < A->rows; ++i)
+                        for (int j = 0; j < A->cols; ++j)
+                            A_pad(i, j) = (*A)(i, j);
+                    ptrA = A_pad.data.get();
                     strideA = n;
                 }
 
-                const T* ptrB = other.data.data();
-                int strideB = other.cols;
+                const T* ptrB = B->data.get() + B->offset;
+                int strideB = B->row_stride;
                 if (needPadB) {
                     B_pad = Matrix(n, n);
-                    for (int i = 0; i < other.rows; ++i)
-                        for (int j = 0; j < other.cols; ++j)
-                            B_pad(i, j) = other(i, j);
-                    ptrB = B_pad.data.data();
+                    for (int i = 0; i < B->rows; ++i)
+                        for (int j = 0; j < B->cols; ++j)
+                            B_pad(i, j) = (*B)(i, j);
+                    ptrB = B_pad.data.get();
                     strideB = n;
                 }
 
                 Matrix C_pad(n, n);
-                strassenView(ptrA, strideA, ptrB, strideB, C_pad.data.data(), n, n, 0);
+                strassenView(ptrA, strideA, ptrB, strideB, C_pad.data.get(), n, n, 0);
 
                 if (rows == n && other.cols == n) {
                     return C_pad;
@@ -718,9 +831,18 @@ namespace jc {
         // [Frobenius 范数] Norm
         double norm() const {
             double result = 0;
-            for (size_t i = 0; i < data.size(); ++i) {
-                double m = magnitudeOf(data[i]);
-                result += m * m;
+            if (isContiguous()) {
+                const T* a = data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) {
+                    double m = magnitudeOf(a[i]);
+                    result += m * m;
+                }
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j) {
+                        double m = magnitudeOf((*this)(i, j));
+                        result += m * m;
+                    }
             }
             return std::sqrt(result);
         }
@@ -857,8 +979,12 @@ namespace jc {
         Matrix<T> reshape(int newRows, int newCols) const {
             if (newRows * newCols != rows * cols) throw std::invalid_argument("Matrix Error: Element count mismatch in reshape.");
             Matrix<T> result(newRows, newCols);
-            for (int idx = 0; idx < rows * cols; ++idx) {
-                result.data[idx] = data[idx]; // 一维底层直接拷贝！极速！
+            if (isContiguous()) {
+                std::copy(data.get(), data.get() + static_cast<size_t>(rows) * cols, result.data.get());
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result.data[i * cols + j] = (*this)(i, j);
             }
             return result;
         }
@@ -870,7 +996,7 @@ namespace jc {
         // [全 1 矩阵]
         static Matrix<T> ones(int r, int c) {
             Matrix<T> result(r, c);
-            for (auto& val : result.data) val = T(1);
+            for (size_t i = 0; i < static_cast<size_t>(r) * c; ++i) result.data[i] = T(1);
             return result;
         }
 
@@ -882,14 +1008,28 @@ namespace jc {
         // [元素求和]
         T sum() const {
             T result = T(0);
-            for (const auto& val : data) result = result + val;
+            if (isContiguous()) {
+                const T* a = data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) result = result + a[i];
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result = result + (*this)(i, j);
+            }
             return result;
         }
 
         // [元素求积]
         T product() const {
             T result = T(1);
-            for (const auto& val : data) result = result * val;
+            if (isContiguous()) {
+                const T* a = data.get();
+                for (size_t i = 0; i < static_cast<size_t>(rows) * cols; ++i) result = result * a[i];
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result = result * (*this)(i, j);
+            }
             return result;
         }
 
@@ -974,8 +1114,18 @@ namespace jc {
             return norm() * inverse().norm();
         }
 
-        // 用于外部访问底层数据的只读接口（方便序列化等）
-        const std::vector<T>& rawData() const { return data; }
+        // 用于外部访问底层数据的只读接口（按行主序物化成连续 vector）
+        std::vector<T> rawData() const {
+            std::vector<T> out(static_cast<size_t>(rows) * cols);
+            if (isContiguous()) {
+                std::copy(data.get(), data.get() + static_cast<size_t>(rows) * cols, out.begin());
+            } else {
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        out[static_cast<size_t>(i) * cols + j] = (*this)(i, j);
+            }
+            return out;
+        }
 
         // =================================================================================
 // 矩阵泛函引擎 (Matrix Transcendental Functions)

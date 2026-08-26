@@ -5402,23 +5402,13 @@ Value VM::run(int targetFrameDepth) {
                                     return Value(MatType(1, m.getCols(), row));
                                 }
                             } else {
-                                using ElemType = std::decay_t<decltype(m(0,0))>;
-                                std::vector<ElemType> flat;
+                                // 切片：返回视图（Matrix<T> 零拷贝，SymMatrix 拷贝）
                                 if (m.getRows() == 1) {
-                                    flat.reserve(range.sliceInfo.count);
-                                    for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(0, range.sliceInfo.start + i * range.sliceInfo.step));
-                                    return Value(MatType(1, range.sliceInfo.count, flat));
+                                    return Value(m.view(0, 1, 1, range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count));
                                 } else if (m.getCols() == 1) {
-                                    flat.reserve(range.sliceInfo.count);
-                                    for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(range.sliceInfo.start + i * range.sliceInfo.step, 0));
-                                    return Value(MatType(range.sliceInfo.count, 1, flat));
+                                    return Value(m.view(range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count, 0, 1, 1));
                                 } else {
-                                    flat.reserve(range.sliceInfo.count * m.getCols());
-                                    for (int i = 0; i < range.sliceInfo.count; ++i) {
-                                        int r = range.sliceInfo.start + i * range.sliceInfo.step;
-                                        for (int j = 0; j < m.getCols(); ++j) flat.push_back(m(r, j));
-                                    }
-                                    return Value(MatType(range.sliceInfo.count, m.getCols(), flat));
+                                    return Value(m.view(range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count, 0, 1, m.getCols()));
                                 }
                             }
                         };
@@ -5578,7 +5568,6 @@ Value VM::run(int targetFrameDepth) {
                     Value colIdx = args[1];
                     if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         auto processMatGet2D = [&](const auto& m) -> Value {
-                            using MatType = std::decay_t<decltype(m)>;
                             auto rRange = rowIdx.parseIndex(m.getRows(), noThrow);
                             auto cRange = colIdx.parseIndex(m.getCols(), noThrow);
                             
@@ -5587,33 +5576,11 @@ Value VM::run(int targetFrameDepth) {
                             if (!rRange.isSlice && !cRange.isSlice) {
                                 return Value(m(rRange.scalarIdx, cRange.scalarIdx));
                             } else if (!rRange.isSlice && cRange.isSlice) {
-                                using ElemType = std::decay_t<decltype(m(0,0))>;
-                                std::vector<ElemType> flat;
-                                flat.reserve(cRange.sliceInfo.count);
-                                for (int j = 0; j < cRange.sliceInfo.count; ++j) {
-                                    flat.push_back(m(rRange.scalarIdx, cRange.sliceInfo.start + j * cRange.sliceInfo.step));
-                                }
-                                return Value(MatType(1, cRange.sliceInfo.count, flat));
+                                return Value(m.view(rRange.scalarIdx, 1, 1, cRange.sliceInfo.start, cRange.sliceInfo.step, cRange.sliceInfo.count));
                             } else if (rRange.isSlice && !cRange.isSlice) {
-                                using ElemType = std::decay_t<decltype(m(0,0))>;
-                                std::vector<ElemType> flat;
-                                flat.reserve(rRange.sliceInfo.count);
-                                for (int i = 0; i < rRange.sliceInfo.count; ++i) {
-                                    flat.push_back(m(rRange.sliceInfo.start + i * rRange.sliceInfo.step, cRange.scalarIdx));
-                                }
-                                return Value(MatType(rRange.sliceInfo.count, 1, flat));
+                                return Value(m.view(rRange.sliceInfo.start, rRange.sliceInfo.step, rRange.sliceInfo.count, cRange.scalarIdx, 1, 1));
                             } else {
-                                using ElemType = std::decay_t<decltype(m(0,0))>;
-                                std::vector<ElemType> flat;
-                                flat.reserve(rRange.sliceInfo.count * cRange.sliceInfo.count);
-                                for (int i = 0; i < rRange.sliceInfo.count; ++i) {
-                                    int r = rRange.sliceInfo.start + i * rRange.sliceInfo.step;
-                                    for (int j = 0; j < cRange.sliceInfo.count; ++j) {
-                                        int c = cRange.sliceInfo.start + j * cRange.sliceInfo.step;
-                                        flat.push_back(m(r, c));
-                                    }
-                                }
-                                return Value(MatType(rRange.sliceInfo.count, cRange.sliceInfo.count, flat));
+                                return Value(m.view(rRange.sliceInfo.start, rRange.sliceInfo.step, rRange.sliceInfo.count, cRange.sliceInfo.start, cRange.sliceInfo.step, cRange.sliceInfo.count));
                             }
                         };
                         try {
@@ -10323,23 +10290,13 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                         return Value(MatType(1, m.getCols(), row));
                     }
                 } else {
-                    using ElemType = std::decay_t<decltype(m(0,0))>;
-                    std::vector<ElemType> flat;
+                    // 切片：返回视图（Matrix<T> 零拷贝，SymMatrix 拷贝）
                     if (m.getRows() == 1) {
-                        flat.reserve(range.sliceInfo.count);
-                        for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(0, range.sliceInfo.start + i * range.sliceInfo.step));
-                        return Value(MatType(1, range.sliceInfo.count, flat));
+                        return Value(m.view(0, 1, 1, range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count));
                     } else if (m.getCols() == 1) {
-                        flat.reserve(range.sliceInfo.count);
-                        for (int i = 0; i < range.sliceInfo.count; ++i) flat.push_back(m(range.sliceInfo.start + i * range.sliceInfo.step, 0));
-                        return Value(MatType(range.sliceInfo.count, 1, flat));
+                        return Value(m.view(range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count, 0, 1, 1));
                     } else {
-                        flat.reserve(range.sliceInfo.count * m.getCols());
-                        for (int i = 0; i < range.sliceInfo.count; ++i) {
-                            int r = range.sliceInfo.start + i * range.sliceInfo.step;
-                            for (int j = 0; j < m.getCols(); ++j) flat.push_back(m(r, j));
-                        }
-                        return Value(MatType(range.sliceInfo.count, m.getCols(), flat));
+                        return Value(m.view(range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count, 0, 1, m.getCols()));
                     }
                 }
             };
@@ -10495,7 +10452,6 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
         Value colIdx = args[1];
         if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
             auto processMatGet2D = [&](const auto& m) -> Value {
-                using MatType = std::decay_t<decltype(m)>;
                 auto rRange = rowIdx.parseIndex(m.getRows(), noThrow != 0);
                 auto cRange = colIdx.parseIndex(m.getCols(), noThrow != 0);
                 
@@ -10504,33 +10460,11 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                 if (!rRange.isSlice && !cRange.isSlice) {
                     return Value(m(rRange.scalarIdx, cRange.scalarIdx));
                 } else if (!rRange.isSlice && cRange.isSlice) {
-                    using ElemType = std::decay_t<decltype(m(0,0))>;
-                    std::vector<ElemType> flat;
-                    flat.reserve(cRange.sliceInfo.count);
-                    for (int j = 0; j < cRange.sliceInfo.count; ++j) {
-                        flat.push_back(m(rRange.scalarIdx, cRange.sliceInfo.start + j * cRange.sliceInfo.step));
-                    }
-                    return Value(MatType(1, cRange.sliceInfo.count, flat));
+                    return Value(m.view(rRange.scalarIdx, 1, 1, cRange.sliceInfo.start, cRange.sliceInfo.step, cRange.sliceInfo.count));
                 } else if (rRange.isSlice && !cRange.isSlice) {
-                    using ElemType = std::decay_t<decltype(m(0,0))>;
-                    std::vector<ElemType> flat;
-                    flat.reserve(rRange.sliceInfo.count);
-                    for (int i = 0; i < rRange.sliceInfo.count; ++i) {
-                        flat.push_back(m(rRange.sliceInfo.start + i * rRange.sliceInfo.step, cRange.scalarIdx));
-                    }
-                    return Value(MatType(rRange.sliceInfo.count, 1, flat));
+                    return Value(m.view(rRange.sliceInfo.start, rRange.sliceInfo.step, rRange.sliceInfo.count, cRange.scalarIdx, 1, 1));
                 } else {
-                    using ElemType = std::decay_t<decltype(m(0,0))>;
-                    std::vector<ElemType> flat;
-                    flat.reserve(rRange.sliceInfo.count * cRange.sliceInfo.count);
-                    for (int i = 0; i < rRange.sliceInfo.count; ++i) {
-                        int r = rRange.sliceInfo.start + i * rRange.sliceInfo.step;
-                        for (int j = 0; j < cRange.sliceInfo.count; ++j) {
-                            int c = cRange.sliceInfo.start + j * cRange.sliceInfo.step;
-                            flat.push_back(m(r, c));
-                        }
-                    }
-                    return Value(MatType(rRange.sliceInfo.count, cRange.sliceInfo.count, flat));
+                    return Value(m.view(rRange.sliceInfo.start, rRange.sliceInfo.step, rRange.sliceInfo.count, cRange.sliceInfo.start, cRange.sliceInfo.step, cRange.sliceInfo.count));
                 }
             };
             if (obj.isObjType(ObjType::REAL_MATRIX)) result = processMatGet2D(static_cast<ObjRealMatrix*>(obj.asObj())->mat);

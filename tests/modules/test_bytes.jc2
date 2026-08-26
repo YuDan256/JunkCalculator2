@@ -35,3 +35,47 @@ test_bytes_out_of_bounds() = {
     }
 }
 test_bytes_out_of_bounds()
+
+test_bytes_hex() = {
+    b = bytes.pack([255, 0, 170])
+    hex_str = b.toHex()
+    assert(hex_str == "ff00aa", "toHex failed")
+    
+    b2 = bytes.fromHex("ff00aa")
+    assert(b2.len() == 3, "fromHex len failed")
+    assert(b2.get(0, "u8") == 255, "fromHex data failed")
+    assert(b2.get(2, "u8") == 170, "fromHex data failed")
+}
+test_bytes_hex()
+
+test_bytes_base64() = {
+    b = bytes.pack([72, 101, 108, 108, 111]) // "Hello"
+    b64_str = b.toBase64()
+    assert(b64_str == "SGVsbG8=", "toBase64 failed")
+    
+    b2 = bytes.fromBase64("SGVsbG8=")
+    assert(b2.len() == 5, "fromBase64 len failed")
+    assert(b2.get(0, "str", 5) == "Hello", "fromBase64 data failed")
+}
+test_bytes_base64()
+
+test_bytes_view() = {
+    b = bytes.pack([10, 20, 30, 40, 50])
+    v = b.view(1, 3)
+    assert(v.len() == 3, "view len failed")
+    assert(v.get(0, "u8") == 20, "view read failed")
+    assert(v.get(2, "u8") == 40, "view read failed")
+    
+    // Modify view, check original
+    v.set(1, 99, "u8")
+    assert(b.get(2, "u8") == 99, "view write to original failed")
+    
+    // Out of bounds view
+    try {
+        b.view(4, 5)
+        assert(false, "Should throw out of bounds error for view")
+    } catch (e) {
+        assert("out of bounds" in e.message, "Wrong error message thrown for view")
+    }
+}
+test_bytes_view()

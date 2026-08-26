@@ -1,6 +1,7 @@
 #include "../jc2_extension_cpp.h"
 #include <vector>
 #include <cstdint>
+#include <memory>
 #include <fstream>
 #include <stdexcept>
 #include <cstring>
@@ -16,7 +17,9 @@ static std::filesystem::path to_path(const std::string& utf8_str) {
 static jc2::Class* g_bytesClass = nullptr;
 
 struct ByteBufferContext {
-    std::vector<uint8_t> data;
+    std::shared_ptr<std::vector<uint8_t>> shared_data;
+    uint8_t* view_data;
+    size_t view_size;
     size_t pos = 0;
 };
 
@@ -29,11 +32,22 @@ static ByteBufferContext* getBuf(const jc2::Value& val) {
 
 static jc2::Value makeBytesInstance(std::vector<uint8_t> data) {
     jc2::Instance inst(*g_bytesClass);
-    auto ptr = new ByteBufferContext{std::move(data), 0};
+    auto shared = std::make_shared<std::vector<uint8_t>>(std::move(data));
+    auto ptr = new ByteBufferContext{shared, shared->data(), shared->size(), 0};
     inst.set_native_data(ptr, [](void* p) {
         delete static_cast<ByteBufferContext*>(p);
     });
-    inst.set_buffer_data(ptr->data.data(), ptr->data.size());
+    inst.set_buffer_data(ptr->view_data, ptr->view_size);
+    return inst;
+}
+
+static jc2::Value makeBytesView(std::shared_ptr<std::vector<uint8_t>> shared, uint8_t* view_data, size_t view_size) {
+    jc2::Instance inst(*g_bytesClass);
+    auto ptr = new ByteBufferContext{std::move(shared), view_data, view_size, 0};
+    inst.set_native_data(ptr, [](void* p) {
+        delete static_cast<ByteBufferContext*>(p);
+    });
+    inst.set_buffer_data(ptr->view_data, ptr->view_size);
     return inst;
 }
 
@@ -58,11 +72,22 @@ static std::vector<double> extractDS(const jc2::Value& v, const std::string& f) 
     return {};
 }
 
+struct BufWrapper {
+    uint8_t* d;
+    size_t s;
+    uint8_t* data() const { return d; }
+    size_t size() const { return s; }
+    uint8_t* begin() const { return d; }
+    uint8_t* end() const { return d + s; }
+    uint8_t& operator[](size_t i) { return d[i]; }
+    const uint8_t& operator[](size_t i) const { return d[i]; }
+};
+
 #define METHOD(name) JC2_ValueHandle bytes_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 #define GET_SELF \
     (void)argc; \
     auto ctx = getBuf(jc2::Value(argv[0])); \
-    auto& buf = ctx->data; \
+    BufWrapper buf{ctx->view_data, ctx->view_size}; \
     auto& pos = ctx->pos; \
     (void)buf; \
     (void)pos
@@ -165,7 +190,6 @@ METHOD(get) {
     else if (type == "f32") { float    v; readMem(&v, 4); return jc2::Value(static_cast<double>(v)).get_handle(); }
     else if (type == "f64") { double   v; readMem(&v, 8); return jc2::Value(v).get_handle(); }
     else jc2::throw_error("Buffer Error: Unknown format type '" + type + "'.");
-    return jc2::Value().get_handle();
 }
 
 METHOD(len) {
@@ -183,6 +207,20 @@ METHOD(toHex) {
         res.push_back(hex_chars[b & 0x0F]);
     }
     return jc2::Value(res).get_handle();
+}
+
+METHOD(view) {
+    GET_SELF;
+    if (argc < 2) jc2::throw_error("Type Error: view expects at least a start offset.");
+    size_t start = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
+    size_t len = buf.size() > start ? buf.size() - start : 0;
+    if (argc >= 3) {
+        len = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
+    }
+    if (start > buf.size() || start + len > buf.size()) {
+        jc2::throw_error("Buffer Error: View out of bounds.");
+    }
+    return makeBytesView(ctx->shared_data, buf.data() + start, len).get_handle();
 }
 
 METHOD(toBase64) {
@@ -284,7 +322,6 @@ FUNC(fromHex) {
             if (c >= 'a' && c <= 'f') return c - 'a' + 10;
             if (c >= 'A' && c <= 'F') return c - 'A' + 10;
             jc2::throw_error("Value Error: Invalid hex character.");
-            return 0;
         };
         buf.push_back((char2int(s[i]) << 4) | char2int(s[i+1]));
     }
@@ -323,7 +360,6 @@ FUNC(readFile) {
         return makeBytesInstance(std::move(buffer)).get_handle();
     }
     jc2::throw_error("IO Error: Failed to read file.");
-    return jc2::Value().get_handle();
 }
 
 int jc2_init(jc2::Module& mod) {
@@ -339,6 +375,7 @@ int jc2_init(jc2::Module& mod) {
     g_bytesClass->bind_method("length", bytes_len, 0, 0, false);
     g_bytesClass->bind_method("toHex", bytes_toHex, 0, 0, false);
     g_bytesClass->bind_method("toBase64", bytes_toBase64, 0, 0, false);
+    g_bytesClass->bind_method("view", bytes_view, 1, 2, false, {"start", "len"});
     
     g_bytesClass->bind_method("seek", bytes_seek, 1, 1, false, {"pos"});
     g_bytesClass->bind_method("skip", bytes_skip, 1, 1, false, {"n"});
@@ -387,7 +424,8 @@ int jc2_init(jc2::Module& mod) {
         "    buf.save(path)              Flushes binary buffer to disk.\n"
         "    buf.len()                   Get the total size of the buffer in bytes.\n"
         "    buf.toHex()                 Returns the buffer contents as a Hex string.\n"
-        "    buf.toBase64()              Returns the buffer contents as a Base64 string.\n\n"
+        "    buf.toBase64()              Returns the buffer contents as a Base64 string.\n"
+        "    buf.view(start, [len])      Creates a zero-copy memory view of the buffer.\n\n"
         "  Cursor & State Control\n"
         "  ──────────────────────\n"
         "    buf.tell()                  Returns current cursor position.\n"
@@ -428,6 +466,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("bytes.toBase64", "buf.toBase64()", "Encodes the buffer contents into a Base64 string.", "buf.toBase64()");
     mod.register_function_help("bytes.fromHex", "bytes.fromHex(str)", "Decodes a hexadecimal string into a new byte buffer.", "bytes.fromHex(\"FF00AA\")");
     mod.register_function_help("bytes.fromBase64", "bytes.fromBase64(str)", "Decodes a Base64 string into a new byte buffer.", "bytes.fromBase64(\"SGVsbG8=\")");
+    mod.register_function_help("bytes.view", "buf.view(start, [len])", "Creates a zero-copy memory view of the buffer. Modifying the view modifies the original buffer.", "buf.view(4, 10)");
 
     return 0;
 }

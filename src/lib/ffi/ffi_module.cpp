@@ -585,7 +585,6 @@ JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
     (void)ctx; (void)user_data;
     if (argc < 2) {
         throw_error("ffi.readMemory requires address and type.");
-        return Value().get_handle();
     }
     uint64_t addr = 0;
     size_t bsize = 0;
@@ -598,7 +597,6 @@ JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
         t = parseType(Value(argv[1]));
     } catch (const std::exception& e) {
         throw_error(e.what());
-        return Value().get_handle();
     }
     return read_memory(reinterpret_cast<const uint8_t*>(addr), t).get_handle();
 }
@@ -607,7 +605,6 @@ JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* a
     (void)ctx; (void)user_data;
     if (argc < 3) {
         throw_error("ffi.writeMemory requires address, type, and value.");
-        return Value().get_handle();
     }
     uint64_t addr = 0;
     size_t bsize = 0;
@@ -620,7 +617,6 @@ JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* a
         t = parseType(Value(argv[1]));
     } catch (const std::exception& e) {
         throw_error(e.what());
-        return Value().get_handle();
     }
     write_memory(reinterpret_cast<uint8_t*>(addr), t, Value(argv[2]));
     return Value().get_handle();
@@ -630,13 +626,11 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
     (void)ctx; (void)user_data;
     if (argc < 2) {
         throw_error("ffi.Callback requires func, ret_type, and [arg_types...].");
-        return Value().get_handle();
     }
     
     Value func(argv[0]);
     if (!func.is_function()) {
         throw_error("FFI Error: First argument must be a function.");
-        return Value().get_handle();
     }
     
     FFITypeDesc ret_type;
@@ -644,7 +638,6 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
         ret_type = parseType(Value(argv[1]));
     } catch (const std::exception& e) {
         throw_error(e.what());
-        return Value().get_handle();
     }
     
     std::vector<FFITypeDesc> arg_types;
@@ -653,12 +646,10 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
             FFITypeDesc t = parseType(Value(argv[i]));
             if (t.type == FFIType::VARIADIC) {
                 throw_error("FFI Error: Variadic arguments not supported in callbacks.");
-                return Value().get_handle();
             }
             arg_types.push_back(t);
         } catch (const std::exception& e) {
             throw_error(e.what());
-            return Value().get_handle();
         }
     }
     
@@ -691,7 +682,6 @@ JC2_ValueHandle struct_layout_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle
     (void)ctx; (void)user_data;
     if (argc < 1 || !Value(argv[0]).is_dict()) {
         throw_error("ffi.Struct requires a dict.");
-        return Value().get_handle();
     }
     Dict d(argv[0]);
     StructLayoutData* layout = new StructLayoutData();
@@ -710,7 +700,6 @@ JC2_ValueHandle struct_layout_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle
         } catch (const std::exception& e) {
             delete layout;
             throw_error(e.what());
-            return Value().get_handle();
         }
     }
     if (layout->align > 0) {
@@ -745,7 +734,6 @@ JC2_ValueHandle struct_inst_getattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
         }
     }
     throw_error("Struct has no field '" + key + "'.");
-    return Value().get_handle();
 }
 
 JC2_ValueHandle struct_inst_setattr(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -761,12 +749,10 @@ JC2_ValueHandle struct_inst_setattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
                 return Value().get_handle();
             } catch (const std::exception& e) {
                 throw_error(e.what());
-                return Value().get_handle();
             }
         }
     }
     throw_error("Struct has no field '" + key + "'.");
-    return Value().get_handle();
 }
 
 JC2_ValueHandle struct_inst_str(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -788,13 +774,11 @@ JC2_ValueHandle lib_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     (void)user_data;
     if (argc < 1 || !Value(argv[0]).is_string()) {
         throw_error("FFILibrary requires a string path.");
-        return Value().get_handle();
     }
     std::string path = Value(argv[0]).as_string();
     HMODULE handle = LoadLibraryA(path.c_str());
     if (!handle) {
         throw_error("FFI Error: Failed to load library '" + path + "'.");
-        return Value().get_handle();
     }
     
     Instance inst(*g_libClass);
@@ -814,20 +798,17 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
     (void)user_data;
     if (argc < 3) {
         throw_error("FFILibrary.bind requires func_name and ret_type.");
-        return Value().get_handle();
     }
     Instance self(argv[0]);
     LibraryData* data = self.get_native_data<LibraryData>();
     if (!data || !data->handle) {
         throw_error("FFI Error: Invalid library handle.");
-        return Value().get_handle();
     }
     
     std::string func_name = Value(argv[1]).as_string();
     void* func_ptr = (void*)GetProcAddress(data->handle, func_name.c_str());
     if (!func_ptr) {
         throw_error("FFI Error: Function '" + func_name + "' not found.");
-        return Value().get_handle();
     }
     
     FFITypeDesc ret_type;
@@ -835,7 +816,6 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
         ret_type = parseType(Value(argv[2]));
     } catch (const std::exception& e) {
         throw_error(e.what());
-        return Value().get_handle();
     }
     
     std::vector<FFITypeDesc> arg_types;
@@ -846,7 +826,6 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
             if (t.type == FFIType::VARIADIC) {
                 if (i != argc - 1) {
                     throw_error("FFI Error: '...' must be the last argument type.");
-                    return Value().get_handle();
                 }
                 is_variadic = true;
             } else {
@@ -854,7 +833,6 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
             }
         } catch (const std::exception& e) {
             throw_error(e.what());
-            return Value().get_handle();
         }
     }
     
@@ -875,19 +853,16 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     FunctionData* data = self.get_native_data<FunctionData>();
     if (!data || !data->func_ptr) {
         throw_error("FFI Error: Invalid function handle.");
-        return Value().get_handle();
     }
     
     size_t provided_args = argc - 1;
     if (data->is_variadic) {
         if (provided_args < data->arg_types.size()) {
             throw_error("FFI Error: Not enough arguments for variadic function. Expected at least " + std::to_string(data->arg_types.size()) + ".");
-            return Value().get_handle();
         }
     } else {
         if (provided_args != data->arg_types.size()) {
             throw_error("FFI Error: Argument count mismatch. Expected " + std::to_string(data->arg_types.size()) + ", got " + std::to_string(provided_args) + ".");
-            return Value().get_handle();
         }
     }
     
@@ -901,7 +876,6 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
         return result.get_handle();
     } catch (const std::exception& e) {
         throw_error(e.what());
-        return Value().get_handle();
     }
 }
 

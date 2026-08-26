@@ -754,13 +754,8 @@ namespace jc {
 
         // [7] 矩阵转置 (Transpose)
         Matrix<T> transpose() const {
-            Matrix<T> result(cols, rows);
-            for (int i = 0; i < rows; i++) {
-                for (int j = 0; j < cols; j++) {
-                    result(j, i) = (*this)(i, j);
-                }
-            }
-            return result;
+            // 零拷贝视图：交换行/列步长（转置布局 = 列主序）
+            return Matrix(data, cols, rows, col_stride, row_stride, offset);
         }
         // [8] 逆矩阵 (Inverse) - 拼凑满配高斯-约当算子的最经典算法！
         Matrix<T> inverse() const {
@@ -933,17 +928,15 @@ namespace jc {
         // [获取某一行] 返回 1×cols 矩阵
         Matrix<T> getRow(int row) const {
             if (row < 0 || row >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
-            Matrix<T> result(1, cols);
-            for (int j = 0; j < cols; ++j) result(0, j) = (*this)(row, j);
-            return result;
+            // 零拷贝视图：单行切片
+            return Matrix(data, 1, cols, row_stride, col_stride, offset + row * row_stride);
         }
 
         // [获取某一列] 返回 rows×1 矩阵
         Matrix<T> getCol(int col) const {
             if (col < 0 || col >= cols) throw std::out_of_range("Matrix Error: Column index out of bounds.");
-            Matrix<T> result(rows, 1);
-            for (int i = 0; i < rows; ++i) result(i, 0) = (*this)(i, col);
-            return result;
+            // 零拷贝视图：单列切片
+            return Matrix(data, rows, 1, row_stride, col_stride, offset + col * col_stride);
         }
 
         // [删除某一行] 返回 (rows-1)×cols 矩阵
@@ -1259,11 +1252,17 @@ namespace jc {
 
         // 共轭转置 (Hermitian Transpose)
         Matrix<T> conjugateTranspose() const {
-            Matrix<T> result(cols, rows);
-            for (int i = 0; i < rows; ++i)
-                for (int j = 0; j < cols; ++j)
-                    result(j, i) = conjugateOf((*this)(i, j));
-            return result;
+            if constexpr (std::is_same_v<T, double>) {
+                // double 的共轭转置 = 转置，零拷贝视图
+                return Matrix(data, cols, rows, col_stride, row_stride, offset);
+            } else {
+                // Complex 需要共轭（改值），物化
+                Matrix<T> result(cols, rows);
+                for (int i = 0; i < rows; ++i)
+                    for (int j = 0; j < cols; ++j)
+                        result(j, i) = conjugateOf((*this)(i, j));
+                return result;
+            }
         }
 
         // 转换为复数矩阵（无论 T 是 double 还是 Complex）

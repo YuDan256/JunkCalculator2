@@ -173,6 +173,36 @@ METHOD(len) {
     return jc2::Value(static_cast<double>(buf.size())).get_handle();
 }
 
+METHOD(toHex) {
+    GET_SELF;
+    static const char hex_chars[] = "0123456789abcdef";
+    std::string res;
+    res.reserve(buf.size() * 2);
+    for (uint8_t b : buf) {
+        res.push_back(hex_chars[b >> 4]);
+        res.push_back(hex_chars[b & 0x0F]);
+    }
+    return jc2::Value(res).get_handle();
+}
+
+METHOD(toBase64) {
+    GET_SELF;
+    static const char b64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string res;
+    size_t i = 0;
+    while (i < buf.size()) {
+        uint32_t octet_a = i < buf.size() ? buf[i++] : 0;
+        uint32_t octet_b = i < buf.size() ? buf[i++] : 0;
+        uint32_t octet_c = i < buf.size() ? buf[i++] : 0;
+        uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
+        res.push_back(b64_chars[(triple >> 18) & 0x3F]);
+        res.push_back(b64_chars[(triple >> 12) & 0x3F]);
+        res.push_back(i > buf.size() + 1 ? '=' : b64_chars[(triple >> 6) & 0x3F]);
+        res.push_back(i > buf.size() ? '=' : b64_chars[triple & 0x3F]);
+    }
+    return jc2::Value(res).get_handle();
+}
+
 // --- Cursor & State Control ---
 METHOD(seek) { GET_SELF; pos = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double())); return argv[0]; }
 METHOD(skip) { GET_SELF; pos += static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double())); return argv[0]; }
@@ -243,6 +273,43 @@ FUNC(pack) {
     return makeBytesInstance(std::move(buf)).get_handle();
 }
 
+FUNC(fromHex) {
+    if (argc < 1 || !jc2::Value(argv[0]).is_string()) jc2::throw_error("Type Error: fromHex expects a string.");
+    std::string s = jc2::Value(argv[0]).as_string();
+    std::vector<uint8_t> buf;
+    buf.reserve(s.size() / 2);
+    for (size_t i = 0; i + 1 < s.size(); i += 2) {
+        auto char2int = [](char c) -> uint8_t {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            jc2::throw_error("Value Error: Invalid hex character.");
+            return 0;
+        };
+        buf.push_back((char2int(s[i]) << 4) | char2int(s[i+1]));
+    }
+    return makeBytesInstance(std::move(buf)).get_handle();
+}
+
+FUNC(fromBase64) {
+    if (argc < 1 || !jc2::Value(argv[0]).is_string()) jc2::throw_error("Type Error: fromBase64 expects a string.");
+    std::string s = jc2::Value(argv[0]).as_string();
+    std::vector<uint8_t> buf;
+    std::vector<int> T(256, -1);
+    for (int i = 0; i < 64; i++) T[static_cast<unsigned char>("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i])] = i;
+    int val = 0, valb = -8;
+    for (unsigned char c : s) {
+        if (T[c] == -1) break;
+        val = (val << 6) + T[c];
+        valb += 6;
+        if (valb >= 0) {
+            buf.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return makeBytesInstance(std::move(buf)).get_handle();
+}
+
 FUNC(readFile) {
     (void)argc;
     if (!jc2::Value(argv[0]).is_string()) jc2::throw_error("Type Error: expects string path.");
@@ -270,6 +337,8 @@ int jc2_init(jc2::Module& mod) {
     g_bytesClass->bind_method("get", bytes_get, 2, 3, false, {"offset", "type", "len"});
     g_bytesClass->bind_method("len", bytes_len, 0, 0, false);
     g_bytesClass->bind_method("length", bytes_len, 0, 0, false);
+    g_bytesClass->bind_method("toHex", bytes_toHex, 0, 0, false);
+    g_bytesClass->bind_method("toBase64", bytes_toBase64, 0, 0, false);
     
     g_bytesClass->bind_method("seek", bytes_seek, 1, 1, false, {"pos"});
     g_bytesClass->bind_method("skip", bytes_skip, 1, 1, false, {"n"});
@@ -297,6 +366,8 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function("pack", global_pack, 1, 1, false, {"arr"});
     mod.register_function("readFile", global_readFile, 1, 1, false, {"path"});
     mod.register_function("fromFile", global_readFile, 1, 1, false, {"path"});
+    mod.register_function("fromHex", global_fromHex, 1, 1, false, {"str"});
+    mod.register_function("fromBase64", global_fromBase64, 1, 1, false, {"str"});
 
     mod.register_help("bytes",
         "═══ Bare-Metal Memory Engine — Native Module ═══\n\n"
@@ -311,8 +382,12 @@ int jc2_init(jc2::Module& mod) {
         "    bytes.pack(array)           Create a buffer from an array of 8-bit integers.\n"
         "    bytes.readFile(path)        Map an entire file from disk into a buffer.\n"
         "    bytes.fromFile(path)        Alias for bytes.readFile.\n"
+        "    bytes.fromHex(str)          Create a buffer by decoding a Hex string.\n"
+        "    bytes.fromBase64(str)       Create a buffer by decoding a Base64 string.\n"
         "    buf.save(path)              Flushes binary buffer to disk.\n"
-        "    buf.len()                   Get the total size of the buffer in bytes.\n\n"
+        "    buf.len()                   Get the total size of the buffer in bytes.\n"
+        "    buf.toHex()                 Returns the buffer contents as a Hex string.\n"
+        "    buf.toBase64()              Returns the buffer contents as a Base64 string.\n\n"
         "  Cursor & State Control\n"
         "  ──────────────────────\n"
         "    buf.tell()                  Returns current cursor position.\n"
@@ -349,6 +424,10 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("bytes.set", "buf.set(offset, val, type)", "Writes a value into the buffer at the specified offset.", "buf.set(0, 255, \"u8\")");
     mod.register_function_help("bytes.get", "buf.get(offset, type, [len])", "Reads a value from the buffer at the specified offset.", "buf.get(0, \"u16\")");
     mod.register_function_help("bytes.len", "buf.len()", "Returns the total size of the buffer in bytes.", "buf.len()");
+    mod.register_function_help("bytes.toHex", "buf.toHex()", "Encodes the buffer contents into a hexadecimal string.", "buf.toHex()");
+    mod.register_function_help("bytes.toBase64", "buf.toBase64()", "Encodes the buffer contents into a Base64 string.", "buf.toBase64()");
+    mod.register_function_help("bytes.fromHex", "bytes.fromHex(str)", "Decodes a hexadecimal string into a new byte buffer.", "bytes.fromHex(\"FF00AA\")");
+    mod.register_function_help("bytes.fromBase64", "bytes.fromBase64(str)", "Decodes a Base64 string into a new byte buffer.", "bytes.fromBase64(\"SGVsbG8=\")");
 
     return 0;
 }

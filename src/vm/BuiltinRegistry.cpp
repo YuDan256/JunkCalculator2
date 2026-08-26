@@ -3442,7 +3442,6 @@ void BuiltinRegistry::registerListConversion() {
             for (int i = 0; i < m.getRows(); ++i) {
                 ObjList* row = GcHeap::get().allocate<ObjList>();
                 for (int j = 0; j < m.getCols(); ++j) row->vec.push_back(Value(m(i, j)));
-                row->is_frozen = true;
                 rows->vec.push_back(Value(row));
             }
             return Value(rows);
@@ -3459,7 +3458,6 @@ void BuiltinRegistry::registerListConversion() {
             for (int i = 0; i < m.getRows(); ++i) {
                 ObjList* row = GcHeap::get().allocate<ObjList>();
                 for (int j = 0; j < m.getCols(); ++j) row->vec.push_back(Value(m(i, j)));
-                row->is_frozen = true;
                 rows->vec.push_back(Value(row));
             }
             return Value(rows);
@@ -3476,7 +3474,6 @@ void BuiltinRegistry::registerListConversion() {
             for (int i = 0; i < m.getRows(); ++i) {
                 ObjList* row = GcHeap::get().allocate<ObjList>();
                 for (int j = 0; j < m.getCols(); ++j) row->vec.push_back(Value(m(i, j)));
-                row->is_frozen = true;
                 rows->vec.push_back(Value(row));
             }
             return Value(rows);

@@ -147,14 +147,20 @@ namespace jc {
     };
     struct ObjRealMatrix : public Obj {
         RealMatrix mat;
+        mutable bool has_cached_hash = false;
+        mutable size_t cached_hash = 0;
         ObjRealMatrix(RealMatrix m) : mat(std::move(m)) { type = ObjType::REAL_MATRIX; }
     };
     struct ObjComplexMatrix : public Obj {
         ComplexMatrix mat;
+        mutable bool has_cached_hash = false;
+        mutable size_t cached_hash = 0;
         ObjComplexMatrix(ComplexMatrix m) : mat(std::move(m)) { type = ObjType::COMPLEX_MATRIX; }
     };
     struct ObjSymMatrix : public Obj {
         SymMatrix mat;
+        mutable bool has_cached_hash = false;
+        mutable size_t cached_hash = 0;
         ObjSymMatrix(SymMatrix m) : mat(std::move(m)) { type = ObjType::SYM_MATRIX; }
     };
 
@@ -2877,8 +2883,9 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             return sipHash24Double(r) ^ (sipHash24Double(i) << 1);
         }
         case ObjType::REAL_MATRIX: {
-            const auto& m = static_cast<ObjRealMatrix*>(obj)->mat;
-            const auto& raw = m.rawData();
+            auto om = static_cast<ObjRealMatrix*>(obj);
+            if (om->has_cached_hash) return om->cached_hash;
+            const auto& raw = om->mat.rawData();
             size_t sz = raw.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x2E6A8F1D4C3B7950ULL;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
@@ -2886,11 +2893,14 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 size_t h = sipHash24Double(d) + 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
+            om->cached_hash = seed;
+            om->has_cached_hash = true;
             return seed;
         }
         case ObjType::COMPLEX_MATRIX: {
-            const auto& m = static_cast<ObjComplexMatrix*>(obj)->mat;
-            const auto& raw = m.rawData();
+            auto om = static_cast<ObjComplexMatrix*>(obj);
+            if (om->has_cached_hash) return om->cached_hash;
+            const auto& raw = om->mat.rawData();
             size_t sz = raw.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x4D7A1F8E2B5C6039ULL;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
@@ -2900,17 +2910,22 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 h += 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
+            om->cached_hash = seed;
+            om->has_cached_hash = true;
             return seed;
         }
         case ObjType::SYM_MATRIX: {
-            const auto& m = static_cast<ObjSymMatrix*>(obj)->mat;
-            const auto& raw = m.rawData();
+            auto om = static_cast<ObjSymMatrix*>(obj);
+            if (om->has_cached_hash) return om->cached_hash;
+            const auto& raw = om->mat.rawData();
             size_t sz = raw.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x9A2B3C4D5E6F7081ULL;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
                 size_t h = sipHash24String(raw[idx].toString()) + 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
+            om->cached_hash = seed;
+            om->has_cached_hash = true;
             return seed;
         }
         case ObjType::SYMBOLIC: return sipHash24String(static_cast<ObjSym*>(obj)->sym.toString());

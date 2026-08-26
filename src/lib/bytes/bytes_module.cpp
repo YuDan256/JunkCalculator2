@@ -194,7 +194,10 @@ METHOD(get) {
 
 METHOD(len) {
     GET_SELF;
-    return jc2::Value(static_cast<double>(buf.size())).get_handle();
+    if (buf.size() <= static_cast<size_t>(INT32_MAX)) {
+        return jc2::Value(static_cast<int32_t>(buf.size())).get_handle();
+    }
+    return jc2::BigInt(std::to_string(buf.size())).get_handle();
 }
 
 METHOD(toHex) {
@@ -423,7 +426,7 @@ int jc2_init(jc2::Module& mod) {
         "    bytes.fromHex(str)          Create a buffer by decoding a Hex string.\n"
         "    bytes.fromBase64(str)       Create a buffer by decoding a Base64 string.\n"
         "    buf.save(path)              Flushes binary buffer to disk.\n"
-        "    buf.len()                   Get the total size of the buffer in bytes.\n"
+        "    buf.len() / buf.length()    Get the total size of the buffer in bytes.\n"
         "    buf.toHex()                 Returns the buffer contents as a Hex string.\n"
         "    buf.toBase64()              Returns the buffer contents as a Base64 string.\n"
         "    buf.view(start, [len])      Creates a zero-copy memory view of the buffer.\n\n"
@@ -440,15 +443,20 @@ int jc2_init(jc2::Module& mod) {
         "       .writeI32(1024)          Writes 32-bit integer (4 bytes).\n"
         "       .writeI16(-2)            Writes 16-bit integer (2 bytes).\n"
         "       .writeU8(255)            Writes 8-bit unsigned integer (1 byte).\n"
+        "       .writeU64(9000000000)    Writes 64-bit unsigned integer (8 bytes).\n"
         "       .writePcmArray(arr))     Bulk-writes an entire mapped Array instantly.\n\n"
         "  Readers (Cursor Auto-Advances)\n"
         "  ──────────────────────\n"
         "    str = buf.readStr(4)        Reads 4 bytes into a String.\n"
-        "    my_int = buf.readI32()      Reads consecutive 4 bytes.\n"
-        "    big_int = buf.readI64()     Reads consecutive 8 bytes.\n\n"
+        "    byte = buf.readU8()         Reads 1 unsigned byte.\n"
+        "    short = buf.readI16()       Reads 2 bytes (signed 16-bit).\n"
+        "    my_int = buf.readI32()      Reads 4 bytes (signed 32-bit).\n"
+        "    big_int = buf.readI64()     Reads 8 bytes (signed 64-bit, BigInt).\n"
+        "    ubig = buf.readU64()        Reads 8 bytes (unsigned 64-bit, BigInt).\n\n"
         "  Low-Level Reading & Writing (Absolute Offsets)\n"
         "  ──────────────────────\n"
         "    buf.set(offset, val, type)  Write a value into memory at `offset`.\n"
+        "    buf.write_arr(off, arr, t)  Bulk-write an array at `offset` ('i16'/'f64').\n"
         "    buf.get(offset, type)       Read a value from memory at `offset`.\n"
         "    buf.get(offset, \"str\", len) Read specifically a string of `len` bytes.\n\n"
         "    Supported formats (passed as strings): \n"
@@ -468,6 +476,26 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("bytes.fromHex", "bytes.fromHex(str)", "Decodes a hexadecimal string into a new byte buffer.", "bytes.fromHex(\"FF00AA\")");
     mod.register_function_help("bytes.fromBase64", "bytes.fromBase64(str)", "Decodes a Base64 string into a new byte buffer.", "bytes.fromBase64(\"SGVsbG8=\")");
     mod.register_function_help("bytes.view", "buf.view(start, [len])", "Creates a zero-copy memory view of the buffer. Modifying the view modifies the original buffer.", "buf.view(4, 10)");
+    mod.register_function_help("bytes.length", "buf.length()", "Alias for buf.len(). Returns the total buffer size in bytes.", "buf.length()");
+    mod.register_function_help("bytes.writeFile", "buf.writeFile(path)", "Writes a byte buffer to a file.", "buf.writeFile(\"out.bin\")");
+    mod.register_function_help("bytes.write_arr", "buf.write_arr(offset, arr, type)", "Bulk-writes an array of numbers at an absolute offset. Supported types: \"i16\", \"f64\".", "buf.write_arr(0, [1, 2, 3], \"i16\")");
+    mod.register_function_help("bytes.seek", "buf.seek(pos)", "Moves the cursor to an absolute byte offset.", "buf.seek(4)");
+    mod.register_function_help("bytes.skip", "buf.skip(n)", "Moves the cursor forward by n bytes.", "buf.skip(4)");
+    mod.register_function_help("bytes.tell", "buf.tell()", "Returns the current cursor position.", "buf.tell()");
+    mod.register_function_help("bytes.isEnd", "buf.isEnd()", "Returns true if the cursor reached the end of the buffer.", "buf.isEnd()");
+    mod.register_function_help("bytes.writeStr", "buf.writeStr(s)", "Writes text bytes at the cursor and advances it.", "buf.writeStr(\"RIFF\")");
+    mod.register_function_help("bytes.writeU8", "buf.writeU8(v)", "Writes an 8-bit unsigned integer and advances the cursor.", "buf.writeU8(255)");
+    mod.register_function_help("bytes.writeI16", "buf.writeI16(v)", "Writes a 16-bit signed integer and advances the cursor.", "buf.writeI16(-2)");
+    mod.register_function_help("bytes.writeI32", "buf.writeI32(v)", "Writes a 32-bit signed integer and advances the cursor.", "buf.writeI32(1024)");
+    mod.register_function_help("bytes.writeI64", "buf.writeI64(v)", "Writes a 64-bit signed integer and advances the cursor.", "buf.writeI64(9000000000)");
+    mod.register_function_help("bytes.writeU64", "buf.writeU64(v)", "Writes a 64-bit unsigned integer and advances the cursor.", "buf.writeU64(9000000000)");
+    mod.register_function_help("bytes.writePcmArray", "buf.writePcmArray(arr)", "Bulk-writes an array as 16-bit PCM samples.", "buf.writePcmArray([0.5, -0.5])");
+    mod.register_function_help("bytes.readStr", "buf.readStr(n)", "Reads n bytes as a string and advances the cursor.", "buf.readStr(4)");
+    mod.register_function_help("bytes.readU8", "buf.readU8()", "Reads 1 unsigned byte and advances the cursor.", "buf.readU8()");
+    mod.register_function_help("bytes.readI16", "buf.readI16()", "Reads 2 bytes as a signed 16-bit integer.", "buf.readI16()");
+    mod.register_function_help("bytes.readI32", "buf.readI32()", "Reads 4 bytes as a signed 32-bit integer.", "buf.readI32()");
+    mod.register_function_help("bytes.readI64", "buf.readI64()", "Reads 8 bytes as a signed 64-bit integer (BigInt).", "buf.readI64()");
+    mod.register_function_help("bytes.readU64", "buf.readU64()", "Reads 8 bytes as an unsigned 64-bit integer (BigInt).", "buf.readU64()");
 
     return 0;
 }

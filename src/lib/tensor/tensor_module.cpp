@@ -567,7 +567,7 @@ int jc2_init(jc2::Module& mod) {
         "      tensor.ones(@[3, 1]) + tensor.ones(@[1, 4])  → 3×4 Tensor\n\n"
         "  Matrix Operations\n"
         "  ──────────────────────\n"
-        "    t.matmul(other)                Matrix multiplication (2D only)\n"
+        "    t.matmul(other)                Matrix multiplication (1D / 2D / batched)\n"
         "    tensor.matmul(a, b)            Module-level matrix multiply\n"
         "    t.T()                          Transpose (swap last two dims, zero-copy)\n"
         "    t.transpose(dim0, dim1)        Swap two arbitrary dimensions (zero-copy)\n\n"
@@ -582,10 +582,13 @@ int jc2_init(jc2::Module& mod) {
         "    tensor.stack(list, [axis])     Stack tensors along a NEW axis\n\n"
         "  Reduction Operations (with Autograd support)\n"
         "  ──────────────────────\n"
-        "    t.sum()               Sum all elements → scalar Tensor\n"
-        "    t.mean()              Mean of all elements → scalar Tensor\n"
+        "    t.sum([axis])         Sum all elements, or along an axis → Tensor\n"
+        "    t.mean([axis])        Mean of all elements, or along an axis → Tensor\n"
         "    t.max()               Maximum element → scalar Tensor (no grad)\n"
-        "    t.min()               Minimum element → scalar Tensor (no grad)\n\n"
+        "    t.min()               Minimum element → scalar Tensor (no grad)\n"
+        "    t.clamp(min, max)     Clip elements to [min, max] (with grad)\n"
+        "    t.argmax()            Linear index of the maximum element (no grad)\n"
+        "    t.argmin()            Linear index of the minimum element (no grad)\n\n"
         "  Unary Math Functions (with Autograd support)\n"
         "  ──────────────────────\n"
         "    t.exp()               Element-wise exponential e^x\n"
@@ -618,7 +621,7 @@ int jc2_init(jc2::Module& mod) {
         "    x.grad()                                        // → Tensor([4.0, 6.0]) (dz/dx = 2x)\n\n"
         "    Supported autograd operations:\n"
         "      +, -, *, /, ^, neg, matmul, sum, mean,\n"
-        "      exp, log, relu, sigmoid, tanh, mse_loss\n\n"
+        "      exp, log, relu, sigmoid, tanh, clamp, mse_loss\n\n"
         "    t.backward()          Trigger reverse-mode AD from this scalar tensor\n"
         "    t.grad()              Access the accumulated gradient tensor (or none)\n"
         "    t.zero_grad()         Reset gradients to zero\n"
@@ -707,7 +710,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("tensor.rand", "tensor.rand(shape_list, [dtype], [requires_grad])", "Creates a Tensor with uniform random values in [0, 1). Optionally selects dtype and enables gradient tracking.", "tensor.rand(@[3, 3])");
     mod.register_function_help("tensor.randn", "tensor.randn(shape_list, [dtype], [requires_grad])", "Creates a Tensor with standard normal (Gaussian) random values. Optionally selects dtype and enables gradient tracking.", "tensor.randn(@[100])");
     mod.register_function_help("tensor.to", "tensor.to(t, dtype) / t.to(dtype)", "Returns a new Tensor converted to the requested dtype. Supported dtype strings: \"float64\", \"float32\", \"int64\", \"int32\" and aliases \"f64\", \"f32\", \"i64\", \"i32\", \"double\".", "t.to(\"float32\")");
-    mod.register_function_help("tensor.matmul", "tensor.matmul(a, b)", "Performs 2D matrix multiplication of two Tensors. Supports autograd.", "tensor.matmul(A, B)");
+    mod.register_function_help("tensor.matmul", "tensor.matmul(a, b)", "Performs matrix multiplication: 1D (dot product), 2D, or batched (last two dims, batch broadcasting). Supports autograd.", "tensor.matmul(A, B)");
     mod.register_function_help("tensor.cat", "tensor.cat(tensor_list, [axis])", "Concatenates a list of Tensors along the given axis (default 0).", "tensor.cat(@[t1, t2], 0)");
     mod.register_function_help("tensor.stack", "tensor.stack(tensor_list, [axis])", "Stacks a list of Tensors along a new dimension at the given axis.", "tensor.stack(@[t1, t2], 0)");
     mod.register_function_help("tensor.mse_loss", "tensor.mse_loss(pred, target)", "Computes Mean Squared Error loss between predicted and target Tensors. Supports autograd.", "loss = tensor.mse_loss(y_pred, y_true)");

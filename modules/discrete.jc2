@@ -501,18 +501,18 @@ class Graph {
             while (visited.len() < vs.len()) {
                 minV = none; minD = none
                 for (v in vs) {
-                    if (!(v in visited) && !dist[v].isnone()) {
-                        if (minD.isnone() || dist[v] < minD) { minD = dist[v]; minV = v }
+                    if (!(v in visited) && !(dist[v] is none)) {
+                        if (minD is none || dist[v] < minD) { minD = dist[v]; minV = v }
                     }
                 }
-                if (minV.isnone()) break
+                if (minV is none) break
                 visited.add(minV)
                 
                 if (self.adj.hasKey(minV)) {
                     for (e in self.adj[minV]) {
                         nbr = e[0]; w = e[1]
                         alt = dist[minV] + w
-                        if (dist[nbr].isnone() || alt < dist[nbr]) {
+                        if (dist[nbr] is none || alt < dist[nbr]) {
                             dist[nbr] = alt; prev[nbr] = minV
                         }
                     }
@@ -523,10 +523,10 @@ class Graph {
 
         shortestPath(start: any, end: any) -> dict = {
         r = self.dijkstra(start)
-        if (r.dist[end].isnone()) return {path: @[], dist: none}
+        if (r.dist[end] is none) return {path: @[], dist: none}
         
         path = @[]; curr = end
-        while (!curr.isnone()) {
+        while (!(curr is none)) {
             path.push(curr)
             curr = r.prev.hasKey(curr) ? r.prev[curr] : none
         }

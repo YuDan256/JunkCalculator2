@@ -20,25 +20,25 @@ class TcpSocket {
     }
 
     close() = {
-        if (!self.sock.isnone()) {
+        if (!(self.sock is none)) {
             self.sock.close()
             self.sock = none
         }
     }
 
     send(text: string) -> TcpSocket = {
-        if (self.sock.isnone()) throw "Network Error: Socket is not connected!"
+        if (self.sock is none) throw "Network Error: Socket is not connected!"
         self.sock.send(text)
         return self
     }
 
     recv(max_bytes: int | double = 4096) -> string = {
         max_bytes = round(max_bytes)
-        if (self.sock.isnone()) throw "Network Error: Socket is not connected!"
+        if (self.sock is none) throw "Network Error: Socket is not connected!"
         return self.sock.recv(max_bytes)
     }
 
-    __str__() -> string = return f"<TcpSocket host=\"{self.host}\" port={self.port} connected={!self.sock.isnone()}>"
+    __str__() -> string = return f"<TcpSocket host=\"{self.host}\" port={self.port} connected={!(self.sock is none)}>"
 }
 
 // ─── Server Object (Daemon) ───────────────────────────────────
@@ -56,7 +56,7 @@ class TcpServer {
     }
 
     accept() -> TcpSocket = {
-        if (self.sock.isnone()) throw "Network Error: TCP Server is not bound to a port!"
+        if (self.sock is none) throw "Network Error: TCP Server is not bound to a port!"
         native_client = self.sock.accept()
         
         client = TcpSocket(self.host, self.port)
@@ -65,7 +65,7 @@ class TcpServer {
     }
 
     close() = {
-        if (!self.sock.isnone()) {
+        if (!(self.sock is none)) {
             self.sock.close()
             self.sock = none
         }

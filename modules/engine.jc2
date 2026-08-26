@@ -41,7 +41,7 @@ class GameEngine {
         while (self.win.isOpen() && self.running) {
             while (true) {
                 ev = self.win.pollEvent()
-                if (ev.isnone()) break
+                if (ev is none) break
                 
                 if (ev.type == "keydown")   self.onKeyDown(ev.key)
                 if (ev.type == "keyup")     self.onKeyUp(ev.key)

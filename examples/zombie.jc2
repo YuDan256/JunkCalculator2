@@ -280,7 +280,7 @@ class Raycaster3D extends engine.GameEngine {
                         }
                     } // for (z in self.zombies) 的花括号结束
                     
-                    if (!isnone(closest_z)) {
+                    if (!(closest_z is none)) {
                         closest_z.hp -= 50.0
                         closest_z.hurt_timer = 0.12 // ★ 命中瞬间，注入 0.12秒 的受击闪烁！
                         if (closest_z.hp <= 0.0) {

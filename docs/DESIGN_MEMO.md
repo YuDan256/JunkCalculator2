@@ -4,8 +4,8 @@
 
 ## 1. 核心语义与内存模型 (Core Semantics & Memory Model)
 *   **字符串化**：`toString()` (对应 `__str__`) 目标是“人类可读”，不带引号；`toRepr()` (对应 `__repr__`) 目标是“开发者无歧义”，严格区分类型（如 `"1"` vs `1`）。
-*   **内存语义**：`Matrix` 和 `Array` 采用**值语义**（深拷贝，无副作用）；`List`, `Dict`, `Set`, `Instance` 采用**引用语义**（共享内存，由 GC 追踪）。
-*   **Matrix COW 与原生对象 (Matrix COW & Native Objects)**：`Matrix` 坚决不转为 `ObjInstance`，以避免哈希表带来的内存碎片化和分发开销。底层 C++ `Matrix<T>` 保持极致连续的 `std::vector` 纯数学容器。**写时复制 (COW)** 严格实现在 VM 操作层面（通过检查 `ObjRealMatrix` 的 `refCount`），而非 C++ 类内部，从而避免双重 COW 开销和破坏值语义。为了支持 `A.inv()` 的 OOP 语法，VM 引入**虚拟原型链 (Virtual Prototype Chain)**，对原生类型的方法调用自动路由至全局静态原型字典。
+*   **内存语义**：`Matrix` 和 `Array` 采用**不可变值语义**（切片/转置返回共享 buffer 的零拷贝视图，不可原地修改）；`List`, `Dict`, `Set`, `Instance` 采用**引用语义**（共享内存，由 GC 追踪）。
+*   **Matrix 与原生对象 (Matrix & Native Objects)**：`Matrix` 坚决不转为 `ObjInstance`，以避免哈希表带来的内存碎片化和分发开销。底层 C++ `Matrix<T>` 用 `row_stride`/`col_stride`/`offset` 窗口 + `std::shared_ptr<T[]>` 共享 buffer，切片/转置零拷贝视图。**矩阵不可变**（索引赋值运行期报错），修改走 `setElement`/`setItem`/`setSlice` 返回新矩阵。为了支持 `A.inv()` 的 OOP 语法，VM 引入**虚拟原型链 (Virtual Prototype Chain)**，对原生类型的方法调用自动路由至全局静态原型字典。
 *   **哈希与不可变性**：采用**原生值哈希**，`1.0`、`int(1)`、`frac(1,1)` 哈希值绝对一致。仅**被冻结 (Frozen)** 的容器可作为 Dict 键或 Set 元素。
 *   **作用域修饰符**：
     *   `local`：严格块级作用域。

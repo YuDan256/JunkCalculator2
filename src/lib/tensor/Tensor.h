@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cassert>
 #include <unordered_set>
+#include <random>
 
 namespace jc {
 
@@ -156,6 +157,12 @@ namespace jc {
         return n;
     }
 
+    // 线程安全的随机数引擎（mt19937，替代低质量 std::rand）
+    inline std::mt19937& tensor_rng() {
+        static thread_local std::mt19937 gen(std::random_device{}());
+        return gen;
+    }
+
     // ========================================================================
     // 5. 张量句柄 (Tensor Handle)
     // ========================================================================
@@ -208,6 +215,7 @@ namespace jc {
         }
 
         double getFlat(size_t linear_idx) const {
+            if (is_contiguous()) return getByAbsIdx(offset + linear_idx);
             size_t idx = offset;
             size_t remain = linear_idx;
             for (int i = static_cast<int>(shape.size()) - 1; i >= 0; --i) {
@@ -219,6 +227,7 @@ namespace jc {
         }
 
         void setFlat(size_t linear_idx, double val) {
+            if (is_contiguous()) { setByAbsIdx(offset + linear_idx, val); return; }
             size_t idx = offset;
             size_t remain = linear_idx;
             for (int i = static_cast<int>(shape.size()) - 1; i >= 0; --i) {
@@ -913,10 +922,89 @@ namespace jc {
     // 7. 前向算子 (Forward Operators)
     // ========================================================================
 
-    // ---- 通用二元逐元素运算 ----
-    using BinaryOp = std::function<double(double, double)>;
+    // ---- 模板化逐元素运算核心（dtype 分派一次，内层 raw pointer 快速路径） ----
 
-    inline Tensor tensor_binary_op(const Tensor& a, const Tensor& b, BinaryOp op,
+    // 二元逐元素：模板化 + dtype 分派
+    template <typename T, typename Op>
+    inline void apply_binary_impl(const Tensor& a, const Tensor& b, Tensor& out, Op op) {
+        const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
+        const T* pb = static_cast<const T*>(b.storage->data_ptr()) + b.offset;
+        T* po = static_cast<T*>(out.storage->data_ptr());
+        size_t total = out.numel();
+
+        if (a.shape == b.shape && a.is_contiguous() && b.is_contiguous()) {
+            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(static_cast<double>(pa[i]), static_cast<double>(pb[i])));
+            return;
+        }
+        auto stridesA = Tensor::broadcastStrides(a.shape, a.strides, out.shape);
+        auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out.shape);
+        for (size_t i = 0; i < total; ++i) {
+            size_t idxA = Tensor::getFlatIndex(i, out.shape, stridesA);
+            size_t idxB = Tensor::getFlatIndex(i, out.shape, stridesB);
+            po[i] = static_cast<T>(op(static_cast<double>(pa[idxA]), static_cast<double>(pb[idxB])));
+        }
+    }
+
+    template <typename Op>
+    inline void dispatch_binary(const Tensor& a, const Tensor& b, Tensor& out, Op op) {
+        switch (a.dtype()) {
+            case DType::Float64: apply_binary_impl<double>(a, b, out, op); break;
+            case DType::Float32: apply_binary_impl<float>(a, b, out, op); break;
+            case DType::Int32:   apply_binary_impl<int32_t>(a, b, out, op); break;
+            case DType::Int64:   apply_binary_impl<int64_t>(a, b, out, op); break;
+        }
+    }
+
+    // 一元逐元素：模板化 + dtype 分派
+    template <typename T, typename Op>
+    inline void apply_unary_impl(const Tensor& a, Tensor& out, Op op) {
+        const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
+        T* po = static_cast<T*>(out.storage->data_ptr());
+        size_t total = out.numel();
+        if (a.is_contiguous()) {
+            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(static_cast<double>(pa[i])));
+        } else {
+            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(a.getFlat(i)));
+        }
+    }
+
+    template <typename Op>
+    inline void dispatch_unary(const Tensor& a, Tensor& out, Op op) {
+        switch (a.dtype()) {
+            case DType::Float64: apply_unary_impl<double>(a, out, op); break;
+            case DType::Float32: apply_unary_impl<float>(a, out, op); break;
+            case DType::Int32:   apply_unary_impl<int32_t>(a, out, op); break;
+            case DType::Int64:   apply_unary_impl<int64_t>(a, out, op); break;
+        }
+    }
+
+    // matmul：模板化 + i-k-j 循环重排 + 稀疏跳跃
+    template <typename T>
+    inline void matmul_impl(const Tensor& a, const Tensor& b, Tensor& out) {
+        const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
+        const T* pb = static_cast<const T*>(b.storage->data_ptr()) + b.offset;
+        T* po = static_cast<T*>(out.storage->data_ptr());
+        int M = a.shape[0], K = a.shape[1], N = b.shape[1];
+        int sa0 = a.strides[0], sa1 = a.strides[1];
+        int sb0 = b.strides[0], sb1 = b.strides[1];
+        for (int i = 0; i < M; ++i) {
+            T* row = po + i * N;
+            const T* arow = pa + i * sa0;
+            for (int k = 0; k < K; ++k) {
+                T va = arow[k * sa1];
+                if (va == T(0)) continue;
+                const T* brow = pb + k * sb0;
+                for (int j = 0; j < N; ++j) {
+                    row[j] += va * brow[j * sb1];
+                }
+            }
+        }
+    }
+
+    // ---- 通用二元逐元素运算 ----
+
+    template <typename Op>
+    inline Tensor tensor_binary_op(const Tensor& a, const Tensor& b, Op op,
                                    bool req_grad, std::shared_ptr<BackwardNode> grad_fn_node = nullptr) {
         if (a.dtype() != b.dtype())
             throw std::runtime_error("Tensor Error: DType mismatch.");
@@ -925,15 +1013,7 @@ namespace jc {
         Tensor out(out_shape, a.dtype(), req_grad);
         out.is_leaf = false;
 
-        auto stridesA = Tensor::broadcastStrides(a.shape, a.strides, out_shape);
-        auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out_shape);
-
-        size_t total = out.numel();
-        for (size_t i = 0; i < total; ++i) {
-            size_t idxA = Tensor::getFlatIndex(i, out_shape, stridesA);
-            size_t idxB = Tensor::getFlatIndex(i, out_shape, stridesB);
-            out.setFlat(i, op(a.getByAbsIdx(a.offset + idxA), b.getByAbsIdx(b.offset + idxB)));
-        }
+        dispatch_binary(a, b, out, op);
 
         if (req_grad && grad_fn_node) out.grad_fn = grad_fn_node;
         return out;
@@ -995,7 +1075,7 @@ namespace jc {
     inline Tensor tensor_neg(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), a.requires_grad);
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, -a.getFlat(i));
+        dispatch_unary(a, out, [](double x) { return -x; });
         if (a.requires_grad) {
             auto pa = std::make_shared<Tensor>(a);
             auto pout = std::make_shared<Tensor>(out);
@@ -1008,7 +1088,7 @@ namespace jc {
     inline Tensor tensor_pow_scalar(const Tensor& a, double exponent) {
         Tensor out(a.shape, a.dtype(), a.requires_grad);
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::pow(a.getFlat(i), exponent));
+        dispatch_unary(a, out, [exponent](double x) { return std::pow(x, exponent); });
         if (a.requires_grad) {
             auto pa = std::make_shared<Tensor>(a);
             auto pout = std::make_shared<Tensor>(out);
@@ -1035,16 +1115,11 @@ namespace jc {
         Tensor out({M, N}, a.dtype(), rg);
         out.is_leaf = false;
 
-        for (int i = 0; i < M; ++i) {
-            for (int j = 0; j < N; ++j) {
-                double sum = 0.0;
-                for (int k = 0; k < K; ++k) {
-                    double va = a.getByAbsIdx(a.offset + i * a.strides[0] + k * a.strides[1]);
-                    double vb = b.getByAbsIdx(b.offset + k * b.strides[0] + j * b.strides[1]);
-                    sum += va * vb;
-                }
-                out.setFlat(i * N + j, sum);
-            }
+        switch (a.dtype()) {
+            case DType::Float64: matmul_impl<double>(a, b, out); break;
+            case DType::Float32: matmul_impl<float>(a, b, out); break;
+            case DType::Int32:   matmul_impl<int32_t>(a, b, out); break;
+            case DType::Int64:   matmul_impl<int64_t>(a, b, out); break;
         }
 
         if (rg) {
@@ -1129,7 +1204,7 @@ namespace jc {
     inline Tensor tensor_exp(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), a.requires_grad);
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::exp(a.getFlat(i)));
+        dispatch_unary(a, out, [](double x) { return std::exp(x); });
         if (a.requires_grad) {
             auto pa = std::make_shared<Tensor>(a);
             auto pout = std::make_shared<Tensor>(out);
@@ -1141,7 +1216,7 @@ namespace jc {
     inline Tensor tensor_log(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), a.requires_grad);
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::log(a.getFlat(i)));
+        dispatch_unary(a, out, [](double x) { return std::log(x); });
         if (a.requires_grad) {
             auto pa = std::make_shared<Tensor>(a);
             auto pout = std::make_shared<Tensor>(out);
@@ -1157,7 +1232,7 @@ namespace jc {
     inline Tensor tensor_abs(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), false); // abs 的梯度在 0 处不可微，简化处理
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) out.setFlat(i, std::abs(a.getFlat(i)));
+        dispatch_unary(a, out, [](double x) { return std::abs(x); });
         return out;
     }
 
@@ -1165,10 +1240,7 @@ namespace jc {
     inline Tensor tensor_relu(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), a.requires_grad);
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) {
-            double v = a.getFlat(i);
-            out.setFlat(i, v > 0.0 ? v : 0.0);
-        }
+        dispatch_unary(a, out, [](double v) { return v > 0.0 ? v : 0.0; });
         if (a.requires_grad) {
             auto pa = std::make_shared<Tensor>(a);
             auto pout = std::make_shared<Tensor>(out);
@@ -1180,9 +1252,7 @@ namespace jc {
     inline Tensor tensor_sigmoid(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), a.requires_grad);
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) {
-            out.setFlat(i, 1.0 / (1.0 + std::exp(-a.getFlat(i))));
-        }
+        dispatch_unary(a, out, [](double x) { return 1.0 / (1.0 + std::exp(-x)); });
         if (a.requires_grad) {
             auto pa = std::make_shared<Tensor>(a);
             auto pout = std::make_shared<Tensor>(out);
@@ -1194,9 +1264,7 @@ namespace jc {
     inline Tensor tensor_tanh(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), a.requires_grad);
         out.is_leaf = false;
-        for (size_t i = 0; i < out.numel(); ++i) {
-            out.setFlat(i, std::tanh(a.getFlat(i)));
-        }
+        dispatch_unary(a, out, [](double x) { return std::tanh(x); });
         if (a.requires_grad) {
             auto pa = std::make_shared<Tensor>(a);
             auto pout = std::make_shared<Tensor>(out);
@@ -1440,20 +1508,17 @@ namespace jc {
     // ---- Random ----
     inline Tensor tensor_rand(const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
         Tensor t(shape, dt, req_grad);
-        for (size_t i = 0; i < t.numel(); ++i) {
-            t.setFlat(i, static_cast<double>(std::rand()) / RAND_MAX);
-        }
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        auto& gen = tensor_rng();
+        for (size_t i = 0; i < t.numel(); ++i) t.setFlat(i, dist(gen));
         return t;
     }
 
     inline Tensor tensor_randn(const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
-        // Box-Muller transform
         Tensor t(shape, dt, req_grad);
-        for (size_t i = 0; i < t.numel(); ++i) {
-            double u1 = (static_cast<double>(std::rand()) + 1.0) / (RAND_MAX + 2.0);
-            double u2 = static_cast<double>(std::rand()) / (RAND_MAX + 1.0);
-            t.setFlat(i, std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * 3.14159265358979323846 * u2));
-        }
+        std::normal_distribution<double> dist(0.0, 1.0);
+        auto& gen = tensor_rng();
+        for (size_t i = 0; i < t.numel(); ++i) t.setFlat(i, dist(gen));
         return t;
     }
 

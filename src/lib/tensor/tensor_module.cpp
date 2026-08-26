@@ -202,10 +202,27 @@ METHOD(transpose) { GET_SELF; return wrapTensor(t1->transpose(static_cast<int>(j
 METHOD(unsqueeze) { GET_SELF; return wrapTensor(t1->unsqueeze(static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
 METHOD(squeeze) { GET_SELF; return wrapTensor(t1->squeeze()).get_handle(); }
 METHOD(fill_) { GET_SELF; t1->fill_(jc2::Value(argv[1]).as_double()); return argv[0]; }
-METHOD(sum) { GET_SELF; return wrapTensor(jc::tensor_sum(*t1)).get_handle(); }
-METHOD(mean) { GET_SELF; return wrapTensor(jc::tensor_mean(*t1)).get_handle(); }
+METHOD(sum) {
+    GET_SELF;
+    if (argc > 1) {
+        int axis = static_cast<int>(jc2::Value(argv[1]).as_double());
+        return wrapTensor(jc::tensor_sum(*t1, axis)).get_handle();
+    }
+    return wrapTensor(jc::tensor_sum(*t1)).get_handle();
+}
+METHOD(mean) {
+    GET_SELF;
+    if (argc > 1) {
+        int axis = static_cast<int>(jc2::Value(argv[1]).as_double());
+        return wrapTensor(jc::tensor_mean(*t1, axis)).get_handle();
+    }
+    return wrapTensor(jc::tensor_mean(*t1)).get_handle();
+}
 METHOD(max) { GET_SELF; return wrapTensor(jc::tensor_max(*t1)).get_handle(); }
 METHOD(min) { GET_SELF; return wrapTensor(jc::tensor_min(*t1)).get_handle(); }
+METHOD(clamp) { GET_SELF; return wrapTensor(jc::tensor_clamp(*t1, jc2::Value(argv[1]).as_double(), jc2::Value(argv[2]).as_double())).get_handle(); }
+METHOD(argmax) { GET_SELF; return jc2::Value(static_cast<double>(jc::tensor_argmax(*t1))).get_handle(); }
+METHOD(argmin) { GET_SELF; return jc2::Value(static_cast<double>(jc::tensor_argmin(*t1))).get_handle(); }
 METHOD(exp) { GET_SELF; return wrapTensor(jc::tensor_exp(*t1)).get_handle(); }
 METHOD(log) { GET_SELF; return wrapTensor(jc::tensor_log(*t1)).get_handle(); }
 METHOD(sqrt) { GET_SELF; return wrapTensor(jc::tensor_sqrt(*t1)).get_handle(); }
@@ -415,10 +432,13 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("unsqueeze", tensor_unsqueeze, 1, 1, false, {"dim"});
     g_tensorClass->bind_method("squeeze", tensor_squeeze, 0, 0, false);
     g_tensorClass->bind_method("fill_", tensor_fill_, 1, 1, false, {"val"});
-    g_tensorClass->bind_method("sum", tensor_sum, 0, 0, false);
-    g_tensorClass->bind_method("mean", tensor_mean, 0, 0, false);
+    g_tensorClass->bind_method("sum", tensor_sum, 0, 1, false, {"axis"});
+    g_tensorClass->bind_method("mean", tensor_mean, 0, 1, false, {"axis"});
     g_tensorClass->bind_method("max", tensor_max, 0, 0, false);
     g_tensorClass->bind_method("min", tensor_min, 0, 0, false);
+    g_tensorClass->bind_method("clamp", tensor_clamp, 2, 2, false, {"min", "max"});
+    g_tensorClass->bind_method("argmax", tensor_argmax, 0, 0, false);
+    g_tensorClass->bind_method("argmin", tensor_argmin, 0, 0, false);
     g_tensorClass->bind_method("exp", tensor_exp, 0, 0, false);
     g_tensorClass->bind_method("log", tensor_log, 0, 0, false);
     g_tensorClass->bind_method("sqrt", tensor_sqrt, 0, 0, false);

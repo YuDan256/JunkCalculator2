@@ -444,9 +444,21 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
-                    case IROp::ListCompEnd: {
+                    case IROp::MatrixCompInit: {
+                        auto w = buildInstA(OpCode::MATRIX_COMP_INIT, node->physicalReg);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::MatrixCompAppend: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstA(OpCode::LIST_COMP_END, a);
+                        int b = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
+                        auto w = buildInstAB(OpCode::MATRIX_COMP_APPEND, a, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::MatrixCompEnd: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto w = buildInstA(OpCode::MATRIX_COMP_END, a);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         if (node->physicalReg != a) {
                             auto loadRes = buildInstAB(OpCode::MOVE, node->physicalReg, a);

@@ -73,6 +73,7 @@ namespace jc {
     struct Assign;
     struct Call;
     struct MatrixNode;
+    struct ListNode;
     struct FunctionDef;
     struct Block;          // ★ 新增
     struct IfExpr;         // ★ 新增
@@ -107,6 +108,7 @@ namespace jc {
     struct ContextKeywordExpr; // ★ class/namespace 上下文关键字占位
     struct DestructAssign;     // ★
     struct FStringExpr;
+    struct MatrixCompExpr;   // ★ 矩阵推导式
     struct ListCompExpr;       // ★
     struct SetCompExpr;        // ★ 新增
     struct DictCompExpr;       // ★ 新增
@@ -217,6 +219,7 @@ namespace jc {
         virtual void visitAssign(Assign* expr) = 0;
         virtual void visitCall(Call* expr) = 0;
         virtual void visitMatrixNode(MatrixNode* expr) = 0;
+        virtual void visitListNode(ListNode* expr) = 0;
         virtual void visitBlock(Block* expr) = 0;
         virtual void visitIfExpr(IfExpr* expr) = 0;
         virtual void visitWhileExpr(WhileExpr* expr) = 0;
@@ -250,6 +253,7 @@ namespace jc {
         virtual void visitContextKeywordExpr(ContextKeywordExpr* expr) = 0;
         virtual void visitDestructAssign(DestructAssign* expr) = 0;
         virtual void visitFStringExpr(FStringExpr* expr) = 0;
+        virtual void visitMatrixCompExpr(MatrixCompExpr* expr) = 0;
         virtual void visitListCompExpr(ListCompExpr* expr) = 0;
         virtual void visitSetCompExpr(SetCompExpr* expr) = 0;
         virtual void visitDictCompExpr(DictCompExpr* expr) = 0;
@@ -368,11 +372,19 @@ namespace jc {
 
     struct MatrixNode : public Expr {
         std::vector<std::vector<std::unique_ptr<Expr>>> elements;
-        bool forceList;
-        explicit MatrixNode(std::vector<std::vector<std::unique_ptr<Expr>>> elements, bool forceList = false)
-            : elements(std::move(elements)), forceList(forceList) {
+        explicit MatrixNode(std::vector<std::vector<std::unique_ptr<Expr>>> elements)
+            : elements(std::move(elements)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitMatrixNode(this); }
+    };
+
+    // @[...] 列表字面量（与 MatrixNode 区分，不再用 forceList）
+    struct ListNode : public Expr {
+        std::vector<std::vector<std::unique_ptr<Expr>>> elements;
+        explicit ListNode(std::vector<std::vector<std::unique_ptr<Expr>>> elements)
+            : elements(std::move(elements)) {
+        }
+        void accept(ExprVisitor& visitor) override { visitor.visitListNode(this); }
     };
 
     // ======== ★ 新增控制流节点 ========
@@ -745,15 +757,26 @@ namespace jc {
         }
     };
 
-    // ★ [expr for (var in iterable) if (condition)]
-    struct ListCompExpr : public Expr {
+    // 推导式公共基类（矩阵/列表共用 valueExpr + clauses）
+    struct CompExprBase : public Expr {
         std::unique_ptr<Expr> valueExpr;
         std::vector<CompClause> clauses;
-        bool forceList;
+    protected:
+        CompExprBase(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses)
+            : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)) {}
+    };
 
-        ListCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses, bool forceList = false)
-            : valueExpr(std::move(valueExpr)), clauses(std::move(clauses)), forceList(forceList) {
-        }
+    // ★ [expr for (var in iterable) if (condition)] — 矩阵推导式
+    struct MatrixCompExpr : public CompExprBase {
+        MatrixCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses)
+            : CompExprBase(std::move(valueExpr), std::move(clauses)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitMatrixCompExpr(this); }
+    };
+
+    // ★ @[expr for (var in iterable) if (condition)] — 列表推导式
+    struct ListCompExpr : public CompExprBase {
+        ListCompExpr(std::unique_ptr<Expr> valueExpr, std::vector<CompClause> clauses)
+            : CompExprBase(std::move(valueExpr), std::move(clauses)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitListCompExpr(this); }
     };
 

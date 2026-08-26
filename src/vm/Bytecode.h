@@ -113,7 +113,9 @@ enum class OpCode : uint8_t {
     BUILD_NAMESPACE,// R(A) := Namespace(nameIdx = B, count = C). Triplets (key, slot, isConst) start at R(A+1) [Ext A, B, C]
     LIST_INIT,      // R(A) := []
     LIST_APPEND,    // R(A).append(R(B))
-    LIST_COMP_END,  // R(A) := comp_end(R(A))
+    MATRIX_COMP_INIT,   // R(A) := matrix comprehension accumulator (empty list)
+    MATRIX_COMP_APPEND, // R(A).append(toMatrix(R(B)))
+    MATRIX_COMP_END,    // R(A) := hcat(R(A))
     SET_INIT,       // R(A) := @{}
     SET_APPEND,     // R(A).add(R(B))
     DICT_INIT,      // R(A) := {}
@@ -238,7 +240,9 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::BUILD_NAMESPACE: return "BUILD_NAMESPACE";
         case OpCode::LIST_INIT: return "LIST_INIT";
         case OpCode::LIST_APPEND: return "LIST_APPEND";
-        case OpCode::LIST_COMP_END: return "LIST_COMP_END";
+        case OpCode::MATRIX_COMP_INIT: return "MATRIX_COMP_INIT";
+        case OpCode::MATRIX_COMP_APPEND: return "MATRIX_COMP_APPEND";
+        case OpCode::MATRIX_COMP_END: return "MATRIX_COMP_END";
         case OpCode::SET_INIT: return "SET_INIT";
         case OpCode::SET_APPEND: return "SET_APPEND";
         case OpCode::DICT_INIT: return "DICT_INIT";
@@ -550,7 +554,7 @@ public:
             case OpCode::MOVE: case OpCode::LOAD_NIL:
             case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
             case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
-            case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::SET_APPEND:
+            case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::MATRIX_COMP_APPEND: case OpCode::SET_APPEND:
             case OpCode::STRINGIFY: case OpCode::ITER_NEXT: case OpCode::IMPORT:
                 std::cout << "R(" << a << ") " << b;
                 break;
@@ -576,7 +580,7 @@ public:
                 break;
 
             case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
-            case OpCode::LIST_INIT: case OpCode::LIST_COMP_END: case OpCode::SET_INIT: case OpCode::DICT_INIT:
+            case OpCode::LIST_INIT: case OpCode::MATRIX_COMP_INIT: case OpCode::MATRIX_COMP_END: case OpCode::SET_INIT: case OpCode::DICT_INIT:
             case OpCode::TRY_END: case OpCode::THROW: case OpCode::DEFER:
                 std::cout << "R(" << a << ")";
                 break;

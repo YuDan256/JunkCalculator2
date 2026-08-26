@@ -69,7 +69,7 @@ namespace jc {
         std::unique_ptr<Expr> enumExpr();      // ★ 新增
         std::unique_ptr<Expr> parseFString(const std::string& raw);  // ★
         std::vector<CompClause> parseCompClauses();
-        std::unique_ptr<Expr> parseListComp(std::unique_ptr<Expr> valueExpr);  // ★
+        std::unique_ptr<Expr> parseComp(std::unique_ptr<Expr> valueExpr, bool forceList);  // ★
         std::unique_ptr<Expr> pipe();
         std::unique_ptr<Expr> parseDictLiteral();  // ★
         std::unique_ptr<Expr> parseSetLiteral();   // ★ 新增

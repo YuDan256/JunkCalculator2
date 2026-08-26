@@ -111,7 +111,7 @@ private:
     void hoistBlock(Block* block);
     void buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::shared_ptr<Expr>>& typeHints);
     void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool isAssignment = false);
-    void buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode);
+    void buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* accNode, IROp appendOp);
     void buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* setNode);
     void buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode* dictNode);
 
@@ -151,6 +151,7 @@ public:
     void visitAssign(Assign* expr) override;
     void visitCall(Call* expr) override;
     void visitMatrixNode(MatrixNode* expr) override;
+    void visitListNode(ListNode* expr) override;
     void visitBlock(Block* expr) override;
     void visitIfExpr(IfExpr* expr) override;
     void visitWhileExpr(WhileExpr* expr) override;
@@ -184,6 +185,7 @@ public:
     void visitContextKeywordExpr(ContextKeywordExpr* expr) override;
     void visitDestructAssign(DestructAssign* expr) override;
     void visitFStringExpr(FStringExpr* expr) override;
+    void visitMatrixCompExpr(MatrixCompExpr* expr) override;
     void visitListCompExpr(ListCompExpr* expr) override;
     void visitSetCompExpr(SetCompExpr* expr) override;
     void visitDictCompExpr(DictCompExpr* expr) override;

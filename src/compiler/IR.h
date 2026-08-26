@@ -88,7 +88,9 @@ enum class IROp {
     BuildSlice,
     ListInit,
     ListAppend,
-    ListCompEnd,
+    MatrixCompInit,
+    MatrixCompAppend,
+    MatrixCompEnd,
     SetInit,
     SetAppend,
     DictInit,
@@ -221,7 +223,9 @@ inline std::string irOpToString(IROp op) {
         case IROp::BuildSlice: return "BuildSlice";
         case IROp::ListInit: return "ListInit";
         case IROp::ListAppend: return "ListAppend";
-        case IROp::ListCompEnd: return "ListCompEnd";
+        case IROp::MatrixCompInit: return "MatrixCompInit";
+        case IROp::MatrixCompAppend: return "MatrixCompAppend";
+        case IROp::MatrixCompEnd: return "MatrixCompEnd";
         case IROp::SetInit: return "SetInit";
         case IROp::SetAppend: return "SetAppend";
         case IROp::DictInit: return "DictInit";

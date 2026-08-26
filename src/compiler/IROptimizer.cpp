@@ -63,7 +63,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::Method: case IROp::MethodPrivate: case IROp::MethodConst: case IROp::MethodPrivateConst:
         case IROp::Inherit: case IROp::Import:
         case IROp::Defer: case IROp::RunDefers:
-        case IROp::ListInit: case IROp::ListAppend: case IROp::ListCompEnd:
+        case IROp::ListInit: case IROp::ListAppend: case IROp::MatrixCompInit: case IROp::MatrixCompAppend: case IROp::MatrixCompEnd:
         case IROp::SetInit: case IROp::SetAppend: case IROp::DictInit: case IROp::DictAppend:
         case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
             return true;

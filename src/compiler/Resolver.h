@@ -44,6 +44,7 @@ public:
     void visitAssign(Assign* expr) override;
     void visitCall(Call* expr) override;
     void visitMatrixNode(MatrixNode* expr) override;
+    void visitListNode(ListNode* expr) override;
     void visitBlock(Block* expr) override;
     void visitIfExpr(IfExpr* expr) override;
     void visitWhileExpr(WhileExpr* expr) override;
@@ -77,6 +78,7 @@ public:
     void visitContextKeywordExpr(ContextKeywordExpr* expr) override;
     void visitDestructAssign(DestructAssign* expr) override;
     void visitFStringExpr(FStringExpr* expr) override;
+    void visitMatrixCompExpr(MatrixCompExpr* expr) override;
     void visitListCompExpr(ListCompExpr* expr) override;
     void visitSetCompExpr(SetCompExpr* expr) override;
     void visitDictCompExpr(DictCompExpr* expr) override;

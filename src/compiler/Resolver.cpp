@@ -221,6 +221,12 @@ void Resolver::visitMatrixNode(MatrixNode* expr) {
     }
 }
 
+void Resolver::visitListNode(ListNode* expr) {
+    for (auto& row : expr->elements) {
+        for (auto& e : row) resolve(e.get());
+    }
+}
+
 void Resolver::visitIfExpr(IfExpr* expr) {
     resolve(expr->condition.get());
     resolve(expr->thenBranch.get());
@@ -470,6 +476,17 @@ void Resolver::visitDestructAssign(DestructAssign* expr) {
 
 void Resolver::visitFStringExpr(FStringExpr* expr) {
     for (auto& e : expr->exprs) resolve(e.get());
+}
+
+void Resolver::visitMatrixCompExpr(MatrixCompExpr* expr) {
+    beginScope();
+    for (auto& c : expr->clauses) {
+        resolve(c.iterable.get());
+        resolvePattern(c.pattern.get(), true, ScopeModifier::Local, false);
+        for (auto& cond : c.conditions) resolve(cond.get());
+    }
+    resolve(expr->valueExpr.get());
+    endScope();
 }
 
 void Resolver::visitListCompExpr(ListCompExpr* expr) {

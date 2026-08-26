@@ -186,7 +186,13 @@ public:
         ObjList* rows = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(rows);
         for (auto& row : expr->elements) rows->vec.push_back(makeExprListT(row));
-        result = makeASTNode("MatrixNode", 0, {{"elements", Value(rows)}, {"forceList", Value(expr->forceList)}});
+        result = makeASTNode("MatrixNode", 0, {{"elements", Value(rows)}});
+    }
+    void visitListNode(ListNode* expr) override {
+        ObjList* rows = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(rows);
+        for (auto& row : expr->elements) rows->vec.push_back(makeExprListT(row));
+        result = makeASTNode("ListNode", 0, {{"elements", Value(rows)}});
     }
     void visitIfExpr(IfExpr* expr) override {
         expr->condition->accept(*this); Value cond = result;
@@ -484,6 +490,30 @@ public:
         });
     }
 
+    void visitMatrixCompExpr(MatrixCompExpr* expr) override {
+        expr->valueExpr->accept(*this); Value valExpr = result;
+        GcValueGuard valGuard(valExpr);
+        ObjList* clauses = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(clauses);
+        for (auto& c : expr->clauses) {
+            c.iterable->accept(*this); Value iter = result;
+            GcValueGuard iterGuard(iter);
+            Value pat = patternToJC2(c.pattern.get());
+            GcValueGuard patGuard(pat);
+            Value conds = makeExprListT(c.conditions);
+            Value clauseNode = makeASTNode("CompClause", 0, {
+                {"pattern", pat},
+                {"iterable", iter},
+                {"conditions", conds}
+            });
+            clauses->vec.push_back(clauseNode);
+        }
+        result = makeASTNode("MatrixCompExpr", 0, {
+            {"valueExpr", valExpr},
+            {"clauses", Value(clauses)}
+        });
+    }
+
     void visitListCompExpr(ListCompExpr* expr) override {
         expr->valueExpr->accept(*this); Value valExpr = result;
         GcValueGuard valGuard(valExpr);
@@ -504,8 +534,7 @@ public:
         }
         result = makeASTNode("ListCompExpr", 0, {
             {"valueExpr", valExpr},
-            {"clauses", Value(clauses)},
-            {"forceList", Value(expr->forceList)}
+            {"clauses", Value(clauses)}
         });
     }
 
@@ -839,7 +868,16 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
                 elements.push_back(getExprList(rowVal));
             }
         }
-        return std::make_unique<MatrixNode>(std::move(elements), getProp("forceList").truthy());
+        return std::make_unique<MatrixNode>(std::move(elements));
+    } else if (type == "ListNode") {
+        std::vector<std::vector<std::unique_ptr<Expr>>> elements;
+        Value rowsVal = getProp("elements");
+        if (rowsVal.isObjType(ObjType::LIST)) {
+            for (const auto& rowVal : static_cast<ObjList*>(rowsVal.asObj())->vec) {
+                elements.push_back(getExprList(rowVal));
+            }
+        }
+        return std::make_unique<ListNode>(std::move(elements));
     } else if (type == "IfExpr") {
         return std::make_unique<IfExpr>(toAST(getProp("condition")), toAST(getProp("thenBranch")), toAST(getProp("elseBranch")));
     } else if (type == "WhileExpr") {
@@ -1060,6 +1098,36 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
             getProp("isLocal").truthy(),
             getProp("isConst").truthy()
         );
+    } else if (type == "MatrixCompExpr") {
+        std::vector<CompClause> clauses;
+        Value clausesVal = getProp("clauses");
+        if (clausesVal.isObjType(ObjType::LIST)) {
+            for (const auto& cVal : static_cast<ObjList*>(clausesVal.asObj())->vec) {
+                auto cInst = cVal.asInstance();
+                auto getCProp = [&](const std::string& key) -> Value {
+                    auto it = cInst->properties.find(key);
+                    if (it != cInst->properties.end()) {
+                        return it->second.val;
+                    }
+                    return Value::none();
+                };
+                CompClause clause(
+                    toPat(getCProp("pattern")),
+                    std::shared_ptr<Expr>(toAST(getCProp("iterable")).release())
+                );
+                Value condsVal = getCProp("conditions");
+                if (condsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& condVal : static_cast<ObjList*>(condsVal.asObj())->vec) {
+                        clause.conditions.push_back(std::shared_ptr<Expr>(toAST(condVal).release()));
+                    }
+                }
+                clauses.push_back(std::move(clause));
+            }
+        }
+        return std::make_unique<MatrixCompExpr>(
+            toAST(getProp("valueExpr")),
+            std::move(clauses)
+        );
     } else if (type == "ListCompExpr") {
         std::vector<CompClause> clauses;
         Value clausesVal = getProp("clauses");
@@ -1088,8 +1156,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         }
         return std::make_unique<ListCompExpr>(
             toAST(getProp("valueExpr")),
-            std::move(clauses),
-            getProp("forceList").truthy()
+            std::move(clauses)
         );
     } else if (type == "SetCompExpr") {
         std::vector<CompClause> clauses;

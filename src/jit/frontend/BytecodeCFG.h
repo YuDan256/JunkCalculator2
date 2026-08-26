@@ -84,6 +84,7 @@ public:
 
                 case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::UNM: case OpCode::NOT:
                 case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::LIST_APPEND:
+                case OpCode::MATRIX_COMP_APPEND:
                 case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
                 case OpCode::IMPORT: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
                 case OpCode::BUILD_SLICE: case OpCode::MATCH_INIT:
@@ -93,7 +94,7 @@ public:
 
                 case OpCode::LOAD_NIL: case OpCode::LOAD_BOOL: case OpCode::ASSERT_RETURN_TYPE:
                 case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
-                case OpCode::LIST_INIT: case OpCode::LIST_COMP_END: case OpCode::SET_INIT:
+                case OpCode::LIST_INIT: case OpCode::MATRIX_COMP_INIT: case OpCode::MATRIX_COMP_END: case OpCode::SET_INIT:
                 case OpCode::DICT_INIT: case OpCode::THROW: case OpCode::DEFER: case OpCode::RUN_DEFERS:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();
                     break;

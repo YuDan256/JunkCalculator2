@@ -1188,13 +1188,13 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
     }
 }
 
-void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* listNode) {
+void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* accNode, IROp appendOp) {
     if (clauseIdx >= expr->clauses.size()) {
         expr->valueExpr->accept(*this);
         IRNode* valNode = lastValue;
-        IRNode* appendNode = graph->createNode(IROp::ListAppend);
+        IRNode* appendNode = graph->createNode(appendOp);
         appendNode->setControl(currentControl);
-        appendNode->addData(listNode);
+        appendNode->addData(accNode);
         appendNode->addData(valNode);
         currentControl = appendNode;
         return;
@@ -1275,7 +1275,7 @@ void IRBuilder::buildCompClause(ListCompExpr* expr, size_t clauseIdx, IRNode* li
         currentControl = condIfTrue;
     }
     
-    buildCompClause(expr, clauseIdx + 1, listNode);
+    buildCompClause(expr, clauseIdx + 1, accNode, appendOp);
     
     loopNode->addData(currentControl);
     if (!condFailMerge->dataInputs.empty()) loopNode->addData(condFailMerge);
@@ -2086,53 +2086,8 @@ void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
 void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     int rows = static_cast<int>(expr->elements.size());
     if (rows == 0) {
-        if (expr->forceList) {
-            IRNode* node = graph->createValueNode(IROp::ListInit);
-            node->setControl(currentControl);
-            currentControl = node;
-            lastValue = node;
-        } else {
-            lastValue = graph->createConstant(Value(RealMatrix(0, 0)));
-            lastValue->setControl(currentControl);
-        }
-        return;
-    }
-
-    if (expr->forceList) {
-        if (rows == 1) {
-            std::vector<IRNode*> elements;
-            for (auto& e : expr->elements[0]) {
-                e->accept(*this);
-                elements.push_back(lastValue);
-            }
-            IRNode* node = graph->createValueNode(IROp::BuildList);
-            node->setControl(currentControl);
-            for (auto* e : elements) node->addData(e);
-            node->payload1 = static_cast<uint32_t>(elements.size());
-            currentControl = node;
-            lastValue = node;
-        } else {
-            std::vector<IRNode*> rowNodes;
-            for (auto& row : expr->elements) {
-                std::vector<IRNode*> elements;
-                for (auto& e : row) {
-                    e->accept(*this);
-                    elements.push_back(lastValue);
-                }
-                IRNode* rowNode = graph->createValueNode(IROp::BuildList);
-                rowNode->setControl(currentControl);
-                for (auto* e : elements) rowNode->addData(e);
-                rowNode->payload1 = static_cast<uint32_t>(elements.size());
-                currentControl = rowNode;
-                rowNodes.push_back(rowNode);
-            }
-            IRNode* node = graph->createValueNode(IROp::BuildList);
-            node->setControl(currentControl);
-            for (auto* r : rowNodes) node->addData(r);
-            node->payload1 = static_cast<uint32_t>(rowNodes.size());
-            currentControl = node;
-            lastValue = node;
-        }
+        lastValue = graph->createConstant(Value(RealMatrix(0, 0)));
+        lastValue->setControl(currentControl);
         return;
     }
 
@@ -2154,6 +2109,52 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     node->payload2 = static_cast<uint32_t>(expectedCols);
     currentControl = node;
     lastValue = node;
+}
+
+void IRBuilder::visitListNode(ListNode* expr) {
+    int rows = static_cast<int>(expr->elements.size());
+    if (rows == 0) {
+        IRNode* node = graph->createValueNode(IROp::ListInit);
+        node->setControl(currentControl);
+        currentControl = node;
+        lastValue = node;
+        return;
+    }
+
+    if (rows == 1) {
+        std::vector<IRNode*> elements;
+        for (auto& e : expr->elements[0]) {
+            e->accept(*this);
+            elements.push_back(lastValue);
+        }
+        IRNode* node = graph->createValueNode(IROp::BuildList);
+        node->setControl(currentControl);
+        for (auto* e : elements) node->addData(e);
+        node->payload1 = static_cast<uint32_t>(elements.size());
+        currentControl = node;
+        lastValue = node;
+    } else {
+        std::vector<IRNode*> rowNodes;
+        for (auto& row : expr->elements) {
+            std::vector<IRNode*> elements;
+            for (auto& e : row) {
+                e->accept(*this);
+                elements.push_back(lastValue);
+            }
+            IRNode* rowNode = graph->createValueNode(IROp::BuildList);
+            rowNode->setControl(currentControl);
+            for (auto* e : elements) rowNode->addData(e);
+            rowNode->payload1 = static_cast<uint32_t>(elements.size());
+            currentControl = rowNode;
+            rowNodes.push_back(rowNode);
+        }
+        IRNode* node = graph->createValueNode(IROp::BuildList);
+        node->setControl(currentControl);
+        for (auto* r : rowNodes) node->addData(r);
+        node->payload1 = static_cast<uint32_t>(rowNodes.size());
+        currentControl = node;
+        lastValue = node;
+    }
 }
 
 void IRBuilder::visitWhileExpr(WhileExpr* expr) {
@@ -4394,6 +4395,24 @@ void IRBuilder::visitFStringExpr(FStringExpr* expr) {
     lastValue = concatNode;
 }
 
+void IRBuilder::visitMatrixCompExpr(MatrixCompExpr* expr) {
+    pushScope(); // Scope for comprehension
+    
+    IRNode* accNode = graph->createValueNode(IROp::MatrixCompInit);
+    accNode->setControl(currentControl);
+    currentControl = accNode;
+    
+    buildCompClause(expr, 0, accNode, IROp::MatrixCompAppend);
+    
+    IRNode* endNode = graph->createValueNode(IROp::MatrixCompEnd);
+    endNode->setControl(currentControl);
+    endNode->addData(accNode);
+    currentControl = endNode;
+    lastValue = endNode;
+    
+    popScope();
+}
+
 void IRBuilder::visitListCompExpr(ListCompExpr* expr) {
     pushScope(); // Scope for comprehension
     
@@ -4401,17 +4420,9 @@ void IRBuilder::visitListCompExpr(ListCompExpr* expr) {
     listNode->setControl(currentControl);
     currentControl = listNode;
     
-    buildCompClause(expr, 0, listNode);
+    buildCompClause(expr, 0, listNode, IROp::ListAppend);
     
-    if (expr->forceList) {
-        lastValue = listNode;
-    } else {
-        IRNode* endNode = graph->createValueNode(IROp::ListCompEnd);
-        endNode->setControl(currentControl);
-        endNode->addData(listNode);
-        currentControl = endNode;
-        lastValue = endNode;
-    }
+    lastValue = listNode;
     
     popScope();
 }

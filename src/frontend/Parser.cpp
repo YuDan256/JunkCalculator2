@@ -1692,12 +1692,10 @@ namespace jc {
                 // ★ 先解析第一个元素
                 currentRow.push_back(assignment());
 
-                // ★ 检测列表推导式：[expr for x in ...]
+                // ★ 检测推导式：[expr for x in ...] 或 @[expr for x in ...]
                 if (check(TokenType::FOR)) {
                     auto valueExpr = std::move(currentRow[0]);
-                    auto comp = parseListComp(std::move(valueExpr));
-                    static_cast<ListCompExpr*>(comp.get())->forceList = forceList;
-                    return comp;
+                    return parseComp(std::move(valueExpr), forceList);
                 }
 
                 // ★ 非推导式 → 继续解析矩阵
@@ -1730,7 +1728,10 @@ namespace jc {
 
             while (match({ TokenType::NEWLINE })) {}
             consume(TokenType::RBRACKET, "Parser Error: Expect ']' after matrix structure.");
-            return std::make_unique<MatrixNode>(std::move(matrixElements), forceList);
+            if (forceList) {
+                return std::make_unique<ListNode>(std::move(matrixElements));
+            }
+            return std::make_unique<MatrixNode>(std::move(matrixElements));
         }
         throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");
     }
@@ -2188,8 +2189,17 @@ namespace jc {
             }
             auto rowsList = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(rowsArgs));
             props.push_back({"elements", std::move(rowsList)});
-            props.push_back({"forceList", std::make_unique<Literal>(mat->forceList ? "true" : "false", false, false, true)});
             return makeASTNodeCall("MatrixNode", 0, std::move(props));
+        }
+        if (auto* lst = dynamic_cast<ListNode*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            std::vector<std::unique_ptr<Expr>> rowsArgs;
+            for (const auto& row : lst->elements) {
+                rowsArgs.push_back(makeExprList(row));
+            }
+            auto rowsList = std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(rowsArgs));
+            props.push_back({"elements", std::move(rowsList)});
+            return makeASTNodeCall("ListNode", 0, std::move(props));
         }
         if (auto* dict = dynamic_cast<DictLiteral*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
@@ -2459,6 +2469,22 @@ namespace jc {
             props.push_back({"isConst", std::make_unique<Literal>(dest->isConst ? "true" : "false", false, false, true)});
             return makeASTNodeCall("DestructAssign", 0, std::move(props));
         }
+        if (auto* mcomp = dynamic_cast<MatrixCompExpr*>(expr)) {
+            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
+            props.push_back({"valueExpr", transformQuote(mcomp->valueExpr.get())});
+            std::vector<std::unique_ptr<Expr>> clausesArgs;
+            for (const auto& c : mcomp->clauses) {
+                std::vector<std::pair<std::string, std::unique_ptr<Expr>>> cProps;
+                cProps.push_back({"pattern", transformPattern(c.pattern.get())});
+                cProps.push_back({"iterable", transformQuote(c.iterable.get())});
+                std::vector<std::unique_ptr<Expr>> condsArgs;
+                for (const auto& cond : c.conditions) condsArgs.push_back(transformQuote(cond.get()));
+                cProps.push_back({"conditions", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(condsArgs))});
+                clausesArgs.push_back(makeASTNodeCall("CompClause", 0, std::move(cProps)));
+            }
+            props.push_back({"clauses", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(clausesArgs))});
+            return makeASTNodeCall("MatrixCompExpr", 0, std::move(props));
+        }
         if (auto* lcomp = dynamic_cast<ListCompExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"valueExpr", transformQuote(lcomp->valueExpr.get())});
@@ -2473,7 +2499,6 @@ namespace jc {
                 clausesArgs.push_back(makeASTNodeCall("CompClause", 0, std::move(cProps)));
             }
             props.push_back({"clauses", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(clausesArgs))});
-            props.push_back({"forceList", std::make_unique<Literal>(lcomp->forceList ? "true" : "false", false, false, true)});
             return makeASTNodeCall("ListCompExpr", 0, std::move(props));
         }
         if (auto* scomp = dynamic_cast<SetCompExpr*>(expr)) {
@@ -3364,10 +3389,13 @@ namespace jc {
         return clauses;
     }
 
-    std::unique_ptr<Expr> Parser::parseListComp(std::unique_ptr<Expr> valueExpr) {
+    std::unique_ptr<Expr> Parser::parseComp(std::unique_ptr<Expr> valueExpr, bool forceList) {
         auto clauses = parseCompClauses();
-        consume(TokenType::RBRACKET, "Parser Error: Expect ']' after list comprehension.");
-        return std::make_unique<ListCompExpr>(std::move(valueExpr), std::move(clauses));
+        consume(TokenType::RBRACKET, "Parser Error: Expect ']' after comprehension.");
+        if (forceList) {
+            return std::make_unique<ListCompExpr>(std::move(valueExpr), std::move(clauses));
+        }
+        return std::make_unique<MatrixCompExpr>(std::move(valueExpr), std::move(clauses));
     }
 
     std::unique_ptr<Expr> Parser::parseSetLiteral() {

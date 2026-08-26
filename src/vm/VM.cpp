@@ -7314,60 +7314,52 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
-            case OpCode::LIST_COMP_END: {
+            case OpCode::MATRIX_COMP_INIT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                Value arg = getReg(a);
-                if (!arg.isObjType(ObjType::LIST)) break;
-                
-                auto l = static_cast<ObjList*>(arg.asObj());
-                if (l->vec.empty()) {
-                    getReg(a) = Value(RealMatrix(1, 0));
-                    break;
-                }
-                
-                bool hasComplex = false;
-                bool hasSymbolic = false;
-                bool hasOther = false;
-                bool hasSubMatrix = false;
-
-                auto canBeMatrixElement = [](const Value& v) -> bool {
-                    return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-                           v.isObjType(ObjType::COMPLEX) ||
-                           v.isObjType(ObjType::SYMBOLIC) ||
-                           v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
-                           v.isObjType(ObjType::SYM_MATRIX);
-                };
-
-                for (const auto& v : l->vec) {
-                    if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
-                    if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
-                    if (v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || v.isObjType(ObjType::SYM_MATRIX)) hasSubMatrix = true;
-                    if (!canBeMatrixElement(v)) {
-                        hasOther = true;
-                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION)) {
-                        try { v.asDouble(); } catch (...) { 
-                            if (!hasSymbolic) hasOther = true; 
-                        }
+                ObjList* acc = GcHeap::get().allocate<ObjList>();
+                getReg(a) = Value(acc);
+                break;
+            }
+            case OpCode::MATRIX_COMP_APPEND: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                Value elem = getReg(b);
+                Value m;
+                if (elem.isObjType(ObjType::REAL_MATRIX) || elem.isObjType(ObjType::COMPLEX_MATRIX) || elem.isObjType(ObjType::SYM_MATRIX)) {
+                    m = elem;
+                } else if (elem.isSymbolic()) {
+                    m = Value(SymMatrix(1, 1, { elem.asSymbolic() }));
+                } else if (elem.isComplex()) {
+                    m = Value(ComplexMatrix(1, 1, { elem.asComplex() }));
+                } else if (elem.isNumber() || elem.isBigInt() || elem.isObjType(ObjType::FRACTION)) {
+                    try {
+                        m = Value(RealMatrix(1, 1, { elem.asDouble() }));
+                    } catch (...) {
+                        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                     }
-                }
-
-                if (hasOther) {
+                } else {
                     throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                 }
-
-                int total = static_cast<int>(l->vec.size());
-
-                if (hasSubMatrix) {
-                    auto extractCell = [&](Value& cell) {
-                        if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
-                            if (hasSymbolic) {
-                                cell = Value(SymMatrix(1, 1, { cell.asSymbolic() }));
-                            } else if (hasComplex) {
-                                cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
-                            } else {
-                                cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
-                            }
-                        }
+                GcValueGuard mGuard(m);
+                static_cast<ObjList*>(getReg(a).asObj())->vec.push_back(m);
+                break;
+            }
+            case OpCode::MATRIX_COMP_END: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                auto l = static_cast<ObjList*>(getReg(a).asObj());
+                auto& vec = l->vec;
+                if (vec.empty()) { getReg(a) = Value(RealMatrix(1, 0)); break; }
+                
+                bool hasComplex = false, hasSymbolic = false;
+                for (const auto& v : vec) {
+                    if (v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
+                    if (v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
+                }
+                
+                try {
+                    Value rowResult = Value::none();
+                    for (int j = 0; j < static_cast<int>(vec.size()); ++j) {
+                        Value cell = vec[j];
                         if (hasSymbolic) {
                             if (cell.isObjType(ObjType::REAL_MATRIX) || cell.isObjType(ObjType::COMPLEX_MATRIX)) {
                                 cell = Value(cell.asSymMatrix());
@@ -7375,40 +7367,20 @@ Value VM::run(int targetFrameDepth) {
                         } else if (hasComplex && cell.isObjType(ObjType::REAL_MATRIX)) {
                             cell = Value(cell.asComplexMatrix());
                         }
-                    };
-
-                    try {
-                        Value rowResult = Value::none();
-                        for (int j = 0; j < total; ++j) {
-                            Value cell = l->vec[j];
-                            extractCell(cell);
-                            if (rowResult.isNone()) {
-                                rowResult = cell;
-                            } else {
-                                if (hasSymbolic)
-                                    rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
-                                else if (hasComplex)
-                                    rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
-                                else
-                                    rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
-                            }
+                        if (rowResult.isNone()) {
+                            rowResult = cell;
+                        } else {
+                            if (hasSymbolic)
+                                rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
+                            else if (hasComplex)
+                                rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
+                            else
+                                rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
                         }
-                        getReg(a) = rowResult;
-                    } catch (...) {
-                        throw std::runtime_error("VM Error: Dimension mismatch during list comprehension matrix concatenation.");
                     }
-                } else if (hasSymbolic) {
-                    std::vector<SymExpr> flat(total);
-                    for (int ii = 0; ii < total; ++ii) flat[ii] = l->vec[ii].asSymbolic();
-                    getReg(a) = Value(SymMatrix(1, total, flat));
-                } else if (hasComplex) {
-                    std::vector<Complex> flat(total);
-                    for (int ii = 0; ii < total; ++ii) flat[ii] = l->vec[ii].asComplex();
-                    getReg(a) = Value(ComplexMatrix(1, total, flat));
-                } else {
-                    std::vector<double> flat(total);
-                    for (int ii = 0; ii < total; ++ii) flat[ii] = l->vec[ii].asDouble();
-                    getReg(a) = Value(RealMatrix(1, total, flat));
+                    getReg(a) = rowResult;
+                } catch (...) {
+                    throw std::runtime_error("VM Error: Dimension mismatch during matrix comprehension concatenation.");
                 }
                 break;
             }

@@ -17,7 +17,7 @@ class LifeGame extends engine.GameEngine {
         self.color_alive = "#00FF7F"
         
         // 2. Setup game-specific states
-        self.universe = zeros(self.ROWS, self.COLS)
+        self.universe = @[ @[0 for (c in range(self.COLS))] for (r in range(self.ROWS)) ]
         self.is_paused = false
         self.speeds = [0.5, 0.2, 0.08, 0.05, 0]
         self.speed_idx = 2
@@ -28,7 +28,7 @@ class LifeGame extends engine.GameEngine {
 
     // --- Algorithm Core ---
     update_grid() = {
-        next_grid = zeros(self.ROWS, self.COLS)
+        next_grid = @[ @[0 for (c in range(self.COLS))] for (r in range(self.ROWS)) ]
         R = self.ROWS; C = self.COLS; g = self.universe
         for (i = 0; i < R; i += 1) {
             for (j = 0; j < C; j += 1) {
@@ -36,13 +36,13 @@ class LifeGame extends engine.GameEngine {
                 u = (i - 1 + R) % R; d = (i + 1) % R
                 l = (j - 1 + C) % C; r = (j + 1) % C
                 
-                n = g[u, l] + g[u, j] + g[u, r] +
-                    g[i, l] +           g[i, r] +
-                    g[d, l] + g[d, j] + g[d, r]
+                n = g[u][l] + g[u][j] + g[u][r] +
+                    g[i][l] +           g[i][r] +
+                    g[d][l] + g[d][j] + g[d][r]
                 
-                alive = g[i, j]
-                if (alive == 1 && (n == 2 || n == 3)) { next_grid[i, j] = 1 } 
-                else if (alive == 0 && n == 3)        { next_grid[i, j] = 1 }
+                alive = g[i][j]
+                if (alive == 1 && (n == 2 || n == 3)) { next_grid[i][j] = 1 } 
+                else if (alive == 0 && n == 3)        { next_grid[i][j] = 1 }
             }
         }
         return next_grid
@@ -56,7 +56,7 @@ class LifeGame extends engine.GameEngine {
         if (key == "3") { self.speed_idx = 2 }
         if (key == "4") { self.speed_idx = 3 }
         if (key == "5") { self.speed_idx = 4 }
-        if (key == "C") { self.universe = zeros(self.ROWS, self.COLS) }
+        if (key == "C") { self.universe = @[ @[0 for (c in range(self.COLS))] for (r in range(self.ROWS)) ] }
         if (key == "ESC") { self.quit() }
     }
 
@@ -64,7 +64,7 @@ class LifeGame extends engine.GameEngine {
         self.is_dragging = true
         r = int(y / self.CELL_SIZE); c = int(x / self.CELL_SIZE)
         if (r >= 0 && r < self.ROWS && c >= 0 && c < self.COLS) {
-            self.universe[r, c] = self.universe[r, c] == 1 ? 0 : 1
+            self.universe[r][c] = self.universe[r][c] == 1 ? 0 : 1
         }
     }
 
@@ -74,7 +74,7 @@ class LifeGame extends engine.GameEngine {
         if (self.is_dragging) {
             r = int(y / self.CELL_SIZE); c = int(x / self.CELL_SIZE)
             if (r >= 0 && r < self.ROWS && c >= 0 && c < self.COLS) {
-                self.universe[r, c] = 1
+                self.universe[r][c] = 1
             }
         }
     }
@@ -97,7 +97,7 @@ class LifeGame extends engine.GameEngine {
     draw(im) = {
         for (i = 0; i < self.ROWS; i += 1) {
             for (j = 0; j < self.COLS; j += 1) {
-                if (self.universe[i, j] == 1) {
+                if (self.universe[i][j] == 1) {
                     im.fillRect(j * self.CELL_SIZE, i * self.CELL_SIZE, 
                                 self.CELL_SIZE - 1, self.CELL_SIZE - 1, self.color_alive)
                 }

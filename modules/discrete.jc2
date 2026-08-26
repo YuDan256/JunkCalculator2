@@ -631,7 +631,7 @@ truthTable(n: int | double, fn: function) -> list = {
     n = round(n)
     total = 2 ^ n; res_list = @[]
     for (i in range(total)) {
-        vars = zeros(1, n)
+        vars = @[0 for (i2 in range(n))]
         for (j in range(n)) { vars[j] = int(i / (2^(n - 1 - j))) % 2 }
         res_list.push({inputs: vars, output: vars.apply(fn) ? 1 : 0})
     }
@@ -648,7 +648,7 @@ printTruthTable(n: int | double, fn: function) = {
     header += "|   Out"
     println(header); println("-" * (n * 7 + 10))
     for (i in range(total)) {
-        vars = zeros(1, n)
+        vars = @[0 for (i2 in range(n))]
         for (j in range(n)) { vars[j] = int(i / (2^(n - 1 - j))) % 2 }
         rowStr = ""
         for (v in vars) { rowStr += f" {v}     " }

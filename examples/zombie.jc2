@@ -5,7 +5,7 @@ import random
 class FpsProbe {
     init(samples) = {
         self.max_samples = samples
-        self.history = zeros(1, self.max_samples) 
+        self.history = @[0.0 for (i in range(self.max_samples))]
         self.idx = 0
         self.avg_fps = 60
     }
@@ -16,7 +16,7 @@ class FpsProbe {
         self.idx = (self.idx + 1) % self.max_samples
         
         if (self.idx % 10 == 0) {
-            sum_dt = self.history.sum()
+            sum_dt = self.history.reduce((acc, x) => acc + x, 0.0)
             avg_dt = sum_dt / double(self.max_samples)
             if (avg_dt > 0.0) self.avg_fps = int(1.0 / avg_dt)
         }
@@ -74,7 +74,7 @@ class Raycaster3D extends engine.GameEngine {
         self.fps_timer = 0.0
         
         // ★ 核心：用于非墙体实体遮挡处理的 Z-Buffer (1D Array)
-        self.ZBuffer = zeros(1, self.W)
+        self.ZBuffer = @[0.0 for (i in range(self.W))]
         
         // 玩家状态与武器
         self.MAX_LEVEL = 5
@@ -165,12 +165,12 @@ class Raycaster3D extends engine.GameEngine {
     generateLevel(lv) = {
         self.level = lv
         self.size = 11 + lv * 4
-        self.map = zeros(self.size, self.size)
-        // 填充实心墙 (利用矩阵函数加速)
-        self.map = ones(self.size, self.size)
+        self.map = @[ @[0.0 for (c in range(self.size))] for (r in range(self.size)) ]
+        // 填充实心墙
+        self.map = @[ @[1.0 for (c in range(self.size))] for (r in range(self.size)) ]
         
         path_stack = list()
-        self.map[1, 1] = 0.0 
+        self.map[1][1] = 0.0 
         path_stack.push(list(1, 1))
         
         while (path_stack.len() > 0) {
@@ -188,9 +188,9 @@ class Raycaster3D extends engine.GameEngine {
                 dr = int(dirs[i][0]); dc = int(dirs[i][1])
                 nr = r + dr; nc = c + dc
                 if (nr > 0 && nr < self.size - 1 && nc > 0 && nc < self.size - 1) {
-                    if (self.map[nr, nc] == 1.0) {
-                        self.map[r + int(dr/2), c + int(dc/2)] = 0.0
-                        self.map[nr, nc] = 0.0 
+                    if (self.map[nr][nc] == 1.0) {
+                        self.map[r + int(dr/2)][c + int(dc/2)] = 0.0
+                        self.map[nr][nc] = 0.0 
                         path_stack.push(list(nr, nc))
                         moved = true
                         break
@@ -200,16 +200,20 @@ class Raycaster3D extends engine.GameEngine {
             if (!moved) path_stack.pop() 
         }
         
-        // ★ 向量化替换：将所有 1.0 的墙体随机替换为 1~4 的纹理索引
-        self.map = self.map.eqE(1.0).whereE(random.randimat(self.size, self.size, 1, 4), self.map)
-        self.map[self.size - 2, self.size - 2] = 5.0
+        // 将墙体随机替换为 1~4 的纹理索引
+        for (r = 0; r < self.size; r += 1) {
+            for (c = 0; c < self.size; c += 1) {
+                if (self.map[r][c] == 1.0) self.map[r][c] = double(random.randint(1, 4))
+            }
+        }
+        self.map[self.size - 2][self.size - 2] = 5.0
         
         self.zombies = list()
         self.items = list()
         
         for (r = 2; r < self.size - 2; r += 1) {
             for (c = 2; c < self.size - 2; c += 1) {
-                if (self.map[r, c] == 0.0) {
+                if (self.map[r][c] == 0.0) {
                     // 留出玩家出生地(1,1)周围的安全空间
                     if (r > 5 || c > 5) {
                         rng = random.rand()
@@ -322,7 +326,7 @@ class Raycaster3D extends engine.GameEngine {
         if (new_x > double(self.size - 1)) new_x = double(self.size - 1)
         if (new_y < 0.0) new_y = 0.0
         if (new_y > double(self.size - 1)) new_y = double(self.size - 1)
-        val = self.map[int(new_x), int(new_y)]
+        val = self.map[int(new_x)][int(new_y)]
         if (val == 5.0) { 
             if (self.level >= self.MAX_LEVEL) {
                 self.status = "GAME_OVER"
@@ -372,8 +376,8 @@ class Raycaster3D extends engine.GameEngine {
                 // 察觉距离内，向玩家缓慢移动。简单碰撞检测防止卡墙
                 move_x = (dx / dist) * 1.5 * dt
                 move_y = (dy / dist) * 1.5 * dt
-                if (self.map[int(z.x + move_x * 1.5), int(z.y)] == 0.0) z.x += move_x
-                if (self.map[int(z.x), int(z.y + move_y * 1.5)] == 0.0) z.y += move_y
+                if (self.map[int(z.x + move_x * 1.5)][int(z.y)] == 0.0) z.x += move_x
+                if (self.map[int(z.x)][int(z.y + move_y * 1.5)] == 0.0) z.y += move_y
             }
         }
 
@@ -452,15 +456,15 @@ class Raycaster3D extends engine.GameEngine {
             while (hit == 0) {
                 if (side_dist_x < side_dist_y) { side_dist_x += delta_x; map_x += step_x; side = 0 } 
                 else { side_dist_y += delta_y; map_y += step_y; side = 1 }
-                if (self.map[map_x, map_y] > 0.0) hit = 1
+                if (self.map[map_x][map_y] > 0.0) hit = 1
             }
             
             perp_dist = (side == 0) ? (side_dist_x - delta_x) : (side_dist_y - delta_y)
             if (perp_dist <= 0.0001) perp_dist = 0.0001
             
-            // ★ 注册 ZBuffer 深度，向量化切片赋值
+            // 注册 ZBuffer 深度
             end_w = x + self.STRIP_WIDTH
-            self.ZBuffer[x : (end_w > self.W ? self.W : end_w)] = perp_dist
+            for (i = x; i < (end_w > self.W ? self.W : end_w); i += 1) self.ZBuffer[i] = perp_dist
             
             line_height = self.H / perp_dist
             half_line = line_height / 2.0
@@ -470,7 +474,7 @@ class Raycaster3D extends engine.GameEngine {
             draw_start = ds > 0.0 ? ds : 0.0
             draw_end = de < self.H - 1.0 ? de : self.H - 1.0
             
-            color_idx = int(self.map[map_x, map_y])
+            color_idx = int(self.map[map_x][map_y])
             c_hex = (side == 1) ? self.shades[color_idx] : self.colors[color_idx]
             im.line(x, draw_start, x, draw_end, c_hex, self.STRIP_WIDTH + 0.8)
             
@@ -531,8 +535,8 @@ class Raycaster3D extends engine.GameEngine {
 
                 // ★ 预计算 8 个 ty 的 Y 坐标和高度，避免在双重循环中重复计算
                 pixel_h = s_h / 8.0
-                y_coords = zeros(1, 8)
-                h_coords = zeros(1, 8)
+                y_coords = @[0.0 for (i in range(8))]
+                h_coords = @[0.0 for (i in range(8))]
                 for (ty = 0; ty < 8; ty += 1) {
                     y0 = sprite_top + ty * pixel_h
                     y1 = sprite_top + (ty + 1) * pixel_h
@@ -603,7 +607,7 @@ class Raycaster3D extends engine.GameEngine {
             im.fillRect(rx - 5, ry - 5, self.size * r_cell + 10, self.size * r_cell + 10, "#111111")
             for (r = 0; r < self.size; r += 1) {
                 for (c = 0; c < self.size; c += 1) {
-                    val = self.map[c, r]
+                    val = self.map[c][r]
                     if (val > 0.0 && val < 5.0) im.fillRect(rx + r * r_cell, ry + c * r_cell, r_cell-1, r_cell-1, "#666666")
                     if (val == 5.0) im.fillRect(rx + r * r_cell, ry + c * r_cell, r_cell-1, r_cell-1, "#FFFFFF") 
                 }

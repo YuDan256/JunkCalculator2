@@ -11,13 +11,13 @@ class Tetris extends engine.GameEngine {
         
         // Tetromino shapes modeled perfectly as exact Matrices!
         self.shapes = @[
-            [0,0,0,0; 1,1,1,1; 0,0,0,0; 0,0,0,0], // I
-            [1,1; 1,1],                           // O
-            [0,1,0; 1,1,1; 0,0,0],                // T
-            [0,1,1; 1,1,0; 0,0,0],                // S
-            [1,1,0; 0,1,1; 0,0,0],                // Z
-            [1,0,0; 1,1,1; 0,0,0],                // J
-            [0,0,1; 1,1,1; 0,0,0]                 // L
+            @[@[0,0,0,0], @[1,1,1,1], @[0,0,0,0], @[0,0,0,0]], // I
+            @[@[1,1], @[1,1]],                                   // O
+            @[@[0,1,0], @[1,1,1], @[0,0,0]],                     // T
+            @[@[0,1,1], @[1,1,0], @[0,0,0]],                     // S
+            @[@[1,1,0], @[0,1,1], @[0,0,0]],                     // Z
+            @[@[1,0,0], @[1,1,1], @[0,0,0]],                     // J
+            @[@[0,0,1], @[1,1,1], @[0,0,0]]                      // L
         ]
         
         // Cyberpunk styling: [0] = Empty, [1~7] = Block Colors
@@ -48,7 +48,7 @@ class Tetris extends engine.GameEngine {
 
     reset() = {
         // A pure JC2 zero-matrix makes the perfect game board
-        self.board = zeros(self.ROWS, self.COLS)
+        self.board = @[ @[0.0 for (c in range(self.COLS))] for (r in range(self.ROWS)) ]
         self.score = 0
         self.lines = 0
         self.game_over = false
@@ -69,7 +69,7 @@ class Tetris extends engine.GameEngine {
         self.next_idx = random.randint(0, 6)
         
         self.curr_r = 0
-        self.curr_c = (self.COLS ~/ 2) - (self.curr_piece.cols() ~/ 2)
+        self.curr_c = (self.COLS ~/ 2) - (len(self.curr_piece[0]) ~/ 2)
         
         // If it collides on spawn, the board is full -> GAME OVER
         if (!self.isValid(self.curr_piece, self.curr_r, self.curr_c)) {
@@ -79,12 +79,12 @@ class Tetris extends engine.GameEngine {
 
     // ─── Core Logic: Physical Collision Detection ───
     isValid(piece, br, bc) = {
-        pr = piece.rows()
-        pc = piece.cols()
+        pr = len(piece)
+        pc = len(piece[0])
         
         for (r = 0; r < pr; r += 1) {
             for (c = 0; c < pc; c += 1) {
-                if (piece[r, c] != 0.0) {
+                if (piece[r][c] != 0.0) {
                     target_r = br + r
                     target_c = bc + c
                     
@@ -93,7 +93,7 @@ class Tetris extends engine.GameEngine {
                         return false
                     }
                     // Hit another locked block
-                    if (target_r >= 0 && self.board[target_r, target_c] != 0.0) {
+                    if (target_r >= 0 && self.board[target_r][target_c] != 0.0) {
                         return false
                     }
                 }
@@ -104,30 +104,30 @@ class Tetris extends engine.GameEngine {
 
     // Mathematical 90-degree Clockwise Matrix Rotation!
     rotatePiece(piece) = {
-        pr = piece.rows()
-        pc = piece.cols()
-        res = zeros(pc, pr)
+        pr = len(piece)
+        pc = len(piece[0])
+        res = @[ @[0.0 for (c2 in range(pr))] for (r2 in range(pc)) ]
         
         for (r = 0; r < pr; r += 1) {
             for (c = 0; c < pc; c += 1) {
-                res[c, pr - 1 - r] = piece[r, c]
+                res[c][pr - 1 - r] = piece[r][c]
             }
         }
         return res
     }
 
     lockPiece() = {
-        pr = self.curr_piece.rows()
-        pc = self.curr_piece.cols()
+        pr = len(self.curr_piece)
+        pc = len(self.curr_piece[0])
         
-        // Bake the falling piece into the background board matrix
+        // Bake the falling piece into the background board
         for (r = 0; r < pr; r += 1) {
             for (c = 0; c < pc; c += 1) {
-                if (self.curr_piece[r, c] != 0.0) {
+                if (self.curr_piece[r][c] != 0.0) {
                     br = self.curr_r + r
                     bc = self.curr_c + c
                     if (br >= 0 && br < self.ROWS) {
-                        self.board[br, bc] = double(self.curr_color)
+                        self.board[br][bc] = double(self.curr_color)
                     }
                 }
             }
@@ -142,7 +142,7 @@ class Tetris extends engine.GameEngine {
         for (r = self.ROWS - 1; r >= 0; r -= 1) {
             full = true
             for (c = 0; c < self.COLS; c += 1) {
-                if (self.board[r, c] == 0.0) { full = false; break }
+                if (self.board[r][c] == 0.0) { full = false; break }
             }
             
             if (full) {
@@ -150,11 +150,11 @@ class Tetris extends engine.GameEngine {
                 // Shift all rows above down by one
                 for (y = r; y > 0; y -= 1) {
                     for (x = 0; x < self.COLS; x += 1) {
-                        self.board[y, x] = self.board[y - 1, x]
+                        self.board[y][x] = self.board[y - 1][x]
                     }
                 }
                 // Clear the top-most row
-                for (x = 0; x < self.COLS; x += 1) self.board[0, x] = 0.0
+                for (x = 0; x < self.COLS; x += 1) self.board[0][x] = 0.0
                 
                 // Re-evaluate current row because everything shifted down!
                 r += 1 
@@ -232,7 +232,7 @@ class Tetris extends engine.GameEngine {
         // -------------------------------------------------------------
         for (r = 0; r < self.ROWS; r += 1) {
             for (c = 0; c < self.COLS; c += 1) {
-                val = int(self.board[r, c])
+                val = int(self.board[r][c])
                 x = self.ox + c * self.CELL
                 y = self.oy + r * self.CELL
                 im.fillRect(x, y, self.CELL - 1, self.CELL - 1, self.colors[val])
@@ -247,12 +247,12 @@ class Tetris extends engine.GameEngine {
             ghost_r = self.curr_r
             while (self.isValid(self.curr_piece, ghost_r + 1, self.curr_c)) ghost_r += 1
             
-            pr = self.curr_piece.rows()
-            pc = self.curr_piece.cols()
+            pr = len(self.curr_piece)
+            pc = len(self.curr_piece[0])
             
             for (r = 0; r < pr; r += 1) {
                 for (c = 0; c < pc; c += 1) {
-                    if (self.curr_piece[r, c] != 0.0) {
+                    if (self.curr_piece[r][c] != 0.0) {
                         // Ghost footprint
                         if (ghost_r + r >= 0) {
                             gx = self.ox + (self.curr_c + c) * self.CELL
@@ -284,8 +284,8 @@ class Tetris extends engine.GameEngine {
         im.rect(ui_x, next_y + 30, 160, 120, "#333344", 2.0)
         
         next_p = self.shapes[self.next_idx]
-        nr = next_p.rows()
-        nc = next_p.cols()
+        nr = len(next_p)
+        nc = len(next_p[0])
         
         // Mathematically center the preview piece inside the 160x120 box!
         prev_ox = ui_x + ((160 - nc * self.CELL) ~/ 2)
@@ -293,7 +293,7 @@ class Tetris extends engine.GameEngine {
         
         for (r = 0; r < nr; r += 1) {
             for (c = 0; c < nc; c += 1) {
-                if (next_p[r, c] != 0.0) {
+                if (next_p[r][c] != 0.0) {
                     im.fillRect(prev_ox + c * self.CELL, prev_oy + r * self.CELL, self.CELL - 1, self.CELL - 1, self.colors[self.next_idx + 1])
                 } 
             }

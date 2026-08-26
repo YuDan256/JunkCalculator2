@@ -1076,6 +1076,14 @@ JC2_ValueHandle struct_inst_setattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
     StructInstanceData* data = self.get_native_data<StructInstanceData>();
     for (const auto& f : data->layout->fields) {
         if (f.name == key) {
+            // 数组字段被整体写回：若 val 正是该字段当前的 array view（同一块内存），
+            // 说明是索引赋值（如 a.data[0] = x）后的多余写回，原地已改，直接跳过。
+            if (!f.type.array_dims.empty() && val.is_instance()) {
+                auto* viewData = val.get_native_data<FFIArrayViewData>();
+                if (viewData && viewData->base_ptr == data->base_ptr + f.offset) {
+                    return Value().get_handle();
+                }
+            }
             try {
                 write_memory(data->base_ptr + f.offset, f.type, val);
                 return Value().get_handle();
@@ -1417,7 +1425,7 @@ int jc2_init(jc2::Module& mod) {
         "      Data = ffi.Struct({\n"
         "          rect: {x: \"i32\", y: \"i32\"}, // Anonymous nested struct\n"
         "          matrix: \"f32[4][4]\",        // Multi-dimensional inline array\n"
-        "          points: [Point, 10]         // Array of structs\n"
+        "          points: @[Point, 10]        // Array of structs\n"
         "      })\n"
         "      d = Data()\n"
         "      d.matrix[1, 2] = 3.14         // Zero-copy multi-dimensional access!\n"

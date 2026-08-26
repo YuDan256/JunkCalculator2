@@ -179,7 +179,7 @@ test_ffi_complex_structs_and_arrays() = {
     // 4. Struct Arrays
     Point = ffi.Struct({x: "i32", y: "i32"})
     Poly = ffi.Struct({
-        points: [Point, 4]
+        points: @[Point, 4]
     })
     poly = Poly()
     poly.points[2].x = 42

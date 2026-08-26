@@ -40,7 +40,7 @@ test_assign_prop_fail()
 
 // ============ 索引赋值断言 ============
 test_assign_index() = {
-    A = [1, 2, 3]
+    A = @[1, 2, 3]
     A[0]: int = 10
     assert(A[0] == 10, "Index assignment with int assertion should succeed")
 }
@@ -48,7 +48,7 @@ test_assign_index()
 
 test_assign_index_fail() = {
     try {
-        A = [1, 2, 3]
+        A = @[1, 2, 3]
         A[0]: string = 1
         assert(false, "Should throw when assigning int to string-typed index")
     } catch (e) {

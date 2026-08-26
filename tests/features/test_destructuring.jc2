@@ -42,7 +42,7 @@ test_dict() = {
 test_dict()
 
 test_complex_lvalues() = {
-    arr = [0, 0]
+    arr = @[0, 0]
     target = {val: 0}
     [arr[0], target.val] = [99, 88]
     assert(arr[0] == 99 && target.val == 88, "Complex L-Value Destructuring Failed")

@@ -1203,6 +1203,74 @@ void BuiltinRegistry::registerMatrixOps() {
     };
     regMethod(VM::activeVM->matrixProto, "setElement", {"r", "c", "val"}, setElementFn);
 
+    // 不可变矩阵的修改方法：返回新矩阵
+    auto setItemFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        int i = static_cast<int>(std::round(args[0].asDouble()));
+        auto normIdx = [&](int n) { if (i < 0) i += n; if (i < 0 || i >= n) throw std::runtime_error("Runtime Error: setItem() index out of bounds."); };
+        if (self.isObjType(ObjType::REAL_MATRIX)) {
+            RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
+            if (m.getRows() == 1) { normIdx(m.getCols()); m(0, i) = args[1].asDouble(); }
+            else if (m.getCols() == 1) { normIdx(m.getRows()); m(i, 0) = args[1].asDouble(); }
+            else throw std::runtime_error("Type Error: setItem() on a 2D matrix, use setElement(r, c, x).");
+            return Value(m);
+        }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
+            if (m.getRows() == 1) { normIdx(m.getCols()); m(0, i) = args[1].asComplex(); }
+            else if (m.getCols() == 1) { normIdx(m.getRows()); m(i, 0) = args[1].asComplex(); }
+            else throw std::runtime_error("Type Error: setItem() on a 2D matrix, use setElement(r, c, x).");
+            return Value(m);
+        }
+        if (self.isObjType(ObjType::SYM_MATRIX)) {
+            SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
+            if (m.getRows() == 1) { normIdx(m.getCols()); m(0, i) = args[1].asSymbolic(); }
+            else if (m.getCols() == 1) { normIdx(m.getRows()); m(i, 0) = args[1].asSymbolic(); }
+            else throw std::runtime_error("Type Error: setItem() on a 2D matrix, use setElement(r, c, x).");
+            return Value(m);
+        }
+        throw std::runtime_error("Type Error: setItem() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "setItem", {"i", "x"}, setItemFn);
+
+    auto setSliceFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!args[0].isSlice()) throw std::runtime_error("Type Error: setSlice() expects a slice as the first argument.");
+        ObjSlice* sl = static_cast<ObjSlice*>(args[0].asObj());
+        Value val = args[1];
+        auto doSlice = [&](auto& m, auto toElem) {
+            int n = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: setSlice() on a 2D matrix.");
+            SliceInfo si = sl->compute(n);
+            auto setAt = [&](int idx, auto v) { if (m.getRows() == 1) m(0, idx) = v; else m(idx, 0) = v; };
+            if (val.isObjType(ObjType::LIST)) {
+                const auto& vec = static_cast<ObjList*>(val.asObj())->vec;
+                if (static_cast<int>(vec.size()) != si.count) throw std::runtime_error("Runtime Error: setSlice() size mismatch.");
+                for (int k = 0; k < si.count; ++k) setAt(si.start + k * si.step, toElem(vec[k]));
+            } else {
+                auto sv = toElem(val);
+                for (int k = 0; k < si.count; ++k) setAt(si.start + k * si.step, sv);
+            }
+        };
+        if (self.isObjType(ObjType::REAL_MATRIX)) {
+            RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
+            doSlice(m, [](const Value& v) { return v.asDouble(); });
+            return Value(m);
+        }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
+            doSlice(m, [](const Value& v) { return v.asComplex(); });
+            return Value(m);
+        }
+        if (self.isObjType(ObjType::SYM_MATRIX)) {
+            SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
+            doSlice(m, [](const Value& v) { return v.asSymbolic(); });
+            return Value(m);
+        }
+        throw std::runtime_error("Type Error: setSlice() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "setSlice", {"s", "x"}, setSliceFn);
+
     // 行列操作（简写宏化）
     #define ROW_COL_OP_PROTO(NAME, BODY) \
     auto NAME##Fn = [](const std::vector<Value>& args) -> Value { \

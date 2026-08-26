@@ -261,6 +261,11 @@ METHOD(writeStr) {
     return argv[0];
 }
 METHOD(writeU8) { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); buf[pos++] = static_cast<uint8_t>(jc2::Value(argv[1]).as_double()); return argv[0]; }
+METHOD(writeI8)  { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int8_t v = static_cast<int8_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 1); pos += 1; return argv[0]; }
+METHOD(writeU16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); uint16_t v = static_cast<uint16_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
+METHOD(writeU32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); uint32_t v = static_cast<uint32_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeF32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); float v = static_cast<float>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeF64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); double v = jc2::Value(argv[1]).as_double(); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
 METHOD(writeI16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int16_t v = static_cast<int16_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
 METHOD(writeI32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int32_t v = static_cast<int32_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
 METHOD(writeI64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int64_t v = std::stoll(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
@@ -288,6 +293,11 @@ METHOD(readStr) {
     return jc2::Value(s).get_handle();
 }
 METHOD(readU8) { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); uint8_t v = buf[pos++]; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+METHOD(readI8)  { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int8_t v; std::memcpy(&v, buf.data() + pos, 1); pos += 1; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+METHOD(readU16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); uint16_t v; std::memcpy(&v, buf.data() + pos, 2); pos += 2; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+METHOD(readU32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); uint32_t v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::BigInt(std::to_string(v)).get_handle(); }
+METHOD(readF32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); float v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::Value(static_cast<double>(v)).get_handle(); }
+METHOD(readF64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); double v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::Value(v).get_handle(); }
 METHOD(readI16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int16_t v; std::memcpy(&v, buf.data() + pos, 2); pos += 2; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
 METHOD(readI32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int32_t v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::Value(v).get_handle(); }
 METHOD(readI64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int64_t v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::BigInt(std::to_string(v)).get_handle(); }
@@ -388,6 +398,11 @@ int jc2_init(jc2::Module& mod) {
     
     g_bytesClass->bind_method("writeStr", bytes_writeStr, 1, 1, false, {"s"});
     g_bytesClass->bind_method("writeU8", bytes_writeU8, 1, 1, false, {"v"});
+    g_bytesClass->bind_method("writeI8", bytes_writeI8, 1, 1, false, {"v"});
+    g_bytesClass->bind_method("writeU16", bytes_writeU16, 1, 1, false, {"v"});
+    g_bytesClass->bind_method("writeU32", bytes_writeU32, 1, 1, false, {"v"});
+    g_bytesClass->bind_method("writeF32", bytes_writeF32, 1, 1, false, {"v"});
+    g_bytesClass->bind_method("writeF64", bytes_writeF64, 1, 1, false, {"v"});
     g_bytesClass->bind_method("writeI16", bytes_writeI16, 1, 1, false, {"v"});
     g_bytesClass->bind_method("writeI32", bytes_writeI32, 1, 1, false, {"v"});
     g_bytesClass->bind_method("writeI64", bytes_writeI64, 1, 1, false, {"v"});
@@ -396,6 +411,11 @@ int jc2_init(jc2::Module& mod) {
     
     g_bytesClass->bind_method("readStr", bytes_readStr, 1, 1, false, {"n"});
     g_bytesClass->bind_method("readU8", bytes_readU8, 0, 0, false);
+    g_bytesClass->bind_method("readI8", bytes_readI8, 0, 0, false);
+    g_bytesClass->bind_method("readU16", bytes_readU16, 0, 0, false);
+    g_bytesClass->bind_method("readU32", bytes_readU32, 0, 0, false);
+    g_bytesClass->bind_method("readF32", bytes_readF32, 0, 0, false);
+    g_bytesClass->bind_method("readF64", bytes_readF64, 0, 0, false);
     g_bytesClass->bind_method("readI16", bytes_readI16, 0, 0, false);
     g_bytesClass->bind_method("readI32", bytes_readI32, 0, 0, false);
     g_bytesClass->bind_method("readI64", bytes_readI64, 0, 0, false);
@@ -438,21 +458,32 @@ int jc2_init(jc2::Module& mod) {
         "    buf.isEnd()                 Returns true if cursor reached the end.\n\n"
         "  Chainable Writers (Cursor Auto-Advances)\n"
         "  ──────────────────────\n"
-        "    (buf.writeStr(\"RIFF\")       Writes text bytes.\n"
-        "       .writeI64(9000000000)    Writes 64-bit integer (8 bytes).\n"
-        "       .writeI32(1024)          Writes 32-bit integer (4 bytes).\n"
-        "       .writeI16(-2)            Writes 16-bit integer (2 bytes).\n"
-        "       .writeU8(255)            Writes 8-bit unsigned integer (1 byte).\n"
-        "       .writeU64(9000000000)    Writes 64-bit unsigned integer (8 bytes).\n"
-        "       .writePcmArray(arr))     Bulk-writes an entire mapped Array instantly.\n\n"
+        "    buf.writeStr(s)             Writes text bytes.\n"
+        "    buf.writeI8(v)              Writes signed 8-bit (1 byte).\n"
+        "    buf.writeU8(v)              Writes unsigned 8-bit (1 byte).\n"
+        "    buf.writeI16(v)             Writes signed 16-bit (2 bytes).\n"
+        "    buf.writeU16(v)             Writes unsigned 16-bit (2 bytes).\n"
+        "    buf.writeI32(v)             Writes signed 32-bit (4 bytes).\n"
+        "    buf.writeU32(v)             Writes unsigned 32-bit (4 bytes).\n"
+        "    buf.writeI64(v)             Writes signed 64-bit (8 bytes).\n"
+        "    buf.writeU64(v)             Writes unsigned 64-bit (8 bytes).\n"
+        "    buf.writeF32(v)             Writes 32-bit float (4 bytes).\n"
+        "    buf.writeF64(v)             Writes 64-bit float (8 bytes).\n"
+        "    buf.writePcmArray(arr)      Bulk-writes an array as 16-bit PCM.\n"
+        "    (chainable: each returns the buffer for `.a().b().c()` style)\n\n"
         "  Readers (Cursor Auto-Advances)\n"
         "  ──────────────────────\n"
-        "    str = buf.readStr(4)        Reads 4 bytes into a String.\n"
-        "    byte = buf.readU8()         Reads 1 unsigned byte.\n"
-        "    short = buf.readI16()       Reads 2 bytes (signed 16-bit).\n"
-        "    my_int = buf.readI32()      Reads 4 bytes (signed 32-bit).\n"
-        "    big_int = buf.readI64()     Reads 8 bytes (signed 64-bit, BigInt).\n"
-        "    ubig = buf.readU64()        Reads 8 bytes (unsigned 64-bit, BigInt).\n\n"
+        "    buf.readStr(n)              Reads n bytes as a string.\n"
+        "    buf.readI8()                Reads signed 8-bit.\n"
+        "    buf.readU8()                Reads unsigned 8-bit.\n"
+        "    buf.readI16()               Reads signed 16-bit.\n"
+        "    buf.readU16()               Reads unsigned 16-bit.\n"
+        "    buf.readI32()               Reads signed 32-bit.\n"
+        "    buf.readU32()               Reads unsigned 32-bit (BigInt).\n"
+        "    buf.readI64()               Reads signed 64-bit (BigInt).\n"
+        "    buf.readU64()               Reads unsigned 64-bit (BigInt).\n"
+        "    buf.readF32()               Reads 32-bit float.\n"
+        "    buf.readF64()               Reads 64-bit float.\n\n"
         "  Low-Level Reading & Writing (Absolute Offsets)\n"
         "  ──────────────────────\n"
         "    buf.set(offset, val, type)  Write a value into memory at `offset`.\n"
@@ -485,6 +516,11 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("bytes.isEnd", "buf.isEnd()", "Returns true if the cursor reached the end of the buffer.", "buf.isEnd()");
     mod.register_function_help("bytes.writeStr", "buf.writeStr(s)", "Writes text bytes at the cursor and advances it.", "buf.writeStr(\"RIFF\")");
     mod.register_function_help("bytes.writeU8", "buf.writeU8(v)", "Writes an 8-bit unsigned integer and advances the cursor.", "buf.writeU8(255)");
+    mod.register_function_help("bytes.writeI8", "buf.writeI8(v)", "Writes an 8-bit signed integer and advances the cursor.", "buf.writeI8(-1)");
+    mod.register_function_help("bytes.writeU16", "buf.writeU16(v)", "Writes a 16-bit unsigned integer and advances the cursor.", "buf.writeU16(65535)");
+    mod.register_function_help("bytes.writeU32", "buf.writeU32(v)", "Writes a 32-bit unsigned integer and advances the cursor.", "buf.writeU32(4294967295)");
+    mod.register_function_help("bytes.writeF32", "buf.writeF32(v)", "Writes a 32-bit float and advances the cursor.", "buf.writeF32(1.5)");
+    mod.register_function_help("bytes.writeF64", "buf.writeF64(v)", "Writes a 64-bit float and advances the cursor.", "buf.writeF64(1.5)");
     mod.register_function_help("bytes.writeI16", "buf.writeI16(v)", "Writes a 16-bit signed integer and advances the cursor.", "buf.writeI16(-2)");
     mod.register_function_help("bytes.writeI32", "buf.writeI32(v)", "Writes a 32-bit signed integer and advances the cursor.", "buf.writeI32(1024)");
     mod.register_function_help("bytes.writeI64", "buf.writeI64(v)", "Writes a 64-bit signed integer and advances the cursor.", "buf.writeI64(9000000000)");
@@ -492,6 +528,11 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("bytes.writePcmArray", "buf.writePcmArray(arr)", "Bulk-writes an array as 16-bit PCM samples.", "buf.writePcmArray([0.5, -0.5])");
     mod.register_function_help("bytes.readStr", "buf.readStr(n)", "Reads n bytes as a string and advances the cursor.", "buf.readStr(4)");
     mod.register_function_help("bytes.readU8", "buf.readU8()", "Reads 1 unsigned byte and advances the cursor.", "buf.readU8()");
+    mod.register_function_help("bytes.readI8", "buf.readI8()", "Reads 1 signed byte and advances the cursor.", "buf.readI8()");
+    mod.register_function_help("bytes.readU16", "buf.readU16()", "Reads 2 bytes as an unsigned 16-bit integer.", "buf.readU16()");
+    mod.register_function_help("bytes.readU32", "buf.readU32()", "Reads 4 bytes as an unsigned 32-bit integer (BigInt).", "buf.readU32()");
+    mod.register_function_help("bytes.readF32", "buf.readF32()", "Reads 4 bytes as a 32-bit float.", "buf.readF32()");
+    mod.register_function_help("bytes.readF64", "buf.readF64()", "Reads 8 bytes as a 64-bit float.", "buf.readF64()");
     mod.register_function_help("bytes.readI16", "buf.readI16()", "Reads 2 bytes as a signed 16-bit integer.", "buf.readI16()");
     mod.register_function_help("bytes.readI32", "buf.readI32()", "Reads 4 bytes as a signed 32-bit integer.", "buf.readI32()");
     mod.register_function_help("bytes.readI64", "buf.readI64()", "Reads 8 bytes as a signed 64-bit integer (BigInt).", "buf.readI64()");

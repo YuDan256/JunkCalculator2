@@ -1342,21 +1342,21 @@ int jc2_init(jc2::Module& mod) {
     g_callbackClass = std::make_unique<Class>("Callback");
     
     g_libClass->set_allocator(lib_alloc);
-    g_libClass->bind_method("bind", lib_bind, 2, 16777215, true, {"func_name", "ret_type", "...arg_types"});
+    g_libClass->bind_method("bind", lib_bind, 2, 16777215, {"func_name", "ret_type"}, "arg_types");
     
-    g_funcClass->bind_method("__call__", func_call, 0, 16777215, true);
+    g_funcClass->bind_method("__call__", func_call, 0, 16777215, {}, "_");
 
     g_structLayoutClass->set_allocator(struct_layout_alloc);
-    g_structLayoutClass->bind_method("__call__", struct_layout_call, 0, 0, false);
+    g_structLayoutClass->bind_method("__call__", struct_layout_call, 0, 0);
 
-    g_structInstClass->bind_method("__getattr__", struct_inst_getattr, 1, 1, false, {"key"});
-    g_structInstClass->bind_method("__setattr__", struct_inst_setattr, 2, 2, false, {"key", "val"});
-    g_structInstClass->bind_method("__str__", struct_inst_str, 0, 0, false);
+    g_structInstClass->bind_method("__getattr__", struct_inst_getattr, 1, 1, {"key"});
+    g_structInstClass->bind_method("__setattr__", struct_inst_setattr, 2, 2, {"key", "val"});
+    g_structInstClass->bind_method("__str__", struct_inst_str, 0, 0);
     
-    g_arrayViewClass->bind_method("__getitem__", array_view_getitem, 1, 16777215, true);
-    g_arrayViewClass->bind_method("__setitem__", array_view_setitem, 2, 16777215, true);
-    g_arrayViewClass->bind_method("__len__", array_view_len, 0, 0, false);
-    g_arrayViewClass->bind_method("__str__", array_view_str, 0, 0, false);
+    g_arrayViewClass->bind_method("__getitem__", array_view_getitem, 1, 16777215, {}, "_");
+    g_arrayViewClass->bind_method("__setitem__", array_view_setitem, 2, 16777215, {}, "_");
+    g_arrayViewClass->bind_method("__len__", array_view_len, 0, 0);
+    g_arrayViewClass->bind_method("__str__", array_view_str, 0, 0);
 
     g_callbackClass->set_allocator(callback_alloc);
     
@@ -1365,8 +1365,8 @@ int jc2_init(jc2::Module& mod) {
     mod.register_value("Struct", *g_structLayoutClass);
     mod.register_value("Callback", *g_callbackClass);
     
-    mod.register_function("readMemory", ffi_read_memory, 2, 2, false, {"address", "type"});
-    mod.register_function("writeMemory", ffi_write_memory, 3, 3, false, {"address", "type", "value"});
+    mod.register_function("readMemory", ffi_read_memory, 2, 2, {"address", "type"});
+    mod.register_function("writeMemory", ffi_write_memory, 3, 3, {"address", "type", "value"});
     
     mod.register_help("ffi", 
         "═══ Zero-Dependency Foreign Function Interface (FFI) ═══\n\n"

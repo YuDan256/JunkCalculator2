@@ -139,10 +139,18 @@ public:
         Env::api->set_class_parent(Env::ctx, get_handle(), parent.get_handle());
     }
 
-    void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 16777215, bool has_rest = true, const std::vector<std::string>& param_names = {}, void* user_data = nullptr) {
+    void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 16777215,
+        const std::vector<std::string>& param_names = {},
+        const std::string& rest_name = "",
+        const std::vector<std::string>& kwarg_names = {},
+        const std::string& kwargs_name = "",
+        int kwarg_default_count = 0,
+        void* user_data = nullptr) {
         std::vector<const char*> c_param_names;
         for (const auto& p : param_names) c_param_names.push_back(p.c_str());
-        Env::api->bind_method(Env::ctx, get_handle(), name.c_str(), fn, min_arity, max_arity, has_rest, c_param_names.data(), static_cast<int>(c_param_names.size()), user_data);
+        std::vector<const char*> c_kwarg_names;
+        for (const auto& p : kwarg_names) c_kwarg_names.push_back(p.c_str());
+        Env::api->bind_method(Env::ctx, get_handle(), name.c_str(), fn, min_arity, max_arity, c_param_names.data(), static_cast<int>(c_param_names.size()), rest_name.c_str(), c_kwarg_names.data(), static_cast<int>(c_kwarg_names.size()), kwargs_name.c_str(), kwarg_default_count, user_data);
     }
 
     void set_allocator(JC2_NativeFunc fn, void* user_data = nullptr) {
@@ -351,10 +359,18 @@ public:
         Env::api->register_function_help(Env::ctx, name.c_str(), signature.c_str(), desc.c_str(), example.c_str());
     }
 
-    void register_function(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 16777215, bool has_rest = true, const std::vector<std::string>& param_names = {}, void* user_data = nullptr) {
+    void register_function(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 16777215,
+        const std::vector<std::string>& param_names = {},
+        const std::string& rest_name = "",
+        const std::vector<std::string>& kwarg_names = {},
+        const std::string& kwargs_name = "",
+        int kwarg_default_count = 0,
+        void* user_data = nullptr) {
         std::vector<const char*> c_param_names;
         for (const auto& p : param_names) c_param_names.push_back(p.c_str());
-        Env::api->register_function(Env::ctx, mod, name.c_str(), fn, min_arity, max_arity, has_rest, c_param_names.data(), static_cast<int>(c_param_names.size()), user_data);
+        std::vector<const char*> c_kwarg_names;
+        for (const auto& p : kwarg_names) c_kwarg_names.push_back(p.c_str());
+        Env::api->register_function(Env::ctx, mod, name.c_str(), fn, min_arity, max_arity, c_param_names.data(), static_cast<int>(c_param_names.size()), rest_name.c_str(), c_kwarg_names.data(), static_cast<int>(c_kwarg_names.size()), kwargs_name.c_str(), kwarg_default_count, user_data);
     }
 
     void register_int(const std::string& name, int32_t val) {

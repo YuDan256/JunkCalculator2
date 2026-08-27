@@ -197,51 +197,51 @@ int jc2_init(jc2::Module& mod) {
     g_distClass = new jc2::Class("Distribution");
     mod.register_value("Distribution", *g_distClass);
 
-    g_distClass->bind_method("pdf", dist_pdf, 1, 1, false, {"x"});
-    g_distClass->bind_method("pmf", dist_pmf, 1, 1, false, {"x"});
-    g_distClass->bind_method("cdf", dist_cdf, 1, 1, false, {"x"});
-    g_distClass->bind_method("quantile", dist_quantile, 1, 1, false, {"p"});
-    g_distClass->bind_method("mean", dist_mean, 0, 0, false);
-    g_distClass->bind_method("var", dist_var, 0, 0, false);
-    g_distClass->bind_method("std", dist_std_dev, 0, 0, false);
-    g_distClass->bind_method("sample", dist_sample, 1, 1, false, {"n"});
+    g_distClass->bind_method("pdf", dist_pdf, 1, 1, {"x"});
+    g_distClass->bind_method("pmf", dist_pmf, 1, 1, {"x"});
+    g_distClass->bind_method("cdf", dist_cdf, 1, 1, {"x"});
+    g_distClass->bind_method("quantile", dist_quantile, 1, 1, {"p"});
+    g_distClass->bind_method("mean", dist_mean, 0, 0);
+    g_distClass->bind_method("var", dist_var, 0, 0);
+    g_distClass->bind_method("std", dist_std_dev, 0, 0);
+    g_distClass->bind_method("sample", dist_sample, 1, 1, {"n"});
 
-    mod.register_function("gamma", global_gamma, 1, 1, false, {"x"});
-    mod.register_function("lgamma", global_lgamma, 1, 1, false, {"x"});
-    mod.register_function("betaFn", global_betaFn, 2, 2, false, {"a", "b"});
-    mod.register_function("erf", global_erf, 1, 1, false, {"x"});
-    mod.register_function("erfc", global_erfc, 1, 1, false, {"x"});
+    mod.register_function("gamma", global_gamma, 1, 1, {"x"});
+    mod.register_function("lgamma", global_lgamma, 1, 1, {"x"});
+    mod.register_function("betaFn", global_betaFn, 2, 2, {"a", "b"});
+    mod.register_function("erf", global_erf, 1, 1, {"x"});
+    mod.register_function("erfc", global_erfc, 1, 1, {"x"});
 
-    mod.register_function("Normal", global_Normal, 0, 2, false, {"mu", "sigma"});
-    mod.register_function("TDist", global_TDist, 1, 1, false, {"df"});
-    mod.register_function("Chi2", global_Chi2, 1, 1, false, {"df"});
-    mod.register_function("FDist", global_FDist, 2, 2, false, {"d1", "d2"});
-    mod.register_function("ExpDist", global_ExpDist, 1, 1, false, {"lambda"});
-    mod.register_function("GammaDist", global_GammaDist, 2, 2, false, {"shape", "rate"});
-    mod.register_function("BetaDist", global_BetaDist, 2, 2, false, {"a", "b"});
-    mod.register_function("Uniform", global_Uniform, 2, 2, false, {"a", "b"});
-    mod.register_function("Binom", global_Binom, 2, 2, false, {"n", "p"});
-    mod.register_function("Poisson", global_Poisson, 1, 1, false, {"lambda"});
-    mod.register_function("Geom", global_Geom, 1, 1, false, {"p"});
+    mod.register_function("Normal", global_Normal, 0, 2, {"mu", "sigma"});
+    mod.register_function("TDist", global_TDist, 1, 1, {"df"});
+    mod.register_function("Chi2", global_Chi2, 1, 1, {"df"});
+    mod.register_function("FDist", global_FDist, 2, 2, {"d1", "d2"});
+    mod.register_function("ExpDist", global_ExpDist, 1, 1, {"lambda"});
+    mod.register_function("GammaDist", global_GammaDist, 2, 2, {"shape", "rate"});
+    mod.register_function("BetaDist", global_BetaDist, 2, 2, {"a", "b"});
+    mod.register_function("Uniform", global_Uniform, 2, 2, {"a", "b"});
+    mod.register_function("Binom", global_Binom, 2, 2, {"n", "p"});
+    mod.register_function("Poisson", global_Poisson, 1, 1, {"lambda"});
+    mod.register_function("Geom", global_Geom, 1, 1, {"p"});
 
-    mod.register_function("pdf", global_pdf, 2, 2, false, {"dist", "x"});
-    mod.register_function("pmf", global_pmf, 2, 2, false, {"dist", "x"});
-    mod.register_function("cdf", global_cdf, 2, 2, false, {"dist", "x"});
-    mod.register_function("quantile", global_quantile, 2, 2, false, {"dist", "p"});
-    mod.register_function("dmean", global_dmean, 1, 1, false, {"dist"});
-    mod.register_function("dvar", global_dvar, 1, 1, false, {"dist"});
-    mod.register_function("dstd", global_dstd, 1, 1, false, {"dist"});
-    mod.register_function("sample", global_sample, 2, 2, false, {"dist", "n"});
-    mod.register_function("distInfo", global_distInfo, 1, 1, false, {"dist"});
+    mod.register_function("pdf", global_pdf, 2, 2, {"dist", "x"});
+    mod.register_function("pmf", global_pmf, 2, 2, {"dist", "x"});
+    mod.register_function("cdf", global_cdf, 2, 2, {"dist", "x"});
+    mod.register_function("quantile", global_quantile, 2, 2, {"dist", "p"});
+    mod.register_function("dmean", global_dmean, 1, 1, {"dist"});
+    mod.register_function("dvar", global_dvar, 1, 1, {"dist"});
+    mod.register_function("dstd", global_dstd, 1, 1, {"dist"});
+    mod.register_function("sample", global_sample, 2, 2, {"dist", "n"});
+    mod.register_function("distInfo", global_distInfo, 1, 1, {"dist"});
 
-    mod.register_function("ttest", global_ttest, 1, 2, false, {"X", "mu0"});
-    mod.register_function("ttest2", global_ttest2, 2, 2, false, {"X", "Y"});
-    mod.register_function("ttestP", global_ttestP, 2, 2, false, {"X", "Y"});
-    mod.register_function("chi2test", global_chi2test, 2, 2, false, {"obs", "exp"});
+    mod.register_function("ttest", global_ttest, 1, 2, {"X", "mu0"});
+    mod.register_function("ttest2", global_ttest2, 2, 2, {"X", "Y"});
+    mod.register_function("ttestP", global_ttestP, 2, 2, {"X", "Y"});
+    mod.register_function("chi2test", global_chi2test, 2, 2, {"obs", "exp"});
 
-    mod.register_function("mean", global_mean, 1, 1, false, {"X"});
-    mod.register_function("var", global_var, 1, 1, false, {"X"});
-    mod.register_function("std", global_std_dev, 1, 1, false, {"X"});
+    mod.register_function("mean", global_mean, 1, 1, {"X"});
+    mod.register_function("var", global_var, 1, 1, {"X"});
+    mod.register_function("std", global_std_dev, 1, 1, {"X"});
 
     mod.register_help("prob",
         "═══ Probability Distributions & Hypothesis Tests — Native Module ═══\n\n"

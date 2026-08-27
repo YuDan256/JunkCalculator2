@@ -380,55 +380,55 @@ int jc2_init(jc2::Module& mod) {
     g_bytesClass = new jc2::Class("Bytes");
     mod.register_value("Bytes", *g_bytesClass);
 
-    g_bytesClass->bind_method("writeFile", bytes_writeFile, 1, 1, false, {"path"});
-    g_bytesClass->bind_method("save", bytes_writeFile, 1, 1, false, {"path"});
-    g_bytesClass->bind_method("set", bytes_set, 3, 3, false, {"offset", "val", "type"});
-    g_bytesClass->bind_method("write_arr", bytes_write_arr, 3, 3, false, {"offset", "arr", "type"});
-    g_bytesClass->bind_method("get", bytes_get, 2, 3, false, {"offset", "type", "len"});
-    g_bytesClass->bind_method("len", bytes_len, 0, 0, false);
-    g_bytesClass->bind_method("length", bytes_len, 0, 0, false);
-    g_bytesClass->bind_method("toHex", bytes_toHex, 0, 0, false);
-    g_bytesClass->bind_method("toBase64", bytes_toBase64, 0, 0, false);
-    g_bytesClass->bind_method("view", bytes_view, 1, 2, false, {"start", "len"});
+    g_bytesClass->bind_method("writeFile", bytes_writeFile, 1, 1, {"path"});
+    g_bytesClass->bind_method("save", bytes_writeFile, 1, 1, {"path"});
+    g_bytesClass->bind_method("set", bytes_set, 3, 3, {"offset", "val", "type"});
+    g_bytesClass->bind_method("write_arr", bytes_write_arr, 3, 3, {"offset", "arr", "type"});
+    g_bytesClass->bind_method("get", bytes_get, 2, 3, {"offset", "type", "len"});
+    g_bytesClass->bind_method("len", bytes_len, 0, 0);
+    g_bytesClass->bind_method("length", bytes_len, 0, 0);
+    g_bytesClass->bind_method("toHex", bytes_toHex, 0, 0);
+    g_bytesClass->bind_method("toBase64", bytes_toBase64, 0, 0);
+    g_bytesClass->bind_method("view", bytes_view, 1, 2, {"start", "len"});
     
-    g_bytesClass->bind_method("seek", bytes_seek, 1, 1, false, {"pos"});
-    g_bytesClass->bind_method("skip", bytes_skip, 1, 1, false, {"n"});
-    g_bytesClass->bind_method("tell", bytes_tell, 0, 0, false);
-    g_bytesClass->bind_method("isEnd", bytes_isEnd, 0, 0, false);
+    g_bytesClass->bind_method("seek", bytes_seek, 1, 1, {"pos"});
+    g_bytesClass->bind_method("skip", bytes_skip, 1, 1, {"n"});
+    g_bytesClass->bind_method("tell", bytes_tell, 0, 0);
+    g_bytesClass->bind_method("isEnd", bytes_isEnd, 0, 0);
     
-    g_bytesClass->bind_method("writeStr", bytes_writeStr, 1, 1, false, {"s"});
-    g_bytesClass->bind_method("writeU8", bytes_writeU8, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeI8", bytes_writeI8, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeU16", bytes_writeU16, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeU32", bytes_writeU32, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeF32", bytes_writeF32, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeF64", bytes_writeF64, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeI16", bytes_writeI16, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeI32", bytes_writeI32, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeI64", bytes_writeI64, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writeU64", bytes_writeU64, 1, 1, false, {"v"});
-    g_bytesClass->bind_method("writePcmArray", bytes_writePcmArray, 1, 1, false, {"arr"});
+    g_bytesClass->bind_method("writeStr", bytes_writeStr, 1, 1, {"s"});
+    g_bytesClass->bind_method("writeU8", bytes_writeU8, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeI8", bytes_writeI8, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeU16", bytes_writeU16, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeU32", bytes_writeU32, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeF32", bytes_writeF32, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeF64", bytes_writeF64, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeI16", bytes_writeI16, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeI32", bytes_writeI32, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeI64", bytes_writeI64, 1, 1, {"v"});
+    g_bytesClass->bind_method("writeU64", bytes_writeU64, 1, 1, {"v"});
+    g_bytesClass->bind_method("writePcmArray", bytes_writePcmArray, 1, 1, {"arr"});
     
-    g_bytesClass->bind_method("readStr", bytes_readStr, 1, 1, false, {"n"});
-    g_bytesClass->bind_method("readU8", bytes_readU8, 0, 0, false);
-    g_bytesClass->bind_method("readI8", bytes_readI8, 0, 0, false);
-    g_bytesClass->bind_method("readU16", bytes_readU16, 0, 0, false);
-    g_bytesClass->bind_method("readU32", bytes_readU32, 0, 0, false);
-    g_bytesClass->bind_method("readF32", bytes_readF32, 0, 0, false);
-    g_bytesClass->bind_method("readF64", bytes_readF64, 0, 0, false);
-    g_bytesClass->bind_method("readI16", bytes_readI16, 0, 0, false);
-    g_bytesClass->bind_method("readI32", bytes_readI32, 0, 0, false);
-    g_bytesClass->bind_method("readI64", bytes_readI64, 0, 0, false);
-    g_bytesClass->bind_method("readU64", bytes_readU64, 0, 0, false);
+    g_bytesClass->bind_method("readStr", bytes_readStr, 1, 1, {"n"});
+    g_bytesClass->bind_method("readU8", bytes_readU8, 0, 0);
+    g_bytesClass->bind_method("readI8", bytes_readI8, 0, 0);
+    g_bytesClass->bind_method("readU16", bytes_readU16, 0, 0);
+    g_bytesClass->bind_method("readU32", bytes_readU32, 0, 0);
+    g_bytesClass->bind_method("readF32", bytes_readF32, 0, 0);
+    g_bytesClass->bind_method("readF64", bytes_readF64, 0, 0);
+    g_bytesClass->bind_method("readI16", bytes_readI16, 0, 0);
+    g_bytesClass->bind_method("readI32", bytes_readI32, 0, 0);
+    g_bytesClass->bind_method("readI64", bytes_readI64, 0, 0);
+    g_bytesClass->bind_method("readU64", bytes_readU64, 0, 0);
 
     g_bytesClass->set_allocator(global_alloc);
 
-    mod.register_function("alloc", global_alloc, 1, 1, false, {"size"});
-    mod.register_function("pack", global_pack, 1, 1, false, {"arr"});
-    mod.register_function("readFile", global_readFile, 1, 1, false, {"path"});
-    mod.register_function("fromFile", global_readFile, 1, 1, false, {"path"});
-    mod.register_function("fromHex", global_fromHex, 1, 1, false, {"str"});
-    mod.register_function("fromBase64", global_fromBase64, 1, 1, false, {"str"});
+    mod.register_function("alloc", global_alloc, 1, 1, {"size"});
+    mod.register_function("pack", global_pack, 1, 1, {"arr"});
+    mod.register_function("readFile", global_readFile, 1, 1, {"path"});
+    mod.register_function("fromFile", global_readFile, 1, 1, {"path"});
+    mod.register_function("fromHex", global_fromHex, 1, 1, {"str"});
+    mod.register_function("fromBase64", global_fromBase64, 1, 1, {"str"});
 
     mod.register_help("bytes",
         "═══ Bare-Metal Memory Engine — Native Module ═══\n\n"

@@ -193,13 +193,13 @@ int jc2_init(jc2::Module& mod) {
     g_socketClass = new jc2::Class("Socket");
     mod.register_value("Socket", *g_socketClass);
 
-    g_socketClass->bind_method("send", sock_send, 1, 1, false, {"data"});
-    g_socketClass->bind_method("recv", sock_recv, 0, 1, false, {"max_bytes"});
-    g_socketClass->bind_method("close", sock_close, 0, 0, false);
-    g_socketClass->bind_method("accept", sock_accept, 0, 0, false);
+    g_socketClass->bind_method("send", sock_send, 1, 1, {"data"});
+    g_socketClass->bind_method("recv", sock_recv, 0, 1, {"max_bytes"});
+    g_socketClass->bind_method("close", sock_close, 0, 0);
+    g_socketClass->bind_method("accept", sock_accept, 0, 0);
 
-    mod.register_function("connect", global_connect, 2, 2, false, {"host", "port"});
-    mod.register_function("server", global_server, 2, 2, false, {"host", "port"});
+    mod.register_function("connect", global_connect, 2, 2, {"host", "port"});
+    mod.register_function("server", global_server, 2, 2, {"host", "port"});
 
     mod.register_help("socket",
         "═══ Native Socket Binding — Native Module ═══\n\n"

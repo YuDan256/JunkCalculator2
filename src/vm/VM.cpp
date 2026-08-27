@@ -305,10 +305,14 @@ Value VM::makeTokenInstance(const Token& t) {
     return Value(inst);
 }
 
-void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames) {
+void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount) {
     nativeBuiltins[name] = fn;
     builtinArity[name] = arity;
     builtinParamNames[name] = paramNames;
+    builtinRestName[name] = std::move(restName);
+    builtinKwargNames[name] = std::move(kwargNames);
+    builtinKwargsName[name] = std::move(kwargsName);
+    builtinKwargDefaultCount[name] = kwargDefaultCount;
 }
 
 Value VM::getBuiltinClosure(const std::string& name) {
@@ -327,36 +331,32 @@ Value VM::getBuiltinClosure(const std::string& name) {
         closure->nativeFn = std::make_any<NativeCallable>(nit->second);
         auto ait = builtinArity.find(name);
         auto pit = builtinParamNames.find(name);
-        if (pit != builtinParamNames.end() && !pit->second.empty()) {
+        auto rit = builtinRestName.find(name);
+        auto kwit = builtinKwargNames.find(name);
+        auto kwnit = builtinKwargsName.find(name);
+        auto kwdcit = builtinKwargDefaultCount.find(name);
+        if (pit != builtinParamNames.end()) {
             closure->paramNames = pit->second;
             for (size_t j = 0; j < closure->paramNames.size(); ++j) {
                 closure->isRef.push_back(false);
             }
-            if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
-                closure->restName = closure->paramNames.back().substr(3);
-                closure->paramNames.pop_back();
-            } else if (ait == builtinArity.end() || ait->second.empty()) {
-                closure->restName = "_";
-            }
-            if (ait != builtinArity.end() && !ait->second.empty()) {
-                int minA = *ait->second.begin();
-                int maxA = *ait->second.rbegin();
-                for (int j = minA; j < maxA; ++j) {
-                    closure->defaultValues.push_back(Value::uninit());
-                }
-            }
-        } else if (ait != builtinArity.end() && !ait->second.empty()) {
-            int maxA = *ait->second.rbegin();
+        }
+        if (rit != builtinRestName.end()) closure->restName = rit->second;
+        if (kwit != builtinKwargNames.end()) closure->kwargNames = kwit->second;
+        if (kwnit != builtinKwargsName.end()) closure->kwargsName = kwnit->second;
+        if (kwdcit != builtinKwargDefaultCount.end()) closure->kwargDefaultCount = kwdcit->second;
+        if (ait != builtinArity.end() && !ait->second.empty()) {
             int minA = *ait->second.begin();
-            for (int j = 0; j < maxA; ++j) {
-                closure->paramNames.push_back("_" + std::to_string(j));
-                closure->isRef.push_back(false);
+            int maxA = *ait->second.rbegin();
+            if (closure->paramNames.empty()) {
+                for (int j = 0; j < maxA; ++j) {
+                    closure->paramNames.push_back("_" + std::to_string(j));
+                    closure->isRef.push_back(false);
+                }
             }
             for (int j = minA; j < maxA; ++j) {
                 closure->defaultValues.push_back(Value::uninit());
             }
-        } else {
-            closure->restName = "_";
         }
         Value val(closure);
         builtinClosures[name] = val;
@@ -623,10 +623,10 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
 Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* argsBase) {
     std::vector<Value> args;
     if (kwArgc > 0) {
-        if (td->converterParamNames.empty()) {
+        if (td->converterParamNames.empty() && td->converterKwargNames.empty() && td->converterKwargsName.empty()) {
             throw std::runtime_error("TypeError: This type object does not support keyword arguments.");
         }
-        args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, "", {}, "", Value::none());
+        args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, td->converterRestName, td->converterKwargNames, td->converterKwargsName, Value::none());
     } else {
         args.reserve(posArgc);
         for (int i = 0; i < posArgc; ++i) args.push_back(argsBase[i]);
@@ -2273,8 +2273,12 @@ Value VM::execImport(const std::string& name) {
         std::unordered_map<std::string, NativeCallable> tempNatives;
         std::unordered_map<std::string, std::set<int>> tempArity;
         std::unordered_map<std::string, std::vector<std::string>> tempParamNames;
+        std::unordered_map<std::string, std::string> tempRestName;
+        std::unordered_map<std::string, std::vector<std::string>> tempKwargNames;
+        std::unordered_map<std::string, std::string> tempKwargsName;
+        std::unordered_map<std::string, int> tempKwargDefaultCount;
 
-        ModuleLoadContext mctx = { &tempGlobals, &tempNatives, &tempArity, &tempParamNames };
+        ModuleLoadContext mctx = { &tempGlobals, &tempNatives, &tempArity, &tempParamNames, &tempRestName, &tempKwargNames, &tempKwargsName, &tempKwargDefaultCount };
 
         size_t old_size = jc::nativeTempRefs.size();
         int res = init_fn(reinterpret_cast<JC2_VMContext>(this), &mctx, get_host_api());
@@ -2300,37 +2304,33 @@ Value VM::execImport(const std::string& name) {
             
             auto ait = tempArity.find(kv.first);
             auto pit = tempParamNames.find(kv.first);
+            auto rit = tempRestName.find(kv.first);
+            auto kwit = tempKwargNames.find(kv.first);
+            auto kwnit = tempKwargsName.find(kv.first);
+            auto kwdcit = tempKwargDefaultCount.find(kv.first);
             
-            if (pit != tempParamNames.end() && !pit->second.empty()) {
+            if (pit != tempParamNames.end()) {
                 closure->paramNames = pit->second;
                 for (size_t j = 0; j < closure->paramNames.size(); ++j) {
                     closure->isRef.push_back(false);
                 }
-                if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
-                    closure->restName = closure->paramNames.back().substr(3);
-                    closure->paramNames.pop_back();
-                } else if (ait == tempArity.end() || ait->second.empty()) {
-                    closure->restName = "_";
-                }
-                if (ait != tempArity.end() && !ait->second.empty()) {
-                    int minA = *ait->second.begin();
-                    int maxA = *ait->second.rbegin();
-                    for (int j = minA; j < maxA; ++j) {
-                        closure->defaultValues.push_back(Value::uninit());
-                    }
-                }
-            } else if (ait != tempArity.end() && !ait->second.empty()) {
-                int maxA = *ait->second.rbegin();
+            }
+            if (rit != tempRestName.end()) closure->restName = rit->second;
+            if (kwit != tempKwargNames.end()) closure->kwargNames = kwit->second;
+            if (kwnit != tempKwargsName.end()) closure->kwargsName = kwnit->second;
+            if (kwdcit != tempKwargDefaultCount.end()) closure->kwargDefaultCount = kwdcit->second;
+            if (ait != tempArity.end() && !ait->second.empty()) {
                 int minA = *ait->second.begin();
-                for (int j = 0; j < maxA; ++j) {
-                    closure->paramNames.push_back("_" + std::to_string(j));
-                    closure->isRef.push_back(false);
+                int maxA = *ait->second.rbegin();
+                if (closure->paramNames.empty()) {
+                    for (int j = 0; j < maxA; ++j) {
+                        closure->paramNames.push_back("_" + std::to_string(j));
+                        closure->isRef.push_back(false);
+                    }
                 }
                 for (int j = minA; j < maxA; ++j) {
                     closure->defaultValues.push_back(Value::uninit());
                 }
-            } else {
-                closure->restName = "_";
             }
 
             auto uv = GcHeap::get().allocate<ObjUpVal>();
@@ -3201,11 +3201,16 @@ VM::VM() {
             return v;
         };
         auto bind = [this](const std::string& name, std::set<int> arity, std::vector<std::string> params,
-                           std::function<Value(const std::vector<Value>&)> fn) {
+                           std::function<Value(const std::vector<Value>&)> fn,
+                           std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0) {
             ObjTypeDef* td = static_cast<ObjTypeDef*>(builtinValues[name].asObj());
             td->converter = std::move(fn);
             td->converterArity = std::move(arity);
             td->converterParamNames = std::move(params);
+            td->converterRestName = std::move(restName);
+            td->converterKwargNames = std::move(kwargNames);
+            td->converterKwargsName = std::move(kwargsName);
+            td->converterKwargDefaultCount = kwargDefaultCount;
         };
 
         bind("int", {1}, {"x"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
@@ -3297,13 +3302,13 @@ VM::VM() {
             std::ostringstream oss; oss << args[0]; return Value(oss.str());
         });
 
-        bind("list", {}, {"...elements"}, [](const std::vector<Value>& args) -> Value {
+        bind("list", {}, {}, [](const std::vector<Value>& args) -> Value {
             ObjList* L = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(L);
             for (const auto& a : args) L->vec.push_back(a);
             return Value(L);
-        });
+        }, "elements");
 
-        bind("dict", {}, {"...pairs"}, [](const std::vector<Value>& args) -> Value {
+        bind("dict", {}, {}, [](const std::vector<Value>& args) -> Value {
             if (args.size() % 2 != 0) throw std::runtime_error("Runtime Error: dict() expects even number of arguments.");
             ObjDict* d = GcHeap::get().allocate<ObjDict>();
             GcObjGuard guard(d);
@@ -3312,9 +3317,9 @@ VM::VM() {
                 d->elements.push_back({args[i], args[i + 1]});
             }
             return Value(d);
-        });
+        }, "pairs");
 
-        bind("set", {}, {"...elements"}, [](const std::vector<Value>& args) -> Value {
+        bind("set", {}, {}, [](const std::vector<Value>& args) -> Value {
             ObjSet* s = GcHeap::get().allocate<ObjSet>();
             GcObjGuard guard(s);
             for (const auto& a : args) {
@@ -3324,9 +3329,9 @@ VM::VM() {
                 }
             }
             return Value(s);
-        });
+        }, "elements");
 
-        bind("symmatrix", {}, {"rows", "cols", "...elements"}, [](const std::vector<Value>& args) -> Value {
+        bind("symmatrix", {}, {"rows", "cols"}, [](const std::vector<Value>& args) -> Value {
             if (args.size() < 2)
                 throw std::runtime_error("Runtime Error: symmatrix(rows, cols [, ...]) expects at least 2 args.");
             int r = static_cast<int>(std::round(args[0].asDouble()));
@@ -3346,7 +3351,7 @@ VM::VM() {
                 flat.push_back(args[i + 2].asSymbolic());
             }
             return Value(SymMatrix(r, c, flat));
-        });
+        }, "elements");
 
         bind("slice", {0, 1, 2, 3}, {"start", "end", "step"}, [](const std::vector<Value>& args) -> Value {
             auto checkArg = [](const Value& v, const std::string& name) -> int {
@@ -3381,7 +3386,7 @@ VM::VM() {
             return Value(sliceObj);
         });
 
-        bind("matrix", {}, {"rows", "cols", "...elements"}, [](const std::vector<Value>& args) -> Value {
+        bind("matrix", {}, {"rows", "cols"}, [](const std::vector<Value>& args) -> Value {
             if (args.size() < 2)
                 throw std::runtime_error("Runtime Error: matrix(rows, cols [, ...]) expects at least 2 args.");
             int r = static_cast<int>(std::round(args[0].asDouble()));
@@ -3420,7 +3425,7 @@ VM::VM() {
             for (int i = 0; i < total; ++i)
                 flat.push_back(args[i + 2].asDouble());
             return Value(RealMatrix(r, c, flat));
-        });
+        }, "elements");
     }
 
     listProto = GcHeap::get().allocate<ObjClass>();

@@ -165,23 +165,23 @@ int jc2_init(Module& mod) {
     g_imageClass = new Class("Image");
     mod.register_value("Image", *g_imageClass);
     
-    g_imageClass->bind_method("width", img_width, 0, 0, false);
-    g_imageClass->bind_method("height", img_height, 0, 0, false);
-    g_imageClass->bind_method("setPixel", img_setPixel, 3, 3, false, {"x", "y", "color"});
-    g_imageClass->bind_method("getPixel", img_getPixel, 2, 2, false, {"x", "y"});
-    g_imageClass->bind_method("clear", img_clear, 1, 1, false, {"color"});
-    g_imageClass->bind_method("line", img_line, 5, 6, false, {"x0", "y0", "x1", "y1", "color", "thick"});
-    g_imageClass->bind_method("rect", img_rect, 5, 6, false, {"x", "y", "w", "h", "color", "thick"});
-    g_imageClass->bind_method("fillRect", img_fillRect, 5, 5, false, {"x", "y", "w", "h", "color"});
-    g_imageClass->bind_method("circle", img_circle, 4, 5, false, {"cx", "cy", "radius", "color", "thick"});
-    g_imageClass->bind_method("fillCircle", img_fillCircle, 4, 4, false, {"cx", "cy", "radius", "color"});
-    g_imageClass->bind_method("text", img_text, 4, 5, false, {"txt", "x", "y", "color", "scale"});
-    g_imageClass->bind_method("axes", img_axes, 4, 5, false, {"xMin", "xMax", "yMin", "yMax", "color"});
-    g_imageClass->bind_method("save", img_save, 1, 1, false, {"path"});
+    g_imageClass->bind_method("width", img_width, 0, 0);
+    g_imageClass->bind_method("height", img_height, 0, 0);
+    g_imageClass->bind_method("setPixel", img_setPixel, 3, 3, {"x", "y", "color"});
+    g_imageClass->bind_method("getPixel", img_getPixel, 2, 2, {"x", "y"});
+    g_imageClass->bind_method("clear", img_clear, 1, 1, {"color"});
+    g_imageClass->bind_method("line", img_line, 5, 6, {"x0", "y0", "x1", "y1", "color", "thick"});
+    g_imageClass->bind_method("rect", img_rect, 5, 6, {"x", "y", "w", "h", "color", "thick"});
+    g_imageClass->bind_method("fillRect", img_fillRect, 5, 5, {"x", "y", "w", "h", "color"});
+    g_imageClass->bind_method("circle", img_circle, 4, 5, {"cx", "cy", "radius", "color", "thick"});
+    g_imageClass->bind_method("fillCircle", img_fillCircle, 4, 4, {"cx", "cy", "radius", "color"});
+    g_imageClass->bind_method("text", img_text, 4, 5, {"txt", "x", "y", "color", "scale"});
+    g_imageClass->bind_method("axes", img_axes, 4, 5, {"xMin", "xMax", "yMin", "yMax", "color"});
+    g_imageClass->bind_method("save", img_save, 1, 1, {"path"});
 
     g_imageClass->set_allocator(create_image);
 
-    mod.register_function("img", create_image, 2, 3, false, {"width", "height", "bg_color"});
+    mod.register_function("img", create_image, 2, 3, {"width", "height", "bg_color"});
 
     mod.register_function_help("image.Image", "image.Image(width, height, [bg_color])", "Allocates a new image surface in RAM. Colors can be hex strings (e.g., \"#FF0000\") or names (e.g., \"red\").", "im = image.Image(800, 600, \"black\")");
     mod.register_function_help("image.img", "image.img(width, height, [bg_color])", "Legacy alias for image.Image.", "im = image.img(800, 600, \"black\")");

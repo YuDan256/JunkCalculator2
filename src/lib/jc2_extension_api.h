@@ -82,7 +82,7 @@ typedef struct JC2_HostAPI {
     /* --- 原生对象生命周期管理 (Native Object Management) --- */
     JC2_ValueHandle (*make_class)(JC2_VMContext ctx, const char* name);
     JC2_ValueHandle (*make_instance)(JC2_VMContext ctx, JC2_ValueHandle class_handle);
-    void (*bind_method)(JC2_VMContext ctx, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, const char** param_names, int param_count, void* user_data);
+    void (*bind_method)(JC2_VMContext ctx, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, const char** param_names, int param_count, const char* rest_name, const char** kwarg_names, int kwarg_count, const char* kwargs_name, int kwarg_default_count, void* user_data);
     
     /* 将 DLL 内部 new 出来的指针绑定到实例，并注册析构回调 */
     void (*set_native_data)(JC2_VMContext ctx, JC2_ValueHandle instance, void* data, JC2_NativeDestructor dtor);
@@ -96,7 +96,7 @@ typedef struct JC2_HostAPI {
     /* --- 模块注册 (Module Registration) --- */
     void (*register_help)(JC2_VMContext ctx, const char* topic, const char* help_text);
     void (*register_function_help)(JC2_VMContext ctx, const char* name, const char* signature, const char* desc, const char* example);
-    void (*register_function)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, bool has_rest, const char** param_names, int param_count, void* user_data);
+    void (*register_function)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, const char** param_names, int param_count, const char* rest_name, const char** kwarg_names, int kwarg_count, const char* kwargs_name, int kwarg_default_count, void* user_data);
     void (*register_int)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, int32_t val);
     void (*register_double)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, double val);
     void (*register_string)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, const char* val);

@@ -311,9 +311,9 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
 
 int jc2_init(jc2::Module& mod) {
 
-    mod.register_function("to_latex", global_to_latex, 1, 1, false, {"obj"});
-    mod.register_function("eval", global_eval, 1, 1, false, {"formula"});
-    mod.register_function("compile", global_compile, 2, 2, false, {"formula", "vars"});
+    mod.register_function("to_latex", global_to_latex, 1, 1, {"obj"});
+    mod.register_function("eval", global_eval, 1, 1, {"formula"});
+    mod.register_function("compile", global_compile, 2, 2, {"formula", "vars"});
 
     mod.register_help("latex",
         "═══ LaTeX Mathematical Engine — Native Module ═══\n\n"

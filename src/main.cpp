@@ -425,7 +425,11 @@ int main(int argc, char* argv[]) {
     for (const auto& [name, fn] : registry.getBuiltins()) {
         const auto& arities = registry.getArity().find(name)->second;
         const auto& paramNames = registry.getParamNames().find(name)->second;
-        vm.registerBuiltin(name, fn, arities, paramNames);
+        const auto& restName = registry.getRestName().find(name)->second;
+        const auto& kwargNames = registry.getKwargNames().find(name)->second;
+        const auto& kwargsName = registry.getKwargsName().find(name)->second;
+        int kwargDefaultCount = registry.getKwargDefaultCount().find(name)->second;
+        vm.registerBuiltin(name, fn, arities, paramNames, restName, kwargNames, kwargsName, kwargDefaultCount);
         // ★ 我们把内置方法只留给原生表处理！彻底释放 Globals 字典空间供用户自由重载调用！
     }
 

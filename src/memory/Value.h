@@ -565,6 +565,10 @@ namespace jc {
         std::function<Value(const std::vector<Value>&)> converter;
         std::set<int> converterArity;
         std::vector<std::string> converterParamNames;
+        std::string converterRestName;                 // ★ 位置收集名（裸名，空 = 无）
+        std::vector<std::string> converterKwargNames;  // ★ 仅关键字名
+        std::string converterKwargsName;               // ★ 关键字收集名（裸名，空 = 无）
+        int converterKwargDefaultCount = 0;            // ★ 仅关键字后 N 个有默认值
         ObjTypeDef() { type = ObjType::TYPE_DEF; }
         ~ObjTypeDef() override {
             if (!identity_key.empty()) g_internedTypes.erase(identity_key);
@@ -1878,6 +1882,7 @@ namespace jc {
         std::string restName;                 // ★ rest 参数名（空 = 无）
         std::vector<std::string> kwargNames;  // ★ 仅关键字参数名
         std::string kwargsName;               // ★ kwargs 参数名（空 = 无）
+        int kwargDefaultCount = 0;            // ★ 仅关键字后 N 个有默认值
         bool isUFCS = false; // ★ 新增：标记是否为 UFCS 绑定的全局函数
         bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
         bool is_local = false; // ★ 新增：标记是否为私有方法

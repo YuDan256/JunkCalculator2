@@ -316,27 +316,26 @@ namespace jc {
 
 using namespace helpers;
 
-void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount) {
+void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount) {
     if (!proto) return;
-    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr, restName);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
+    closure->kwargNames = std::move(kwargNames);
+    closure->kwargsName = std::move(kwargsName);
+    closure->kwargDefaultCount = kwargDefaultCount;
     for (int i = 0; i < defaultCount; ++i) {
         closure->defaultValues.push_back(Value::uninit());
     }
     proto->properties[name] = {Value(closure), false, false};
 }
 
-void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames) {
+void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount) {
     if (!ns) return;
-    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
+    auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr, restName);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
-    if (!paramNames.empty() && paramNames.back().substr(0, 3) == "...") {
-        closure->restName = paramNames.back().substr(3);
-        closure->paramNames.back().erase();
-        closure->paramNames.pop_back();
-    } else if (arity.empty()) {
-        closure->restName = "_";
-    }
+    closure->kwargNames = std::move(kwargNames);
+    closure->kwargsName = std::move(kwargsName);
+    closure->kwargDefaultCount = kwargDefaultCount;
     if (!arity.empty()) {
         int minA = *arity.begin();
         int maxA = *arity.rbegin();
@@ -2361,7 +2360,7 @@ void BuiltinRegistry::registerControlFlow() {
             std::cout << args[i];
         }
         std::cout << std::flush; return Value::none();
-        }, {"...args"});
+        }, {}, "args");
     reg("println", {}, [](const std::vector<Value>& args) -> Value {
         for (size_t i = 0; i < args.size(); ++i) {
             if (i > 0) std::cout << " ";
@@ -2374,7 +2373,7 @@ void BuiltinRegistry::registerControlFlow() {
             std::cout << args[i];
         }
         std::cout << std::endl; return Value::none();
-        }, {"...args"});
+        }, {}, "args");
     reg("not", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(!args[0].truthy()); }, {"x"});
     reg("and", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() && args[1].truthy()); }, {"a", "b"});
     reg("or", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() || args[1].truthy()); }, {"a", "b"});
@@ -2641,7 +2640,7 @@ void BuiltinRegistry::registerStringFunctions() {
         std::ostringstream oss;
         for (const auto& a : args) oss << a;
         return Value(oss.str());
-    }, {"...args"});
+    }, {}, "args");
 
     auto startsWithFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) throw std::runtime_error("Type Error: startsWith() expects a string."); const std::string& s=self.asString(); const std::string& prefix=args[0].asString(); return Value(s.size()>=prefix.size()&&s.compare(0,prefix.size(),prefix)==0); };
     regMethod(VM::activeVM->stringProto, "startsWith", {"prefix"}, startsWithFn);
@@ -3985,7 +3984,7 @@ void BuiltinRegistry::registerListConversion() {
             else { flatReal.push_back(a.asDouble()); }
         }
         return Value(RealMatrix(1, static_cast<int>(flatReal.size()), flatReal));
-        }, {"...args"});
+        }, {}, "args");
 }
 
 // =================================================================
@@ -4064,7 +4063,7 @@ void BuiltinRegistry::registerFormatType() {
             else { result += fmt[i]; }
         }
         return Value(result);
-        }, {"fmt", "...args"});
+        }, {"fmt"}, "args");
 
     reg("type", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
@@ -4822,7 +4821,7 @@ void BuiltinRegistry::registerCalculus() {
             return Value(RealMatrix(N, 1, rd));
         }
         throw std::runtime_error("Runtime Error: Argument count mismatch.");
-        }, {"f", "...args"});
+        }, {"f"}, "args");
 }
 
 // =================================================================

@@ -157,9 +157,7 @@ namespace helpers {
         if (callee.isType()) {
             ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
             if (!td->converterParamNames.empty()) {
-                int k = static_cast<int>(td->converterParamNames.size());
-                if (td->converterParamNames.back().substr(0, 3) == "...") k--;
-                return k;
+                return static_cast<int>(td->converterParamNames.size());
             }
             if (td->converterArity.empty()) return 1;
             return *td->converterArity.rbegin();
@@ -315,19 +313,37 @@ public:
     std::map<std::string, NativeCallable>& getBuiltins() { return builtins; }
     std::map<std::string, std::set<int>>& getArity() { return builtinArity; }
     std::map<std::string, std::vector<std::string>>& getParamNames() { return builtinParamNames; }
+    std::map<std::string, std::string>& getRestName() { return builtinRestName; }
+    std::map<std::string, std::vector<std::string>>& getKwargNames() { return builtinKwargNames; }
+    std::map<std::string, std::string>& getKwargsName() { return builtinKwargsName; }
+    std::map<std::string, int>& getKwargDefaultCount() { return builtinKwargDefaultCount; }
     const std::map<std::string, NativeCallable>& getBuiltins() const { return builtins; }
     const std::map<std::string, std::set<int>>& getArity() const { return builtinArity; }
     const std::map<std::string, std::vector<std::string>>& getParamNames() const { return builtinParamNames; }
+    const std::map<std::string, std::string>& getRestName() const { return builtinRestName; }
+    const std::map<std::string, std::vector<std::string>>& getKwargNames() const { return builtinKwargNames; }
+    const std::map<std::string, std::string>& getKwargsName() const { return builtinKwargsName; }
+    const std::map<std::string, int>& getKwargDefaultCount() const { return builtinKwargDefaultCount; }
 
 private:
     std::map<std::string, NativeCallable> builtins;
     std::map<std::string, std::set<int>> builtinArity;
     std::map<std::string, std::vector<std::string>> builtinParamNames;
+    std::map<std::string, std::string> builtinRestName;
+    std::map<std::string, std::vector<std::string>> builtinKwargNames;
+    std::map<std::string, std::string> builtinKwargsName;
+    std::map<std::string, int> builtinKwargDefaultCount;
 
-    void reg(const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}) {
+    void reg(const std::string& name, std::set<int> arity, NativeCallable fn,
+        std::vector<std::string> paramNames = {}, std::string restName = "",
+        std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0) {
         builtins[name] = std::move(fn);
         builtinArity[name] = std::move(arity);
         builtinParamNames[name] = std::move(paramNames);
+        builtinRestName[name] = std::move(restName);
+        builtinKwargNames[name] = std::move(kwargNames);
+        builtinKwargsName[name] = std::move(kwargsName);
+        builtinKwargDefaultCount[name] = kwargDefaultCount;
     }
 
     void registerMath();
@@ -362,8 +378,8 @@ private:
     ObjNamespace* math_ns = nullptr;
     ObjNamespace* random_ns = nullptr;
 
-    void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {});
-    void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0);
+    void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0);
+    void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0);
 };
 
 void registerPredefinedClasses();

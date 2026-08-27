@@ -78,6 +78,10 @@ private:
     std::unordered_map<std::string, NativeCallable> nativeBuiltins;
     std::unordered_map<std::string, std::set<int>> builtinArity;
     std::unordered_map<std::string, std::vector<std::string>> builtinParamNames;
+    std::unordered_map<std::string, std::string> builtinRestName;
+    std::unordered_map<std::string, std::vector<std::string>> builtinKwargNames;
+    std::unordered_map<std::string, std::string> builtinKwargsName;
+    std::unordered_map<std::string, int> builtinKwargDefaultCount;
     std::unordered_map<std::string, Value> builtinClosures;
     std::unordered_map<std::string, Value> builtinValues;
 
@@ -258,7 +262,7 @@ public:
         }
     }
 
-    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {});
+    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0);
     Value getBuiltinClosure(const std::string& name);
     void registerBuiltinValue(const std::string& name, const Value& val) { builtinValues[name] = val; }
     void injectModule(const std::string& name, const Value& moduleVal) { 

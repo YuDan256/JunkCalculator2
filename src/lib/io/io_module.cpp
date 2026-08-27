@@ -643,33 +643,33 @@ int jc2_init(jc2::Module& mod) {
     g_fileClass = new jc2::Class("File");
     mod.register_value("File", *g_fileClass);
 
-    g_fileClass->bind_method("read", file_read, 0, 1, false, {"size"});
-    g_fileClass->bind_method("readLine", file_readLine, 0, 0, false);
-    g_fileClass->bind_method("write", file_write, 1, 1, false, {"content"});
-    g_fileClass->bind_method("readBuf", file_readBuf, 1, 3, false, {"buf", "size", "offset"});
-    g_fileClass->bind_method("writeBuf", file_writeBuf, 1, 3, false, {"buf", "size", "offset"});
-    g_fileClass->bind_method("seek", file_seek, 1, 2, false, {"offset", "origin"});
-    g_fileClass->bind_method("tell", file_tell, 0, 0, false);
-    g_fileClass->bind_method("flush", file_flush, 0, 0, false);
-    g_fileClass->bind_method("isEOF", file_isEOF, 0, 0, false);
-    g_fileClass->bind_method("close", file_close, 0, 0, false);
-    g_fileClass->bind_method("__iter__", file_iter, 0, 0, false);
-    g_fileClass->bind_method("__next__", file_next, 0, 0, false);
+    g_fileClass->bind_method("read", file_read, 0, 1, {"size"});
+    g_fileClass->bind_method("readLine", file_readLine, 0, 0);
+    g_fileClass->bind_method("write", file_write, 1, 1, {"content"});
+    g_fileClass->bind_method("readBuf", file_readBuf, 1, 3, {"buf", "size", "offset"});
+    g_fileClass->bind_method("writeBuf", file_writeBuf, 1, 3, {"buf", "size", "offset"});
+    g_fileClass->bind_method("seek", file_seek, 1, 2, {"offset", "origin"});
+    g_fileClass->bind_method("tell", file_tell, 0, 0);
+    g_fileClass->bind_method("flush", file_flush, 0, 0);
+    g_fileClass->bind_method("isEOF", file_isEOF, 0, 0);
+    g_fileClass->bind_method("close", file_close, 0, 0);
+    g_fileClass->bind_method("__iter__", file_iter, 0, 0);
+    g_fileClass->bind_method("__next__", file_next, 0, 0);
 
-    mod.register_function("open", io_open, 1, 3, false, {"path", "mode", "encoding"});
-    mod.register_function("readFile", io_readFile, 1, 2, false, {"path", "encoding"});
-    mod.register_function("writeFile", io_writeFile, 2, 3, false, {"path", "content", "encoding"});
-    mod.register_function("stat", io_stat, 1, 1, false, {"path"});
-    mod.register_function("mkdir", io_mkdir, 1, 2, false, {"path", "recursive"});
-    mod.register_function("remove", io_remove, 1, 1, false, {"path"});
-    mod.register_function("rename", io_rename, 2, 2, false, {"old_path", "new_path"});
-    mod.register_function("copy", io_copy, 2, 2, false, {"src", "dst"});
-    mod.register_function("exists", io_exists, 1, 1, false, {"path"});
-    mod.register_function("listDir", io_listDir, 0, 1, false, {"path"});
-    mod.register_function("readCSV", io_readCSV, 1, 3, false, {"path", "delim", "encoding"});
-    mod.register_function("readCSVMat", io_readCSV, 1, 3, false, {"path", "delim", "encoding"});
-    mod.register_function("parseCSVNum", io_parseCSVNum, 1, 3, false, {"path", "delim", "encoding"});
-    mod.register_function("writeCSV", io_writeCSV, 2, 4, false, {"path", "data", "delim", "encoding"});
+    mod.register_function("open", io_open, 1, 3, {"path", "mode", "encoding"});
+    mod.register_function("readFile", io_readFile, 1, 2, {"path", "encoding"});
+    mod.register_function("writeFile", io_writeFile, 2, 3, {"path", "content", "encoding"});
+    mod.register_function("stat", io_stat, 1, 1, {"path"});
+    mod.register_function("mkdir", io_mkdir, 1, 2, {"path", "recursive"});
+    mod.register_function("remove", io_remove, 1, 1, {"path"});
+    mod.register_function("rename", io_rename, 2, 2, {"old_path", "new_path"});
+    mod.register_function("copy", io_copy, 2, 2, {"src", "dst"});
+    mod.register_function("exists", io_exists, 1, 1, {"path"});
+    mod.register_function("listDir", io_listDir, 0, 1, {"path"});
+    mod.register_function("readCSV", io_readCSV, 1, 3, {"path", "delim", "encoding"});
+    mod.register_function("readCSVMat", io_readCSV, 1, 3, {"path", "delim", "encoding"});
+    mod.register_function("parseCSVNum", io_parseCSVNum, 1, 3, {"path", "delim", "encoding"});
+    mod.register_function("writeCSV", io_writeCSV, 2, 4, {"path", "data", "delim", "encoding"});
 
     mod.register_help("io",
         "═══ Industrial I/O Engine — Native Module ═══\n\n"

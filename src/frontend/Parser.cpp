@@ -1860,9 +1860,16 @@ namespace jc {
             std::vector<std::vector<std::unique_ptr<Expr>>> matrixElements;
             std::vector<std::unique_ptr<Expr>> currentRow;
 
+            auto parseListElement = [&]() -> std::unique_ptr<Expr> {
+                if (forceList && match({ TokenType::ELLIPSIS })) {
+                    return std::make_unique<SpreadExpr>(assignment(), false);
+                }
+                return assignment();
+            };
+
             if (!check(TokenType::RBRACKET)) {
                 // ★ 先解析第一个元素
-                currentRow.push_back(assignment());
+                currentRow.push_back(parseListElement());
 
                 // ★ 检测推导式：[expr for x in ...] 或 @[expr for x in ...]
                 if (check(TokenType::FOR)) {
@@ -1874,7 +1881,7 @@ namespace jc {
                 if (match({ TokenType::COMMA })) {
                     do {
                         if (check(TokenType::SEMICOLON) || check(TokenType::RBRACKET)) break;
-                        currentRow.push_back(assignment());
+                        currentRow.push_back(parseListElement());
                     } while (match({ TokenType::COMMA }));
                 }
 
@@ -1883,7 +1890,7 @@ namespace jc {
                     currentRow.clear();
                     while (!check(TokenType::RBRACKET) && !isAtEnd()) {
                         if (check(TokenType::SEMICOLON)) { advance(); continue; }
-                        currentRow.push_back(assignment());
+                        currentRow.push_back(parseListElement());
                         if (match({ TokenType::COMMA })) continue;
                         else if (match({ TokenType::SEMICOLON })) {
                             matrixElements.push_back(std::move(currentRow));
@@ -3629,7 +3636,12 @@ namespace jc {
             while (match({ TokenType::NEWLINE })) {}  // ★ 跳过前导换行
             if (check(TokenType::RBRACE)) break;
 
-            auto expr = assignment();
+            std::unique_ptr<Expr> expr;
+            if (match({ TokenType::ELLIPSIS })) {
+                expr = std::make_unique<SpreadExpr>(assignment(), false);
+            } else {
+                expr = assignment();
+            }
 
             // ★ 检测集合推导式：@{expr for x in ...}
             if (elements.empty() && check(TokenType::FOR)) {
@@ -3674,8 +3686,7 @@ namespace jc {
             if (match({TokenType::ELLIPSIS})) {
                 isRest = true;
                 key = nullptr;
-                Token opTok = previous();
-                value = std::make_unique<Unary>(opTok, assignment());
+                value = std::make_unique<SpreadExpr>(assignment(), true);
             } else {
                 if (isSimpleId) {
                     advance(); // 吞掉这个标识符

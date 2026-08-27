@@ -5115,9 +5115,15 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 ObjList* list = GcHeap::get().allocate<ObjList>();
                 getReg(a) = Value(list); // ★ 立即 Root 防止 GC 误杀
-                list->vec.reserve(c);
                 for (int i = 0; i < c; ++i) {
-                    list->vec.push_back(getReg(b + i));
+                    Value v = getReg(b + i);
+                    if (v.isSpread()) {
+                        auto* sp = static_cast<ObjSpread*>(v.asObj());
+                        if (sp->isKeyword) throw std::runtime_error("TypeError: keyword spread not allowed in list literal.");
+                        helpers::spreadPositional(sp->value, list->vec);
+                    } else {
+                        list->vec.push_back(v);
+                    }
                 }
                 break;
             }
@@ -5127,10 +5133,29 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 ObjDict* dict = GcHeap::get().allocate<ObjDict>();
                 getReg(a) = Value(dict); // ★ 立即 Root 防止 GC 误杀
-                dict->elements.reserve(c);
-                dict->keyMap.reserve(c);
                 for (int i = 0; i < c; ++i) {
-                    dict->set(getReg(b + i * 2), getReg(b + i * 2 + 1));
+                    Value k = getReg(b + i * 2);
+                    Value v = getReg(b + i * 2 + 1);
+                    if (k.isSpread()) {
+                        // ★ rest entry：v 是 dict 或带 __mapping__ 的实例
+                        auto* sp = static_cast<ObjSpread*>(k.asObj());
+                        if (!sp->isKeyword) throw std::runtime_error("TypeError: positional spread not allowed in dict literal.");
+                        Value kwDictVal = v;
+                        std::unique_ptr<GcValueGuard> upGuard;
+                        if (!kwDictVal.isObjType(ObjType::DICT)) {
+                            if (!kwDictVal.isInstance()) throw std::runtime_error("TypeError: dict spread expects a dict or an instance with __mapping__().");
+                            auto [upMethod, upOwner] = findDunder(kwDictVal, "__mapping__");
+                            if (!upMethod) throw std::runtime_error("TypeError: dict spread expects a dict or an instance with __mapping__().");
+                            kwDictVal = callDunder(kwDictVal, upMethod, upOwner, {});
+                            if (!kwDictVal.isObjType(ObjType::DICT)) throw std::runtime_error("TypeError: __mapping__() must return a dict for dict spread.");
+                            upGuard = std::make_unique<GcValueGuard>(kwDictVal);
+                        }
+                        for (auto& [kk, vv] : static_cast<ObjDict*>(kwDictVal.asObj())->elements) {
+                            dict->set(kk, vv);
+                        }
+                    } else {
+                        dict->set(k, v);
+                    }
                 }
                 break;
             }
@@ -5140,10 +5165,17 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 ObjSet* set = GcHeap::get().allocate<ObjSet>();
                 getReg(a) = Value(set); // ★ 立即 Root 防止 GC 误杀
-                set->elements.reserve(c);
-                set->keys.reserve(c);
                 for (int i = 0; i < c; ++i) {
-                    set->add(getReg(b + i));
+                    Value v = getReg(b + i);
+                    if (v.isSpread()) {
+                        auto* sp = static_cast<ObjSpread*>(v.asObj());
+                        if (sp->isKeyword) throw std::runtime_error("TypeError: keyword spread not allowed in set literal.");
+                        std::vector<Value> tmp;
+                        helpers::spreadPositional(sp->value, tmp);
+                        for (auto& e : tmp) set->add(e);
+                    } else {
+                        set->add(v);
+                    }
                 }
                 break;
             }

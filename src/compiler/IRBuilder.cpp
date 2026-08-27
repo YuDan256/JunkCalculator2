@@ -4844,10 +4844,25 @@ void IRBuilder::visitDictCompExpr(DictCompExpr* expr) {
 void IRBuilder::visitDictLiteral(DictLiteral* expr) {
     std::vector<IRNode*> keysAndVals;
     for (auto& pair : expr->entries) {
-        pair.first->accept(*this);
-        keysAndVals.push_back(lastValue);
-        pair.second->accept(*this);
-        keysAndVals.push_back(lastValue);
+        if (pair.first == nullptr) {
+            // ★ rest entry：...dict 关键字解包，编译成 [ObjSpread(标记), dict]
+            auto* spread = dynamic_cast<SpreadExpr*>(pair.second.get());
+            IRNode* noneNode = graph->createConstant(Value::none());
+            noneNode->setControl(currentControl);
+            IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
+            markNode->setControl(currentControl);
+            markNode->addData(noneNode);
+            markNode->payload1 = 1;
+            keysAndVals.push_back(markNode);
+            currentControl = markNode; // ★ 更新 control，保证标记先于后续求值
+            spread->value->accept(*this);
+            keysAndVals.push_back(lastValue);
+        } else {
+            pair.first->accept(*this);
+            keysAndVals.push_back(lastValue);
+            pair.second->accept(*this);
+            keysAndVals.push_back(lastValue);
+        }
     }
     IRNode* node = graph->createValueNode(IROp::BuildDict);
     node->setControl(currentControl);

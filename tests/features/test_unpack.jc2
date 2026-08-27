@@ -96,3 +96,32 @@ test_spread_errors() = {
     }
 }
 test_spread_errors()
+
+// 字面量解包（列表/集合/字典）
+test_literal_spread() = {
+    a = @[1, 2]
+    s = @{3, 4}
+    d = {x: 1, y: 2}
+    assert(@[...a, 5] == @[1, 2, 5], "list literal spread failed")
+    assert(@{...s, 9} == @{3, 4, 9}, "set literal spread failed")
+
+    // 字典解包：后者覆盖，显式 key 优先级最高
+    d1 = {a: 1, b: 2}
+    d2 = {b: 9, c: 3}
+    r = {...d1, ...d2}
+    assert(r["a"] == 1 && r["b"] == 9 && r["c"] == 3, "dict spread cover failed")
+    r2 = {...d1, a: 99}
+    assert(r2["a"] == 99 && r2["b"] == 2, "dict spread explicit key priority failed")
+
+    // 字面量里的 __unpack__ / __mapping__ dunder
+    class P {
+        init(x, y) = { self.x = x; self.y = y }
+        __unpack__() = @[self.x, self.y]
+        __mapping__() = dict("m", self.x, "n", self.y)
+    }
+    p = P(7, 8)
+    assert(@[...p, 9] == @[7, 8, 9], "list literal __unpack__ failed")
+    r3 = {...p, q: 1}
+    assert(r3["m"] == 7 && r3["n"] == 8 && r3["q"] == 1, "dict literal __mapping__ failed")
+}
+test_literal_spread()

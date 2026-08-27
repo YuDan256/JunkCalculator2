@@ -501,15 +501,6 @@
     "print": {
       "signature": "print(...args; sep = \" \", end = \"\\n\")"
     },
-    "readFile": {
-      "signature": "io.readFile(path)"
-    },
-    "writeFile": {
-      "signature": "io.writeFile(path, content)"
-    },
-    "readCSV": {
-      "signature": "io.readCSV(path, [delim])"
-    },
     "assert": {
       "signature": "assert(cond, [msg])"
     },
@@ -719,36 +710,6 @@
     },
     "powerSet": {
       "signature": "s.powerSet()"
-    },
-    "appendFile": {
-      "signature": "io.appendFile(path, content)"
-    },
-    "readLines": {
-      "signature": "io.readLines(path)"
-    },
-    "writeLines": {
-      "signature": "io.writeLines(path, list)"
-    },
-    "fileExists": {
-      "signature": "io.fileExists(path)"
-    },
-    "deleteFile": {
-      "signature": "io.deleteFile(path)"
-    },
-    "fileSize": {
-      "signature": "io.fileSize(path)"
-    },
-    "listDir": {
-      "signature": "io.listDir([path])"
-    },
-    "readCSVMat": {
-      "signature": "io.readCSVMat(path, [delim])"
-    },
-    "parseCSVNum": {
-      "signature": "io.parseCSVNum(path, [delim])"
-    },
-    "writeCSV": {
-      "signature": "io.writeCSV(path, data, [delim])"
     },
     "RootOf": {
       "signature": "cas.RootOf(poly, var, k)"
@@ -986,6 +947,18 @@
     },
     "setElement": {
       "signature": "A.setElement(r, c, val)"
+    },
+    "getItem": {
+      "signature": "A.getItem(i)"
+    },
+    "setItem": {
+      "signature": "A.setItem(i, val)"
+    },
+    "getSlice": {
+      "signature": "A.getSlice(sr, sc)"
+    },
+    "setSlice": {
+      "signature": "A.setSlice(sr, sc, val)"
     },
     "getR": {
       "signature": "A.getR(r)"
@@ -1252,6 +1225,9 @@
     },
     "in": {
       "signature": "for (var in iterable)  |  value in container"
+    },
+    "as": {
+      "signature": "expr as Type  |  expr as (Type1 | Type2)"
     },
     "break": {
       "signature": "break"

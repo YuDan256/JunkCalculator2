@@ -2,7 +2,7 @@
     "name": "jc2-language",
     "displayName": "JC2 Language Support",
     "description": "Syntax highlighting and script runner for Junk Calculator 2.6.2.0",
-    "version": "6.1.0",
+    "version": "6.2.0",
     "publisher": "yuliangyang",
     "repository": {
         "type": "git",

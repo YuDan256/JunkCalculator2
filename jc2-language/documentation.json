@@ -499,10 +499,7 @@
       "signature": "a.intersect(b)"
     },
     "print": {
-      "signature": "print(...)"
-    },
-    "println": {
-      "signature": "println(...)"
+      "signature": "print(...args; sep = \" \", end = \"\\n\")"
     },
     "readFile": {
       "signature": "io.readFile(path)"

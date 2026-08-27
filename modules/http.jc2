@@ -151,6 +151,6 @@ try {
   ──────────────────────
     import http
     response = http.http_get("http://httpbin.org/get")
-    println(response.status)
+    print(response.status)
 )DOC")
 } catch (_) {}

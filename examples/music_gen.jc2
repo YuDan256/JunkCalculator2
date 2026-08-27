@@ -1,8 +1,8 @@
 import buffer
 
-println("=============================================")
-println("  JC2 Synthesizer: True Idiomatic Edition    ")
-println("=============================================")
+print("=============================================")
+print("  JC2 Synthesizer: True Idiomatic Edition    ")
+print("=============================================")
 
 SAMPLE_RATE = 44100
 BPM = 120
@@ -40,7 +40,7 @@ buf = buffer.alloc(file_size)
    .writeStr("data")
    .writeI32(data_size))
 
-println("Synthesizing...")
+print("Synthesizing...")
 
 for (measure in range(8)) {
     for (beat in range(4)) {
@@ -67,10 +67,10 @@ for (measure in range(8)) {
         }
     }
     // 4. [Modern Language Hallmark - f-string interpolation]
-    println(f"  -> Rendered measure {measure + 1}/8 ...")
+    print(f"  -> Rendered measure {measure + 1}/8 ...")
 }
 
 buf.save("epic_rhapsody.wav")
-println("=============================================")
-println(f"  Success! File written to: epic_rhapsody.wav")
-println("=============================================")
+print("=============================================")
+print(f"  Success! File written to: epic_rhapsody.wav")
+print("=============================================")

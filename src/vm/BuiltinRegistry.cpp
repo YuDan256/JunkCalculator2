@@ -2349,31 +2349,28 @@ void BuiltinRegistry::registerSystemUtils() {
 // =================================================================
 void BuiltinRegistry::registerControlFlow() {
     reg("print", {}, [](const std::vector<Value>& args) -> Value {
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) std::cout << " ";
-            // ★ Dunder 钩子: __str__
-            if (args[i].isInstance()) {
-                auto inst = args[i].asInstance();
-                auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
-                if (found) { std::cout << result; continue; }
-            }
-            std::cout << args[i];
+        // ★ 统一调用约定：args = [rest_list, sep, end]（sep/end 未传为 uninit）
+        const std::vector<Value>* items = nullptr;
+        if (args.size() > 0 && args[0].isObjType(ObjType::LIST)) {
+            items = &static_cast<ObjList*>(args[0].asObj())->vec;
         }
-        std::cout << std::flush; return Value::none();
-        }, {}, "args");
-    reg("println", {}, [](const std::vector<Value>& args) -> Value {
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) std::cout << " ";
-            // ★ Dunder 钩子: __str__
-            if (args[i].isInstance()) {
-                auto inst = args[i].asInstance();
-                auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
-                if (found) { std::cout << result; continue; }
+        std::string sep = (args.size() > 1 && !args[1].isUninit()) ? args[1].asString() : " ";
+        std::string end = (args.size() > 2 && !args[2].isUninit()) ? args[2].asString() : "\n";
+        if (items) {
+            for (size_t i = 0; i < items->size(); ++i) {
+                if (i > 0) std::cout << sep;
+                const Value& v = (*items)[i];
+                // ★ Dunder 钩子: __str__
+                if (v.isInstance()) {
+                    auto inst = v.asInstance();
+                    auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
+                    if (found) { std::cout << result; continue; }
+                }
+                std::cout << v;
             }
-            std::cout << args[i];
         }
-        std::cout << std::endl; return Value::none();
-        }, {}, "args");
+        std::cout << end << std::flush; return Value::none();
+        }, {}, "args", {"sep", "end"}, "", 2);
     reg("not", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(!args[0].truthy()); }, {"x"});
     reg("and", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() && args[1].truthy()); }, {"a", "b"});
     reg("or", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() || args[1].truthy()); }, {"a", "b"});
@@ -2625,20 +2622,22 @@ void BuiltinRegistry::registerStringFunctions() {
     regMethod(VM::activeVM->stringProto, "repeat", {"n"}, repeatFn);
 
     reg("concat", {}, [](const std::vector<Value>& args) -> Value {
+        // ★ 统一调用约定：args = [rest_list]
+        const std::vector<Value>& items = static_cast<ObjList*>(args[0].asObj())->vec;
         bool allStrings = true;
         size_t totalLen = 0;
-        for (const auto& a : args) {
+        for (const auto& a : items) {
             if (!a.isString()) { allStrings = false; break; }
             totalLen += a.asString().size();
         }
         if (allStrings) {
             std::string result;
             result.reserve(totalLen);
-            for (const auto& a : args) result.append(a.asString());
+            for (const auto& a : items) result.append(a.asString());
             return Value(result);
         }
         std::ostringstream oss;
-        for (const auto& a : args) oss << a;
+        for (const auto& a : items) oss << a;
         return Value(oss.str());
     }, {}, "args");
 
@@ -3940,9 +3939,11 @@ void BuiltinRegistry::registerListConversion() {
     regMethod(VM::activeVM->setProto, "groupBy", {"f"}, groupByFn);
 
     reg("cat", {}, [](const std::vector<Value>& args) -> Value {
-        if (args.empty()) throw std::runtime_error("Runtime Error: cat() expects at least 1 argument.");
+        // ★ 统一调用约定：args = [rest_list]
+        const std::vector<Value>& items = static_cast<ObjList*>(args[0].asObj())->vec;
+        if (items.empty()) throw std::runtime_error("Runtime Error: cat() expects at least 1 argument.");
         bool hasList = false, hasComplexMat = false, hasSymMat = false;
-        for (const auto& a : args) {
+        for (const auto& a : items) {
             if (a.isObjType(ObjType::LIST)) hasList = true;
             else if (a.isObjType(ObjType::SYM_MATRIX) || a.isSymbolic()) hasSymMat = true;
             else if (a.isObjType(ObjType::COMPLEX_MATRIX) || a.isComplex()) hasComplexMat = true;
@@ -3953,7 +3954,7 @@ void BuiltinRegistry::registerListConversion() {
         if (hasList) {
             ObjList* result = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(result);
-            for (const auto& a : args) {
+            for (const auto& a : items) {
                 if (a.isObjType(ObjType::LIST)) { for (const auto& e : static_cast<ObjList*>(a.asObj())->vec) result->vec.push_back(e); }
                 else result->vec.push_back(a);
             }
@@ -3961,7 +3962,7 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (hasSymMat) {
             std::vector<SymExpr> flatSym;
-            for (const auto& a : args) {
+            for (const auto& a : items) {
                 if (a.isObjType(ObjType::SYM_MATRIX)) { auto d = static_cast<ObjSymMatrix*>(a.asObj())->mat.rawData(); flatSym.insert(flatSym.end(), d.begin(), d.end()); }
                 else if (a.isObjType(ObjType::COMPLEX_MATRIX)) { for (auto d : static_cast<ObjComplexMatrix*>(a.asObj())->mat.rawData()) flatSym.push_back(SymExpr(d)); }
                 else if (a.isObjType(ObjType::REAL_MATRIX)) { for (auto d : static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData()) flatSym.push_back(SymExpr(d)); }
@@ -3971,7 +3972,7 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (hasComplexMat) {
             std::vector<Complex> flatComp;
-            for (const auto& a : args) {
+            for (const auto& a : items) {
                 if (a.isObjType(ObjType::COMPLEX_MATRIX)) { auto d = static_cast<ObjComplexMatrix*>(a.asObj())->mat.rawData(); flatComp.insert(flatComp.end(), d.begin(), d.end()); }
                 else if (a.isObjType(ObjType::REAL_MATRIX)) { for (auto d : static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData()) flatComp.push_back(Complex(d)); }
                 else { flatComp.push_back(a.asComplex()); }
@@ -3979,7 +3980,7 @@ void BuiltinRegistry::registerListConversion() {
             return Value(ComplexMatrix(1, static_cast<int>(flatComp.size()), flatComp));
         }
         std::vector<double> flatReal;
-        for (const auto& a : args) {
+        for (const auto& a : items) {
             if (a.isObjType(ObjType::REAL_MATRIX)) { auto d = static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData(); flatReal.insert(flatReal.end(), d.begin(), d.end()); }
             else { flatReal.push_back(a.asDouble()); }
         }
@@ -4043,12 +4044,14 @@ void BuiltinRegistry::registerIntrospection() {
 // =================================================================
 void BuiltinRegistry::registerFormatType() {
     reg("format", {}, [](const std::vector<Value>& args) -> Value {
-        if (args.size() < 1) throw std::runtime_error("Runtime Error: format() expects at least 1 argument.");
+        // ★ 统一调用约定：args = [fmt, rest_list]
+        if (args.size() < 2) throw std::runtime_error("Runtime Error: format() expects at least 1 argument.");
         if (!args[0].isString()) throw std::runtime_error("Type Error: format() first argument must be a format string.");
+        const std::vector<Value>& rest = static_cast<ObjList*>(args[1].asObj())->vec;
         ObjList* paList = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(paList);
-        paList->vec = args;
-        for (size_t i = 1; i < paList->vec.size(); ++i) {
+        paList->vec = rest;
+        for (size_t i = 0; i < paList->vec.size(); ++i) {
             if (paList->vec[i].isInstance()) {
                 auto inst = paList->vec[i].asInstance();
                 auto [found, result] = invokeDunder(inst, DUNDER_STR, {});
@@ -4056,7 +4059,7 @@ void BuiltinRegistry::registerFormatType() {
             }
         }
         std::vector<Value>& pa = paList->vec;
-        std::string fmt = pa[0].asString(); std::string result; size_t argIdx = 1;
+        std::string fmt = args[0].asString(); std::string result; size_t argIdx = 0;
         for (size_t i = 0; i < fmt.size(); ++i) {
             if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == '}') { if (argIdx >= pa.size()) throw std::runtime_error("Runtime Error: format() too few arguments."); std::ostringstream oss; oss << pa[argIdx++]; result += oss.str(); i += 1; }
             else if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == ':') { size_t close = fmt.find('}', i); if (close == std::string::npos) throw std::runtime_error("Runtime Error: format() unclosed '{'."); std::string spec = fmt.substr(i + 2, close - i - 2); if (argIdx >= pa.size()) throw std::runtime_error("Runtime Error: format() too few arguments."); char align = '\0'; int width = 0; int precision = -1; char type = '\0'; size_t si = 0; if (si < spec.size() && (spec[si] == '<' || spec[si] == '>' || spec[si] == '^')) align = spec[si++]; while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9') width = width * 10 + (spec[si++] - '0'); if (si < spec.size() && spec[si] == '.') { si++; precision = 0; while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')precision = precision * 10 + (spec[si++] - '0'); } if (si < spec.size()) type = spec[si++]; std::ostringstream oss; if (type == 'f' || type == 'e') { double v = pa[argIdx].asDouble(); if (precision >= 0)oss << std::fixed << std::setprecision(precision); if (type == 'e')oss << std::scientific; oss << v; } else if (type == 'd')oss << static_cast<int64_t>(std::round(pa[argIdx].asDouble())); else if (type == 'x')oss << std::hex << static_cast<int64_t>(std::round(pa[argIdx].asDouble())); else { if (precision >= 0)oss << std::fixed << std::setprecision(precision); oss << pa[argIdx]; } std::string valStr = oss.str(); if (width > 0 && static_cast<int>(valStr.size()) < width) { int pad = width - static_cast<int>(valStr.size()); if (align == '<')valStr += std::string(pad, ' '); else if (align == '^') { int l = pad / 2, r = pad - l; valStr = std::string(l, ' ') + valStr + std::string(r, ' '); } else valStr = std::string(pad, ' ') + valStr; } result += valStr; argIdx++; i = close; }
@@ -4762,8 +4765,10 @@ void BuiltinRegistry::registerCalculus() {
         }, {"f", "x0", "dir"});
 
     reg("table", {}, [](const std::vector<Value>& args) -> Value {
+        // ★ 统一调用约定：args = [f, rest_list]
         if (args.size() < 2) throw std::runtime_error("Runtime Error: table() expects at least 2 arguments.");
         Value f = args[0];
+        const std::vector<Value>& items = static_cast<ObjList*>(args[1].asObj())->vec;
         int k = callableParamCount(f);
 
         auto evalRow = [&](const std::vector<Value>& rowArgs,
@@ -4777,27 +4782,27 @@ void BuiltinRegistry::registerCalculus() {
                 else { res_c.push_back(y_val.asComplex()); }
             };
 
-        if (args.size() == 4 && k == 1 &&
-            !args[1].isObjType(ObjType::REAL_MATRIX) &&
-            !args[1].isObjType(ObjType::COMPLEX_MATRIX)) {
-            double start = args[1].asDouble(), step = args[2].asDouble();
-            int count = static_cast<int>(std::round(args[3].asDouble()));
+        if (items.size() == 3 && k == 1 &&
+            !items[0].isObjType(ObjType::REAL_MATRIX) &&
+            !items[0].isObjType(ObjType::COMPLEX_MATRIX)) {
+            double start = items[0].asDouble(), step = items[1].asDouble();
+            int count = static_cast<int>(std::round(items[2].asDouble()));
             if (count <= 0) throw std::runtime_error("Math Error: count must be positive.");
             std::vector<double> rd; std::vector<Complex> rc; bool hc = false;
             for (int i = 0; i < count; ++i) evalRow({ Value(start + i * step) }, rd, rc, hc);
             if (hc) return Value(ComplexMatrix(count, 1, rc));
             return Value(RealMatrix(count, 1, rd));
         }
-        if (args.size() == 2) {
+        if (items.size() == 1) {
             int N = 0; std::vector<double> rd; std::vector<Complex> rc; bool hc = false;
-            if (args[1].isObjType(ObjType::REAL_MATRIX)) {
-                const auto& M = static_cast<ObjRealMatrix*>(args[1].asObj())->mat;
+            if (items[0].isObjType(ObjType::REAL_MATRIX)) {
+                const auto& M = static_cast<ObjRealMatrix*>(items[0].asObj())->mat;
                 if (M.getCols() != k) throw std::runtime_error("Math Error: Matrix columns must match function parameter count.");
                 N = M.getRows();
                 for (int i = 0; i < N; ++i) { std::vector<Value> row; for (int j = 0; j < k; ++j) row.push_back(Value(M(i, j))); evalRow(row, rd, rc, hc); }
             }
-            else if (args[1].isObjType(ObjType::COMPLEX_MATRIX)) {
-                const auto& M = static_cast<ObjComplexMatrix*>(args[1].asObj())->mat;
+            else if (items[0].isObjType(ObjType::COMPLEX_MATRIX)) {
+                const auto& M = static_cast<ObjComplexMatrix*>(items[0].asObj())->mat;
                 if (M.getCols() != k) throw std::runtime_error("Math Error: Matrix columns must match function parameter count.");
                 N = M.getRows();
                 for (int i = 0; i < N; ++i) { std::vector<Value> row; for (int j = 0; j < k; ++j) row.push_back(Value(M(i, j))); evalRow(row, rd, rc, hc); }
@@ -4807,16 +4812,16 @@ void BuiltinRegistry::registerCalculus() {
             if (hc) return Value(ComplexMatrix(N, 1, rc));
             return Value(RealMatrix(N, 1, rd));
         }
-        if (args.size() == static_cast<size_t>(k + 1)) {
+        if (items.size() == static_cast<size_t>(k)) {
             int N = -1;
-            for (int i = 1; i <= k; ++i) {
-                if (args[i].isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(args[i].asObj())->mat.getCols() != 1) throw std::runtime_error("Math Error: Arguments must be column vectors."); if (N == -1) N = static_cast<ObjRealMatrix*>(args[i].asObj())->mat.getRows(); else if (N != static_cast<ObjRealMatrix*>(args[i].asObj())->mat.getRows()) throw std::runtime_error("Math Error: Vectors must have same length."); }
-                else if (args[i].isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(args[i].asObj())->mat.getCols() != 1) throw std::runtime_error("Math Error: Arguments must be column vectors."); if (N == -1) N = static_cast<ObjComplexMatrix*>(args[i].asObj())->mat.getRows(); else if (N != static_cast<ObjComplexMatrix*>(args[i].asObj())->mat.getRows()) throw std::runtime_error("Math Error: Vectors must have same length."); }
+            for (int i = 0; i < k; ++i) {
+                if (items[i].isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getCols() != 1) throw std::runtime_error("Math Error: Arguments must be column vectors."); if (N == -1) N = static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getRows(); else if (N != static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getRows()) throw std::runtime_error("Math Error: Vectors must have same length."); }
+                else if (items[i].isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getCols() != 1) throw std::runtime_error("Math Error: Arguments must be column vectors."); if (N == -1) N = static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getRows(); else if (N != static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getRows()) throw std::runtime_error("Math Error: Vectors must have same length."); }
                 else throw std::runtime_error("Type Error: Expected column vectors.");
             }
             if (N <= 0) return Value(RealMatrix(0, 0));
             std::vector<double> rd; std::vector<Complex> rc; bool hc = false;
-            for (int r = 0; r < N; ++r) { std::vector<Value> row; for (int c = 1; c <= k; ++c) { if (args[c].isObjType(ObjType::REAL_MATRIX)) row.push_back(Value(static_cast<ObjRealMatrix*>(args[c].asObj())->mat(r, 0))); else row.push_back(Value(static_cast<ObjComplexMatrix*>(args[c].asObj())->mat(r, 0))); } evalRow(row, rd, rc, hc); }
+            for (int r = 0; r < N; ++r) { std::vector<Value> row; for (int c = 0; c < k; ++c) { if (items[c].isObjType(ObjType::REAL_MATRIX)) row.push_back(Value(static_cast<ObjRealMatrix*>(items[c].asObj())->mat(r, 0))); else row.push_back(Value(static_cast<ObjComplexMatrix*>(items[c].asObj())->mat(r, 0))); } evalRow(row, rd, rc, hc); }
             if (hc) return Value(ComplexMatrix(N, 1, rc));
             return Value(RealMatrix(N, 1, rd));
         }

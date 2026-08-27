@@ -12,7 +12,7 @@
 **最佳实践**：将每个独立的测试用例封装在一个局部函数中，并在定义后立即调用。
 
 ```jc2
-println("=== Testing Feature Name ===")
+print("=== Testing Feature Name ===")
 
 // 1. 测试子特性 A
 test_feature_a() = {
@@ -57,9 +57,9 @@ test_expected_error() = {
 
 **核心原则：所有测试脚本应以完全静默模式运行。**
 
-* **严格要求**：测试脚本内部**不允许任何 `println()` 输出**，包括开头的测试标题、进度信息等。
-  - ❌ 禁止：`println("=== Testing XXX ===")`
-  - ❌ 禁止：`println("[1/5] XXX OK")`
+* **严格要求**：测试脚本内部**不允许任何 `print()` 输出**，包括开头的测试标题、进度信息等。
+  - ❌ 禁止：`print("=== Testing XXX ===")`
+  - ❌ 禁止：`print("[1/5] XXX OK")`
   - ❌ 禁止：任何中间调试打印
 
 * **为什么**：测试运行器（Test Runner）会自动为每个测试文件打印统一格式的结果汇总：
@@ -69,7 +69,7 @@ test_expected_error() = {
   ```
   任何内部输出都会破坏这个整洁的面板，降低可读性。
 
-* **唯一例外**：仅在测试脚本故意验证输出功能时（如 `print()` 函数的测试），才允许使用 `println()`。此时应明确注释说明。
+* **唯一例外**：仅在测试脚本故意验证输出功能时（如 `print()` 函数的测试），才允许使用 `print()`。此时应明确注释说明。
 
 * **最佳实践**：
   ```jc2
@@ -94,9 +94,9 @@ test_expected_error() = {
   
   // ✗ 坏的做法：打印进度信息
   test_bad() = {
-      println("Testing feature...")  // ← 污染输出！
+      print("Testing feature...")  // ← 污染输出！
       assert(...)
-      println("OK")                  // ← 污染输出！
+      print("OK")                  // ← 污染输出！
   }
   ```
 

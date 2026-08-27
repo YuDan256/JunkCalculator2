@@ -136,8 +136,10 @@ METHOD(__ge__) {
 }
 METHOD(__getitem__) {
     GET_SELF;
-    if (argc == 2 && isTensor(jc2::Value(argv[1]))) {
-        auto idx_t = getTensor(jc2::Value(argv[1]));
+    // ★ 统一调用约定：argv = [self, rest_list]
+    jc2::List dims_list(jc2::Value(argv[1]).get_handle());
+    if (dims_list.size() == 1 && isTensor(dims_list.get(0))) {
+        auto idx_t = getTensor(dims_list.get(0));
         if (idx_t->dtype() == jc::DType::Bool) {
             return wrapTensor(jc::tensor_mask_get(*t1, *idx_t)).get_handle();
         } else if (idx_t->dtype() == jc::DType::Int32 || idx_t->dtype() == jc::DType::Int64) {
@@ -148,12 +150,12 @@ METHOD(__getitem__) {
     }
 
     jc::Tensor current = *t1;
-    int dims_provided = argc - 1;
+    int dims_provided = static_cast<int>(dims_list.size());
     if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
 
     int current_dim = 0;
     for (int i = 0; i < dims_provided; ++i) {
-        jc2::Value idx_val(argv[i + 1]);
+        jc2::Value idx_val = dims_list.get(i);
         if (idx_val.is_slice()) {
             jc2::Slice sl(idx_val.get_handle());
             current = current.slice_dim(current_dim, sl.start(), sl.end(), sl.step());
@@ -171,11 +173,13 @@ METHOD(__getitem__) {
 }
 METHOD(__setitem__) {
     GET_SELF;
-    if (argc < 2) jc2::throw_error("Tensor Error: __setitem__ requires at least one index and a value.");
-    jc2::Value val(argv[argc - 1]);
+    // ★ 统一调用约定：argv = [self, rest_list]（dims + value）
+    jc2::List args_list(jc2::Value(argv[1]).get_handle());
+    if (args_list.size() < 2) jc2::throw_error("Tensor Error: __setitem__ requires at least one index and a value.");
+    jc2::Value val = args_list.get(args_list.size() - 1);
 
-    if (argc == 3 && isTensor(jc2::Value(argv[1]))) {
-        auto idx_t = getTensor(jc2::Value(argv[1]));
+    if (args_list.size() == 2 && isTensor(args_list.get(0))) {
+        auto idx_t = getTensor(args_list.get(0));
         if (idx_t->dtype() == jc::DType::Bool) {
             if (isTensor(val)) jc::tensor_mask_set(*t1, *idx_t, *getTensor(val));
             else jc::tensor_mask_set(*t1, *idx_t, val.as_double());
@@ -188,13 +192,13 @@ METHOD(__setitem__) {
         return jc2::Value().get_handle();
     }
 
-    int dims_provided = argc - 2;
+    int dims_provided = static_cast<int>(args_list.size()) - 1;
     jc::Tensor current = *t1;
     if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
 
     int current_dim = 0;
     for (int i = 0; i < dims_provided; ++i) {
-        jc2::Value idx_val(argv[i + 1]);
+        jc2::Value idx_val = args_list.get(i);
         if (idx_val.is_slice()) {
             jc2::Slice sl(idx_val.get_handle());
             current = current.slice_dim(current_dim, sl.start(), sl.end(), sl.step());
@@ -805,7 +809,7 @@ int jc2_init(jc2::Module& mod) {
         "        tensor.sgd_step(W, lr)\n"
         "        tensor.sgd_step(b, lr)\n"
         "    }\n"
-        "    println(f\"W = {W.item()}, b = {b.item()}\")\n"
+        "    print(f\"W = {W.item()}, b = {b.item()}\")\n"
         "    // → W ≈ 2.0, b ≈ 1.0"
     );
 

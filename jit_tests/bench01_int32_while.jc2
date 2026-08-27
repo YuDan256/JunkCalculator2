@@ -8,4 +8,4 @@ f(n) = {
     }
     s
 }
-println("RESULT " + str(f(50000000)))
+print("RESULT " + str(f(50000000)))

@@ -6,4 +6,4 @@ f(n) = {
     }
     s
 }
-println("RESULT " + str(f(10000000)))
+print("RESULT " + str(f(10000000)))

@@ -6,4 +6,4 @@ fib(n) = {
         return fib(n - 1) + fib(n - 2)
     }
 }
-println("RESULT " + str(fib(26)))
+print("RESULT " + str(fib(26)))

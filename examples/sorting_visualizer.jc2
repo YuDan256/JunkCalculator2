@@ -5,9 +5,9 @@ import sys
 import io
 import random
 
-println("══════════════════════════════════════════════════")
-println("  JC2 Ultimate Sorting Visualizer (Bomb-Proof Edition)  ")
-println("══════════════════════════════════════════════════")
+print("══════════════════════════════════════════════════")
+print("  JC2 Ultimate Sorting Visualizer (Bomb-Proof Edition)  ")
+print("══════════════════════════════════════════════════")
 
 HEX_CHARS = "0123456789ABCDEF"
 to_hex(v) = {
@@ -48,7 +48,7 @@ class VisualSorter {
         try {
             self.stream_sock = socket.connect("127.0.0.1", port)
         } catch (e) {
-            println(f"  [Warning] FFmpeg stream on port {port} not found. Skipping video export.")
+            print(f"  [Warning] FFmpeg stream on port {port} not found. Skipping video export.")
             self.stream_sock = none
         }
     }
@@ -91,7 +91,7 @@ class VisualSorter {
         self.win = window.Window(f"JC2 Live: {name}", self.W, self.H)
         self.frame_count = 0
 
-        println(f"[{sys.clock()::.3f}] > Started {name}...")
+        print(f"[{sys.clock()::.3f}] > Started {name}...")
         t_start = sys.clock()
         
         // Plug in and execute the higher-order sorting algorithm
@@ -107,7 +107,7 @@ class VisualSorter {
 
         t_end = sys.clock()
         self.disconnect()
-        println(f"  ✓ {name} finished in {t_end - t_start::.3f}s. Frames: {self.frame_count}")
+        print(f"  ✓ {name} finished in {t_end - t_start::.3f}s. Frames: {self.frame_count}")
         
         while (self.win.isOpen()) { sys.sleep(0.1) } // Block until window is manually closed
     }
@@ -214,4 +214,4 @@ vis.run(insertion_sort, "Insertion Sort", 8081)
 vis.run(quick_sort, "Quick Sort", 8082)
 vis.run(merge_sort, "Merge Sort", 8083)
 
-println("\n> All visualizations complete!")
+print("\n> All visualizations complete!")

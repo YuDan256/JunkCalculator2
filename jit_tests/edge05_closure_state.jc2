@@ -17,4 +17,4 @@ h(n) = {
     }
     s
 }
-println("RESULT " + str(h(1000000)))
+print("RESULT " + str(h(1000000)))

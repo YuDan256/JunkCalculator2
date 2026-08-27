@@ -550,8 +550,7 @@
       "",
       "  Formatting & I/O",
       "  ──────────────────────",
-      "    print(...)          Print arguments separated by space (no newline)",
-      "    println(...)        Print arguments separated by space with a newline",
+      "    print(...)          Print arguments, joined by ' ' and ended with '\\n'",
       "    format(fmt, ...)    Python-style string formatting",
       "                          format(\"{:>10.2f}\", PI)",
       "    input()             Read a line from stdin",
@@ -4694,17 +4693,12 @@
       ]
     },
     "print": {
-      "signature": "print(...)",
-      "desc": "Prints arguments to the console, separated by spaces, without a trailing newline.",
+      "signature": "print(...args; sep = \" \", end = \"\\n\")",
+      "desc": "Prints arguments to the console, joined by `sep` (default space), terminated by `end` (default newline).",
       "examples": [
-        "print(\"Hello\", 42)"
-      ]
-    },
-    "println": {
-      "signature": "println(...)",
-      "desc": "Prints arguments to the console, separated by spaces, with a trailing newline.",
-      "examples": [
-        "println(\"Hello\", 42)"
+        "print(\"Hello\", 42)",
+        "print(\"no newline\", end = \"\")",
+        "print(1, 2, 3, sep = \", \")"
       ]
     },
     "assert": {
@@ -6454,7 +6448,7 @@
         "See also: /help macro (topic)"
       ],
       "examples": [
-        "macro debug(expr) = quote { println(\"Value:\", $expr) }"
+        "macro debug(expr) = quote { print(\"Value:\", $expr) }"
       ]
     },
     "syntax": {

@@ -10,4 +10,4 @@ f(n) = {
     }
     s
 }
-println("RESULT " + str(f(1000000)))
+print("RESULT " + str(f(1000000)))

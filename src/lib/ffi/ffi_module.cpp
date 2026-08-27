@@ -1102,12 +1102,14 @@ JC2_ValueHandle struct_inst_str(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
 }
 
 JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
-    (void)ctx; (void)user_data;
+    (void)ctx; (void)user_data; (void)argc;
     Instance self(argv[0]);
     FFIArrayViewData* data = self.get_native_data<FFIArrayViewData>();
 
-    if (argc == 2 && Value(argv[1]).is_slice()) {
-        Slice s(argv[1]);
+    // ★ 统一调用约定：argv = [self, rest_list(dims)]
+    List idx_list(argv[1]);
+    if (idx_list.size() == 1 && idx_list.get(0).is_slice()) {
+        Slice s(idx_list.get(0).get_handle());
         int start = s.start();
         int end = s.end();
         int step = s.step();
@@ -1132,7 +1134,7 @@ JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
         return inst.get_handle();
     }
 
-    size_t num_indices = argc - 1;
+    size_t num_indices = idx_list.size();
     if (num_indices > data->desc.array_dims.size()) throw_error("FFI Error: Too many indices for array view.");
 
     size_t flat_offset = 0;
@@ -1141,7 +1143,7 @@ JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     for (size_t i = 0; i < num_indices; ++i) {
         size_t dim_size = data->desc.array_dims[i];
         current_stride /= dim_size;
-        int idx = Value(argv[i + 1]).as_int();
+        int idx = idx_list.get(i).as_int();
         if (idx < 0) idx += static_cast<int>(dim_size);
         if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error("FFI Error: Array index out of bounds.");
         flat_offset += idx * current_stride;
@@ -1155,14 +1157,16 @@ JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
 }
 
 JC2_ValueHandle array_view_setitem(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
-    (void)ctx; (void)user_data;
+    (void)ctx; (void)user_data; (void)argc;
     Instance self(argv[0]);
     FFIArrayViewData* data = self.get_native_data<FFIArrayViewData>();
 
-    Value val(argv[argc - 1]);
-    size_t num_indices = argc - 2;
+    // ★ 统一调用约定：argv = [self, rest_list(dims + value)]
+    List args_list(argv[1]);
+    Value val = args_list.get(args_list.size() - 1);
+    size_t num_indices = args_list.size() - 1;
 
-    if (num_indices == 1 && Value(argv[1]).is_slice()) {
+    if (num_indices == 1 && args_list.get(0).is_slice()) {
         throw_error("FFI Error: Slice assignment not yet supported on FFI arrays.");
     }
 
@@ -1174,7 +1178,7 @@ JC2_ValueHandle array_view_setitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     for (size_t i = 0; i < num_indices; ++i) {
         size_t dim_size = data->desc.array_dims[i];
         current_stride /= dim_size;
-        int idx = Value(argv[i + 1]).as_int();
+        int idx = args_list.get(i).as_int();
         if (idx < 0) idx += static_cast<int>(dim_size);
         if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error("FFI Error: Array index out of bounds.");
         flat_offset += idx * current_stride;
@@ -1240,15 +1244,14 @@ JC2_ValueHandle lib_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
 JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx;
     (void)user_data;
-    if (argc < 3) {
-        throw_error("FFILibrary.bind requires func_name and ret_type.");
-    }
+    (void)argc;
     Instance self(argv[0]);
     LibraryData* data = self.get_native_data<LibraryData>();
     if (!data || !data->handle) {
         throw_error("FFI Error: Invalid library handle.");
     }
     
+    // ★ 统一调用约定：argv = [self, func_name, ret_type, rest_list(arg_types)]
     std::string func_name = Value(argv[1]).as_string();
     void* func_ptr = (void*)GET_PROC(data->handle, func_name.c_str());
     if (!func_ptr) {
@@ -1264,11 +1267,12 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
     
     std::vector<FFITypeDesc> arg_types;
     bool is_variadic = false;
-    for (int i = 3; i < argc; ++i) {
+    List arg_list(argv[3]);
+    for (size_t i = 0; i < arg_list.size(); ++i) {
         try {
-            FFITypeDesc t = parseType(Value(argv[i]));
+            FFITypeDesc t = parseType(arg_list.get(i));
             if (t.type == FFIType::VARIADIC) {
-                if (i != argc - 1) {
+                if (i != arg_list.size() - 1) {
                     throw_error("FFI Error: '...' must be the last argument type.");
                 }
                 is_variadic = true;
@@ -1293,13 +1297,16 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
 JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx;
     (void)user_data;
+    (void)argc;
     Instance self(argv[0]);
     FunctionData* data = self.get_native_data<FunctionData>();
     if (!data || !data->func_ptr) {
         throw_error("FFI Error: Invalid function handle.");
     }
     
-    size_t provided_args = argc - 1;
+    // ★ 统一调用约定：argv = [self, rest_list(call_args)]
+    List arg_list(argv[1]);
+    size_t provided_args = arg_list.size();
     if (data->is_variadic) {
         if (provided_args < data->arg_types.size()) {
             throw_error("FFI Error: Not enough arguments for variadic function. Expected at least " + std::to_string(data->arg_types.size()) + ".");
@@ -1311,8 +1318,8 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     }
     
     std::vector<Value> call_args;
-    for (int i = 1; i < argc; ++i) {
-        call_args.push_back(Value(argv[i]));
+    for (size_t i = 0; i < arg_list.size(); ++i) {
+        call_args.push_back(arg_list.get(i));
     }
     
     try {

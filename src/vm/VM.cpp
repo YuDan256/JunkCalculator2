@@ -622,8 +622,10 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
 
 Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* argsBase) {
     std::vector<Value> args;
-    if (kwArgc > 0) {
-        if (td->converterParamNames.empty() && td->converterKwargNames.empty() && td->converterKwargsName.empty()) {
+    // ★ 统一调用约定：有 rest/仅关键字/kwargs 的类型转换器，无论有无关键字一律走 alignArguments。
+    bool hasRest = !td->converterRestName.empty() || !td->converterKwargNames.empty() || !td->converterKwargsName.empty();
+    if (kwArgc > 0 || hasRest) {
+        if (td->converterParamNames.empty() && td->converterRestName.empty() && td->converterKwargNames.empty() && td->converterKwargsName.empty()) {
             throw std::runtime_error("TypeError: This type object does not support keyword arguments.");
         }
         args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, td->converterRestName, td->converterKwargNames, td->converterKwargsName, Value::none());
@@ -908,8 +910,12 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             int posArgc = argc - 2 * kwArgc;
             std::vector<Value> args;
             
-            if (kwArgc > 0) {
-                if (closure->paramNames.empty()) {
+            // ★ 统一调用约定：只要 builtin 声明了 rest/仅关键字/kwargs，无论有无关键字
+            //   一律走 alignArguments，rest 收集成 list、仅关键字槽位用 uninit 占位，
+            //   fn 收到的 args 结构由签名元数据唯一决定。纯固定参数 builtin 才走直接 push。
+            bool hasRest = !closure->restName.empty() || !closure->kwargNames.empty() || !closure->kwargsName.empty();
+            if (kwArgc > 0 || hasRest) {
+                if (closure->paramNames.empty() && closure->restName.empty() && closure->kwargNames.empty() && closure->kwargsName.empty()) {
                     throw std::runtime_error("TypeError: Native function '" + closure->rawBody + "' does not support keyword arguments.");
                 }
                 args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none());
@@ -1225,8 +1231,10 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int posArgc = argc - 2 * kwArgc;
                 std::vector<Value> args;
                 
-                if (kwArgc > 0) {
-                    if (method->paramNames.empty()) {
+                // ★ 统一调用约定（同 execCall 的 nativeFn 路径）
+                bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
+                if (kwArgc > 0 || hasRest) {
+                    if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
                         throw std::runtime_error("TypeError: Native method '__call__' does not support keyword arguments.");
                     }
                     args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
@@ -1353,7 +1361,14 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
         Value result;
         try {
             auto& fn = std::any_cast<NativeCallable&>(method->nativeFn);
-            result = fn(rootedArgs);
+            // ★ 统一调用约定：有 rest/仅关键字/kwargs 的 native 方法，把展开的位置参数收集成 list。
+            bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
+            if (hasRest) {
+                std::vector<Value> aligned = alignArguments(static_cast<int>(rootedArgs.size()), 0, rootedArgs.data(), method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none());
+                result = fn(aligned);
+            } else {
+                result = fn(rootedArgs);
+            }
         } catch (...) {
             helpers::nativeSelfStack.pop_back();
             helpers::nativeClassStack.pop_back();
@@ -1967,8 +1982,10 @@ invoke_method:
         int posArgc = argc - 2 * kwArgc;
         std::vector<Value> args;
         
-        if (kwArgc > 0) {
-            if (method->paramNames.empty()) {
+        // ★ 统一调用约定
+        bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
+        if (kwArgc > 0 || hasRest) {
+            if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
                 throw std::runtime_error("TypeError: Native method '" + methodName + "' does not support keyword arguments.");
             }
             args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
@@ -2130,8 +2147,10 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         int posArgc = argc - 2 * kwArgc;
         std::vector<Value> args;
         
-        if (kwArgc > 0) {
-            if (method->paramNames.empty()) {
+        // ★ 统一调用约定
+        bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
+        if (kwArgc > 0 || hasRest) {
+            if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
                 throw std::runtime_error("TypeError: Native super method '" + methodName + "' does not support keyword arguments.");
             }
             args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
@@ -3303,26 +3322,32 @@ VM::VM() {
         });
 
         bind("list", {}, {}, [](const std::vector<Value>& args) -> Value {
+            // ★ 统一调用约定：args = [rest_list]
+            const std::vector<Value>& items = static_cast<ObjList*>(args[0].asObj())->vec;
             ObjList* L = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(L);
-            for (const auto& a : args) L->vec.push_back(a);
+            for (const auto& a : items) L->vec.push_back(a);
             return Value(L);
         }, "elements");
 
         bind("dict", {}, {}, [](const std::vector<Value>& args) -> Value {
-            if (args.size() % 2 != 0) throw std::runtime_error("Runtime Error: dict() expects even number of arguments.");
+            // ★ 统一调用约定：args = [rest_list]
+            const std::vector<Value>& items = static_cast<ObjList*>(args[0].asObj())->vec;
+            if (items.size() % 2 != 0) throw std::runtime_error("Runtime Error: dict() expects even number of arguments.");
             ObjDict* d = GcHeap::get().allocate<ObjDict>();
             GcObjGuard guard(d);
-            for (size_t i = 0; i < args.size(); i += 2) {
-                d->keyMap[args[i]] = d->elements.size();
-                d->elements.push_back({args[i], args[i + 1]});
+            for (size_t i = 0; i < items.size(); i += 2) {
+                d->keyMap[items[i]] = d->elements.size();
+                d->elements.push_back({items[i], items[i + 1]});
             }
             return Value(d);
         }, "pairs");
 
         bind("set", {}, {}, [](const std::vector<Value>& args) -> Value {
+            // ★ 统一调用约定：args = [rest_list]
+            const std::vector<Value>& items = static_cast<ObjList*>(args[0].asObj())->vec;
             ObjSet* s = GcHeap::get().allocate<ObjSet>();
             GcObjGuard guard(s);
-            for (const auto& a : args) {
+            for (const auto& a : items) {
                 if (s->keys.find(a) == s->keys.end()) {
                     s->keys.insert(a);
                     s->elements.push_back(a);
@@ -3332,23 +3357,23 @@ VM::VM() {
         }, "elements");
 
         bind("symmatrix", {}, {"rows", "cols"}, [](const std::vector<Value>& args) -> Value {
-            if (args.size() < 2)
-                throw std::runtime_error("Runtime Error: symmatrix(rows, cols [, ...]) expects at least 2 args.");
+            // ★ 统一调用约定：args = [rows, cols, rest_list]
             int r = static_cast<int>(std::round(args[0].asDouble()));
             int c = static_cast<int>(std::round(args[1].asDouble()));
             if (r <= 0 || c <= 0)
                 throw std::runtime_error("Runtime Error: symmatrix() dimensions must be positive.");
-            if (static_cast<int>(args.size()) == 2)
+            const std::vector<Value>& items = static_cast<ObjList*>(args[2].asObj())->vec;
+            if (items.empty())
                 return Value(SymMatrix(r, c));
             int total = r * c;
-            if (static_cast<int>(args.size()) - 2 != total)
+            if (static_cast<int>(items.size()) != total)
                 throw std::runtime_error("Runtime Error: symmatrix() element count mismatch: "
                     "expected " + std::to_string(total) + ", got " +
-                    std::to_string(args.size() - 2) + ".");
+                    std::to_string(items.size()) + ".");
             std::vector<SymExpr> flat;
             flat.reserve(total);
             for (int i = 0; i < total; ++i) {
-                flat.push_back(args[i + 2].asSymbolic());
+                flat.push_back(items[i].asSymbolic());
             }
             return Value(SymMatrix(r, c, flat));
         }, "elements");
@@ -3387,43 +3412,43 @@ VM::VM() {
         });
 
         bind("matrix", {}, {"rows", "cols"}, [](const std::vector<Value>& args) -> Value {
-            if (args.size() < 2)
-                throw std::runtime_error("Runtime Error: matrix(rows, cols [, ...]) expects at least 2 args.");
+            // ★ 统一调用约定：args = [rows, cols, rest_list]
             int r = static_cast<int>(std::round(args[0].asDouble()));
             int c = static_cast<int>(std::round(args[1].asDouble()));
             if (r <= 0 || c <= 0)
                 throw std::runtime_error("Runtime Error: matrix() dimensions must be positive.");
-            if (static_cast<int>(args.size()) == 2)
+            const std::vector<Value>& items = static_cast<ObjList*>(args[2].asObj())->vec;
+            if (items.empty())
                 return Value(RealMatrix(r, c));
             int total = r * c;
-            if (static_cast<int>(args.size()) - 2 != total)
+            if (static_cast<int>(items.size()) != total)
                 throw std::runtime_error("Runtime Error: matrix() element count mismatch: "
                     "expected " + std::to_string(total) + ", got " +
-                    std::to_string(args.size() - 2) + ".");
+                    std::to_string(items.size()) + ".");
             bool hasSymbolic = false;
             bool hasComplex = false;
-            for (int i = 2; i < static_cast<int>(args.size()); ++i) {
-                if (args[i].isSymbolic()) hasSymbolic = true;
-                else if (args[i].isComplex()) hasComplex = true;
+            for (size_t i = 0; i < items.size(); ++i) {
+                if (items[i].isSymbolic()) hasSymbolic = true;
+                else if (items[i].isComplex()) hasComplex = true;
             }
             if (hasSymbolic) {
                 std::vector<SymExpr> flat;
                 flat.reserve(total);
                 for (int i = 0; i < total; ++i)
-                    flat.push_back(args[i + 2].asSymbolic());
+                    flat.push_back(items[i].asSymbolic());
                 return Value(SymMatrix(r, c, flat));
             }
             if (hasComplex) {
                 std::vector<Complex> flat;
                 flat.reserve(total);
                 for (int i = 0; i < total; ++i)
-                    flat.push_back(args[i + 2].asComplex());
+                    flat.push_back(items[i].asComplex());
                 return Value(ComplexMatrix(r, c, flat));
             }
             std::vector<double> flat;
             flat.reserve(total);
             for (int i = 0; i < total; ++i)
-                flat.push_back(args[i + 2].asDouble());
+                flat.push_back(items[i].asDouble());
             return Value(RealMatrix(r, c, flat));
         }, "elements");
     }

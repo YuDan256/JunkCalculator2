@@ -14,6 +14,7 @@
 #include <cassert>
 #include <unordered_set>
 #include <random>
+#include <future>
 
 namespace jc {
 
@@ -1085,7 +1086,183 @@ namespace jc {
         }
     }
 
-    // matmul：模板化 + 分块矩阵乘法 (Cache Blocking) + i-k-j 循环重排 + 稀疏跳跃
+    // ---- Strassen 辅助函数 ----
+    template <typename T>
+    inline void tensor_add_view(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int m, int n) {
+        for (int i = 0; i < m; ++i)
+            for (int j = 0; j < n; ++j)
+                C[i * strideC + j] = A[i * strideA + j] + B[i * strideB + j];
+    }
+
+    template <typename T>
+    inline void tensor_sub_view(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int m, int n) {
+        for (int i = 0; i < m; ++i)
+            for (int j = 0; j < n; ++j)
+                C[i * strideC + j] = A[i * strideA + j] - B[i * strideB + j];
+    }
+
+    template <typename T>
+    inline void tensor_mul_base_view(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int m, int k_dim, int n) {
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) C[i * strideC + j] = T(0);
+        }
+        for (int i = 0; i < m; ++i) {
+            for (int k = 0; k < k_dim; ++k) {
+                T r = A[i * strideA + k];
+                if (r == T(0)) continue;
+                for (int j = 0; j < n; ++j) {
+                    C[i * strideC + j] += r * B[k * strideB + j];
+                }
+            }
+        }
+    }
+
+    template <typename T>
+    void tensor_strassen_view(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int n, int depth) {
+        if (n <= 64) {
+            tensor_mul_base_view(A, strideA, B, strideB, C, strideC, n, n, n);
+            return;
+        }
+
+        int odd = n % 2;
+        int even_n = n - odd;
+        int half = even_n / 2;
+
+        std::vector<T> workspace(9 * half * half);
+        T* M1 = workspace.data();
+        T* M2 = M1 + half * half;
+        T* M3 = M2 + half * half;
+        T* M4 = M3 + half * half;
+        T* M5 = M4 + half * half;
+        T* M6 = M5 + half * half;
+        T* M7 = M6 + half * half;
+        T* T1 = M7 + half * half;
+        T* T2 = T1 + half * half;
+
+        const T* A11 = A;
+        const T* A12 = A + half;
+        const T* A21 = A + half * strideA;
+        const T* A22 = A + half * strideA + half;
+
+        const T* B11 = B;
+        const T* B12 = B + half;
+        const T* B21 = B + half * strideB;
+        const T* B22 = B + half * strideB + half;
+
+        T* C11 = C;
+        T* C12 = C + half;
+        T* C21 = C + half * strideC;
+        T* C22 = C + half * strideC + half;
+
+        if (depth < 2) {
+            auto f1 = std::async(std::launch::async, [&]() {
+                std::vector<T> localT(2 * half * half);
+                T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
+                tensor_add_view(A11, strideA, A22, strideA, lT1, half, half, half);
+                tensor_add_view(B11, strideB, B22, strideB, lT2, half, half, half);
+                tensor_strassen_view(lT1, half, lT2, half, M1, half, half, depth + 1);
+            });
+            auto f2 = std::async(std::launch::async, [&]() {
+                std::vector<T> localT(half * half);
+                T* lT1 = localT.data();
+                tensor_add_view(A21, strideA, A22, strideA, lT1, half, half, half);
+                tensor_strassen_view(lT1, half, B11, strideB, M2, half, half, depth + 1);
+            });
+            auto f3 = std::async(std::launch::async, [&]() {
+                std::vector<T> localT(half * half);
+                T* lT2 = localT.data();
+                tensor_sub_view(B12, strideB, B22, strideB, lT2, half, half, half);
+                tensor_strassen_view(A11, strideA, lT2, half, M3, half, half, depth + 1);
+            });
+            auto f4 = std::async(std::launch::async, [&]() {
+                std::vector<T> localT(half * half);
+                T* lT2 = localT.data();
+                tensor_sub_view(B21, strideB, B11, strideB, lT2, half, half, half);
+                tensor_strassen_view(A22, strideA, lT2, half, M4, half, half, depth + 1);
+            });
+            auto f5 = std::async(std::launch::async, [&]() {
+                std::vector<T> localT(half * half);
+                T* lT1 = localT.data();
+                tensor_add_view(A11, strideA, A12, strideA, lT1, half, half, half);
+                tensor_strassen_view(lT1, half, B22, strideB, M5, half, half, depth + 1);
+            });
+            auto f6 = std::async(std::launch::async, [&]() {
+                std::vector<T> localT(2 * half * half);
+                T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
+                tensor_sub_view(A21, strideA, A11, strideA, lT1, half, half, half);
+                tensor_add_view(B11, strideB, B12, strideB, lT2, half, half, half);
+                tensor_strassen_view(lT1, half, lT2, half, M6, half, half, depth + 1);
+            });
+            
+            std::vector<T> localT(2 * half * half);
+            T* lT1 = localT.data(); T* lT2 = lT1 + half * half;
+            tensor_sub_view(A12, strideA, A22, strideA, lT1, half, half, half);
+            tensor_add_view(B21, strideB, B22, strideB, lT2, half, half, half);
+            tensor_strassen_view(lT1, half, lT2, half, M7, half, half, depth + 1);
+
+            f1.get(); f2.get(); f3.get(); f4.get(); f5.get(); f6.get();
+        } else {
+            tensor_add_view(A11, strideA, A22, strideA, T1, half, half, half);
+            tensor_add_view(B11, strideB, B22, strideB, T2, half, half, half);
+            tensor_strassen_view(T1, half, T2, half, M1, half, half, depth + 1);
+
+            tensor_add_view(A21, strideA, A22, strideA, T1, half, half, half);
+            tensor_strassen_view(T1, half, B11, strideB, M2, half, half, depth + 1);
+
+            tensor_sub_view(B12, strideB, B22, strideB, T2, half, half, half);
+            tensor_strassen_view(A11, strideA, T2, half, M3, half, half, depth + 1);
+
+            tensor_sub_view(B21, strideB, B11, strideB, T2, half, half, half);
+            tensor_strassen_view(A22, strideA, T2, half, M4, half, half, depth + 1);
+
+            tensor_add_view(A11, strideA, A12, strideA, T1, half, half, half);
+            tensor_strassen_view(T1, half, B22, strideB, M5, half, half, depth + 1);
+
+            tensor_sub_view(A21, strideA, A11, strideA, T1, half, half, half);
+            tensor_add_view(B11, strideB, B12, strideB, T2, half, half, half);
+            tensor_strassen_view(T1, half, T2, half, M6, half, half, depth + 1);
+
+            tensor_sub_view(A12, strideA, A22, strideA, T1, half, half, half);
+            tensor_add_view(B21, strideB, B22, strideB, T2, half, half, half);
+            tensor_strassen_view(T1, half, T2, half, M7, half, half, depth + 1);
+        }
+
+        for (int i = 0; i < half; ++i) {
+            for (int j = 0; j < half; ++j) {
+                C11[i * strideC + j] = M1[i * half + j] + M4[i * half + j] - M5[i * half + j] + M7[i * half + j];
+                C12[i * strideC + j] = M3[i * half + j] + M5[i * half + j];
+                C21[i * strideC + j] = M2[i * half + j] + M4[i * half + j];
+                C22[i * strideC + j] = M1[i * half + j] - M2[i * half + j] + M3[i * half + j] + M6[i * half + j];
+            }
+        }
+
+        if (odd) {
+            for (int i = 0; i < even_n; ++i) {
+                T sum = T(0);
+                for (int k = 0; k < n; ++k) sum += A[i * strideA + k] * B[k * strideB + even_n];
+                C[i * strideC + even_n] = sum;
+            }
+            for (int j = 0; j < even_n; ++j) {
+                T sum = T(0);
+                for (int k = 0; k < n; ++k) sum += A[even_n * strideA + k] * B[k * strideB + j];
+                C[even_n * strideC + j] = sum;
+            }
+            T sum = T(0);
+            for (int k = 0; k < n; ++k) sum += A[even_n * strideA + k] * B[k * strideB + even_n];
+            C[even_n * strideC + even_n] = sum;
+
+            for (int i = 0; i < even_n; ++i) {
+                T a_edge = A[i * strideA + even_n];
+                if (a_edge != T(0)) {
+                    for (int j = 0; j < even_n; ++j) {
+                        C[i * strideC + j] += a_edge * B[even_n * strideB + j];
+                    }
+                }
+            }
+        }
+    }
+
+    // matmul：智能分派 (Strassen vs Cache Blocking)
     template <typename T>
     inline void matmul_impl(const Tensor& a, const Tensor& b, Tensor& out) {
         const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
@@ -1095,6 +1272,50 @@ namespace jc {
         int sa0 = a.strides[0], sa1 = a.strides[1];
         int sb0 = b.strides[0], sb1 = b.strides[1];
         
+        int minDim = std::min({M, K, N});
+        int maxDim = std::max({M, K, N});
+
+        // 智能路由：大方阵走多线程 Strassen，狭长矩阵/小矩阵走 Cache Blocking
+        if (minDim > 64 && maxDim < minDim * 4) {
+            int n = maxDim;
+            bool needPadA = (M != n || K != n);
+            bool needPadB = (K != n || N != n);
+
+            std::vector<T> padA, padB;
+            const T* ptrA = pa;
+            const T* ptrB = pb;
+            int strideA = sa0;
+            int strideB = sb0;
+
+            // Strassen 假设内层连续 (col_stride == 1)，如果是非连续视图则先物化
+            if (needPadA || sa1 != 1) {
+                padA.assign(n * n, T(0));
+                for (int i = 0; i < M; ++i) {
+                    for (int j = 0; j < K; ++j) padA[i * n + j] = pa[i * sa0 + j * sa1];
+                }
+                ptrA = padA.data();
+                strideA = n;
+            }
+            if (needPadB || sb1 != 1) {
+                padB.assign(n * n, T(0));
+                for (int i = 0; i < K; ++i) {
+                    for (int j = 0; j < N; ++j) padB[i * n + j] = pb[i * sb0 + j * sb1];
+                }
+                ptrB = padB.data();
+                strideB = n;
+            }
+
+            std::vector<T> padC(n * n, T(0));
+            tensor_strassen_view(ptrA, strideA, ptrB, strideB, padC.data(), n, n, 0);
+
+            for (int i = 0; i < M; ++i) {
+                for (int j = 0; j < N; ++j) {
+                    po[i * N + j] = padC[i * n + j];
+                }
+            }
+            return;
+        }
+
         // L1 Cache 友好的分块大小
         constexpr int BLOCK_SIZE = 64;
 

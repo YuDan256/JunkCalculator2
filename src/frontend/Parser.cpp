@@ -386,6 +386,13 @@ namespace jc {
                         while (true) {
                             while (match({ TokenType::NEWLINE })) {}
 
+                            // ★ 分号在参数列表开头：全仅关键字（f(; a, b)）
+                            if (match({ TokenType::SEMICOLON })) {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                                inKwOnly = true;
+                                continue;
+                            }
+
                             bool isParamRef = false;
                             bool isParamConst = false;
                             while (true) {
@@ -1468,6 +1475,12 @@ namespace jc {
 
                 if (!check(TokenType::RPAREN)) {
                     while (true) {
+                        // ★ 分号在参数列表开头：全仅关键字（f(; a, b)）
+                        if (match({ TokenType::SEMICOLON })) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            inKwOnly = true;
+                            continue;
+                        }
                         bool isRef = false;
                         bool isConst = false;
                         while (true) {
@@ -3239,6 +3252,12 @@ namespace jc {
 
                 if (!check(TokenType::RPAREN)) {
                     while (true) {
+                        // ★ 分号在参数列表开头：全仅关键字（f(; a, b)）
+                        if (match({ TokenType::SEMICOLON })) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            inKwOnly = true;
+                            continue;
+                        }
                         bool isParamRef = false;
                         bool isParamConst = false;
                         while (true) {

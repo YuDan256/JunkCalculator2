@@ -1792,18 +1792,9 @@ namespace jc {
                 
                 if (match({ TokenType::LPAREN })) {
                     if (!check(TokenType::RPAREN)) {
-                        bool hasKwArg = false;
                         do {
-                            if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
-                                Token kwName = advance();
-                                advance(); // consume '='
-                                auto val = assignment();
-                                args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
-                                hasKwArg = true;
-                            } else {
-                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
-                                args.push_back(assignment());
-                            }
+                            // ★ 宏参数都是 AST 节点，`a=1` 直接解析成 Assign（赋值），不是关键字参数
+                            args.push_back(assignment());
                         } while (match({ TokenType::COMMA }));
                     }
                     if (check(TokenType::SEMICOLON)) {

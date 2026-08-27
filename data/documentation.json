@@ -5775,20 +5775,95 @@
       "desc": "Dunder method: Overloads the power operator (^).",
       "examples": ["__pow__(p) = self.val ^ p"]
     },
+    "__lshift__": {
+      "signature": "__lshift__(n)",
+      "desc": "Dunder method: Overloads the bitwise left shift operator (<<).",
+      "examples": ["__lshift__(n) = self.val << n"]
+    },
+    "__rshift__": {
+      "signature": "__rshift__(n)",
+      "desc": "Dunder method: Overloads the bitwise right shift operator (>>).",
+      "examples": ["__rshift__(n) = self.val >> n"]
+    },
+    "__bitand__": {
+      "signature": "__bitand__(other)",
+      "desc": "Dunder method: Overloads the bitwise AND operator (&).",
+      "examples": ["__bitand__(o) = self.val & o.val"]
+    },
+    "__bitor__": {
+      "signature": "__bitor__(other)",
+      "desc": "Dunder method: Overloads the bitwise OR operator (|).",
+      "examples": ["__bitor__(o) = self.val | o.val"]
+    },
+    "__bitxor__": {
+      "signature": "__bitxor__(other)",
+      "desc": "Dunder method: Overloads the bitwise XOR operator (^^).",
+      "examples": ["__bitxor__(o) = self.val ^^ o.val"]
+    },
     "__radd__": {
       "signature": "__radd__(other)",
       "desc": "Dunder method: Overloads reverse addition (other + self) when 'other' is not an instance.",
       "examples": ["__radd__(o) = self.__add__(o)"]
+    },
+    "__rsub__": {
+      "signature": "__rsub__(other)",
+      "desc": "Dunder method: Overloads reverse subtraction (other - self) when 'other' is not an instance.",
+      "examples": ["__rsub__(o) = o - self.val"]
     },
     "__rmul__": {
       "signature": "__rmul__(other)",
       "desc": "Dunder method: Overloads reverse multiplication (other * self) when 'other' is not an instance.",
       "examples": ["__rmul__(o) = self.__mul__(o)"]
     },
+    "__rdiv__": {
+      "signature": "__rdiv__(other)",
+      "desc": "Dunder method: Overloads reverse division (other / self) when 'other' is not an instance.",
+      "examples": ["__rdiv__(o) = o / self.val"]
+    },
     "__ridiv__": {
       "signature": "__ridiv__(other)",
       "desc": "Dunder method: Overloads reverse integer division (other ~/ self) when 'other' is not an instance.",
       "examples": ["__ridiv__(o) = self.__idiv__(o)"]
+    },
+    "__rldiv__": {
+      "signature": "__rldiv__(other)",
+      "desc": "Dunder method: Overloads reverse left division (other \\ self) when 'other' is not an instance.",
+      "examples": ["__rldiv__(o) = self / o"]
+    },
+    "__rmod__": {
+      "signature": "__rmod__(other)",
+      "desc": "Dunder method: Overloads reverse modulo (other % self) when 'other' is not an instance.",
+      "examples": ["__rmod__(o) = o % self.val"]
+    },
+    "__rpow__": {
+      "signature": "__rpow__(other)",
+      "desc": "Dunder method: Overloads reverse power (other ^ self) when 'other' is not an instance.",
+      "examples": ["__rpow__(o) = o ^ self.val"]
+    },
+    "__rlshift__": {
+      "signature": "__rlshift__(n)",
+      "desc": "Dunder method: Overloads reverse bitwise left shift (n << self) when 'n' is not an instance.",
+      "examples": ["__rlshift__(n) = n << self.val"]
+    },
+    "__rrshift__": {
+      "signature": "__rrshift__(n)",
+      "desc": "Dunder method: Overloads reverse bitwise right shift (n >> self) when 'n' is not an instance.",
+      "examples": ["__rrshift__(n) = n >> self.val"]
+    },
+    "__rbitand__": {
+      "signature": "__rbitand__(other)",
+      "desc": "Dunder method: Overloads reverse bitwise AND (other & self) when 'other' is not an instance.",
+      "examples": ["__rbitand__(o) = o & self.val"]
+    },
+    "__rbitor__": {
+      "signature": "__rbitor__(other)",
+      "desc": "Dunder method: Overloads reverse bitwise OR (other | self) when 'other' is not an instance.",
+      "examples": ["__rbitor__(o) = o | self.val"]
+    },
+    "__rbitxor__": {
+      "signature": "__rbitxor__(other)",
+      "desc": "Dunder method: Overloads reverse bitwise XOR (other ^^ self) when 'other' is not an instance.",
+      "examples": ["__rbitxor__(o) = o ^^ self.val"]
     },
     "__neg__": {
       "signature": "__neg__()",
@@ -5805,10 +5880,30 @@
       "desc": "Dunder method: Overloads the equality operator (==).",
       "examples": ["__eq__(o) = self.x == o.x && self.y == o.y"]
     },
+    "__neq__": {
+      "signature": "__neq__(other)",
+      "desc": "Dunder method: Overloads the inequality operator (!=).",
+      "examples": ["__neq__(o) = !(self == o)"]
+    },
     "__lt__": {
       "signature": "__lt__(other)",
       "desc": "Dunder method: Overloads the less-than operator (<).",
       "examples": ["__lt__(o) = self.val < o.val"]
+    },
+    "__le__": {
+      "signature": "__le__(other)",
+      "desc": "Dunder method: Overloads the less-than-or-equal operator (<=).",
+      "examples": ["__le__(o) = self.val <= o.val"]
+    },
+    "__gt__": {
+      "signature": "__gt__(other)",
+      "desc": "Dunder method: Overloads the greater-than operator (>).",
+      "examples": ["__gt__(o) = self.val > o.val"]
+    },
+    "__ge__": {
+      "signature": "__ge__(other)",
+      "desc": "Dunder method: Overloads the greater-than-or-equal operator (>=).",
+      "examples": ["__ge__(o) = self.val >= o.val"]
     },
     "__contains__": {
       "signature": "__contains__(val)",
@@ -5834,6 +5929,11 @@
       "signature": "__str__()",
       "desc": "Dunder method: Overloads string conversion (str(self), print, f-strings).",
       "examples": ["__str__() = f\"Point({self.x}, {self.y})\""]
+    },
+    "__repr__": {
+      "signature": "__repr__()",
+      "desc": "Dunder method: Overloads the REPL representation and object dumps.",
+      "examples": ["__repr__() = f\"<Point {self.x}, {self.y}>\""]
     },
     "__len__": {
       "signature": "__len__()",

@@ -1341,13 +1341,13 @@ namespace jc {
                 t == TokenType::BREAK || t == TokenType::CONTINUE ||
                 t == TokenType::RETURN || t == TokenType::LOCAL ||
                 t == TokenType::CONST || t == TokenType::DELETE ||
-                t == TokenType::IN || t == TokenType::IS ||
+                t == TokenType::IN || t == TokenType::IS || t == TokenType::AS ||
                 t == TokenType::THROW || t == TokenType::TRY ||  // ★
                 t == TokenType::CATCH || t == TokenType::REF ||   // ★
                 t == TokenType::STATE || t == TokenType::STATIC || // ★
                 t == TokenType::IMPORT || t == TokenType::SWITCH ||  // ★
                 t == TokenType::CASE || t == TokenType::DEFAULT ||
-                t == TokenType::MATCH || t == TokenType::MACRO || t == TokenType::QUOTE ||
+                t == TokenType::MATCH || t == TokenType::MACRO || t == TokenType::SYNTAX || t == TokenType::QUOTE || t == TokenType::DEFER ||
                 t == TokenType::SUPER || t == TokenType::CLASS || t == TokenType::SELF ||
                 t == TokenType::TRUE_KW || t == TokenType::FALSE_KW || t == TokenType::NONE_KW ||
                 t == TokenType::NAMESPACE || t == TokenType::ENUM || t == TokenType::EXTENDS; // ★ 新增

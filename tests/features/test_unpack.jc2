@@ -1,0 +1,98 @@
+// 位置解包（list）
+test_spread_positional_list() = {
+    f(a, ...rest) = a + rest.sum()
+    args = @[2, 3, 4]
+    assert(f(...args) == 9, "list spread failed")
+    assert(f(1, ...args) == 10, "list spread with leading arg failed")
+    assert(f(0, ...args, 9) == 18, "mid spread failed")
+}
+test_spread_positional_list()
+
+// set 解包
+test_spread_set() = {
+    g(a, b) = a + b
+    assert(g(...@{3, 4}) == 7, "set spread failed")
+}
+test_spread_set()
+
+// 1D matrix 解包
+test_spread_matrix() = {
+    h(a, b, c) = a * 100 + b * 10 + c
+    assert(h(...[1, 2, 3]) == 123, "matrix spread failed")
+}
+test_spread_matrix()
+
+// 字符串解包
+test_spread_string() = {
+    j(a, b, c) = str(a) + str(b) + str(c)
+    assert(j(..."abc") == "abc", "string spread failed")
+}
+test_spread_string()
+
+// 关键字解包（dict，写在 ; 后）
+test_spread_keyword() = {
+    k(a, b, c) = a * 100 + b * 10 + c
+    opts = {b: 2, c: 3}
+    assert(k(1; ...opts) == 123, "kw spread failed")
+    assert(k(a=1; ...opts) == 123, "kw spread with named arg failed")
+}
+test_spread_keyword()
+
+// 位置 + 关键字混合解包
+test_spread_mixed() = {
+    m(a, ...rest; c, ...kw) = a + rest.sum() + c + kw.len()
+    args = @[2, 3]
+    opts = {x: 5}
+    assert(m(...args; c=4, ...opts) == 10, "mixed spread failed")
+}
+test_spread_mixed()
+
+// 多个位置解包 + 空解包
+test_spread_multi_empty() = {
+    n(a, b, c, d) = a + b + c + d
+    assert(n(...@[1, 2], ...@[3, 4]) == 10, "multi spread failed")
+    assert(n(1, 2, ...@[], 3, 4) == 10, "empty spread failed")
+}
+test_spread_multi_empty()
+
+// 不写分号的关键字传参保持现状
+test_spread_no_semicolon() = {
+    f(a, b) = a + b
+    assert(f(a=1, b=2) == 3, "no semicolon kwargs failed")
+}
+test_spread_no_semicolon()
+
+// __unpack__ / __mapping__ dunder
+test_spread_dunder() = {
+    class Pair {
+        init(x, y) = { self.x = x; self.y = y }
+        __unpack__() = @[self.x, self.y]
+        __mapping__() = dict("a", self.x, "b", self.y)
+    }
+    p = Pair(7, 8)
+    g(a, b) = a + b
+    assert(g(...p) == 15, "__unpack__ spread failed")
+    h(a; b) = a + b
+    assert(h(; ...p) == 15, "__mapping__ spread failed")
+}
+test_spread_dunder()
+
+// 解包错误
+test_spread_errors() = {
+    f(a, b) = a + b
+
+    try {
+        f(...1)
+        assert(false, "should throw for non-iterable positional spread")
+    } catch (e) {
+        assert("positional spread expects" in e.message, "wrong error for positional spread")
+    }
+
+    try {
+        f(1; ...2)
+        assert(false, "should throw for non-dict keyword spread")
+    } catch (e) {
+        assert("keyword spread expects" in e.message, "wrong error for keyword spread")
+    }
+}
+test_spread_errors()

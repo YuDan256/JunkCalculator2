@@ -533,7 +533,7 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
     pendingCallRefs.clear();
 }
 
-std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf, const std::vector<bool>& kwargHasDefault) {
+std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf, const std::vector<bool>& kwargHasDefault, int* outPosArgc) {
     // ★ 展开解包（...list 位置解包、...dict 关键字解包）
     std::vector<Value> expandedStorage;
     {
@@ -590,6 +590,7 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
             kwArgc = static_cast<int>(spreadKwNames.size());
         }
     }
+    if (outPosArgc) *outPosArgc = posArgc; // ★ 展开后的位置参数个数
     
     std::vector<Value> alignedArgs;
     int totalExpected = static_cast<int>(paramNames.size());
@@ -825,7 +826,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             int newTotalCount = fnDef->localCount + fnDef->refCount;
             PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault);
+            int effectivePosArgc = posArgc;
+            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault, &effectivePosArgc);
             for (int i = 0; i < fnDef->arity; ++i) {
                 if (alignedArgs[i].isUninit()) {
                     int expected = closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
@@ -833,7 +835,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
                 }
             }
-            if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
+            if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
                 int expected = closure->isUFCS ? fnDef->maxArity - 1 : fnDef->maxArity;
                 if (expected < 0) expected = 0;
                 throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(expected) + " arguments.");
@@ -1088,14 +1090,15 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName, Value::none(), initMethod->kwargHasDefault);
+                int effectivePosArgc = posArgc;
+                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName, Value::none(), initMethod->kwargHasDefault, &effectivePosArgc);
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
                         throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                 }
-                if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
+                if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
                     throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
                 }
                 
@@ -1232,14 +1235,15 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
+                int effectivePosArgc = posArgc;
+                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault, &effectivePosArgc);
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
                         throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                 }
-                if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
+                if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
                     throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
                 }
                 
@@ -1985,14 +1989,15 @@ invoke_method:
         int newTotalCount = fnDef->localCount + fnDef->refCount;
         PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-        std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
+        int effectivePosArgc = posArgc;
+        std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault, &effectivePosArgc);
                 
         for (int i = 0; i < fnDef->arity; ++i) {
             if (alignedArgs[i].isUninit()) {
                 throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
         }
-        if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
+        if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
             throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
         }
                 

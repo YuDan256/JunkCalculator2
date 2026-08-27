@@ -1919,7 +1919,12 @@ void IRBuilder::visitCall(Call* expr) {
         
         if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
-            if (refParams.count(name)) {
+            auto argVarIt = exprSymbols->find(var);
+            ResolvedSym argSym = argVarIt != exprSymbols->end() ? argVarIt->second : ResolvedSym{};
+            if (argSym.isConst) {
+                // ★ const 实参传给 ref 参数：安全降级为按值传递，保护不可变性
+            }
+            else if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
                 sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
             } else {
@@ -3336,7 +3341,12 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
         
         if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
-            if (refParams.count(name)) {
+            auto argVarIt = exprSymbols->find(var);
+            ResolvedSym argSym = argVarIt != exprSymbols->end() ? argVarIt->second : ResolvedSym{};
+            if (argSym.isConst) {
+                // ★ const 实参传给 ref 参数：安全降级为按值传递，保护不可变性
+            }
+            else if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
                 sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
             } else {
@@ -4248,7 +4258,12 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
         
         if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
-            if (refParams.count(name)) {
+            auto argVarIt = exprSymbols->find(var);
+            ResolvedSym argSym = argVarIt != exprSymbols->end() ? argVarIt->second : ResolvedSym{};
+            if (argSym.isConst) {
+                // ★ const 实参传给 ref 参数：安全降级为按值传递，保护不可变性
+            }
+            else if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
                 sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
             } else {

@@ -2796,18 +2796,19 @@
       "    Dunder methods are inherited through the class hierarchy.",
       "",
       "    Arithmetic:",
-      "      __add__ (+)  __sub__ (-)  __mul__ (*)  __div__ (/)  __idiv__ (~/)  __mod__ (%)  __pow__ (^)",
+      "      __add__ (+)  __sub__ (-)  __mul__ (*)  __div__ (/)  __idiv__ (~/)  __ldiv__ (\\)  __mod__ (%)  __pow__ (^)",
       "      __lshift__ (<<)  __rshift__ (>>)",
       "      __bitand__ (&)  __bitor__ (|)  __bitxor__ (^^)",
       "",
       "    Reverse arithmetic (when left operand is NOT an instance):",
-      "      __radd__  __rsub__  __rmul__  __rdiv__  __ridiv__  __rmod__  __rpow__",
+      "      __radd__  __rsub__  __rmul__  __rdiv__  __ridiv__  __rldiv__  __rmod__  __rpow__",
       "      __rlshift__  __rrshift__",
       "      __rbitand__  __rbitor__  __rbitxor__",
       "      Example: 2 * vec  calls  vec.__rmul__(2)",
       "",
       "    Unary:",
       "      __neg__()        Unary minus: -obj",
+      "      __bitnot__()     Bitwise NOT: ~obj",
       "",
       "    Comparison:",
       "      __eq__ (==)  __neq__ (!=)  __lt__ (<)  __le__ (<=)  __gt__ (>)  __ge__ (>=)",
@@ -2843,6 +2844,10 @@
       "                     to be used as a dict key or set element. (Must be paired with __eq__)",
       "      __match__()  → Returns a 'view' object (like a list or dict) to be used instead of ",
       "                     the instance during pattern matching and destructuring.",
+      "",
+      "    Unpacking:",
+      "      __unpack__()   → Returns a list for positional spread: f(...obj)",
+      "      __mapping__()  → Returns a dict for keyword spread: f(; ...obj)",
       "",
       "  Method Resolution & Instance Overrides",
       "  ──────────────────────",
@@ -5755,6 +5760,11 @@
       "desc": "Dunder method: Overloads the integer division operator (~/).",
       "examples": ["__idiv__(scalar) = Point(idiv(self.x, scalar), idiv(self.y, scalar))"]
     },
+    "__ldiv__": {
+      "signature": "__ldiv__(other)",
+      "desc": "Dunder method: Overloads the left division operator (\\). a\\b equals b/a for scalars, or inv(a)*b for matrices.",
+      "examples": ["__ldiv__(m) = m ~/ self.den"]
+    },
     "__mod__": {
       "signature": "__mod__(other)",
       "desc": "Dunder method: Overloads the modulo operator (%).",
@@ -5784,6 +5794,11 @@
       "signature": "__neg__()",
       "desc": "Dunder method: Overloads the unary minus operator (-self).",
       "examples": ["__neg__() = Point(-self.x, -self.y)"]
+    },
+    "__bitnot__": {
+      "signature": "__bitnot__()",
+      "desc": "Dunder method: Overloads the bitwise NOT operator (~obj).",
+      "examples": ["__bitnot__() = self.val.bitNot()"]
     },
     "__eq__": {
       "signature": "__eq__(other)",
@@ -5869,6 +5884,16 @@
       "signature": "__match__()",
       "desc": "Dunder method: Returns a view object (e.g., list or dict) to be used for pattern matching and destructuring. Returning self falls back to default field matching.",
       "examples": ["__match__() = [self.x, self.y]"]
+    },
+    "__unpack__": {
+      "signature": "__unpack__()",
+      "desc": "Dunder method: Returns a list to unpack the instance during positional spread (f(...obj)).",
+      "examples": ["__unpack__() = [self.x, self.y]"]
+    },
+    "__mapping__": {
+      "signature": "__mapping__()",
+      "desc": "Dunder method: Returns a dict to unpack the instance during keyword spread (f(; ...obj)).",
+      "examples": ["__mapping__() = { \"x\": self.x, \"y\": self.y }"]
     },
     "finalize": {
       "signature": "finalize()",

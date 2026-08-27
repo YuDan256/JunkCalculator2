@@ -392,6 +392,9 @@ namespace jc {
                                 inKwOnly = true;
                                 continue;
                             }
+                            // ★ rest 后不能再有位置参数；kwargs 后不能再有任何参数
+                            if (!restName.empty() && !inKwOnly) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                            if (!kwargsName.empty()) throw std::runtime_error("Parser Error: kwargs parameter must be last.");
 
                             bool isParamRef = false;
                             bool isParamConst = false;
@@ -1481,6 +1484,9 @@ namespace jc {
                             inKwOnly = true;
                             continue;
                         }
+                        // ★ rest 后不能再有位置参数；kwargs 后不能再有任何参数
+                        if (!restName.empty() && !inKwOnly) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                        if (!kwargsName.empty()) throw std::runtime_error("Parser Error: kwargs parameter must be last.");
                         bool isRef = false;
                         bool isConst = false;
                         while (true) {
@@ -3258,6 +3264,9 @@ namespace jc {
                             inKwOnly = true;
                             continue;
                         }
+                        // ★ rest 后不能再有位置参数；kwargs 后不能再有任何参数
+                        if (!restName.empty() && !inKwOnly) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                        if (!kwargsName.empty()) throw std::runtime_error("Parser Error: kwargs parameter must be last.");
                         bool isParamRef = false;
                         bool isParamConst = false;
                         while (true) {

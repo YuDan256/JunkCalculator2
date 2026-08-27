@@ -214,7 +214,7 @@ static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const 
         for (int i = 0; i < kwarg_count; ++i) closure->kwargNames.push_back(kwarg_names[i]);
     }
     if (kwargs_name && kwargs_name[0]) closure->kwargsName = kwargs_name;
-    closure->kwargDefaultCount = kwarg_default_count;
+    closure->setKwargDefaultsFromCount(kwarg_default_count);
         
     cls->properties[name] = {Value(closure), false, false};
 }

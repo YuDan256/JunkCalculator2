@@ -687,6 +687,7 @@ struct CompiledFunction {
     std::vector<bool> paramIsConst;
     std::vector<bool> kwargIsRef;
     std::vector<bool> kwargIsConst;
+    std::vector<bool> kwargHasDefault;
     std::vector<std::string> paramNames;
     int refCount = 0;
 };

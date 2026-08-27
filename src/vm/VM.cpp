@@ -346,7 +346,7 @@ Value VM::getBuiltinClosure(const std::string& name) {
         if (rit != builtinRestName.end()) closure->restName = rit->second;
         if (kwit != builtinKwargNames.end()) closure->kwargNames = kwit->second;
         if (kwnit != builtinKwargsName.end()) closure->kwargsName = kwnit->second;
-        if (kwdcit != builtinKwargDefaultCount.end()) closure->kwargDefaultCount = kwdcit->second;
+        if (kwdcit != builtinKwargDefaultCount.end()) closure->setKwargDefaultsFromCount(kwdcit->second);
         if (kwdtit != builtinKwargDefaultValueTexts.end()) closure->kwargDefaultValueTexts = kwdtit->second;
         if (ait != builtinArity.end() && !ait->second.empty()) {
             int minA = *ait->second.begin();
@@ -533,7 +533,7 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
     pendingCallRefs.clear();
 }
 
-std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf) {
+std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf, const std::vector<bool>& kwargHasDefault) {
     std::vector<Value> alignedArgs;
     int totalExpected = static_cast<int>(paramNames.size());
     
@@ -620,6 +620,14 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
         alignedArgs[restSlot] = Value(restList);
     }
     
+    // ★ 必填仅关键字检查（无默认值的仅关键字必须显式传）
+    for (size_t i = 0; i < kwargNames.size(); ++i) {
+        bool hasDefault = i < kwargHasDefault.size() && kwargHasDefault[i];
+        if (!hasDefault && alignedArgs[kwStart + i].isUninit()) {
+            throw std::runtime_error("Runtime Error: Missing required keyword-only argument '" + kwargNames[i] + "'.");
+        }
+    }
+    
     return alignedArgs;
 }
 
@@ -631,7 +639,10 @@ Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* args
         if (td->converterParamNames.empty() && td->converterRestName.empty() && td->converterKwargNames.empty() && td->converterKwargsName.empty()) {
             throw std::runtime_error("TypeError: This type object does not support keyword arguments.");
         }
-        args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, td->converterRestName, td->converterKwargNames, td->converterKwargsName, Value::none());
+        std::vector<bool> kwargHasDefault(td->converterKwargNames.size(), false);
+        int n = static_cast<int>(td->converterKwargNames.size());
+        for (int i = 0; i < td->converterKwargDefaultCount && i < n; ++i) kwargHasDefault[n - 1 - i] = true;
+        args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, td->converterRestName, td->converterKwargNames, td->converterKwargsName, Value::none(), kwargHasDefault);
     } else {
         args.reserve(posArgc);
         for (int i = 0; i < posArgc; ++i) args.push_back(argsBase[i]);
@@ -757,7 +768,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             int newTotalCount = fnDef->localCount + fnDef->refCount;
             PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none());
+            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault);
             
             for (int i = 0; i < fnDef->arity; ++i) {
                 if (alignedArgs[i].isUninit()) {
@@ -921,7 +932,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (closure->paramNames.empty() && closure->restName.empty() && closure->kwargNames.empty() && closure->kwargsName.empty()) {
                     throw std::runtime_error("TypeError: Native function '" + closure->rawBody + "' does not support keyword arguments.");
                 }
-                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none());
+                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault);
                 
                 int expected = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
                 for (int i = 0; i < expected; ++i) {
@@ -1021,7 +1032,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName);
+                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName, Value::none(), initMethod->kwargHasDefault);
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
@@ -1094,7 +1105,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     if (initMethod->paramNames.empty()) {
                         throw std::runtime_error("TypeError: Native method 'init' does not support keyword arguments.");
                     }
-                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName);
+                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName, Value::none(), initMethod->kwargHasDefault);
                     
                     for (int i = 0; i < static_cast<int>(initMethod->minArgs()); ++i) {
                         if (args[i].isUninit()) {
@@ -1165,7 +1176,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
+                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
@@ -1240,7 +1251,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
                         throw std::runtime_error("TypeError: Native method '__call__' does not support keyword arguments.");
                     }
-                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
+                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
                     
                     for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                         if (args[i].isUninit()) {
@@ -1367,7 +1378,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
             // ★ 统一调用约定：有 rest/仅关键字/kwargs 的 native 方法，把展开的位置参数收集成 list。
             bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
             if (hasRest) {
-                std::vector<Value> aligned = alignArguments(static_cast<int>(rootedArgs.size()), 0, rootedArgs.data(), method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none());
+                std::vector<Value> aligned = alignArguments(static_cast<int>(rootedArgs.size()), 0, rootedArgs.data(), method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
                 result = fn(aligned);
             } else {
                 result = fn(rootedArgs);
@@ -1916,7 +1927,7 @@ invoke_method:
         int newTotalCount = fnDef->localCount + fnDef->refCount;
         PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-        std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
+        std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
                 
         for (int i = 0; i < fnDef->arity; ++i) {
             if (alignedArgs[i].isUninit()) {
@@ -1991,7 +2002,7 @@ invoke_method:
             if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
                 throw std::runtime_error("TypeError: Native method '" + methodName + "' does not support keyword arguments.");
             }
-            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
+            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
             
             for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                 if (args[i].isUninit()) {
@@ -2156,7 +2167,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
             if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
                 throw std::runtime_error("TypeError: Native super method '" + methodName + "' does not support keyword arguments.");
             }
-            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
+            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
             
             for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                 if (args[i].isUninit()) {
@@ -2340,7 +2351,7 @@ Value VM::execImport(const std::string& name) {
             if (rit != tempRestName.end()) closure->restName = rit->second;
             if (kwit != tempKwargNames.end()) closure->kwargNames = kwit->second;
             if (kwnit != tempKwargsName.end()) closure->kwargsName = kwnit->second;
-            if (kwdcit != tempKwargDefaultCount.end()) closure->kwargDefaultCount = kwdcit->second;
+            if (kwdcit != tempKwargDefaultCount.end()) closure->setKwargDefaultsFromCount(kwdcit->second);
             if (ait != tempArity.end() && !ait->second.empty()) {
                 int minA = *ait->second.begin();
                 int maxA = *ait->second.rbegin();
@@ -4337,6 +4348,7 @@ Value VM::run(int targetFrameDepth) {
                 closure->kwargNames = fn->kwargNames;
                 closure->kwargIsRef = fn->kwargIsRef;
                 closure->kwargIsConst = fn->kwargIsConst;
+                closure->kwargHasDefault = fn->kwargHasDefault;
                 closure->kwargsName = fn->kwargsName;
                 closure->boundSelf = frame->selfContext;
                 closure->boundClass = frame->classContext;
@@ -11411,6 +11423,7 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     closure->kwargNames = fn->kwargNames;
     closure->kwargIsRef = fn->kwargIsRef;
     closure->kwargIsConst = fn->kwargIsConst;
+    closure->kwargHasDefault = fn->kwargHasDefault;
     closure->kwargsName = fn->kwargsName;
     closure->boundSelf = frame->selfContext;
     closure->boundClass = frame->classContext;

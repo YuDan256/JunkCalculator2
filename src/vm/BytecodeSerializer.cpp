@@ -384,6 +384,9 @@ void BytecodeSerializer::writeFunction(std::ostream& os, const CompiledFunction*
     write16(os, static_cast<uint16_t>(fn->kwargIsConst.size()));
     for (bool b : fn->kwargIsConst) write8(os, b ? 1 : 0);
 
+    write16(os, static_cast<uint16_t>(fn->kwargHasDefault.size()));
+    for (bool b : fn->kwargHasDefault) write8(os, b ? 1 : 0);
+
     write16(os, static_cast<uint16_t>(fn->paramNames.size()));
     for (const auto& name : fn->paramNames) writeString(os, name);
 
@@ -438,6 +441,10 @@ void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, in
     uint16_t kwcSize = read16(is);
     fn->kwargIsConst.resize(kwcSize);
     for (uint16_t i = 0; i < kwcSize; ++i) fn->kwargIsConst[i] = read8(is) != 0;
+
+    uint16_t kwhSize = read16(is);
+    fn->kwargHasDefault.resize(kwhSize);
+    for (uint16_t i = 0; i < kwhSize; ++i) fn->kwargHasDefault[i] = read8(is) != 0;
 
     uint16_t pnSize = read16(is);
     fn->paramNames.resize(pnSize);

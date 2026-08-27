@@ -1885,8 +1885,8 @@ namespace jc {
         std::vector<bool> kwargIsRef;         // ★ 仅关键字 ref
         std::vector<bool> kwargIsConst;       // ★ 仅关键字 const
         std::string kwargsName;               // ★ kwargs 参数名（空 = 无）
-        int kwargDefaultCount = 0;            // ★ 仅关键字后 N 个有默认值
-        std::vector<std::string> kwargDefaultValueTexts; // ★ 仅关键字默认值文本（与 kwargDefaultCount 对齐）
+        std::vector<bool> kwargHasDefault;    // ★ 每个仅关键字是否有默认值
+        std::vector<std::string> kwargDefaultValueTexts; // ★ 仅关键字默认值文本（与 kwargHasDefault 的 true 对齐）
         bool isUFCS = false; // ★ 新增：标记是否为 UFCS 绑定的全局函数
         bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
         bool is_local = false; // ★ 新增：标记是否为私有方法
@@ -1908,6 +1908,12 @@ namespace jc {
         }
         bool acceptsArgCount(int n) const { return n >= minArgs() && (!restName.empty() || n <= maxArgs()); }
         bool hasRef() const { for (bool b : isRef) if (b) return true; return false; }
+        // ★ 从「后 count 个有默认值」转换成逐项标记（builtin 注册用）
+        void setKwargDefaultsFromCount(int count) {
+            kwargHasDefault.assign(kwargNames.size(), false);
+            int n = static_cast<int>(kwargNames.size());
+            for (int i = 0; i < count && i < n; ++i) kwargHasDefault[n - 1 - i] = true;
+        }
         bool hasCaptures() const { return upvalueCount > 0; }
         bool isNative() const { return nativeFn.has_value(); }
         bool isBytecode() const { return compiledFnIndex >= 0; }
@@ -1953,17 +1959,17 @@ namespace jc {
             }
             if (!kwargNames.empty() || !kwargsName.empty()) {
                 params += "; ";
-                size_t kwargDefaultStart = kwargNames.size() > static_cast<size_t>(kwargDefaultCount) ? kwargNames.size() - kwargDefaultCount : 0;
+                int defaultTextIdx = 0;
                 for (size_t i = 0; i < kwargNames.size(); ++i) {
                     if (i > 0) params += ", ";
                     if (i < kwargIsConst.size() && kwargIsConst[i]) params += "const ";
                     if (i < kwargIsRef.size() && kwargIsRef[i]) params += "ref ";
                     params += kwargNames[i];
-                    if (i >= kwargDefaultStart) {
-                        size_t defaultIdx = i - kwargDefaultStart;
-                        if (defaultIdx < kwargDefaultValueTexts.size()) {
-                            params += " = " + kwargDefaultValueTexts[defaultIdx];
+                    if (i < kwargHasDefault.size() && kwargHasDefault[i]) {
+                        if (defaultTextIdx < static_cast<int>(kwargDefaultValueTexts.size())) {
+                            params += " = " + kwargDefaultValueTexts[defaultTextIdx];
                         }
+                        defaultTextIdx++;
                     }
                 }
                 if (!kwargsName.empty()) {

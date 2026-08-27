@@ -156,7 +156,7 @@ public:
     void execAssertReturnType(const Value& val);
     void execAssertType(const Value& val, const Value& typeObj, uint32_t nameIdx);
 
-    std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf = Value::none());
+    std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf = Value::none(), const std::vector<bool>& kwargHasDefault = {});
 
     // 直接调用可调用类型（TypeDef）的 converter：arity 检查 + kwarg 对齐 + 调 converter
     Value callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* argsBase);

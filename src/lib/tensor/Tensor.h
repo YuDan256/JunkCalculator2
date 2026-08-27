@@ -92,6 +92,7 @@ namespace jc {
     struct BackwardNode {
         virtual ~BackwardNode() = default;
         virtual void apply() = 0;
+        virtual std::vector<Tensor> get_dependencies() const { return {}; }
     };
 
     struct TensorImpl {
@@ -105,6 +106,17 @@ namespace jc {
     // ========================================================================
     // 4. 辅助工具
     // ========================================================================
+    inline bool& grad_enabled() {
+        static thread_local bool enabled = true;
+        return enabled;
+    }
+
+    struct AutogradGuard {
+        bool prev;
+        AutogradGuard(bool enable) : prev(grad_enabled()) { grad_enabled() = enable; }
+        ~AutogradGuard() { grad_enabled() = prev; }
+    };
+
     inline std::vector<int> calcStrides(const std::vector<int>& s) {
         if (s.empty()) return {};
         std::vector<int> st(s.size(), 1);
@@ -145,7 +157,7 @@ namespace jc {
             strides = calcStrides(shape);
             size_t total_elements = numel();
             impl = std::make_shared<TensorImpl>();
-            impl->requires_grad = req_grad;
+            impl->requires_grad = req_grad && grad_enabled();
             switch (type) {
                 case DType::Float64: impl->storage = std::make_shared<TensorStorage<double>>(total_elements); break;
                 case DType::Float32: impl->storage = std::make_shared<TensorStorage<float>>(total_elements); break;
@@ -304,7 +316,7 @@ namespace jc {
             Tensor t;
             t.impl = std::make_shared<TensorImpl>();
             t.impl->storage = impl->storage;
-            t.impl->requires_grad = impl->requires_grad;
+            t.impl->requires_grad = impl->requires_grad && grad_enabled();
             t.impl->is_leaf = false;
             t.offset = offset;
             t.shape = shape;
@@ -449,19 +461,28 @@ namespace jc {
                 impl->grad = std::make_shared<Tensor>(shape, dtype(), false);
                 impl->grad->fill_(1.0);
             }
-            // 拓扑排序（反向 BFS）
-            std::vector<Tensor*> topo;
+            
+            // 拓扑排序 (DFS)
+            std::vector<std::shared_ptr<BackwardNode>> topo;
             std::unordered_set<BackwardNode*> visited;
-            std::function<void(Tensor*)> build_topo = [&](Tensor* t) {
-                if (!t->impl->grad_fn) return;
-                if (visited.count(t->impl->grad_fn.get())) return;
-                visited.insert(t->impl->grad_fn.get());
-                topo.push_back(t);
+            std::function<void(const std::shared_ptr<BackwardNode>&)> build_topo = [&](const std::shared_ptr<BackwardNode>& fn) {
+                if (!fn) return;
+                if (visited.count(fn.get())) return;
+                visited.insert(fn.get());
+                for (const auto& dep : fn->get_dependencies()) {
+                    if (dep.impl && dep.impl->grad_fn) {
+                        build_topo(dep.impl->grad_fn);
+                    }
+                }
+                topo.push_back(fn);
             };
-            build_topo(this);
-            // 简化版：逐节点反向传播
-            for (auto* t : topo) {
-                if (t->impl->grad_fn) t->impl->grad_fn->apply();
+            
+            build_topo(impl->grad_fn);
+            
+            // 反向遍历拓扑序
+            AutogradGuard guard(false);
+            for (auto it = topo.rbegin(); it != topo.rend(); ++it) {
+                (*it)->apply();
             }
         }
 
@@ -637,7 +658,7 @@ namespace jc {
         WeakTensor out;
         AddBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
-
+        std::vector<Tensor> get_dependencies() const override { return {a, b}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad) return;
@@ -645,13 +666,11 @@ namespace jc {
                 Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, a.shape);
                 if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
                 tensor_accumulate_grad(*a.impl->grad, g);
-                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
             if (b.impl->requires_grad) {
                 Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, b.shape);
                 if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
                 tensor_accumulate_grad(*b.impl->grad, g);
-                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
@@ -662,7 +681,7 @@ namespace jc {
         WeakTensor out;
         SubBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
-
+        std::vector<Tensor> get_dependencies() const override { return {a, b}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad) return;
@@ -670,7 +689,6 @@ namespace jc {
                 Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, a.shape);
                 if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
                 tensor_accumulate_grad(*a.impl->grad, g);
-                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
             if (b.impl->requires_grad) {
                 Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, b.shape);
@@ -679,7 +697,6 @@ namespace jc {
                 for (size_t i = 0; i < neg_g.numel(); ++i) neg_g.setFlat(i, -g.getFlat(i));
                 if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
                 tensor_accumulate_grad(*b.impl->grad, neg_g);
-                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
@@ -690,7 +707,7 @@ namespace jc {
         WeakTensor out;
         MulBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
-
+        std::vector<Tensor> get_dependencies() const override { return {a, b}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad) return;
@@ -705,7 +722,6 @@ namespace jc {
                 Tensor g = reduce_grad_for_broadcast(da, a.shape);
                 if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
                 tensor_accumulate_grad(*a.impl->grad, g);
-                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
             if (b.impl->requires_grad) {
                 // db = grad_out * a
@@ -718,7 +734,6 @@ namespace jc {
                 Tensor g = reduce_grad_for_broadcast(db, b.shape);
                 if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
                 tensor_accumulate_grad(*b.impl->grad, g);
-                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
@@ -729,7 +744,7 @@ namespace jc {
         WeakTensor out;
         DivBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
-
+        std::vector<Tensor> get_dependencies() const override { return {a, b}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad) return;
@@ -744,7 +759,6 @@ namespace jc {
                 Tensor g = reduce_grad_for_broadcast(da, a.shape);
                 if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
                 tensor_accumulate_grad(*a.impl->grad, g);
-                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
             if (b.impl->requires_grad) {
                 // db = -grad * a / b^2
@@ -761,7 +775,6 @@ namespace jc {
                 Tensor g = reduce_grad_for_broadcast(db, b.shape);
                 if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
                 tensor_accumulate_grad(*b.impl->grad, g);
-                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
@@ -771,6 +784,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         NegBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -778,7 +792,6 @@ namespace jc {
             for (size_t i = 0; i < neg_g.numel(); ++i) neg_g.setFlat(i, -out_locked.impl->grad->getFlat(i));
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, neg_g);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -789,6 +802,7 @@ namespace jc {
         double exponent;
         PowScalarBackward(Tensor a, double exp, Tensor out)
             : a(std::move(a)), out(std::move(out)), exponent(exp) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -798,7 +812,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -807,6 +820,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         ExpBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -816,7 +830,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -825,6 +838,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         LogBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -834,7 +848,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -843,6 +856,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         SumBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -851,7 +865,6 @@ namespace jc {
             da.fill_(g);
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -860,6 +873,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         MeanBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -868,7 +882,6 @@ namespace jc {
             da.fill_(g);
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -879,6 +892,7 @@ namespace jc {
         int axis;
         SumAxisBackward(Tensor a, Tensor out, int axis)
             : a(std::move(a)), out(std::move(out)), axis(axis) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -895,7 +909,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -906,6 +919,7 @@ namespace jc {
         int axis;
         MeanAxisBackward(Tensor a, Tensor out, int axis)
             : a(std::move(a)), out(std::move(out)), axis(axis) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -922,7 +936,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -933,6 +946,7 @@ namespace jc {
         double min_val, max_val;
         ClampBackward(Tensor a, Tensor out, double min_val, double max_val)
             : a(std::move(a)), out(std::move(out)), min_val(min_val), max_val(max_val) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -943,7 +957,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -953,6 +966,7 @@ namespace jc {
         WeakTensor out;
         MatMulBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a, b}; }
         void apply() override;  // 定义在 matmul 之后
     };
 
@@ -961,6 +975,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         ReluBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -970,7 +985,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -979,6 +993,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         SigmoidBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -989,7 +1004,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -998,6 +1012,7 @@ namespace jc {
         Tensor a;
         WeakTensor out;
         TanhBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
         void apply() override {
             Tensor out_locked = out.lock();
             if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
@@ -1008,7 +1023,6 @@ namespace jc {
             }
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -1362,7 +1376,7 @@ namespace jc {
 
     // ---- 加法 ----
     inline Tensor tensor_add(const Tensor& a, const Tensor& b) {
-        bool rg = a.impl->requires_grad || b.impl->requires_grad;
+        bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x + y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<AddBackward>(a, b, out);
@@ -1372,7 +1386,7 @@ namespace jc {
 
     // ---- 减法 ----
     inline Tensor tensor_sub(const Tensor& a, const Tensor& b) {
-        bool rg = a.impl->requires_grad || b.impl->requires_grad;
+        bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x - y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<SubBackward>(a, b, out);
@@ -1382,7 +1396,7 @@ namespace jc {
 
     // ---- 逐元素乘法 ----
     inline Tensor tensor_mul(const Tensor& a, const Tensor& b) {
-        bool rg = a.impl->requires_grad || b.impl->requires_grad;
+        bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x * y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<MulBackward>(a, b, out);
@@ -1392,7 +1406,7 @@ namespace jc {
 
     // ---- 逐元素除法 ----
     inline Tensor tensor_div(const Tensor& a, const Tensor& b) {
-        bool rg = a.impl->requires_grad || b.impl->requires_grad;
+        bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x / y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<DivBackward>(a, b, out);
@@ -1402,10 +1416,11 @@ namespace jc {
 
     // ---- 取负 ----
     inline Tensor tensor_neg(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return -x; });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<NegBackward>(a, out);
         }
         return out;
@@ -1413,10 +1428,11 @@ namespace jc {
 
     // ---- 逐元素乘方（标量指数）----
     inline Tensor tensor_pow_scalar(const Tensor& a, double exponent) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [exponent](double x) { return std::pow(x, exponent); });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<PowScalarBackward>(a, exponent, out);
         }
         return out;
@@ -1457,7 +1473,7 @@ namespace jc {
         if (K != K2) throw std::runtime_error("Tensor Error: matmul shape mismatch (" +
             std::to_string(K) + " vs " + std::to_string(K2) + ").");
 
-        bool rg = a.impl->requires_grad || b.impl->requires_grad;
+        bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
         Tensor out({M, N}, a.dtype(), rg);
         out.impl->is_leaf = false;
 
@@ -1488,7 +1504,7 @@ namespace jc {
         out_shape.push_back(m);
         out_shape.push_back(p);
 
-        bool rg = a.impl->requires_grad || b.impl->requires_grad;
+        bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
         Tensor out(out_shape, a.dtype(), rg);
         out.impl->is_leaf = false;
 
@@ -1530,7 +1546,6 @@ namespace jc {
             da.impl->requires_grad = false;
             if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
             tensor_accumulate_grad(*a.impl->grad, da);
-            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
         if (b.impl->requires_grad) {
             Tensor aT = a.T().contiguous();
@@ -1538,19 +1553,19 @@ namespace jc {
             db.impl->requires_grad = false;
             if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
             tensor_accumulate_grad(*b.impl->grad, db);
-            if (b.impl->grad_fn) b.impl->grad_fn->apply();
         }
     }
 
     // ---- sum (全局规约) ----
     inline Tensor tensor_sum(const Tensor& a, int axis, bool keepdim) {
+        bool rg = a.impl->requires_grad && grad_enabled();
         if (axis < 0) {
-            Tensor out({1}, a.dtype(), a.impl->requires_grad);
+            Tensor out({1}, a.dtype(), rg);
             out.impl->is_leaf = false;
             double s = 0.0;
             for (size_t i = 0; i < a.numel(); ++i) s += a.getFlat(i);
             out.setFlat(0, s);
-            if (a.impl->requires_grad) {
+            if (rg) {
                 out.impl->grad_fn = std::make_shared<SumBackward>(a, out);
             }
             return out;
@@ -1561,7 +1576,7 @@ namespace jc {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
             else out_shape.push_back(a.shape[d]);
         }
-        Tensor out(out_shape, a.dtype(), a.impl->requires_grad);
+        Tensor out(out_shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         int axis_size = a.shape[axis];
         size_t outer = 1, inner = 1;
@@ -1574,7 +1589,7 @@ namespace jc {
                 out.setFlat(o * inner + in, s);
             }
         }
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<SumAxisBackward>(a, out, axis);
         }
         return out;
@@ -1582,13 +1597,14 @@ namespace jc {
 
     // ---- mean (全局或沿 axis) ----
     inline Tensor tensor_mean(const Tensor& a, int axis = -1, bool keepdim = false) {
+        bool rg = a.impl->requires_grad && grad_enabled();
         if (axis < 0) {
-            Tensor out({1}, a.dtype(), a.impl->requires_grad);
+            Tensor out({1}, a.dtype(), rg);
             out.impl->is_leaf = false;
             double s = 0.0;
             for (size_t i = 0; i < a.numel(); ++i) s += a.getFlat(i);
             out.setFlat(0, s / static_cast<double>(a.numel()));
-            if (a.impl->requires_grad) {
+            if (rg) {
                 out.impl->grad_fn = std::make_shared<MeanBackward>(a, out);
             }
             return out;
@@ -1599,7 +1615,7 @@ namespace jc {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
             else out_shape.push_back(a.shape[d]);
         }
-        Tensor out(out_shape, a.dtype(), a.impl->requires_grad);
+        Tensor out(out_shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         int axis_size = a.shape[axis];
         size_t outer = 1, inner = 1;
@@ -1612,7 +1628,7 @@ namespace jc {
                 out.setFlat(o * inner + in, s / static_cast<double>(axis_size));
             }
         }
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<MeanAxisBackward>(a, out, axis);
         }
         return out;
@@ -1637,10 +1653,11 @@ namespace jc {
 
     // ---- clamp：裁剪到 [min, max]（带梯度）----
     inline Tensor tensor_clamp(const Tensor& a, double min_val, double max_val) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [min_val, max_val](double x) { return x < min_val ? min_val : (x > max_val ? max_val : x); });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<ClampBackward>(a, out, min_val, max_val);
         }
         return out;
@@ -1665,20 +1682,22 @@ namespace jc {
 
     // ---- 逐元素一元函数 ----
     inline Tensor tensor_exp(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return std::exp(x); });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<ExpBackward>(a, out);
         }
         return out;
     }
 
     inline Tensor tensor_log(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return std::log(x); });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<LogBackward>(a, out);
         }
         return out;
@@ -1697,30 +1716,33 @@ namespace jc {
 
     // ---- 激活函数 ----
     inline Tensor tensor_relu(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double v) { return v > 0.0 ? v : 0.0; });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<ReluBackward>(a, out);
         }
         return out;
     }
 
     inline Tensor tensor_sigmoid(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return 1.0 / (1.0 + std::exp(-x)); });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<SigmoidBackward>(a, out);
         }
         return out;
     }
 
     inline Tensor tensor_tanh(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return std::tanh(x); });
-        if (a.impl->requires_grad) {
+        if (rg) {
             out.impl->grad_fn = std::make_shared<TanhBackward>(a, out);
         }
         return out;

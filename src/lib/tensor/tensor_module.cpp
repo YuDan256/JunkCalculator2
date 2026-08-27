@@ -393,6 +393,7 @@ FUNC(no_grad) {
     jc2::Value fnVal(argv[0]);
     if (!fnVal.is_function()) jc2::throw_error("TypeError: no_grad expects a function.");
     jc2::Function fn(fnVal.get_handle());
+    jc::AutogradGuard guard(false);
     return fn.call({}).get_handle();
 }
 

@@ -249,19 +249,19 @@ METHOD(squeeze) { GET_SELF; return wrapTensor(t1->squeeze()).get_handle(); }
 METHOD(fill_) { GET_SELF; t1->fill_(jc2::Value(argv[1]).as_double()); return argv[0]; }
 METHOD(sum) {
     GET_SELF;
-    if (argc > 1) {
-        int axis = static_cast<int>(jc2::Value(argv[1]).as_double());
-        return wrapTensor(jc::tensor_sum(*t1, axis)).get_handle();
-    }
-    return wrapTensor(jc::tensor_sum(*t1)).get_handle();
+    int axis = -1;
+    bool keepdim = false;
+    if (argc > 1) axis = static_cast<int>(jc2::Value(argv[1]).as_double());
+    if (argc > 2) keepdim = jc2::Value(argv[2]).as_bool();
+    return wrapTensor(jc::tensor_sum(*t1, axis, keepdim)).get_handle();
 }
 METHOD(mean) {
     GET_SELF;
-    if (argc > 1) {
-        int axis = static_cast<int>(jc2::Value(argv[1]).as_double());
-        return wrapTensor(jc::tensor_mean(*t1, axis)).get_handle();
-    }
-    return wrapTensor(jc::tensor_mean(*t1)).get_handle();
+    int axis = -1;
+    bool keepdim = false;
+    if (argc > 1) axis = static_cast<int>(jc2::Value(argv[1]).as_double());
+    if (argc > 2) keepdim = jc2::Value(argv[2]).as_bool();
+    return wrapTensor(jc::tensor_mean(*t1, axis, keepdim)).get_handle();
 }
 METHOD(max) { GET_SELF; return wrapTensor(jc::tensor_max(*t1)).get_handle(); }
 METHOD(min) { GET_SELF; return wrapTensor(jc::tensor_min(*t1)).get_handle(); }
@@ -542,8 +542,8 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("unsqueeze", tensor_unsqueeze, 1, 1, false, {"dim"});
     g_tensorClass->bind_method("squeeze", tensor_squeeze, 0, 0, false);
     g_tensorClass->bind_method("fill_", tensor_fill_, 1, 1, false, {"val"});
-    g_tensorClass->bind_method("sum", tensor_sum, 0, 1, false, {"axis"});
-    g_tensorClass->bind_method("mean", tensor_mean, 0, 1, false, {"axis"});
+    g_tensorClass->bind_method("sum", tensor_sum, 0, 2, false, {"axis", "keepdim"});
+    g_tensorClass->bind_method("mean", tensor_mean, 0, 2, false, {"axis", "keepdim"});
     g_tensorClass->bind_method("max", tensor_max, 0, 0, false);
     g_tensorClass->bind_method("min", tensor_min, 0, 0, false);
     g_tensorClass->bind_method("clamp", tensor_clamp, 2, 2, false, {"min", "max"});
@@ -693,8 +693,8 @@ int jc2_init(jc2::Module& mod) {
         "    tensor.stack(list, [axis])     Stack tensors along a NEW axis\n\n"
         "  Reduction Operations (with Autograd support)\n"
         "  ──────────────────────\n"
-        "    t.sum([axis])         Sum all elements, or along an axis → Tensor\n"
-        "    t.mean([axis])        Mean of all elements, or along an axis → Tensor\n"
+        "    t.sum([axis], [keepdim])   Sum all elements, or along an axis → Tensor\n"
+        "    t.mean([axis], [keepdim])  Mean of all elements, or along an axis → Tensor\n"
         "    t.max()               Maximum element → scalar Tensor (no grad)\n"
         "    t.min()               Minimum element → scalar Tensor (no grad)\n"
         "    t.clamp(min, max)     Clip elements to [min, max] (with grad)\n"

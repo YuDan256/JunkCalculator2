@@ -106,13 +106,33 @@ METHOD(__pow__) {
 METHOD(__neg__) { GET_SELF; return wrapTensor(jc::tensor_neg(*t1)).get_handle(); }
 METHOD(__eq__) {
     GET_SELF; jc2::Value other(argv[1]);
-    if (!isTensor(other)) return jc2::Value(false).get_handle();
-    auto t2 = getTensor(other);
-    if (t1->shape != t2->shape) return jc2::Value(false).get_handle();
-    for (size_t i = 0; i < t1->numel(); ++i) {
-        if (t1->getFlat(i) != t2->getFlat(i)) return jc2::Value(false).get_handle();
-    }
-    return jc2::Value(true).get_handle();
+    if (isTensor(other)) return wrapTensor(jc::tensor_eq(*t1, *getTensor(other))).get_handle();
+    return wrapTensor(jc::tensor_eq(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+}
+METHOD(__neq__) {
+    GET_SELF; jc2::Value other(argv[1]);
+    if (isTensor(other)) return wrapTensor(jc::tensor_neq(*t1, *getTensor(other))).get_handle();
+    return wrapTensor(jc::tensor_neq(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+}
+METHOD(__lt__) {
+    GET_SELF; jc2::Value other(argv[1]);
+    if (isTensor(other)) return wrapTensor(jc::tensor_lt(*t1, *getTensor(other))).get_handle();
+    return wrapTensor(jc::tensor_lt(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+}
+METHOD(__le__) {
+    GET_SELF; jc2::Value other(argv[1]);
+    if (isTensor(other)) return wrapTensor(jc::tensor_le(*t1, *getTensor(other))).get_handle();
+    return wrapTensor(jc::tensor_le(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+}
+METHOD(__gt__) {
+    GET_SELF; jc2::Value other(argv[1]);
+    if (isTensor(other)) return wrapTensor(jc::tensor_gt(*t1, *getTensor(other))).get_handle();
+    return wrapTensor(jc::tensor_gt(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+}
+METHOD(__ge__) {
+    GET_SELF; jc2::Value other(argv[1]);
+    if (isTensor(other)) return wrapTensor(jc::tensor_ge(*t1, *getTensor(other))).get_handle();
+    return wrapTensor(jc::tensor_ge(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
 }
 METHOD(__getitem__) {
     GET_SELF;
@@ -413,6 +433,11 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("__pow__", tensor___pow__, 1, 1, false, {"exponent"});
     g_tensorClass->bind_method("__neg__", tensor___neg__, 0, 0, false);
     g_tensorClass->bind_method("__eq__", tensor___eq__, 1, 1, false, {"other"});
+    g_tensorClass->bind_method("__neq__", tensor___neq__, 1, 1, false, {"other"});
+    g_tensorClass->bind_method("__lt__", tensor___lt__, 1, 1, false, {"other"});
+    g_tensorClass->bind_method("__le__", tensor___le__, 1, 1, false, {"other"});
+    g_tensorClass->bind_method("__gt__", tensor___gt__, 1, 1, false, {"other"});
+    g_tensorClass->bind_method("__ge__", tensor___ge__, 1, 1, false, {"other"});
     g_tensorClass->bind_method("__getitem__", tensor___getitem__, 1, 16777215, true, {"...dims"});
     g_tensorClass->bind_method("__setitem__", tensor___setitem__, 2, 16777215, true, {"...dims_and_val"});
     g_tensorClass->bind_method("__len__", tensor___len__, 0, 0, false);

@@ -1041,7 +1041,7 @@ namespace jc {
         size_t total = out.numel();
 
         if (a.shape == b.shape && a.is_contiguous() && b.is_contiguous()) {
-            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(static_cast<double>(pa[i]), static_cast<double>(pb[i])));
+            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(pa[i], pb[i]));
             return;
         }
         // 广播/非连续：预计算 broadcast strides + 多维计数器指针累加（每元素 O(1)）
@@ -1051,7 +1051,7 @@ namespace jc {
         std::vector<size_t> coord(ndim, 0);
         size_t idxA = 0, idxB = 0;
         for (size_t i = 0; i < total; ++i) {
-            po[i] = static_cast<T>(op(static_cast<double>(pa[idxA]), static_cast<double>(pb[idxB])));
+            po[i] = static_cast<T>(op(pa[idxA], pb[idxB]));
             for (int d = ndim - 1; d >= 0; --d) {
                 coord[d]++;
                 if (coord[d] < static_cast<size_t>(out.shape[d])) {
@@ -1083,9 +1083,23 @@ namespace jc {
         T* po = static_cast<T*>(out.impl->storage->data_ptr());
         size_t total = out.numel();
         if (a.is_contiguous()) {
-            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(static_cast<double>(pa[i])));
+            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(pa[i]));
         } else {
-            for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(a.getFlat(i)));
+            int ndim = out.dim();
+            std::vector<size_t> coord(ndim, 0);
+            size_t idxA = 0;
+            for (size_t i = 0; i < total; ++i) {
+                po[i] = static_cast<T>(op(pa[idxA]));
+                for (int d = ndim - 1; d >= 0; --d) {
+                    coord[d]++;
+                    if (coord[d] < static_cast<size_t>(out.shape[d])) {
+                        idxA += a.strides[d];
+                        break;
+                    }
+                    coord[d] = 0;
+                    idxA -= a.strides[d] * (out.shape[d] - 1);
+                }
+            }
         }
     }
 
@@ -1377,7 +1391,7 @@ namespace jc {
     // ---- 加法 ----
     inline Tensor tensor_add(const Tensor& a, const Tensor& b) {
         bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
-        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x + y; }, rg);
+        Tensor out = tensor_binary_op(a, b, [](auto x, auto y) { return x + y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<AddBackward>(a, b, out);
         }
@@ -1387,7 +1401,7 @@ namespace jc {
     // ---- 减法 ----
     inline Tensor tensor_sub(const Tensor& a, const Tensor& b) {
         bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
-        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x - y; }, rg);
+        Tensor out = tensor_binary_op(a, b, [](auto x, auto y) { return x - y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<SubBackward>(a, b, out);
         }
@@ -1397,7 +1411,7 @@ namespace jc {
     // ---- 逐元素乘法 ----
     inline Tensor tensor_mul(const Tensor& a, const Tensor& b) {
         bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
-        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x * y; }, rg);
+        Tensor out = tensor_binary_op(a, b, [](auto x, auto y) { return x * y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<MulBackward>(a, b, out);
         }
@@ -1407,7 +1421,7 @@ namespace jc {
     // ---- 逐元素除法 ----
     inline Tensor tensor_div(const Tensor& a, const Tensor& b) {
         bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();
-        Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x / y; }, rg);
+        Tensor out = tensor_binary_op(a, b, [](auto x, auto y) { return x / y; }, rg);
         if (rg) {
             out.impl->grad_fn = std::make_shared<DivBackward>(a, b, out);
         }
@@ -1419,7 +1433,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [](double x) { return -x; });
+        dispatch_unary(a, out, [](auto x) { return -x; });
         if (rg) {
             out.impl->grad_fn = std::make_shared<NegBackward>(a, out);
         }
@@ -1431,7 +1445,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [exponent](double x) { return std::pow(x, exponent); });
+        dispatch_unary(a, out, [exponent](auto x) { return std::pow(static_cast<double>(x), exponent); });
         if (rg) {
             out.impl->grad_fn = std::make_shared<PowScalarBackward>(a, exponent, out);
         }
@@ -1656,7 +1670,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [min_val, max_val](double x) { return x < min_val ? min_val : (x > max_val ? max_val : x); });
+        dispatch_unary(a, out, [min_val, max_val](auto x) { return x < min_val ? min_val : (x > max_val ? max_val : x); });
         if (rg) {
             out.impl->grad_fn = std::make_shared<ClampBackward>(a, out, min_val, max_val);
         }
@@ -1685,7 +1699,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [](double x) { return std::exp(x); });
+        dispatch_unary(a, out, [](auto x) { return std::exp(static_cast<double>(x)); });
         if (rg) {
             out.impl->grad_fn = std::make_shared<ExpBackward>(a, out);
         }
@@ -1696,7 +1710,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [](double x) { return std::log(x); });
+        dispatch_unary(a, out, [](auto x) { return std::log(static_cast<double>(x)); });
         if (rg) {
             out.impl->grad_fn = std::make_shared<LogBackward>(a, out);
         }
@@ -1710,7 +1724,7 @@ namespace jc {
     inline Tensor tensor_abs(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), false); // abs 的梯度在 0 处不可微，简化处理
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [](double x) { return std::abs(x); });
+        dispatch_unary(a, out, [](auto x) { return std::abs(x); });
         return out;
     }
 
@@ -1719,7 +1733,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [](double v) { return v > 0.0 ? v : 0.0; });
+        dispatch_unary(a, out, [](auto v) { return v > 0 ? v : 0; });
         if (rg) {
             out.impl->grad_fn = std::make_shared<ReluBackward>(a, out);
         }
@@ -1730,7 +1744,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [](double x) { return 1.0 / (1.0 + std::exp(-x)); });
+        dispatch_unary(a, out, [](auto x) { return 1.0 / (1.0 + std::exp(static_cast<double>(-x))); });
         if (rg) {
             out.impl->grad_fn = std::make_shared<SigmoidBackward>(a, out);
         }
@@ -1741,7 +1755,7 @@ namespace jc {
         bool rg = a.impl->requires_grad && grad_enabled();
         Tensor out(a.shape, a.dtype(), rg);
         out.impl->is_leaf = false;
-        dispatch_unary(a, out, [](double x) { return std::tanh(x); });
+        dispatch_unary(a, out, [](auto x) { return std::tanh(static_cast<double>(x)); });
         if (rg) {
             out.impl->grad_fn = std::make_shared<TanhBackward>(a, out);
         }
@@ -1750,19 +1764,22 @@ namespace jc {
 
     // ---- 比较运算（不带梯度）----
     inline Tensor tensor_eq(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](double x, double y) { return x == y ? 1.0 : 0.0; }, false);
+        return tensor_binary_op(a, b, [](auto x, auto y) { return x == y ? 1 : 0; }, false);
+    }
+    inline Tensor tensor_neq(const Tensor& a, const Tensor& b) {
+        return tensor_binary_op(a, b, [](auto x, auto y) { return x != y ? 1 : 0; }, false);
     }
     inline Tensor tensor_lt(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](double x, double y) { return x < y ? 1.0 : 0.0; }, false);
+        return tensor_binary_op(a, b, [](auto x, auto y) { return x < y ? 1 : 0; }, false);
     }
     inline Tensor tensor_gt(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](double x, double y) { return x > y ? 1.0 : 0.0; }, false);
+        return tensor_binary_op(a, b, [](auto x, auto y) { return x > y ? 1 : 0; }, false);
     }
     inline Tensor tensor_le(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](double x, double y) { return x <= y ? 1.0 : 0.0; }, false);
+        return tensor_binary_op(a, b, [](auto x, auto y) { return x <= y ? 1 : 0; }, false);
     }
     inline Tensor tensor_ge(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](double x, double y) { return x >= y ? 1.0 : 0.0; }, false);
+        return tensor_binary_op(a, b, [](auto x, auto y) { return x >= y ? 1 : 0; }, false);
     }
 
     // ---- 工厂函数 ----

@@ -2802,9 +2802,9 @@ namespace jc {
             
             if (match({ TokenType::CASE })) {
                 std::vector<std::unique_ptr<Expr>> values;
-                values.push_back(assignment()); 
+                values.push_back(ternary()); 
                 while (match({ TokenType::COMMA })) {
-                    values.push_back(assignment()); 
+                    values.push_back(ternary()); 
                 }
                 consume(TokenType::COLON, "Parser Error: Expect ':' after case value(s).");
                 

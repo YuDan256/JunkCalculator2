@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.6.1.0
+# Junk Calculator 2.6.2.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.1.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.2.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -73,30 +73,41 @@
 
 ---
 
-## v2.6.1.0 版本更新说明
+## v2.6.2.0 版本更新说明
 
-### 类型系统
-- **`any` 与 `never`**：顶端类型 `any_type` 简化为 `any`，同时新增底端类型 `never`（空类型，不含任何值），补齐类型格的两个端点——`any` 接受一切，`never` 拒绝一切。空类型现以小写 `never` 呈现。
-- **`<:` 中的类提升**：子集运算符右侧的类现在自动提升为其 typedef，`A <: MyClass` 无需显式类型转换即可直接使用。
-- **TypeDef 转换器**：可调用类型（`int`、`float`、`string`、`matrix`、`dict`、`list`、`set`、`complex`、`bool`、`fraction`）将转换器直接挂在 typedef 上，移除了六处基于字符串的名字查找 hack。
-- **`matrix()` 恢复**：动态矩阵构建通过联合类型转换器恢复，转换器检查提前到单元素判断之前，并支持自动符号检测（`hasSymbolic` → `asSymbolic`）。
-- **`__subsets__`**：`<:` 子集运算符现通过 `__subsets__` dunder 分发，与其他协议一并文档化。
+### 函数与参数解包
+- **仅关键字参数**：`;` 分隔参数列表——分号后为仅关键字（`f(a; b, c=0)`），分号后的 `...kw` 将多余关键字收集成字典（`f(a, ...rest; b, ...kw)`）。参数元数据拆分为四个独立字段（`paramNames`/`restName`/`kwargNames`/`kwargsName`），取代旧的 `...` 前缀 hack。
+- **参数解包（spread）**：`...expr` 内联展开——`f(...args)` 将 list/set/matrix/string 按位置展开，`f(1; ...opts)` 将字典展开为关键字参数。解包可出现在任意位置、可多次出现。
+- **字面量解包**：`@[...a]`、`@{...s}`、`{...d}` 在 list/set/dict 字面量内解包。字典解包从左到右合并，后者覆盖前者；显式 key 始终优先。
+- **`__unpack__` / `__mapping__`**：自定义类型通过这两个 dunder 返回 list（位置）或 dict（关键字）来接入解包；`apply` 改用 `__unpack__` 而非 `__iter__`，避免无限迭代。
+- **统一原生调用约定**：`rest` 在原生函数中始终以 list 形式到达，消除了旧有的「展开 vs 收集」分裂。
+- **更丰富的签名**：`toString` 现显示 `const`/`ref` 修饰符与内建关键字默认值——`print` 呈现为 `<function print(...args; sep = " ", end = "\n")>`。
 
-### Dict 高阶函数
-- **`map` / `filter` / `reduce` / `any` / `all` / `countIf`**：`Dict` 补齐完整的高阶函数套件。回调统一接收 `@[k, v]` pair（frozen list），与 `for ([k, v] in d)`、`entries()` 一致。
-- **完整映射 `map`**：`d.map(f)` 令 `f` 返回 `@[new_k, new_v]`，产生 `{new_k: new_v}`——键和值都能重映射，等价于 Python 的 `dict(map(...))` 或 Rust 的 `map().collect()`。
-- **单边简写**：`mapKeys(f)`、`mapValues(f)` 只映射一边，对应 Ruby 的 `transform_keys` / `transform_values`。
-- **GC 安全**：pair 参数与结果字典分别用 `GcValueGuard`/`GcObjGuard` 固定，因为容器靠标记存活、不靠引用计数。
+### `print` / `println` 合并
+- **`print(...args; sep = " ", end = "\n")`**：`print` 新增 Python 风格的仅关键字 `sep`/`end`，默认以换行结尾。`println` 移除；`print("不换行", end = "")` 覆盖旧的不换行行为。这是首个使用仅关键字默认值的内建函数。
 
-### 语义
-- **`as` 作为后缀断言**：`as` 现位于 `call` 与 `power` 之间，对两个操作数都应用 `call()`，并左结合（`a as int as double` == `(a as int) as double`）。
-- **or-pattern 一致性**：绑定不同变量名的 or-pattern 在编译期报错，跨分支的同名绑定通过 phi 节点合并，guard 作用于整个 or-pattern。
+### 矩阵
+- **不可变矩阵**：矩阵不再写时复制；因值不再变化，哈希得以缓存。
+- **零拷贝视图**：切片、`trans`、`getRow`、`getCol` 返回基于步幅的视图，而非复制。
+- **2D 切片**：`getItem`/`getSlice` 及升级后的 `setSlice(sr, sc, val)` 支持行列区间。
+
+### Tensor
+- **性能**：基于模板的 dtype 分派、连续快路径、分块缓存 matmul、批量 matmul 的 Strassen 快路径，以及零开销的 `TensorImpl` 句柄架构。
+- **自动求导**：拓扑排序反向传播，配合真正的 `no_grad` 上下文。
+- **广播与归约**：广播步幅迭代、1D/批量 `matmul`、`sum`/`mean` 轴、`clamp`、`argmax`；`DType::Bool` 严格索引分派；归约支持 `keepdim`；嵌套列表初始化与形状推断。
+
+### 标准库
+- **`bytes`**：原生 `Buffer` 取代旧的 `buffer.jc2` 脚本——Hex/Base64 编解码、零拷贝 view/slice、链式类型化读写方法。
+- **`ffi`**：跨平台（Linux/macOS）、零拷贝多维数组视图、嵌套结构体支持、内联数组索引赋值。
+- **`io`**：`File` 流类，零拷贝二进制 I/O、RFC 4180 CSV 引擎、文件系统操作、Windows 上的 UTF-8 路径处理。
+
+### CAS
+- **化简**：同指数幂在乘法中合并，矩阵运算化简 / 幂折叠改进。
 
 ### 修复
-- 矩阵 1D 索引赋值（`A[1] = [1, 2]`）不再对值强制 `asDouble`。
-- REPL 不再对斜杠前缀命令（`/help`、`//`）续行，并保持 `/*` 多行注释开启。
-- 空程序求值为 `none`，而非 `0`。
-- BigInt 布局文档改为 base 2³² limb。
+- 宏调用参数恢复为 AST 节点——`@m(a=1)` 将 `a=1` 解析为 `Assign` 语句，而非命名参数。
+- `maxArity` 检查改用解包后的位置参数个数，`f(1, 2, ...@[], 3, 4)` 正常工作。
+- rest/kwargs 必须为最后一个参数；`;` 允许出现在参数列表开头（全仅关键字）。
 
 ---
 

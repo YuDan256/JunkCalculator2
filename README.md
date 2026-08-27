@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.6.1.0
+# Junk Calculator 2.6.2.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.1.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.2.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -73,30 +73,41 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.6.1.0
+## What's New in v2.6.2.0
 
-### Type System
-- **`any` and `never`**: The top type `any_type` is shortened to `any`, and a new bottom type `never` (the empty type holding no values) completes the type lattice — `any` accepts everything, `never` accepts nothing. The empty type now renders as lowercase `never`.
-- **Class Promotion in `<:`**: A class on the right of the subset operator auto-promotes to its typedef, so `A <: MyClass` works directly without an explicit type conversion.
-- **TypeDef Converters**: Callable types (`int`, `float`, `string`, `matrix`, `dict`, `list`, `set`, `complex`, `bool`, `fraction`) now carry their converter on the typedef itself, eliminating the string-based name-lookup hack across six call sites.
-- **`matrix()` Restoration**: Dynamic matrix construction works again via a union-type converter whose converter check runs before the single-element path, with automatic symbolic detection (`hasSymbolic` → `asSymbolic`).
-- **`__subsets__`**: The `<:` subset operator now dispatches through a `__subsets__` dunder, documented alongside the other protocols.
+### Functions & Argument Unpacking
+- **Keyword-only parameters**: A `;` splits the parameter list — everything after it is keyword-only (`f(a; b, c=0)`), and `...kw` after the `;` collects leftover keyword arguments into a dict (`f(a, ...rest; b, ...kw)`). Parameter metadata is split into four independent fields (`paramNames`/`restName`/`kwargNames`/`kwargsName`), replacing the old `...`-prefix hack.
+- **Argument unpacking (spread)**: `...expr` expands inline — `f(...args)` spreads a list/set/matrix/string positionally, `f(1; ...opts)` spreads a dict into keyword arguments. Spread may appear anywhere and multiple times.
+- **Literal unpacking**: `@[...a]`, `@{...s}`, `{...d}` unpack into list/set/dict literals. Dict spread merges left-to-right with later keys winning; explicit keys always take precedence.
+- **`__unpack__` / `__mapping__`**: custom types opt into unpacking by returning a list (positional) or a dict (keyword) from these dunders; `apply` now uses `__unpack__` instead of `__iter__` to avoid infinite iterators.
+- **Unified native call convention**: `rest` always arrives as a list in native functions regardless of how the call is written, eliminating the old expand-vs-collect split.
+- **Richer signatures**: `toString` now shows `const`/`ref` modifiers and builtin keyword defaults — `print` renders as `<function print(...args; sep = " ", end = "\n")>`.
 
-### Dict Higher-Order Functions
-- **`map` / `filter` / `reduce` / `any` / `all` / `countIf`**: `Dict` gains the full higher-order suite. Callbacks receive an `@[k, v]` pair (a frozen list), matching `for ([k, v] in d)` and `entries()`.
-- **Full-mapping `map`**: `d.map(f)` lets `f` return `@[new_k, new_v]`, producing `{new_k: new_v}` — both keys and values are remappable, like Python's `dict(map(...))` or Rust's `map().collect()`.
-- **Single-side shorthands**: `mapKeys(f)` and `mapValues(f)` map only one side, mirroring Ruby's `transform_keys` / `transform_values`.
-- **GC safety**: Pair arguments and result dicts are pinned with `GcValueGuard`/`GcObjGuard`, since containers survive by marking, not reference counts.
+### `print` / `println` Merge
+- **`print(...args; sep = " ", end = "\n")`**: `print` gains Python-style keyword-only `sep`/`end` and defaults to a trailing newline. `println` is removed; `print("no newline", end = "")` covers the old no-newline behavior. This is the first builtin to exercise keyword-only defaults.
 
-### Semantics
-- **`as` as a postfix assertion**: `as` now sits between `call` and `power`, applying `call()` to both operands, and chains left-associatively (`a as int as double` == `(a as int) as double`).
-- **Or-pattern consistency**: or-patterns binding different variable names are rejected at compile time, while same-named bindings across alternatives merge through phi nodes, and a guard applies to the whole or-pattern.
+### Matrix
+- **Immutable matrices**: matrices no longer copy-on-write; hashes are cached because values never change.
+- **Zero-copy views**: slicing, `trans`, `getRow`, `getCol` return stride-based views instead of copying.
+- **2D slicing**: `getItem`/`getSlice` and an upgraded `setSlice(sr, sc, val)` support row/column ranges.
+
+### Tensor
+- **Performance**: template-based dtype dispatch, contiguous fast paths, cache-blocked matmul, a Strassen fast path for batched matmul, and a zero-overhead `TensorImpl` handle architecture.
+- **Autograd**: topological-sort backward pass with a true `no_grad` context.
+- **Broadcasting & reductions**: broadcast stride iteration, 1D/batched `matmul`, `sum`/`mean` axis, `clamp`, `argmax`; `DType::Bool` for strict index dispatch; `keepdim` on reductions; nested-list initialization with shape inference.
+
+### Standard Library
+- **`bytes`**: a native `Buffer` replaces the old `buffer.jc2` script — Hex/Base64 encode/decode, zero-copy view/slice, and chained typed read/write methods.
+- **`ffi`**: cross-platform (Linux/macOS), zero-copy multi-dimensional array views, nested struct support, and inline-array index assignment.
+- **`io`**: a `File` stream class with zero-copy binary I/O, an RFC 4180 CSV engine, filesystem operations, and UTF-8 path handling on Windows.
+
+### CAS
+- **Simplification**: same-exponent powers contract on multiplication, and matrix operation simplification / power folding improved.
 
 ### Fixes
-- Matrix 1D index assignment (`A[1] = [1, 2]`) no longer forces `asDouble` on the value.
-- REPL no longer continues on slash-prefixed commands (`/help`, `//`), and keeps `/*` multiline comments open.
-- An empty program evaluates to `none`, not `0`.
-- BigInt layout documented as base 2³² limbs.
+- Macro call arguments are AST nodes again — `@m(a=1)` parses `a=1` as an `Assign` statement, not a named argument.
+- `maxArity` checks use the post-spread positional count, so `f(1, 2, ...@[], 3, 4)` works.
+- Rest/kwargs must be the last parameter; `;` is allowed at the start of a parameter list (all keyword-only).
 
 ---
 

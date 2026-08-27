@@ -44,7 +44,8 @@
 *   **解析器 (Parser) 规则**：上下文敏感解析。在函数调用的参数列表中，顶层的 `标识符 = 表达式` 强制解析为 `KeywordArgNode`。若需在传参时进行变量赋值，必须加括号 `f((a = 1))`。位置参数必须严格在命名参数之前。
 *   **VM 预对齐 (Pre-alignment)**：VM 负责在运行时根据闭包的参数名元数据，将命名参数动态路由到正确的局部变量槽位。
 *   **Native C++ 扩展无痛升级**：扩展 `bind_method` 注册 API，允许 C++ 侧提供参数名列表（如 `{"a", "b", "rtol"}`）。VM 在调用 Native 函数前，自动将位置参数和命名参数“预对齐”成一个标准的 `std::vector<Value>`，C++ 函数体逻辑无需任何修改。
-*   **可变参数 (`...rest`) 隔离**：`...rest` 仅收集多余的位置参数，绝不收集命名参数。命名参数必须与函数签名严格匹配（名花有主）。对于开放式的配置项，不引入 `**kwargs`，而是推荐使用现有的字典解构 `f(opts = {})`。
+*   **可变参数 (`...rest`) 隔离**：`...rest` 仅收集多余的位置参数，绝不收集命名参数。命名参数必须与函数签名严格匹配（名花有主）。
+*   **仅关键字与 kwargs (Keyword-Only & kwargs)**：参数列表用 `;` 分隔。分号前是位置参数（含 `...rest`），分号后是仅关键字参数（只能按名传，不可按位传），`...kw`（分号后）收集所有未匹配的关键字参数打包成 `Dict`。参数元数据拆成 `paramNames`/`restName`/`kwargNames`/`kwargsName` 四个字段，在 AST、Closure、BuiltinRegistry、C++ 扩展注册 API 中完全独立存储，不再用 `...` 前缀 hack。
 
 ## 8. N维索引与切片架构 (N-Dimensional Indexing & Slicing)
 *   **统一路由 (Unified Routing)**：废弃 `__getslice__`，将所有 `[]` 操作统一路由至 `__getitem__(...dims)` 和 `__setitem__(...dims, val)`。利用变长参数机制，原生支持任意维度的索引与切片。

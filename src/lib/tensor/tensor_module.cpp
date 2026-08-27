@@ -296,11 +296,70 @@ METHOD(setFlat) { GET_SELF; t1->setFlat(static_cast<size_t>(jc2::Value(argv[1]).
 // Global functions
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, [[maybe_unused]] int argc, JC2_ValueHandle* argv, void*)
 
+static void parseNestedList(const jc2::Value& val, std::vector<double>& out_data, std::vector<int>& out_shape, int current_depth) {
+    if (val.is_list()) {
+        jc2::List list(val.get_handle());
+        int size = static_cast<int>(list.size());
+        
+        if (current_depth == static_cast<int>(out_shape.size())) {
+            out_shape.push_back(size);
+        } else if (current_depth < static_cast<int>(out_shape.size())) {
+            if (out_shape[current_depth] != size) {
+                jc2::throw_error("Tensor Error: Inconsistent sequence length in nested list.");
+            }
+        }
+        
+        for (size_t i = 0; i < static_cast<size_t>(size); ++i) {
+            parseNestedList(list.get(i), out_data, out_shape, current_depth + 1);
+        }
+    } else {
+        if (current_depth < static_cast<int>(out_shape.size())) {
+            jc2::throw_error("Tensor Error: Jagged nested list detected.");
+        }
+        out_data.push_back(val.as_double());
+    }
+}
+
 FUNC(tensor) {
-    if (argc < 2) jc2::throw_error("TypeError: Tensor() takes at least 2 arguments (data_list, shape_list).");
-    auto data = listToDoubles(jc2::Value(argv[0]));
-    auto shape = listToShape(jc2::Value(argv[1]));
-    auto [dt, rg] = parseTensorOptions(argc, argv, 2);
+    if (argc < 1) jc2::throw_error("TypeError: Tensor() takes at least 1 argument.");
+    jc2::Value arg0(argv[0]);
+    if (!arg0.is_list()) jc2::throw_error("TypeError: data must be a list.");
+
+    std::vector<double> data;
+    std::vector<int> shape;
+    jc::DType dt = jc::DType::Float64;
+    bool rg = false;
+
+    jc2::Value shape_val = (argc >= 2) ? jc2::Value(argv[1]) : jc2::Value::none();
+    
+    if (shape_val.is_list()) {
+        data = listToDoubles(arg0);
+        shape = listToShape(shape_val);
+    } else if (shape_val.is_none()) {
+        parseNestedList(arg0, data, shape, 0);
+        size_t expected_numel = shape.empty() ? 0 : 1;
+        for (int s : shape) expected_numel *= s;
+        if (data.size() != expected_numel) {
+            jc2::throw_error("Tensor Error: Jagged nested list detected.");
+        }
+    } else {
+        jc2::throw_error("TypeError: shape must be a list or none.");
+    }
+
+    if (argc >= 3) {
+        jc2::Value dt_val(argv[2]);
+        if (!dt_val.is_none()) {
+            if (!dt_val.is_string()) jc2::throw_error("TypeError: dtype must be a string.");
+            dt = jc::stringToDType(dt_val.as_string());
+        }
+    }
+    if (argc >= 4) {
+        jc2::Value rg_val(argv[3]);
+        if (!rg_val.is_none()) {
+            rg = rg_val.as_bool();
+        }
+    }
+
     return wrapTensor(jc::tensor_from_data(data, shape, dt, rg)).get_handle();
 }
 FUNC(scalar) {
@@ -509,7 +568,7 @@ int jc2_init(jc2::Module& mod) {
 
     g_tensorClass->set_allocator(global_tensor);
 
-    mod.register_function("tensor", global_tensor, 2, 4, false, {"data", "shape", "dtype", "requires_grad"});
+    mod.register_function("tensor", global_tensor, 1, 4, false, {"data", "shape", "dtype", "requires_grad"});
     mod.register_function("scalar", global_scalar, 1, 3, false, {"val", "dtype", "requires_grad"});
     mod.register_function("zeros", global_zeros, 1, 3, false, {"shape", "dtype", "requires_grad"});
     mod.register_function("ones", global_ones, 1, 3, false, {"shape", "dtype", "requires_grad"});
@@ -550,11 +609,12 @@ int jc2_init(jc2::Module& mod) {
         "  Construction & Factory Functions\n"
         "  ──────────────────────\n"
         "    import tensor\n\n"
-        "    tensor.Tensor(data_list, shape_list, [dtype], [requires_grad])\n"
+        "    tensor.Tensor(data, [shape], [dtype], [requires_grad])\n"
         "    tensor.tensor(...)  // Legacy alias\n"
-        "        Create a tensor from a flat data list and a shape list.\n"
-        "        Optional dtype strings: \"float64\", \"float32\", \"int64\", \"int32\"\n"
+        "        Create a tensor from a nested list (leave shape as none) or a flat list + shape.\n"
+        "        Optional dtype strings: \"float64\", \"float32\", \"int64\", \"int32\", \"bool\"\n"
         "        (aliases: \"f64\", \"f32\", \"i64\", \"i32\", \"double\").\n"
+        "        tensor.tensor(@[@[1, 2], @[3, 4]])                 → 2×2 Tensor\n"
         "        tensor.tensor(@[1,2,3,4,5,6], @[2,3])              → 2×3 Tensor\n"
         "        tensor.tensor(@[1,2,3], @[3], \"int64\")             → int64 Tensor\n"
         "        tensor.tensor(@[1,2,3], @[3], true)                 → 1D with grad tracking\n"
@@ -749,8 +809,8 @@ int jc2_init(jc2::Module& mod) {
         "    // → W ≈ 2.0, b ≈ 1.0"
     );
 
-    mod.register_function_help("tensor.Tensor", "tensor.Tensor(data_list, shape_list, [dtype], [requires_grad])", "Creates a Tensor from a flat data list and a shape list. Optionally selects dtype (\"float64\", \"float32\", \"int64\", \"int32\") and enables gradient tracking. (Alias: tensor.tensor)", "tensor.Tensor(@[1,2,3,4], @[2,2])");
-    mod.register_function_help("tensor.tensor", "tensor.tensor(data_list, shape_list, [dtype], [requires_grad])", "Legacy alias for tensor.Tensor.", "tensor.tensor(@[1,2,3,4], @[2,2])");
+    mod.register_function_help("tensor.Tensor", "tensor.Tensor(data, [shape], [dtype], [requires_grad])", "Creates a Tensor from a nested list (leave shape as none) or a flat list and shape list. Optionally selects dtype and enables gradient tracking.", "tensor.Tensor(@[@[1, 2], @[3, 4]])");
+    mod.register_function_help("tensor.tensor", "tensor.tensor(data, [shape], [dtype], [requires_grad])", "Legacy alias for tensor.Tensor.", "tensor.tensor(@[@[1, 2], @[3, 4]])");
     mod.register_function_help("tensor.scalar", "tensor.scalar(val, [dtype], [requires_grad])", "Creates a scalar (1-element) Tensor. Optionally selects dtype and enables gradient tracking.", "tensor.scalar(3.14)");
     mod.register_function_help("tensor.zeros", "tensor.zeros(shape_list, [dtype], [requires_grad])", "Creates an all-zeros Tensor with the given shape. Optionally selects dtype and enables gradient tracking.", "tensor.zeros(@[3, 3])");
     mod.register_function_help("tensor.ones", "tensor.ones(shape_list, [dtype], [requires_grad])", "Creates an all-ones Tensor with the given shape. Optionally selects dtype and enables gradient tracking.", "tensor.ones(@[2, 2])");

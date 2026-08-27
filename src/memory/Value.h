@@ -1875,7 +1875,9 @@ namespace jc {
         std::any nativeFn;
         int compiledFnIndex = -1;
         std::vector<Value> defaultValues;
-        bool hasRestParam = false;
+        std::string restName;                 // ★ rest 参数名（空 = 无）
+        std::vector<std::string> kwargNames;  // ★ 仅关键字参数名
+        std::string kwargsName;               // ★ kwargs 参数名（空 = 无）
         bool isUFCS = false; // ★ 新增：标记是否为 UFCS 绑定的全局函数
         bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
         bool is_local = false; // ★ 新增：标记是否为私有方法
@@ -1887,7 +1889,6 @@ namespace jc {
         int minArgs() const {
             int count = static_cast<int>(paramNames.size());
             if (isUFCS && count > 0) count--;
-            if (hasRestParam && count > 0) count--;
             count -= static_cast<int>(defaultValues.size());
             return count < 0 ? 0 : count;
         }
@@ -1896,16 +1897,16 @@ namespace jc {
             if (isUFCS && count > 0) count--;
             return count;
         }
-        bool acceptsArgCount(int n) const { return n >= minArgs() && (hasRestParam || n <= maxArgs()); }
+        bool acceptsArgCount(int n) const { return n >= minArgs() && (!restName.empty() || n <= maxArgs()); }
         bool hasRef() const { for (bool b : isRef) if (b) return true; return false; }
         bool hasCaptures() const { return upvalueCount > 0; }
         bool isNative() const { return nativeFn.has_value(); }
         bool isBytecode() const { return compiledFnIndex >= 0; }
 
         ObjClosure(std::vector<std::string> paramNames, std::vector<bool> isRef,
-            std::string rawBody, std::shared_ptr<Expr> body, bool hasRestParam = false)
+            std::string rawBody, std::shared_ptr<Expr> body, std::string restName = "")
             : paramNames(std::move(paramNames)), isRef(std::move(isRef)),
-            rawBody(std::move(rawBody)), body(std::move(body)), hasRestParam(hasRestParam) {
+            rawBody(std::move(rawBody)), body(std::move(body)), restName(std::move(restName)) {
             type = ObjType::CLOSURE;
         }
 
@@ -1932,9 +1933,24 @@ namespace jc {
             std::string params;
             size_t startIdx = isUFCS ? 1 : 0;
             for (size_t i = startIdx; i < paramNames.size(); ++i) {
+                if (i > startIdx) params += ", ";
                 if (i < isRef.size() && isRef[i]) params += "ref ";
                 params += paramNames[i];
-                if (i < paramNames.size() - 1) params += ", ";
+            }
+            if (!restName.empty()) {
+                if (!params.empty()) params += ", ";
+                params += "..." + restName;
+            }
+            if (!kwargNames.empty() || !kwargsName.empty()) {
+                params += "; ";
+                for (size_t i = 0; i < kwargNames.size(); ++i) {
+                    if (i > 0) params += ", ";
+                    params += kwargNames[i];
+                }
+                if (!kwargsName.empty()) {
+                    if (!kwargNames.empty()) params += ", ";
+                    params += "..." + kwargsName;
+                }
             }
             if (isNative() && !isBytecode()) return "<function " + rawBody + "(" + params + ")>";
             return "<function(" + params + ")>";

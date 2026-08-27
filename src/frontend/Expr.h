@@ -537,23 +537,34 @@ namespace jc {
         std::vector<bool> paramIsRef;
         std::vector<bool> paramIsConst; // ★ 新增
         std::vector<std::shared_ptr<Expr>> defaultExprs;
-        bool hasRestParam;
+        std::string restName;             // ★ rest 参数名（空 = 无）
 
         std::vector<std::shared_ptr<Expr>> paramTypes; // ★ 新增：参数类型约束   
-        std::shared_ptr<Expr> returnType;              // ★ 新增：返回值约束    
+        std::shared_ptr<Expr> returnType;              // ★ 新增：返回值约束     
+
+        std::vector<Token> kwargParams;                // ★ 仅关键字参数
+        std::vector<bool> kwargIsRef;
+        std::vector<bool> kwargIsConst;
+        std::vector<std::shared_ptr<Expr>> kwargDefaultExprs;
+        std::vector<std::shared_ptr<Expr>> kwargTypes;
+        std::string kwargsName;                        // ★ kwargs 名（空 = 无）
 
         std::string rawBody;
         std::shared_ptr<Expr> body;
         int fnIdx = -1;
 
         LambdaExpr(std::string name, std::vector<Token> params, std::vector<bool> paramIsRef, std::vector<bool> paramIsConst,
-            std::vector<std::shared_ptr<Expr>> defaultExprs, bool hasRestParam,
+            std::vector<std::shared_ptr<Expr>> defaultExprs, std::string restName,
             std::vector<std::shared_ptr<Expr>> paramTypes, std::shared_ptr<Expr> returnType, // ★ 新增
-            std::string rawBody, std::shared_ptr<Expr> body)
+            std::string rawBody, std::shared_ptr<Expr> body,
+            std::vector<Token> kwargParams = {}, std::vector<bool> kwargIsRef = {}, std::vector<bool> kwargIsConst = {},
+            std::vector<std::shared_ptr<Expr>> kwargDefaultExprs = {}, std::vector<std::shared_ptr<Expr>> kwargTypes = {}, std::string kwargsName = "")
             : name(std::move(name)), params(std::move(params)), paramIsRef(std::move(paramIsRef)), paramIsConst(std::move(paramIsConst)),
             defaultExprs(std::move(defaultExprs)),
-            hasRestParam(hasRestParam),
+            restName(std::move(restName)),
             paramTypes(std::move(paramTypes)), returnType(std::move(returnType)), // ★ 新增
+            kwargParams(std::move(kwargParams)), kwargIsRef(std::move(kwargIsRef)), kwargIsConst(std::move(kwargIsConst)),
+            kwargDefaultExprs(std::move(kwargDefaultExprs)), kwargTypes(std::move(kwargTypes)), kwargsName(std::move(kwargsName)),
             rawBody(std::move(rawBody)), body(std::move(body)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitLambdaExpr(this); }
@@ -861,11 +872,11 @@ namespace jc {
     struct MacroDefExpr : public Expr {
         Token name;
         std::vector<Token> params;
-        bool hasRestParam;
+        std::string restName;
         bool isTokenMacro; // ★
         std::unique_ptr<Expr> body;
-        MacroDefExpr(Token name, std::vector<Token> params, bool hasRestParam, bool isTokenMacro, std::unique_ptr<Expr> body)
-            : name(std::move(name)), params(std::move(params)), hasRestParam(hasRestParam), isTokenMacro(isTokenMacro), body(std::move(body)) {}
+        MacroDefExpr(Token name, std::vector<Token> params, std::string restName, bool isTokenMacro, std::unique_ptr<Expr> body)
+            : name(std::move(name)), params(std::move(params)), restName(std::move(restName)), isTokenMacro(isTokenMacro), body(std::move(body)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitMacroDefExpr(this); }
     };
 

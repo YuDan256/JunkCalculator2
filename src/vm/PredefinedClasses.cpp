@@ -32,7 +32,7 @@ void registerPredefinedClasses() {
     rangeClass->name = "Range";
 
     // __init__(*args)
-    auto rangeInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"...args"}, std::vector<bool>{false}, "<init>", nullptr, true);
+    auto rangeInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "<init>", nullptr, "args");
     GcObjGuard riGuard(rangeInit);
     rangeInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();

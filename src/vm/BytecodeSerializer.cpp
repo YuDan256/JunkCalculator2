@@ -351,7 +351,10 @@ void BytecodeSerializer::writeFunction(std::ostream& os, const CompiledFunction*
     write32(os, fn->arity);
     write32(os, fn->maxArity);
     write32(os, fn->localCount);
-    write8(os, fn->hasRestParam ? 1 : 0);
+    writeString(os, fn->restName);
+    writeString(os, fn->kwargsName);
+    write16(os, static_cast<uint16_t>(fn->kwargNames.size()));
+    for (const auto& name : fn->kwargNames) writeString(os, name);
 
     writeChunk(os, fn->chunk, startIndex, stripDebug);
 
@@ -392,7 +395,11 @@ void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, in
     fn->arity = static_cast<int>(read32(is));
     fn->maxArity = static_cast<int>(read32(is));
     fn->localCount = static_cast<int>(read32(is));
-    fn->hasRestParam = read8(is) != 0;
+    fn->restName = readString(is);
+    fn->kwargsName = readString(is);
+    uint16_t kwargCount = read16(is);
+    fn->kwargNames.resize(kwargCount);
+    for (uint16_t i = 0; i < kwargCount; ++i) fn->kwargNames[i] = readString(is);
 
     readChunk(is, fn->chunk, baseIdx);
 

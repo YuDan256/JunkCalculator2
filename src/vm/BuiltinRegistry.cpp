@@ -331,10 +331,11 @@ void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::
     auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
     if (!paramNames.empty() && paramNames.back().substr(0, 3) == "...") {
-        closure->hasRestParam = true;
-        closure->paramNames.back() = closure->paramNames.back().substr(3);
+        closure->restName = paramNames.back().substr(3);
+        closure->paramNames.back().erase();
+        closure->paramNames.pop_back();
     } else if (arity.empty()) {
-        closure->hasRestParam = true;
+        closure->restName = "_";
     }
     if (!arity.empty()) {
         int minA = *arity.begin();
@@ -4991,7 +4992,7 @@ void BuiltinRegistry::registerSystemShell() {
         mainFn->sourceFile = "<compileCode>";
         mainFn->arity = 0;
         mainFn->maxArity = 0;
-        mainFn->hasRestParam = false;
+        mainFn->restName = "";
         
         auto fns = VM::activeVM->getCompiledFunctions();
         
@@ -5050,7 +5051,7 @@ void BuiltinRegistry::registerSystemShell() {
         mainFn->sourceFile = resolved;
         mainFn->arity = 0;
         mainFn->maxArity = 0;
-        mainFn->hasRestParam = false;
+        mainFn->restName = "";
         
         auto fns = VM::activeVM->getCompiledFunctions();
         

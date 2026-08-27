@@ -141,7 +141,7 @@ namespace jc {
                         std::vector<bool> phIsRef(phParams.size(), false);
                         std::vector<bool> phIsConst(phParams.size(), false);
                         expr = std::make_unique<LambdaExpr>(
-                            "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
+                            "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), "",
                             std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr,
                             "<partial_method>", std::shared_ptr<Expr>(methodNode.release())
                         );
@@ -370,15 +370,21 @@ namespace jc {
                     std::vector<bool> paramIsConst;
                     std::vector<std::shared_ptr<Expr>> defaultExprs;
                     std::vector<std::shared_ptr<Expr>> paramTypes;  // ★
-                    bool hasRestParam = false;
+                    std::string restName = "";
+                    std::vector<Token> kwargParams;
+                    std::vector<bool> kwargIsRef;
+                    std::vector<bool> kwargIsConst;
+                    std::vector<std::shared_ptr<Expr>> kwargDefaultExprs;
+                    std::vector<std::shared_ptr<Expr>> kwargTypes;
+                    std::string kwargsName = "";
+                    bool inKwOnly = false;
 
                     std::vector<std::unique_ptr<Expr>> destructStmts;
                     int destructCounter = 0;
 
                     if (!check(TokenType::RPAREN)) {
-                        do {
+                        while (true) {
                             while (match({ TokenType::NEWLINE })) {}
-                            if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
 
                             bool isParamRef = false;
                             bool isParamConst = false;
@@ -395,12 +401,12 @@ namespace jc {
                             }
 
                             Token paramTok(TokenType::IDENTIFIER, "", 0, 0);
-                            bool isRest = false;
+                            bool isRest = false;      // ...rest（分号前）或 ...kw（分号后）
                             bool isDestruct = false;
                             std::unique_ptr<Pattern> patNode = nullptr;
 
                             if (match({ TokenType::ELLIPSIS })) {
-                                if (isParamRef) throw std::runtime_error("Parser Error: Rest parameter cannot be ref.");
+                                if (isParamRef) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot be ref.");
                                 if (match({ TokenType::DOLLAR })) {
                                     Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                                     paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
@@ -408,8 +414,15 @@ namespace jc {
                                     paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
                                 }
                                 isRest = true;
-                                hasRestParam = true;
+                                if (inKwOnly) {
+                                    if (!kwargsName.empty()) throw std::runtime_error("Parser Error: Duplicate kwargs parameter.");
+                                    kwargsName = paramTok.lexeme;
+                                } else {
+                                    if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
+                                    restName = paramTok.lexeme;
+                                }
                             } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                                 if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                                 patNode = parsePrimaryPattern();
                                 std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
@@ -424,28 +437,52 @@ namespace jc {
                                 }
                             }
 
-                            params.push_back(paramTok);
-                            paramIsRef.push_back(isParamRef);
-                            paramIsConst.push_back(isParamConst);
+                            if (!isRest) {
+                                if (inKwOnly) {
+                                    kwargParams.push_back(paramTok);
+                                    kwargIsRef.push_back(isParamRef);
+                                    kwargIsConst.push_back(isParamConst);
+                                } else {
+                                    params.push_back(paramTok);
+                                    paramIsRef.push_back(isParamRef);
+                                    paramIsConst.push_back(isParamConst);
+                                }
+                            }
 
                             std::shared_ptr<Expr> pType = nullptr;
                             if (match({ TokenType::COLON })) {
                                 pType = std::shared_ptr<Expr>(ternary().release());
                             }
-                            paramTypes.push_back(std::move(pType));
+                            if (!isRest) {
+                                if (inKwOnly) kwargTypes.push_back(std::move(pType));
+                                else paramTypes.push_back(std::move(pType));
+                            }
 
                             if (match({ TokenType::ASSIGN })) {
-                                if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
-                                defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
+                                if (isRest) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot have a default value.");
+                                if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
+                                else defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
                             } else {
-                                defaultExprs.push_back(nullptr);
+                                if (!isRest) {
+                                    if (inKwOnly) kwargDefaultExprs.push_back(nullptr);
+                                    else defaultExprs.push_back(nullptr);
+                                }
                             }
 
                             if (isDestruct) {
                                 auto rhs = std::make_unique<Variable>(paramTok);
                                 destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst));
                             }
-                        } while (match({ TokenType::COMMA }));
+                            // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
+                            if (match({ TokenType::COMMA })) continue;
+                            if (match({ TokenType::SEMICOLON })) {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                                inKwOnly = true;
+                                if (check(TokenType::RPAREN)) break;
+                                continue;
+                            }
+                            break;
+                        }
                     }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after parameters.");
 
@@ -481,8 +518,9 @@ namespace jc {
                     }
 
                     auto lambda = std::make_unique<LambdaExpr>(
-                        funcName.lexeme, params, paramIsRef, paramIsConst, defaultExprs, hasRestParam,
-                        paramTypes, retType, rawBodyStr, std::move(finalBody)
+                        funcName.lexeme, params, paramIsRef, paramIsConst, defaultExprs, restName,
+                        paramTypes, retType, rawBodyStr, std::move(finalBody),
+                        kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName
                     );
 
                     return std::make_unique<Assign>(funcName, std::move(lambda), isRef, isState, isLocal, isConst);
@@ -838,7 +876,7 @@ namespace jc {
                         std::vector<bool> phIsRef(phParams.size(), false);
                         std::vector<bool> phIsConst(phParams.size(), false);
                         expr = std::make_unique<LambdaExpr>(
-                            "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
+                            "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), "",
                             std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr,  // ★★★ 补上: 空参数类型数组，空返回类型
                             "<partial_method>", std::shared_ptr<Expr>(methodNode.release())
                         );
@@ -902,7 +940,7 @@ namespace jc {
                     std::vector<bool> phIsRef(phParams.size(), false);
                     std::vector<bool> phIsConst(phParams.size(), false);
                     expr = std::make_unique<LambdaExpr>(
-                        "<partial_apply>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), false,
+                        "<partial_apply>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), "",
                         std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr, // ★★★ 补上: 空参数类型数组，空返回类型
                         "<partial_apply>", std::shared_ptr<Expr>(callNode.release())
                     );
@@ -1416,15 +1454,20 @@ namespace jc {
                 std::vector<bool> lambdaParamIsConst;
                 std::vector<std::shared_ptr<Expr>> lambdaDefaults;
                 std::vector<std::shared_ptr<Expr>> paramTypes; // ★
-                bool hasRestParam = false;
+                std::string restName = "";
+                std::vector<Token> kwargParams;
+                std::vector<bool> kwargIsRef;
+                std::vector<bool> kwargIsConst;
+                std::vector<std::shared_ptr<Expr>> kwargDefaultExprs;
+                std::vector<std::shared_ptr<Expr>> kwargTypes;
+                std::string kwargsName = "";
+                bool inKwOnly = false;
 
                 std::vector<std::unique_ptr<Expr>> destructStmts;
                 int destructCounter = 0;
 
                 if (!check(TokenType::RPAREN)) {
-                    do {
-                        if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
-
+                    while (true) {
                         bool isRef = false;
                         bool isConst = false;
                         while (true) {
@@ -1445,7 +1488,7 @@ namespace jc {
                         std::unique_ptr<Pattern> patNode = nullptr;
 
                         if (match({ TokenType::ELLIPSIS })) {
-                            if (isRef) throw std::runtime_error("Parser Error: Rest parameter cannot be ref.");
+                            if (isRef) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot be ref.");
                             if (match({ TokenType::DOLLAR })) {
                                 Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                                 paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
@@ -1453,8 +1496,15 @@ namespace jc {
                                 paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'.");
                             }
                             isRest = true;
-                            hasRestParam = true;
+                            if (inKwOnly) {
+                                if (!kwargsName.empty()) throw std::runtime_error("Parser Error: Duplicate kwargs parameter.");
+                                kwargsName = paramTok.lexeme;
+                            } else {
+                                if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
+                                restName = paramTok.lexeme;
+                            }
                         } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                             if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
                             std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
@@ -1469,29 +1519,53 @@ namespace jc {
                             }
                         }
 
-                        lambdaParams.push_back(paramTok);
-                        lambdaParamIsRef.push_back(isRef);
-                        lambdaParamIsConst.push_back(isConst);
+                        if (!isRest) {
+                            if (inKwOnly) {
+                                kwargParams.push_back(paramTok);
+                                kwargIsRef.push_back(isRef);
+                                kwargIsConst.push_back(isConst);
+                            } else {
+                                lambdaParams.push_back(paramTok);
+                                lambdaParamIsRef.push_back(isRef);
+                                lambdaParamIsConst.push_back(isConst);
+                            }
+                        }
 
                         std::shared_ptr<Expr> pType = nullptr;
                         if (match({ TokenType::COLON })) {
                             pType = std::shared_ptr<Expr>(ternary().release());
                         }
-                        paramTypes.push_back(std::move(pType));
+                        if (!isRest) {
+                            if (inKwOnly) kwargTypes.push_back(std::move(pType));
+                            else paramTypes.push_back(std::move(pType));
+                        }
 
                         if (match({ TokenType::ASSIGN })) {
-                            if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
+                            if (isRest) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot have a default value.");
                             auto defExpr = ternary();
-                            lambdaDefaults.push_back(std::shared_ptr<Expr>(defExpr.release()));
+                            if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
+                            else lambdaDefaults.push_back(std::shared_ptr<Expr>(defExpr.release()));
                         } else {
-                            lambdaDefaults.push_back(nullptr);
+                            if (!isRest) {
+                                if (inKwOnly) kwargDefaultExprs.push_back(nullptr);
+                                else lambdaDefaults.push_back(nullptr);
+                            }
                         }
 
                         if (isDestruct) {
                             auto rhs = std::make_unique<Variable>(paramTok);
                             destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst));
                         }
-                    } while (match({ TokenType::COMMA }));
+                        // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
+                        if (match({ TokenType::COMMA })) continue;
+                        if (match({ TokenType::SEMICOLON })) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            inKwOnly = true;
+                            if (check(TokenType::RPAREN)) break;
+                            continue;
+                        }
+                        break;
+                    }
                 }
 
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after lambda parameters.");
@@ -1531,10 +1605,11 @@ namespace jc {
                     std::move(lambdaParamIsRef),
                     std::move(lambdaParamIsConst),
                     std::move(lambdaDefaults),
-                    hasRestParam,
+                    restName,
                     paramTypes, retType,  // ★
                     rawBody,
-                    std::move(finalBody));
+                    std::move(finalBody),
+                    kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName);
             }
             else {
                 current = savedPos;
@@ -1641,7 +1716,7 @@ namespace jc {
                 }
                 
                 bool shouldProbe = false;
-                if (macroFn->hasRestParam) {
+                if (!macroFn->restName.empty()) {
                     shouldProbe = true;
                 } else {
                     int nArgs = macroFn->maxArgs();
@@ -1668,8 +1743,8 @@ namespace jc {
                     }
                 }
                 
-                if (static_cast<int>(args.size()) < macroFn->minArgs() || (!macroFn->hasRestParam && static_cast<int>(args.size()) > macroFn->maxArgs())) {
-                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(macroFn->minArgs()) + (macroFn->hasRestParam ? " or more" : (macroFn->minArgs() == macroFn->maxArgs() ? "" : " to " + std::to_string(macroFn->maxArgs()))) + " arguments, got " + std::to_string(args.size()) + ".");
+                if (static_cast<int>(args.size()) < macroFn->minArgs() || (macroFn->restName.empty() && static_cast<int>(args.size()) > macroFn->maxArgs())) {
+                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(macroFn->minArgs()) + (!macroFn->restName.empty() ? " or more" : (macroFn->minArgs() == macroFn->maxArgs() ? "" : " to " + std::to_string(macroFn->maxArgs()))) + " arguments, got " + std::to_string(args.size()) + ".");
                 }
                 
                 if (quoteDepth > 0) {
@@ -1788,20 +1863,19 @@ namespace jc {
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after macro name.");
         
         std::vector<Token> params;
-        bool hasRestParam = false;
+        std::string restName = "";
         
         if (!check(TokenType::RPAREN)) {
             do {
-                if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                if (!restName.empty()) throw std::runtime_error("Parser Error: Rest parameter must be last.");
                 if (match({ TokenType::ELLIPSIS })) {
                     if (isTokenMacro) throw std::runtime_error("Parser Error: Token macro cannot have rest parameters.");
                     if (match({ TokenType::DOLLAR })) {
                         Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
-                        params.push_back(Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line));
+                        restName = "$" + idTok.lexeme;
                     } else {
-                        params.push_back(consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'."));
+                        restName = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name after '...'.").lexeme;
                     }
-                    hasRestParam = true;
                 } else {
                     if (match({ TokenType::DOLLAR })) {
                         Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
@@ -1825,7 +1899,7 @@ namespace jc {
             std::vector<std::string>{}, std::vector<bool>{}, name.lexeme, nullptr
         );
         dummyMacro->isTokenMacro = isTokenMacro;
-        dummyMacro->hasRestParam = hasRestParam;
+        dummyMacro->restName = restName;
         for (size_t i = 0; i < params.size(); ++i) {
             dummyMacro->paramNames.push_back(params[i].lexeme);
             dummyMacro->isRef.push_back(false);
@@ -1842,7 +1916,7 @@ namespace jc {
 
         auto lambda = std::make_unique<LambdaExpr>(
             name.lexeme, params, std::move(paramIsRef), std::move(paramIsConst),
-            std::move(defaultExprs), hasRestParam,
+            std::move(defaultExprs), restName,
             std::move(paramTypes), nullptr,
             "<macro_body>", std::shared_ptr<Expr>(body.release())
         );
@@ -1984,7 +2058,7 @@ namespace jc {
             std::vector<std::shared_ptr<Expr>> paramTypes = { nullptr };
             
             auto lambda = std::make_unique<LambdaExpr>(
-                "<name_resolver>", params, paramIsRef, paramIsConst, defaultExprs, false,
+                "<name_resolver>", params, paramIsRef, paramIsConst, defaultExprs, "",
                 paramTypes, nullptr, "", std::move(ternary)
             );
             
@@ -2343,7 +2417,11 @@ namespace jc {
             std::vector<std::unique_ptr<Expr>> defArgs;
             for (const auto& d : lam->defaultExprs) defArgs.push_back(transformQuote(d.get()));
             props.push_back({"defaultExprs", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(defArgs))});
-            props.push_back({"hasRestParam", std::make_unique<Literal>(lam->hasRestParam ? "true" : "false", false, false, true)});
+            props.push_back({"restName", std::make_unique<Literal>(lam->restName, true)});
+            props.push_back({"kwargsName", std::make_unique<Literal>(lam->kwargsName, true)});
+            std::vector<std::unique_ptr<Expr>> kwargParamsArgs;
+            for (const auto& p : lam->kwargParams) kwargParamsArgs.push_back(std::make_unique<Literal>(p.lexeme, true));
+            props.push_back({"kwargParams", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(kwargParamsArgs))});
             std::vector<std::unique_ptr<Expr>> typeArgs;
             for (const auto& t : lam->paramTypes) typeArgs.push_back(transformQuote(t.get()));
             props.push_back({"paramTypes", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(typeArgs))});
@@ -2566,7 +2644,7 @@ namespace jc {
                 }
             }
             props.push_back({"params", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(paramsArgs))});
-            props.push_back({"hasRestParam", std::make_unique<Literal>(mdef->hasRestParam ? "true" : "false", false, false, true)});
+            props.push_back({"restName", std::make_unique<Literal>(mdef->restName, true)});
             props.push_back({"isTokenMacro", std::make_unique<Literal>(mdef->isTokenMacro ? "true" : "false", false, false, true)});
             props.push_back({"body", transformQuote(mdef->body.get())});
             return makeASTNodeCall("MacroDefExpr", mdef->name.line, std::move(props));
@@ -3147,14 +3225,20 @@ namespace jc {
                 std::vector<bool> paramIsConst;
                 std::vector<std::shared_ptr<Expr>> defaultExprs;
                 std::vector<std::shared_ptr<Expr>> paramTypes;
-                bool hasRestParam = false;
+                std::string restName = "";
+                std::vector<Token> kwargParams;
+                std::vector<bool> kwargIsRef;
+                std::vector<bool> kwargIsConst;
+                std::vector<std::shared_ptr<Expr>> kwargDefaultExprs;
+                std::vector<std::shared_ptr<Expr>> kwargTypes;
+                std::string kwargsName = "";
+                bool inKwOnly = false;
 
                 std::vector<std::unique_ptr<Expr>> destructStmts;
                 int destructCounter = 0;
 
                 if (!check(TokenType::RPAREN)) {
-                    do {
-                        if (hasRestParam) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                    while (true) {
                         bool isParamRef = false;
                         bool isParamConst = false;
                         while (true) {
@@ -3175,11 +3259,18 @@ namespace jc {
                         std::unique_ptr<Pattern> patNode = nullptr;
 
                         if (match({ TokenType::ELLIPSIS })) {
-                            if (isParamRef) throw std::runtime_error("Parser Error: Rest parameter cannot be passed by ref.");
+                            if (isParamRef) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot be passed by ref.");
                             paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
                             isRest = true;
-                            hasRestParam = true;
+                            if (inKwOnly) {
+                                if (!kwargsName.empty()) throw std::runtime_error("Parser Error: Duplicate kwargs parameter.");
+                                kwargsName = paramTok.lexeme;
+                            } else {
+                                if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
+                                restName = paramTok.lexeme;
+                            }
                         } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                             if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
                             std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
@@ -3189,29 +3280,53 @@ namespace jc {
                             paramTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect parameter name.");
                         }
 
-                        params.push_back(paramTok);
-                        paramIsRef.push_back(isParamRef);
-                        paramIsConst.push_back(isParamConst);
+                        if (!isRest) {
+                            if (inKwOnly) {
+                                kwargParams.push_back(paramTok);
+                                kwargIsRef.push_back(isParamRef);
+                                kwargIsConst.push_back(isParamConst);
+                            } else {
+                                params.push_back(paramTok);
+                                paramIsRef.push_back(isParamRef);
+                                paramIsConst.push_back(isParamConst);
+                            }
+                        }
 
                         std::shared_ptr<Expr> pType = nullptr;
                         if (match({ TokenType::COLON })) {
                             pType = std::shared_ptr<Expr>(ternary().release());
                         }
-                        paramTypes.push_back(std::move(pType));
+                        if (!isRest) {
+                            if (inKwOnly) kwargTypes.push_back(std::move(pType));
+                            else paramTypes.push_back(std::move(pType));
+                        }
 
                         if (match({ TokenType::ASSIGN })) {
-                            if (isRest) throw std::runtime_error("Parser Error: Rest parameter cannot have a default value.");
+                            if (isRest) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot have a default value.");
                             auto defExpr = ternary();
-                            defaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
+                            if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
+                            else defaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
                         } else {
-                            defaultExprs.push_back(nullptr);
+                            if (!isRest) {
+                                if (inKwOnly) kwargDefaultExprs.push_back(nullptr);
+                                else defaultExprs.push_back(nullptr);
+                            }
                         }
 
                         if (isDestruct) {
                             auto rhs = std::make_unique<Variable>(paramTok);
                             destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst));
                         }
-                    } while (match({ TokenType::COMMA }));
+                        // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
+                        if (match({ TokenType::COMMA })) continue;
+                        if (match({ TokenType::SEMICOLON })) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            inKwOnly = true;
+                            if (check(TokenType::RPAREN)) break;
+                            continue;
+                        }
+                        break;
+                    }
                 }
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after method parameters.");
 
@@ -3251,11 +3366,12 @@ namespace jc {
                     std::move(paramIsRef),
                     std::move(paramIsConst),
                     std::move(defaultExprs),
-                    hasRestParam,
+                    restName,
                     std::move(paramTypes),
                     std::move(retType),
                     std::move(rawBody),
-                    std::move(finalBody)
+                    std::move(finalBody),
+                    kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName
                 );
             }
 

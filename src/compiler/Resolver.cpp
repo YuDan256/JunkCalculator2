@@ -300,6 +300,9 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     for (auto& pt : expr->paramTypes) {
         if (pt) resolve(pt.get());
     }
+    for (auto& pt : expr->kwargTypes) {
+        if (pt) resolve(pt.get());
+    }
     if (expr->returnType) resolve(expr->returnType.get());
 
     beginScope(true, false);
@@ -311,6 +314,22 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
         VarScope scope = expr->paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
         declareVariable(expr->params[i].lexeme, scope, expr->paramIsConst[i], true);
         if (expr->defaultExprs[i]) resolve(expr->defaultExprs[i].get());
+    }
+    // ★ rest 参数
+    if (!expr->restName.empty() && expr->restName != "_") {
+        declareVariable(expr->restName, VarScope::Local, false, true);
+    }
+    // ★ 仅关键字参数
+    for (size_t j = 0; j < expr->kwargParams.size(); ++j) {
+        if (expr->kwargParams[j].lexeme != "_") {
+            VarScope scope = (j < expr->kwargIsRef.size() && expr->kwargIsRef[j]) ? VarScope::RefParam : VarScope::Local;
+            declareVariable(expr->kwargParams[j].lexeme, scope, j < expr->kwargIsConst.size() && expr->kwargIsConst[j], true);
+            if (j < expr->kwargDefaultExprs.size() && expr->kwargDefaultExprs[j]) resolve(expr->kwargDefaultExprs[j].get());
+        }
+    }
+    // ★ kwargs 参数
+    if (!expr->kwargsName.empty() && expr->kwargsName != "_") {
+        declareVariable(expr->kwargsName, VarScope::Local, false, true);
     }
     resolve(expr->body.get());
     endScope();

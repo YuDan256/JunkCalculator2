@@ -683,7 +683,7 @@ int main(int argc, char* argv[]) {
             modFn->sourceFile = resolvedPath;
             modFn->arity = 0;
             modFn->maxArity = 0;
-            modFn->hasRestParam = false;
+            modFn->restName = "";
 
             jc::IRGraph graph;
             jc::IRBuilder builder(&graph, &fns, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);

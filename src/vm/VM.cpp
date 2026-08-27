@@ -333,10 +333,10 @@ Value VM::getBuiltinClosure(const std::string& name) {
                 closure->isRef.push_back(false);
             }
             if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
-                closure->hasRestParam = true;
-                closure->paramNames.back() = closure->paramNames.back().substr(3);
+                closure->restName = closure->paramNames.back().substr(3);
+                closure->paramNames.pop_back();
             } else if (ait == builtinArity.end() || ait->second.empty()) {
-                closure->hasRestParam = true;
+                closure->restName = "_";
             }
             if (ait != builtinArity.end() && !ait->second.empty()) {
                 int minA = *ait->second.begin();
@@ -356,7 +356,7 @@ Value VM::getBuiltinClosure(const std::string& name) {
                 closure->defaultValues.push_back(Value::uninit());
             }
         } else {
-            closure->hasRestParam = true;
+            closure->restName = "_";
         }
         Value val(closure);
         builtinClosures[name] = val;
@@ -530,12 +530,16 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
     pendingCallRefs.clear();
 }
 
-std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, bool hasRestParam, Value boundSelf) {
+std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf) {
     std::vector<Value> alignedArgs;
     int totalExpected = static_cast<int>(paramNames.size());
-    if (hasRestParam) totalExpected--;
     
-    alignedArgs.resize(totalExpected, Value::uninit());
+    int posSlot = totalExpected;
+    int restSlot = restName.empty() ? -1 : posSlot;
+    int kwStart = posSlot + (restName.empty() ? 0 : 1);
+    int kwargSlot = kwStart + static_cast<int>(kwargNames.size());
+    
+    alignedArgs.resize(kwargSlot + (kwargsName.empty() ? 0 : 1), Value::uninit());
     
     int dstIdx = 0;
     if (!boundSelf.isNone()) {
@@ -548,6 +552,20 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
     int fillCount = std::min(posArgc, totalExpected - dstIdx);
     for (int i = 0; i < fillCount; ++i) {
         alignedArgs[dstIdx + i] = argsBase[i];
+    }
+    
+    // 多余位置参数（无 rest 时）
+    if (restName.empty() && posArgc > fillCount) {
+        if (boundSelf.isNone() && totalExpected == 0) {
+            for (int i = fillCount; i < posArgc; ++i) alignedArgs.push_back(argsBase[i]);
+        }
+    }
+    
+    ObjDict* kwargs = nullptr;
+    if (!kwargsName.empty()) {
+        kwargs = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard kwGuard(kwargs);
+        alignedArgs[kwargSlot] = Value(kwargs);
     }
     
     for (int i = 0; i < kwArgc; ++i) {
@@ -567,11 +585,28 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
             }
         }
         if (!found) {
-            throw std::runtime_error("TypeError: Unexpected keyword argument '" + kwName + "'.");
+            for (size_t j = 0; j < kwargNames.size(); ++j) {
+                if (kwargNames[j] == kwName) {
+                    int slot = kwStart + static_cast<int>(j);
+                    if (!alignedArgs[slot].isUninit()) {
+                        throw std::runtime_error("TypeError: Multiple values for argument '" + kwName + "'.");
+                    }
+                    alignedArgs[slot] = kwVal;
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            if (kwargs) {
+                kwargs->set(Value(kwName), kwVal);
+            } else {
+                throw std::runtime_error("TypeError: Unexpected keyword argument '" + kwName + "'.");
+            }
         }
     }
     
-    if (hasRestParam) {
+    if (!restName.empty()) {
         ObjList* restList = GcHeap::get().allocate<ObjList>();
         if (!boundSelf.isNone() && totalExpected == 0) {
             restList->vec.push_back(boundSelf);
@@ -579,14 +614,7 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
         for (int i = fillCount; i < posArgc; ++i) {
             restList->vec.push_back(argsBase[i]);
         }
-        alignedArgs.push_back(Value(restList));
-    } else if (posArgc > fillCount) {
-        if (!boundSelf.isNone() && totalExpected == 0) {
-            alignedArgs.push_back(boundSelf);
-        }
-        for (int i = fillCount; i < posArgc; ++i) {
-            alignedArgs.push_back(argsBase[i]);
-        }
+        alignedArgs[restSlot] = Value(restList);
     }
     
     return alignedArgs;
@@ -598,7 +626,7 @@ Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* args
         if (td->converterParamNames.empty()) {
             throw std::runtime_error("TypeError: This type object does not support keyword arguments.");
         }
-        args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, false, Value::none());
+        args = alignArguments(posArgc, kwArgc, argsBase, td->converterParamNames, "", {}, "", Value::none());
     } else {
         args.reserve(posArgc);
         for (int i = 0; i < posArgc; ++i) args.push_back(argsBase[i]);
@@ -724,7 +752,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             int newTotalCount = fnDef->localCount + fnDef->refCount;
             PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->hasRestParam, closure->isUFCS ? closure->boundSelf : Value::none());
+            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none());
             
             for (int i = 0; i < fnDef->arity; ++i) {
                 if (alignedArgs[i].isUninit()) {
@@ -733,7 +761,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
                 }
             }
-            if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+            if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
                 int expected = closure->isUFCS ? fnDef->maxArity - 1 : fnDef->maxArity;
                 if (expected < 0) expected = 0;
                 throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(expected) + " arguments.");
@@ -748,7 +776,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 registers[newBase + i] = Value::uninit();
             }
 
-            for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+            int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
+            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
                 registers[newBase + i] = Value::none();
             }
 
@@ -883,7 +912,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (closure->paramNames.empty()) {
                     throw std::runtime_error("TypeError: Native function '" + closure->rawBody + "' does not support keyword arguments.");
                 }
-                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->hasRestParam, closure->isUFCS ? closure->boundSelf : Value::none());
+                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none());
                 
                 int expected = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
                 for (int i = 0; i < expected; ++i) {
@@ -919,7 +948,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
                         "' expects " + expected + " arguments, got " + std::to_string(closure->isUFCS ? actualArgc - 1 : actualArgc) + ".");
                 }
-            } else if (static_cast<int>(closure->maxArgs()) > 0 && !closure->hasRestParam) {
+            } else if (static_cast<int>(closure->maxArgs()) > 0 && closure->restName.empty()) {
                 int expectedMin = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
                 int expectedMax = closure->isUFCS ? closure->maxArgs() + 1 : closure->maxArgs();
                 if (totalArgc < expectedMin || totalArgc > expectedMax) {
@@ -983,14 +1012,14 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->hasRestParam);
+                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName);
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
                         throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                 }
-                if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+                if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
                     throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
                 }
                 
@@ -1003,7 +1032,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     registers[newBase + i] = Value::uninit();
                 }
 
-                for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+                int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
+            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
                     registers[newBase + i] = Value::none();
                 }
 
@@ -1055,7 +1085,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     if (initMethod->paramNames.empty()) {
                         throw std::runtime_error("TypeError: Native method 'init' does not support keyword arguments.");
                     }
-                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->hasRestParam);
+                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName);
                     
                     for (int i = 0; i < static_cast<int>(initMethod->minArgs()); ++i) {
                         if (args[i].isUninit()) {
@@ -1068,7 +1098,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 }
 
                 int totalArgc = static_cast<int>(args.size());
-                if (static_cast<int>(initMethod->maxArgs()) > 0 && !initMethod->hasRestParam) {
+                if (static_cast<int>(initMethod->maxArgs()) > 0 && initMethod->restName.empty()) {
                     if (totalArgc < static_cast<int>(initMethod->minArgs()) || totalArgc > static_cast<int>(initMethod->maxArgs())) {
                         throw std::runtime_error("Runtime Error: Method 'init' expects " + std::to_string(initMethod->minArgs()) + " to " + 
                             std::to_string(initMethod->maxArgs()) + " arguments, got " + 
@@ -1126,14 +1156,14 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->hasRestParam);
+                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
                         throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                 }
-                if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+                if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
                     throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
                 }
                 
@@ -1146,7 +1176,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     registers[newBase + i] = Value::uninit();
                 }
 
-                for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+                int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
+            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
                     registers[newBase + i] = Value::none();
                 }
 
@@ -1198,7 +1229,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     if (method->paramNames.empty()) {
                         throw std::runtime_error("TypeError: Native method '__call__' does not support keyword arguments.");
                     }
-                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->hasRestParam);
+                    args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
                     
                     for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                         if (args[i].isUninit()) {
@@ -1358,8 +1389,8 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
         
         int totalArgc = static_cast<int>(args.size());
 
-        if (fnDef->hasRestParam) {
-            int fixedMax = fnDef->maxArity - 1;
+        if (!fnDef->restName.empty()) {
+            int fixedMax = fnDef->maxArity;
             if (totalArgc < fnDef->arity) {
                 throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
@@ -1391,7 +1422,8 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
             }
         }
 
-        for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+        int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
+            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
             registers[newBase + i] = Value::none();
         }
         
@@ -1866,14 +1898,14 @@ invoke_method:
         int newTotalCount = fnDef->localCount + fnDef->refCount;
         PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-        std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->hasRestParam);
+        std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
                 
         for (int i = 0; i < fnDef->arity; ++i) {
             if (alignedArgs[i].isUninit()) {
                 throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
         }
-        if (!fnDef->hasRestParam && alignedArgs.size() > static_cast<size_t>(fnDef->maxArity)) {
+        if (fnDef->restName.empty() && static_cast<size_t>(posArgc) > static_cast<size_t>(fnDef->maxArity)) {
             throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
         }
                 
@@ -1886,7 +1918,8 @@ invoke_method:
             registers[newBase + i] = Value::uninit();
         }
 
-        for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+        int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
+            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
             registers[newBase + i] = Value::none();
         }
 
@@ -1938,7 +1971,7 @@ invoke_method:
             if (method->paramNames.empty()) {
                 throw std::runtime_error("TypeError: Native method '" + methodName + "' does not support keyword arguments.");
             }
-            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->hasRestParam);
+            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
             
             for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                 if (args[i].isUninit()) {
@@ -1953,7 +1986,7 @@ invoke_method:
         }
 
         int totalArgc = static_cast<int>(args.size());
-        if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
+        if (static_cast<int>(method->maxArgs()) > 0 && method->restName.empty()) {
             if (totalArgc < static_cast<int>(method->minArgs()) || totalArgc > static_cast<int>(method->maxArgs())) {
                 throw std::runtime_error("Runtime Error: Method '" + methodName + 
                     "' expects " + std::to_string(method->minArgs()) + " to " + 
@@ -2015,8 +2048,8 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         int newTotalCount = fnDef->localCount + fnDef->refCount;
         PendingFrameGuard pfg(this, newBase, newTotalCount);
 
-        if (fnDef->hasRestParam) {
-            int fixedMax = fnDef->maxArity - 1;
+        if (!fnDef->restName.empty()) {
+            int fixedMax = fnDef->maxArity;
             if (totalArgc < fnDef->arity) {
                 throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
@@ -2048,7 +2081,8 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
             }
         }
 
-        for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+        int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
+            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
             registers[newBase + i] = Value::none();
         }
 
@@ -2100,7 +2134,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
             if (method->paramNames.empty()) {
                 throw std::runtime_error("TypeError: Native super method '" + methodName + "' does not support keyword arguments.");
             }
-            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->hasRestParam);
+            args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName);
             
             for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                 if (args[i].isUninit()) {
@@ -2115,7 +2149,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         }
 
         int totalArgc = static_cast<int>(args.size());
-        if (static_cast<int>(method->maxArgs()) > 0 && !method->hasRestParam) {
+        if (static_cast<int>(method->maxArgs()) > 0 && method->restName.empty()) {
             if (totalArgc < static_cast<int>(method->minArgs()) || totalArgc > static_cast<int>(method->maxArgs())) {
                 throw std::runtime_error("Runtime Error: Super method '" + methodName + 
                     "' expects " + std::to_string(method->minArgs()) + " to " + 
@@ -2273,10 +2307,10 @@ Value VM::execImport(const std::string& name) {
                     closure->isRef.push_back(false);
                 }
                 if (!closure->paramNames.empty() && closure->paramNames.back().substr(0, 3) == "...") {
-                    closure->hasRestParam = true;
-                    closure->paramNames.back() = closure->paramNames.back().substr(3);
+                    closure->restName = closure->paramNames.back().substr(3);
+                    closure->paramNames.pop_back();
                 } else if (ait == tempArity.end() || ait->second.empty()) {
-                    closure->hasRestParam = true;
+                    closure->restName = "_";
                 }
                 if (ait != tempArity.end() && !ait->second.empty()) {
                     int minA = *ait->second.begin();
@@ -2296,7 +2330,7 @@ Value VM::execImport(const std::string& name) {
                     closure->defaultValues.push_back(Value::uninit());
                 }
             } else {
-                closure->hasRestParam = true;
+                closure->restName = "_";
             }
 
             auto uv = GcHeap::get().allocate<ObjUpVal>();
@@ -2347,7 +2381,7 @@ Value VM::execImport(const std::string& name) {
         modFn->sourceFile = jc2Path;
         modFn->arity = 0;
         modFn->maxArity = 0;
-        modFn->hasRestParam = false;
+        modFn->restName = "";
 
         Resolver resolver;
         resolver.resolve(nsDecl.get());
@@ -2481,7 +2515,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     modFn->sourceFile = resolved;
     modFn->arity = 0;
     modFn->maxArity = 0;
-    modFn->hasRestParam = false;
+    modFn->restName = "";
 
     Resolver resolver;
     resolver.resolve(nsDecl.get());
@@ -3479,8 +3513,8 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     
     int totalArgc = static_cast<int>(actualArgs.size());
 
-    if (fnDef->hasRestParam) {
-        int fixedMax = fnDef->maxArity - 1;
+    if (!fnDef->restName.empty()) {
+        int fixedMax = fnDef->maxArity;
         if (totalArgc < fnDef->arity) {
             int expected = closure && closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
             if (expected < 0) expected = 0;
@@ -3520,7 +3554,8 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         }
     }
 
-    for (int i = fnDef->maxArity; i < fnDef->localCount; ++i) {
+    int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
+            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
         registers[newBase + i] = Value::none();
     }
     
@@ -4186,8 +4221,8 @@ Value VM::run(int targetFrameDepth) {
                         std::vector<Value> actualArgs = args;
                         int totalArgc = static_cast<int>(actualArgs.size());
 
-                        if (fnDef->hasRestParam) {
-                            int fixedMax = fnDef->maxArity - 1;
+                        if (!fnDef->restName.empty()) {
+                            int fixedMax = fnDef->maxArity;
                             if (totalArgc < fnDef->arity) {
                                 throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                             }
@@ -4260,11 +4295,13 @@ Value VM::run(int targetFrameDepth) {
 
                 closure->paramNames = fn->paramNames;
                 closure->isRef = fn->paramIsRef;
-                int defaultLimit = fn->hasRestParam ? (fn->maxArity - 1) : fn->maxArity;
+                int defaultLimit = fn->maxArity;
                 for (int j = fn->arity; j < defaultLimit; ++j) {
                     closure->defaultValues.push_back(Value::uninit());
                 }
-                closure->hasRestParam = fn->hasRestParam;
+                closure->restName = fn->restName;
+                closure->kwargNames = fn->kwargNames;
+                closure->kwargsName = fn->kwargsName;
                 closure->boundSelf = frame->selfContext;
                 closure->boundClass = frame->classContext;
                 
@@ -5469,7 +5506,7 @@ Value VM::run(int targetFrameDepth) {
                                             bound->paramNames = rawMethod->paramNames;
                                             bound->isRef = rawMethod->isRef;
                                             bound->defaultValues = rawMethod->defaultValues;
-                                            bound->hasRestParam = rawMethod->hasRestParam;
+                                            bound->restName = rawMethod->restName;
                                             bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                             if (rawMethod->upvalueCount > 0) {
                                                 bound->upvalueCount = rawMethod->upvalueCount;
@@ -5510,7 +5547,7 @@ Value VM::run(int targetFrameDepth) {
                                                 bound->paramNames = rawMethod->paramNames;
                                                 bound->isRef = rawMethod->isRef;
                                                 bound->defaultValues = rawMethod->defaultValues;
-                                                bound->hasRestParam = rawMethod->hasRestParam;
+                                                bound->restName = rawMethod->restName;
                                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                                 if (rawMethod->upvalueCount > 0) {
                                                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -6237,7 +6274,7 @@ Value VM::run(int targetFrameDepth) {
                             bound->paramNames = rawMethod->paramNames;
                             bound->isRef = rawMethod->isRef;
                             bound->defaultValues = rawMethod->defaultValues;
-                            bound->hasRestParam = rawMethod->hasRestParam;
+                            bound->restName = rawMethod->restName;
                             bound->compiledFnIndex = rawMethod->compiledFnIndex;
                             if (rawMethod->upvalueCount > 0) {
                                 bound->upvalueCount = rawMethod->upvalueCount;
@@ -6281,7 +6318,7 @@ Value VM::run(int targetFrameDepth) {
                             bound->paramNames = rawMethod->paramNames;
                             bound->isRef = rawMethod->isRef;
                             bound->defaultValues = rawMethod->defaultValues;
-                            bound->hasRestParam = rawMethod->hasRestParam;
+                            bound->restName = rawMethod->restName;
                             bound->compiledFnIndex = rawMethod->compiledFnIndex;
                             if (rawMethod->upvalueCount > 0) {
                                 bound->upvalueCount = rawMethod->upvalueCount;
@@ -6366,7 +6403,7 @@ Value VM::run(int targetFrameDepth) {
                     bound->paramNames = rawMethod->paramNames;
                     bound->isRef = rawMethod->isRef;
                     bound->defaultValues = rawMethod->defaultValues;
-                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->restName = rawMethod->restName;
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                     if (rawMethod->upvalueCount > 0) {
                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -6398,7 +6435,7 @@ Value VM::run(int targetFrameDepth) {
                         bound->paramNames = rawMethod->paramNames;
                         bound->isRef = rawMethod->isRef;
                         bound->defaultValues = rawMethod->defaultValues;
-                        bound->hasRestParam = rawMethod->hasRestParam;
+                        bound->restName = rawMethod->restName;
                         bound->compiledFnIndex = rawMethod->compiledFnIndex;
                         if (rawMethod->upvalueCount > 0) {
                             bound->upvalueCount = rawMethod->upvalueCount;
@@ -6436,7 +6473,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->paramNames = rawMethod->paramNames;
                                 bound->isRef = rawMethod->isRef;
                                 bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->restName = rawMethod->restName;
                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                 if (rawMethod->upvalueCount > 0) {
                                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -6496,7 +6533,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->paramNames = rawMethod->paramNames;
                                 bound->isRef = rawMethod->isRef;
                                 bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->restName = rawMethod->restName;
                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                 if (rawMethod->upvalueCount > 0) {
                                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -6551,7 +6588,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->paramNames = rawMethod->paramNames;
                                 bound->isRef = rawMethod->isRef;
                                 bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->restName = rawMethod->restName;
                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                 if (rawMethod->upvalueCount > 0) {
                                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -6594,7 +6631,7 @@ Value VM::run(int targetFrameDepth) {
                         bound->paramNames = targetFn->paramNames;
                         bound->isRef = targetFn->isRef;
                         bound->defaultValues = targetFn->defaultValues;
-                        bound->hasRestParam = targetFn->hasRestParam;
+                        bound->restName = targetFn->restName;
                         bound->isUFCS = true;
 
                         bound->nativeFn = ic.cachedNativeFn;
@@ -6609,7 +6646,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->boundSelf = obj;
                                 ObjClosure* targetFn = globals[ic.cachedGlobalSlot].asFunction();
                             
-                                bound->hasRestParam = targetFn->hasRestParam;
+                                bound->restName = targetFn->restName;
                                 bound->paramNames = targetFn->paramNames;
                                 bound->isRef = targetFn->isRef;
                                 bound->defaultValues = targetFn->defaultValues;
@@ -6649,7 +6686,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->boundSelf = obj;
                                 ObjClosure* targetFn = globals[gIt->second].asFunction();
                             
-                                bound->hasRestParam = targetFn->hasRestParam;
+                                bound->restName = targetFn->restName;
                                 bound->paramNames = targetFn->paramNames;
                                 bound->isRef = targetFn->isRef;
                                 bound->defaultValues = targetFn->defaultValues;
@@ -6694,7 +6731,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->paramNames = targetFn->paramNames;
                                 bound->isRef = targetFn->isRef;
                                 bound->defaultValues = targetFn->defaultValues;
-                                bound->hasRestParam = targetFn->hasRestParam;
+                                bound->restName = targetFn->restName;
                                 bound->isUFCS = true;
 
                                 NativeCallable nativeFn = nIt->second;
@@ -6767,7 +6804,7 @@ Value VM::run(int targetFrameDepth) {
                         bound->paramNames = rawMethod->paramNames;
                         bound->isRef = rawMethod->isRef;
                         bound->defaultValues = rawMethod->defaultValues;
-                        bound->hasRestParam = rawMethod->hasRestParam;
+                        bound->restName = rawMethod->restName;
                         bound->compiledFnIndex = rawMethod->compiledFnIndex;
                         if (rawMethod->upvalueCount > 0) {
                             bound->upvalueCount = rawMethod->upvalueCount;
@@ -6805,7 +6842,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->paramNames = rawMethod->paramNames;
                                 bound->isRef = rawMethod->isRef;
                                 bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->restName = rawMethod->restName;
                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                 if (rawMethod->upvalueCount > 0) {
                                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -6862,7 +6899,7 @@ Value VM::run(int targetFrameDepth) {
                                 bound->paramNames = rawMethod->paramNames;
                                 bound->isRef = rawMethod->isRef;
                                 bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->restName = rawMethod->restName;
                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                 if (rawMethod->upvalueCount > 0) {
                                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -6940,7 +6977,7 @@ Value VM::run(int targetFrameDepth) {
                                             bound->upvalues[i] = targetFn->upvalues[i];
                                         }
                                     }
-                                    bound->hasRestParam = targetFn->hasRestParam;
+                                    bound->restName = targetFn->restName;
                                     bound->paramNames = targetFn->paramNames;
                                     bound->isRef = targetFn->isRef;
                                     bound->defaultValues = targetFn->defaultValues;
@@ -6982,7 +7019,7 @@ Value VM::run(int targetFrameDepth) {
                                             bound->upvalues[i] = targetFn->upvalues[i];
                                         }
                                     }
-                                    bound->hasRestParam = targetFn->hasRestParam;
+                                    bound->restName = targetFn->restName;
                                     bound->paramNames = targetFn->paramNames;
                                     bound->isRef = targetFn->isRef;
                                     bound->defaultValues = targetFn->defaultValues;
@@ -7716,7 +7753,7 @@ Value VM::run(int targetFrameDepth) {
                 bound->paramNames = rawMethod->paramNames;
                 bound->isRef = rawMethod->isRef;
                 bound->defaultValues = rawMethod->defaultValues;
-                bound->hasRestParam = rawMethod->hasRestParam;
+                bound->restName = rawMethod->restName;
                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                 if (rawMethod->upvalueCount > 0) {
                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -8456,7 +8493,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
         bound->paramNames = rawMethod->paramNames;
         bound->isRef = rawMethod->isRef;
         bound->defaultValues = rawMethod->defaultValues;
-        bound->hasRestParam = rawMethod->hasRestParam;
+        bound->restName = rawMethod->restName;
         bound->compiledFnIndex = rawMethod->compiledFnIndex;
         if (rawMethod->upvalueCount > 0) {
             bound->upvalueCount = rawMethod->upvalueCount;
@@ -8488,7 +8525,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
             bound->paramNames = rawMethod->paramNames;
             bound->isRef = rawMethod->isRef;
             bound->defaultValues = rawMethod->defaultValues;
-            bound->hasRestParam = rawMethod->hasRestParam;
+            bound->restName = rawMethod->restName;
             bound->compiledFnIndex = rawMethod->compiledFnIndex;
             if (rawMethod->upvalueCount > 0) {
                 bound->upvalueCount = rawMethod->upvalueCount;
@@ -8526,7 +8563,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     bound->paramNames = rawMethod->paramNames;
                     bound->isRef = rawMethod->isRef;
                     bound->defaultValues = rawMethod->defaultValues;
-                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->restName = rawMethod->restName;
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                     if (rawMethod->upvalueCount > 0) {
                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -8586,7 +8623,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     bound->paramNames = rawMethod->paramNames;
                     bound->isRef = rawMethod->isRef;
                     bound->defaultValues = rawMethod->defaultValues;
-                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->restName = rawMethod->restName;
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                     if (rawMethod->upvalueCount > 0) {
                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -8641,7 +8678,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     bound->paramNames = rawMethod->paramNames;
                     bound->isRef = rawMethod->isRef;
                     bound->defaultValues = rawMethod->defaultValues;
-                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->restName = rawMethod->restName;
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                     if (rawMethod->upvalueCount > 0) {
                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -8684,7 +8721,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
             bound->paramNames = targetFn->paramNames;
             bound->isRef = targetFn->isRef;
             bound->defaultValues = targetFn->defaultValues;
-            bound->hasRestParam = targetFn->hasRestParam;
+            bound->restName = targetFn->restName;
             bound->isUFCS = true;
 
             bound->nativeFn = ic.cachedNativeFn;
@@ -8700,7 +8737,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     bound->boundSelf = obj;
                     ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->restName = targetFn->restName;
                     bound->paramNames = targetFn->paramNames;
                     bound->isRef = targetFn->isRef;
                     bound->defaultValues = targetFn->defaultValues;
@@ -8832,7 +8869,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     bound->boundSelf = obj;
                     ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->restName = targetFn->restName;
                     bound->paramNames = targetFn->paramNames;
                     bound->isRef = targetFn->isRef;
                     bound->defaultValues = targetFn->defaultValues;
@@ -8971,7 +9008,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     bound->paramNames = targetFn->paramNames;
                     bound->isRef = targetFn->isRef;
                     bound->defaultValues = targetFn->defaultValues;
-                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->restName = targetFn->restName;
                     bound->isUFCS = true;
 
                     NativeCallable nativeFn = nIt->second;
@@ -9073,7 +9110,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
         bound->paramNames = rawMethod->paramNames;
         bound->isRef = rawMethod->isRef;
         bound->defaultValues = rawMethod->defaultValues;
-        bound->hasRestParam = rawMethod->hasRestParam;
+        bound->restName = rawMethod->restName;
         bound->compiledFnIndex = rawMethod->compiledFnIndex;
         if (rawMethod->upvalueCount > 0) {
             bound->upvalueCount = rawMethod->upvalueCount;
@@ -9105,7 +9142,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
             bound->paramNames = rawMethod->paramNames;
             bound->isRef = rawMethod->isRef;
             bound->defaultValues = rawMethod->defaultValues;
-            bound->hasRestParam = rawMethod->hasRestParam;
+            bound->restName = rawMethod->restName;
             bound->compiledFnIndex = rawMethod->compiledFnIndex;
             if (rawMethod->upvalueCount > 0) {
                 bound->upvalueCount = rawMethod->upvalueCount;
@@ -9143,7 +9180,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     bound->paramNames = rawMethod->paramNames;
                     bound->isRef = rawMethod->isRef;
                     bound->defaultValues = rawMethod->defaultValues;
-                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->restName = rawMethod->restName;
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                     if (rawMethod->upvalueCount > 0) {
                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -9203,7 +9240,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     bound->paramNames = rawMethod->paramNames;
                     bound->isRef = rawMethod->isRef;
                     bound->defaultValues = rawMethod->defaultValues;
-                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->restName = rawMethod->restName;
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                     if (rawMethod->upvalueCount > 0) {
                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -9258,7 +9295,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     bound->paramNames = rawMethod->paramNames;
                     bound->isRef = rawMethod->isRef;
                     bound->defaultValues = rawMethod->defaultValues;
-                    bound->hasRestParam = rawMethod->hasRestParam;
+                    bound->restName = rawMethod->restName;
                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                     if (rawMethod->upvalueCount > 0) {
                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -9301,7 +9338,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
             bound->paramNames = targetFn->paramNames;
             bound->isRef = targetFn->isRef;
             bound->defaultValues = targetFn->defaultValues;
-            bound->hasRestParam = targetFn->hasRestParam;
+            bound->restName = targetFn->restName;
             bound->isUFCS = true;
 
             bound->nativeFn = ic.cachedNativeFn;
@@ -9317,7 +9354,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     bound->boundSelf = obj;
                     ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->restName = targetFn->restName;
                     bound->paramNames = targetFn->paramNames;
                     bound->isRef = targetFn->isRef;
                     bound->defaultValues = targetFn->defaultValues;
@@ -9449,7 +9486,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     bound->boundSelf = obj;
                     ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->restName = targetFn->restName;
                     bound->paramNames = targetFn->paramNames;
                     bound->isRef = targetFn->isRef;
                     bound->defaultValues = targetFn->defaultValues;
@@ -9588,7 +9625,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     bound->paramNames = targetFn->paramNames;
                     bound->isRef = targetFn->isRef;
                     bound->defaultValues = targetFn->defaultValues;
-                    bound->hasRestParam = targetFn->hasRestParam;
+                    bound->restName = targetFn->restName;
                     bound->isUFCS = true;
 
                     NativeCallable nativeFn = nIt->second;
@@ -10295,7 +10332,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                                 bound->paramNames = rawMethod->paramNames;
                                 bound->isRef = rawMethod->isRef;
                                 bound->defaultValues = rawMethod->defaultValues;
-                                bound->hasRestParam = rawMethod->hasRestParam;
+                                bound->restName = rawMethod->restName;
                                 bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                 if (rawMethod->upvalueCount > 0) {
                                     bound->upvalueCount = rawMethod->upvalueCount;
@@ -10336,7 +10373,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                                     bound->paramNames = rawMethod->paramNames;
                                     bound->isRef = rawMethod->isRef;
                                     bound->defaultValues = rawMethod->defaultValues;
-                                    bound->hasRestParam = rawMethod->hasRestParam;
+                                    bound->restName = rawMethod->restName;
                                     bound->compiledFnIndex = rawMethod->compiledFnIndex;
                                     if (rawMethod->upvalueCount > 0) {
                                         bound->upvalueCount = rawMethod->upvalueCount;
@@ -10712,7 +10749,7 @@ uint64_t jc2_jit_get_super(uint64_t obj_bits, uint32_t nameIdx, const Chunk* chu
     bound->paramNames = rawMethod->paramNames;
     bound->isRef = rawMethod->isRef;
     bound->defaultValues = rawMethod->defaultValues;
-    bound->hasRestParam = rawMethod->hasRestParam;
+    bound->restName = rawMethod->restName;
     bound->compiledFnIndex = rawMethod->compiledFnIndex;
     if (rawMethod->upvalueCount > 0) {
         bound->upvalueCount = rawMethod->upvalueCount;
@@ -11329,11 +11366,13 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
 
     closure->paramNames = fn->paramNames;
     closure->isRef = fn->paramIsRef;
-    int defaultLimit = fn->hasRestParam ? (fn->maxArity - 1) : fn->maxArity;
+    int defaultLimit = fn->maxArity;
     for (int j = fn->arity; j < defaultLimit; ++j) {
         closure->defaultValues.push_back(Value::uninit());
     }
-    closure->hasRestParam = fn->hasRestParam;
+    closure->restName = fn->restName;
+    closure->kwargNames = fn->kwargNames;
+    closure->kwargsName = fn->kwargsName;
     closure->boundSelf = frame->selfContext;
     closure->boundClass = frame->classContext;
     

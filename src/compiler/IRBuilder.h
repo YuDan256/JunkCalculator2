@@ -109,7 +109,7 @@ private:
 
     std::shared_ptr<Expr> currentReturnTypeHint;
     void hoistBlock(Block* block);
-    void buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::shared_ptr<Expr>>& typeHints);
+    void buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, const std::string& restName, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::shared_ptr<Expr>>& typeHints, const std::vector<Token>& kwargParams = {}, const std::vector<bool>& kwargIsRef = {}, const std::vector<bool>& kwargIsConst = {}, const std::vector<std::shared_ptr<Expr>>& kwargDefaultExprs = {}, const std::vector<std::shared_ptr<Expr>>& kwargTypes = {}, const std::string& kwargsName = "");
     void buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool isAssignment = false);
     void buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* accNode, IROp appendOp);
     void buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* setNode);

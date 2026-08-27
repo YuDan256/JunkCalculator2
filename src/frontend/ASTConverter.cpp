@@ -347,6 +347,10 @@ public:
         ObjList* paramIsConst = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard3(paramIsConst);
         for (bool b : expr->paramIsConst) paramIsConst->vec.push_back(Value(b));
+
+        ObjList* kwargParams = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guardKw(kwargParams);
+        for (auto& p : expr->kwargParams) kwargParams->vec.push_back(Value(p.lexeme));
         
         Value retTypeVal = Value::none();
         if (expr->returnType) {
@@ -363,7 +367,9 @@ public:
             {"paramIsRef", Value(paramIsRef)},
             {"paramIsConst", Value(paramIsConst)},
             {"defaultExprs", makeExprListT(expr->defaultExprs)},
-            {"hasRestParam", Value(expr->hasRestParam)},
+            {"restName", Value(expr->restName)},
+            {"kwargParams", Value(kwargParams)},
+            {"kwargsName", Value(expr->kwargsName)},
             {"paramTypes", makeExprListT(expr->paramTypes)},
             {"returnType", retTypeVal},
             {"rawBody", Value(expr->rawBody)},
@@ -627,7 +633,7 @@ public:
         result = makeASTNode("MacroDefExpr", expr->name.line, {
             {"name", Value(expr->name.lexeme)},
             {"params", Value(params)},
-            {"hasRestParam", Value(expr->hasRestParam)},
+            {"restName", Value(expr->restName)},
             {"isTokenMacro", Value(expr->isTokenMacro)},
             {"body", body}
         });
@@ -987,11 +993,22 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         for (auto& e : getExprList(getProp("defaultExprs"))) {
             defaultExprs.push_back(std::shared_ptr<Expr>(e.release()));
         }
+        std::vector<Token> kwargParams;
+        Value kwParamsVal = getProp("kwargParams");
+        if (kwParamsVal.isObjType(ObjType::LIST)) {
+            for (const auto& v : static_cast<ObjList*>(kwParamsVal.asObj())->vec) {
+                kwargParams.push_back(Token(TokenType::IDENTIFIER, v.asString(), line));
+            }
+        }
+        std::vector<bool> kwargIsRef, kwargIsConst;
+        std::vector<std::shared_ptr<Expr>> kwargDefaultExprs, kwargTypes;
         return std::make_unique<LambdaExpr>(
             getProp("name").asString(), std::move(params), std::move(paramIsRef), std::move(paramIsConst),
-            std::move(defaultExprs), getProp("hasRestParam").truthy(),
+            std::move(defaultExprs), getProp("restName").asString(),
             std::move(paramTypes), std::shared_ptr<Expr>(toAST(getProp("returnType")).release()),
-            getProp("rawBody").asString(), std::shared_ptr<Expr>(toAST(getProp("body")).release())
+            getProp("rawBody").asString(), std::shared_ptr<Expr>(toAST(getProp("body")).release()),
+            std::move(kwargParams), std::move(kwargIsRef), std::move(kwargIsConst),
+            std::move(kwargDefaultExprs), std::move(kwargTypes), getProp("kwargsName").asString()
         );
     } else if (type == "ForInExpr") {
         return std::make_unique<ForInExpr>(
@@ -1266,7 +1283,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<MacroDefExpr>(
             Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
             std::move(params),
-            getProp("hasRestParam").truthy(),
+            getProp("restName").asString(),
             getProp("isTokenMacro").truthy(),
             toAST(getProp("body"))
         );

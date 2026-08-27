@@ -663,7 +663,9 @@ struct CompiledFunction {
     int arity = 0;
     int maxArity = 0;
     int localCount = 0;
-    bool hasRestParam = false;
+    std::string restName;                 // ★ rest 参数名（空 = 无）
+    std::vector<std::string> kwargNames;  // ★ 仅关键字参数名
+    std::string kwargsName;               // ★ kwargs 参数名（空 = 无）
     uint32_t callCount = 0; // ★ JIT Warm-up Profiling Counter
     Chunk chunk;
 

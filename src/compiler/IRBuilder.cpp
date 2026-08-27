@@ -2938,11 +2938,15 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     lastValue = opNode;
 }
 
-void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, bool hasRestParam, const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::shared_ptr<Expr>>& typeHints) {
+void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std::vector<std::shared_ptr<Expr>>& defaultExprs, 
+    const std::string& restName,
+    const std::vector<bool>& paramIsRef, const std::vector<bool>& paramIsConst, const std::vector<std::shared_ptr<Expr>>& typeHints,
+    const std::vector<Token>& kwargParams, const std::vector<bool>& kwargIsRef, const std::vector<bool>& kwargIsConst,
+    const std::vector<std::shared_ptr<Expr>>& kwargDefaultExprs, const std::vector<std::shared_ptr<Expr>>& kwargTypes,
+    const std::string& kwargsName) {
     int requiredArgs = 0;
     bool seenDefault = false;
     for (size_t i = 0; i < params.size(); ++i) {
-        if (hasRestParam && i == params.size() - 1) continue;
         if (defaultExprs[i]) {
             seenDefault = true;
         } else if (seenDefault) {
@@ -2952,14 +2956,19 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
     }
     currentFunction->arity = requiredArgs;
     currentFunction->maxArity = static_cast<int>(params.size());
-    currentFunction->hasRestParam = hasRestParam;
+    currentFunction->restName = restName;
+    currentFunction->kwargsName = kwargsName;
     currentFunction->paramIsRef = paramIsRef;
     currentFunction->paramIsConst = paramIsConst;
     for (const auto& p : params) {
         currentFunction->paramNames.push_back(p.lexeme);
     }
+    for (const auto& p : kwargParams) {
+        currentFunction->kwargNames.push_back(p.lexeme);
+    }
     int refCount = 0;
     for (bool isRef : paramIsRef) if (isRef) refCount++;
+    for (bool isRef : kwargIsRef) if (isRef) refCount++;
     currentFunction->refCount = refCount;
     
     int refIdx = 0;
@@ -3072,6 +3081,116 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             currentControl = assertNode;
         }
     }
+
+    // ★ rest 参数（位置收集，绑定到 params.size() 寄存器）
+    if (!restName.empty()) {
+        IRNode* restNode = graph->createValueNode(IROp::Parameter);
+        restNode->payload1 = static_cast<uint32_t>(params.size());
+        declareVariable(restName, restNode);
+    }
+
+    // ★ 仅关键字参数（绑定到 params.size()+1 起的寄存器）
+    size_t kwBase = params.size() + (restName.empty() ? 0 : 1);
+    for (size_t j = 0; j < kwargParams.size(); ++j) {
+        IRNode* paramNode = nullptr;
+        if (j < kwargIsRef.size() && kwargIsRef[j]) {
+            if (kwargParams[j].lexeme != "_") refParams[kwargParams[j].lexeme] = refIdx;
+            refIdx++;
+            if (kwargParams[j].lexeme != "_") {
+                ResolvedSym rs; rs.scope = VarScope::RefParam;
+                paramNode = readVariable(kwargParams[j].lexeme, rs);
+            } else {
+                paramNode = graph->createConstant(Value::none());
+                paramNode->setControl(currentControl);
+            }
+        } else {
+            paramNode = graph->createValueNode(IROp::Parameter);
+            paramNode->payload1 = static_cast<uint32_t>(kwBase + j);
+            declareVariable(kwargParams[j].lexeme, paramNode);
+        }
+        if (kwargParams[j].lexeme != "_" && j < kwargIsConst.size() && kwargIsConst[j]) {
+            currentConstVars.insert(kwargParams[j].lexeme);
+        }
+        if (j < kwargDefaultExprs.size() && kwargDefaultExprs[j]) {
+            IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+            isUninit->setControl(currentControl);
+            isUninit->addData(paramNode);
+            IRNode* ifNode = graph->createNode(IROp::If);
+            ifNode->setControl(currentControl);
+            ifNode->addData(isUninit);
+            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            ifTrue->setControl(ifNode);
+            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            ifFalse->setControl(ifNode);
+            auto baseEnv = envStack;
+            currentControl = ifTrue;
+            envStack.emplace_back();
+            kwargDefaultExprs[j]->accept(*this);
+            IRNode* defVal = lastValue;
+            IRNode* trueCtrl = currentControl;
+            auto trueEnv = envStack;
+            envStack.pop_back();
+            envStack = baseEnv;
+            currentControl = ifFalse;
+            envStack.emplace_back();
+            IRNode* falseCtrl = currentControl;
+            auto falseEnv = envStack;
+            envStack.pop_back();
+            envStack = baseEnv;
+            IRNode* merge = graph->createNode(IROp::Merge);
+            merge->addData(trueCtrl);
+            merge->addData(falseCtrl);
+            for (size_t envIdx = 0; envIdx < baseEnv.size(); ++envIdx) {
+                std::unordered_set<std::string> modifiedVars;
+                for (const auto& pair : trueEnv[envIdx]) {
+                    if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                }
+                for (const auto& pair : falseEnv[envIdx]) {
+                    if (baseEnv[envIdx].count(pair.first) && baseEnv[envIdx].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
+                }
+                for (const auto& name : modifiedVars) {
+                    if (capturedLocals.count(name)) continue;
+                    IRNode* tNode = trueEnv[envIdx].count(name) ? trueEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                    IRNode* fNode = falseEnv[envIdx].count(name) ? falseEnv[envIdx].at(name) : baseEnv[envIdx].at(name);
+                    if (tNode != fNode) {
+                        IRNode* phi = graph->createValueNode(IROp::Phi);
+                        phi->setControl(merge);
+                        phi->addData(tNode);
+                        phi->addData(fNode);
+                        phi->name = name;
+                        envStack[envIdx][name] = phi;
+                    }
+                }
+            }
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(merge);
+            phi->addData(defVal);
+            phi->addData(paramNode);
+            phi->name = kwargParams[j].lexeme;
+            currentControl = merge;
+            ResolvedSym sym;
+            sym.scope = VarScope::Local;
+            sym.isConst = j < kwargIsConst.size() && kwargIsConst[j];
+            writeVariable(kwargParams[j].lexeme, phi, sym, true, sym.isConst);
+        }
+        if (j < kwargTypes.size() && kwargTypes[j]) {
+            IRNode* assertNode = graph->createNode(IROp::AssertParamType);
+            assertNode->setControl(currentControl);
+            ResolvedSym rs; rs.scope = VarScope::Local;
+            assertNode->addData(readVariable(kwargParams[j].lexeme, rs));
+            uint32_t paramNameIdx = currentFunction->chunk.addConstant(Value(kwargParams[j].lexeme));
+            assertNode->payload1 = static_cast<uint32_t>(kwBase + j);
+            assertNode->payload2 = paramNameIdx;
+            currentControl = assertNode;
+        }
+    }
+
+    // ★ kwargs 参数（关键字收集，绑定到 kwBase + kwargParams.size() 寄存器）
+    if (!kwargsName.empty()) {
+        IRNode* kwNode = graph->createValueNode(IROp::Parameter);
+        kwNode->payload1 = static_cast<uint32_t>(kwBase + kwargParams.size());
+        declareVariable(kwargsName, kwNode);
+    }
 }
 
 void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
@@ -3099,7 +3218,8 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         fnBuilder.allowInternalNames = this->allowInternalNames;
         
         fnBuilder.currentReturnTypeHint = expr->returnType;
-        fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->hasRestParam, expr->paramIsRef, expr->paramIsConst, expr->paramTypes);
+        fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->restName, expr->paramIsRef, expr->paramIsConst, expr->paramTypes,
+            expr->kwargParams, expr->kwargIsRef, expr->kwargIsConst, expr->kwargDefaultExprs, expr->kwargTypes, expr->kwargsName);
         
         fnBuilder.build(expr->body.get());
         
@@ -3612,7 +3732,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         if (needsInit) {
             auto initBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
             auto initLambda = std::make_unique<LambdaExpr>(
-                "init", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, false, std::vector<std::shared_ptr<Expr>>{}, nullptr, "", initBody
+                "init", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, "", std::vector<std::shared_ptr<Expr>>{}, nullptr, "", initBody
             );
             expr->instanceProperties.push_back({Token(TokenType::IDENTIFIER, "init", expr->name.line), std::move(initLambda), false, false});
         }
@@ -4789,7 +4909,7 @@ void IRBuilder::visitDeferExpr(DeferExpr* expr) {
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
         
-        fnBuilder.buildFunctionParams({}, {}, false, {}, {}, {});
+        fnBuilder.buildFunctionParams({}, {}, "", {}, {}, {});
         fnBuilder.build(expr->body.get());
         
         IROptimizer::optimize(&fnGraph);

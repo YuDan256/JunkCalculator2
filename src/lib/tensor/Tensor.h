@@ -592,34 +592,35 @@ namespace jc {
             }
             if (new_shape.empty()) new_shape = {1};
             Tensor summed(new_shape, result.dtype(), false);
-            // iterate over output positions
+            
+            // 优化：使用 N 维计数器避免内层循环的坐标换算和内存分配
+            int axis_size = result.shape[axis];
+            int inner_stride = result.strides[axis];
             size_t out_n = summed.numel();
+            std::vector<size_t> coord(summed.dim(), 0);
+            size_t base_idx = result.offset;
+
             for (size_t oi = 0; oi < out_n; ++oi) {
                 double acc = 0.0;
-                // reconstruct coords
-                std::vector<int> coords(summed.dim());
-                size_t remain = oi;
-                for (int d = summed.dim() - 1; d >= 0; --d) {
-                    coords[d] = remain % summed.shape[d];
-                    remain /= summed.shape[d];
-                }
-                // iterate along the summed axis
-                for (int k = 0; k < result.shape[axis]; ++k) {
-                    // build full coords for result
-                    std::vector<int> full_coords;
-                    int ci = 0;
-                    for (int d = 0; d < result.dim(); ++d) {
-                        if (d == axis) full_coords.push_back(k);
-                        else full_coords.push_back(coords[ci++]);
-                    }
-                    // compute flat index in result
-                    size_t flat = 0;
-                    for (int d = 0; d < result.dim(); ++d) {
-                        flat += full_coords[d] * result.strides[d];
-                    }
-                    acc += result.getByAbsIdx(result.offset + flat);
+                size_t cur_idx = base_idx;
+                for (int k = 0; k < axis_size; ++k) {
+                    acc += result.getByAbsIdx(cur_idx);
+                    cur_idx += inner_stride;
                 }
                 summed.setFlat(oi, acc);
+
+                // 推进 N 维计数器
+                for (int d = summed.dim() - 1; d >= 0; --d) {
+                    coord[d]++;
+                    if (coord[d] < static_cast<size_t>(summed.shape[d])) {
+                        int orig_d = (d >= axis) ? d + 1 : d;
+                        base_idx += result.strides[orig_d];
+                        break;
+                    }
+                    coord[d] = 0;
+                    int orig_d = (d >= axis) ? d + 1 : d;
+                    base_idx -= result.strides[orig_d] * (summed.shape[d] - 1);
+                }
             }
             result = summed;
         }
@@ -634,8 +635,32 @@ namespace jc {
     // ---- 辅助：张量逐元素累加 ----
     inline void tensor_accumulate_grad(Tensor& target, const Tensor& source) {
         size_t n = target.numel();
+        if (target.is_contiguous() && source.is_contiguous()) {
+            size_t idxT = target.offset;
+            size_t idxS = source.offset;
+            for (size_t i = 0; i < n; ++i) {
+                target.setByAbsIdx(idxT + i, target.getByAbsIdx(idxT + i) + source.getByAbsIdx(idxS + i));
+            }
+            return;
+        }
+        // 优化：非连续张量使用 N 维计数器，避免昂贵的 getFlat 取模运算
+        int ndim = target.dim();
+        std::vector<size_t> coord(ndim, 0);
+        size_t idxT = target.offset;
+        size_t idxS = source.offset;
         for (size_t i = 0; i < n; ++i) {
-            target.setFlat(i, target.getFlat(i) + source.getFlat(i));
+            target.setByAbsIdx(idxT, target.getByAbsIdx(idxT) + source.getByAbsIdx(idxS));
+            for (int d = ndim - 1; d >= 0; --d) {
+                coord[d]++;
+                if (coord[d] < static_cast<size_t>(target.shape[d])) {
+                    idxT += target.strides[d];
+                    idxS += source.strides[d];
+                    break;
+                }
+                coord[d] = 0;
+                idxT -= target.strides[d] * (target.shape[d] - 1);
+                idxS -= source.strides[d] * (target.shape[d] - 1);
+            }
         }
     }
 
@@ -1060,7 +1085,7 @@ namespace jc {
         }
     }
 
-    // matmul：模板化 + i-k-j 循环重排 + 稀疏跳跃
+    // matmul：模板化 + 分块矩阵乘法 (Cache Blocking) + i-k-j 循环重排 + 稀疏跳跃
     template <typename T>
     inline void matmul_impl(const Tensor& a, const Tensor& b, Tensor& out) {
         const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
@@ -1069,15 +1094,29 @@ namespace jc {
         int M = a.shape[0], K = a.shape[1], N = b.shape[1];
         int sa0 = a.strides[0], sa1 = a.strides[1];
         int sb0 = b.strides[0], sb1 = b.strides[1];
-        for (int i = 0; i < M; ++i) {
-            T* row = po + i * N;
-            const T* arow = pa + i * sa0;
-            for (int k = 0; k < K; ++k) {
-                T va = arow[k * sa1];
-                if (va == T(0)) continue;
-                const T* brow = pb + k * sb0;
-                for (int j = 0; j < N; ++j) {
-                    row[j] += va * brow[j * sb1];
+        
+        // L1 Cache 友好的分块大小
+        constexpr int BLOCK_SIZE = 64;
+
+        for (int i0 = 0; i0 < M; i0 += BLOCK_SIZE) {
+            int i_end = std::min(i0 + BLOCK_SIZE, M);
+            for (int k0 = 0; k0 < K; k0 += BLOCK_SIZE) {
+                int k_end = std::min(k0 + BLOCK_SIZE, K);
+                for (int j0 = 0; j0 < N; j0 += BLOCK_SIZE) {
+                    int j_end = std::min(j0 + BLOCK_SIZE, N);
+
+                    for (int i = i0; i < i_end; ++i) {
+                        T* row = po + i * N;
+                        const T* arow = pa + i * sa0;
+                        for (int k = k0; k < k_end; ++k) {
+                            T va = arow[k * sa1];
+                            if (va == T(0)) continue;
+                            const T* brow = pb + k * sb0;
+                            for (int j = j0; j < j_end; ++j) {
+                                row[j] += va * brow[j * sb1];
+                            }
+                        }
+                    }
                 }
             }
         }

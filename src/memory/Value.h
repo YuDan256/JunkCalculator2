@@ -1865,6 +1865,7 @@ namespace jc {
     struct ObjClosure : public Obj {
         std::vector<std::string> paramNames;
         std::vector<bool> isRef;
+        std::vector<bool> isConst;             // ★ 位置参数 const
         std::string rawBody;
         std::shared_ptr<Expr> body;
         
@@ -1881,8 +1882,11 @@ namespace jc {
         std::vector<Value> defaultValues;
         std::string restName;                 // ★ rest 参数名（空 = 无）
         std::vector<std::string> kwargNames;  // ★ 仅关键字参数名
+        std::vector<bool> kwargIsRef;         // ★ 仅关键字 ref
+        std::vector<bool> kwargIsConst;       // ★ 仅关键字 const
         std::string kwargsName;               // ★ kwargs 参数名（空 = 无）
         int kwargDefaultCount = 0;            // ★ 仅关键字后 N 个有默认值
+        std::vector<std::string> kwargDefaultValueTexts; // ★ 仅关键字默认值文本（与 kwargDefaultCount 对齐）
         bool isUFCS = false; // ★ 新增：标记是否为 UFCS 绑定的全局函数
         bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
         bool is_local = false; // ★ 新增：标记是否为私有方法
@@ -1939,6 +1943,7 @@ namespace jc {
             size_t startIdx = isUFCS ? 1 : 0;
             for (size_t i = startIdx; i < paramNames.size(); ++i) {
                 if (i > startIdx) params += ", ";
+                if (i < isConst.size() && isConst[i]) params += "const ";
                 if (i < isRef.size() && isRef[i]) params += "ref ";
                 params += paramNames[i];
             }
@@ -1948,9 +1953,18 @@ namespace jc {
             }
             if (!kwargNames.empty() || !kwargsName.empty()) {
                 params += "; ";
+                size_t kwargDefaultStart = kwargNames.size() > static_cast<size_t>(kwargDefaultCount) ? kwargNames.size() - kwargDefaultCount : 0;
                 for (size_t i = 0; i < kwargNames.size(); ++i) {
                     if (i > 0) params += ", ";
+                    if (i < kwargIsConst.size() && kwargIsConst[i]) params += "const ";
+                    if (i < kwargIsRef.size() && kwargIsRef[i]) params += "ref ";
                     params += kwargNames[i];
+                    if (i >= kwargDefaultStart) {
+                        size_t defaultIdx = i - kwargDefaultStart;
+                        if (defaultIdx < kwargDefaultValueTexts.size()) {
+                            params += " = " + kwargDefaultValueTexts[defaultIdx];
+                        }
+                    }
                 }
                 if (!kwargsName.empty()) {
                     if (!kwargNames.empty()) params += ", ";

@@ -317,6 +317,7 @@ public:
     std::map<std::string, std::vector<std::string>>& getKwargNames() { return builtinKwargNames; }
     std::map<std::string, std::string>& getKwargsName() { return builtinKwargsName; }
     std::map<std::string, int>& getKwargDefaultCount() { return builtinKwargDefaultCount; }
+    std::map<std::string, std::vector<std::string>>& getKwargDefaultValueTexts() { return builtinKwargDefaultValueTexts; }
     const std::map<std::string, NativeCallable>& getBuiltins() const { return builtins; }
     const std::map<std::string, std::set<int>>& getArity() const { return builtinArity; }
     const std::map<std::string, std::vector<std::string>>& getParamNames() const { return builtinParamNames; }
@@ -324,6 +325,7 @@ public:
     const std::map<std::string, std::vector<std::string>>& getKwargNames() const { return builtinKwargNames; }
     const std::map<std::string, std::string>& getKwargsName() const { return builtinKwargsName; }
     const std::map<std::string, int>& getKwargDefaultCount() const { return builtinKwargDefaultCount; }
+    const std::map<std::string, std::vector<std::string>>& getKwargDefaultValueTexts() const { return builtinKwargDefaultValueTexts; }
 
 private:
     std::map<std::string, NativeCallable> builtins;
@@ -333,10 +335,12 @@ private:
     std::map<std::string, std::vector<std::string>> builtinKwargNames;
     std::map<std::string, std::string> builtinKwargsName;
     std::map<std::string, int> builtinKwargDefaultCount;
+    std::map<std::string, std::vector<std::string>> builtinKwargDefaultValueTexts;
 
     void reg(const std::string& name, std::set<int> arity, NativeCallable fn,
         std::vector<std::string> paramNames = {}, std::string restName = "",
-        std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0) {
+        std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0,
+        std::vector<std::string> kwargDefaultValueTexts = {}) {
         builtins[name] = std::move(fn);
         builtinArity[name] = std::move(arity);
         builtinParamNames[name] = std::move(paramNames);
@@ -344,6 +348,7 @@ private:
         builtinKwargNames[name] = std::move(kwargNames);
         builtinKwargsName[name] = std::move(kwargsName);
         builtinKwargDefaultCount[name] = kwargDefaultCount;
+        builtinKwargDefaultValueTexts[name] = std::move(kwargDefaultValueTexts);
     }
 
     void registerMath();
@@ -378,8 +383,8 @@ private:
     ObjNamespace* math_ns = nullptr;
     ObjNamespace* random_ns = nullptr;
 
-    void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0);
-    void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0);
+    void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {});
+    void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {});
 };
 
 void registerPredefinedClasses();

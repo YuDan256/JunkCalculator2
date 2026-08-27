@@ -2960,6 +2960,8 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
     currentFunction->kwargsName = kwargsName;
     currentFunction->paramIsRef = paramIsRef;
     currentFunction->paramIsConst = paramIsConst;
+    currentFunction->kwargIsRef = kwargIsRef;
+    currentFunction->kwargIsConst = kwargIsConst;
     for (const auto& p : params) {
         currentFunction->paramNames.push_back(p.lexeme);
     }

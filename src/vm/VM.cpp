@@ -305,7 +305,7 @@ Value VM::makeTokenInstance(const Token& t) {
     return Value(inst);
 }
 
-void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount) {
+void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts) {
     nativeBuiltins[name] = fn;
     builtinArity[name] = arity;
     builtinParamNames[name] = paramNames;
@@ -313,6 +313,7 @@ void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<in
     builtinKwargNames[name] = std::move(kwargNames);
     builtinKwargsName[name] = std::move(kwargsName);
     builtinKwargDefaultCount[name] = kwargDefaultCount;
+    builtinKwargDefaultValueTexts[name] = std::move(kwargDefaultValueTexts);
 }
 
 Value VM::getBuiltinClosure(const std::string& name) {
@@ -335,6 +336,7 @@ Value VM::getBuiltinClosure(const std::string& name) {
         auto kwit = builtinKwargNames.find(name);
         auto kwnit = builtinKwargsName.find(name);
         auto kwdcit = builtinKwargDefaultCount.find(name);
+        auto kwdtit = builtinKwargDefaultValueTexts.find(name);
         if (pit != builtinParamNames.end()) {
             closure->paramNames = pit->second;
             for (size_t j = 0; j < closure->paramNames.size(); ++j) {
@@ -345,6 +347,7 @@ Value VM::getBuiltinClosure(const std::string& name) {
         if (kwit != builtinKwargNames.end()) closure->kwargNames = kwit->second;
         if (kwnit != builtinKwargsName.end()) closure->kwargsName = kwnit->second;
         if (kwdcit != builtinKwargDefaultCount.end()) closure->kwargDefaultCount = kwdcit->second;
+        if (kwdtit != builtinKwargDefaultValueTexts.end()) closure->kwargDefaultValueTexts = kwdtit->second;
         if (ait != builtinArity.end() && !ait->second.empty()) {
             int minA = *ait->second.begin();
             int maxA = *ait->second.rbegin();
@@ -4325,12 +4328,15 @@ Value VM::run(int targetFrameDepth) {
 
                 closure->paramNames = fn->paramNames;
                 closure->isRef = fn->paramIsRef;
+                closure->isConst = fn->paramIsConst;
                 int defaultLimit = fn->maxArity;
                 for (int j = fn->arity; j < defaultLimit; ++j) {
                     closure->defaultValues.push_back(Value::uninit());
                 }
                 closure->restName = fn->restName;
                 closure->kwargNames = fn->kwargNames;
+                closure->kwargIsRef = fn->kwargIsRef;
+                closure->kwargIsConst = fn->kwargIsConst;
                 closure->kwargsName = fn->kwargsName;
                 closure->boundSelf = frame->selfContext;
                 closure->boundClass = frame->classContext;
@@ -11396,12 +11402,15 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
 
     closure->paramNames = fn->paramNames;
     closure->isRef = fn->paramIsRef;
+    closure->isConst = fn->paramIsConst;
     int defaultLimit = fn->maxArity;
     for (int j = fn->arity; j < defaultLimit; ++j) {
         closure->defaultValues.push_back(Value::uninit());
     }
     closure->restName = fn->restName;
     closure->kwargNames = fn->kwargNames;
+    closure->kwargIsRef = fn->kwargIsRef;
+    closure->kwargIsConst = fn->kwargIsConst;
     closure->kwargsName = fn->kwargsName;
     closure->boundSelf = frame->selfContext;
     closure->boundClass = frame->classContext;

@@ -316,26 +316,28 @@ namespace jc {
 
 using namespace helpers;
 
-void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount) {
+void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts) {
     if (!proto) return;
     auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr, restName);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
     closure->kwargNames = std::move(kwargNames);
     closure->kwargsName = std::move(kwargsName);
     closure->kwargDefaultCount = kwargDefaultCount;
+    closure->kwargDefaultValueTexts = std::move(kwargDefaultValueTexts);
     for (int i = 0; i < defaultCount; ++i) {
         closure->defaultValues.push_back(Value::uninit());
     }
     proto->properties[name] = {Value(closure), false, false};
 }
 
-void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount) {
+void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts) {
     if (!ns) return;
     auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr, restName);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
     closure->kwargNames = std::move(kwargNames);
     closure->kwargsName = std::move(kwargsName);
     closure->kwargDefaultCount = kwargDefaultCount;
+    closure->kwargDefaultValueTexts = std::move(kwargDefaultValueTexts);
     if (!arity.empty()) {
         int minA = *arity.begin();
         int maxA = *arity.rbegin();
@@ -2370,7 +2372,7 @@ void BuiltinRegistry::registerControlFlow() {
             }
         }
         std::cout << end << std::flush; return Value::none();
-        }, {}, "args", {"sep", "end"}, "", 2);
+        }, {}, "args", {"sep", "end"}, "", 2, {"\" \"", "\"\\n\""});
     reg("not", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(!args[0].truthy()); }, {"x"});
     reg("and", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() && args[1].truthy()); }, {"a", "b"});
     reg("or", { 2 }, [](const std::vector<Value>& args) -> Value { return Value(args[0].truthy() || args[1].truthy()); }, {"a", "b"});
